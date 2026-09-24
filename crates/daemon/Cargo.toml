@@ -1,0 +1,10 @@
+[package]
+name = "codeana-daemon"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+codeana-contracts = { path = "../contracts" }
+tokio.workspace = true
+tonic.workspace = true

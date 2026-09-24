@@ -1,0 +1,131 @@
+# code-ana 多语言项目配置草案 v1，尚无加载器实现。
+# 建议保存到 <project>/.code-ana/config.toml。
+# 这是 Java + Rust 混合仓库示例；模块路径、features 应按项目修改。
+# 字段、默认、优先级见 configuration.md；无旧配置兼容。
+# 此示例展示后续多语言配置；当前先验收显式启用 Java 的 fixture。
+schema_version = 1
+kind = "project"
+
+[project]
+name = "mixed-workspace"
+
+[discovery]
+mode = "explicit" # auto：仅发现显式启用语言内的模块；不自动选择语言
+
+[scan]
+scopes = ["MAIN", "TEST", "GENERATED"]
+include = ["**"]
+exclude = []
+text_only = []
+
+[build]
+suggestions = true # 缺产物时返回外部构建建议；产品不执行目标项目编译
+
+[index]
+mode = "auto" # full：明确全量；auto：兼容时增量
+
+[resources.index]
+# 省略时使用服务预算；数值是申请上限，不是产品容量承诺。
+# worker_memory_bytes = 2147483648
+
+[resources.query]
+diff_spill_bytes = 8388608
+
+[query]
+scopes = ["ALL"] # 只选择已捕获范围；不增加 TEST 索引
+# max_output_bytes = 32768 # 省略时使用本项目各命令默认值
+
+[observability]
+mode = "basic"
+
+[languages.java]
+enabled = true
+mode = "semantic"
+
+[languages.java.discovery]
+build_system = "maven" # auto / maven / gradle / plain
+
+[languages.java.analysis]
+source_version = "auto" # 从模块构建声明解析；不是 adapter 的 Java 25 版本
+toolchain = "auto" # 或用户配置中登记的 Java toolchain 别名
+classpath = "existing"
+vm_classpath = true
+
+[languages.java.lombok]
+mode = "off" # ast：源码签名模型
+strict = false
+
+[languages.java.extensions.spring]
+enabled = true
+xml = false
+
+[languages.java.extensions.sofa]
+enabled = true # 依赖 Spring；关闭 Spring 时必须一并关闭 SOFA
+
+[languages.java.external]
+exclude_patterns = ["java.lang.*", "java.io.*", "java.net.*", "java.nio.*", "java.math.*", "sun.*", "com.sun.*", "jdk.*"]
+
+[languages.rust]
+enabled = true
+mode = "semantic" # syntax：语法能力；semantic：需要已验证 crate graph/工具链
+
+[languages.rust.discovery]
+build_system = "cargo"
+
+[languages.rust.analysis]
+edition = "auto"
+toolchain = "auto"
+
+[[modules]]
+id = "order-service"
+language = "java"
+root = "services/order"
+manifest = "pom.xml" # 相对 module.root
+
+[modules.analysis]
+source_version = "17" # 此模块覆盖语言默认；adapter 仍由 Java 25/GraalVM 构建
+
+[modules.extensions.spring]
+xml = true
+
+[[modules.source_roots]]
+path = "src/main/java" # 相对 module.root
+scope = "MAIN"
+
+[[modules.source_roots]]
+path = "src/test/java"
+scope = "TEST"
+
+[[modules]]
+id = "native-engine"
+language = "rust"
+root = "native/engine"
+manifest = "Cargo.toml"
+
+[[modules.worlds]]
+id = "default"
+target = "host" # 分析前解析为真实 target identity
+default_features = true
+features = []
+cfg = []
+
+[[modules.worlds]]
+id = "fast"
+target = "host"
+default_features = true
+features = ["fast"] # 示例；必须是目标项目合法的 feature 选择
+cfg = []
+
+[versions.capture]
+include_ignored = []
+
+[versions.gc]
+auto = true
+keep = 20
+max_bytes = 0 # 0：不设置该项目字节预算；保护引用仍不能被强删
+max_age_days = 30
+include_caches = false
+
+[search.text]
+backend = "grep"
+include = ["**/*.java", "**/*.rs", "**/*.xml", "**/*.toml", "docs/**/*.md"]

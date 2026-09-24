@@ -1,0 +1,19 @@
+[workspace]
+members = [
+    "crates/contracts",
+    "crates/cli",
+    "crates/daemon",
+    "crates/java-worker",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.96"
+version = "0.1.0"
+
+[workspace.dependencies]
+tokio = { version = "1.47", features = ["macros", "rt-multi-thread"] }
+tonic = { version = "0.14.6", features = ["transport"] }
+tonic-prost = "0.14.6"
+prost = "0.14.4"

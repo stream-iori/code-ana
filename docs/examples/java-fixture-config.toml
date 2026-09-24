@@ -1,0 +1,39 @@
+# Java fixture 首阶段示例；保存到 fixture 根目录的 .code-ana/config.toml。
+# 仅为设计示例，源码目录需由测试准备流程提供；不执行目标项目编译。
+schema_version = 1
+kind = "project"
+
+[discovery]
+mode = "explicit"
+
+[scan]
+scopes = ["MAIN", "TEST"]
+
+[build]
+suggestions = true
+
+[languages.java]
+enabled = true
+mode = "semantic"
+
+[languages.java.discovery]
+build_system = "plain"
+
+[languages.java.analysis]
+source_version = "17" # 目标 fixture 版本；adapter 自身仍用 Java 25/GraalVM
+toolchain = "auto"
+classpath = "none"
+vm_classpath = true
+
+[[modules]]
+id = "java-fixture"
+language = "java"
+root = "."
+
+[[modules.source_roots]]
+path = "src/main/java"
+scope = "MAIN"
+
+[[modules.source_roots]]
+path = "src/test/java"
+scope = "TEST"

@@ -1,0 +1,297 @@
+# config.toml：多语言配置设计
+
+**公共配置管扫描、预算和版本；语言配置管分析语义；模块与 world 表达同仓库中的不同构建上下文。**
+
+状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。其余路径/字段/默认值为 D14 草案，尚无加载器实现。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；混合语言示例展示后续扩展，当前先验收 Java fixture。
+
+## 1. 配置分层
+
+```text
+用户 config.toml                          项目 config.toml
+  daemon / 资源硬上限                       scan / build / query / versions
+  本机 toolchain 别名                       languages.java / languages.rust
+          |                                modules -> worlds
+          +--------------------+-------------------+
+                               |
+                  daemon ConfigResolver + 校验
+                               |
+                   发现真实模块 / 解析 auto
+                               |
+                  冻结 EffectiveConfig 与来源
+                               |
+          +--------------------+--------------------+
+          |                    |                    |
+     JavaAnalysisConfig   RustAnalysisConfig   Capture/QueryPolicy
+          |                    |
+       Java host           Rust 语言 worker
+```
+
+Java 适配器工程固定使用 Java 25 + GraalVM；`languages.java.analysis.source_version` 描述**被分析源码**的语法版本，`analysis.toolchain` 描述用于该项目解析的工具链。修改这两个字段不会重编适配器或切换它的构建 JDK。
+
+## 2. 文件位置与归属
+
+| 文件 / 输入 | 建议位置 | 允许内容 |
+|---|---|---|
+| 项目配置 | `<project>/.code-ana/config.toml` | 可移植的分析、模块、world、查询默认值、版本策略 |
+| 用户配置 | `~/.code-ana/config.toml` | daemon 生命周期、用户级资源上限、本机工具链位置 |
+| 运行时 endpoint | 用户运行目录中的生成文件 | 实际 gRPC endpoint、进程身份；不是项目配置 |
+| CLI overrides | 一次 TaskRequest | 明确存在的参数映射、选择范围与预算；不写回文件 |
+
+项目与用户文件均使用 `schema_version = 1`；`kind = "project"` / `"user"` 区分允许字段。路径命名待 D08/D14 最终冻结，不声称现有 CLI 已支持新路径。
+
+每个任务根据明确 project root 只选择一份项目配置；首版不递归读取子目录配置、不隐式向父目录找配置、不支持任意 `include` 配置链。monorepo 的差异在 `modules` 中表达。
+
+用户文件不存语言语义默认值，避免不同机器悄悄改变项目分析。项目也不能覆盖 daemon 的监听范围、安装产物位置或用户资源硬上限。配置中不提供 worker 可执行文件/共享库任意路径；这些由安装 manifest 决定。
+
+| 用户配置键 | 类型与语义 |
+|---|---|
+| `daemon.idle_timeout_seconds` | 正整数秒；只在无活动任务/读者时进入退出流程；省略使用产品服务策略 |
+| `limits.max_workers` | 正整数；全部项目合计的同时分析进程上限 |
+| `limits.max_worker_memory_bytes` | 正整数字节；每 worker 的最大可申请预算 |
+| `limits.max_total_worker_memory_bytes` | 正整数字节；worker 合计预算，调度时按任务预约；daemon 自身另受服务内存策略控制 |
+| `toolchains.<alias>.language` | 已知语言 ID，别名匹配时检查语言一致 |
+| `toolchains.<alias>.home` | 已安装工具链的绝对根目录；解析后记录实际版本/产物身份，而不只记录路径 |
+
+用户数值未配置时也要有明确的产品策略并可查询；具体缺省容量由 D12 原型确定。不同平台的内存计量、主动停止与进程级限制需实测，TOML 设置本身不代表已经实现精确 OS 硬限制。
+
+## 3. 公共与语言命名空间
+
+| 节 | 主要字段 | 归属 / 规则 |
+|---|---|---|
+| `[project]` | `name` | 展示名，不参与 ProjectKey 的唯一性判断 |
+| `[discovery]` | `mode = "auto" / "explicit"` | 仅在显式启用语言内发现模块，或只分析列出的模块入口；不用于发现/启用语言 |
+| `[scan]` | `scopes`、`include`、`exclude`、`text_only` | 各语言共用范围；scope 的语言映射必须披露 |
+| `[build]` | `suggestions = true / false` | 默认 true，缺产物时返回执行建议；false 只隐藏命令建议，仍报告缺口；两者都不运行目标项目构建 |
+| `[index]` | `mode = "auto" / "full"` | 增量策略，不容纳 Java 专属字段 |
+| `[resources.index]` | `worker_memory_bytes` | 请求的每 worker 上限，可省略使用服务策略；实际值受用户硬上限约束 |
+| `[resources.query]` | `diff_spill_bytes` | 有界 diff 暂存策略，建议默认 8 MiB，fixture 验证后冻结 |
+| `[query]` | `scopes`、`max_output_bytes` | 查询默认选择与预算，不扩张索引范围；未设置预算时使用本项目各命令默认 |
+| `[observability]` | `mode = "off" / "basic" / "full"` | 本项目报告与诊断级别，建议默认 basic |
+| `[search.text]` | `backend`、`include` | 保留 grep/rg 入口，可搜任意语言和文档，不生成语义事实 |
+| `[versions.capture]` | `include_ignored` | 增补 WORKTREE 捕获范围，不绕过 excludes |
+| `[versions.gc]` | `auto`、`keep`、`max_bytes`、`max_age_days`、`include_caches` | 引用保护与预览/执行边界；默认数值由本项目 fixture 验证 |
+| `[languages.<id>]` | `enabled`、`mode` | 语言能力选择；支持的 mode 由版本化语言描述符声明 |
+| `[languages.<id>.discovery]` | `build_system` | Java 为 auto/maven/gradle/plain；Rust 为 cargo |
+| `[languages.<id>.analysis]` | 语言专属分析参数 | 由对应 adapter 的 schema 校验，不能塞回全局 index |
+| `[languages.java.lombok]` | `mode = "off" / "ast"`、`strict` | 用户确定直接挂在 Java 下；Lombok 模型不经过 extensions 中间层 |
+| `[languages.<id>.extensions.<id>]` | 框架参数 | Spring/SOFA 等框架配置归所属语言，不出现在其他语言命名空间 |
+| `[languages.<id>.external]` | `exclude_patterns` | 匹配规则由语言定义；Java 包前缀规则不自动套给 Rust |
+| `[[modules]]` | `id`、`language`、`root`、`manifest` | 一个语言构建入口；同目录不同语言必须分开列出 |
+| `[[modules.worlds]]` | `id` 及该语言 world 参数 | 显式语义实例，不自动生成 features 的组合矩阵 |
+
+新增语言注册 `language id + config schema version + capabilities + defaults + lowering`，core 负责公共层和调度，adapter 负责专属字段。首版使用随产品分发的固定描述符，不从项目下载插件；未知语言/字段明确报错。
+
+| 语言专属键 | 值域 / 解释 |
+|---|---|
+| Java `analysis.source_version` | `"auto"` 或十进制版本字符串，如 `"17"`；实际支持版本由已安装 adapter 描述符声明 |
+| Java `analysis.toolchain` | `"auto"` 或 Java 工具链别名；解析出的 JDK 必须满足所请求的分析能力 |
+| Java `analysis.classpath` | `"existing"` 或 `"none"`；none 禁用项目依赖类路径，JDK 类路径由 vm_classpath 单独控制 |
+| Java `analysis.vm_classpath` | boolean；是否将选定 JDK 类型加入解析，不取宿主 GraalVM JDK 冒充目标 JDK |
+| Java `lombok.mode` / `lombok.strict` | off/ast 与 boolean，默认 off/false；ast 为源码签名模型，strict 将不完整模型纳入质量门禁，不触发 Lombok 编译执行 |
+| Rust `analysis.edition` | `"auto"` 或 adapter 支持的 edition 字符串；显式值须与有效构建声明一致，冲突拒绝 |
+| Rust `analysis.toolchain` | `"auto"` 或 Rust 工具链别名；实际版本与产物内容进入 profile |
+| Rust world `target` | `"host"` 或工具链支持的目标平台名；分析前解析能力与依赖可用性 |
+| Rust world `features` / `default_features` | feature 字符串数组 / boolean；按 manifest 和构建图校验 |
+| Rust world `cfg` | 规范化字符串数组，元素为 `name` 或 `name="value"`；语法与冲突由 adapter 校验，不允许覆盖保留的目标平台内置项 |
+
+首版只接受 Rust semantic 模式的显式 `modules.worlds`；syntax 模式保留源码上的 cfg 条件但不解释 feature world，因此显式配置 semantic world 时拒绝不匹配模式，避免“写了配置却未生效”。
+
+## 4. 默认值与最小配置
+
+当前 Java fixture 的显式模块示例见 [java-fixture-config.toml](examples/java-fixture-config.toml)。下方最小配置只启用 Java，模块可在该语言内发现；它不启用 Rust 或其他语言。
+
+```toml
+schema_version = 1
+kind = "project"
+
+[languages.java]
+enabled = true
+
+```
+
+| 省略项 | 默认语义 |
+|---|---|
+| 没有项目文件 | 不发现/启用任何语言；语义 index 返回配置缺失及示例建议；已有 revision/历史只读不因此失效 |
+| 有项目文件但未启用语言 | 不发现/启用任何语言；语义 index 返回语言未配置；只有报告配置或检测到 manifest 都不构成启用 |
+| 显式启用语言 | 仅 `languages.<id>.enabled=true` 的语言参与索引；discovery.mode=auto 只发现这些语言的模块；modules.language 本身不隐式启用语言 |
+| files/search-text | 无语言声明也可按显式文件范围读取；不触发语言发现、解析或编译 |
+| language.mode | Java 为 semantic；Rust 为 syntax；Rust semantic 必须显式选择，执行中不静默降级 |
+| scan.scopes | MAIN + GENERATED；query.scopes 默认 ALL，含义仅为已捕获范围 |
+| include / exclude / text_only | `["**"]` / `[]` / `[]`；建议 include=[] 表示所有已选源码根内路径 |
+| Java source_version / toolchain | auto；按模块声明和可用工具链解析，来源与最终版本必须披露 |
+| Java 版本声明缺失 | 不猜 Java 8；需要显式 source_version 才能开始 semantic |
+| Java classpath | existing；已有可验证依赖缺失则按 coverage/门禁处理，不自动执行构建 |
+| Java 扩展 | Lombok off、strict=false；Spring enabled=true、xml=false；SOFA enabled=true 且依赖 Spring |
+| Rust edition / toolchain | auto；从有效 manifest/toolchain 输入解析，无法确定则披露能力不足 |
+| Rust world 未列出 | semantic 使用当前解析的 host target、default_features=true、features=[]、cfg=[]；syntax 只记录未求值条件 |
+| 数值资源预算未设置 | 使用用户级服务策略并披露实际值；不能把省略理解为无限资源 |
+
+开启缺少已安装能力的语言时，在运行前返回 unsupported；不能默默只分析另一种语言。语义失败可产生 partial coverage，由健康门禁决定能否发布，与无效配置的直接拒绝区分。
+
+## 5. 模块、源码根与 world
+
+| 配置 | 规则 |
+|---|---|
+| module.id | 项目内唯一稳定人工标识；不直接使用绝对 checkout 路径 |
+| module.language | 一个明确语言；混合模块拆成多个配置入口，可以共享根目录 |
+| module.root | 相对 project root；manifest、显式 source root 相对此 module.root |
+| module.manifest | 可选构建入口；auto discovery 可按 build_system 找到，explicit 模式无歧义时也可推导 |
+| auto + modules | 先发现，再以规范化 `(language, root, manifest)` 精确应用覆盖；重复覆盖或别名冲突拒绝 |
+| explicit + modules | 只处理列出的入口及其构建图需要的子模块/crate；不扫描无关目录 |
+| 构建入口包含多个模块 | adapter 以配置 id 为稳定前缀、构建图内相对身份为后缀生成子模块；不得吞掉子模块差异 |
+| modules.analysis / lombok / extensions / external | 覆盖该语言的同类型配置；Java 模块用 modules.lombok 覆盖 languages.java.lombok；Rust 模块出现 lombok 或其他 Java 字段直接报错 |
+| modules.scan | 只进一步收窄范围；不可用 include 绕过全局 exclude 或增加未启用 scope |
+| modules.source_roots | Java/plain 等描述符支持时显式给 `path/scope`；GENERATED 仍需封存产物，不自动运行生成器 |
+| Rust 源文件发现 | 以 crate graph 和模块语义为准；不把所有 `*.rs` 当互相独立的完整 crate |
+| modules.worlds | 模块内 id 唯一；id 是显示/选择别名，真实 WorldKey 由解析后的构建上下文计算 |
+
+```text
+project
+  +-- module: order-service / Java
+  |      +-- MAIN + TEST source sets -> 各自语义实例
+  |
+  +-- module: native-engine / Rust
+         +-- world: default -> host / default features
+         +-- world: fast    -> host / default features + fast
+                  |
+             每个 crate/target 各有真实 WorldKey
+```
+
+Rust world 的 `target` 是目标平台，不能与 Cargo 的 lib/bin/test target 混淆；后者由 crate graph 和所选 scope 展开。`features`、`default_features` 和显式 `cfg` 是请求条件，实际 feature 统一结果与构建 cfg 以捕获的 BuildContext 为准。`host` 必须解析成具体 target 身份，不能将字符串 host 当跨机器稳定环境。
+
+Java world 首版由真实模块、源码集和已解析构建上下文派生；不添加一套复制 Maven profile 语法的通用 world 字段。同版本不同 JDK/依赖进入 semantic profile，不机械改动 LogicalSymbolKey。
+
+## 6. 优先级与路径规则
+
+```text
+内置默认
+   -> 项目公共策略 + languages.<id> 默认
+   -> 匹配 module 的专属覆盖
+   -> world 的构建条件（仅其允许字段）
+   -> 本次明确映射的 CLI 参数
+   -> 语义校验 / 用户资源上限裁决
+```
+
+| 类型 | 合并 / 解释 |
+|---|---|
+| 标量 | 后一层显式值覆盖；false、0 不当成“未设置” |
+| 表 | 按 schema 中的已知字段递归合并，禁止自由 map 吞未知字段 |
+| 一般数组 | 显式后值整体替换，不自动拼接；空数组含义按字段定义 |
+| 范围限制 | scopes/include 取允许范围交集，exclude 取并集；这是数组规则的明确例外 |
+| worlds / modules | 不是普通可追加配置数组；id 唯一，完整定义按精确入口匹配；不按数组下标覆盖 |
+| Rust features / cfg | features=[] 表示无额外 feature，default_features=false 才关闭默认 features；cfg=[] 不清除目标平台内置 cfg |
+| CLI 语言参数 | 仅发给目标语言；不能借覆盖参数隐式启用未配置语言或改变 adapter 的 Java 25 构建工具链 |
+| build.suggestions | 仅控制是否附带外部执行建议，不授予编译权限；产品只消费已有可验证产物，无自动执行开关 |
+| 用户硬上限 | project/CLI 超限请求拒绝并报告上限；不静默截断请求预算；省略时使用服务分配值 |
+| 文件路径 | project root 在任务接受时固定；全局 glob 相对项目，module.source_roots 相对模块；换 CLI cwd 不改变含义 |
+| 源码边界 | 规范化后仍须位于捕获项目内；JDK/依赖是单独身份输入，不能冒充项目源码 |
+| 字符串展开 | 首版不执行 shell、不隐式展开 `$VAR`/`~`；本机路径在用户配置中用绝对路径 |
+
+注释、TOML 字段顺序和无语义的格式变化不触发语义重建；但配置文件自身的文本变化仍属于文件捕获/diff 证据。
+
+## 7. EffectiveConfig 与指纹
+
+| 输出 | 内容 / 用途 |
+|---|---|
+| EffectiveConfig | 已补默认、类型化、解析 auto 后的各模块/world 配置与来源；本次任务不可变 |
+| FieldOrigin | 文件/键路径/行列，或 CLI 参数/内置默认/构建发现；doctor 可解释“为何生效” |
+| ConfigDigest | 规范化有效配置与 schema/默认值版本的整体摘要，描述请求，不直接等同语义 profile |
+| SemanticConfigDigest | 按模块/world 切分的模式、版本、工具链内容身份、依赖顺序、扩展、语义分析预算等 |
+| CapturePolicyDigest | scan、text_only、ignored 文件和控制输入选择；影响 snapshot 可比性 |
+| QueryPolicy / ExecutionPolicy | 查询、报告、服务调度、GC 与资源策略；分别记录，不无故清空语言事实 |
+
+```text
+EffectiveConfig + 捕获源码/依赖/工具链 + adapter/rule versions
+                         |
+                SemanticProfile（实际分析环境）
+```
+
+`profile` 不是用户随手命名的 TOML preset。首版不另加 `[profiles.*]` 继承语法；模块/world 已能表达首批差异。features 等集合规范化排序；classpath、解析器搜索路径等有优先级的数组保留顺序。摘要不直接使用 protobuf 序列化字节。
+
+| 改动 | 失效范围 |
+|---|---|
+| Java source_version / JDK / classpath / Lombok / Spring XML | 对应 Java 模块及依赖闭包；无法证明局部安全则该语言全量 |
+| Rust target / features / cfg / toolchain / mode | 对应 Rust world/依赖闭包，或创建新 world；旧世界保留为历史 |
+| 关闭语言 / 移除模块或 world | 新 revision 显式替换掉相应 owners，不能继续当作当前结果 |
+| scan/capture 变化 | 输入清单与覆盖变化，重算受影响事实与 snapshot 请求身份 |
+| query.scopes / output bytes / report / GC / daemon idle / build.suggestions | 改变请求/执行策略，不单独使已发布语义事实失效 |
+| 索引内存上限改变 | 记录执行策略；成功结果不应变义；若某分析预算影响求解结果，则必须计入语义指纹并披露 |
+
+单个语言的配置变化不应机械重建另一语言。混合项目修订可复用有证明的未变语言分区；新 revision 原子发布所有分区引用及项目 coverage，不能让关闭语言后仍出现陈旧事实。
+
+## 8. 加载、校验与重载
+
+| 阶段 | 所有者 | 检查 |
+|---|---|---|
+| parse | Rust ConfigResolver | TOML、schema_version、kind、重复键和类型 |
+| structural validate | 公共配置 schema + 随产品分发的 adapter 描述符 | 已知字段/枚举、路径、module/world id、语言归属、扩展依赖 |
+| resolve | 发现服务 + adapter | 实际模块、auto 版本、工具链别名、manifest 与构建要求 |
+| policy validate | daemon | 请求预算与上限、外部构建建议策略、范围冲突 |
+| freeze | 索引编排 | 有效配置、来源、所读文件 hash、实际环境与 profile |
+| execute | worker/query | 只消费已冻结的类型化配置，不各自重新读 config.toml |
+
+项目配置在每个新任务接受/准备时重新检查；排队任务持有固定输入配置，变化要显式重新准备，不能分析到一半换配置。daemon 进程级配置首次启动载入，首版修改后经 drain/restart 生效；不做半生效热更新。用户工具链映射同样绑定配置 generation，新任务说明使用哪个 generation。
+
+历史 `snapshot:<id>` 读取使用已保存的 profile 和 EffectiveConfig；当前项目文件或用户工具链变化不会重解释历史事实。files-only 和历史只读不要求启动语言 worker，也不因缺少当前 JDK/adapter binary 而失去已有证据。
+
+| 无效输入 | 预期处理（具体错误码待冻结） |
+|---|---|
+| 未知语言/字段、错误类型、未来 schema | 在索引前拒绝，给文件位置与期望类型/版本 |
+| 同模块重复 world id / 重复入口覆盖 | 拒绝歧义，不按最后一条获胜 |
+| Rust 模块写 java_version / Java mode=syntax | 按对应描述符拒绝无效字段或能力 |
+| SOFA enabled、Spring disabled | 拒绝配置依赖冲突，不自动开启 Spring |
+| world 请求 semantic、只有 syntax 能力 | unsupported；不静默降级 |
+| source root 的 scope 未被 scan.scopes 允许 | 拒绝矛盾配置；不悄悄扩大扫描 |
+| 显式工具链别名不存在 | 明确失败；auto 也必须披露实际选用版本 |
+
+## 9. 多语言 scope 与文件归属
+
+| 公共 scope / 文件 | Java | Rust |
+|---|---|---|
+| MAIN | 生产源码集 | 常规 lib/bin 语义实例 |
+| TEST | 测试源码集 | test/harness 与 cfg(test) 上下文；同一源码可以对应多个 world |
+| GENERATED | 已捕获生成源码 | 已捕获生成输入或展开来源；不能声称宏来自独立磁盘文件 |
+| XML / 配置资源 | 所属框架 producer 依赖 | 无所属 adapter 时只按文件/文本证据处理 |
+| 同物理文件多 world | 同一字节、不同语义身份 | 同一字节、不同语义身份 |
+
+scan.include 只在语义源码根内筛选；exclude 同时限制语义、文本和捕获，必需控制输入被排除则报错。建议 text_only 不参与语义/捕获/diff，只有 search.text.include 另选中才可文本搜索。`.code-ana/config.toml` 作为控制输入保留；工具自己的缓存和产物默认排除。
+
+某语言无法精确映射 scope 时披露 unknown/partial，不能全部贴 MAIN。同一源文件被同一语言的两个模块无依据重复拥有时拒绝；真实多 world 或不同语言的显式事实各有 owner。
+
+## 10. 外部构建建议
+
+```text
+显式语言配置 -> 读取 manifest / 已有产物
+                       |
+                  缺失编译依赖/生成源码
+                       |
+           返回缺口 + BuildAdvice（不执行）
+                       |
+             Agent / 人类检查并执行建议
+                       |
+           用户重新提交索引 -> 捕获并验证新产物
+```
+
+建议包含目标项目/module/world、工作目录、参数数组、目的、工具链要求、预期产物和重试入口。不得因显示建议就将任务标成已构建或自动重试；缺失输入时按能力与门禁返回 partial/rejected。建议可能生成文件、下载依赖或运行项目脚本，需说明实际影响。
+
+发现阶段只读取已有 manifest/缓存/构建输出；不能借获取 classpath/crate graph 执行会触发构建或生成代码的步骤。Maven、Gradle、Cargo 编译、build.rs、过程宏和 annotation processor 等目标项目代码执行均交外部 Agent/人类。执行后新提交的任务捕获实际产物，检查与源码/工具链/选项的对应证据；不能只凭文件存在就认为可用。
+
+这是全新配置格式：不搜索或导入 `.anatomist/config.toml`，不实现旧字段别名或旧优先级兼容。未知字段直接报错。构建 code-ana 自身和 fixture 测试准备是开发流程，与产品分析目标项目时的执行权限分开。
+
+## 11. 验收
+
+| 场景 | 必须验证 |
+|---|---|
+| Java-only / Rust-only / 混合项目 | 只调度启用语言，配置命名空间不串 |
+| Java 25 adapter 分析 Java 17 项目 | 构建运行时与目标语法/解析 JDK 分离 |
+| 同文件两个 feature world / 多模块不同 Java 版本 | 公共身份、coverage、增量基线分别固定 |
+| 配置注释变化 / 字段重排 | 文件 diff 可见，语义摘要不变 |
+| 只改 report/output / 只改 Rust features | 前者不重建；后者不机械重建 Java |
+| 禁用语言/扩展或删除模块 | 新 revision 无陈旧 owner，旧历史仍可读 |
+| 排队/执行中改配置、daemon 配置未重启 | 有效配置 generation 明确，不半途漂移 |
+| 缺配置、缺 language.enabled、只有报告配置或 manifest | 不自动启用语言，给出配置建议 |
+| 未知字段/错类型/冲突来源 | 明确拒绝，不静默吞参数或加载其他产品配置 |
+| 缺 classpath/生成产物、建议开关 true/false | 产品不执行编译；true 返回建议，false 保留缺口；外部执行后重试才捕获新产物 |
+| TOML 到 protobuf / FFI 输入 | 各语言收到明确类型和相同摘要，不在 worker 二次加载文件 |
+
+示例的 TOML 语法可独立检查；上述语义需要未来 ConfigResolver 与 adapter 契约测试验证。
