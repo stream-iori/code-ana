@@ -1,3 +1,6 @@
 /target/
 /lang-adaptor/target/
 .DS_Store
+/.code-ana/
+/.mock-home/
+/dist/

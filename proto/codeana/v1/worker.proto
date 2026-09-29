@@ -1,0 +1,25 @@
+syntax = "proto3";
+package codeana.worker.v1;
+message Owner { string world = 1; string producer = 2; string kind = 3; string id = 4; }
+message Span { uint64 start = 1; uint64 end = 2; }
+message Fact {
+ string id = 1; string kind = 2; Owner owner = 3; string source = 4; Span span = 5;
+ string name = 6; string signature = 7; string parent = 8; string target = 9; string relation = 10;
+ string status = 11; string origin = 12; bool evidence_complete = 13; bool declaration_resolved = 14;
+ bytes attributes_json = 15;
+}
+message SourceUnit { string path = 1; string hash = 2; uint64 size = 3; string module = 4; string world = 5; string scope = 6; string language = 7; }
+message Manifest { repeated SourceUnit files = 1; }
+message BuildContext { string language = 1; repeated string modules = 2; string source_version = 3; repeated string classpath = 4; string producer = 5; repeated string capabilities = 6; }
+message BuildAdvice { repeated string missing = 1; string cwd = 2; repeated string argv = 3; string purpose = 4; repeated string expected = 5; string impact = 6; string retry = 7; string capture = 8; string module = 9; string world = 10; }
+message Hello { uint32 protocol = 1; uint32 fact_ir = 2; string producer = 3; }
+message Discover { Manifest manifest = 1; }
+message Analyze { Manifest manifest = 1; string profile = 2; string baseline = 3; bool full = 4; repeated Fact baseline_facts = 5; }
+message Begin { string mode = 1; string baseline = 2; string manifest = 3; string profile = 4; string producer = 5; repeated Owner replacements = 6; }
+message Chunk { uint64 seq = 1; repeated Fact facts = 2; }
+message End { uint64 chunks = 1; uint64 count = 2; string checksum = 3; }
+message Replan { string reason = 1; }
+message Cancel {}
+message Ack { string revision = 1; }
+message Failure { string code = 1; string message = 2; }
+message Envelope { string attempt = 1; oneof body { Hello hello = 2; Discover discover = 3; BuildContext context = 4; Analyze analyze = 5; Begin begin = 6; Chunk chunk = 7; End end = 8; Replan replan = 9; Cancel cancel = 10; Ack ack = 11; Failure failure = 12; BuildAdvice advice = 13; } }

@@ -4,6 +4,12 @@ members = [
     "crates/cli",
     "crates/daemon",
     "crates/java-worker",
+    "crates/model",
+    "crates/config",
+    "crates/storage",
+    "crates/query",
+    "crates/application",
+    "crates/mock-worker",
 ]
 resolver = "2"
 
@@ -13,7 +19,23 @@ rust-version = "1.96"
 version = "0.1.0"
 
 [workspace.dependencies]
-tokio = { version = "1.47", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.47", features = ["full"] }
 tonic = { version = "0.14.6", features = ["transport"] }
 tonic-prost = "0.14.6"
 prost = "0.14.4"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4", "serde"] }
+thiserror = "2"
+anyhow = "1"
+toml = "0.9"
+clap = { version = "4", features = ["derive"] }
+rusqlite = { version = "0.40", features = ["bundled", "backup"] }
+libc = "0.2"
+tokio-stream = { version = "0.1", features = ["net", "sync"] }
+tokio-util = { version = "0.7", features = ["rt"] }
+globset = "0.4"
+walkdir = "2"
+tempfile = "3"

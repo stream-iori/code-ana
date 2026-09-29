@@ -1,3 +1,227 @@
+#[allow(clippy::large_enum_variant)] // Generated protobuf oneof layout; framing bounds payloads.
 pub mod v1 {
     tonic::include_proto!("codeana.v1");
+}
+pub mod worker {
+    tonic::include_proto!("codeana.worker.v1");
+}
+use anyhow::{Result, bail};
+use codeana_model as m;
+use prost::Message;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+pub fn convert<A: serde::Serialize, B: serde::de::DeserializeOwned>(a: &A) -> Result<B> {
+    Ok(serde_json::from_value(serde_json::to_value(a)?)?)
+}
+pub fn fact_to_wire(f: &m::Fact) -> Result<worker::Fact> {
+    Ok(worker::Fact {
+        id: f.id.clone(),
+        kind: f.kind.name().into(),
+        owner: Some(convert(&f.owner)?),
+        source: f.source.clone(),
+        span: f.span.as_ref().map(convert).transpose()?,
+        name: f.name.clone(),
+        signature: f.signature.clone(),
+        parent: f.parent.clone(),
+        target: f.target.clone(),
+        relation: f.relation.clone(),
+        status: f.status.clone(),
+        origin: f.origin.clone(),
+        evidence_complete: f.evidence_complete,
+        declaration_resolved: f.declaration_resolved,
+        attributes_json: serde_json::to_vec(&f.attributes)?,
+    })
+}
+pub fn fact_from_wire(f: worker::Fact) -> Result<m::Fact> {
+    Ok(m::Fact {
+        id: f.id,
+        kind: serde_json::from_value(serde_json::Value::String(f.kind))?,
+        owner: convert(&f.owner.ok_or_else(|| anyhow::anyhow!("missing owner"))?)?,
+        source: f.source,
+        span: f.span.as_ref().map(convert).transpose()?,
+        name: f.name,
+        signature: f.signature,
+        parent: f.parent,
+        target: f.target,
+        relation: f.relation,
+        status: f.status,
+        origin: f.origin,
+        evidence_complete: f.evidence_complete,
+        declaration_resolved: f.declaration_resolved,
+        attributes: serde_json::from_slice(&f.attributes_json)?,
+    })
+}
+pub fn terminal(r: &m::TaskResult) -> v1::Terminal {
+    v1::Terminal {
+        execution: r.execution.clone(),
+        assessment: r.assessment.clone(),
+        gate: r.gate.clone(),
+        publication: r.publication.clone(),
+        report: r.report.clone(),
+        revision: r.revision.clone(),
+        producer: r.producer.clone(),
+        code: r.code.clone(),
+        message: r.message.clone(),
+        exit_code: r.exit_code,
+        evidence: Some(convert(&r.output.evidence).expect("evidence mapping")),
+        cursor: r.output.cursor.clone(),
+    }
+}
+pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, e: &worker::Envelope) -> Result<()> {
+    let b = e.encode_to_vec();
+    if b.len() > m::MAX_FRAME {
+        bail!("FRAME_BUDGET");
+    }
+    w.write_u32(b.len() as u32).await?;
+    w.write_all(&b).await?;
+    w.flush().await?;
+    Ok(())
+}
+pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<worker::Envelope> {
+    let n = r.read_u32().await? as usize;
+    if n == 0 || n > m::MAX_FRAME {
+        bail!("INVALID_FRAME_LENGTH");
+    }
+    let mut b = vec![0; n];
+    r.read_exact(&mut b).await?;
+    validate_envelope_wire(&b)?;
+    Ok(worker::Envelope::decode(b.as_slice())?)
+}
+// Count repeated messages before prost allocation; a small frame must not expand
+// into millions of empty Fact/Owner structs or hide multiple oneof deliveries.
+fn wire_fields(mut bytes: &[u8], mut visit: impl FnMut(u64, &[u8]) -> Result<()>) -> Result<()> {
+    fn varint(bytes: &mut &[u8]) -> Result<u64> {
+        let mut value = 0;
+        for shift in (0..70).step_by(7) {
+            let (&b, rest) = bytes
+                .split_first()
+                .ok_or_else(|| anyhow::anyhow!("INVALID_PROTOBUF"))?;
+            *bytes = rest;
+            if shift == 63 && b > 1 {
+                bail!("INVALID_VARINT");
+            }
+            value |= ((b & 127) as u64) << shift;
+            if b < 128 {
+                return Ok(value);
+            }
+        }
+        bail!("INVALID_VARINT")
+    }
+    let mut count = 0;
+    while !bytes.is_empty() {
+        count += 1;
+        if count > m::MAX_FACTS + 32 {
+            bail!("DECODE_FIELD_BUDGET");
+        }
+        let tag = varint(&mut bytes)?;
+        if tag >> 3 == 0 {
+            bail!("INVALID_PROTOBUF_TAG");
+        }
+        let len = match tag & 7 {
+            0 => {
+                varint(&mut bytes)?;
+                0
+            }
+            1 => 8,
+            2 => usize::try_from(varint(&mut bytes)?)?,
+            5 => 4,
+            _ => bail!("UNSUPPORTED_PROTOBUF_WIRE"),
+        };
+        if len > bytes.len() {
+            bail!("INVALID_PROTOBUF_LENGTH");
+        }
+        let (value, rest) = bytes.split_at(len);
+        visit(tag >> 3, value)?;
+        bytes = rest;
+    }
+    Ok(())
+}
+fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
+    let mut bodies = 0;
+    let mut attempts = 0;
+    wire_fields(bytes, |tag, body| {
+        if tag == 1 {
+            attempts += 1;
+        } else if (2..=13).contains(&tag) {
+            bodies += 1;
+            let mut repeated = 0;
+            wire_fields(body, |field, value| {
+                let limit = match (tag, field) {
+                    (7, 2) => 1024,
+                    (13, 1) | (13, 3) | (13, 5) => 1000,
+                    (5, 5) => m::MAX_FACTS,
+                    (6, 6) => m::MAX_FACTS,
+                    (4, 2) | (4, 4) | (4, 6) => 10000,
+                    _ => 0,
+                };
+                if limit > 0 {
+                    repeated += 1;
+                    if repeated > limit {
+                        bail!("DECODE_REPEATED_BUDGET");
+                    }
+                    if matches!((tag, field), (7, 2) | (5, 5)) && value.len() < 4 {
+                        bail!("EMPTY_FACT_MESSAGE");
+                    }
+                }
+                Ok(())
+            })?;
+        } else {
+            bail!("UNSUPPORTED_ENVELOPE_FIELD");
+        }
+        Ok(())
+    })?;
+    if bodies != 1 || attempts != 1 {
+        bail!("AMBIGUOUS_ENVELOPE");
+    }
+    Ok(())
+}
+pub fn envelope(attempt: &str, body: worker::envelope::Body) -> worker::Envelope {
+    worker::Envelope {
+        attempt: attempt.into(),
+        body: Some(body),
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn oversized_frame_rejected_before_allocation() {
+        let (mut a, mut b) = tokio::io::duplex(32);
+        a.write_u32((m::MAX_FRAME + 1) as u32).await.unwrap();
+        assert!(read_frame(&mut b).await.is_err());
+    }
+    #[tokio::test]
+    async fn excessive_advice_fields_rejected_before_decode() {
+        let (mut writer, mut reader) = tokio::io::duplex(16384);
+        let advice = worker::BuildAdvice {
+            missing: vec![String::new(); 1001],
+            ..Default::default()
+        };
+        write_frame(
+            &mut writer,
+            &envelope("attempt", worker::envelope::Body::Advice(advice)),
+        )
+        .await
+        .unwrap();
+        assert!(read_frame(&mut reader).await.is_err());
+    }
+    #[test]
+    fn request_presence_roundtrip() {
+        let r = m::Request {
+            suggestions: Some(false),
+            ..Default::default()
+        };
+        let w: v1::TaskRequest = convert(&r).unwrap();
+        assert_eq!(w.suggestions, Some(false));
+        assert_eq!(
+            convert::<_, m::Request>(&w).unwrap().suggestions,
+            Some(false)
+        );
+    }
+    #[test]
+    fn repeated_fact_allocation_and_duplicate_body_rejected() {
+        let mut empty = vec![10, 1, b'a', 58, 2, 18, 0];
+        assert!(validate_envelope_wire(&empty).is_err());
+        empty = vec![10, 1, b'a', 18, 0, 18, 0];
+        assert!(validate_envelope_wire(&empty).is_err());
+    }
 }

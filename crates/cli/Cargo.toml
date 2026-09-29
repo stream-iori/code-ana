@@ -8,3 +8,13 @@ rust-version.workspace = true
 codeana-contracts = { path = "../contracts" }
 tokio.workspace = true
 tonic.workspace = true
+
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+uuid.workspace = true
+tokio-stream.workspace = true
+codeana-model = { path = "../model" }
+codeana-config = { path = "../config" }
+codeana-application = { path = "../application" }

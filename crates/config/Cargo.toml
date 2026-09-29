@@ -1,0 +1,17 @@
+[package]
+name = "codeana-config"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+globset.workspace = true
+walkdir.workspace = true
+anyhow.workspace = true
+codeana-model = { path = "../model" }
+
+[dev-dependencies]
+tempfile.workspace = true

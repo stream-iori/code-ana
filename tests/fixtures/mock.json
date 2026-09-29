@@ -1,0 +1,3763 @@
+{
+  "schema_version": 1,
+  "states": [
+    {
+      "name": "base",
+      "content_digest": "3fb99ddafb3c2eba909618b4578a552953c2614491ea04c507bf7bceb601a98e",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 132
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "",
+      "delay_ms": 0
+    },
+    {
+      "name": "edited",
+      "content_digest": "415bbbbcf50ad8c3b8b105147d4bc1c57392005c5e930641f5b08c956762e5fa",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 124
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 84
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 87,
+            "end": 122
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "",
+      "delay_ms": 0
+    },
+    {
+      "name": "replan",
+      "content_digest": "0a68cfbcb5187b7ac64015502a04b0eaa5d1450ca5f5d42bda8cdc4f5ee414a5",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 134
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 84
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 87,
+            "end": 122
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "replan",
+      "delay_ms": 0
+    },
+    {
+      "name": "partial",
+      "content_digest": "636c63ba127ce5652bea28cc1335a8992ae0b2cceba2dc8e8c2771d1e284bb6a",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 156
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": false,
+          "status": "partial"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "",
+      "delay_ms": 0
+    },
+    {
+      "name": "advice",
+      "content_digest": "53964022dc8d2fb4b85a8e26e8f7620fed714191ab5f9059129b05a439ac0017",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 159
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "",
+      "delay_ms": 0,
+      "advice": {
+        "missing": [
+          "target/generated-sources/Example.java"
+        ],
+        "cwd": ".",
+        "argv": [],
+        "purpose": "prepare generated sources outside code-ana",
+        "expected": [
+          "target/generated-sources/Example.java"
+        ],
+        "impact": "Java semantic coverage is incomplete",
+        "retry": "start a new index task after preparing the input"
+      }
+    },
+    {
+      "name": "crash",
+      "content_digest": "925cf43744e8a3403722190432ef1ca88d0c788ca9bf461b32aeeec103af6e2a",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 141
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "crash",
+      "delay_ms": 0
+    },
+    {
+      "name": "hang",
+      "content_digest": "d267b4875ca5438eb98bf7ed39332a7511ca38bb165f40cd21cbf79387d15406",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 140
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "hang",
+      "delay_ms": 0
+    },
+    {
+      "name": "wrong-sequence",
+      "content_digest": "4ade1bb834fc30707993f34f5550c5c2b547779a77910d11a7a0e6e8cfae1c1b",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 144
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "wrong-sequence",
+      "delay_ms": 0
+    },
+    {
+      "name": "bad-checksum",
+      "content_digest": "bf7739efb2afe0b385967518b3b0d5a75ca6ef9fb4106b41ef96cead5ecc911c",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 144
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "bad-checksum",
+      "delay_ms": 0
+    },
+    {
+      "name": "missing-end",
+      "content_digest": "070b6cd6841386e5a305ea574b74f2df95e342d265bbfb8ce40bf98fb37f302a",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 147
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "missing-end",
+      "delay_ms": 0
+    },
+    {
+      "name": "oversize",
+      "content_digest": "296f0465353e8917071c013936ecfe7ccd15f99cc7573aca475d496501424e15",
+      "context": {
+        "language": "java",
+        "modules": [
+          "fixture"
+        ],
+        "source_version": "17",
+        "classpath": [],
+        "producer": "mock-fixture-v1",
+        "capabilities": [
+          "declarations",
+          "calls",
+          "relations",
+          "coverage",
+          "java-facets"
+        ]
+      },
+      "facts": [
+        {
+          "id": "app",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "App",
+          "span": {
+            "start": 46,
+            "end": 147
+          }
+        },
+        {
+          "id": "main",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "main",
+          "parent": "app",
+          "signature": "main()",
+          "span": {
+            "start": 60,
+            "end": 93
+          }
+        },
+        {
+          "id": "greet",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "app",
+          "signature": "greet()",
+          "span": {
+            "start": 96,
+            "end": 130
+          }
+        },
+        {
+          "id": "site1",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 74,
+            "end": 81
+          }
+        },
+        {
+          "id": "target1",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site1",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "ref1",
+          "kind": "reference",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "target": "greet",
+          "span": {
+            "start": 74,
+            "end": 79
+          }
+        },
+        {
+          "id": "greeting",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Greeting"
+        },
+        {
+          "id": "greeting_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "greeting",
+          "signature": "greet()"
+        },
+        {
+          "id": "service",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "Service"
+        },
+        {
+          "id": "service_method",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "greet",
+          "parent": "service",
+          "signature": "greet()"
+        },
+        {
+          "id": "implements",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service",
+          "target": "greeting",
+          "relation": "implements"
+        },
+        {
+          "id": "overrides",
+          "kind": "relation",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "service_method",
+          "target": "greeting_method",
+          "relation": "overrides"
+        },
+        {
+          "id": "annotation",
+          "kind": "facet",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "app",
+          "relation": "java.annotation",
+          "attributes": {
+            "schema_version": 1,
+            "name": "FixtureOnly",
+            "origin": "mock"
+          }
+        },
+        {
+          "id": "generated",
+          "kind": "declaration",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "name": "generatedGetter",
+          "parent": "app",
+          "status": "generated",
+          "attributes": {
+            "generated": true,
+            "source_available": false
+          }
+        },
+        {
+          "id": "site2",
+          "kind": "call_site",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "main",
+          "status": "resolved",
+          "span": {
+            "start": 83,
+            "end": 90
+          }
+        },
+        {
+          "id": "target2",
+          "kind": "call_target",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "parent": "site2",
+          "target": "greet",
+          "status": "resolved",
+          "declaration_resolved": true
+        },
+        {
+          "id": "coverage_src/App.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/App.java"
+          },
+          "source": "src/App.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Greeting.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Greeting.java"
+          },
+          "source": "src/Greeting.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        },
+        {
+          "id": "coverage_src/Service.java",
+          "kind": "coverage",
+          "owner": {
+            "world": "world_6d16fdc5a42a2c71dfc8fa284f10e3fed733300cae89d7b3653375461ba8354c",
+            "producer": "mock-fixture-v1",
+            "kind": "source",
+            "id": "src/Service.java"
+          },
+          "source": "src/Service.java",
+          "origin": "mock-fixture-v1",
+          "evidence_complete": true,
+          "status": "complete"
+        }
+      ],
+      "behavior": "oversize",
+      "delay_ms": 0
+    }
+  ]
+}

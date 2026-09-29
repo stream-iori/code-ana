@@ -1,0 +1,37 @@
+syntax = "proto3";
+package codeana.v1;
+service TaskService {
+ rpc Handshake(HandshakeRequest) returns (HandshakeReply);
+ rpc SubmitTask(TaskRequest) returns (TaskAccepted);
+ rpc WatchTask(WatchRequest) returns (stream TaskEvent);
+ rpc GetTask(TaskId) returns (TaskStatus);
+ rpc CancelTask(TaskId) returns (TaskStatus);
+ rpc Manage(ManageRequest) returns (ManageReply);
+}
+message HandshakeRequest { uint32 protocol = 1; }
+message HandshakeReply { uint32 protocol = 1; repeated string capabilities = 2; string generation = 3; bool mock = 4; }
+message Stage { string operation = 1; string selector = 2; string direction = 3; string relation = 4; bool unique = 5; uint32 depth = 6; }
+message TaskRequest {
+ string request_id = 1; string project = 2; string operation = 3; string selector = 4; string revision = 5;
+ string scope = 6; string world = 7; string module = 8; string direction = 9; string relation = 10;
+ bool unique = 11; bool full = 12; bool strict = 13; bool execute = 14; bool background = 15;
+ string base = 16; string target = 17; string cursor = 18; string name = 19; string text = 20;
+ repeated Stage stages = 21; uint32 max_records = 22; uint64 max_output_bytes = 23; uint32 depth = 24;
+ uint64 deadline_seconds = 25; optional string source_version = 26; optional string toolchain = 27;
+ optional bool suggestions = 28; string expected_revision = 29;
+}
+message TaskAccepted { string task_id = 1; }
+message TaskId { string task_id = 1; }
+message WatchRequest { string task_id = 1; uint64 after_seq = 2; }
+message Progress { string phase = 1; }
+message OutputChunk { bytes data = 1; }
+message Evidence { bool enumeration = 1; bool semantic = 2; repeated string limits = 3; repeated string reasons = 4; }
+message Terminal {
+ string execution = 1; string assessment = 2; string gate = 3; string publication = 4; string report = 5;
+ string revision = 6; string producer = 7; string code = 8; string message = 9; int32 exit_code = 10;
+ Evidence evidence = 11; string cursor = 12;
+}
+message TaskEvent { string task_id = 1; uint64 seq = 2; oneof event { Progress progress = 3; OutputChunk output = 4; Terminal terminal = 5; } }
+message TaskStatus { string task_id = 1; string state = 2; Terminal terminal = 3; uint64 last_seq = 4; }
+message ManageRequest { string action = 1; }
+message ManageReply { string state = 1; uint32 active_tasks = 2; }

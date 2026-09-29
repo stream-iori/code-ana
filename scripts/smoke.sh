@@ -9,6 +9,7 @@ cargo build --workspace
 
 port="$(python3 -c 'import socket; s=socket.socket(); s.bind(("127.0.0.1", 0)); print(s.getsockname()[1]); s.close()')"
 daemon_log="$(mktemp)"
+smoke_home="$(mktemp -d)"
 daemon_pid=""
 cleanup() {
   if [[ -n "$daemon_pid" ]]; then
@@ -16,10 +17,11 @@ cleanup() {
     wait "$daemon_pid" 2>/dev/null || true
   fi
   rm -f "$daemon_log"
+  rm -rf "$smoke_home"
 }
 trap cleanup EXIT
 
-CODEANA_PORT="$port" "$repo_root/target/debug/codeana-daemon" >"$daemon_log" 2>&1 &
+CODEANA_PORT="$port" "$repo_root/target/debug/codeana-daemon" --home "$smoke_home" >"$daemon_log" 2>&1 &
 daemon_pid=$!
 
 for _ in {1..40}; do

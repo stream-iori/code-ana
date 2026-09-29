@@ -10,5 +10,11 @@ tonic.workspace = true
 tonic-prost.workspace = true
 prost.workspace = true
 
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+codeana-model = { path = "../model" }
+
 [build-dependencies]
 tonic-prost-build = "0.14.6"
