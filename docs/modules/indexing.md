@@ -1,5 +1,9 @@
 # 索引编排与增量
 
+> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+
+当前 Discover 响应可为 BuildContext 或结构化 BuildAdvice；mock 仅按已知输入 hash 回放，不读取 Maven/Gradle 有效模型。`discovery.mode=auto` 索引明确失败，需等待真实发现 provider；FILES 和工作区文本搜索不进入语言发现。
+
 **daemon 决定任务与发布；adapter 决定语言依赖如何失效。增量正确性以同输入全量结果为对照。**
 
 状态：全量/增量职责继承提案；具体计划、owner 替换和重试策略为建议，关联 D05/D07/D09/D11。
@@ -49,6 +53,20 @@ discover 可提出补充输入需求，但必须先由 daemon 捕获并最终封
 PREPARING 固定项目配置字节及用户配置 generation；discover 解析 auto 与真实构建图后，PLANNING 冻结 EffectiveConfig 和各语言分析请求。不同 worker 只收到自己语言的配置、世界条件和公共预算，不读取 TOML。配置详情见 [configuration](../configuration.md)。
 
 发现阶段无法取得完整 classpath/生成产物时，返回 BuildAdvice；能分析的部分按覆盖与门禁处理。产品不运行 Maven/Gradle/Cargo 编译、构建脚本或过程宏。外部准备后必须新建任务，重新核验源码、产物和工具链身份；不能将上次未完成分析就地改成已发布结果。
+
+### javac 分析范围与发布范围
+
+编译计划按物理模块 × MAIN/TEST 建立依赖图；SOURCE 标签不改写 Maven 依赖方向。MAIN 不读 TEST，TEST 可读本模块 MAIN，GENERATED 按冻结构建上下文归属。不支持的混合目标版本/JPMS 图及依赖环明确拒绝。发现须排除工具缓存、内部历史 checkout 和 review worktree，避免把副本当模块。
+
+```text
+封存的语义输入（可大于改动集合）
+    -> javac 上下文 -> 独立 Java 模型 -> 提取 publication sources
+    -> 资源/producer 分析 -> 完整 replacement owners -> delta
+```
+
+小 delta 不保证小编译上下文。未变事实是项目逻辑视图的一部分，但 BaselineFacts 本身不能作为 javac 的类型输入；P0/P1 先以足够源码上下文保证正确，P2 再评估模块签名投影。必需输入被排除/缺失时明确披露或重规划，不偷偷读取活工作区。
+
+可选签名缓存须保留源码身份、SOURCE 注解和独立声明目录；NoCode 只供索引，不可执行、不证明构建成功。键包含源码、依赖内容及顺序、目标 JDK、编译器桥/模型版本、Lombok 规则/配置。缺签名、冲突或完整性不成立时有界退回封存源码；最终仍须通过 full/delta 等价验收。
 
 ## 3. 失效与传播
 

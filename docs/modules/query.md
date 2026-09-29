@@ -1,5 +1,9 @@
 # 查询与 typed pipeline
 
+> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+
+当前调用与声明遍历按相邻 ID 分批查询 SQLite，最多保留 10,000 条查询记录并报告工作/深度截断。dispatch 只从已发布的 call-target/overrides 事实扩展静态可能目标，始终披露开放世界；真实 Java 派发正确性待 javac producer 验收。本轮不扩展 diff 查询。
+
 **查询从固定版本取事实，输出关系及其证据边界。下游成功不能洗掉上游缺口。**
 
 状态：调用点、三轴证据和有界查询继承提案；本项目独立定义 CLI/pipeline 输出契约，无旧版兼容。端口、语言查询策略为 D06 建议。
@@ -47,7 +51,7 @@ TaskRequest / pipeline spec
 | SourceReader | declaration/site、捕获范围 | 校验后的源码片段，见 versioning |
 | OutputRenderer | typed records、证据、最终字节预算 | 完整记录文本、恢复动作与终止标记 |
 
-Rust 中的 Java 策略负责解释已解析类型关系和静态派发规则，不重新运行 SymbolSolver。P0 若发现现有 Java 查询需要 worker 未输出的信息，先补事实契约；若仍无法表达，应重新评审 D06，不能隐式启动分析弥补。
+Rust 中的 Java 策略负责解释已解析类型关系和静态派发规则，不重新运行 javac 或 Java 名称解析。P0 若发现现有 Java 查询需要 worker 未输出的信息，先补事实契约；若仍无法表达，应重新评审 D06，不能隐式启动分析弥补。
 
 ## 3. 操作族
 

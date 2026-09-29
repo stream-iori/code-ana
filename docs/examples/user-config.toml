@@ -8,12 +8,13 @@ kind = "user"
 idle_timeout_seconds = 600
 
 [limits]
-max_workers = 2
-max_worker_memory_bytes = 2147483648
+max_workers = 2 # 顶层 worker 槽位，子进程并发另有固定上限
+max_worker_memory_bytes = 2147483648 # 整个 worker 进程树预算
 max_total_worker_memory_bytes = 4294967296
 
 # 每个别名有语言和本机绝对路径。启用示例前替换成真实安装路径。
 # 分析项目可以用 toolchain = "jdk17"，但不能用它改 adapter 的构建工具链。
+# javac 使用匹配目标版本的完整 JDK；auto 只选择已登记的唯一匹配项。
 # [toolchains.jdk17]
 # language = "java"
 # home = "/absolute/path/to/jdk-17"

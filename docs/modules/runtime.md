@@ -1,5 +1,9 @@
 # CLI 与 daemon
 
+> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+
+当前 daemon 把提交时捕获、定向查询、Git 读取和发布存储工作放入阻塞线程；每项目一项分析、同目标写入串行，只读查询可并发。取消在查询选择器和源码读取边界生效；单条正在执行的 SQLite 语句、硬 RSS 隔离与严格项目间公平性仍需规模化验证。
+
 **CLI 只表达任务；daemon 管执行、版本句柄和资源。**
 
 状态：D01 已确认每用户一个 daemon；D02 已确定 HTTP/2 + protobuf 方向，建议 gRPC；升级协调、具体协议库和 D12 阈值待验证。协议见 [contracts](../contracts.md)。
@@ -23,7 +27,7 @@
 
 CLI 持有可复用的 gRPC channel；daemon 的连接生命周期与任务生命周期独立。RPC 定义、protobuf presence、业务状态与传输状态分离详见 contracts 第 5 节。
 
-Java 分析进程内部为 `Rust host -> C ABI/FFI -> GraalVM Java shared library`；daemon 不装载该库。host 负责 isolate/线程和缓冲生命周期，supervisor 负责进程级取消兜底与崩溃恢复。host 与库的内存共同计入一个 worker RSS。
+Java 分析进程内部为 `Rust host -> C ABI/FFI -> GraalVM Java shared library`；daemon 不装载该库。host 负责 isolate/线程和缓冲生命周期，supervisor 负责进程级取消兜底与崩溃恢复。host 与库的内存共同计入一个进程 RSS。D17 候选增加目标 JDK 编译器子进程：host/原生库拥有内部协议与上下文，supervisor 登记进程启动身份、归属及退出状态；顶层 worker 退出时必须回收所属子进程。整个进程树计入该 worker 预算，不能把 -Xmx 当 RSS 上限。
 
 用户配置管理 daemon 生命周期、worker 总资源上限和本机工具链别名；项目配置管理语言/module/world。首版用户配置经 drain/restart 切换 generation，任务固定生效值；项目无权改变单用户 daemon 的服务设置。具体字段与优先级见 [configuration](../configuration.md)。
 
@@ -62,6 +66,10 @@ worker: starting -> ready -> analyzing -> frozen -> dumping -> idle / stopped
 | gRPC | 有界消息、流数量、发送队列和 RPC deadline | 不把 HTTP/2 流控视为完整内存限制 |
 
 资源预算需要覆盖 daemon 空闲、索引暂存、查询中间记录、Java/Rust RSS、传输缓冲、磁盘候选和结果缓存；不能只统计 Rust 堆。
+
+Java P0/P1 先每个 worker 单个编译器子进程、串行上下文；P2 才评估有界并行。批次接收校验、模型解码、框架提取均有取消检查；不允许长 FFI 或阻塞编译器管道阻断取消入口。严重协议/进程错误结束 attempt，不自动重放。回收阈值需本项目测量，不能照搬参考实现的任务数或堆阈值。
+
+解码预算覆盖跨帧累计对象分配估算、字符串/集合/类型/树/诊断；临时磁盘和已编码待消费结果另有限额。RSS 按同一时刻采样进程树，不累加各进程独立峰值。
 
 ## 4. 取消、断连与重试
 

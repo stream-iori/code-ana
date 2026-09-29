@@ -1,8 +1,10 @@
 # 公共契约：事实、身份与协议
 
+> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+
 **先冻结“一个事实属于谁、对应哪个输入、怎样证明交付完成”，再实现传输和表结构。**
 
-状态：事实组和身份分层继承原提案；CLI-daemon 采用 HTTP/2 + protobuf 是用户决策，建议用 gRPC 落地；字段、端口、消息名均为候选设计，P0 回放通过后才冻结版本。关联 D02/D05/D06/D07/D11/D13。
+状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 2，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；真实 Java 模型/编译器桥契约仍待其专属 P0 验证。关联 D02/D05/D06/D07/D11/D13。
 
 ## 1. 身份
 
@@ -17,7 +19,7 @@
 | SymbolKey | LogicalSymbolKey + WorldKey，公共编码带版本 | 不等于数据库 rowid |
 | OccurrenceKey | world + source unit + occurrence kind + 规范化位置 + 区分序号 | 行号移动后可变化；diff 不能只按它判断语义变化 |
 | FactKey | producer + fact kind + owner + 内容规范化摘要 + 必要重复序号 | 不用 hash 去掉有意义的重复事实 |
-| SemanticProfile | adapter、工具链、规则、已验证构建输入、按模块/world 规范化语义配置与依赖摘要 | 不等于整份 config 文件 hash；建议/报告/输出开关不机械改变语言事实 |
+| SemanticProfile | adapter、工具链、Java 模型/编译器桥（适用时）、规则、已验证构建输入、按模块/world 规范化语义配置与依赖摘要 | 不等于整份 config 文件 hash；建议/报告/输出开关不机械改变语言事实 |
 | SourceSnapshotId | 捕获清单及字节的身份 | 相同源码可产生不同语义图 |
 | RevisionId | 一个已发布事实集合，关联 source snapshot 和 profile | 不是 Git commit；同 commit 可有多种 profile |
 | SnapshotId | 历史入口身份，指向文件捕获，ANALYSIS 另指向 revision | 多个 snapshot 可以共享图字节 |
@@ -57,6 +59,28 @@ dispatch = 基于已发布事实计算可能目标，并附依据和预算限制
 ```
 
 构建时已经产生的候选也必须标记为 possible；它们不能混入默认 resolved 调用关系。缓存或物化 `calls` 只作为可重建索引，不能形成第二套独立事实。
+
+### Java 模型与绑定证据
+
+```text
+javac Tree / Element / TypeMirror（仅编译器上下文内）
+    -> 独立 Java 模型（Java 专属、版本化）
+    -> 声明 overlay / Java 提取 / 框架分析
+    -> 公共 Fact IR + Java facets（可持久化、Rust 查询可消费）
+```
+
+| 契约 | 必须保存 / 校验 |
+|---|---|
+| Java 类型 | 声明类型、表达式类型、调用实例化类型分别保存；未知不能拿声明类型冒充实例化类型；类型引用受所属模型约束 |
+| Java 身份与源码 | 源码名和 JVM 二进制名分开；保留泛型、SAM/覆盖依据、原始注解写法与编译器常量/默认值的区别 |
+| 绑定维度 | `declaration_resolved`、`evidence_complete`、`binding_origin` 独立；字段名称待 P0 冻结 |
+| 已确认目标 | 局部参数/结果类型有缺口仍可能有可靠选中声明；记录缺口，不一律丢掉目标 |
+| 未确认目标 | 歧义、不可访问、不适用或仅模型恢复均不能冒充 javac 确认；候选不进入默认 resolved 投影 |
+| 恢复 | 源码/模型恢复必须有唯一性、类型与继承证据；预算按独立调用查询拥有，递归共享，耗尽保留 unresolved 原因 |
+| 位置 | 内部 Java 模型可保存 UTF-16 span；转公共 IR 时映射到捕获 UTF-8 字节。补充平面字符、CRLF、源码 hash 必须对照；生成节点无位置时留空，不伪造 L0C0 |
+| 诊断 | 原始 javac code/severity/phase、source/world/module、span、消息及重复次数；无位置诊断归上下文。语义诊断与协议/进程失败分开 |
+
+上述字段在 Java 模型或版本化 facet 中表达，不能强迫其他语言接受 Java 类型系统。公共 CallTarget 的解析状态与 Java 绑定依据必须一致。独立 Java 模型不是公共 Fact IR，也不是可执行构建产物；不让编译器对象或内部数组 ID 泄漏成公共身份。
 
 ## 3. 事实所有权与替换
 
@@ -109,7 +133,7 @@ daemon                                  worker
 | 消息 / 对象 | 必须携带 |
 |---|---|
 | Hello | worker identity、adapter protocol、Fact IR、facet/capability versions、执行平台兼容信息 |
-| AnalyzeRequest | task/attempt、不可变输入清单、BuildContext、冻结的语言/module/world 配置与摘要、profile、full/delta、baseline revision、replacement plan、预算 |
+| AnalyzeRequest | task/attempt、不可变输入清单、BuildContext、冻结的语言/module/world 配置与摘要、profile、full/delta、baseline revision、replacement plan、预算；Java 另含 compiler plan（见下表） |
 | BaselineFacts | 固定身份、符号/类型/Bean 摘要、依赖与查找桶、所需未变事实、coverage、provenance |
 | ResultBegin | 期望基线、实际输入摘要、最终替换范围、profile、模式 |
 | ResultChunk | 连续序号、事实段类型、条数、长度；每帧有上限 |
@@ -117,9 +141,23 @@ daemon                                  worker
 | Cancel / terminal | task/attempt、是否已经冻结/发布、失败原因、可重试性质 |
 | BuildAdvice | 缺失输入、project/module/world、基于哪个捕获输入提出建议、cwd、argv、工具链要求、目的、预期产物、可能影响、重试操作；仅建议，产品不执行 |
 
+Java compiler plan 明确区分三种范围：
+
+| 范围 | 含义 |
+|---|---|
+| semantic inputs | javac 可见的当前模块/前置模块源码、有序 classpath、JDK、声明签名；必须全部来自封存输入 |
+| publication sources | 本次需要产生新事实的源码，可小于 semantic inputs；读取某文件不自动授予发布其事实的权限 |
+| replacement owners | delta 清理与替换的最终 owner 集；还包括删除、资源、失败 producer，不能由非空输出反推 |
+
+计划保存物理构建模块与发布模块/world 的映射；MAIN 不消费 TEST，TEST 可消费本模块 MAIN。BaselineFacts 不能直接充当 javac classpath；需完整封存源码或经验证的签名投影，输入不足按 ReplanNeeded 处理。
+
+D17 若采用目标 JDK 子进程，增加独立版本化的编译器内部协议：目标 JDK/桥版本、source hash、task/attempt/context 身份、帧序号/校验、诊断和完成标记。其完成只表示一个编译器上下文结束，不替代对 daemon 的 ResultEnd 或 PublishAck。C ABI、worker IPC、编译器协议分别协商，未知必需能力明确拒绝。
+
 重排、缺块、重复终结、身份漂移、未知必需 facet 都拒绝发布。P0 建议失败后整次 attempt 重传，先不做断点续传。建议 host 用专用继承管道承载 IPC，stdout/stderr 只处理日志，避免嵌入库的意外输出污染协议。传输有背压，daemon、Rust host 和 Java 桥接层都不能保留多份无限增长的序列化结果。
 
 BuildAdvice 的 `argv` 为结构化参数数组，cwd 明确指向用户可操作的目标工作区；不能建议进入即将被清理的内部捕获目录。历史 commit 缺输入时说明需在哪个提交的用户 checkout 中准备产物。建议不作为进度成功事件，不触发自动构建/自动重试；Agent/人类独立执行后重新提交，daemon 再核验并捕获产物。证据不足无法给出可靠命令时，只返回所缺输入与所需信息，不猜构建参数。
+
+当前 mock worker 协议为 2，Fact IR 仍为 1；Discover 可返回 BuildContext 或结构化 BuildAdvice。已传输 `missing/cwd/argv/purpose/expected/impact/retry/capture/module/world`，project 从任务身份取得；目标工具链要求的独立字段以及真实 Maven/Gradle 建议仍待 Java 适配器接入。CLI/daemon 握手协议仍为 1，旧 worker 协议在分析前拒绝。
 
 ## 5. CLI 与 daemon 协议
 

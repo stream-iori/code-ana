@@ -1,143 +1,166 @@
 # Java 适配器与 worker
 
-**复用 Java 的解析和框架能力，移除对 Anatomist CLI、查询、SQLite 发布链路的依赖。**
+> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
 
-状态：用户已确认 `lang-adaptor/`、Java 25 + GraalVM、Rust worker 通过 C ABI / FFI 调用 Java 原生库，禁止 JNI（D13）。内存闭环和框架顺序继承提案；ABI 细节与内存组织需 P0 验证，关联 D04/D05/D06。
+**Java 分析只采用 javac。编译器负责解析与绑定，独立 Java 模型承接提取和框架分析，最终交付公共 Fact IR。**
 
-## 0. 工程与原生边界
-
-| 项目 | 已确定方向 / 实施要求 |
+| 决策 | 状态 |
 |---|---|
-| Java 工程根 | `lang-adaptor/`，独立 Maven 项目；Java 解析、绑定、框架和桥接代码均归此处 |
-| 语言与工具链 | Java 25、GraalVM for JDK 25 Native Image；锁定发行版、补丁版本和构建插件，不跟随 latest |
-| 构建产物 | Native Image `--shared` 生成的共享库，连同生成 C header、ABI 版本和构建 manifest 分发 |
-| 调用端 | `crates/java-worker/` 中的独立 Rust host；daemon 只管理该进程 |
-| 互操作 | Java 用 `@CEntryPoint` 导出 C ABI，Rust 通过 FFI 调用；不使用 JNI/JNI Invocation API |
-| 与 FFM 的区别 | 本方案是 Rust 调用 Java Native Image 的 C API；不要求 Java 用 `java.lang.foreign` 调用 Rust |
+| D13：`lang-adaptor/`、Java 25/GraalVM 共享库、独立 Rust host、C ABI、禁止 JNI | 用户已确认；保留该边界 |
+| D16：javac 唯一后端，无 JavaParser/SymbolSolver、无兼容 AST 或解析器回退 | 用户已确认，2026-09-29 |
+| D17：原生库协调目标 JDK 编译器子进程 | 实施候选，P0-04a 优先验证；尚非本项目已实现能力 |
 
-配置入口为 `languages.java` 及 Java module 覆盖，见 [多语言配置](../configuration.md)。adapter 的 Java 25 构建版本固定；`analysis.source_version`、解析 JDK/classpath 是被分析项目的环境。Lombok 直接配置在 `languages.java.lombok`；Spring/SOFA 配置仍归 `languages.java.extensions.*`。Java 模块可通过 `modules.lombok` 覆盖语言级 Lombok 默认值。worker 消费 daemon 冻结的 JavaAnalysisConfig，不在 FFI 会话中重新加载 TOML。
+参考实现固定为 Anatomist `dev/replace-parser@7c66251479cfc7556451be35cfbc76e94454425b`，排除未提交修改。其 native 主程序启动目标 JDK JVM；这不证明 javac 可内嵌 GraalVM 共享库。本次依据是代码与测试源码阅读，未重新运行其测试。参考位置和证据见 [设计评审](../design-review.md)。
+
+## 0. 工程与进程边界
 
 ```text
-lang-adaptor/ (Java 25)
-    -> GraalVM Native Image shared build
-    -> libcodeana_java + generated header + ABI manifest
-                                  ^
-                                  | C ABI / Rust FFI
-daemon -- worker IPC --> Rust worker host（独立进程）
+daemon
+  │ worker IPC：任务 / baseline / Fact IR
+  v
+Rust worker host（独立进程）
+  │ C ABI / FFI
+  v
+Java 25 / GraalVM 共享库（同进程）
+  ├─ 独立 Java 模型、ASM 二进制分析、框架、增量、事实提取
+  └─ 编译器协调器
+       │ 编译器内部协议（D17 候选）
+       v
+     目标 JDK JVM 子进程：javac parse → analyze
+       └─ 禁用 annotation processor，无业务字节码生成
 ```
 
-GraalVM 支持将 Java 编译为可由原生代码调用的共享库；C API 管理 isolate 与线程绑定。API 类型限于原生可表达类型，不能直接返回 Java 对象。[共享库构建与 CEntryPoint](https://www.graalvm.org/jdk25/reference-manual/native-image/guides/build-native-shared-library/)、[Native Image C API](https://www.graalvm.org/jdk25/reference-manual/native-image/native-code-interoperability/C-API/)。这里的 `isolate` 是同进程执行上下文，崩溃隔离依靠外层 worker 进程。
-
-### FFI 接口草案
-
-函数名称和布局待 P0 冻结；不在本文宣称已有可用 SDK。
-
-| 接口族 | 作用 | 生命周期规则 |
-|---|---|---|
-| abi_version / capabilities | 装载后检查 ABI、Fact IR、producer 和平台 | 不兼容时不开始分析 |
-| session_create / input_chunk / seal_input | 建立会话，分块导入控制输入/基线，再冻结输入 | 输入指针只在本次调用内有效；需保留的数据先复制到 adapter 所属内存 |
-| analyze_start | Java 内部启动分析并返回 opaque task handle | 控制调用及时返回，分析在线程中运行，供控制通道继续取消/轮询 |
-| poll_event / read_result_chunk | 读取进度、状态、冻结结果 | 只有分析冻结后可取结果块；单块有上限 |
-| cancel | 设置协作取消状态 | 明确允许与分析并发；不能依赖长分析函数返回后才执行取消 |
-| buffer_release / task_close / session_close | 释放返回缓冲和不再使用的 handle | 谁分配谁释放，所有终止路径都有回收 |
-| publish_ack | 告知最终提交 revision | 未确认的会话事实不得复用成新基线 |
-
-| 边界 | 规则 |
+| 项目 | 要求 |
 |---|---|
-| 数据表示 | 固定宽度数值、显式长度的字节缓冲、opaque handle、状态码；不跨边界传 Java 引用或 Rust 所有权对象 |
-| 数据编码 | 建议输入/事实块复用版本化 protobuf 消息；基线与结果分块，禁止为整张图反复创建完整序列化副本 |
-| 返回缓冲 | Java 桥接层拥有原生缓冲，host 消费/复制后调用释放入口；不得调用 Rust allocator 释放 |
-| 线程 | 每个进入 C entry point 的 OS 线程先 attach 到对应 isolate；thread handle 不跨线程复用 |
-| 调度 | FFI 控制调用在专用受限线程执行；定义 poll/cancel 并发与 handle 使用规则 |
-| 异常 | 可恢复 Java 异常在桥接层转为状态码与诊断；Rust panic 不跨 FFI；致命 native 错误按 worker 退出处理 |
-| 退出 | 停止分析，回收 buffer/handle，退出其他附着线程，再销毁 isolate；卡死则 supervisor 终止整个 worker |
+| 工程 | Java 相关代码均在 `lang-adaptor/`；建议按 `analysis-core`、`framework-*`、`native-bridge`、`compiler-bridge` 拆职责，不强制立即拆 Maven 子模块 |
+| 原生库 | 锁定 GraalVM JDK 25、Native Build Tools、依赖；`--shared` 产物连同 C header、ABI 与构建 manifest 分发 |
+| 编译器桥 | 与原生库分开构建、分发及版本化。候选以 Java 8 兼容字节码运行于目标 JDK 8/17/25；具体 API/字节码范围在 P0-04a 验证，不把 Java 25 字节码交给 JDK 8 |
+| 目标 JDK | 完整且与目标版本匹配；路径从冻结工具链配置取得，不猜环境变量。版本支持以本项目实际验收能力清单为准 |
+| 进程所有权 | host/原生库拥有编译器会话，supervisor 掌握所属子进程的启动身份和清理职责；host 崩溃不能留下无主编译器 |
+| 原生可行性 | P0 必须实际通过共享库启动桥、接收模型、提取事实、取消及释放。Anatomist native executable、普通 JVM 测试和 Hello 均不替代该证据 |
+| 失败路径 | D17 不成立则记录具体问题并调整 javac 执行设计；影响 D13 时形成具体方案评审。任何情况都不退回其他解析器 |
 
-请求、结果和错误的内存所有权应进入 ABI 契约测试。共享库、header、Rust binding 与架构/OS 成套匹配，不能只比较 Java 版本字符串。
+`parse/analyze` 仅做索引语义分析，不执行项目 Maven/Gradle 构建、处理器或业务代码，不生成业务 `.class`。编译器只读取封存的源码/依赖/平台输入，不通过隐式 source path 扩大范围。缺少必要输入时披露缺口或重规划；生成输入仍由外部 Agent/人类准备。
 
-## 1. 输入与输出
+配置入口为 `languages.java`，Lombok 为 `languages.java.lombok`，模块可用 `modules.lombok` 覆盖。worker 只消费 daemon 冻结的 JavaAnalysisConfig，不重读 TOML。参数与工具链规则见 [configuration](../configuration.md)。
+
+### FFI 与编译器协议
+
+| 接口族 | 作用与生命周期 |
+|---|---|
+| abi_version / capabilities | 装载前先核对平台与成套 manifest，再通过稳定 bootstrap 验证 ABI、Fact IR、Java 模型及编译器能力 |
+| session_create / input_chunk / seal_input | 分块导入控制输入/基线并冻结；输入指针只在调用内有效，需保留则复制到 adapter 所有内存 |
+| analyze_start | 返回 opaque handle，分析在线程中运行；控制通道能继续取消与轮询 |
+| poll_event / read_result_chunk | 分析冻结后读取有上限的结果块；编译器上下文完成不表示项目事实完成 |
+| cancel | 可与分析并发，贯穿编译器交换、解码、提取；超时由 supervisor 终止所属进程树 |
+| buffer_release / task_close / session_close | 谁分配谁释放；所有异常、取消、传输失败路径均回收 |
+| publish_ack | 仅 daemon 发布成功后允许按该 revision 复用会话事实 |
+
+| 边界 | 约束 |
+|---|---|
+| 数据 | 固定宽度数值、长度明确的字节缓冲、opaque handle、状态码；不跨 C ABI 传 Java 引用或 Rust 所有权对象 |
+| 编码 | C ABI 可承载 worker protobuf；编译器协议独立版本化，不照搬参考项目自定义 wire 常量或版本号 |
+| 线程 | 每个进入 C entry point 的 OS 线程 attach 到对应 isolate，thread handle 不跨线程使用；控制调用使用受限线程 |
+| 异常 | Java 可恢复异常转状态/诊断，Rust panic 不跨 ABI；native 致命错误由进程边界隔离 |
+| 退出 | 停止编译器工作并关闭管道/子进程，释放模型与缓冲，再 detach/销毁 isolate；卡死走有界终止 |
+| 内部协议 | JDK/桥/模型版本、task/attempt/context、source hash、长度/序号/校验、诊断及终态；缺块、漂移、未知必需能力均拒绝 |
+| 预算 | 单帧、总载荷、解码估算、排队结果和临时磁盘分别设限；stdout/stderr 日志不能污染协议 |
+
+## 1. 输入、模型与事实
 
 | 输入 | 输出 |
 |---|---|
-| 捕获源码/资源、classpath、JDK、模块/源码集、Java 版本 | Java 声明、外部符号、调用点、引用、类型/方法关系 |
-| Lombok / Spring / SOFA 配置与 producer 版本 | 类型化 facet、Bean/配置关系、生成来源 |
-| BaselineFacts、替换范围、固定 revision/profile | 新事实、最终替换范围、依赖、诊断、coverage、完成清单 |
-| 分析/传输预算、取消信号 | 分阶段状态或明确失败；不直接发布 revision |
+| 封存源码/资源、物理模块图、scope、有序 classpath、目标 JDK | 独立 Java 单元、类型、声明、绑定、源码位置和原始诊断 |
+| Lombok/Spring/SOFA 配置、producer 版本 | 声明覆盖层、框架事实、能力缺口和来源链 |
+| BaselineFacts、semantic inputs、publication sources、replacement owners | 完整 full/delta、依赖、coverage、provenance、完成清单 |
+| 执行与语义预算、取消 | 分阶段状态、明确失败或受限证据；worker 不发布 revision |
 
-## 2. 内部分析顺序
-
-```text
-捕获项目 + BuildContext + 可选 BaselineFacts
-                     |
-                发现/核对文件与资源
-                     |
-       JavaParser / SymbolSolver / ASM
-                     |
-       Lombok AST model -> 声明契约 -> core extractors
-                     |
-       JavaUnitAnalyzer（Spring / SOFA）
-                     |
-       内存 Symbol / Type / Bean / Dependency indexes
-                     |
-       Java 绑定与增量依赖传播，直到稳定
-                     |
-       DefaultProjectFactView + 共享 XML inventory
-                     |
-       Spring resource analysis -> SOFA resource analysis
-                     |
-       校验来源/归属 -> 冻结紧凑事实 -> 完整交付
-```
-
-项目级资源分析必须看到完整逻辑视图：全量事实或“基线减替换范围加新事实”。框架生成结果若又影响 Java 绑定，应在该闭环中显式重算到稳定；不能依赖 dump 后由 Rust 补 Java 求解。
-
-## 3. Anatomist 代码复用映射
-
-| 现有位置 | 建议处理 |
+| Java 模型内容 | 不变量 |
 |---|---|
-| `core/` 的扫描、classpath、parser、身份辅助 | 保留语言相关部分；输入必须接受捕获路径/BuildContext |
-| `extract/`、`CallOverloadResolver` | 复用提取与绑定；输出改接内存 fact sink |
-| `framework/` SPI、`DefaultProjectFactView` | 保留扩展顺序；fact view 从集合建立，记录复制成本 |
-| `framework/lombok/` | 保留签名模型与 modeled/partial/unmodeled 披露 |
-| Spring / SOFA 独立模块 | 保留构建期装配和依赖；不引入运行时 JAR 插件加载 |
-| `incremental/` | 复用语言契约指纹与失效算法；拆出数据库访问，由基线输入替代 |
-| `StagedGraphStore` 的身份、绑定、校验逻辑 | 分类审计：Java 语义移入 worker；通用引用/协议校验移入 Rust；SQL 按新存储端口另行设计 |
-| `application/`、CLI、QueryService、JDBC 发布 | 不作为新 worker 的产品链路依赖 |
-| 新的 native bridge | 放入 `lang-adaptor/native-bridge/`，只负责 C entry points、生命周期与编码，不包含 daemon/查询逻辑 |
+| 语法/声明 | parse 后保存原始源码形态，analyze 再补语义；原始语法位置与编译器生成声明分开；无源码范围不伪造坐标；不重建其他解析器 AST |
+| 类型 | 声明类型、表达式类型、调用实例化类型分开；保留泛型边界、类型替换、SAM/覆盖依据 |
+| 身份 | 源码显示名与二进制名分开，内部类型/节点序号不成为公共 key |
+| 绑定 | 声明是否选中、局部证据是否完整、javac 确认/模型推断/源码恢复来源独立 |
+| 注解 | SOURCE 属性写法、单值/数组形状与编译器常量/默认值分开；声明目录不丢 SOURCE retention 信息 |
+| 坐标 | Java UTF-16 span 映射到公共 UTF-8 字节位置，基于同一捕获字节/hash；覆盖 Unicode 补充字符及换行变体 |
+| 生命周期 | Tree/Element/TypeMirror、compiler/file manager 不进入独立模型、框架缓存或事实库 |
 
-不能直接把整个 `anatomist-core` 打包成最终 worker，它仍混有查询、存储和配置职责。先做依赖清单再移动代码，避免为了去 JDBC 丢失暂存层原有的绑定行为。
+错误恢复只在有明确源码、继承、类型兼容及唯一性证据时产生有来源的候选；不得把 javac 错误恢复时给出的任意成员当确认绑定。局部类型不完整也不应机械否定可靠选中声明。恢复预算按独立调用查询拥有、递归共享，耗尽时保留未解析原因且不污染后续查询。公共编码见 [contracts](../contracts.md)。
 
-## 4. 内存与生命周期
-
-| 对象 | 生命周期 | 约束 |
-|---|---|---|
-| AST / parser 结构 | 当前解析批次或求解所需窗口 | 确认 SymbolSolver 不再引用后释放；不能只清顶层列表就宣称释放 |
-| 符号/类型/Bean 摘要 | 本轮完整分析 | 紧凑存储，避免为每个 view 再复制一份大集合 |
-| 基线事实 | 冷启动增量开始到冻结 | 计入 worker 峰值，不能只测本轮新文件 |
-| 最终事实 | 冻结至交付结束 | 分块编码、有界缓冲；首期不写 Java 溢出文件 |
-| 会话缓存 | 已提交且匹配的 revision/profile | 收到 PublishAck 才可作为复用基线；仍受空闲与内存预算 |
+## 2. 分析顺序与增量
 
 ```text
-峰值预算至少包含：
-worker(AST + 基线 + 索引 + 最终事实 + 编码缓冲)
-  + 同一 worker 进程中的 Rust host / FFI 原生缓冲
-  + daemon(接收缓冲 + staging + 查询/缓存)
-  + 相关子进程与数据库开销
+封存输入 + BuildContext + baseline
+    -> 物理模块 × MAIN/TEST 编译计划
+    -> javac parse/analyze（语义输入范围）
+    -> 独立 Java 模型 + 原始诊断；释放编译器上下文
+    -> Lombok 声明 overlay -> 声明契约 -> Java 提取器
+    -> Spring/SOFA 模型分析
+    -> 完整逻辑事实视图（baseline - replacement owners + 新事实）
+    -> 共享 XML inventory -> Spring resource -> SOFA resource
+    -> 依赖传播/重算直到稳定 -> 冻结 -> 分块交付
 ```
 
-超预算时终止本次构建并保留旧版。分块 dump 只降低传输缓冲，不能解决完整分析工作集过大。P0 必须在 Java 25/GraalVM 的实际共享库与 Rust host 上覆盖冷启动增量、反射/资源可达性和依赖兼容；仅 JVM 小夹具通过不足以接受 native 路线。RSS 按整个 worker 进程统计，不能把 Java 和 Rust 子堆算成两个进程后重复求和。
+| 范围 | 规则 |
+|---|---|
+| semantic inputs | 足够的当前模块/依赖源码、目标 JDK、有序 classpath；可能远大于改动集，但必须已捕获 |
+| publication sources | 本次提取并发布新事实的源码；不能因文件被 javac 读取就越界发布 |
+| replacement owners | 包括删除、失败、资源、producer 的完整替换单元；空输出仍能清理旧事实 |
+| 模块与 scope | 物理 Maven 模块决定编译上下文，配置标签决定发布身份；MAIN 不读取 TEST，TEST 可读取本模块 MAIN |
+| 冷基线 | BaselineFacts 供逻辑视图/依赖传播使用，本身不等于 javac classpath；P0/P1 先使用足够封存源码上下文 |
+| 闭环 | 框架/模型影响绑定时由 Java 显式恢复或重算并保留来源，不能要求 Rust 在 dump 后补名称解析 |
+
+Lombok `mode=model` 仅补声明模型，不执行处理器、不合成可执行方法体；modeled/partial/unmodeled 与 strict 门禁独立。关闭或失败不能留下部分 overlay 或旧 producer 事实。声明完整与方法体建模完整也分别披露；签名足够不代表方法体能力已实现。
+
+## 3. 复用边界
+
+| 固定参考代码 | 处理 |
+|---|---|
+| `core/java/` | 复用独立模型与生命周期思路；映射本项目身份、owner/world、UTF-8 位置和 facets |
+| `core/javac/`、`src/worker/java/` | 复用编译器调用、上下文、错误分类和模型编码思路；输入改为封存路径，协议/进程管理按本项目重做 |
+| `extract/JavaModelExtractor` 与 `Java*Facts` | 按依赖审计拆出提取，写内存 fact sink；审计恢复规则与证据，不直接搬数据库结果 |
+| `JavaModelExtension`、`JavaModelAnalyzer`、Spring/SOFA 模块 | 消费独立模型与完整逻辑视图；保留构建期装配与依赖顺序 |
+| `LombokJavaModelExtension` | 借鉴声明 overlay 和来源披露；不移植处理器执行开关 |
+| `incremental/`、`StagedGraphStore` | 拆出语言契约/失效/绑定；通用校验进 Rust，SQL 按新存储端口实现 |
+| `JavacMavenInputs` | 仅参考有效模型数据契约；其 Maven 启动扩展路径不进入本项目只读发现 |
+| CLI/application/query/JDBC | 不作为 worker 产品依赖；不整包引入 anatomist-core |
+
+借用文件记录 commit、hash、传递依赖、资源、许可证及修改说明。不维护 JavaParser/SymbolSolver 依赖、兼容 AST、双后端比较或历史解析器回退。
+
+## 4. 内存、缓存与调度
+
+| 对象 | 生命周期 / 限制 |
+|---|---|
+| javac compiler/task/file manager/Tree/Element | 一个编译上下文；子进程可复用但上下文不跨任务泄漏 |
+| 独立 Java 模型 | 按上下文解码、同步消费后释放；框架只留必要摘要，不留整树 |
+| 类型/Bean/依赖与基线 | 本轮完整逻辑视图；计入冷增量峰值和复制成本 |
+| 最终事实 | 冻结到完整交付；分块、有背压，不积累多份整图序列化副本 |
+| 编码结果/语法暂存 | D17 原型评估是否需要有界临时文件；若引入须定槽位、总字节、清理与磁盘满行为，不能默认无限 spill |
+| 解码 | 跨帧共享分配估算预算，字符串/集合/树/类型/声明/诊断分别计量；估算不是精确堆硬限 |
+| 会话事实 | 收到 PublishAck 且 revision/profile 匹配才可复用；与可重建编译器缓存分开 |
+
+```text
+同时刻进程树 RSS = Rust host + Java 原生库（同一个进程）
+                 + 目标 JDK 编译器子进程
+全局预算还包括 daemon、SQLite、其他 worker；临时磁盘另计。
+```
+
+P0/P1 单个编译器子进程、串行上下文先验收。P2 可评估固定就绪批次、有界并行、按稳定序号消费；输入顺序/线程数不能改变语义。缓存/调度优化先验证等价再测收益，默认开启另需门禁；参考实现默认仍为单线程。
+
+P2 可选 NoCode 模块签名 + 独立声明目录减少重复分析上游源码。缓存不是项目可运行产物，不证明项目已编译；必须保存源码身份、注解、泛型和生成来源。键覆盖源内容、有序依赖、目标 JDK、桥/模型/规则版本、Lombok 配置；不完整/冲突/缺失时有界回退封存源码。在途引用 pin，不能通过 LRU 驱逐假装释放仍被持有的对象。
 
 ## 5. 故障与验收
 
-| 故障 / 用例 | 预期 |
+| 用例 | 预期 |
 |---|---|
-| 单文件解析失败 | 当前 owner 不保留伪装成最新的旧事实；coverage 披露，门禁独立判断 |
-| Spring/SOFA 扩展失败 | 丢弃该 producer 本轮部分结果；依赖它的分析降级或失败，其他事实保持可解释 |
-| 缺 classpath / JDK 类型 | 外部缺口明确披露，不能输出“确认无目标” |
-| 同 owner 两次相同调用 | 两个 call site，`calls` 可投影为一个方法关系 |
-| 删除 XML / producer 停用 | 全量与增量均不残留原关系 |
-| 冷启动/热会话/全量 | 同输入 profile 的规范化事实和证据一致 |
-| native 崩溃 / OOM / 传输中断 | 无完成清单就不发布，daemon 保留旧 revision |
-| 错误 ABI / 平台 / header 与库不匹配 | 分析前拒绝装载/握手，不进行不兼容调用 |
-| 多轮分析、取消、异常、释放 | buffer/handle 无泄漏、重复释放或越线程使用；任务退出可回收 isolate |
-| Java 异常 / worker fatal error | 可恢复异常转诊断；致命错误只影响该 worker，daemon 继续服务 |
+| 实际共享库 → 目标 JDK → 模型 → Fact IR | P0-04a/04b 分别给执行可行性与完整事实证据；仅 Hello/JVM 测试不算通过 |
+| 缺 JDK/错版本/缺编译器/不支持模块图 | 分析前明确拒绝，无解析器回退；已有历史仍可查询 |
+| 源码错误、缺依赖、歧义/不可访问调用 | 语法/可靠事实与诊断可解释；候选不冒充确认目标，门禁独立判断 |
+| 单文件失败、producer 关闭/XML 删除 | 清理相应旧 owner，coverage 覆盖零事实文件 |
+| 泛型/SAM/lambda/方法引用/嵌套类/注解/Unicode | 独立预期验证身份、绑定、来源与源码范围 |
+| full/冷 delta/可选热复用或签名缓存 | 同输入 profile 的事实多重集、诊断、coverage、provenance 等价 |
+| 取消/native 崩溃/javac OOM/协议截断/解码超限 | 本次不发布；daemon 保旧版，所属编译器与临时资源可回收 |
+| 多轮同名类型与上下文释放 | 不跨项目/world 串数据，无编译器对象滞留；RSS 与释放证据结合 |
+| ABI/模型/编译器协议不匹配 | 不兼容调用或分析开始前拒绝，不静默接受未知必需能力 |
 
-代码复用与框架设计参考见 [framework-plugins](../../../anatomist/docs/framework-plugins.md)。
+具体 fixture 与阶段映射见 [delivery](../delivery.md)、[P0](../../todo/01-p0.md)、[验收计划](../../todo/05-acceptance.md)。

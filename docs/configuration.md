@@ -2,7 +2,7 @@
 
 **公共配置管扫描、预算和版本；语言配置管分析语义；模块与 world 表达同仓库中的不同构建上下文。**
 
-状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。其余路径/字段/默认值为 D14 草案，尚无加载器实现。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；混合语言示例展示后续扩展，当前先验收 Java fixture。
+状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与显式 fixture 捕获已实现；完整 adapter 发现和策略范围仍按 D14 设计推进，当前能力见 [Rust 实现说明](rust-first.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；混合语言示例展示后续扩展，当前先验收 Java fixture。
 
 ## 1. 配置分层
 
@@ -26,7 +26,7 @@
        Java host           Rust 语言 worker
 ```
 
-Java 适配器工程固定使用 Java 25 + GraalVM；`languages.java.analysis.source_version` 描述**被分析源码**的语法版本，`analysis.toolchain` 描述用于该项目解析的工具链。修改这两个字段不会重编适配器或切换它的构建 JDK。
+Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单独构建，字节码兼容范围由 D17/P0 验证；`languages.java.analysis.source_version` 描述**被分析源码**的语法版本，`analysis.toolchain` 描述用于该项目解析的工具链。修改这两个字段不会重编适配器或切换它的构建 JDK。
 
 ## 2. 文件位置与归属
 
@@ -46,8 +46,8 @@ Java 适配器工程固定使用 Java 25 + GraalVM；`languages.java.analysis.so
 | 用户配置键 | 类型与语义 |
 |---|---|
 | `daemon.idle_timeout_seconds` | 正整数秒；只在无活动任务/读者时进入退出流程；省略使用产品服务策略 |
-| `limits.max_workers` | 正整数；全部项目合计的同时分析进程上限 |
-| `limits.max_worker_memory_bytes` | 正整数字节；每 worker 的最大可申请预算 |
+| `limits.max_workers` | 正整数；全部项目合计的顶层 worker 槽位；每槽允许的编译器子进程数另由执行策略固定，不能无限派生 |
+| `limits.max_worker_memory_bytes` | 正整数字节；每 worker 进程树的最大可申请预算（Java host/原生库与目标 JDK 子进程合计） |
 | `limits.max_total_worker_memory_bytes` | 正整数字节；worker 合计预算，调度时按任务预约；daemon 自身另受服务内存策略控制 |
 | `toolchains.<alias>.language` | 已知语言 ID，别名匹配时检查语言一致 |
 | `toolchains.<alias>.home` | 已安装工具链的绝对根目录；解析后记录实际版本/产物身份，而不只记录路径 |
@@ -63,17 +63,17 @@ Java 适配器工程固定使用 Java 25 + GraalVM；`languages.java.analysis.so
 | `[scan]` | `scopes`、`include`、`exclude`、`text_only` | 各语言共用范围；scope 的语言映射必须披露 |
 | `[build]` | `suggestions = true / false` | 默认 true，缺产物时返回执行建议；false 只隐藏命令建议，仍报告缺口；两者都不运行目标项目构建 |
 | `[index]` | `mode = "auto" / "full"` | 增量策略，不容纳 Java 专属字段 |
-| `[resources.index]` | `worker_memory_bytes` | 请求的每 worker 上限，可省略使用服务策略；实际值受用户硬上限约束 |
+| `[resources.index]` | `worker_memory_bytes` | 请求的每 worker 进程树上限，可省略使用服务策略；实际值受用户硬上限约束 |
 | `[resources.query]` | `diff_spill_bytes` | 有界 diff 暂存策略，建议默认 8 MiB，fixture 验证后冻结 |
 | `[query]` | `scopes`、`max_output_bytes` | 查询默认选择与预算，不扩张索引范围；未设置预算时使用本项目各命令默认 |
-| `[observability]` | `mode = "off" / "basic" / "full"` | 本项目报告与诊断级别，建议默认 basic |
+| `[observability]` | `mode = "off" / "basic" / "full"` | 当前默认 basic；旧拼写 `detailed` 暂作为 full 的兼容别名 |
 | `[search.text]` | `backend`、`include` | 保留 grep/rg 入口，可搜任意语言和文档，不生成语义事实 |
 | `[versions.capture]` | `include_ignored` | 增补 WORKTREE 捕获范围，不绕过 excludes |
 | `[versions.gc]` | `auto`、`keep`、`max_bytes`、`max_age_days`、`include_caches` | 引用保护与预览/执行边界；默认数值由本项目 fixture 验证 |
 | `[languages.<id>]` | `enabled`、`mode` | 语言能力选择；支持的 mode 由版本化语言描述符声明 |
 | `[languages.<id>.discovery]` | `build_system` | Java 为 auto/maven/gradle/plain；Rust 为 cargo |
 | `[languages.<id>.analysis]` | 语言专属分析参数 | 由对应 adapter 的 schema 校验，不能塞回全局 index |
-| `[languages.java.lombok]` | `mode = "off" / "ast"`、`strict` | 用户确定直接挂在 Java 下；Lombok 模型不经过 extensions 中间层 |
+| `[languages.java.lombok]` | `mode = "off" / "model"`、`strict` | 用户确定直接挂在 Java 下；Lombok 模型不经过 extensions 中间层 |
 | `[languages.<id>.extensions.<id>]` | 框架参数 | Spring/SOFA 等框架配置归所属语言，不出现在其他语言命名空间 |
 | `[languages.<id>.external]` | `exclude_patterns` | 匹配规则由语言定义；Java 包前缀规则不自动套给 Rust |
 | `[[modules]]` | `id`、`language`、`root`、`manifest` | 一个语言构建入口；同目录不同语言必须分开列出 |
@@ -85,9 +85,9 @@ Java 适配器工程固定使用 Java 25 + GraalVM；`languages.java.analysis.so
 |---|---|
 | Java `analysis.source_version` | `"auto"` 或十进制版本字符串，如 `"17"`；实际支持版本由已安装 adapter 描述符声明 |
 | Java `analysis.toolchain` | `"auto"` 或 Java 工具链别名；解析出的 JDK 必须满足所请求的分析能力 |
-| Java `analysis.classpath` | `"existing"` 或 `"none"`；none 禁用项目依赖类路径，JDK 类路径由 vm_classpath 单独控制 |
-| Java `analysis.vm_classpath` | boolean；是否将选定 JDK 类型加入解析，不取宿主 GraalVM JDK 冒充目标 JDK |
-| Java `lombok.mode` / `lombok.strict` | off/ast 与 boolean，默认 off/false；ast 为源码签名模型，strict 将不完整模型纳入质量门禁，不触发 Lombok 编译执行 |
+| Java `analysis.classpath` | `"existing"` 或 `"none"`；none 仅禁用项目依赖类路径，javac 所需目标 JDK 平台类型仍必需 |
+| Java `analysis.vm_classpath` | boolean；javac semantic 只接受 true，false 在分析前拒绝；不取宿主 GraalVM JDK 冒充目标 JDK |
+| Java `lombok.mode` / `lombok.strict` | off/model 与 boolean，默认 off/false；model 为独立 Java 声明模型补全，strict 将不完整模型纳入质量门禁，不触发 Lombok 编译执行 |
 | Rust `analysis.edition` | `"auto"` 或 adapter 支持的 edition 字符串；显式值须与有效构建声明一致，冲突拒绝 |
 | Rust `analysis.toolchain` | `"auto"` 或 Rust 工具链别名；实际版本与产物内容进入 profile |
 | Rust world `target` | `"host"` 或工具链支持的目标平台名；分析前解析能力与依赖可用性 |
@@ -113,12 +113,12 @@ enabled = true
 |---|---|
 | 没有项目文件 | 不发现/启用任何语言；语义 index 返回配置缺失及示例建议；已有 revision/历史只读不因此失效 |
 | 有项目文件但未启用语言 | 不发现/启用任何语言；语义 index 返回语言未配置；只有报告配置或检测到 manifest 都不构成启用 |
-| 显式启用语言 | 仅 `languages.<id>.enabled=true` 的语言参与索引；discovery.mode=auto 只发现这些语言的模块；modules.language 本身不隐式启用语言 |
+| 显式启用语言 | 仅 `languages.<id>.enabled=true` 的语言参与索引；当前 `discovery.mode=auto` 索引明确报不支持，待真实适配器发现能力接入；modules.language 不隐式启用语言 |
 | files/search-text | 无语言声明也可按显式文件范围读取；不触发语言发现、解析或编译 |
 | language.mode | Java 为 semantic；Rust 为 syntax；Rust semantic 必须显式选择，执行中不静默降级 |
 | scan.scopes | MAIN + GENERATED；query.scopes 默认 ALL，含义仅为已捕获范围 |
 | include / exclude / text_only | `["**"]` / `[]` / `[]`；建议 include=[] 表示所有已选源码根内路径 |
-| Java source_version / toolchain | auto；按模块声明和可用工具链解析，来源与最终版本必须披露 |
+| Java source_version / toolchain | auto；版本来自已验证模块声明；工具链只从用户登记的别名中选唯一匹配项，零个或多个匹配都要求显式指定；来源与最终版本必须披露 |
 | Java 版本声明缺失 | 不猜 Java 8；需要显式 source_version 才能开始 semantic |
 | Java classpath | existing；已有可验证依赖缺失则按 coverage/门禁处理，不自动执行构建 |
 | Java 扩展 | Lombok off、strict=false；Spring enabled=true、xml=false；SOFA enabled=true 且依赖 Spring |
@@ -127,6 +127,21 @@ enabled = true
 | 数值资源预算未设置 | 使用用户级服务策略并披露实际值；不能把省略理解为无限资源 |
 
 开启缺少已安装能力的语言时，在运行前返回 unsupported；不能默默只分析另一种语言。语义失败可产生 partial coverage，由健康门禁决定能否发布，与无效配置的直接拒绝区分。
+
+### javac 工具链与能力边界
+
+| 层次 | 首版建议 / 验证规则 |
+|---|---|
+| 后端 | 固定 javac，无 parser 切换字段、JavaParser 依赖或失败回退；未知旧解析器配置按未知键拒绝 |
+| 构建 JDK | 原生库由锁定的 GraalVM JDK 25 构建；不参与目标版本自动推测 |
+| 执行 JDK | D17 候选使用目标 JDK 启动编译器桥；检查 java/javac、平台/编译器产物和内容身份 |
+| 目标版本 | P0 评估 Java 8/17/25，只有实际通过的版本进入能力清单；首版建议执行 JDK 主版本与 source_version 一致，不承诺跨版本 --release 或 preview |
+| auto | 不读取 PATH、JAVA_HOME 或宿主版本作隐式回退；用户别名的实际版本与内容摘要冻结到请求 |
+| 多模块 | 首版同目标版本 Maven reactor；混合目标版本、多个命名 JPMS 模块或未验收语法明确 unsupported，不能扁平化后伪装成功 |
+| Lombok | 使用 off/model 草案命名；model 是声明覆盖层，不执行处理器、不生成业务方法体。没有 compile=true 产品开关；缺真实产物给外部建议 |
+| 执行预算 | P0/P1 先串行；编译器堆、任务数、帧/解码/临时磁盘与进程树预算由执行策略冻结，不照搬参考项目数值 |
+
+项目源码本身存在错误时可输出带诊断的部分事实；缺少可用编译器、版本不匹配或内部协议失败则终止。不得混淆两种失败。
 
 ## 5. 模块、源码根与 world
 
@@ -159,7 +174,9 @@ project
 
 Rust world 的 `target` 是目标平台，不能与 Cargo 的 lib/bin/test target 混淆；后者由 crate graph 和所选 scope 展开。`features`、`default_features` 和显式 `cfg` 是请求条件，实际 feature 统一结果与构建 cfg 以捕获的 BuildContext 为准。`host` 必须解析成具体 target 身份，不能将字符串 host 当跨机器稳定环境。
 
-Java world 首版由真实模块、源码集和已解析构建上下文派生；不添加一套复制 Maven profile 语法的通用 world 字段。同版本不同 JDK/依赖进入 semantic profile，不机械改动 LogicalSymbolKey。
+Java world 首版由真实模块、源码集和已解析构建上下文派生；不添加一套复制 Maven profile 语法的通用 world 字段。物理 Maven 模块决定编译上下文与依赖方向，配置模块 ID/源码标签决定发布身份；两者映射显式保存。MAIN 不读取 TEST，扫描排除不能被编译器隐式搜索绕过。缺少必需上下文则披露/拒绝。
+
+同版本不同 JDK/依赖进入 semantic profile，不机械改动 LogicalSymbolKey。
 
 ## 6. 优先级与路径规则
 
@@ -201,7 +218,7 @@ Java world 首版由真实模块、源码集和已解析构建上下文派生；
 | QueryPolicy / ExecutionPolicy | 查询、报告、服务调度、GC 与资源策略；分别记录，不无故清空语言事实 |
 
 ```text
-EffectiveConfig + 捕获源码/依赖/工具链 + adapter/rule versions
+EffectiveConfig + 捕获源码/依赖/工具链 + adapter/model/compiler-bridge/rule versions
                          |
                 SemanticProfile（实际分析环境）
 ```
@@ -215,6 +232,7 @@ EffectiveConfig + 捕获源码/依赖/工具链 + adapter/rule versions
 | 关闭语言 / 移除模块或 world | 新 revision 显式替换掉相应 owners，不能继续当作当前结果 |
 | scan/capture 变化 | 输入清单与覆盖变化，重算受影响事实与 snapshot 请求身份 |
 | query.scopes / output bytes / report / GC / daemon idle / build.suggestions | 改变请求/执行策略，不单独使已发布语义事实失效 |
+| javac 线程数、编译器堆/进程回收策略 | 属于执行策略；成功结果必须等价。改变恢复搜索范围的预算属于语义配置，需指纹与限制披露 |
 | 索引内存上限改变 | 记录执行策略；成功结果不应变义；若某分析预算影响求解结果，则必须计入语义指纹并披露 |
 
 单个语言的配置变化不应机械重建另一语言。混合项目修订可复用有证明的未变语言分区；新 revision 原子发布所有分区引用及项目 coverage，不能让关闭语言后仍出现陈旧事实。
@@ -254,7 +272,7 @@ EffectiveConfig + 捕获源码/依赖/工具链 + adapter/rule versions
 | XML / 配置资源 | 所属框架 producer 依赖 | 无所属 adapter 时只按文件/文本证据处理 |
 | 同物理文件多 world | 同一字节、不同语义身份 | 同一字节、不同语义身份 |
 
-scan.include 只在语义源码根内筛选；exclude 同时限制语义、文本和捕获，必需控制输入被排除则报错。建议 text_only 不参与语义/捕获/diff，只有 search.text.include 另选中才可文本搜索。`.code-ana/config.toml` 作为控制输入保留；工具自己的缓存和产物默认排除。
+当前实现中 `scan.include` 筛选捕获文件，模块 source_roots 再决定语义归属；exclude 同时限制语义、文本和捕获，必需控制输入被排除则报错。text_only 不参与语义/持久捕获/diff，只有 search.text.include 另选中才进入本次工作区文本查询；历史查询仍只读取当时已捕获文件。`.code-ana/config.toml` 在文件/语义捕获中作为控制输入保留；工作区文本搜索校验它的 hash，但不把它当作搜索内容。工具自己的缓存和产物默认排除。
 
 某语言无法精确映射 scope 时披露 unknown/partial，不能全部贴 MAIN。同一源文件被同一语言的两个模块无依据重复拥有时拒绝；真实多 world 或不同语言的显式事实各有 owner。
 
@@ -278,20 +296,22 @@ scan.include 只在语义源码根内筛选；exclude 同时限制语义、文�
 
 这是全新配置格式：不搜索或导入 `.anatomist/config.toml`，不实现旧字段别名或旧优先级兼容。未知字段直接报错。构建 code-ana 自身和 fixture 测试准备是开发流程，与产品分析目标项目时的执行权限分开。
 
+javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使用封存输入时属于索引分析，不属于目标项目构建。Maven 有效模型读取仍只消费已有 metadata；参考实现的 Maven 扩展虽在生命周期前终止，但会启动 Maven，不纳入本项目只读发现。签名缓存是工具内部派生数据，不作为“目标项目已构建”的证明。
+
 ## 11. 验收
 
 | 场景 | 必须验证 |
 |---|---|
 | Java-only / Rust-only / 混合项目 | 只调度启用语言，配置命名空间不串 |
 | Java 25 adapter 分析 Java 17 项目 | 构建运行时与目标语法/解析 JDK 分离 |
-| 同文件两个 feature world / 多模块不同 Java 版本 | 公共身份、coverage、增量基线分别固定 |
+| 同文件两个 feature world / Java 多模块 scope | 公共身份、coverage、增量基线分别固定；混合 Java 目标版本首版明确 unsupported |
 | 配置注释变化 / 字段重排 | 文件 diff 可见，语义摘要不变 |
 | 只改 report/output / 只改 Rust features | 前者不重建；后者不机械重建 Java |
 | 禁用语言/扩展或删除模块 | 新 revision 无陈旧 owner，旧历史仍可读 |
 | 排队/执行中改配置、daemon 配置未重启 | 有效配置 generation 明确，不半途漂移 |
 | 缺配置、缺 language.enabled、只有报告配置或 manifest | 不自动启用语言，给出配置建议 |
 | 未知字段/错类型/冲突来源 | 明确拒绝，不静默吞参数或加载其他产品配置 |
-| 缺 classpath/生成产物、建议开关 true/false | 产品不执行编译；true 返回建议，false 保留缺口；外部执行后重试才捕获新产物 |
+| 缺 classpath/生成产物、建议开关 true/false | 产品不执行目标构建或处理器；true 返回建议，false 保留缺口；外部执行后重试才捕获新产物 |
 | TOML 到 protobuf / FFI 输入 | 各语言收到明确类型和相同摘要，不在 worker 二次加载文件 |
 
-示例的 TOML 语法可独立检查；上述语义需要未来 ConfigResolver 与 adapter 契约测试验证。
+示例 TOML 已由 config 单元测试读取；Rust 显式配置/捕获走端到端验收。真实 adapter 的工具链与构建语义仍需独立契约测试。

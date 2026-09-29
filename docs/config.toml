@@ -1,8 +1,11 @@
-# code-ana 多语言项目配置草案 v1，尚无加载器实现。
+# code-ana 多语言项目配置草案 v1，Rust 严格 schema 已实现；各语言/策略能力见 rust-first.md。
 # 建议保存到 <project>/.code-ana/config.toml。
 # 这是 Java + Rust 混合仓库示例；模块路径、features 应按项目修改。
 # 字段、默认、优先级见 configuration.md；无旧配置兼容。
 # 此示例展示后续多语言配置；当前先验收显式启用 Java 的 fixture。
+# Java 后端固定 javac，无解析器切换/回退；parse/analyze 禁用处理器。
+# auto 工具链仅从用户登记的别名选唯一匹配 JDK，不回退 JAVA_HOME/PATH。
+
 schema_version = 1
 kind = "project"
 
@@ -26,7 +29,7 @@ mode = "auto" # full：明确全量；auto：兼容时增量
 
 [resources.index]
 # 省略时使用服务预算；数值是申请上限，不是产品容量承诺。
-# worker_memory_bytes = 2147483648
+# worker_memory_bytes = 2147483648 # 包含 host/原生库和目标 JDK 子进程
 
 [resources.query]
 diff_spill_bytes = 8388608
@@ -49,10 +52,10 @@ build_system = "maven" # auto / maven / gradle / plain
 source_version = "auto" # 从模块构建声明解析；不是 adapter 的 Java 25 版本
 toolchain = "auto" # 或用户配置中登记的 Java toolchain 别名
 classpath = "existing"
-vm_classpath = true
+vm_classpath = true # javac semantic 必需；false 拒绝
 
 [languages.java.lombok]
-mode = "off" # ast：源码签名模型
+mode = "off" # model：独立 Java 声明模型补全；不执行 Lombok 处理器
 strict = false
 
 [languages.java.extensions.spring]

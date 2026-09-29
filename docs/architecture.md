@@ -1,8 +1,10 @@
 # 总体架构
 
+> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+
 **用语言 worker 生成事实，用 Rust 管理事实生命周期并回答查询。查询只读已发布版本。**
 
-状态：用户已确认每用户一个 daemon、HTTP/2 + protobuf 通信，以及 `lang-adaptor/` 的 Java 25/GraalVM C ABI 原生库方案；其余模块细分和发布方式为建议，见 [决策登记](design-review.md)。
+状态：用户已确认每用户一个 daemon、HTTP/2 + protobuf 通信，以及 `lang-adaptor/` 的 Java 25/GraalVM C ABI 原生库方案；Java 分析后端仅采用 javac，不保留 JavaParser 或回退路径（D16，2026-09-29）；javac 执行位置为 D17 待验证方案，其余模块细分和发布方式为建议，见 [决策登记](design-review.md)。
 
 ## 1. 系统边界
 
@@ -38,6 +40,8 @@ daemon -- worker IPC --> [ Rust worker host -- C ABI / FFI --> Java 原生库 ]
                         |____________ 一个隔离进程 ____________________|
 
 Java 原生库 = lang-adaptor/ 中的 Java 25 + GraalVM Native Image 构建产物
+候选内部链路（D17）：Java 原生库 -- 编译器协议 --> 目标 JDK javac 子进程
+                    <- 独立 Java 模型 -- parse/analyze（禁用处理器）
 ```
 
 Rust worker host 是 Java 分析器的宿主，与 Rust 语言的 rust-analyzer worker 是不同角色。FFI 只发生在宿主进程内，禁止 JNI；daemon 与 worker 之间仍需 IPC。Java 堆/原生崩溃由 worker 进程边界隔离。
@@ -70,9 +74,10 @@ crates/
   cli/            用户命令入口
   daemon/         装配与进程入口
   java-worker/    Rust worker host，装载 Java 原生库、执行 C ABI 调用
-lang-adaptor/     Java 25 + GraalVM 独立 Maven 项目
-  pom.xml         锁定 Java release 25、GraalVM/Native Build Tools 版本
-  analysis-core/  JavaParser / SymbolSolver / ASM、增量与内存事实
+lang-adaptor/     Java 适配工程；原生部分使用 Java 25 + GraalVM
+  pom.xml         原生部分锁定 release 25、GraalVM/插件；编译器桥单独设字节码目标
+  analysis-core/  独立 Java 模型、javac 协调、ASM 二进制分析、增量与内存事实
+  compiler-bridge/ 目标 JDK javac 桥与内部协议（D17 候选），与原生库分开构建
   framework-*/    Lombok / Spring / SOFA 的语言适配与框架分析
   native-bridge/  Native Image C entry points、ABI、共享库构建配置
 proto/
@@ -101,6 +106,8 @@ Java / Rust worker <---- contracts 的 wire schema
 依赖规则：model 不依赖数据库或进程；query 通过端口取事实；SQLite SQL 留在实现；Java 不需要依赖 Rust crate。Java 构建导出的 C header 约束 Rust FFI 绑定，`.proto` 约束消息编码，两者独立版本化并以夹具校验。原提案的独立 Java native executable 调整为“独立 Rust host + Java native shared library”。
 
 配置统一入口见 [多语言 config.toml](configuration.md)：公共策略 → 语言默认 → module 覆盖 → world 条件 → CLI 显式覆盖，最后进行范围和资源上限校验。用户 daemon/工具链配置独立于可移植项目配置；Java 25 构建工具链与被分析项目的 Java 版本分开。
+
+Java 解析、绑定只走 javac；提取器和框架消费脱离编译器对象的 Java 模型，再输出公共 Fact IR。目标 JDK 子进程方案保留 D13 的 Rust host/C ABI 原生库，但增加 JVM 运行依赖；尚未通过本项目 P0。Java 8 编译器桥的字节码兼容与 Java 25 原生库构建规则分开评审，不能把 Anatomist 的 native 主程序通过验收当作内嵌 javac 已可用。详见 [Java worker](modules/java-worker.md)。
 
 ## 3. 四条主流程
 

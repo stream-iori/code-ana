@@ -1,16 +1,17 @@
 # code-ana 设计文档
 
-**设计仍是实施依据；当前仅有 gRPC 与 Java FFI 的 Hello 骨架。**
+**设计仍是实施依据；Rust 产品实现与实际能力见 [Rust 实现说明](rust-first.md)，真实 Java 语义另行验收。**
 
 | 项目 | 基线 |
 |---|---|
 | 设计来源 | [下一代 Anatomist](../../anatomist/ana-next-gen/next-gen-anatomist.md)，修订日期 2026-09-24 |
 | 原提案源码基线 | `686ee91`，Java 25，schema 32，graph semantics 25 |
-| 参考核查 | 2026-09-24；Anatomist HEAD `39ecdd8`，相对参考基线只修改了上述提案 |
-| 本项目现状 | 已有 Rust CLI/daemon/worker、protobuf 契约及 Java 25/GraalVM FFI Hello 骨架；索引与查询尚未实现 |
+| javac 参考核查 | 2026-09-29；`dev/replace-parser@7c66251479cfc7556451be35cfbc76e94454425b` 已提交代码，排除工作区修改；未重跑测试 |
+| 本项目现状 | 已实现 Rust 配置、任务、worker IPC、SQLite、查询/历史/运维；Java 语义由显式 mock 回放，原生 FFI Hello 保留 |
 | 状态用语 | **原文已定**：继承提案；**用户已确认**：本轮明确选择；**建议**：本轮补充，待评审；**待验证**：需要原型或测量 |
 | 用户已确认 | 每个用户一个 daemon，内部隔离项目（D01） |
 | Java 适配技术 | Java 相关代码放在 `lang-adaptor/`；Java 25 + GraalVM shared library，由独立 Rust worker 通过 C ABI / FFI 调用，禁止 JNI（D13） |
+| Java 后端 | 仅 javac，无 JavaParser/SymbolSolver 或回退（D16）；原生库协调目标 JDK 子进程为 D17 待验证候选 |
 | CLI 通信 | HTTP/2 + Protocol Buffers；建议用标准 gRPC 实现（D02） |
 | 产品边界 | 全新产品，无旧版兼容、数据或配置迁移要求；Anatomist 仅作设计与代码参考（D08） |
 | 目标项目编译 | 仅返回可由 Agent/人类执行的构建建议，产品不自动执行（D09） |
@@ -50,7 +51,7 @@
 | 当前示例 | [Java fixture config.toml](examples/java-fixture-config.toml) | 首阶段如何显式配置 Java 源码与建议式构建？ |
 | 模块 | [CLI 与 daemon](modules/runtime.md) | 如何提交、调度、取消、重连任务？ |
 | 模块 | [索引与增量](modules/indexing.md) | 如何固定输入、扩散失效、交付变更？ |
-| 模块 | [Java worker](modules/java-worker.md) | 如何从旧系统拆出分析闭环？ |
+| 模块 | [Java worker](modules/java-worker.md) | javac、独立 Java 模型、原生库和编译器子进程如何分工？ |
 | 模块 | [Rust worker](modules/rust-worker.md) | syntax/semantic、world、宏怎样表达？ |
 | 模块 | [存储与发布](modules/storage.md) | 怎样保证失败不损坏旧版、读者不混版？ |
 | 模块 | [查询与 pipeline](modules/query.md) | 如何组合查询并保留证据缺口？ |
@@ -62,10 +63,10 @@
 
 | 规则 | 做法 |
 |---|---|
-| 决策集中维护 | `D01`～`D15` 在设计评审中登记，区分用户决策与待验证细节 |
+| 决策集中维护 | `D01`～`D17` 在设计评审中登记，区分用户决策与待验证细节 |
 | 契约优先 | 模块实现不能自行修改身份、证据或发布含义 |
 | 状态真实 | 建议方案不视作用户已确认；性能、容量、兼容性均需验收 |
 | 接口设计 | 本项目独立定义命令、输出、配置与存储契约；Anatomist 示例和测试不能作为兼容门禁 |
 | 链接约定 | `../../anatomist/` 等链接指向同级参考仓库；借用源码/fixture 时记录来源并在本项目独立维护 |
 
-当前可运行的两条 Hello 链路见 [根目录 README](../README.md)。尚未运行分析器或性能基准。
+Rust 验收和演示见 [根目录 README](../README.md)；真实 javac 分析与正式性能基准未验收。
