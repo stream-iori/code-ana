@@ -225,3 +225,12 @@ MAIN 回调补充证据的独立取证：相同全部 MAIN 源码范围下，补
 `supplemental-separated-product-regressions.log`：10 项通过，25.354 秒；新增 MAIN 原始/恢复关系保留、独立完整证明、字段类型修改及 Getter 删除 full/delta 等价。`supplemental-reference-20261003-041123-69026/receipt.json`：五组冻结对照全部通过，无输入/产物漂移，MAIN Getter 3/3、TEST Map 链 13/13、Getter 4/4、Builder 3/3、SuperBuilder 3/3。fixture 的使用方 scope/world 已改为真实 TEST，与冻结参考源根一致。
 
 产品 MAIN 的新证明保存为 `supplemental_type_reference`；基准 `type_reference` 不被替换，证明中的原 javac 证据、诊断、签名 hash/归属保留。此为 JVM 阶段终态，当前安装 native 尚未包含该修正；真实 SOURCE 类型差分仍使用上一版缺 2/多 3，待重建复验。
+
+
+## 全类型根转换与深层调用：隔离阶段取证
+
+旧二进制图基础的全类型根候选正式 JVM 回执 `type-graph-consumers-jvm-20261003-041123`（102 项、8 项失败）与 `type-graph-bindings-jvm-20261003-041123`（201 项、17 个失败事件）保留为失败：简写 DECLARED 缺少 arguments、WILDCARD 缺少 absent bound 字段。转换补齐旧模型原有空列表/空边语义，不补 Object、不降低校验；`all-roots-graph-v2-module-focus.log` 的 26 项原断言通过。新版完整门禁另行执行，候选尚未合入。
+
+冻结 Anatomist 对 80 层 Getter 调用链产生两个 possible 目标，旧图候选为 0/2，失败回执保留。独立栈确认无变化的类型替换和 mentionsFormal 树递归耗尽深度预算。隔离修正对图节点迭代遍历，原调用递归/总工作预算保留；无待替换变量时复用原不可变根，类型身份从平面闭包取证，避免为 visited key 展开整棵树。`graph-operations-deep-regression-corrected-2.log`：21 项通过（20 原 Collector 回归加 1 项 graph 深层变更/删除 full-delta 证明），120.589 秒。最初诊断脚本继承测试类并遮蔽 targets 导致工具错误，相关失败日志保留；不将其记为产品失败或通过。`graph-operations-functional-27/receipt.json`：27 组显式图冻结调用投影相等，无产物漂移。完整同版本图消费者/native 尚待复验。
+
+`type-graph-consumers-jvm-20261003-042022/receipt.json`：全类型根转换 v2 的 102 项 JVM 消费者通过，453.844 秒，275 次图请求、258 次 Rust 校验，无输入/产物漂移。该候选包含简写模型规范化，但尚未包含随后隔离的深层调用运算修正；后者完整绑定与消费者另跑，不能混成同版本通过。
