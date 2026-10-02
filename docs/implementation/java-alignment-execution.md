@@ -393,3 +393,20 @@ lambda 普通辅助方法最小复现的原版目标缺一。局部回调参数 
 新桥 native 默认 fixture 与图绑定完整组正在运行，完成前不标记终态通过；runtime 成套安装和同版 Maven manifest 刷新随后执行。没有放宽任何堆、节点、工作量、物理记录或归档上限。
 
 旧 supplemental 回调候选没有改善选定九文件，还存在自身索引错误：声明不含 tree_id，却以默认 0 建立回调表。新隔离探测改按 sealed source/start，并扩大到当前残余的 14 文件；尚未作为产品进展。普通辅助方法参数 fallback 的额外 getter 目标继续保持拒绝。
+
+## cast 表达式证据与完整 reactor 新阻断
+
+3b6803c 新版局部 MAIN/TEST/XML 发布查询通过，revision `rev_760f13a072ef4c7784065d43a2568425`，431718 事实、562.322 秒；配置恢复，源码/产物/manifest 无漂移，无异常信号。严格调用/类型差分与前版完全相等：8332 声明、35813 调用点/归属、12188 SOURCE 类型、20 反射成员、528/152 继承均零差异；调用仍 56 个独立缺失、0 个独立额外、6 对状态差异。
+
+cast 修复已进入源码：SDK8 syntax 只为 TYPE_CAST 保存原 javac `expression_type_model`；恢复消费非 ERROR/NONE 的原始类型，不覆盖原调用属性，不放宽预算。SyntaxFacts 测量关闭后的 TypeEvidence 编码，避免深层/递归图懒视图展开。新增 map/cast/getter fixture 使用独立名称和参考下限 8，没有降低旧 cast/reference 下限 12。
+
+| 证据 | 结果 / 边界 |
+|---|---|
+| cast-binding-candidate/frozen-map-cast-chain | 冻结原版 8/8，目标、状态、原字节位置严格相等；旧产品 3/8 |
+| cast-binding-product-native-reference/receipt.json | 正式 native 8/8 相等、产物不漂移 |
+| cast-binding native 专项 | 两项通过，10.993 秒：错误 cast/缺失 getter 拒绝，缓存 full/delta 全字段相等，80 层类型图经真实 Rust 校验 |
+| cast-binding-candidate/canonical-independent-call-diff.json | 14 个残余 MAIN 文件隔离 JVM：2039/2081，42 独立缺失、0 独立额外、5 对状态差异；净恢复 14 目标并校正 1 状态。尚不是新 native 发布后的正式差分 |
+| iopengw-full-main-test-xml-3b6803c-configured（独立工作区） | 全 40 模块未发布；217.709 秒在 app/migration/core/service@MAIN/call_recovery 抛 NullPointerException。无源码/产物/清单漂移，无外部杀进程，失败回执保留 |
+| migration-npe-diagnostic/product-stderr.log | JVM 独立复现：CallRecovery.warmBuilderReceiver 的 Set.of(builder,super_builder).contains(null)，普通源码类没有 modeled_capability；隔离修复中 |
+
+正式 cast 默认 native / 图绑定 / 31 组独立原版回归仍在运行；未关闭全项目、默认图、完整扩展语义、缓存迁移、容量或 release。

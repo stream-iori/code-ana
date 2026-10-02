@@ -1232,6 +1232,11 @@ public final class CompilerBridge implements AutoCloseable {
                 TreePath path = tree == unit ? new TreePath(unit) : new TreePath(getCurrentPath(),tree);
                 Element symbol = trees.getElement(path);
                 if (symbol != null) record.put("symbol",signature(symbol));
+                if (tree instanceof TypeCastTree) {
+                    TypeMirror attributed = trees.getTypeMirror(path);
+                    if (attributed != null)
+                        record.put("expression_type_model", typeModel(attributed));
+                }
                 syntax.add(record);
             }
             lexical.push(tree);

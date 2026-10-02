@@ -38,7 +38,10 @@ final class SyntaxFacts {
                 if (Thread.currentThread().isInterrupted())
                     throw new java.util.concurrent.CancellationException("CANCELLED");
                 Object node = syntax.get(position);
-                int length = Json.write(node).getBytes(StandardCharsets.UTF_8).length;
+                // Type roots can be shared or recursive; measure the same closed graph
+                // representation used by fact delivery instead of expanding lazy views.
+                int length = Json.write(TypeEvidence.encode(Json.object("node", node)))
+                        .getBytes(StandardCharsets.UTF_8).length;
                 if (length > MAX_NODE_BYTES)
                     throw new IllegalArgumentException(
                             "SYNTAX_NODE_BUDGET source="

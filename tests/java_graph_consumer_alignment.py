@@ -31,7 +31,7 @@ BINDING_MODULES = (
     'java_binding_alignment', 'java_graph_call_alignment', 'java_diagnostic_boundary_alignment',
     'java_target_return_alignment', 'java_functional_output_alignment',
     'java_generic_reference_alignment', 'java_constructor_reference_alignment',
-    'java_collector_alignment', 'java_builder_chain_alignment',
+    'java_collector_alignment', 'java_cast_alignment', 'java_builder_chain_alignment',
     'java_supplemental_signature_alignment', 'java_diamond_alignment',
     'java_lambda_input_alignment', 'java_contextual_invocation_alignment',
     'java_expression_alignment', 'java_type_reference_alignment',

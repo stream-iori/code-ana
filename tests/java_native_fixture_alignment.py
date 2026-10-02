@@ -14,6 +14,7 @@ from java_functional_output_alignment import FunctionalOutputs, SourceParameters
 from java_generic_reference_alignment import GenericReferences
 from java_constructor_reference_alignment import ConstructorReferences
 from java_collector_alignment import Collectors
+from java_cast_alignment import CastBindings
 from java_builder_chain_alignment import BuilderChains
 from java_supplemental_signature_alignment import SupplementalSignatures
 from java_module_abi_boundary_alignment import ModuleBoundary
@@ -33,7 +34,7 @@ def main():
     frozen = alignment.input_files()
     artifacts = reference.probe_artifacts(True)
     classes = (Bindings, GraphCalls, ConcreteGraphCalls, TargetReturns, FunctionalOutputs, SourceParameters,
-               GenericReferences, ConstructorReferences, Collectors, BuilderChains, SupplementalSignatures, ModuleBoundary, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports)
+               GenericReferences, ConstructorReferences, Collectors, CastBindings, BuilderChains, SupplementalSignatures, ModuleBoundary, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports)
     suite = unittest.TestSuite()
     for case in classes:
         case.analyze = reference.native_analyze

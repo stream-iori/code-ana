@@ -340,6 +340,9 @@ final class CallRecovery {
             if (!proof.isEmpty()) return new Result(map(proof.get("type_model")),true);
             return new Result(map(attributes.get("type_model")), false);
         }
+        Map<String, Object> attributed = map(node.get("expression_type_model"));
+        if (!attributed.isEmpty() && !Set.of("ERROR", "NONE").contains(kind(attributed)))
+            return new Result(attributed, false);
         if (kind.equals("NULL_LITERAL"))
             return new Result(Json.object("kind", "NULL", "complete", true), false);
         if (kind.equals("STRING_LITERAL")) return new Result(named("java.lang.String"), false);
