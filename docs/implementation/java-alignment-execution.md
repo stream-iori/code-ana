@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN 调用绑定：92 个独立缺失、1 个额外目标及 30 对置信度差异 | 待完成 |
+| S1 | MAIN 调用绑定：92 个独立缺失、0 个额外目标及 30 对置信度差异 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -156,3 +156,19 @@ lambda-type-mirror-evidence.log 的独立 SDK8 javac 取证：缺失 Getter 的 
 隔离诊断中的 generic-selected-tristate-collector.log 曾在暂存编译失败后运行了原类，不能作为新实现通过证据；此方向已由检查 javac 成功且校验实际覆盖类哈希的新运行替代。上述隔离回执不替代正式同版本完整回归。
 
 新 LambdaMap fixture 已加入原独立冻结对照，最低计数使用实际参考的 4 项；旧隔离脚本猜测的 6/16 不是基线。native 正在重建。S1 的真实 MAIN 差分计数仍采用上一版 92/1/30，待新版真实复验后更新，不提前宣称消除。
+
+
+## 泛型选中声明修正后的正式验收（f6436ee）
+
+| 正式回执（target/java-alignment/evidence/） | 结果 |
+|---|---|
+| native-fixtures-20261003-020708 | 113 项通过，389.765 秒，无源码/产物漂移 |
+| functional-reference-20261003-020708-88024 | 23 组冻结调用投影全部一致，包含 lambda-map 的 4/4 |
+| type-graph-bindings-native-20261003-021409 | 实际 C ABI 183 项通过，435 次图请求、406 次 Rust 输出校验；821.391 秒，无漂移 |
+| core-service-main-test-generic-selected-20261003 | MAIN/TEST/XML 发布及查询通过；431683 事实，780.891 秒，配置恢复，无非预期信号 |
+
+真实发布 revision 为 rev_0b2a7e938a31459cb16af289e8749bc2。core-service-call-diff.json 的声明 8332、调用点/归属 35813 零差异；目标 35735/35827，缺 122、多 30，其中 30 对同目标置信度差异，即 92 个独立缺失、0 个独立额外目标。上版唯一独立额外 Getter 已消除，独立缺失总数未减少；四个旧缺口消除、四个新缺口出现，不能宣称绑定完全对齐。core-service-type-diff.json：SOURCE 类型仍缺 2、多 3；反射 20、extends 528、implements 152 零差异。
+
+最初 call-diff.json/type-diff.json 未设置 module，误把局部产品和完整参考相比，保留但不作为局部验收结论；正式局部结论使用带 `--module app/core/service` 的 core-service 两份差分。完整 40 模块、框架/类型证据、容量与 release 尚未通过；同版本完整 JVM 回归仍待终态。
+
+binary-graph-isolated-frozen-reference.log 为独立目录原型直接调用冻结 JavaBinaryReader/JavaBinaryTypes 的五组投影相等：方法遮蔽、递归 class formal、交叉边界、通配符/数组/primitive、50 层泛型。不构成产品接入证明。generic-selected-product-entry-chain-frozen/functional-lambda-map/receipt.json 对更长链条为 7/9，仍缺内层 Collection.stream 和末尾 Optional.orElse；日志末尾读取回执的路径错误不改变已保存的失败差分。新的递归 modeled-input / blocked 传播仅在独立覆盖类目录探测，尚未合入产品，不混入上述正式回执。
