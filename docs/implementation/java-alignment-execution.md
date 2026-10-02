@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN/TEST 调用绑定：最新局部对照 103 个独立缺失、1 个额外目标及 7 对置信度差异；先修复新增回归 | 待完成 |
+| S1 | MAIN/TEST 调用绑定：最新局部对照 81 个独立缺失、0 个额外目标及 6 对置信度差异；TEST 调用恢复零差异 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -202,3 +202,19 @@ core-service-main-test-receiver-evidence-20261003 发布/query 成功，431673 �
 隔离诊断已复现同名但无关的生成 Getter 令候选失败反复重算，100000 工作步骤耗尽后屏蔽原 javac 已解析调用。冻结参考的 resolve 会缓存失败结果；候选按相同 provisional 上下文隔离适配，最小自包含调用投影 14/14 相等。产品未合入、正式完整门禁仍待终态。另一个隔离方向仅在 javac 已选中且候选有 UNKNOWN 时保留表达式，避免把证据不全当成明确不适用；需独立负例和真实复验，不提前认定通过。
 
 binary-signature-graph-candidate 尚未合入。独立冻结签名六组和图身份/边界检查通过，但完整消费者到第 48 项发现恢复 CAPTURE 子节点不符合公开图节点形状（TYPE_GRAPH_KIND）。首次读旧 binary type_parameters 位置的 fixture 错误已改为读取真实 raw member formal，但保留 owner 断言；两份失败回执保留，均不能计作产品图通过。
+
+
+## 失败结果缓存与 UNKNOWN 接收者：正式复验（77d3a1e）
+
+| 正式证据目录 | 结果 |
+|---|---|
+| native-fixtures-20261003-034253 | 118 项，572.233 秒，all_ok=true，无输入/产物漂移 |
+| type-graph-bindings-native-20261003-034253 | 实际 C ABI 188 项，928.033 秒，all_ok=true，无输入/产物漂移 |
+| functional-reference-20261003-034253-59048 | 27 组冻结调用投影相等，无产物漂移；新同名 Getter 链 14/14、cast 引用链 12/12 |
+| core-service-main-test-recovery-cache-20261003 | 发布/query 成功，823.151 秒；配置恢复，无非预期进程信号 |
+
+真实 revision 为 rev_8d77d53e623e4a69bf27c5e0180925d8。core-service-call-diff.json：声明 8332、调用点/归属 35813 零差异；目标 35746/35827，缺 87、多 6，即 81 个独立缺失、0 个独立额外及 6 对置信度差异。对比 639d530 的 103/1/7，新回归已修复并消除更多旧缺口。core-service-test-call-diff.json 的声明 2924、调用点/归属 17612、目标 17632 再次全部零差异。SOURCE 类型仍缺 2、多 3；反射 20、extends 528、implements 152 零差异。不得将局部 core/service 发布提升为全 40 模块验收。
+
+隔离二进制图修正的 type-graph-bindings-jvm-20261003-034701 为 199 项、810.6 秒，all_ok=true；binary-signature-graph-candidate-graph-functional-27 为显式 opt-in 图模式 27 组独立冻结投影相等。恢复 CAPTURE 导出为带原始捕获身份的 TYPEVAR，未知上界保持不完整；候选中未推断的方法变量上界不能当作具体接收者的否定证据。更早的 48/62 项失败回执保留。另一个未开启 graph 的 27 组只计默认兼容性，不冒充图验证。上述图候选仍未合入、未默认切换。
+
+MAIN 回调补充证据的独立取证：相同全部 MAIN 源码范围下，补充编译证明替换基线造成 2 缺/3 多，与真实 ForwardInterfaceTypeHandler 形态一致。隔离分离后 MAIN 基线 3/3，相应 TEST 四组仍严格相等；补充完整证明保留在独立关系。首次错误逗号 source-root 枚举 0 文件的失败回执保留，不作为产品缺陷或能力证明。
