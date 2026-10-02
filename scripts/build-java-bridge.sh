@@ -16,6 +16,9 @@ mkdir -p "$repo_root/lang-adaptor/target/compiler-classes"
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/RecordArchive.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ModelArchive.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ArchiveRows.java" \
+  "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/TypeGraph.java" \
+  "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/TypeGraphArchive.java" \
+  "$repo_root/lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerTypeGraph.java" \
   "$repo_root/lang-adaptor/src/compiler/java/dev/codeana/compiler/WorkerSourceAnnotations.java" \
   "$repo_root/lang-adaptor/src/compiler/java/dev/codeana/compiler/WorkerOverloadEvidence.java" \
   "$repo_root/lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java"
