@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN/TEST 调用绑定：最新已发布局部对照 56 个独立缺失、0 个额外目标及 6 对置信度差异；TEST 调用恢复零差异 | 待完成 |
+| S1 | MAIN/TEST 调用绑定：5c6065e 已发布局部对照 30 个独立缺失、0 个额外目标及 5 对置信度差异；9fc3fcb 保留原声明已合入，尚待新发布差分 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -450,3 +450,24 @@ b4ef988 的正式 core-service MAIN/TEST/XML：revision `rev_361ad86b2e9240b8bce
 | 新native专项 | 四项实际Rust host/C ABI通过，47.582秒；native构建72秒。完整native/图绑定/34参考与真实发布仍待验收 |
 
 完整40模块在e8f9a88独立工作区仍运行；5c6065e新core-service运行时也保持冻结。原选中声明修正在第三独立工作区实现，避免污染这两份验收。不关闭52项、完整语义、默认图、缓存迁移或容量。
+
+普通表达式 5c6065e 正式终态补充：native-fixtures-20261003-073430 默认135项通过，754.016秒，无源码/产物漂移；expression-binding-product-native-reference-33 的33组冻结原版严格调用投影全部相等、无产物漂移；type-graph-native-20261003-074046九项通过，76.049秒。图绑定/消费者及新core-service发布仍运行，未记作终态。
+
+原选中声明保留候选：查证冻结 JavaCallFacts，模型恢复 Unavailable 不撤销有效 javac 选中声明；有模型输入时原目标降为 INFERRED/source-fallback，仍保留原绑定。codeana 的 final modeledInputs 分支却一律设置 recovery_target_blocked。隔离候选只在 Result.blocked=false 时保留原目标为 possible、evidence_complete=false、declaration_resolved=true，并记录 modeled_input/原绑定位置；已知不适用和预算失败仍撤销。新增缺失函数样本3/3严格一致，现有33组独立原版全过、无产物漂移；14 MAIN文件2057/2081，即24独立缺失/0独立额外/5状态对，又恢复6目标。独立工作区的SDK25/native四项保留原ERROR、未解析子调用、错误Integer输入拒绝与完整增量回归通过，native47.582秒，待完整门禁及正式新发布。
+
+S3新取证 source-annotation-diff.json：原SOURCE注解身份/owner/span3838对参考3831，缺0、多7；多项全部为真实局部变量SuppressWarnings，参考未在annotations表表达此类owner。产品另有1872个显式生成注解facet（Deprecated/SuppressWarnings/javax.annotation.Generated/lombok.Generated），参考annotations表无对应无位置行。全部额外证据单独披露为未接受，不删事实、不混入声明/调用已通过投影，也未声称完整注解/扩展对齐。
+
+## 5c6065e 同版本正式回执收尾
+
+| 验证 | 实际终态 |
+|---|---|
+| 默认 native | 135 项通过，754.016 秒 |
+| 图绑定 native | 203 项通过，无源码/产物漂移；type-graph-bindings-native-20261003-073433 |
+| 图消费者 native | 91 项通过，572.847 秒，无漂移 |
+| 图编码/SDK8/native/Rust | 9 项通过，76.049 秒 |
+| 冻结原版功能样本 | 33 组调用投影严格一致，无产物漂移 |
+| core-service MAIN/TEST/XML | 955.973 秒；rev_cebee2bc48ef48f0b8befa96377c4259 发布 431772 事实并查询成功，无非预期信号；配置复原 |
+| 正式调用差分 | 声明 8332、调用点及归属 35813 零差异；目标35797/35827，原始缺35/多5，即30独立缺失/0独立额外/5状态对 |
+| 正式类型/反射/继承投影 | SOURCE类型12188、反射20、extends528、implements152 全部零差异；完整类型元数据及扩展差分尚未关闭 |
+
+以上均属于5c6065e，不能作为9fc3fcb或最终版本的通过回执。9fc3fcb从隔离分支快进合入；其34组独立原版native调用对照已终态通过，默认/图绑定完整门禁仍运行。e8f9a88的独立40模块运行继续推进，已跨过原migration空指针，不代表最新版本全部验收。
