@@ -108,6 +108,13 @@
       "sha256": "10b1d2374547fd3906d05a336e7a15dcac139b61d375e5035d41ceb55534bb3c",
       "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/SourceTypeReferences.java",
       "changes": "Adapt detached SOURCE signature, written declaration types, throws/bounds, lambda functional and captured parameter types. Preserve generic occurrence multiplicity and depth5 aggregate policy; explicit written excluded JDK types remain positioned. Separate body/import navigation; align hierarchy leaf positions. Guard unresolved written types, retain original compiler attributes, materialize proven external type identities, and disclose per-declaration traversal budgets as partial. Recovered callback descriptors use checked contextual SAMs, deduplicate only recovered owner/context/target, and retain possible/incomplete provenance. Seven independent frozen JVM proofs cover signatures/callbacks, nested annotations/wildcards/unknowns, supplementary Unicode/CRLF, enum/interface, ambiguous imports, collector recovery and captured functional types; native and real gates recorded separately. Apply the frozen aggregate external policy to generated signatures too, while retaining source-spelled types. Skip anonymous synthetic declaration headers but retain explicit member signatures/navigation. Independent generated and anonymous proofs compare 13 and 3 positioned relationships. Invalid UTF8 remains an explicit partial input error; no replacement decoding or mutable target input."
+    },
+    {
+      "path": "anatomist-core/src/worker/java/com/anatomist/worker/WorkerTypes.java",
+      "sha256": "d5bb332dd06a643180f9591c9b7e2103a9799dd3f9e516cd26bf33fee746ad67",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerTypeGraph.java",
+      "changes": "Adapt identity graph and recursive type-variable bounds into the detached TypeGraph kernel. Only JDK compiler public APIs and code-ana detached maps; graph validation, canonical roots, cancellation rollback and flat archives are independent implementations. Five SDK8 tests include the frozen worker in the same compiler context, 20 roots/116 nodes and 80 generic levels. Kernel promotion alone does not prove product graph integration.",
+      "license": "Reference repository has no root license declaration; preserve existing provenance and internal reuse context."
     }
   ]
 }

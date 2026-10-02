@@ -27,7 +27,7 @@ DI = {
     'org/springframework/context/annotation/Primary.java': 'package org.springframework.context.annotation; public @interface Primary {}',
     'org/springframework/context/annotation/Bean.java': 'package org.springframework.context.annotation; public @interface Bean { String[] name() default {}; }',
 } | {f'{namespace.replace(".","/")}/Inject.java': f'package {namespace}; public @interface Inject {{}}'
-     for namespace in ['javax.inject', 'jakarta.inject']} 
+     for namespace in ['javax.inject', 'jakarta.inject']}
 DI |= {f'{namespace.replace(".","/")}/Resource.java': f'package {namespace}; public @interface Resource {{ String name() default ""; String lookup() default ""; Class<?> type() default Object.class; }}'
        for namespace in ['javax.annotation', 'jakarta.annotation']}
 

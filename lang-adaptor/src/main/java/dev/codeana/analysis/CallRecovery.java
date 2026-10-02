@@ -841,8 +841,8 @@ final class CallRecovery {
         return false;
     }
 
-    // Preserve a compiler-confirmed, unique binary declaration for an unavailable
-    // nested argument. Known incompatible arguments and competing overloads still veto it.
+    // Frozen confirmedBinary: retain the exact compiler-selected binary member when
+    // local modeled evidence is incomplete. A known incompatibility still vetoes it.
     private Result confirmedUnknownArgument(Map<String, Object> call, Map<String, Object> receiver,
             List<Map<String, Object>> arguments, List<Object> explicit, boolean reference, int depth)
             throws IOException {
@@ -855,7 +855,6 @@ final class CallRecovery {
         if (found == null || Boolean.FALSE.equals(map(found.get("declaration")).get("members_complete"))) return null;
         String name = text(map(call.get("attributes")).get("lookup_name"));
         Map<String, Object> selected = null;
-        int count = 0;
         for (Map<String, Object> declaration : binaryMembers(owner, found)) {
             Map<String, Object> attrs = map(declaration.get("attributes"));
             String member = text(declaration.get("signature"));
@@ -864,11 +863,14 @@ final class CallRecovery {
             boolean variadic = Boolean.TRUE.equals(attrs.get("varargs"));
             if (variadic ? arguments.size() < params.size() - 1 : arguments.size() != params.size()) continue;
             if (!accessible(declaration, call, receiver, 0, depth + 1)) continue;
-            if (++count > 1) return null;
-            if (signature.equals(member)) selected = declaration;
+            if (signature.equals(member)) {
+                if (selected != null) return null;
+                selected = declaration;
+            }
         }
-        if (count != 1 || selected == null) return null;
+        if (selected == null) return null;
         Map<String, Object> attrs = map(selected.get("attributes"));
+        boolean generic = !list(attrs.get("type_parameter_models")).isEmpty();
         Map<String, Map<String, Object>> variables = types.bindings(receiver, "confirmed:" + signature);
         List<Map<String, Object>> parameters = new ArrayList<>();
         boolean unavailable = false;
@@ -877,9 +879,30 @@ final class CallRecovery {
             Map<String, Object> argument = arguments.get(i);
             Map<String, Object> parameter = types.substitute(map(raw.get(Math.min(i, raw.size() - 1))), variables);
             parameters.add(parameter);
-            if (argument.isEmpty() || kind(argument).equals("ERROR")) { unavailable = true; continue; }
-            // A known functional argument must have passed the ordinary poly checks.
-            if (kind(argument).equals("POLY") || types.convert(argument, parameter, true) == Match.NO) return null;
+            if (argument.isEmpty() || Set.of("ERROR", "UNKNOWN").contains(kind(argument))) {
+                unavailable = true;
+                continue;
+            }
+            // A method formal needs the complete methodArguments constraints. Until
+            // they are available, keep the original missing-argument fallback only.
+            if (generic) {
+                if (kind(argument).equals("POLY")
+                        || types.convert(argument, parameter, true) == Match.NO) return null;
+                continue;
+            }
+            Match match;
+            if (kind(argument).equals("POLY")) {
+                match = polyCompatible(node(id(argument.get("tree_id"))), parameter, true, depth + 1).match;
+            } else {
+                match = types.convert(argument, parameter, true);
+                if (Boolean.TRUE.equals(attrs.get("varargs")) && i >= raw.size() - 1
+                        && (i >= raw.size() || match == Match.NO)) {
+                    if (!kind(parameter).equals("ARRAY")) return null;
+                    match = types.convert(argument, map(parameter.get("component")), true);
+                }
+            }
+            if (match == Match.NO) return null;
+            unavailable |= match == Match.UNKNOWN;
         }
         if (!unavailable) return null;
         Map<String, Object> returns = map(map(call.get("attributes")).get("expression_type_model"));

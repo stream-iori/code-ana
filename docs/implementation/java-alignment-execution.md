@@ -14,7 +14,7 @@
 
 | 阶段 | 工作 | 状态 |
 |---|---|---|
-| S0 | 保存已有成果、刷新证据和逐能力任务 | 进行中 |
+| S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
 | S1 | MAIN 调用绑定：94 个独立缺失、1 个额外目标及 30 对置信度差异 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
@@ -43,3 +43,9 @@
 原版 SOURCE 类型缺 11 中，9 项已由本轮回调重验消除；历史文档的“8 项”计数有误。仍然保留原始回执，不将局部对照或发布成功当作 52 项完整通过。
 
 最终 java-real-semantic-diff、java-capacity、java-release 必须接入统一执行器并实际运行；不能只在矩阵中列出名称或导入历史成功回执。
+
+## 本轮实现与阶段验证
+
+- 二进制回退只保留 javac 精确选中的可访问成员；已知参数不兼容仍拒绝。非泛型方法支持 UNKNOWN 的局部证据和 varargs 元素校验；方法泛型维持原有约束边界。直接放宽泛型的试验未通过负例，未保留。
+- selected-binary-nongeneric-collector.log：14 项通过；selected-binary-binding.log：16 项通过；selected-binary-nongeneric-frozen-reference/receipt.json：22 个专项严格一致。尚未据此宣称 MAIN 残余差异已关闭。
+- TypeGraph / TypeGraphArchive / CompilerTypeGraph 已从 ignored 原型转入正式源码；type-graph-promoted-kernel.log 五项 SDK8 验证通过（64MiB 下 10001 节点归档、损坏/取消、原参考 80 层泛型、稳定根闭包）。尚待产品 RowSpool/模型/公共 facet 接入，协议版本暂不切换。
