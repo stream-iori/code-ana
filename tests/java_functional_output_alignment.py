@@ -1,3 +1,4 @@
+from java_type_views import type_attributes
 import pathlib,sys,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'tests'))
 import java_model_tests as models,java_lombok_alignment as lombok,java_binding_alignment as bindings
@@ -24,18 +25,18 @@ class FunctionalOutputs(unittest.TestCase):
   result=self.analyze([context]);targets=self.recovered(result['facts'])
   outer=[f for name,signature,f in targets if signature.startswith(('Factory#create','Factory#source'))]
   self.assertEqual(len(outer),4,targets)
-  self.assertTrue(all(f['attributes']['recovered_return_type_model']['element']=='Api' for f in outer))
+  self.assertTrue(all(type_attributes(f)['recovered_return_type_model']['element']=='Api' for f in outer))
   self.assertEqual(self.signatures(result).count('Api#run()'),4)
   references=[f for name,signature,f in targets if name=='h::getApi']
-  self.assertEqual(len(references),1);self.assertEqual(references[0]['attributes']['recovered_sam']['return']['element'],'Api')
+  self.assertEqual(len(references),1);self.assertEqual(type_attributes(references[0])['recovered_sam']['return']['element'],'Api')
   self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] for _,_,f in targets))
  def test_unbound_reference_infers_receiver_and_output_without_written_target(self):
   context,_=self.fixture('h.getFactory().convert(Api::getValue).length();')
   result=self.analyze([context]);targets=self.recovered(result['facts'])
   self.assertIn('Api#getValue()',self.signatures(result));self.assertIn('java.lang.String#length()',self.signatures(result))
   target=next(f for name,sig,f in targets if sig=='Factory#convert(java.util.function.Function)')
-  self.assertEqual(target['attributes']['recovered_return_type_model']['element'],'java.lang.String')
-  args=target['attributes']['recovered_parameter_type_models'][0]['arguments']
+  self.assertEqual(type_attributes(target)['recovered_return_type_model']['element'],'java.lang.String')
+  args=type_attributes(target)['recovered_parameter_type_models'][0]['arguments']
   self.assertEqual([t['element'] for t in args],['Api','java.lang.String'])
  def test_conflicting_outputs_bounds_void_and_wrong_explicit_types_remain_unresolved(self):
   for body in ('Factory.create(() -> {if(flag) return h.getApi(); else return new Other();}).run();',

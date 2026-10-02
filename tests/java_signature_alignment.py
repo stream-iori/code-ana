@@ -2,6 +2,7 @@
 """Java 8 javac consumes complex NoCode ABIs with full/delta fact equivalence."""
 import unittest
 import java_model_tests as model_tests
+from java_type_views import type_attributes
 
 
 class JavaSignatures(unittest.TestCase):
@@ -53,15 +54,27 @@ class JavaSignatures(unittest.TestCase):
         }'''})
 
     def test_type_annotations_in_generic_arguments(self):
-        self.roundtrip({'Api.java': '''import java.util.*; import java.lang.annotation.*;
+        files = {'Api.java': '''import java.util.*; import java.lang.annotation.*;
           @Target({ElementType.TYPE_USE,ElementType.TYPE_PARAMETER}) @Retention(RetentionPolicy.RUNTIME)
           @interface Mark {}
           class Api<@Mark T extends @Mark Number> {
             List<@Mark ? extends @Mark T> values; @Mark T get(){return null;}
+            List<@Mark ? super @Mark T> lower;
           }
         ''', 'Use.java': '''class Use extends Api<Integer> {
           void run(){ Integer value = get(); System.out.println("before"); }
-        }'''})
+        }'''}
+        facts = self.analyze([self.context('app', files)])['facts']
+        for signature, edge in (('Api#values', 'extends'), ('Api#lower', 'super')):
+            field = next(f for f in facts if f['signature'] == signature)
+            wildcard = type_attributes(field)['type_model']['arguments'][0]
+            self.assertEqual(wildcard['kind'], 'WILDCARD')
+            self.assertIn('Mark', wildcard['annotations'])
+            self.assertIn('Mark', wildcard[edge]['annotations'])
+            self.assertEqual((wildcard[edge]['name'], wildcard[edge]['owner']), ('T', 'Api'))
+            self.assertNotIn('upper', wildcard)
+            self.assertNotIn('lower', wildcard)
+        self.roundtrip(files)
 
     def test_optional_cache_write_failure_preserves_source_facts(self):
         (self.root / 'signature-cache').write_text('a file cannot hold cache entries')

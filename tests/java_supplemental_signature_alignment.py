@@ -2,6 +2,7 @@
 """Generated auxiliary NoCode signatures provide separate, auditable javac type evidence."""
 import collections
 import json
+from java_type_views import type_attributes
 import unittest
 import java_model_tests as models
 import java_lombok_alignment as lombok
@@ -64,7 +65,7 @@ class SupplementalSignatures(unittest.TestCase):
     def test_auxiliary_getter_preserves_original_evidence_and_diagnostics(self):
         facts = self.analyze([self.fixture()])['facts']
         self.assert_leaf(facts)
-        original = self.callback(facts)['attributes']
+        original = type_attributes(self.callback(facts))
         self.assertFalse(original['sam']['complete'])
         self.assertIn('recovered_callback', original)
         self.assertTrue([f for f in facts if f['kind'] == 'diagnostic' and f['status'] == 'ERROR'])
@@ -90,9 +91,9 @@ class SupplementalSignatures(unittest.TestCase):
     def test_complete_original_object_callback_is_reproven_without_overwriting_original(self):
         facts = self.analyze([self.fixture(MAP_LIBRARY, MAP_CONSUMER)])['facts']
         callbacks = self.map_callbacks(facts)
-        predicate = next(f for f in callbacks if f['attributes']['functional_type_model']['element'] == 'java.util.function.Predicate')
-        self.assertEqual(predicate['attributes']['sam']['instantiated_type']['parameters'][0]['element'], 'java.lang.Object')
-        self.assertEqual(predicate['attributes']['supplemental_callback']['sam']['instantiated_type']['parameters'][0]['element'], 'java.util.Map')
+        predicate = next(f for f in callbacks if type_attributes(f)['functional_type_model']['element'] == 'java.util.function.Predicate')
+        self.assertEqual(type_attributes(predicate)['sam']['instantiated_type']['parameters'][0]['element'], 'java.lang.Object')
+        self.assertEqual(type_attributes(predicate)['supplemental_callback']['sam']['instantiated_type']['parameters'][0]['element'], 'java.util.Map')
         self.assertTrue([f for f in facts if f['kind'] == 'diagnostic' and f['status'] == 'ERROR'])
 
     def test_complete_object_reproof_primary_body_change_and_removal_keep_full_delta(self):
@@ -123,12 +124,12 @@ class SupplementalSignatures(unittest.TestCase):
         delta = self.analyze([removed], full['facts'], cache=True)
         cold = self.analyze([removed], cache=True)
         self.assertEqual(self.merged(full['facts'], delta), sorted(cold['facts'], key=lambda f: f['id']))
-        self.assertNotIn('supplemental_callback', self.callback(cold['facts'])['attributes'])
+        self.assertNotIn('supplemental_callback', type_attributes(self.callback(cold['facts'])))
 
     def test_unknown_auxiliary_abi_stays_source_without_fabricated_proof(self):
         facts = self.analyze([self.fixture(LIBRARY.replace('class Api {', 'class Api {Missing unknown;'))])['facts']
         callback = self.callback(facts)
-        self.assertNotIn('supplemental_callback', callback['attributes'])
+        self.assertNotIn('supplemental_callback', type_attributes(callback))
         self.assertFalse([f for _, f in self.references(facts, callback) if f['origin'] == 'javac_generated_signatures'])
         self.assertTrue([f for f in facts if f['kind'] == 'diagnostic' and f['status'] == 'ERROR'])
 
@@ -136,7 +137,7 @@ class SupplementalSignatures(unittest.TestCase):
         library = LIBRARY.replace('@lombok.Getter ', '').replace('class Api {', 'class Api {java.util.List<Leaf> getValues(){return null;}')
         facts = self.analyze([self.fixture(library)])['facts']
         callback = self.callback(facts)
-        self.assertNotIn('supplemental_callback', callback['attributes'])
+        self.assertNotIn('supplemental_callback', type_attributes(callback))
         self.assertTrue(callback['attributes']['sam']['complete'])
         self.assertFalse([f for _, f in self.references(facts, callback) if f['origin'] == 'javac_generated_signatures'])
 

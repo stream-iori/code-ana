@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Candidate-local diamond typing must not bypass bounds or access checks."""
+from java_type_views import type_attributes
 import unittest
 import java_model_tests as models
 import java_lombok_alignment as lombok
@@ -38,7 +39,7 @@ class Diamonds(unittest.TestCase):
                           ('c.setItems(new java.util.ArrayList<>())', 'c.setItems(new java.util.ArrayList<Item>(3))'))
             self.assertEqual(target['status'], 'possible')
             self.assertFalse(target['evidence_complete'])
-            self.assertEqual(target['attributes']['recovered_parameter_type_models'][0]['arguments'][0]['element'], 'Item')
+            self.assertEqual(type_attributes(target)['recovered_parameter_type_models'][0]['arguments'][0]['element'], 'Item')
         self.assertTrue([f for f in result['facts'] if f['kind'] == 'diagnostic' and 'access' in f['name']])
 
     def test_incomparable_overloads_cannot_share_a_diamond_probe(self):
@@ -57,7 +58,7 @@ class Use {void read(Holder h){h.getApi().take(new java.util.ArrayList<>());}}''
         full = self.analyze([changed], cache=True)
         self.assertEqual(self.merged(initial['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
         self.assertEqual(len(self.setters(full)), 2)
-        self.assertTrue(all(t['attributes']['recovered_parameter_type_models'][0]['arguments'][0]['element'] == 'java.lang.String'
+        self.assertTrue(all(type_attributes(t)['recovered_parameter_type_models'][0]['arguments'][0]['element'] == 'java.lang.String'
                             for _, t in self.setters(full)))
         removed = self.fixture(SOURCE.replace('@lombok.Setter ', ''))
         delta = self.analyze([removed], full['facts'], cache=True)

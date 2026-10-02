@@ -1,3 +1,4 @@
+from java_type_views import type_attributes
 import pathlib,os,sys,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'tests'));import java_lombok_builder_alignment as base
 class SuperBuilders(unittest.TestCase):
@@ -16,16 +17,16 @@ class SuperBuilders(unittest.TestCase):
   b=self.declaration(facts,'A$ABuilder');impl=self.declaration(facts,'A$ABuilderImpl')
   self.assertEqual(b['attributes']['modifiers'],['public','static','abstract'])
   self.assertEqual(impl['attributes']['modifiers'],['private','static','final'])
-  self.assertEqual([f['name'] for f in b['attributes']['type_parameter_models']],['T','C','B'])
-  self.assertEqual(self.declaration(facts,'A$ABuilder#value(java.lang.Number)')['attributes']['return_type_model']['name'],'B')
+  self.assertEqual([f['name'] for f in type_attributes(b)['type_parameter_models']],['T','C','B'])
+  self.assertEqual(type_attributes(self.declaration(facts,'A$ABuilder#value(java.lang.Number)'))['return_type_model']['name'],'B')
   for s in ('A$ABuilder#count$value','A$ABuilder#count$set','A#$default$count()','A#builder()','A#<init>(A$ABuilder)','A$ABuilderImpl#build()'):self.declaration(facts,s)
-  self.assertEqual(self.declaration(facts,'A#builder()')['attributes']['return_type_model']['arguments'][0]['owner'],'A#builder()')
+  self.assertEqual(type_attributes(self.declaration(facts,'A#builder()'))['return_type_model']['arguments'][0]['owner'],'A#builder()')
  def test_super_abstract_parent_and_reversed_source_order(self):
   source='@lombok.experimental.SuperBuilder class Child extends Parent<String> { int age; } @lombok.experimental.SuperBuilder abstract class Parent<T> { T name; }'
   facts=self.analyze([self.fixture(source)])['facts']
   child=self.declaration(facts,'Child$ChildBuilder');parent=self.declaration(facts,'Parent$ParentBuilder')
-  self.assertEqual(child['attributes']['superclass_type_model']['element'],'Parent$ParentBuilder')
-  self.assertEqual(child['attributes']['superclass_type_model']['arguments'][0]['element'],'java.lang.String')
+  self.assertEqual(type_attributes(child)['superclass_type_model']['element'],'Parent$ParentBuilder')
+  self.assertEqual(type_attributes(child)['superclass_type_model']['arguments'][0]['element'],'java.lang.String')
   self.assertFalse([f for f in facts if f['signature'] in ('Parent#builder()','Parent$ParentBuilderImpl')])
  def test_super_parent_generated_first_does_not_become_custom_source(self):
   facts=self.analyze([self.fixture('@lombok.experimental.SuperBuilder class Parent {String name;} @lombok.experimental.SuperBuilder class Child extends Parent {int age;}')])['facts']
@@ -33,7 +34,7 @@ class SuperBuilders(unittest.TestCase):
  def test_super_fresh_formals_and_static_nested_owner(self):
   facts=self.analyze([self.fixture('class Outer {@lombok.experimental.SuperBuilder static class A<C,B> {C first;B second;}}')])['facts']
   builder=self.declaration(facts,'Outer$A$ABuilder')
-  self.assertEqual([f['name'] for f in builder['attributes']['type_parameter_models']],['C','B','C2','B2'])
+  self.assertEqual([f['name'] for f in type_attributes(builder)['type_parameter_models']],['C','B','C2','B2'])
  def test_super_reject_options_raw_missing_parent_and_custom_builder(self):
   sources=['@lombok.experimental.SuperBuilder(toBuilder=false) class A{int n;}',
    '@lombok.experimental.SuperBuilder class A{static class ABuilder {}}',
@@ -65,7 +66,7 @@ class SuperBuilders(unittest.TestCase):
   targets={f['target'] for f in facts if f['kind']=='call_target'}
   for s in ('Child#builder()','Parent$ParentBuilder#name(java.lang.Object)','Child$ChildBuilder#value(java.lang.Number)','Child$ChildBuilder#build()'):self.assertIn(declarations[s]['id'],targets,s)
   calls=[f for f in facts if f['kind']=='call_site' and f['attributes'].get('lookup_name')=='value']
-  self.assertEqual(calls[0]['attributes']['recovered_parameter_type_models'][0]['element'],'java.lang.Integer')
+  self.assertEqual(type_attributes(calls[0])['recovered_parameter_type_models'][0]['element'],'java.lang.Integer')
   facts=self.analyze([self.fixture('@lombok.experimental.SuperBuilder abstract class Parent<T> {T name;} @lombok.experimental.SuperBuilder class Child<N extends Number> extends Parent<String> {N value;} class Use {Object run(){return Child.<Integer>builder().name("x").value("wrong").build();}}')])['facts']
   invalid=[f for f in facts if f['kind']=='call_site' and f['attributes'].get('lookup_name')=='value']
   self.assertTrue(invalid);self.assertTrue(all(f['attributes'].get('recovery_failure')=='no_applicable_candidate' for f in invalid))

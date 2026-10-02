@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Compiler binding failures and model recovery must preserve separate evidence."""
+from java_type_views import type_attributes
 import unittest
 import shutil
 import subprocess
@@ -174,10 +175,10 @@ class Bindings(unittest.TestCase):
         call = calls['api.visible']
         self.assertEqual(call['attributes']['binding_failure'], 'none')
         self.assertEqual(call['attributes']['javac_selected_declaration'], 'Api#visible(int)')
-        self.assertEqual(call['attributes']['argument_type_models'][0]['kind'], 'INT')
+        self.assertEqual(type_attributes(call)['argument_type_models'][0]['kind'], 'INT')
         self.assertEqual(call['attributes']['caller_type'], 'Use')
         self.assertTrue(call['evidence_complete'])
-        constructor = calls['Api']['attributes']
+        constructor = type_attributes(calls['Api'])
         self.assertEqual(constructor['argument_count'], 1)
         self.assertEqual(constructor['lookup_name'], '<init>')
         self.assertEqual(constructor['argument_type_models'][0]['kind'], 'INT')
@@ -193,16 +194,16 @@ class Bindings(unittest.TestCase):
         '''})
         facts = self.analyze([context])['facts']
         declarations = {f['signature']: f for f in facts if f['kind']=='declaration'}
-        self.assertEqual(declarations['Api']['attributes']['type_parameter_models'][0]['owner'], 'Api')
-        read = declarations['Api#read(java.lang.Object)']['attributes']['parameter_type_models'][0]
-        echo = declarations['Api#echo(java.lang.Number)']['attributes']['parameter_type_models'][0]
+        self.assertEqual(type_attributes(declarations['Api'])['type_parameter_models'][0]['owner'], 'Api')
+        read = type_attributes(declarations['Api#read(java.lang.Object)'])['parameter_type_models'][0]
+        echo = type_attributes(declarations['Api#echo(java.lang.Number)'])['parameter_type_models'][0]
         self.assertEqual((read['name'],read['owner']), ('T','Api'))
         self.assertEqual((echo['name'],echo['owner']), ('T','Api#echo(java.lang.Number)'))
-        relay = declarations['Api#relay(java.lang.Object)']['attributes']['parameter_type_models'][0]
+        relay = type_attributes(declarations['Api#relay(java.lang.Object)'])['parameter_type_models'][0]
         self.assertEqual(relay['owner'], 'Api#relay(java.lang.Object)')
         self.assertEqual(relay['upper']['owner'], 'Api')
         selected = next(f for f in facts if f['kind']=='call_site' and f['name']=='api.echo')
-        self.assertEqual(selected['attributes']['selected_type_model']['return']['element'], 'java.lang.Integer')
+        self.assertEqual(type_attributes(selected)['selected_type_model']['return']['element'], 'java.lang.Integer')
 
     def test_private_static_and_generic_modeled_getter_guards(self):
         files = lombok_tests.Lombok.files(self, '''class Bean<T> {
@@ -265,7 +266,7 @@ class Bindings(unittest.TestCase):
         self.assertIn(('write.setValue','Base#setValue(java.lang.Object)'),pairs)
         self.assertEqual(pairs.count(('concrete.setValue','Base#setValue(java.lang.Object)')),1)
         target = next(f for name,_,f in recovered if name=='child.setValue')
-        self.assertEqual(target['attributes']['recovered_parameter_type_models'][0]['element'],'java.lang.String')
+        self.assertEqual(type_attributes(target)['recovered_parameter_type_models'][0]['element'],'java.lang.String')
         self.assertFalse(target['declaration_resolved'])
 
     def test_chained_source_overloads_phases_varargs_and_generic_methods(self):
@@ -295,7 +296,7 @@ class Bindings(unittest.TestCase):
         self.assertEqual(echo['origin'],'source_recovery')
         self.assertTrue(echo['declaration_resolved'])
         self.assertEqual(echo['attributes']['recovery_phase'],1)
-        self.assertEqual(echo['attributes']['recovered_return_type_model']['element'],'java.lang.Integer')
+        self.assertEqual(type_attributes(echo)['recovered_return_type_model']['element'],'java.lang.Integer')
         spread = next(f for name,_,f in recovered if name=='h.getApi().spread')
         self.assertEqual(spread['attributes']['recovery_phase'],2)
         changed = dict(files); changed['App.java'] = changed['App.java'].replace('void choose(long value)','void choose(double value)')
@@ -338,18 +339,18 @@ class Bindings(unittest.TestCase):
         by_id = {f['id']:f for f in facts}
         for _,signature,target in source:
             site = by_id[target['parent']]
-            explicit = site['attributes']['explicit_type_argument_models'][0]
+            explicit = type_attributes(site)['explicit_type_argument_models'][0]
             if signature=='Api#echo(java.lang.Number)':
                 self.assertEqual(explicit['element'],'java.lang.Number')
-                self.assertEqual(target['attributes']['recovered_return_type_model']['element'],'java.lang.Number')
+                self.assertEqual(type_attributes(target)['recovered_return_type_model']['element'],'java.lang.Number')
             elif signature=='Api#empty()':
                 self.assertEqual(explicit['element'],'java.lang.Integer')
-                self.assertEqual(target['attributes']['recovered_return_type_model']['element'],'java.lang.Integer')
+                self.assertEqual(type_attributes(target)['recovered_return_type_model']['element'],'java.lang.Integer')
             elif signature=='Api#identity(java.lang.Object)':
                 self.assertTrue(explicit.get('element')=='java.lang.String'
                                 or explicit.get('kind')=='ARRAY' and explicit['component']['kind']=='INT')
         reference = next(f for f in facts if f['kind']=='call_site' and f['attributes']['mechanism']=='method_reference')
-        self.assertEqual(reference['attributes']['explicit_type_argument_models'][0]['kind'],'UNKNOWN')
+        self.assertEqual(type_attributes(reference)['explicit_type_argument_models'][0]['kind'],'UNKNOWN')
         self.assertEqual(reference['attributes']['recovery_failure'],'explicit_type_arguments_unavailable')
         self.assertFalse([f for f in facts if f['kind']=='call_target' and f['parent']==reference['id']])
         changed = dict(files); changed['App.java'] = changed['App.java'].replace('<Integer>empty()','<Number>empty()')
@@ -389,14 +390,14 @@ class Bindings(unittest.TestCase):
         self.assertEqual(pairs.count(('h.getNested().outer','lib.Outer$Inner#outer(java.lang.Object)')),1)
         self.assertEqual(pairs.count(('h.getNested().inner','lib.Outer$Inner#inner(java.lang.Object)')),1)
         echo = next(f for name,_,f in recovered if name=='h.getApi().echo'
-                    and f['attributes']['recovered_return_type_model']['element']=='java.lang.String')
+                    and type_attributes(f)['recovered_return_type_model']['element']=='java.lang.String')
         self.assertEqual(echo['origin'],'binary_recovery')
-        self.assertEqual(echo['attributes']['recovered_return_type_model']['element'],'java.lang.String')
+        self.assertEqual(type_attributes(echo)['recovered_return_type_model']['element'],'java.lang.String')
         external = next(f for f in facts if f['signature']=='lib.Base#echo(java.lang.CharSequence)')
-        formal = external['attributes']['binary_member']['type_model']['type_parameters'][0]
+        formal = type_attributes(external)['binary_member']['type_model']['type_parameters'][0]
         self.assertEqual(formal['owner'],'lib.Base#echo(java.lang.CharSequence)')
         explicit = next(f for name,_,f in recovered if name=='h.getApi().echo'
-                        and f['attributes']['recovered_return_type_model']['element']=='java.lang.CharSequence')
+                        and type_attributes(f)['recovered_return_type_model']['element']=='java.lang.CharSequence')
         self.assertEqual(explicit['origin'],'binary_recovery')
 
     def test_missing_argument_and_incomplete_hierarchy_do_not_select_other_overload(self):
@@ -456,7 +457,7 @@ class Bindings(unittest.TestCase):
         recovered = self.recovered(facts)
         self.assertEqual([(n,s) for n,s,_ in recovered if n=='h.getApi().echo'], [('h.getApi().echo','Api#echo(java.lang.Number)')])
         declaration = next(f for f in facts if f['signature']=='Api#echo(java.lang.Number)')
-        recursive = declaration['attributes']['type_parameter_models'][0]['bounds'][1]['arguments'][0]
+        recursive = type_attributes(declaration)['type_parameter_models'][0]['bounds'][1]['arguments'][0]
         self.assertEqual(recursive['owner'],'Api#echo(java.lang.Number)')
         self.assertEqual(recursive['name'],'T')
 

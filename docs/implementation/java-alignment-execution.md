@@ -106,3 +106,21 @@ graph-native-xml-resource-fixed.log：默认树/平面图两种模式均验证�
 本轮提交首先为 5b75160，随后单独提交 native XML 资源与测试入口修复。S2 尚未关闭：默认图与原子版本切换、所有绑定/类型消费者、完整真实语义仍待；S1 的 92 个独立缺失、1 个独立额外和 30 对状态差异仍未关闭。全 40 模块、全部扩展、Rust 通用缓存迁移、容量与 release 门禁未通过。
 
 产品 IPC 补充：graph-consumer-product-ipc-final.log 验证 release Rust host 使用本轮成套 native 产物，protocol10、共享输入、full/delta、校验和、事实验证、Acked 和热 host 复用全部通过。未据此关闭 40 模块语义或容量验收。
+
+## 高级绑定图模式验收入口复核
+
+新增平面图绑定/Lombok/缓存消费者组。类型断言使用惰性节点读取器读取原始公共图，原始事实及 full/delta 多重集不改写，原断言的目标、状态、来源、类型值及负例保持不变。
+
+发现 java_functional_reference_alignment 在安装图入口前导入并固化部分 fixture 方法别名。旧消费者回执仍保留，但不独立用于证明全部请求均为图模式。新入口先安装 context 与 analyze 两个 hook，再加载 fixture；每次真实分析都拒绝未启用 type_graph 的上下文，回执新增 graph_requests。
+
+初始三次绑定探测不作为正式通过：前两次分别为遗漏构造器嵌套读取及 helper import 的测试入口错误；第三次主动 SIGINT 停止混合入口探测（退出 130），不是安全软件杀进程。审计后的 JVM/native 全组正在执行，终态以新的 receipt.json 为准。
+
+补充探测：审计后的 JVM 首次完成 111 项时，仅捕获类型检查失败（旧测试把 upper 当嵌套字典）。新增惰性节点遍历，按节点身份防止递归重入；Number/String 两个捕获身份、常量字符串、源码顺序稳定与 full/delta 的专项已全部通过（type-graph-capture-audited-focus.log）。并行 native 探测主动停止以便冻结修正后的输入，非安全软件拦截。两侧完整绑定组与两侧消费者组正在按相同源码冻结运行；在取得终态前不标记通过。
+
+Rust 全事实验收补充：产品 IPC 使用新 SDK8 编译器桥已通过（type-graph-wildcard-product-ipc.log），桥哈希参与 Rust semantic_identity，旧缓存不复用。绑定 JVM 193 项首次只有通配符注解边失败；native 混合探测 193 项有该失败及私有 JVM SourceTypeBudgetProbe 入口失败。新 native 组明确列出 11 个私有 JVM 测试，保留在 java-fixtures 的完整 JVM 193 项；实际 C ABI 组应为 182 项，未删除测试断言。
+
+每个真实 Fact IR 输出现交给 Rust 单事实与合并发布校验器；初次全消费者严格验收发现资源验收清单遗漏可默认 module/scope，以及 AnalysisResult 与 FactValidator 重复维护 facet 版本名单导致合法 java.syntax@2 被前者拒绝。资源清单按真实默认值补齐；合并发布的 facet 使用 FactValidator 相同形状、图和分区规则，仍拒绝未知版本、坏哈希、偏移、尾标志和空分区。Rust model 十项通过，发布正反例已补入原分区测试。消费者失败回执保留；正在冻结新版完整回归，不将探测成功等同全部通过。
+
+严格回执终态（修复后的源代码）：type-graph-consumers-jvm-20261003-011309 为 102 项、275 次图请求、258 次 Rust 校验，424.635 秒，无输入/产物漂移；type-graph-consumers-native-20261003-011557 为 84 项、209 次 Rust 校验，424.878 秒，无漂移。
+
+绑定 JVM 193 项和实际 C ABI 182 项全部断言通过，但并行 cargo test --workspace 重建了共享 target/debug/examples 校验器，两份回执因此 all_ok=false，不能计作正式通过。增加任务独占校验器副本并记录其哈希，避免中途执行不同产物；需在 release 构建结束后重跑受影响门禁。Rust workspace、clippy --all-targets -D warnings、fmt --check 通过。Object 参数一律重入 SAM 的隔离试验丢失已恢复的 collect/toMap，未合入；lambda-object-parameter-chain-probe.log 为失败方向的证据，不是产品能力通过。

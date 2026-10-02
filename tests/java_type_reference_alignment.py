@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Source signature relationships, callback types, and retained navigation."""
 import collections
+from java_type_views import type_attributes
 import unittest
 import java_model_tests as models
 import java_lombok_alignment as lombok
@@ -134,7 +135,7 @@ class SourceTypeReferences(unittest.TestCase):
             self.assertEqual(f['status'], 'possible')
             self.assertFalse(f['evidence_complete'])
             self.assertTrue(f['attributes']['modeled_input'])
-            original = by[f['parent']]['attributes']['functional_type_model']
+            original = type_attributes(by[f['parent']])['functional_type_model']
             self.assertNotEqual(original['kind'], 'DECLARED')
         self.assertEqual(len({(f['parent'], f['target'], f['attributes']['type_context']) for f in recovered}), 8)
         self.assertFalse([f for f in recovered if '#wrongExplicit(' in by[f['parent']]['signature']])

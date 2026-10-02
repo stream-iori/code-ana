@@ -1,3 +1,4 @@
+from java_type_views import type_attributes
 import pathlib,sys,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'tests'))
 import java_model_tests as models,java_lombok_alignment as lombok,java_binding_alignment as bindings
@@ -12,16 +13,16 @@ class TargetReturns(unittest.TestCase):
   return self.context('app',lombok.Lombok.files(self,source),lombok='model')
  def target(self,result,name,element):
   found=[f for site,signature,f in self.recovered(result['facts']) if site==name]
-  self.assertEqual(len(found),1,(name,[s for s,_,_ in self.recovered(result['facts'])]));self.assertEqual(found[0]['attributes']['recovered_return_type_model'].get('element'),element)
+  self.assertEqual(len(found),1,(name,[s for s,_,_ in self.recovered(result['facts'])]));self.assertEqual(type_attributes(found[0])['recovered_return_type_model'].get('element'),element)
   self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] for f in found))
  def test_variable_assignment_and_return_written_targets(self):
   result=self.analyze([self.fixture('String read(Holder h){String value=h.getApi().make();Number n;n=h.getApi().number();return (h.getApi().make());}')])
   found=[f for site,sig,f in self.recovered(result['facts']) if site=='h.getApi().make'];self.assertEqual(len(found),2)
-  self.assertTrue(all(f['attributes']['recovered_return_type_model']['element']=='java.lang.String' for f in found))
+  self.assertTrue(all(type_attributes(f)['recovered_return_type_model']['element']=='java.lang.String' for f in found))
   self.target(result,'h.getApi().number','java.lang.Number')
  def test_invariant_container_target_and_array_boundary(self):
   result=self.analyze([self.fixture('void read(Holder h){java.util.List<String> values=h.getApi().values();String[] array=h.getApi().array();}')])
-  targets={site:f['attributes']['recovered_return_type_model'] for site,sig,f in self.recovered(result['facts'])}
+  targets={site:type_attributes(f)['recovered_return_type_model'] for site,sig,f in self.recovered(result['facts'])}
   self.assertEqual(targets['h.getApi().values']['arguments'][0]['element'],'java.lang.String')
   self.assertNotIn('h.getApi().array',targets)
 
@@ -48,7 +49,7 @@ class TargetReturns(unittest.TestCase):
   self.assertFalse(binding['attributes']['resolved'])
   self.assertFalse([f for f in result['facts'] if f['kind']=='call_target' and f['parent']==site['id'] and f['status']=='resolved'])
   mapped=next(f for name,sig,f in targets if sig=='Api#mapped(java.util.function.Function)')
-  self.assertEqual(mapped['attributes']['recovered_return_type_model']['element'],'java.lang.String')
+  self.assertEqual(type_attributes(mapped)['recovered_return_type_model']['element'],'java.lang.String')
   updated=self.context('app',lombok.Lombok.files(self,source.replace('String value;','String value; int marker;')),lombok='model')
   delta=self.analyze([updated],result['facts']);full=self.analyze([updated])
   self.assertEqual(self.merged(result['facts'],delta),sorted(full['facts'],key=lambda f:f['id']))
@@ -67,7 +68,7 @@ class TargetReturns(unittest.TestCase):
                   .issubset({sig for name,sig,f in targets}),targets)
   site=next(f for f in result['facts'] if f['kind']=='call_site' and f['name']=='item.toString')
   self.assertEqual(site['status'],'resolved')
-  self.assertEqual(site['attributes']['selected_type_model']['return']['element'],'java.lang.String')
+  self.assertEqual(type_attributes(site)['selected_type_model']['return']['element'],'java.lang.String')
   binding=next(f for f in result['facts'] if f['parent']==site['id'] and f['relation']=='java.binding')
   self.assertTrue(binding['attributes']['resolved'])
   self.assertFalse([f for f in result['facts'] if f['kind']=='call_target' and f['parent']==site['id'] and f['status']=='resolved'])
@@ -95,12 +96,12 @@ class TargetReturns(unittest.TestCase):
   self.assertFalse([f for name,sig,f in targets if sig=='Use#bounded(java.lang.String)'])
   for name,sig,f in targets:
    if sig=='Api#number()':
-    self.assertEqual(f['attributes']['recovered_return_type_model']['kind'],'TYPEVAR')
-    self.assertEqual(f['attributes']['recovered_return_type_model']['upper']['element'],'java.lang.Number')
+    self.assertEqual(type_attributes(f)['recovered_return_type_model']['kind'],'TYPEVAR')
+    self.assertEqual(type_attributes(f)['recovered_return_type_model']['upper']['element'],'java.lang.Number')
   make=next(f for name,sig,f in targets if sig=='Api#make()')
   values=next(f for name,sig,f in targets if sig=='Api#values()')
-  self.assertEqual(make['attributes']['recovered_return_type_model']['element'],'java.lang.String')
-  self.assertEqual(values['attributes']['recovered_return_type_model']['arguments'][0]['element'],'java.lang.String')
+  self.assertEqual(type_attributes(make)['recovered_return_type_model']['element'],'java.lang.String')
+  self.assertEqual(type_attributes(values)['recovered_return_type_model']['arguments'][0]['element'],'java.lang.String')
 
  def test_modeled_enum_switch_labels_preserve_possible_source_reads(self):
   source='''enum Choice {FIRST,SECOND} class Holder {@lombok.Getter Choice choice;}
@@ -124,7 +125,7 @@ class TargetReturns(unittest.TestCase):
   result=self.analyze([self.fixture('void read(Holder h){h.getApi().make();String cast=(String)h.getApi().make();}')])
   found=[f for name,sig,f in self.recovered(result['facts']) if name=='h.getApi().make']
   self.assertEqual(len(found),2)
-  self.assertTrue(all(f['attributes']['recovered_return_type_model']['kind']=='TYPEVAR' for f in found))
+  self.assertTrue(all(type_attributes(f)['recovered_return_type_model']['kind']=='TYPEVAR' for f in found))
  def test_target_edit_delta_is_equal_to_full(self):
   first=self.fixture('String read(Holder h){return h.getApi().make();}');old=self.analyze([first])['facts']
   changed=self.fixture('Number read(Holder h){return h.getApi().make();}');delta=self.analyze([changed],old);full=self.analyze([changed]);self.assertEqual(self.merged(old,delta),sorted(full['facts'],key=lambda f:f['id']))

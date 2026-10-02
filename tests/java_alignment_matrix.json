@@ -59,7 +59,8 @@
         "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
@@ -72,7 +73,8 @@
         "type-reference",
         "type-reference-native",
         "type-graph-native",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "已补捕获身份/上下界、owner/index 与有限递归 CAPTURE、泛型继承链 actual Integer 保留和错误实参拒绝；完整目标类型/raw/复杂 SAM 与生产矩阵仍缺",
@@ -88,16 +90,19 @@
       "checks": [
         "tests/java_model_tests.py",
         "tests/java_semantic_alignment.py",
-        "tests/java_binary_alignment.py"
+        "tests/java_binary_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "初始化块/lambda SOURCE 归属的 205618 原生/17 daemon 已通过；捕获稳定身份新门禁待回执，局部/匿名/枚举合成构造器完整性仍待补齐"
@@ -115,10 +120,12 @@
         "tests/java_diamond_alignment.py",
         "tests/java_lambda_input_alignment.py",
         "tests/java_type_graph_alignment.py",
-        "tests/java_graph_fact_alignment.py"
+        "tests/java_graph_fact_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
@@ -126,7 +133,8 @@
         "native-product-ipc",
         "java-daemon",
         "native-fixtures",
-        "type-graph-native"
+        "type-graph-native",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "已补失败/选中声明、访问与静态上下文；源码/建模/JAR 恢复维度及新增 native/daemon 用例正在验证；完整错误分类/真实差分仍缺"
@@ -148,9 +156,12 @@
         "tests/java_constructor_reference_alignment.py",
         "tests/java_collector_alignment.py",
         "tests/java_diamond_alignment.py",
-        "tests/java_lambda_input_alignment.py"
+        "tests/java_lambda_input_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
@@ -158,7 +169,8 @@
         "java-daemon",
         "functional-reference",
         "functional-reference-native",
-        "native-fixtures"
+        "native-fixtures",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "已补 SOURCE/overlay/binary 泛型/捕获/继承、三阶段重载/varargs、链式输入及显式类型实参的有界恢复；返回目标约束、poly lambda、复杂捕获/混合继承和完整生产验收仍缺。未归属的方法引用类型实参保留 unresolved；不要求参考也不计算的完整条件分支 LUB",
@@ -182,9 +194,12 @@
         "tests/java_constructor_reference_alignment.py",
         "tests/java_collector_alignment.py",
         "tests/java_diamond_alignment.py",
-        "tests/java_lambda_input_alignment.py"
+        "tests/java_lambda_input_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
@@ -192,7 +207,8 @@
         "java-daemon",
         "functional-reference",
         "functional-reference-native",
-        "native-fixtures"
+        "native-fixtures",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "已补绑定/未绑定/static/构造器方法引用、函数式接口与泛型 SAM 正反例；多态 lambda 参数/返回/目标推断、复杂继承/default/SAM 合并与完整生产验收仍缺",
@@ -216,10 +232,12 @@
         "tests/java_lambda_input_alignment.py",
         "tests/java_type_reference_alignment.py",
         "tests/java_type_reference_reference.py",
-        "tests/java_encoding_alignment.py"
+        "tests/java_encoding_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
@@ -230,7 +248,8 @@
         "functional-reference-native",
         "native-fixtures",
         "type-reference",
-        "type-reference-native"
+        "type-reference-native",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "所有语义位置的独立类型引用及重复出现、外部策略验收",
@@ -331,16 +350,19 @@
       "checks": [
         "tests/java_binding_alignment.py",
         "tests/java_native_probe.py",
-        "tests/java_e2e.py"
+        "tests/java_e2e.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "已补生成方法覆盖、SOURCE/binary 泛型和 raw 擦除、协变返回、final/static/访问路径非法覆盖拒绝；4 类独立参考 fixture 覆盖全部 15 条参考边，另两条 raw binary 经 SDK8 编译验证。完整 native/daemon、复杂方法泛型、真实派发差分仍待验收"
@@ -560,14 +582,18 @@
       "capability": "Getter/Setter/Data/Value",
       "status": "partial",
       "checks": [
-        "tests/java_lombok_alignment.py"
+        "tests/java_lombok_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "访问级别/静态/boolean 命名、冲突与 Value 有效修饰模型已实现；完整 SOURCE/binary/下游调用恢复矩阵待验收"
@@ -578,14 +604,18 @@
       "capability": "构造器与常用方法",
       "status": "partial",
       "checks": [
-        "tests/java_lombok_alignment.py"
+        "tests/java_lombok_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "NoArgs/RequiredArgs/AllArgs、Data/Value 构造器与 equals/hashCode/toString/canEqual 签名已实现；更多泛型/枚举/冲突及完整下游绑定矩阵待验收"
@@ -600,14 +630,18 @@
         "tests/java_binding_alignment.py",
         "tests/java_lombok_builder_alignment.py",
         "tests/java_lombok_super_builder_alignment.py",
-        "tests/java_expression_alignment.py"
+        "tests/java_expression_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "Builder 9 / SuperBuilder 8 JVM、4 冻结参考 fixture / 63 生产 JVM 声明形状相等；真实 native/daemon 泛型继承链、Default、错误实参/删除/delta/full 已过；完整参考支持边界、TYPE_USE 与 UtilityClass 矩阵仍待验收。Lombok builtin 4",
@@ -619,14 +653,18 @@
       "capability": "日志字段/注解复制",
       "status": "partial",
       "checks": [
-        "tests/java_lombok_alignment.py"
+        "tests/java_lombok_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "八类 logger 的可用性/字段策略、生成注解和 Deprecated/NonNull 复制已实现；完整成员/TYPE_USE 注解复制差分待完成"
@@ -638,14 +676,18 @@
       "status": "partial",
       "checks": [
         "tests/java_lombok_alignment.py",
-        "crates/config/src/lombok.rs"
+        "crates/config/src/lombok.rs",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "daemon 封存祖先/源码目录配置、逐源级联/stopBubbling/有限键与漂移拒绝已实现；Maven/MAIN/TEST 与完整 native/产品矩阵待验收"
@@ -656,14 +698,18 @@
       "capability": "逐能力披露",
       "status": "partial",
       "checks": [
-        "tests/java_lombok_alignment.py"
+        "tests/java_lombok_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "逐声明 detected/modeled/partial/unmodeled、数量、配置证据和 signature-only strict 已实现；Builder/SuperBuilder/UtilityClass 等全能力披露待验收"
@@ -1082,14 +1128,16 @@
         "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "SOURCE/binary/NoCode 复杂签名的完整模型/事实等价验收"
@@ -1108,13 +1156,16 @@
         "crates/query/src/lib.rs",
         "tests/java_graph_consumer_alignment.py"
       ],
-      "evidence": [],
+      "evidence": [
+        "docs/implementation/java-alignment-execution.md"
+      ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "并行/原始 javac NoCode/Lombok 重应用/不同 Maven CP SOURCE 回退、共享 256 MiB 磁盘和任务 pin、captured SOURCE 五元组导航已实现并专项验证；隐藏前置不发布。新完整生产/容量和独立语义差分待验收"
@@ -1128,16 +1179,19 @@
         "tests/java_signature_alignment.py",
         "tests/java_cache_alignment.py",
         "tests/java_module_signature_alignment.py",
-        "tests/java_shared_cache_alignment.py"
+        "tests/java_shared_cache_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "文件/模块共享进程锁/文件锁与磁盘 LRU、不可变 pin 合计预算、损坏恢复、跨进程写入、取消和符号链接防护已实现，4 新真实 JVM 专项通过；新 native/daemon 与完整生产容量待验收"
@@ -1156,7 +1210,8 @@
         "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
-        "docs/implementation/java-validation.md"
+        "docs/implementation/java-validation.md",
+        "docs/implementation/java-alignment-execution.md"
       ],
       "implementation_complete": false,
       "required_gates": [
@@ -1164,7 +1219,8 @@
         "native-product-ipc",
         "java-daemon",
         "type-graph-native",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
         "已修复源码变化但相同扩展 owner 被跳过的增量发布错误；新增模型/框架/config/resource/失败查找的完整失效闭包仍待验收"

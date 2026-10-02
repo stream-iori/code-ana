@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Contextual constructor references retain checked generics and recovery evidence."""
+from java_type_views import type_attributes
 import unittest
 import java_model_tests as models
 import java_lombok_alignment as lombok
@@ -26,7 +27,7 @@ class ConstructorReferences(unittest.TestCase):
                      if signature == 'java.util.HashMap#<init>()']
         self.assertEqual(len(recovered), 1)
         fact = recovered[0]
-        result_type = fact['attributes']['recovered_return_type_model']
+        result_type = type_attributes(fact)['recovered_return_type_model']
         self.assertEqual(result_type['element'], 'java.util.HashMap')
         self.assertEqual([arg['element'] for arg in result_type['arguments']], ['java.lang.String', value])
         self.assertNotIn('signature', result_type)

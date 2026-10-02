@@ -26,18 +26,26 @@ class GraphFacts(models.Models):
             raise RuntimeError(compiled.stderr)
 
     def validate_rust(self, contexts, result, baseline=None, accepted=True):
-        sources = []
+        sources = {}
         for context in contexts:
             for unit in context['sources']:
                 if unit['publish']:
                     source = {k: unit[k] for k in ('path', 'hash', 'world', 'module', 'scope')}
                     source.update(language='java', size=pathlib.Path(unit['input']).stat().st_size, auxiliary=False)
-                    sources.append(source)
-        payload = dict(manifest=dict(files=sources), mode=result['mode'], facts=result['facts'],
+                    sources[source['path']] = source
+            for resource in context.get('resources', []):
+                unit = resource['unit']
+                source = {k: unit[k] for k in ('path', 'hash', 'world')}
+                source.update(module=unit.get('module', ''), scope=unit.get('scope', 'RESOURCE'))
+                source.update(language=unit.get('language', 'xml'),
+                              size=pathlib.Path(resource['input']).stat().st_size, auxiliary=False)
+                sources[source['path']] = source
+        payload = dict(manifest=dict(files=list(sources.values())), mode=result['mode'], facts=result['facts'],
                        replacements=result['replacements'], baseline=baseline or [])
         path = self.root / 'rust-graph-facts.json'
         path.write_text(json.dumps(payload))
-        process = subprocess.run([str(models.ROOT / 'target/debug/examples/validate_java_graph_facts'), str(path)],
+        validator = getattr(self, 'rust_validator', models.ROOT / 'target/debug/examples/validate_java_graph_facts')
+        process = subprocess.run([str(validator), str(path)],
                                  capture_output=True, text=True, timeout=60)
         if accepted:
             self.assertEqual(process.returncode, 0, process.stderr)

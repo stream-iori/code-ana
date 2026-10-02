@@ -759,3 +759,5 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 正式补充：target/java-alignment/evidence/type-graph-consumers-jvm-20261003-000855 的 102 项全部通过，无输入/产物漂移；type-graph-native-20261003-001015 的九项全部通过；默认 Builder/SuperBuilder/框架/扩展 51 项和 SDK8 八项回归通过。native 消费者的压缩请求 fixture 仍错误使用版本 2，版本 3 要求已由 ABI 正确拒绝，待修正测试入口并重跑。
 
 2026-10-03 本轮终态：JVM 图消费者 102、native 图消费者 84、native→Rust 图证明 9、默认 native 112 全部通过，正式回执无输入/产物漂移；默认 Builder/SuperBuilder/框架/扩展 51、SDK8 模型/归档 8 已过。native 的四个失败项均已处理并纳入完整重跑：压缩请求版本、真实模型入口载荷测量、坏 XML 所需资源。target/lib/java 成套刷新，旧产物保留。S2 默认切换及整个 52 项验收仍未完成。
+
+2026-10-03 严格补充：修正 SDK8 注解通配符边界字段（extends/super），默认签名 7 项与图模式专项通过；Rust 合并发布复用单事实 facet 校验，正常 syntax@2 与损坏分区正反例通过。图消费者 JVM 102 / native 84 包含真实 Rust 发布校验且无漂移；绑定 JVM 193 / C ABI 182 断言均过，但共享校验器被 Cargo 重建，两份正式回执拒绝，须使用任务固定副本重跑。52 项完整对齐、默认图和 40 模块语义验收未关闭。

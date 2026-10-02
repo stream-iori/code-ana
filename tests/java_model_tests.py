@@ -3,6 +3,8 @@
 These tests are not a replacement for the native or daemon acceptance gates.
 """
 import hashlib,json,os,pathlib,subprocess,tempfile,unittest
+from collections.abc import Mapping
+from java_type_views import type_attributes
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 JDK8=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME',pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu')).resolve()
 JDK25=pathlib.Path(os.environ.get('JAVA_HOME',pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'))
@@ -401,15 +403,15 @@ class Models(unittest.TestCase):
   ctx=self.context('types',{'Types.java':'import java.util.*; class Types<T extends Number> { List<? extends T>[] values; T first(List<T> xs) { return xs.get(0); } }'})
   facts=self.analyze([ctx])['facts']
   field=next(f for f in facts if f['signature']=='Types#values')
-  ty=field['attributes']['type_model']
+  ty=type_attributes(field)['type_model']
   self.assertEqual(ty['kind'],'ARRAY')
   self.assertEqual(ty['component']['element'],'java.util.List')
   self.assertEqual(ty['component']['arguments'][0]['kind'],'WILDCARD')
   self.assertEqual(ty['component']['arguments'][0]['extends']['kind'],'TYPEVAR')
   self.assertTrue(any(f['relation']=='java.type' and f['parent']==field['id'] for f in facts))
   call=next(f for f in facts if f['kind']=='call_site' and f['name']=='xs.get')
-  self.assertEqual(call['attributes']['selected_type_model']['kind'],'EXECUTABLE')
-  self.assertEqual(call['attributes']['selected_type_model']['return']['kind'],'TYPEVAR')
+  self.assertEqual(type_attributes(call)['selected_type_model']['kind'],'EXECUTABLE')
+  self.assertEqual(type_attributes(call)['selected_type_model']['return']['kind'],'TYPEVAR')
   self.assertTrue(any(f['relation']=='java.binding' and f['parent']==call['id'] for f in facts))
  def test_failed_generic_inference_keeps_partial_model_diagnostics_and_delta(self):
   template='import java.util.*;import java.util.stream.*;class A%s { int healthy(){ return %s; } List<%s> f(Map<Integer,%s> m){ return m.entrySet().stream().sorted(Comparator.comparing(o -> o.getValue())).map(Map.Entry::getValue).collect(Collectors.toList()); }}'
@@ -442,14 +444,18 @@ class Models(unittest.TestCase):
   old=self.analyze([context],cache=True)['facts']
   self.assertFalse([f for f in old if f['kind']=='diagnostic' and f['attributes'].get('severity')=='ERROR'])
   captured=[]
-  def collect(value):
-   if isinstance(value,dict):
+  def collect(value,seen):
+   if isinstance(value,(Mapping,list)):
+    if id(value) in seen:return
+    seen[id(value)]=value
+   if isinstance(value,Mapping):
     if value.get('capture'):captured.append(value)
-    for item in value.values():collect(item)
+    for name in value:
+     if name!='java_type_graphs':collect(value[name],seen)
    elif isinstance(value,list):
-    for item in value:collect(item)
-  collect(old)
-  owners={value['owner']:value['upper'].get('element') for value in captured if isinstance(value.get('upper'),dict)}
+    for item in value:collect(item,seen)
+  for fact in old:collect(type_attributes(fact),{})
+  owners={value['owner']:value['upper'].get('element') for value in captured if isinstance(value.get('upper'),Mapping)}
   self.assertTrue({'java.lang.Number','java.lang.String'}.issubset(set(owners.values())))
   self.assertGreaterEqual(len(owners),2)
   literal=next(f for f in old if f['kind']=='declaration' and f['signature']=='Captures#literal')

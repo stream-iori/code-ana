@@ -618,7 +618,7 @@ public final class CompilerBridge implements AutoCloseable {
             out.put("component", sourceType(new TreePath(path, ((ArrayTypeTree) syntax).getType()), depth + 1));
         } else if (syntax instanceof WildcardTree) {
             Tree bound = ((WildcardTree) syntax).getBound();
-            if (bound != null) out.put(syntax.getKind() == Tree.Kind.EXTENDS_WILDCARD ? "upper" : "lower", sourceType(new TreePath(path, bound), depth + 1));
+            if (bound != null) out.put(syntax.getKind() == Tree.Kind.EXTENDS_WILDCARD ? "extends" : "super", sourceType(new TreePath(path, bound), depth + 1));
         } else if (syntax instanceof MemberSelectTree && out.get("enclosing") instanceof Map) {
             out.put("enclosing", sourceType(new TreePath(path, ((MemberSelectTree) syntax).getExpression()), depth + 1));
         } else if (syntax instanceof IntersectionTypeTree || syntax instanceof UnionTypeTree) {

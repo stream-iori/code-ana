@@ -413,6 +413,7 @@ impl AnalysisResult {
         if owners.len() != self.replacements.len() {
             return Err("DUPLICATE_OWNER".into());
         }
+        let facet_validator = FactValidator::new(manifest);
         let files: BTreeMap<_, _> = manifest
             .files
             .iter()
@@ -459,18 +460,7 @@ impl AnalysisResult {
                 return Err("SPAN_WITHOUT_SOURCE".into());
             }
             if f.kind == FactKind::Facet {
-                let schema = f.attributes.get("schema_version");
-                let supported = schema == Some(&serde_json::json!(1))
-                    || matches!(
-                        f.relation.as_str(),
-                        "java.type" | "java.binding" | "java.annotation"
-                    ) && schema == Some(&serde_json::json!(2))
-                    || matches!(f.relation.as_str(), "java.type" | "java.binding")
-                        && schema == Some(&serde_json::json!(3))
-                    || f.relation == "java.binding" && schema == Some(&serde_json::json!(4));
-                if !supported {
-                    return Err("UNSUPPORTED_FACET_VERSION".into());
-                }
+                facet_validator.validate(f)?;
             }
             if f.kind == FactKind::CallTarget && f.status == "resolved" && !f.declaration_resolved {
                 return Err("UNCONFIRMED_TARGET".into());
@@ -920,7 +910,27 @@ mod tests {
         tail["attributes"]["chunk_index"] = 1.into();
         tail["attributes"]["node_offset"] = 1.into();
         tail["attributes"]["last_chunk"] = true.into();
-        assert!(validate(tail).is_ok());
+        tail["id"] = "syntax-tail".into();
+        assert!(validate(tail.clone()).is_ok());
+        let coverage = serde_json::json!({
+            "id":"coverage", "kind":"coverage", "source":"Large.java", "status":"complete",
+            "owner":{"world":"w","producer":"p","kind":"source","id":"Large.java"},
+            "origin":"javac"
+        });
+        let mut publication = AnalysisResult {
+            mode: "full".into(),
+            baseline: String::new(),
+            manifest: manifest.id(),
+            profile: "p".into(),
+            producer: "javac".into(),
+            replacements: vec![],
+            facts: vec![
+                serde_json::from_value(coverage).unwrap(),
+                serde_json::from_value(row.clone()).unwrap(),
+                serde_json::from_value(tail).unwrap(),
+            ],
+        };
+        assert!(publication.validate(&manifest, &[]).is_ok());
         for (name, value) in [
             ("chunk_index", serde_json::json!(1)),
             ("node_offset", serde_json::json!(1)),
@@ -931,6 +941,12 @@ mod tests {
         ] {
             let mut broken = row.clone();
             broken["attributes"][name] = value;
+            publication.facts[1] = serde_json::from_value(broken.clone()).unwrap();
+            assert_eq!(
+                publication.validate(&manifest, &[]),
+                Err("INVALID_SYNTAX_PARTITION".into()),
+                "publication:{name}"
+            );
             assert_eq!(
                 validate(broken),
                 Err("INVALID_SYNTAX_PARTITION".into()),

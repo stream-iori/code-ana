@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Collector capture, incomplete selections, and known incompatible inputs."""
+from java_type_views import type_attributes
 import unittest
 import java_model_tests as models
 import java_lombok_alignment as lombok
@@ -52,7 +53,7 @@ class Collectors(unittest.TestCase):
             self.assertEqual(targets[signature]['status'], 'possible')
             self.assertFalse(targets[signature]['evidence_complete'])
         collect = targets['java.util.stream.Stream#collect(java.util.stream.Collector)']
-        returned = collect['attributes']['recovered_return_type_model']
+        returned = type_attributes(collect)['recovered_return_type_model']
         self.assertEqual(returned['element'], 'java.util.Map')
         self.assertEqual([v['element'] for v in returned['arguments']], ['java.lang.String', 'Rule'])
         self.assertFalse([f for f in result['facts'] if f['attributes'].get('recovery_failure') == 'recovery_budget'])
@@ -85,7 +86,7 @@ class Use {static String read(Explicit value){return java.util.Optional.ofNullab
         full = self.analyze([changed], cache=True)
         self.assertEqual(self.merged(initial['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
         collect = dict(self.targets(full, 'build'))['java.util.stream.Stream#collect(java.util.stream.Collector)']
-        self.assertEqual(collect['attributes']['recovered_return_type_model']['arguments'][0]['element'], 'java.lang.Integer')
+        self.assertEqual(type_attributes(collect)['recovered_return_type_model']['arguments'][0]['element'], 'java.lang.Integer')
         removed = self.fixture(SOURCE.replace('@lombok.Getter ', ''))
         delta = self.analyze([removed], full['facts'], cache=True)
         full_removed = self.analyze([removed], cache=True)
@@ -102,7 +103,7 @@ class Use {static String read(Explicit value){return java.util.Optional.ofNullab
                           'Api#getId()', 'Cache#getValidators(java.lang.String)'):
             self.assertEqual(targets[signature]['status'], 'possible')
             self.assertFalse(targets[signature]['evidence_complete'])
-        returned = targets['java.util.stream.Stream#collect(java.util.stream.Collector)']['attributes']['recovered_return_type_model']
+        returned = type_attributes(targets['java.util.stream.Stream#collect(java.util.stream.Collector)'])['recovered_return_type_model']
         self.assertEqual([v['element'] for v in returned['arguments']], ['java.lang.String', 'java.lang.Object'])
 
     def test_nested_factory_rejects_incompatible_invariant_key(self):
@@ -125,7 +126,7 @@ class Use {static String read(Explicit value){return java.util.Optional.ofNullab
             self.assertEqual(self.merged(initial['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
             targets = dict(self.targets(full, 'read'))
             if '@lombok.Getter' in source:
-                returned = targets['java.util.stream.Stream#collect(java.util.stream.Collector)']['attributes']['recovered_return_type_model']
+                returned = type_attributes(targets['java.util.stream.Stream#collect(java.util.stream.Collector)'])['recovered_return_type_model']
                 self.assertEqual(returned['arguments'][0]['element'], 'java.lang.Integer')
             else:
                 self.assertNotIn('Api#getId()', targets)
@@ -138,7 +139,7 @@ class Use {static String read(Explicit value){return java.util.Optional.ofNullab
         self.assertEqual(targets['java.util.stream.Collectors#toMap(java.util.function.Function,java.util.function.Function)']['status'], 'possible')
         collect = targets['java.util.stream.Stream#collect(java.util.stream.Collector)']
         self.assertEqual(collect['status'], 'possible')
-        self.assertEqual([t['element'] for t in collect['attributes']['recovered_return_type_model']['arguments']], ['java.lang.String', 'Api'])
+        self.assertEqual([t['element'] for t in type_attributes(collect)['recovered_return_type_model']['arguments']], ['java.lang.String', 'Api'])
         self.assertEqual(targets['java.util.function.Function#identity()']['status'], 'resolved')
 
     def test_identity_factory_keeps_valid_nested_call_and_rejects_incompatible_constraints(self):
@@ -171,7 +172,7 @@ class Use {static String read(Explicit value){return java.util.Optional.ofNullab
         targets = dict(self.targets(self.analyze([self.fixture(CONCURRENT_IDENTITY_SOURCE)]), 'read'))
         self.assertEqual(len(targets), 5)
         collect = targets['java.util.stream.Stream#collect(java.util.stream.Collector)']
-        returned = collect['attributes']['recovered_return_type_model']
+        returned = type_attributes(collect)['recovered_return_type_model']
         self.assertEqual(returned['element'], 'java.util.concurrent.ConcurrentMap')
         self.assertEqual([v['element'] for v in returned['arguments']], ['java.lang.String', 'Api'])
         self.assertEqual(collect['status'], 'possible')
@@ -195,7 +196,7 @@ class Use {static String read(Explicit value){return java.util.Optional.ofNullab
             self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
             targets = dict(self.targets(full, 'read'))
             if '@lombok.Getter' in source:
-                returned = targets['java.util.stream.Stream#collect(java.util.stream.Collector)']['attributes']['recovered_return_type_model']
+                returned = type_attributes(targets['java.util.stream.Stream#collect(java.util.stream.Collector)'])['recovered_return_type_model']
                 self.assertEqual(returned['arguments'][0]['element'], 'java.lang.Integer')
             else:
                 self.assertNotIn('Api#getId()', targets)

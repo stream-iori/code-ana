@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Generic receivers and contextual method references preserve compiler evidence."""
+from java_type_views import type_attributes
 import unittest
 import java_model_tests as models
 import java_lombok_alignment as lombok
@@ -41,7 +42,7 @@ h.getFactory().convert(entry,java.util.Map.Entry::getValue).run();''')
         recovered = next(f for f in facts if f['kind'] == 'call_target' and f['parent'] == reference['id'])
         self.assertEqual(recovered['status'], 'possible')
         self.assertFalse(recovered['evidence_complete'])
-        self.assertEqual(recovered['attributes']['recovered_return_type_model']['element'], 'Api')
+        self.assertEqual(type_attributes(recovered)['recovered_return_type_model']['element'], 'Api')
 
     def test_wrong_receiver_and_explicit_output_remain_unresolved(self):
         for body in ('h.getFactory().<Box<Api>,String>convert(box,Box::getValue);',
