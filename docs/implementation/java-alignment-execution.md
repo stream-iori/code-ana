@@ -338,3 +338,19 @@ core-service-main-test-module-abi-verified-inputs-20261003：652.956 秒完成�
 功能独立参考新增三项深层泛型正/负例，默认/native 两个入口均使用显式图上下文。正式产品 native 仍需重建验收。CallRecovery 补充回调输入的隔离候选虽五组原版对照通过，但选定真实文件只达到与已合入模块边界相同的 1413 目标（原始匿名未归一投影缺 33、多 6），没有证明额外进展，不合入。第一次隔离调用投影探针把全部声明属性放入 Map，1GiB JVM OOM；改为仅保存签名字符串后同限额成功，失败日志保留，没有外部杀进程。
 
 发现条件表达式参数原 javac kind=NONE 即使子表达式已有完整 String/boolean，恢复选择仍保留 NONE；隔离候选正在检查原版严格目标和负例，尚未合入。
+
+
+## NONE 参数证据修正
+
+CallRecovery 在原 argument_type_models 为 ERROR/UNKNOWN/NONE/空类型时，使用有限表达式恢复得到的类型进行候选适用性检查；原始参数模型、javac 诊断和绑定不覆盖，不把无类型当成确定证据。条件/分支仍需现有 boolean、同类型或 null/声明类型证明，错误或不相关分支仍拒绝。
+
+| 证据 | 结果 |
+|---|---|
+| conditional-argument-original-negative.log | 原实现最小条件参数用例失败，保留为回归触发证据 |
+| conditional-argument-evidence-candidate.log | 14 项 Builder 正反例通过，30.383 秒 |
+| conditional-argument-expression-negatives.log | 4 项原表达式/负例通过，41.597 秒 |
+| conditional-argument-frozen-30/receipt.json | 30 组独立冻结原版投影全部相等，无产物漂移；包含三项新深层泛型 |
+| conditional-argument-evidence-candidate/independent-call-diff.json | 选定九个 MAIN/TEST 文件 JVM：1431/1440，缺 15、多 6（原始匿名命名未归一）；相比当前产品同范围 1413 恢复 18 个 Builder 长链目标，不替代正式完整差分 |
+| conditional-argument-product-builder-regressions.log | 合入后 14 项通过，35.895 秒；原 NONE 保留、错误分支、缓存/full/delta 全字段断言通过 |
+
+当前 formal MAIN/TEST 的正式计数仍为 79 个独立缺失、0 个额外、6 对置信度差异；需新 native/daemon revision 才能更新。下一步重建原生 bundle 并冻结同版完整回归。

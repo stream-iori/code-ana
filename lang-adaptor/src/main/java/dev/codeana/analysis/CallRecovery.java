@@ -501,7 +501,9 @@ final class CallRecovery {
                 Map<String, Object> argument = map(attributed.get(i));
                 if (i < argumentNodes.size()) {
                     Result value = expression(id(argumentNodes.get(i)), depth + 1);
-                    if (value.modeled || kind(argument).equals("ERROR")
+                    // NONE/UNKNOWN carry no argument proof; preserve the original evidence,
+                    // but use a checked expression type for applicability as the frozen resolver does.
+                    if (value.modeled || Set.of("ERROR", "UNKNOWN", "NONE", "").contains(kind(argument))
                             || kind(value.type).equals("POLY")) argument = value.type;
                     Map<String, Object> nested = calls.get(new NodeKey(currentSource, id(argumentNodes.get(i))));
                     if (nested != null && (genericInvocation(nested, depth + 1)

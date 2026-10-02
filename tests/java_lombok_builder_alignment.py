@@ -28,6 +28,22 @@ class Builders(unittest.TestCase):
   updated=self.fixture(source.replace('value required','changed'),extra)
   delta=self.analyze([updated],facts);full=self.analyze([updated])['facts']
   self.assertEqual(self.merged(facts,delta),sorted(full,key=lambda f:f['id']))
+ def test_unattributed_conditional_argument_uses_checked_branches_and_keeps_original_none(self):
+  from java_type_views import type_attributes
+  source='@lombok.Builder class Api {String path;} class Use {static String text(){return "x";} Api read(boolean flag){return Api.builder().path(flag ? text() : text()).build();}}'
+  result=self.analyze([self.fixture(source)],cache=True);by={f['id']:f for f in result['facts']}
+  targets=[(by[f['target']]['signature'],f['status']) for f in result['facts'] if f['kind']=='call_target']
+  self.assertIn(('Api$ApiBuilder#path(java.lang.String)','possible'),targets)
+  self.assertIn(('Api$ApiBuilder#build()','possible'),targets)
+  path=next(f for f in result['facts'] if f['kind']=='call_site' and f['name'].endswith('.path'))
+  self.assertEqual(type_attributes(path)['argument_type_models'][0]['kind'],'NONE')
+  changed=self.fixture(source.replace('return "x"','return "after"'))
+  delta=self.analyze([changed],result['facts'],cache=True);full=self.analyze([changed])
+  self.assertEqual(self.merged(result['facts'],delta),sorted(full['facts'],key=lambda f:f['id']))
+  incompatible=self.fixture(source.replace('flag ? text() : text()','flag ? text() : new Object()'))
+  bad=self.analyze([incompatible]);by={f['id']:f for f in bad['facts']}
+  self.assertFalse([f for f in bad['facts'] if f['kind']=='call_target' and by[f['target']]['signature']=='Api$ApiBuilder#path(java.lang.String)'])
+  self.assertEqual(self.merged(full['facts'],self.analyze([incompatible],full['facts'],cache=True)),sorted(bad['facts'],key=lambda f:f['id']))
  def test_fields_builder_chain_and_original_constructor_replacement(self):
   ctx=self.fixture('@lombok.Builder class A { String name; int count; } class Use { A run(){return A.builder().name("x").count(1).build();} }')
   facts=self.analyze([ctx])['facts'];declarations={f['signature']:f for f in facts if f['kind']=='declaration'}
