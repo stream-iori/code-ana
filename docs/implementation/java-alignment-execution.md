@@ -124,3 +124,18 @@ Rust 全事实验收补充：产品 IPC 使用新 SDK8 编译器桥已通过（t
 严格回执终态（修复后的源代码）：type-graph-consumers-jvm-20261003-011309 为 102 项、275 次图请求、258 次 Rust 校验，424.635 秒，无输入/产物漂移；type-graph-consumers-native-20261003-011557 为 84 项、209 次 Rust 校验，424.878 秒，无漂移。
 
 绑定 JVM 193 项和实际 C ABI 182 项全部断言通过，但并行 cargo test --workspace 重建了共享 target/debug/examples 校验器，两份回执因此 all_ok=false，不能计作正式通过。增加任务独占校验器副本并记录其哈希，避免中途执行不同产物；需在 release 构建结束后重跑受影响门禁。Rust workspace、clippy --all-targets -D warnings、fmt --check 通过。Object 参数一律重入 SAM 的隔离试验丢失已恢复的 collect/toMap，未合入；lambda-object-parameter-chain-probe.log 为失败方向的证据，不是产品能力通过。
+
+
+## 固定校验器后的正式绑定回执
+
+| 回执 | 结果 |
+|---|---|
+| type-graph-bindings-jvm-20261003-013300 | 193 项、431 次图请求、401 次 Rust 校验；546.842 秒，all_ok=true，无源码/产物漂移 |
+| type-graph-bindings-native-20261003-013300 | 实际 C ABI 182 项、430 次图请求、401 次 Rust 校验；650.691 秒，all_ok=true，无源码/产物漂移 |
+| type-graph-syntax-publication-product-ipc-final.log | 更新 Rust release 后的产品 IPC：共享输入、full/delta、校验和、发布校验、Acked 与热 host 复用通过 |
+
+上述两组使用任务独占校验器副本，其哈希进入回执。11 个 JVM 私有装配测试全部保留在 JVM 193 项，native 未将其伪报为 C ABI 执行。早前产物漂移回执继续保留为失败。
+
+本轮代码检查点为 122c351。图消费者、绑定和 Rust 发布校验的阶段证据已终态；新图仍内部 opt-in，不据此关闭默认图、原子版本切换、40 模块语义、容量或 52 项总验收。
+
+lambda-type-mirror-evidence.log 的独立 SDK8 javac 取证：缺失 Getter 的 filter/toMap 回调参数，VariableElement.asType 与语法类型镜像均为 Api，隐式类型树没有有效结束位置。因此“声明类型被语法类型覆盖”不足以解释残余差异，未据此修改产品。继续以候选拒绝及冻结参考为依据诊断泛型恢复。
