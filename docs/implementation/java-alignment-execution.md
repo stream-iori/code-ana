@@ -305,3 +305,20 @@ module-abi-boundary-product-regressions.log：34 项产品 JVM 回归通过（85
 第一次真实项目运行明确 JAVA_METADATA_STALE：安装后的 Maven 桥 SHA 与旧清单不同，worker 未启动。第二次运行发现导出器 output 相对于执行目录，清单未在项目目录；保留失败回执，将外部导出的清单复制至项目并核对选定模块/桥 SHA 后重新运行。两次均无外部杀进程，未把失败改为成功。
 
 隔离候选：deep-concrete-current-boundary-values.log 三项实际泛型叶子、候选隔离及 full/cache/delta/删除通过；deep-concrete-reference-20261003-055019 的三个独立原版回执为 2/2、0/0、4/4 相等，聚合包装器最初 KeyError 的日志保留，由 verified-case-receipts.json 汇总已存在的回执，不算正式产品验收。深层 NoCode 专项揭示 BINARY_SIGNATURE_BUDGET（64 层）及 graph 源码注解层数重复累计的 SOURCE_TYPE_DEPTH_BUDGET，隔离修正中，仍未合入。完整语义、默认图、全项目、容量和发行门禁未关闭。
+
+
+## 模块边界完整局部差分终态
+
+core-service-main-test-module-abi-verified-inputs-20261003：652.956 秒完成发布/query；revision rev_0b78e359b5634b1fb48ff96a34e81533；配置恢复，源码/产物/输入清单无漂移，无异常进程信号。严格回执 core-service-call-diff.json 与 core-service-type-diff.json：
+
+| 投影 | 结果 |
+|---|---|
+| 声明、调用点、归属 | 8332 / 35813 / 35813，全部零差异 |
+| SOURCE 类型引用 | 12188 / 12188，缺 0、多 0；包含 MAIN/TEST，不再仅选定 lambda 样本 |
+| 反射成员、extends、implements | 20 / 528 / 152，全部零差异 |
+| 调用目标 | 产品 35748、参考 35827；缺 85、多 6，即 79 个独立缺失、0 个独立额外、6 对置信度差异 |
+| 高级绑定 native 回归 | type-graph-bindings-native-20261003-054614：192 项通过，681.772 秒，无源码/产物漂移 |
+
+上版类型回退 179 缺/76 多已在本次正式 native/daemon 局部范围消除；调用独立缺失从 81 降为 79。尚未关闭剩余调用、全 40 模块、完整扩展语义、默认类型图、Rust 通用缓存迁移、容量或发行门禁。
+
+深层二进制额外核验：冻结 Anatomist 自身在 80 层 JavaBinaryTypes 抛出 binary type depth exceeds budget（deep-graph-binary-frozen-80.log）；因此未合入将二进制预算扩到 128 的隔离试验，不把超出原版上限记为对齐修正。仅在原版范围内继续验证 50 层 NoCode 与 TYPE_USE；deep-graph-nocode-frozen-boundary-50.log 九项通过，仍是隔离候选，待正式合入及 native 复验。
