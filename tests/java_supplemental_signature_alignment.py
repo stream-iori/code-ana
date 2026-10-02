@@ -32,6 +32,13 @@ class SupplementalSignatures(unittest.TestCase):
         context['sources'] = [unit | dict(scope=scope,world=context['world']) for unit in context['sources']]
         context['sources'] = [dict(unit, publish=False) for unit in library_context['sources']] + context['sources']
         context['digest'] = models.sha(json.dumps([(s['path'], s['hash']) for s in context['sources']]).encode())
+        context = lombok.Lombok.controls(self, context, {
+            'lombok.config': 'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n',
+        })
+        if scope == 'MAIN':
+            # The frozen MAIN fixture is one physical source world, unlike its TEST boundary.
+            for unit in context['sources']:
+                unit.update(world=context['world'], module=context['module'])
         return context
 
     def callback(self, facts):
@@ -85,16 +92,11 @@ class SupplementalSignatures(unittest.TestCase):
                               [('java.util.function.Consumer','functional_interface','possible'),
                                (leaf,'parameter_type','possible')])
         self.assertTrue(all(not f['evidence_complete'] and f['origin']=='source_recovery' for _,f in baseline))
-        supplemental = [f for f in facts if f['parent']==callback['id'] and f['relation']=='supplemental_type_reference']
-        self.assertCountEqual([(by[f['target']]['signature'],f['attributes']['type_context']) for f in supplemental],
-                              [('java.util.function.Consumer','functional_interface'),
-                               (leaf,'generic_arg'),(leaf,'parameter_type')])
-        self.assertTrue(all(f['status']=='complete' and f['evidence_complete']
-                            and f['origin']=='javac_generated_signatures' for f in supplemental))
-        self.assertTrue(all(f['attributes']['signature_attribution']['evidence_owner']==callback['id'] for f in supplemental))
-        self.assertTrue(type_attributes(callback)['supplemental_callback']['sam']['complete'])
+        self.assertFalse([f for f in facts if f['parent']==callback['id']
+                          and f['relation']=='supplemental_type_reference'])
+        self.assertNotIn('supplemental_callback', callback['attributes'])
 
-    def test_main_preserves_baseline_and_stores_stronger_proof_separately(self):
+    def test_main_same_world_preserves_source_callback_baseline(self):
         result = self.analyze([self.fixture(scope='MAIN')])
         self.assert_main_baseline_and_supplemental(result['facts'])
 

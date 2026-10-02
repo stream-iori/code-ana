@@ -32,26 +32,32 @@ final class SupplementalTypes {
     static void derive(Map<String,Object> context, Map<String,Object> original, CompilerSession session) throws Exception {
         Set<String> auxiliary = new HashSet<>();
         List<Object> primary = new ArrayList<>(), sourceProof = new ArrayList<>();
+        List<Map<String,Object>> all=new ArrayList<>();
+        for(Object raw:Json.list(original.get("declarations"))) all.add(Json.map(raw));
+        Set<String> eligible=ModuleAbiEligibility.worlds(context,original,all);
         for (Object raw : Json.list(context.get("sources"))) {
             var unit=Json.map(raw);
-            if (Boolean.TRUE.equals(unit.get("publish"))) primary.add(unit);
-            else {
+            if (eligible.contains(unit.get("world"))) {
                 auxiliary.add(Json.string(unit,"path"));
                 sourceProof.add(List.of(unit.get("path"),unit.get("hash"),unit.get("world")));
-            }
+            } else primary.add(unit);
         }
         if (auxiliary.isEmpty() || primary.isEmpty()) return;
-        List<Map<String,Object>> all=new ArrayList<>();
         boolean generated=false;
-        Map<Callback,Map<String,Object>> wanted=new HashMap<>();
-        for(Object raw:Json.list(original.get("declarations"))) {
-            var declaration=Json.map(raw);all.add(declaration);
+        Map<Callback,Map<String,Object>> wanted=new HashMap<>(), variables=new HashMap<>();
+        Map<String,Map<String,Object>> generatedTypes=new HashMap<>();
+        for(var declaration:all) {
             var attributes=map(declaration.get("attributes"));
             generated |= auxiliary.contains(declaration.get("source")) && "lombok_model".equals(attributes.get("binding_origin"));
             if ("LAMBDA".equals(attributes.get("element_kind")) && !auxiliary.contains(declaration.get("source")))
                 wanted.put(key(declaration),declaration);
+            if ("LOCAL_VARIABLE".equals(attributes.get("element_kind")) && !auxiliary.contains(declaration.get("source"))
+                    && Set.of("ERROR","UNKNOWN").contains(text(map(attributes.get("type_model")).get("kind"))))
+                variables.put(key(declaration),declaration);
+            if ("CLASS".equals(attributes.get("element_kind")) && auxiliary.contains(declaration.get("source"))
+                    && "lombok_model".equals(attributes.get("binding_origin")))generatedTypes.put(text(declaration.get("signature")),declaration);
         }
-        if (!generated || wanted.isEmpty()) return;
+        if (!generated || wanted.isEmpty() && variables.isEmpty()) return;
         var abi=new SupplementalAbi(all);
         List<Map<String,Object>> declarations=new ArrayList<>();
         Map<String,byte[]> classes;
@@ -85,6 +91,15 @@ final class SupplementalTypes {
             try {
                 for(Object raw:Json.list(supplemental.get("declarations"))) {
                     var declaration=Json.map(raw); var attributes=map(declaration.get("attributes"));
+                    if("LOCAL_VARIABLE".equals(attributes.get("element_kind"))) {
+                        var destination=variables.get(key(declaration));var type=map(attributes.get("type_model"));
+                        if(destination!=null && "DECLARED".equals(type.get("kind")) && complete(type,0)
+                                && generatedTypes.containsKey(type.get("element")))
+                            map(destination.get("attributes")).put("supplemental_variable",ExtensionContext.freezeMap(
+                                    Json.object("type_model",type,"binding_origin","javac_generated_signatures",
+                                            "signature_sha256",checksum,"auxiliary_inputs_sha256",inputs,
+                                            "original_evidence_retained",true)));
+                    }
                     if(!"LAMBDA".equals(attributes.get("element_kind")))continue;
                     var destination=wanted.get(key(declaration));
                     var functional=map(attributes.get("functional_type_model")); var sam=map(attributes.get("sam"));

@@ -16,6 +16,7 @@ from java_constructor_reference_alignment import ConstructorReferences
 from java_collector_alignment import Collectors
 from java_builder_chain_alignment import BuilderChains
 from java_supplemental_signature_alignment import SupplementalSignatures
+from java_module_abi_boundary_alignment import ModuleBoundary
 from java_diamond_alignment import Diamonds
 from java_lambda_input_alignment import LambdaInputs
 from java_contextual_invocation_alignment import ContextualInvocations
@@ -32,7 +33,7 @@ def main():
     frozen = alignment.input_files()
     artifacts = reference.probe_artifacts(True)
     classes = (Bindings, GraphCalls, TargetReturns, FunctionalOutputs, SourceParameters,
-               GenericReferences, ConstructorReferences, Collectors, BuilderChains, SupplementalSignatures, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports)
+               GenericReferences, ConstructorReferences, Collectors, BuilderChains, SupplementalSignatures, ModuleBoundary, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports)
     suite = unittest.TestSuite()
     for case in classes:
         case.analyze = reference.native_analyze

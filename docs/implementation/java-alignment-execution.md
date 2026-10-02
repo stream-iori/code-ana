@@ -278,3 +278,12 @@ graph-transfer-lifecycle-product-final-sdk8.log：重建后的产品 bridge 与�
 ## Lombok 注解复制覆盖：产品修正
 
 不再按 NonNull/NotNull 等名称后缀推断未完成能力；使用冻结实际复制名单，Deprecated 单独遵循原政策。独立 lombok-copy-policy-frozen/receipt.json：七个调用严格相等，Validation 的完整覆盖及 CopyCandidate 的 annotation_propagation 部分覆盖逐字段相等，无产物漂移。产品 test-compile 成功；lombok-copy-policy-product-regressions.log 的新正/负例、Builder、SuperBuilder 共 22 项通过（31.366 秒）。实际复制候选继续明确 partial，未降低原门禁。native 重建复验待完成。
+
+
+## 上游有效 ABI 与局部变量：产品 JVM 验收
+
+Java 以真实 world 和完整声明覆盖选择辅助 NoCode 输入，不再按 MAIN/TEST 一刀切换回调关系。原 javac 属性/诊断保留；已验证的生成嵌套类局部变量另存 supplemental_variable，恢复目标仍为 possible。一个模块的解析/编码失败、部分 Lombok 或不可投影 ABI 保留 SOURCE，不丢弃其他健康模块的证明。模块缓存仍保存原始目录，full/cache/delta 全字段等价；通用 Rust 缓存迁移未完成。
+
+module-abi-boundary-product-regressions.log：34 项产品 JVM 回归通过（85.260 秒）；额外解析失败模块负例 1 项通过（1.465 秒）。supplemental-reference-20261003-053848-18473：五组冻结 MAIN/TEST 投影相等；MAIN fixture 修正为真正单 world，并捕获与 oracle 相同的 Lombok 配置。module-abi-reference-20261003-054001：实际 Maven 两模块的完整 Builder 4/4、部分 Delegate 1/1 对照通过，两份均无输入/产物漂移。永久模块边界七项已接入 JVM、opt-in 图消费者和 native fixture 门禁；Maven oracle 支持 native 独立重跑。
+
+该阶段尚未更新 native；真实 core/service SOURCE 差分仍使用 545f28a 的缺 179/多 76，调用仍为 81 个独立缺失及 6 对状态差异。418/418 的隔离 MAIN 回调不能替代完整新版本真实对照。

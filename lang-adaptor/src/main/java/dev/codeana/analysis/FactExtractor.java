@@ -187,7 +187,7 @@ public final class FactExtractor {
     }
 
     public List<Object> extract(Map<String, Object> model) throws Exception {
-        SourceTypeReferences sourceTypes = new SourceTypeReferences(model, "TEST".equals(context.get("scope")));
+        SourceTypeReferences sourceTypes = new SourceTypeReferences(model, true);
         Map<String, Map<String, Object>> callSites = new HashMap<>();
         Map<String, List<String>> annotationOrigins = new HashMap<>();
         // Locals in auxiliary method bodies are compiler inputs, not dependency API. Retain

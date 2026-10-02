@@ -129,6 +129,12 @@
       "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/BinarySignatureGraph.java",
       "changes": "Adapt ASM signature grammar into detached shared graph nodes, preserving class/method formal shadowing, recursive bounds, enclosing callable formals, unknown-owner evidence and metadata. Original reader remains the independent frozen oracle. Product binary graph is opt-in; node/signature/work/cancellation budgets and public graph encoding are code-ana contracts. No reference storage, scheduling, reflection or protocol dependencies.",
       "license": "Reference repository has no root license declaration; preserve existing provenance and internal reuse context."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacSignaturePlan.java",
+      "sha256": "424ee87cb9d303bc4461b509d635dd981da63adf9b8ae95cda40d83abf97b1f8",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/ModuleAbiEligibility.java",
+      "changes": "Adapt frozen MAIN module boundary, successful source parsing, complete aggregate Lombok coverage and verifiable NoCode projection; retain SOURCE per unavailable world and original compiler evidence."
     }
   ]
 }

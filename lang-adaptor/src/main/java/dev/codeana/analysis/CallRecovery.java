@@ -334,8 +334,12 @@ final class CallRecovery {
             if (parameter != null) return parameter;
         }
         Map<String, Object> declaration = known.get(text(node.get("symbol")));
-        if (declaration != null)
-            return new Result(map(map(declaration.get("attributes")).get("type_model")), false);
+        if (declaration != null) {
+            Map<String,Object> attributes=map(declaration.get("attributes"));
+            Map<String,Object> proof=map(attributes.get("supplemental_variable"));
+            if (!proof.isEmpty()) return new Result(map(proof.get("type_model")),true);
+            return new Result(map(attributes.get("type_model")), false);
+        }
         if (kind.equals("NULL_LITERAL"))
             return new Result(Json.object("kind", "NULL", "complete", true), false);
         if (kind.equals("STRING_LITERAL")) return new Result(named("java.lang.String"), false);
