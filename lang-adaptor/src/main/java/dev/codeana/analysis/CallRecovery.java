@@ -484,6 +484,9 @@ final class CallRecovery {
                 }
                 if (receiver.isEmpty()) receiver = named(text(attrs.get("caller_type")));
             }
+            boolean uninstantiatedMethodReceiver = kind(receiver).equals("TYPEVAR")
+                    && "binary_signature".equals(receiver.get("origin"))
+                    && text(receiver.get("owner")).contains("#");
             receiver = types.readable(receiver, depth + 1);
             if (!kind(receiver).equals("DECLARED"))
                 return unavailable(attrs, "receiver_unavailable");
@@ -550,7 +553,7 @@ final class CallRecovery {
                 Located location = queue.removeFirst();
                 Map<String, Object> use = location.use;
                 String className = text(use.get("element"));
-                if (!seen.add(Json.write(use))) continue;
+                if (!seen.add(TypeOperations.identity(use))) continue;
                 if (seen.size() > 256) throw new TypeOperations.Budget();
                 if (types.attributes(className).isEmpty()) {
                     uncertain = true;
@@ -676,6 +679,8 @@ final class CallRecovery {
             }
             if (uncertain) return unavailable(attrs, "incomplete_hierarchy");
             if (applicable.isEmpty()) {
+                if(uninstantiatedMethodReceiver)
+                    return unavailable(attrs,"receiver_uninstantiated_method_variable");
                 Result confirmed = confirmedUnknownArgument(call, receiver, arguments, explicitTypes, reference, depth + 1);
                 if (confirmed != null) return confirmed;
                 return unavailable(attrs, "no_applicable_candidate");
@@ -1113,7 +1118,7 @@ final class CallRecovery {
             Located located = queue.removeFirst();
             Map<String, Object> use = located.use;
             String owner = text(use.get("element"));
-            if (!seen.add(Json.write(use))) continue;
+            if (!seen.add(TypeOperations.identity(use))) continue;
             if (seen.size() > 256 || types.attributes(owner).isEmpty()) return null;
             List<Map<String, Object>> declarations = members.getOrDefault(owner, List.of());
             if (!sources.containsKey(owner)) {
@@ -1565,6 +1570,25 @@ final class CallRecovery {
     private boolean mentionsFormal(Map<String, Object> type, String owner, int depth) {
         step(depth);
         if (owner.isEmpty()) return false;
+        if (dev.codeana.common.TypeGraph.isView(type)) {
+            dev.codeana.common.TypeGraph graph=dev.codeana.common.TypeGraph.owner(type);
+            ArrayDeque<Integer> pending=new ArrayDeque<>();
+            Set<Integer> seen=new HashSet<>();pending.add(dev.codeana.common.TypeGraph.reference(type));
+            while(!pending.isEmpty()) {
+                step(depth);int id=pending.removeFirst();if(!seen.add(id))continue;
+                Map<String,Object> node=graph.node(id);
+                if("TYPEVAR".equals(node.get("kind"))) {
+                    if(owner.equals(node.get("owner")))return true;
+                    continue;
+                }
+                for(String role:List.of("component","enclosing","extends","super")) {
+                    Object child=node.get(role);
+                    if(child instanceof Number && ((Number)child).intValue()>=0)pending.add(((Number)child).intValue());
+                }
+                for(Object child:list(node.get("arguments")))pending.add(((Number)child).intValue());
+            }
+            return false;
+        }
         if (kind(type).equals("TYPEVAR")) return owner.equals(type.get("owner"));
         for (String key : List.of("component", "enclosing", "extends", "super"))
             if (type.get(key) instanceof Map
@@ -2066,7 +2090,7 @@ final class CallRecovery {
                                     "return_type_model",
                                     type.get("return"),
                                     "type_parameter_models",
-                                    type.get("type_parameters"),
+                                    raw.getOrDefault("type_parameters", type.get("type_parameters")),
                                     "binary_class",
                                     found.get("declaration"),
                                     "binary_member",

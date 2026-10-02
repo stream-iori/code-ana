@@ -38,6 +38,7 @@ public final class BinaryIndex implements AutoCloseable {
     private final List<Path> archives = new ArrayList<>();
     private final Map<Integer, Map<String, Object>> artifactOrigins = new HashMap<>();
     private final int classpathSize;
+    private final boolean typeGraph;
     private final Map<Integer, FrozenArchive> openArchives = new LinkedHashMap<>(16, .75f, true);
     private final Map<String, Map<String, Object>> classes = new LinkedHashMap<>(64, .75f, true);
     private final Map<String, Long> classWeights = new HashMap<>();
@@ -55,6 +56,7 @@ public final class BinaryIndex implements AutoCloseable {
         if (cacheWeight < 0 || cacheWeight > MAX_CLASS_CACHE_WEIGHT)
             throw new IllegalArgumentException("BINARY_CACHE_BUDGET");
         maximumClassWeight = cacheWeight;
+        typeGraph = Boolean.TRUE.equals(context.get("type_graph"));
         for (Object item : Json.list(context.get("classpath")))
             archives.add(Path.of((String) item));
         classpathSize = archives.size();
@@ -222,6 +224,7 @@ public final class BinaryIndex implements AutoCloseable {
     }
 
     private void resolveEnclosing(Map<String, Object> result) throws IOException {
+        if (typeGraph) { resolveGraph(result); return; }
         Map<String, Object> declaration = Json.map(result.get("declaration"));
         Map<String, String> scope = new HashMap<>();
         Object enclosing = declaration.get("enclosing_type");
@@ -249,6 +252,38 @@ public final class BinaryIndex implements AutoCloseable {
         }
     }
 
+    private void resolveGraph(Map<String,Object> result) throws IOException {
+        Map<String,Object> declaration=Json.map(result.get("declaration"));
+        Map<String,Map<String,Object>> scope=new HashMap<>();
+        Object enclosing=declaration.get("enclosing_type");
+        if(enclosing instanceof String && !Boolean.TRUE.equals(declaration.get("static_nested"))) {
+            Map<String,Object> outer=readClass((String)enclosing);
+            if(outer!=null) {
+                collectGraphFormals(Json.map(Json.map(outer.get("declaration")).get("type_model")).get("type_parameters"),scope);
+                Object callable=declaration.get("enclosing_callable");
+                if(callable instanceof String)collectGraphFormals(Json.map(Json.map(outer.get("members")).get(callable)).get("type_parameters"),scope);
+            }
+        }
+        BinarySignatureGraph graph=new BinarySignatureGraph(Json.string(declaration,"name"),
+                (String)declaration.get("generic_signature"),(String)declaration.remove("graph_superclass"),
+                Json.list(declaration.remove("graph_interfaces")).stream().map(String.class::cast).toList(),scope);
+        Map<String,Object> members=Json.map(result.get("members"));
+        for(var entry:members.entrySet()) {
+            Map<String,Object> member=Json.map(entry.getValue());String signature=(String)member.get("generic_signature"),descriptor=(String)member.get("descriptor");
+            if("FIELD".equals(member.get("kind")))graph.field(entry.getKey(),signature,descriptor);
+            else graph.method(entry.getKey(),signature,descriptor);
+        }
+        Map<String,Object> projected=graph.finish();declaration.put("type_model",projected.get("declaration"));
+        for(var entry:members.entrySet()) {
+            Map<String,Object> member=Json.map(entry.getValue());
+            if("FIELD".equals(member.get("kind")))member.put("type_model",Json.map(projected.get("fields")).get(entry.getKey()));
+            else {Map<String,Object> method=Json.map(Json.map(projected.get("methods")).get(entry.getKey()));member.put("type_model",method.get("type_model"));member.put("type_parameters",method.get("type_parameters"));}
+        }
+    }
+    private static void collectGraphFormals(Object raw,Map<String,Map<String,Object>> scope) {
+        for(Object value:Json.list(raw)){Map<String,Object> formal=Json.map(value);scope.put(Json.string(formal,"name"),formal);}
+    }
+
     private static void collectVariables(Map<String, Object> model, Map<String, String> scope) {
         if (!(model.get("type_parameters") instanceof List)) return;
         for (Object raw : Json.list(model.get("type_parameters"))) {
@@ -257,7 +292,7 @@ public final class BinaryIndex implements AutoCloseable {
         }
     }
 
-    private static Map<String, Object> parse(byte[] bytes) {
+    private Map<String, Object> parse(byte[] bytes) {
         Map<String, Object> declaration = Json.object();
         Map<String, Object> members = Json.object();
         BinaryAnnotations metadata = new BinaryAnnotations();
@@ -311,9 +346,13 @@ public final class BinaryIndex implements AutoCloseable {
                         declaration.put("access", access);
                         declaration.put("generic_signature", signature);
                         declaration.put("parents", parents);
-                        Map<String, Object> model =
-                                BinaryTypes.declaration(signature, superName, interfaces);
-                        BinaryTypes.owners(model, binaryName, Map.of());
+                        if (typeGraph) {
+                            declaration.put("graph_superclass", superName == null ? null : superName.replace('/', '.'));
+                            declaration.put("graph_interfaces", List.of(interfaces).stream().map(value -> value.replace('/', '.')).toList());
+                        }
+                        Map<String, Object> model = typeGraph ? Json.object("type_parameters", List.of())
+                                : BinaryTypes.declaration(signature, superName, interfaces);
+                        if (!typeGraph) BinaryTypes.owners(model, binaryName, Map.of());
                         for (Object formal : Json.list(model.get("type_parameters")))
                             variables.put(Json.string(Json.map(formal), "name"), binaryName);
                         declaration.put("type_model", model);
@@ -359,8 +398,8 @@ public final class BinaryIndex implements AutoCloseable {
                                         constant(value),
                                         "annotations",
                                         new ArrayList<String>());
-                        Map<String, Object> model = BinaryTypes.field(signature, descriptor);
-                        BinaryTypes.owners(model, binaryName, variables);
+                        Map<String, Object> model = typeGraph ? Json.object() : BinaryTypes.field(signature, descriptor);
+                        if (!typeGraph) BinaryTypes.owners(model, binaryName, variables);
                         member.put("type_model", model);
                         member.put("annotation_metadata", new ArrayList<Object>());
                         member.put("type_annotations", new ArrayList<Object>());
@@ -411,8 +450,8 @@ public final class BinaryIndex implements AutoCloseable {
                                         exceptions == null ? List.of() : List.of(exceptions),
                                         "annotations",
                                         new ArrayList<String>());
-                        Map<String, Object> model = BinaryTypes.method(signature, descriptor);
-                        BinaryTypes.owners(model, key.toString(), variables);
+                        Map<String, Object> model = typeGraph ? Json.object() : BinaryTypes.method(signature, descriptor);
+                        if (!typeGraph) BinaryTypes.owners(model, key.toString(), variables);
                         member.put("type_model", model);
                         member.put("annotation_metadata", new ArrayList<Object>());
                         member.put("type_annotations", new ArrayList<Object>());

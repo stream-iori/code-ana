@@ -134,7 +134,7 @@ final class ModeledOverrides {
                     if((access&Opcodes.ACC_STATIC)!=0) flags.add("static");
                     if((access&Opcodes.ACC_FINAL)!=0) flags.add("final");
                     Map<String,Object> shape=map(member.get("type_model"));
-                    if(!list(shape.get("type_parameters")).isEmpty()) continue; // Same binary generic-method guard as the reference.
+                    if(!list(member.getOrDefault("type_parameters",shape.get("type_parameters"))).isEmpty()) continue; // Same binary generic-method guard as the reference.
                     candidates.add(Json.object("signature",signature,"name",memberName,"attributes",Json.object(
                             "element_kind","METHOD","modifiers",new ArrayList<>(flags),"parameter_type_models",shape.get("parameters"),
                             "return_type_model",shape.get("return"),"type_parameter_models",List.of(),"binary_member",member,

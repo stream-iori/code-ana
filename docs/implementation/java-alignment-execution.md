@@ -234,3 +234,14 @@ MAIN 回调补充证据的独立取证：相同全部 MAIN 源码范围下，补
 冻结 Anatomist 对 80 层 Getter 调用链产生两个 possible 目标，旧图候选为 0/2，失败回执保留。独立栈确认无变化的类型替换和 mentionsFormal 树递归耗尽深度预算。隔离修正对图节点迭代遍历，原调用递归/总工作预算保留；无待替换变量时复用原不可变根，类型身份从平面闭包取证，避免为 visited key 展开整棵树。`graph-operations-deep-regression-corrected-2.log`：21 项通过（20 原 Collector 回归加 1 项 graph 深层变更/删除 full-delta 证明），120.589 秒。最初诊断脚本继承测试类并遮蔽 targets 导致工具错误，相关失败日志保留；不将其记为产品失败或通过。`graph-operations-functional-27/receipt.json`：27 组显式图冻结调用投影相等，无产物漂移。完整同版本图消费者/native 尚待复验。
 
 `type-graph-consumers-jvm-20261003-042022/receipt.json`：全类型根转换 v2 的 102 项 JVM 消费者通过，453.844 秒，275 次图请求、258 次 Rust 校验，无输入/产物漂移。该候选包含简写模型规范化，但尚未包含随后隔离的深层调用运算修正；后者完整绑定与消费者另跑，不能混成同版本通过。
+
+
+## 二进制与全部类型根：通过候选合入
+
+`type-graph-bindings-jvm-20261003-042058/receipt.json`：201 项、463 次图请求、433 次 Rust 校验，815.809 秒，all_ok=true。`type-graph-consumers-jvm-20261003-042852/receipt.json`：102 项、275 次图请求、258 次 Rust 校验，405.225 秒，all_ok=true。两份均无输入/产物漂移；与 graph-operations-functional-27 同一隔离候选，现已合入正式源码，并补永久原始签名 oracle、formal/非法语法、根规范化及深层调用 full-delta 回归。产品重编译/native 尚待重新取证。默认图及版本尚未切换。
+
+真实图探针的 compiler 512 MiB 堆耗尽（Java OutOfMemoryError，退出 1），不是外部杀进程；提高为 1 GiB 的隔离请求被 INVALID_JAVA_COMPILER_HEAP 拒绝，未修改产品上限。逐源释放 CompilerTypeGraph 的编译器对象索引，以及真正深层 formal 替换仍仅隔离验证，不混入上述通过候选；不据此宣称 iopengw 图模式通过。
+
+正式源码 test-compile 后，`all-type-roots-product-focused.log` 的二进制签名 2、深层图调用 1、默认 Collector 20、MAIN/TEST 补充证明 10 项全部通过；SDK8 的 `all-type-roots-sdk8-model-regressions.log` 九项通过。原始冻结签名 Java oracle 位于独立 frozen-test 源集，仅专项编译，不进入产品依赖。
+
+隔离 `graph-transfer-lifecycle-candidate` 的原 512 MiB 编译器 MAIN/TEST 已终态退出 0；独立冻结数据库直接读取的九个已知差异源码调用多重集为 1411/1440，缺 35、多 6（匿名别名未统一），与旧 JVM 探针的原始目标完全相等。原先从旧差分反推参考的脚本计数错误已标为 rejected，正式诊断用 independent-call-diff.json，不使用反推结果。此不是全 module/native/容量验收。归档释放与逐源图回收未合入；首次完整候选门禁与产品 test-compile 重叠，已受控停止并保留 rejected-overlap 回执，编译完成后重跑。

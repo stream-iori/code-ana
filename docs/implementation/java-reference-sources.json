@@ -115,6 +115,20 @@
       "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerTypeGraph.java",
       "changes": "Adapt identity graph and recursive type-variable bounds into the detached TypeGraph kernel. Only JDK compiler public APIs and code-ana detached maps; graph validation, canonical roots, cancellation rollback and flat archives are independent implementations. Five SDK8 tests include the frozen worker in the same compiler context, 20 roots/116 nodes and 80 generic levels. Kernel promotion alone does not prove product graph integration.",
       "license": "Reference repository has no root license declaration; preserve existing provenance and internal reuse context."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/core/asmsolver/JavaBinaryTypes.java",
+      "sha256": "739b7bca56ee255ea8e4b810fa4eebb2790855cd1ffa5a50c1adf1d4543fe61e",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/BinarySignatureGraph.java",
+      "changes": "Adapt ASM signature grammar into detached shared graph nodes, preserving class/method formal shadowing, recursive bounds, enclosing callable formals, unknown-owner evidence and metadata. Original reader remains the independent frozen oracle. Product binary graph is opt-in; node/signature/work/cancellation budgets and public graph encoding are code-ana contracts. No reference storage, scheduling, reflection or protocol dependencies.",
+      "license": "Reference repository has no root license declaration; preserve existing provenance and internal reuse context."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/core/asmsolver/JavaBinaryReader.java",
+      "sha256": "d57a6ce400c48ad91a910459bdb23e6fc61101c9f0f22c271384b51467210c19",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/BinarySignatureGraph.java",
+      "changes": "Adapt ASM signature grammar into detached shared graph nodes, preserving class/method formal shadowing, recursive bounds, enclosing callable formals, unknown-owner evidence and metadata. Original reader remains the independent frozen oracle. Product binary graph is opt-in; node/signature/work/cancellation budgets and public graph encoding are code-ana contracts. No reference storage, scheduling, reflection or protocol dependencies.",
+      "license": "Reference repository has no root license declaration; preserve existing provenance and internal reuse context."
     }
   ]
 }

@@ -5,6 +5,9 @@ import java.util.*;
 /** Public per-fact graph closures. Neither compiler node IDs nor recursive type trees cross the wire. */
 public final class TypeEvidence {
     public static final String TABLE = "java_type_graphs";
+    private static final Set<String> MODEL_KINDS = new HashSet<String>(Arrays.asList(
+        "ARRAY","DECLARED","ERROR","TYPEVAR","CAPTURE","WILDCARD","INTERSECTION","UNION","EXECUTABLE",
+        "BOOLEAN","BYTE","SHORT","INT","LONG","CHAR","FLOAT","DOUBLE","VOID","NONE","NULL","OTHER","UNKNOWN","POLY"));
     private TypeEvidence() {}
 
     private static final class Node {
@@ -39,6 +42,33 @@ public final class TypeEvidence {
             for(int cursor=0;cursor<nodes.size();cursor++) {
                 Node source=nodes.get(cursor);Map<String,Object> raw=source.graph==null?source.value:source.graph.node(source.reference);
                 Map<String,Object> copy=new TreeMap<String,Object>();
+                boolean captured="CAPTURE".equals(raw.get("kind"));
+                if(captured) {
+                    raw=new TreeMap<String,Object>(raw);
+                    raw.put("kind","TYPEVAR");raw.put("version",3);
+                    raw.put("capture_identity",raw.get("capture"));raw.put("capture",true);
+                    raw.put("owner_unavailable",true);
+                    if(!raw.containsKey("lower") || raw.get("lower")==null)
+                        raw.put("lower",Json.object("version",3,"kind","NULL","complete",true));
+                }
+                if(source.graph==null && "TYPEVAR".equals(raw.get("kind"))) {
+                    raw=new TreeMap<String,Object>(raw);
+                    if(!raw.containsKey("lower") || raw.get("lower")==null)
+                        raw.put("lower",Json.object("version",3,"kind","NULL","complete",true));
+                    if(!raw.containsKey("upper") || raw.get("upper")==null) {
+                        raw.put("complete",false);raw.put("bounds_unavailable",true);
+                    }
+                }
+                if(source.graph==null && ("DECLARED".equals(raw.get("kind")) || "ERROR".equals(raw.get("kind")))) {
+                    raw=new TreeMap<String,Object>(raw);
+                    // Legacy named/NoCode models represent absent arguments as the empty list.
+                    raw.putIfAbsent("arguments",Collections.emptyList());
+                }
+                if(source.graph==null && "WILDCARD".equals(raw.get("kind"))) {
+                    raw=new TreeMap<String,Object>(raw);
+                    // An absent bound is an absent graph edge, never an invented Object bound.
+                    raw.putIfAbsent("extends",null);raw.putIfAbsent("super",null);
+                }
                 for(Map.Entry<String,Object> entry:raw.entrySet()) {
                     String key=entry.getKey();Object value=entry.getValue();
                     if(CanonicalTypes.SINGLE.contains(key)) {
@@ -55,7 +85,17 @@ public final class TypeEvidence {
                 }
                 values.add(copy);
             }
-            Map<String,Object> payload=CanonicalTypes.encode(new TypeGraph(values),roots);
+            TypeGraph.Builder builder=new TypeGraph.Builder();
+            for(Map<String,Object> row:values) {
+                Map<String,Object> metadata=new TreeMap<String,Object>(row);
+                for(String role:CanonicalTypes.SINGLE)metadata.remove(role);
+                for(String role:CanonicalTypes.MANY)metadata.remove(role);
+                builder.reserve(metadata);
+            }
+            for(int id=0;id<values.size();id++)for(Map.Entry<String,Object> entry:values.get(id).entrySet())
+                if(CanonicalTypes.SINGLE.contains(entry.getKey()) || CanonicalTypes.MANY.contains(entry.getKey()))
+                    builder.edit(id).put(entry.getKey(),entry.getValue());
+            Map<String,Object> payload=CanonicalTypes.encode(builder.seal(),roots);
             List<Object> canonicalRoots=Json.list(payload.get("roots"));List<Integer> unique=new ArrayList<Integer>();Map<Integer,Integer> slots=new LinkedHashMap<Integer,Integer>();
             for(int i=0;i<canonicalRoots.size();i++) {
                 int root=((Number)canonicalRoots.get(i)).intValue();Integer slot=slots.get(root);
@@ -66,8 +106,10 @@ public final class TypeEvidence {
         }
         Object pack(Object raw,int depth) {
             if(depth>Json.MAX_DEPTH)throw new IllegalArgumentException("TYPE_EVIDENCE_DEPTH_BUDGET");
-            if(TypeGraph.isView(raw) || raw instanceof Map && Json.map(raw).get("version") instanceof Number
-                    && Json.number(Json.map(raw),"version")==3 && Json.map(raw).get("kind") instanceof String
+            if(TypeGraph.isView(raw) || raw instanceof Map && (!Json.map(raw).containsKey("version")
+                    || Json.map(raw).get("version") instanceof Number
+                        && (Json.number(Json.map(raw),"version")==3 || Json.number(Json.map(raw),"version")==2))
+                    && MODEL_KINDS.contains(Json.map(raw).get("kind"))
                     && Json.map(raw).get("complete") instanceof Boolean) {
                 int root=model(Json.map(raw));List<Integer> reference=new ArrayList<Integer>(Arrays.asList(0,roots.size()));
                 roots.add(root);references.add(reference);return Json.object("$java_type",reference);

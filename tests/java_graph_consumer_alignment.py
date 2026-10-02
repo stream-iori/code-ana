@@ -28,7 +28,7 @@ MODULES = (
 )
 
 BINDING_MODULES = (
-    'java_binding_alignment', 'java_diagnostic_boundary_alignment',
+    'java_binding_alignment', 'java_graph_call_alignment', 'java_diagnostic_boundary_alignment',
     'java_target_return_alignment', 'java_functional_output_alignment',
     'java_generic_reference_alignment', 'java_constructor_reference_alignment',
     'java_collector_alignment', 'java_builder_chain_alignment',

@@ -107,6 +107,11 @@ final class TypeOperations {
                 true);
     }
 
+    static String identity(Map<String,Object> type) {
+        return Json.write(dev.codeana.common.TypeGraph.isView(type)
+                ? dev.codeana.common.TypeEvidence.encode(Json.object("type",type)) : type);
+    }
+
     static String variable(Map<String, Object> type) {
         String owner = text(type.get("owner")), name = text(type.get("name"));
         return owner.isEmpty() || name.isEmpty() ? "" : owner + '\0' + name;
@@ -227,6 +232,7 @@ final class TypeOperations {
 
     Map<String, Object> substitute(
             Map<String, Object> type, Map<String, Map<String, Object>> bindings) {
+        if (bindings.isEmpty()) return type;
         return substitute(type, bindings, new HashSet<>(), 0);
     }
 
@@ -236,6 +242,7 @@ final class TypeOperations {
             Set<String> visiting,
             int depth) {
         step(depth);
+        if (dev.codeana.common.TypeGraph.isView(type) && !graphNeedsSubstitution(type,bindings)) return type;
         if (kind(type).equals("TYPEVAR")) {
             String key = variable(type);
             Map<String, Object> bound = bindings.get(key);
@@ -283,6 +290,27 @@ final class TypeOperations {
         return result == null ? type : ModelArchive.freezeType(result);
     }
 
+    private boolean graphNeedsSubstitution(Map<String,Object> type,Map<String,Map<String,Object>> bindings) {
+        dev.codeana.common.TypeGraph graph=dev.codeana.common.TypeGraph.owner(type);
+        ArrayDeque<Integer> pending=new ArrayDeque<>();Set<Integer> seen=new HashSet<>();
+        pending.add(dev.codeana.common.TypeGraph.reference(type));
+        while(!pending.isEmpty()) {
+            step(0);int id=pending.removeFirst();if(!seen.add(id))continue;
+            Map<String,Object> row=graph.node(id);
+            if("TYPEVAR".equals(row.get("kind"))) {
+                if(bindings.containsKey(variable(row)))return true;
+                continue;
+            }
+            for(String role:List.of("component","enclosing","extends","super","upper","lower","return")) {
+                Object child=row.get(role);
+                if(child instanceof Number && ((Number)child).intValue()>=0)pending.add(((Number)child).intValue());
+            }
+            for(String role:List.of("arguments","parameters","bounds","alternatives","throws"))
+                for(Object child:list(row.get(role)))pending.add(((Number)child).intValue());
+        }
+        return false;
+    }
+
     List<Map<String, Object>> parents(Map<String, Object> type, String capture) throws IOException {
         Map<String, Object> attrs = attributes(text(type.get("element")));
         Map<String, Map<String, Object>> substitutions = bindings(type, capture);
@@ -311,7 +339,7 @@ final class TypeOperations {
                 continue;
             }
             String key =
-                    Json.sha(Json.write(current).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    Json.sha(identity(current).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             if (!seen.add(key)) continue;
             if (seen.size() > 256) throw new Budget();
             String name = text(current.get("element"));
