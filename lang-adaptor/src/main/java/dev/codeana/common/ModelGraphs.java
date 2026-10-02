@@ -5,6 +5,10 @@ import java.util.*;
 
 /** Model-local flat graph dictionaries. Roots never recursively serialize their shared children. */
 final class ModelGraphs {
+    private final boolean encodingOnly;
+    ModelGraphs() {this(false);}
+    ModelGraphs(boolean encodingOnly) {this.encodingOnly=encodingOnly;}
+    void retireEncoderIdentities() {identities.clear();}
     private final List<List<Map<String,Object>>> nodes = new ArrayList<List<Map<String,Object>>>();
     private final List<TypeGraph> decoded = new ArrayList<TypeGraph>();
     private final IdentityHashMap<TypeGraph,Integer> identities = new IdentityHashMap<TypeGraph,Integer>();
@@ -31,7 +35,7 @@ final class ModelGraphs {
             Map<String,Object> node=new LinkedHashMap<String,Object>(graph.node(index));
             account(node);
             records.add(Json.object("kind","graph_node","graph",id,"id",index,"value",node));
-            values.add(node);decoded.set(id,null);
+            values.add(encodingOnly?null:node);decoded.set(id,null);
         }
         return Json.object("$graph",Arrays.asList(id,TypeGraph.reference(view)));
     }

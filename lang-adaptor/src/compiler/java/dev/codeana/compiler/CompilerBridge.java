@@ -99,7 +99,7 @@ public final class CompilerBridge implements AutoCloseable {
         long bytes;
         long archiveBytes = ModelArchive.byteLimit(request);
         try (CompilerBridge analysis = new CompilerBridge(result.toAbsolutePath().getParent(), archiveBytes)) {
-            bytes = ModelArchive.write(result, analysis.analyze(request), archiveBytes);
+            bytes = ModelArchive.writeAndReleaseRows(result, analysis.analyze(request), archiveBytes);
         }
         System.out.println(
                 Json.write(
@@ -132,7 +132,7 @@ public final class CompilerBridge implements AutoCloseable {
                 Map<String, Object> request = Json.map(Json.parse(Json.read(Paths.get(Json.string(command, "request")))));
                 long archiveBytes = ModelArchive.byteLimit(request);
                 analysis = new CompilerBridge(result.toAbsolutePath().getParent(), archiveBytes);
-                long bytes = ModelArchive.write(result, analysis.analyze(request), archiveBytes);
+                long bytes = ModelArchive.writeAndReleaseRows(result, analysis.analyze(request), archiveBytes);
                 end.put("model_archive_bytes", archiveBytes);
                 end.put("context", request.get("context"));
                 end.put("bytes", bytes);
@@ -259,11 +259,13 @@ public final class CompilerBridge implements AutoCloseable {
             for (CompilationUnitTree unit : units) {
                 currentSource = Json.string(sources.get(Paths.get(unit.getSourceFile().toUri()).toRealPath().toString()),"path");
                 new Scanner(unit, true).scan(unit, null);
+                if(graphTypes) {CompilerTypeGraph graph=typeGraphs.remove(currentSource);if(graph!=null)graph.snapshot();}
             }
             phase = "observations";
             for (CompilationUnitTree unit : units) {
                 currentSource = Json.string(sources.get(Paths.get(unit.getSourceFile().toUri()).toRealPath().toString()),"path");
                 new Scanner(unit, false).scan(unit, null);
+                if(graphTypes) {CompilerTypeGraph graph=typeGraphs.remove(currentSource);if(graph!=null)graph.snapshot();}
             }
             for (Diagnostic<? extends JavaFileObject> d : listener.items) {
                 Map<String, Object> s =

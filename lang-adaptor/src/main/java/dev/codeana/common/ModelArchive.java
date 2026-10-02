@@ -28,11 +28,12 @@ public final class ModelArchive {
 
     private static final class Encoder {
         final RecordArchive records;
-        final ModelGraphs graphs = new ModelGraphs();
+        final ModelGraphs graphs;
         final Map<String,Integer> types = new HashMap<String,Integer>();
         final List<Integer> typePositions = new ArrayList<Integer>();
         long typeBytes;
-        Encoder(RecordArchive records) { this.records=records; }
+        Encoder(RecordArchive records) {this(records,false);}
+        Encoder(RecordArchive records,boolean encodingOnly) { this.records=records;graphs=new ModelGraphs(encodingOnly); }
         Object pack(Object raw, int depth) {
             if (depth>Json.MAX_DEPTH) throw new IllegalArgumentException("MODEL_DEPTH_BUDGET");
             if (TypeGraph.isView(raw)) return graphs.pack(Json.map(raw),records);
@@ -120,6 +121,10 @@ public final class ModelArchive {
             if (sealed) return;
             flush(); records.seal(); encoder.graphs.seal(); encoder.types.clear(); sealed=true;
         }
+        private void prepareTransfer() throws IOException {
+            if(closed)throw new IllegalStateException("MODEL_SPOOL_CLOSED");
+            if(!sealed) {flush();records.seal();encoder.graphs.retireEncoderIdentities();encoder.types.clear();sealed=true;}
+        }
         public int size() { return count+(pending==null ? 0 : 1); }
         public Object get(int index) {
             if (closed) throw new IllegalStateException("MODEL_SPOOL_CLOSED");
@@ -136,15 +141,24 @@ public final class ModelArchive {
         }
     }
     public static long write(Path path, Map<String,Object> model, long maxBytes) throws IOException {
+        return write(path,model,maxBytes,false);
+    }
+    /** Compiler-owned transfer; caller still closes residual spools if a transfer fails. */
+    public static long writeAndReleaseRows(Path path, Map<String,Object> model, long maxBytes) throws IOException {
+        return write(path,model,maxBytes,true);
+    }
+    private static long write(Path path, Map<String,Object> model, long maxBytes,boolean releaseRows) throws IOException {
         if (Json.number(model,"version")!=VERSION) throw new IOException("MODEL_ARCHIVE_VERSION");
+        if(releaseRows)for(String section:SECTIONS)if(model.get(section) instanceof RowSpool)((RowSpool)model.get(section)).prepareTransfer();
         try (RecordArchive records=RecordArchive.create(path,maxBytes,MAX_ROWS)) {
             records.add(Json.object("kind","header","version",VERSION,"context",Json.string(model,"context"),"sections",SECTIONS));
-            Encoder encoder=new Encoder(records);
+            Encoder encoder=new Encoder(records,true);
             Map<String,Object> counts=new LinkedHashMap<String,Object>();
             for (String section:SECTIONS) {
                 List<Object> rows=Json.list(model.get(section));
                 counts.put(section,rows.size());
                 for (Object row:rows) records.add(Json.object("kind","row","section",section,"value",encoder.pack(row,0)));
+                if(releaseRows && rows instanceof RowSpool) {((RowSpool)rows).close();encoder.graphs.retireEncoderIdentities();}
             }
             records.add(Json.object("kind","end","counts",counts,"types",encoder.types.size(),"graphs",encoder.graphs.counts()));
             records.seal(); return records.bytes();

@@ -36,7 +36,7 @@ class TypeGraphs(unittest.TestCase):
         compiler = models.ROOT / 'lang-adaptor/src/compiler/java/dev/codeana/compiler'
         compiler_test = models.ROOT / 'lang-adaptor/src/test/compiler/dev/codeana/compiler'
         files = [main / (n + '.java') for n in ('Json', 'FactHeaders', 'RecordArchive', 'TypeGraph', 'TypeGraphArchive', 'ModelGraphs', 'ModelArchive', 'ArchiveRows', 'TypeEvidence', 'CanonicalTypes')]
-        files += [test / (n + '.java') for n in ('TypeGraphProbe', 'TypeGraphCanonicalProbe', 'TypeGraphArchiveProbe', 'ModelGraphProbe', 'TypeEvidenceProbe', 'TypeEvidenceNormalizationProbe')]
+        files += [test / (n + '.java') for n in ('TypeGraphProbe', 'TypeGraphCanonicalProbe', 'TypeGraphArchiveProbe', 'ModelGraphProbe', 'TypeEvidenceProbe', 'TypeEvidenceNormalizationProbe', 'ModelTransferProbe')]
         files += [compiler / 'CompilerTypeGraph.java']
         files += [compiler_test / (n + '.java') for n in ('CompilerTypeGraphProbe', 'CompilerTypeGraphBudgetProbe', 'CompilerGraphArchiveProbe')]
         compiled = subprocess.run([str(models.JDK8 / 'bin/javac'), '-encoding', 'UTF-8', '-source', '8', '-target', '8',
@@ -66,6 +66,9 @@ class TypeGraphs(unittest.TestCase):
 
     def test_model_and_row_spool_share_flat_nodes_without_recursive_root_copies(self):
         self.run_probe('dev.codeana.common.ModelGraphProbe')
+
+    def test_compiler_transfer_preserves_graph_rows_and_cleans_consumed_and_failed_spools(self):
+        self.run_probe('dev.codeana.common.ModelTransferProbe')
 
     def test_public_fact_graph_closure_sharing_identity_cycles_and_invalid_references(self):
         self.run_probe('dev.codeana.common.TypeEvidenceProbe')
