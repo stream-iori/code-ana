@@ -1,0 +1,24 @@
+{
+  "reference_commit": "2dfc7977cb03095d14894f069ff30985551457b1",
+  "authorization": "User explicitly requested Anatomist implementation reuse and full capability alignment",
+  "license": "No repository-level LICENSE/NOTICE found in the reference checkout; no external redistribution authorization inferred",
+  "files": [
+    {
+      "source": "anatomist-core/src/maven-worker/java/com/anatomist/maven/MavenInputsWorker.java",
+      "sha256": "9aa671f0150cd7825da9ca563576abdd6a7ccec4a32b7c6d9b1a4a29c5627296"
+    },
+    {
+      "source": "anatomist-core/src/maven-worker/resources/META-INF/plexus/components.xml",
+      "sha256": "82f96f9e0825c1a6c85a8f80a68b495dae6c60e8fff3199dc7f4a5125304054a"
+    }
+  ],
+  "dependencies": [
+    "Maven 3.9.x core and its bundled Resolver API, provided by the explicit Maven executable"
+  ],
+  "changes": [
+    "Package and property/protocol markers renamed",
+    "Java 8 source property fallback",
+    "Per-module resolved status and active profile inventory"
+  ],
+  "runtime_boundary": "External explicit exporter only; never linked into native library or daemon"
+}

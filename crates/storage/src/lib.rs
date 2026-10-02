@@ -1,8 +1,10 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
+mod staged;
 use anyhow::{Context, Result, ensure};
 use codeana_model::*;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
+pub use staged::{StagedCandidate, StagedSummary};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -13,6 +15,7 @@ use std::{
 struct Coordination {
     readers: BTreeMap<String, usize>,
     staged_blobs: BTreeMap<String, u64>,
+    staged_candidates: BTreeSet<String>,
 }
 #[derive(Clone)]
 pub struct Store {
@@ -167,6 +170,44 @@ impl Store {
         }
         Ok(())
     }
+    /// Persist captured input files without materializing dependency archives in memory.
+    pub fn put_blob_files<T: AsRef<Path>>(&self, blobs: &BTreeMap<String, T>) -> Result<()> {
+        let mut guard = self.coord.lock().unwrap();
+        guard
+            .staged_blobs
+            .extend(blobs.keys().cloned().map(|h| (h, now())));
+        for (hash, source) in blobs {
+            ensure!(
+                hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()),
+                "INVALID_BLOB_ID"
+            );
+            let destination = self.home.join("blobs").join(hash);
+            if destination.exists() {
+                ensure!(hash_file(&destination)? == *hash, "CORRUPT_BLOB");
+                ensure!(hash_file(source.as_ref())? == *hash, "BLOB_HASH_MISMATCH");
+                continue;
+            }
+            let temporary = destination.with_file_name(new_id("write"));
+            let result = (|| -> Result<()> {
+                let mut input = std::fs::File::open(source.as_ref())?;
+                let mut output = std::fs::OpenOptions::new()
+                    .create_new(true)
+                    .write(true)
+                    .open(&temporary)?;
+                std::io::copy(&mut input, &mut output)?;
+                output.sync_all()?;
+                ensure!(hash_file(&temporary)? == *hash, "BLOB_HASH_MISMATCH");
+                std::fs::rename(&temporary, &destination)?;
+                sync_dir(destination.parent().context("BLOB_PARENT")?)?;
+                Ok(())
+            })();
+            if result.is_err() {
+                let _ = std::fs::remove_file(&temporary);
+            }
+            result?;
+        }
+        Ok(())
+    }
     pub fn blob(&self, h: &str) -> Result<Vec<u8>> {
         ensure!(
             h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()),
@@ -222,149 +263,24 @@ impl Store {
             coord: self.coord.clone(),
         })
     }
+    /// In-memory fixture compatibility. Production already receives a disk archive.
     pub fn publish(
         &self,
-        mut revision: Revision,
+        revision: Revision,
         result: &AnalysisResult,
         expected: &str,
         task: &str,
     ) -> Result<Revision> {
-        let mut lock = self.coord.lock().unwrap();
-        ensure!(self.head(&revision.target)? == expected, "HEAD_CONFLICT");
-        let baseline = if result.mode == "delta" {
-            ensure!(result.baseline == expected, "BASELINE_MISMATCH");
-            let r = self.revision_unlocked(expected)?;
-            ensure!(r.profile == revision.profile, "PROFILE_MISMATCH");
-            let c = Connection::open_with_flags(
-                self.home.join("revisions").join(expected).join("facts.db"),
-                rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
-            )?;
-            Some(c)
-        } else {
-            None
-        };
-        let old = if let Some(c) = &baseline {
-            all_facts(c)?
-        } else {
-            Vec::new()
-        };
-        if result.mode == "delta" {
-            let previous = self.revision_unlocked(expected)?;
-            for f in &old {
-                if f.source.is_empty() || result.replacements.contains(&f.owner) {
-                    continue;
-                }
-                let before = previous.manifest.files.iter().find(|s| s.path == f.source);
-                let after = revision.manifest.files.iter().find(|s| s.path == f.source);
-                ensure!(
-                    before == after,
-                    "CHANGED_SOURCE_OWNER_NOT_REPLACED: {}",
-                    f.source
-                );
-            }
-        }
-        result
-            .validate(&revision.manifest, &old)
-            .map_err(anyhow::Error::msg)?;
-        ensure!(
-            result.profile == revision.profile && result.producer == revision.producer,
-            "RESULT_IDENTITY_MISMATCH"
-        );
-        for f in &revision.manifest.files {
-            self.blob(&f.hash)?;
-        }
-        revision.id = new_id("rev");
-        revision.created = now();
-        let candidate = self.home.join("candidates").join(&revision.id);
-        std::fs::create_dir(&candidate)?;
-        let mut db = Connection::open(candidate.join("facts.db"))?;
-        if let Some(source) = &baseline {
-            rusqlite::backup::Backup::new(source, &mut db)?.run_to_completion(
-                128,
-                Duration::from_millis(1),
-                None,
-            )?;
-        }
-        db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS identity(key TEXT PRIMARY KEY,value TEXT NOT NULL); CREATE TABLE IF NOT EXISTS facts(id TEXT PRIMARY KEY,kind TEXT NOT NULL,owner TEXT NOT NULL,parent TEXT NOT NULL,target TEXT NOT NULL,relation TEXT NOT NULL,name TEXT NOT NULL,source TEXT NOT NULL,world TEXT NOT NULL,body TEXT NOT NULL);CREATE INDEX IF NOT EXISTS fact_kind ON facts(kind);CREATE INDEX IF NOT EXISTS fact_owner ON facts(owner);CREATE INDEX IF NOT EXISTS fact_parent ON facts(parent);CREATE INDEX IF NOT EXISTS fact_target ON facts(target);CREATE INDEX IF NOT EXISTS fact_name ON facts(name);CREATE INDEX IF NOT EXISTS fact_source ON facts(source,world);")?;
-        let tx = db.transaction()?;
-        for owner in &result.replacements {
-            tx.execute("DELETE FROM facts WHERE owner=?", [owner.key()])?;
-        }
-        for f in &result.facts {
-            tx.execute(
-                "INSERT INTO facts VALUES(?,?,?,?,?,?,?,?,?,?)",
-                params![
-                    f.id,
-                    f.kind.name(),
-                    f.owner.key(),
-                    f.parent,
-                    f.target,
-                    f.relation,
-                    f.name,
-                    f.source,
-                    f.owner.world,
-                    json(f)?
-                ],
-            )?;
-        }
-        tx.execute(
-            "INSERT OR REPLACE INTO identity VALUES('revision',?)",
-            [&revision.id],
+        let mut archive = codeana_contracts::archive::FactArchiveBuilder::new(
+            MAX_RESULT as u64,
+            MAX_FACTS as u64,
         )?;
-        tx.execute(
-            "INSERT OR REPLACE INTO identity VALUES('profile',?)",
-            [&revision.profile],
-        )?;
-        tx.commit()?;
-        let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
-        ensure!(integrity == "ok", "CORRUPT_CANDIDATE");
-        drop(db);
-        drop(baseline);
-        std::fs::File::open(candidate.join("facts.db"))?.sync_all()?;
-        durable_write(
-            &candidate.join("revision.json"),
-            json(&revision)?.as_bytes(),
-        )?;
-        sync_dir(&candidate)?;
-        test_fault(&self.home, "candidate_synced")?;
-        let dest = self.home.join("revisions").join(&revision.id);
-        std::fs::rename(candidate, dest)?;
-        sync_dir(&self.home.join("revisions"))?;
-        test_fault(&self.home, "revision_renamed")?;
-        let mut c = self.catalog()?;
-        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let actual: String = tx
-            .query_row(
-                "SELECT revision FROM heads WHERE target=?",
-                [&revision.target],
-                |r| r.get(0),
-            )
-            .optional()?
-            .unwrap_or_default();
-        ensure!(actual == expected, "HEAD_CONFLICT");
-        tx.execute(
-            "INSERT INTO revisions VALUES(?,?,?,?)",
-            params![
-                revision.id,
-                revision.target,
-                revision.project,
-                json(&revision)?
-            ],
-        )?;
-        tx.execute(
-            "INSERT OR REPLACE INTO heads VALUES(?,?)",
-            params![revision.target, revision.id],
-        )?;
-        tx.execute(
-            "INSERT INTO commits VALUES(?,?)",
-            params![task, revision.id],
-        )?;
-        tx.commit()?;
-        test_fault(&self.home, "catalog_committed")?;
-        for source in &revision.manifest.files {
-            lock.staged_blobs.remove(&source.hash);
+        for fact in &result.facts {
+            archive.push(fact)?;
         }
-        Ok(revision)
+        let archive = archive.seal()?;
+        let candidate = self.stage_archive(revision, &result.header(), &archive, expected)?;
+        self.publish_staged(candidate, task)
     }
     pub fn put_object<T: Serialize>(
         &self,
@@ -863,7 +779,9 @@ impl Store {
             for e in std::fs::read_dir(self.home.join(dir))? {
                 let e = e?;
                 let id = e.file_name().to_string_lossy().into_owned();
-                if !id.starts_with("rev_") {
+                if !id.starts_with("rev_")
+                    || dir == "candidates" && _guard.staged_candidates.contains(&id)
+                {
                     continue;
                 }
                 let known = dir == "revisions"
@@ -880,14 +798,6 @@ impl Store {
         }
         Ok(serde_json::json!({"execute":execute,"orphans":orphan,"pending":pending}))
     }
-}
-fn all_facts(c: &Connection) -> Result<Vec<Fact>> {
-    let mut q = c.prepare("SELECT body FROM facts ORDER BY id")?;
-    let mut out = Vec::new();
-    for s in q.query_map([], |r| r.get::<_, String>(0))? {
-        out.push(serde_json::from_str(&s?)?);
-    }
-    Ok(out)
 }
 impl FactReader for ReadContext {
     fn manifest(&self) -> &Manifest {
@@ -944,7 +854,7 @@ impl FactReader for ReadContext {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn revision() -> Revision {
+    pub(super) fn revision() -> Revision {
         Revision {
             id: String::new(),
             target: "t".into(),
@@ -1005,7 +915,7 @@ mod tests {
                 .is_empty()
         );
     }
-    fn result() -> AnalysisResult {
+    pub(super) fn result() -> AnalysisResult {
         AnalysisResult {
             mode: "full".into(),
             baseline: String::new(),
@@ -1015,6 +925,36 @@ mod tests {
             replacements: vec![],
             facts: vec![],
         }
+    }
+    #[test]
+    fn staged_binding_evidence_checks_parent_kind_and_owner() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let owner = serde_json::json!({"world":"w","producer":"javac","kind":"context","id":"c"});
+        let site: Fact = serde_json::from_value(serde_json::json!({
+            "id":"site", "kind":"call_site", "owner":owner, "origin":"javac"
+        }))
+        .unwrap();
+        let binding: Fact = serde_json::from_value(serde_json::json!({
+            "id":"binding", "kind":"facet", "parent":"site", "owner":owner,
+            "origin":"javac", "relation":"java.binding",
+            "attributes":{"schema_version":3,"evidence_owner":"site","resolved":true,"complete":true}
+        })).unwrap();
+        let mut evidence = result();
+        evidence.facts = vec![site, binding];
+        let valid = store.publish(revision(), &evidence, "", "valid").unwrap();
+        evidence.facts[0].kind = FactKind::Declaration;
+        let failed = store
+            .publish(revision(), &evidence, &valid.id, "bad-kind")
+            .unwrap_err();
+        assert!(failed.to_string().contains("INVALID_BINDING_EVIDENCE"));
+        evidence.facts[0].kind = FactKind::CallSite;
+        evidence.facts[0].owner.world = "other".into();
+        let failed = store
+            .publish(revision(), &evidence, &valid.id, "bad-owner")
+            .unwrap_err();
+        assert!(failed.to_string().contains("INVALID_BINDING_EVIDENCE"));
+        assert_eq!(store.head("t").unwrap(), valid.id);
     }
     #[test]
     fn publish_cas_reader_and_gc() {

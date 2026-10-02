@@ -8,15 +8,15 @@
 |---|---|---|
 | gRPC | [hello.proto](../proto/codeana/v1/hello.proto)、[daemon](../crates/daemon/src/main.rs)、[CLI](../crates/cli/src/main.rs) 已有 SayHello 与 TaskService | 握手、幂等、事件流、取消和状态持久化已有真实进程测试 |
 | daemon 发现 | 动态 loopback endpoint、私有 home、token、flock | 已实现自动启动、drain/stop/restart；CODEANA_PORT 仅保留 Hello 测试入口 |
-| Java host | [main.rs](../crates/java-worker/src/main.rs) 动态装载库，手写 3 个函数类型，创建/销毁 isolate | 已有进程内 FFI 入口；没有 daemon→host IPC、ABI manifest、分析会话或取消 |
-| Java 分析器 | [HelloBridge](../lang-adaptor/src/main/java/dev/codeana/bridge/HelloBridge.java) 返回整数 25 | 没有 javac、独立 Java 模型、ASM 或框架分析实现 |
-| 原生构建 | [pom.xml](../lang-adaptor/pom.xml) 只声明 nativeimage SDK；[脚本](../scripts/build-java-native.sh) classpath 只有 `target/classes` | 引入依赖后必须补完整 classpath、资源/反射配置和成套产物记录 |
+| Java host | [main.rs](../crates/java-worker/src/main.rs) 动态装载库，独立进程运行实际 C ABI 会话 | 已接入 daemon IPC、bundle manifest、取消、Acked 与任务清理 |
+| Java 分析器 | [JavaAnalysis](../lang-adaptor/src/main/java/dev/codeana/analysis/JavaAnalysis.java)、Java 8 CompilerBridge、ASM 与五类扩展接口 | 基础语义与框架子集已验；高级恢复/反射、完整静态框架及模块缓存仍缺 |
+| 原生构建 | [pom.xml](../lang-adaptor/pom.xml)、[构建脚本](../scripts/build-java-native.sh) 已打包依赖、Java 8 bridge 与 manifest | 当前生产链路须随修改重建验收；旧 release 不能证明新源码 |
 | 工具链 | `.sdkmanrc` 为 `25.3.4+1.r25-graalce`，SDK 依赖为 `25.0.3` | 字符串不同不能证明不兼容；P0 需记录实际 JDK/native-image/header 与 SDK 组合并验证 |
 | 平台 | [smoke.sh](../scripts/smoke.sh) 与 [justfile](../justfile) 固定 `.dylib` | 首批 macOS 与现状一致；尚不能宣称 Linux 可用 |
 | 存储/配置/查询 | 已新增 model/config/application/query/storage/mock-worker | Rust 主链路、SQL 发布、固定查询与历史已有 fixture 测试 |
-| 运行证据 | Rust 单元/文档测试、真实 CLI 回归、release 打包、两条 Hello smoke | Java 语义仍为 mock，不能替代真实 javac/native 验收 |
+| 运行证据 | Rust 单元/文档测试、真实 CLI 回归、release 打包、两条 Hello smoke | 真实 Java 8 fixture 与生产 daemon 已通过；52 项完整对齐和真实项目语义差分尚未通过 |
 
-2026-09-29 修订：用户确定 javac 为唯一后端，不考虑 JavaParser。Java 复用基线更新为 `dev/replace-parser@7c66251479cfc7556451be35cfbc76e94454425b` 已提交快照，未重跑其测试。该分支已删除旧 AST 链路；旧的 parser/SymbolSolver 复用调查不再作为任务。
+2026-09-29 修订：用户确定 javac 为唯一后端，不考虑 JavaParser。Java 复用基线更新为 `dev/replace-parser@2dfc7977cb03095d14894f069ff30985551457b1` 已提交快照，未重跑其测试。该分支已删除旧 AST 链路；旧的 parser/SymbolSolver 复用调查不再作为任务。
 
 | 新风险 | 先验证什么 |
 |---|---|

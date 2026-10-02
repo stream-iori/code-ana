@@ -2,7 +2,7 @@
 
 **公共配置管扫描、预算和版本；语言配置管分析语义；模块与 world 表达同仓库中的不同构建上下文。**
 
-状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与显式 fixture 捕获已实现；完整 adapter 发现和策略范围仍按 D14 设计推进，当前能力见 [Rust 实现说明](rust-first.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；混合语言示例展示后续扩展，当前先验收 Java fixture。
+状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与显式 fixture 捕获已实现；完整 adapter 发现和策略范围仍按 D14 设计推进，Java 8 支持显式 plain 和外部 Maven metadata，具体配置见 [Java 实现说明](java-implementation.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；混合语言示例展示后续扩展，当前先验收 Java fixture。
 
 ## 1. 配置分层
 
@@ -46,6 +46,8 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 | 用户配置键 | 类型与语义 |
 |---|---|
 | `daemon.idle_timeout_seconds` | 正整数秒；只在无活动任务/读者时进入退出流程；省略使用产品服务策略 |
+| `daemon.java_warm_workers` | 布尔值，默认 true；仅复用已确认发布且身份匹配的单个空闲 Java worker，60 秒过期 |
+| `daemon.java_signature_cache` | 布尔值，默认 true；启用安全子集的 NoCode 签名缓存，缺失/损坏自动回退完整源码分析 |
 | `limits.max_workers` | 正整数；全部项目合计的顶层 worker 槽位；每槽允许的编译器子进程数另由执行策略固定，不能无限派生 |
 | `limits.max_worker_memory_bytes` | 正整数字节；每 worker 进程树的最大可申请预算（Java host/原生库与目标 JDK 子进程合计） |
 | `limits.max_total_worker_memory_bytes` | 正整数字节；worker 合计预算，调度时按任务预约；daemon 自身另受服务内存策略控制 |
@@ -63,7 +65,7 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 | `[scan]` | `scopes`、`include`、`exclude`、`text_only` | 各语言共用范围；scope 的语言映射必须披露 |
 | `[build]` | `suggestions = true / false` | 默认 true，缺产物时返回执行建议；false 只隐藏命令建议，仍报告缺口；两者都不运行目标项目构建 |
 | `[index]` | `mode = "auto" / "full"` | 增量策略，不容纳 Java 专属字段 |
-| `[resources.index]` | `worker_memory_bytes` | 请求的每 worker 进程树上限，可省略使用服务策略；实际值受用户硬上限约束 |
+| `[resources.index]` | `worker_memory_bytes`、`java_compiler_heap_bytes`、`java_parallelism`、`java_model_record_limit`、`java_model_archive_bytes`、`java_native_heap_bytes`、`java_compiler_timeout_seconds`、`java_result_bytes`、`java_fact_limit`、`java_scratch_bytes` | 请求的每 worker 进程树上限受用户硬上限约束；Java 8 javac 堆默认 128 MiB，可设 8–512 MiB、按 MiB 对齐；显式 1–8 并行须预约 (native 堆 + 256 MiB) host + N×(javac 堆 + 64 MiB)，RSS 仍是硬上限；模型工作记录每 context 默认 100000，可显式设 1–5000000，模型归档默认 64 MiB，可设 64 KiB–1 GiB；native 堆默认 256 MiB，可设 8–1024 MiB；javac 超时默认 120 秒，可设 1–3600；结果默认 64 MiB / 100000 条，可设至 4 GiB / 5000000 条；任务暂存默认 2 GiB，可设至 16 GiB。显式大预算不代表容量验收通过 |
 | `[resources.query]` | `diff_spill_bytes` | 有界 diff 暂存策略，建议默认 8 MiB，fixture 验证后冻结 |
 | `[query]` | `scopes`、`max_output_bytes` | 查询默认选择与预算，不扩张索引范围；未设置预算时使用本项目各命令默认 |
 | `[observability]` | `mode = "off" / "basic" / "full"` | 当前默认 basic；旧拼写 `detailed` 暂作为 full 的兼容别名 |
@@ -121,7 +123,7 @@ enabled = true
 | Java source_version / toolchain | auto；版本来自已验证模块声明；工具链只从用户登记的别名中选唯一匹配项，零个或多个匹配都要求显式指定；来源与最终版本必须披露 |
 | Java 版本声明缺失 | 不猜 Java 8；需要显式 source_version 才能开始 semantic |
 | Java classpath | existing；已有可验证依赖缺失则按 coverage/门禁处理，不自动执行构建 |
-| Java 扩展 | Lombok off、strict=false；Spring enabled=true、xml=false；SOFA enabled=true 且依赖 Spring |
+| Java 扩展 | Lombok off、strict=false；Spring enabled=true、xml=false；SOFA enabled=true；当前静态 XML 接口清单可独立于 Spring |
 | Rust edition / toolchain | auto；从有效 manifest/toolchain 输入解析，无法确定则披露能力不足 |
 | Rust world 未列出 | semantic 使用当前解析的 host target、default_features=true、features=[]、cfg=[]；syntax 只记录未求值条件 |
 | 数值资源预算未设置 | 使用用户级服务策略并披露实际值；不能把省略理解为无限资源 |
@@ -156,7 +158,7 @@ enabled = true
 | 构建入口包含多个模块 | adapter 以配置 id 为稳定前缀、构建图内相对身份为后缀生成子模块；不得吞掉子模块差异 |
 | modules.analysis / lombok / extensions / external | 覆盖该语言的同类型配置；Java 模块用 modules.lombok 覆盖 languages.java.lombok；Rust 模块出现 lombok 或其他 Java 字段直接报错 |
 | modules.scan | 只进一步收窄范围；不可用 include 绕过全局 exclude 或增加未启用 scope |
-| modules.source_roots | Java/plain 等描述符支持时显式给 `path/scope`；GENERATED 仍需封存产物，不自动运行生成器 |
+| modules.source_roots | 显式 `path/scope`；Java 可加 `label` 作为发布身份，省略时使用物理 module.id；GENERATED 仍需封存产物，不自动运行生成器 |
 | Rust 源文件发现 | 以 crate graph 和模块语义为准；不把所有 `*.rs` 当互相独立的完整 crate |
 | modules.worlds | 模块内 id 唯一；id 是显示/选择别名，真实 WorldKey 由解析后的构建上下文计算 |
 
@@ -174,7 +176,7 @@ project
 
 Rust world 的 `target` 是目标平台，不能与 Cargo 的 lib/bin/test target 混淆；后者由 crate graph 和所选 scope 展开。`features`、`default_features` 和显式 `cfg` 是请求条件，实际 feature 统一结果与构建 cfg 以捕获的 BuildContext 为准。`host` 必须解析成具体 target 身份，不能将字符串 host 当跨机器稳定环境。
 
-Java world 首版由真实模块、源码集和已解析构建上下文派生；不添加一套复制 Maven profile 语法的通用 world 字段。物理 Maven 模块决定编译上下文与依赖方向，配置模块 ID/源码标签决定发布身份；两者映射显式保存。MAIN 不读取 TEST，扫描排除不能被编译器隐式搜索绕过。缺少必需上下文则披露/拒绝。
+Java world 首版由真实模块、源码集和已解析构建上下文派生；不添加一套复制 Maven profile 语法的通用 world 字段。物理 Maven module.id/root 决定编译上下文与依赖方向。Java source_roots.label 只改变 SourceUnit.module 和 LogicalSymbolKey；SourceUnit.world 仍由物理 module.id × scope 派生。同物理模块 MAIN 的多个标签共享一次 javac，TEST 读取该模块 MAIN。最长根决定标签；同深度不同标签/物理模块拒绝。label 非空、最多 256 字节且不含控制字符，Rust 不接受该字段。MAIN 不读取 TEST，扫描排除不能被编译器隐式搜索绕过。缺少必需上下文则披露/拒绝。
 
 同版本不同 JDK/依赖进入 semantic profile，不机械改动 LogicalSymbolKey。
 
@@ -257,7 +259,7 @@ EffectiveConfig + 捕获源码/依赖/工具链 + adapter/model/compiler-bridge/
 | 未知语言/字段、错误类型、未来 schema | 在索引前拒绝，给文件位置与期望类型/版本 |
 | 同模块重复 world id / 重复入口覆盖 | 拒绝歧义，不按最后一条获胜 |
 | Rust 模块写 java_version / Java mode=syntax | 按对应描述符拒绝无效字段或能力 |
-| SOFA enabled、Spring disabled | 拒绝配置依赖冲突，不自动开启 Spring |
+| SOFA enabled、Spring disabled | 当前仅解析 SOFA 静态 XML 接口；不产出 Spring Bean/注入事实，不自动开启 Spring |
 | world 请求 semantic、只有 syntax 能力 | unsupported；不静默降级 |
 | source root 的 scope 未被 scan.scopes 允许 | 拒绝矛盾配置；不悄悄扩大扫描 |
 | 显式工具链别名不存在 | 明确失败；auto 也必须披露实际选用版本 |

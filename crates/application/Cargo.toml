@@ -13,6 +13,7 @@ libc.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 walkdir.workspace = true
+roxmltree = "=0.21.1"
 codeana-model = { path = "../model" }
 codeana-config = { path = "../config" }
 codeana-contracts = { path = "../contracts" }

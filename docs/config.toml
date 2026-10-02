@@ -30,6 +30,15 @@ mode = "auto" # full：明确全量；auto：兼容时增量
 [resources.index]
 # 省略时使用服务预算；数值是申请上限，不是产品容量承诺。
 # worker_memory_bytes = 2147483648 # 包含 host/原生库和目标 JDK 子进程
+# java_compiler_heap_bytes = 134217728 # Java 8 javac 子进程堆，8–512 MiB
+# java_parallelism = 8 # 1–8；显式设置须满足 host/JVM 堆与非堆空间预约，128 MiB 堆的 8 并行至少 2 GiB
+# java_model_record_limit = 100000 # 每 context 的模型工作记录数，1–5000000
+# java_model_archive_bytes = 67108864 # 每 context 临时/最终模型，64 KiB–1 GiB
+# java_native_heap_bytes = 268435456 # Graal isolate 实际堆，8–1024 MiB、按 MiB 对齐
+# java_compiler_timeout_seconds = 120 # 单 context javac，1–3600 秒
+# java_result_bytes = 67108864 # 结果 JSON / 事实归档各自上限，64 KiB–4 GiB
+# java_fact_limit = 100000 # 全任务事实/owner 数，1–5000000
+# java_scratch_bytes = 2147483648 # 任务暂存总额，64 KiB–16 GiB；包含捕获副本和候选 SQLite
 
 [resources.query]
 diff_spill_bytes = 8388608

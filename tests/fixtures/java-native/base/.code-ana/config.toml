@@ -1,0 +1,27 @@
+schema_version = 1
+kind = "project"
+[discovery]
+mode = "explicit"
+[scan]
+scopes = ["MAIN"]
+[languages.java]
+enabled = true
+mode = "semantic"
+[languages.java.discovery]
+build_system = "plain"
+[languages.java.analysis]
+source_version = "8"
+toolchain = "java8"
+classpath = "none"
+vm_classpath = true
+[languages.java.extensions.spring]
+enabled = false
+[languages.java.extensions.sofa]
+enabled = false
+[[modules]]
+id = "app"
+language = "java"
+root = "."
+[[modules.source_roots]]
+path = "src"
+scope = "MAIN"

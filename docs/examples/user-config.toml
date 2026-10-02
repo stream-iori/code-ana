@@ -6,6 +6,8 @@ kind = "user"
 
 [daemon]
 idle_timeout_seconds = 600
+java_warm_workers = true
+java_signature_cache = true
 
 [limits]
 max_workers = 2 # 顶层 worker 槽位，子进程并发另有固定上限

@@ -28,6 +28,8 @@ async fn main() -> Result<()> {
     socket.set_nonblocking(true)?;
     let mut ipc = UnixStream::from_std(socket)?;
     let mut selected: Option<FixtureState> = None;
+    let mut baseline = Vec::new();
+    let mut baseline_seq = 0;
     loop {
         let frame = read_frame(&mut ipc).await?;
         let attempt = frame.attempt;
@@ -92,6 +94,23 @@ async fn main() -> Result<()> {
                     .await?;
                 }
             }
+            Some(Body::BaselineChunk(c)) => {
+                ensure!(c.seq == baseline_seq, "BASELINE_SEQUENCE");
+                baseline_seq += 1;
+                baseline.extend(
+                    c.facts
+                        .into_iter()
+                        .map(fact_from_wire)
+                        .collect::<Result<Vec<_>>>()?,
+                );
+                ensure!(baseline.len() <= MAX_FACTS, "BASELINE_BUDGET");
+            }
+            Some(Body::BaselineEnd(e)) => {
+                ensure!(
+                    e.count == baseline.len() as u64 && e.checksum == digest(&baseline),
+                    "BASELINE_CHECKSUM"
+                );
+            }
             Some(Body::Analyze(a)) => {
                 let s = selected
                     .as_ref()
@@ -113,6 +132,8 @@ async fn main() -> Result<()> {
                     tokio::select! {_ = tokio::time::sleep(std::time::Duration::from_millis(duration))=>{},v=read_frame(&mut ipc)=>{if matches!(v?.body,Some(Body::Cancel(_))){return Ok(());}bail!("UNEXPECTED_WHILE_ANALYZING");}}
                 }
                 if s.behavior == "replan" && !a.full {
+                    baseline.clear();
+                    baseline_seq = 0;
                     write_frame(
                         &mut ipc,
                         &envelope(
@@ -125,11 +146,8 @@ async fn main() -> Result<()> {
                     .await?;
                     continue;
                 }
-                let old = a
-                    .baseline_facts
-                    .into_iter()
-                    .map(fact_from_wire)
-                    .collect::<Result<Vec<_>>>()?;
+                let old = std::mem::take(&mut baseline);
+                baseline_seq = 0;
                 let mut replacements: BTreeSet<Owner> =
                     old.iter().map(|f| f.owner.clone()).collect();
                 replacements.extend(s.facts.iter().map(|f| f.owner.clone()));

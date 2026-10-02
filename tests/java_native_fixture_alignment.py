@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Execute binding regressions through the release Rust host and native C ABI."""
+import hashlib
+import json
+import pathlib
+import time
+import unittest
+import java_alignment as alignment
+import java_functional_reference_alignment as reference
+from java_binding_alignment import Bindings
+from java_target_return_alignment import TargetReturns
+from java_functional_output_alignment import FunctionalOutputs, SourceParameters
+from java_generic_reference_alignment import GenericReferences
+from java_constructor_reference_alignment import ConstructorReferences
+from java_collector_alignment import Collectors
+from java_builder_chain_alignment import BuilderChains
+from java_supplemental_signature_alignment import SupplementalSignatures
+from java_diamond_alignment import Diamonds
+from java_lambda_input_alignment import LambdaInputs
+from java_contextual_invocation_alignment import ContextualInvocations
+from java_type_reference_alignment import SourceTypeReferences
+from java_encoding_alignment import Encodings
+from java_diagnostic_boundary_alignment import DiagnosticBoundaries
+from java_expression_alignment import Expressions
+from java_static_import_alignment import StaticImports
+
+
+def main():
+    evidence = alignment.ROOT / 'target/java-alignment/evidence' / ('native-fixtures-' + time.strftime('%Y%m%d-%H%M%S'))
+    evidence.mkdir(exist_ok=False)
+    frozen = alignment.input_files()
+    artifacts = reference.probe_artifacts(True)
+    classes = (Bindings, TargetReturns, FunctionalOutputs, SourceParameters,
+               GenericReferences, ConstructorReferences, Collectors, BuilderChains, SupplementalSignatures, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports)
+    suite = unittest.TestSuite()
+    for case in classes:
+        case.analyze = reference.native_analyze
+        suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(case))
+    started = time.monotonic()
+    log = evidence / 'regressions.log'
+    with log.open('w') as stream:
+        result = unittest.TextTestRunner(stream=stream, verbosity=2).run(suite)
+    current = alignment.input_files()
+    current_artifacts = reference.probe_artifacts(True)
+    drift = sorted(p for p in frozen.keys() | current.keys() if frozen.get(p) != current.get(p))
+    artifact_drift = sorted(p for p in artifacts.keys() | current_artifacts.keys() if artifacts.get(p) != current_artifacts.get(p))
+    receipt = dict(tests=result.testsRun, successful=result.wasSuccessful(), changed_inputs=drift,
+                   artifacts=artifacts, changed_artifacts=artifact_drift, elapsed_seconds=round(time.monotonic()-started, 3),
+                   log=str(log.relative_to(alignment.ROOT)), log_sha256=hashlib.sha256(log.read_bytes()).hexdigest(),
+                   inputs=frozen, full_semantic_diff_accepted=False)
+    receipt['all_ok'] = result.wasSuccessful() and not drift and not artifact_drift
+    (evidence/'receipt.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2)+'\n')
+    print(str(evidence/'receipt.json'), flush=True)
+    if not receipt['all_ok']:
+        print(log.read_text()[-9000:])
+    return 0 if receipt['all_ok'] else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

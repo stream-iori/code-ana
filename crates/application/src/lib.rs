@@ -1,9 +1,12 @@
 //! Application orchestration. CLI and Java adapters contain no product policy.
 mod history;
+mod java;
+pub mod maven_inputs;
+mod output;
 mod worker;
 use anyhow::{Context, Result, bail, ensure};
 use codeana_config::Capture;
-use codeana_contracts::{terminal, v1 as p};
+use codeana_contracts::{archive::FactArchive, terminal, v1 as p};
 use codeana_model::*;
 use codeana_storage::{AnnotationCommand, Store};
 use serde::{Deserialize, Serialize};
@@ -70,6 +73,12 @@ pub struct Job {
     pub detached: bool,
     pub disconnected: Mutex<Instant>,
 }
+struct IdleJava {
+    key: String,
+    revision: String,
+    id: String,
+    worker: worker::Worker,
+}
 pub struct Engine {
     pub store: Store,
     pub mock: Option<PathBuf>,
@@ -84,6 +93,8 @@ pub struct Engine {
     pub last_activity: Mutex<Instant>,
     pub idle_seconds: u64,
     worker_memory: u64,
+    user: codeana_config::UserConfig,
+    idle_java: Arc<Mutex<Option<IdleJava>>>,
 }
 impl Engine {
     pub fn new(home: &Path, mock: Option<PathBuf>) -> Result<Arc<Self>> {
@@ -123,6 +134,8 @@ impl Engine {
                 .limits
                 .max_worker_memory_bytes
                 .unwrap_or(256 * 1024 * 1024),
+            idle_java: Arc::new(Mutex::new(None)),
+            user,
         });
         for (id, published) in engine.store.unfinished()? {
             let result = if let Some(rev) = published {
@@ -145,6 +158,9 @@ impl Engine {
         }
         engine.store.recover(true)?;
         Ok(engine)
+    }
+    pub fn java_available(&self) -> bool {
+        java::installed_library().is_ok()
     }
     pub fn touch(&self) {
         *self.last_activity.lock().unwrap() = Instant::now();
@@ -349,8 +365,8 @@ impl Engine {
                             ensure!(!cancellation.is_cancelled(), "CANCELLED");
                             c.blobs
                                 .get(&s.hash)
-                                .cloned()
-                                .context("CAPTURE_BLOB_MISSING")
+                                .context("CAPTURE_BLOB_MISSING")?
+                                .read(MAX_FRAME)
                         })?;
                         ensure!(!cancellation.is_cancelled(), "CANCELLED");
                         engine.page(&request, &c.project, output, vec![])
@@ -384,7 +400,17 @@ impl Engine {
     ) -> Result<TaskResult> {
         let started = Instant::now();
         codeana_config::require_java(&c)?;
-        let fixtures=self.mock.as_ref().context("UNSUPPORTED_ADAPTER: real Java analysis is not installed; use explicit isolated mock mode")?;
+        let prepared = if self.mock.is_none() {
+            let captured = c.clone();
+            let user = self.user.clone();
+            let home = self.store.home.clone();
+            Some(
+                tokio::task::spawn_blocking(move || java::prepare(&captured, &user, &home))
+                    .await??,
+            )
+        } else {
+            None
+        };
         let expected = self.store.head(&c.target)?;
         if !req.expected_revision.is_empty() {
             ensure!(expected == req.expected_revision, "HEAD_CONFLICT");
@@ -400,8 +426,46 @@ impl Engine {
             memory > 0 && memory <= self.worker_memory,
             "PROJECT_WORKER_MEMORY_LIMIT"
         );
-        let mut worker =
-            worker::Worker::start(fixtures, &c.root, &c.manifest, cancel, memory).await?;
+        let pool_key = prepared.as_ref().map(|p| {
+            digest(&(
+                &c.target,
+                &c.effective.semantic_digest,
+                &p.library,
+                &p.config.toolchain_digest,
+                &p.config.semantic_identity,
+                memory,
+            ))
+        });
+        let mut reused = None;
+        if self.mock.is_none() && self.user.daemon.java_warm_workers.unwrap_or(true) {
+            let idle = self.idle_java.lock().unwrap().take();
+            if let (Some(mut idle), Some(prepared), Some(key)) =
+                (idle, prepared.as_ref(), pool_key.as_ref())
+                && idle.key == *key
+                && idle.revision == expected
+                && idle.worker.alive().unwrap_or(false)
+                && idle
+                    .worker
+                    .rediscover(prepared, &c.manifest, cancel)
+                    .await
+                    .is_ok()
+            {
+                reused = Some(idle.worker);
+            }
+        }
+        let mut worker = if let Some(worker) = reused {
+            worker
+        } else {
+            worker::Worker::start(
+                self.mock.as_deref(),
+                prepared.as_ref(),
+                &c.root,
+                &c.manifest,
+                cancel,
+                memory,
+            )
+            .await?
+        };
         ensure!(
             worker.context.language == "java",
             "WORKER_LANGUAGE_MISMATCH"
@@ -414,7 +478,9 @@ impl Engine {
                         "SOURCE_VERSION_UNSUPPORTED"
                     );
                 }
-                if let Some(toolchain) = &module.analysis.toolchain {
+                if self.mock.is_some()
+                    && let Some(toolchain) = &module.analysis.toolchain
+                {
                     ensure!(
                         toolchain == "auto"
                             || toolchain == &format!("mock-jdk{}", worker.context.source_version),
@@ -425,22 +491,38 @@ impl Engine {
         }
         let profile = digest(&(&c.effective.semantic_digest, &worker.context));
         let mut full = req.full || c.effective.config.index.mode == "full" || expected.is_empty();
-        let mut old = Vec::new();
+        let mut old = None;
         if !expected.is_empty() {
             let store = self.store.clone();
             let baseline_id = expected.clone();
             let desired_profile = profile.clone();
             let requested_full = full;
+            let baseline_cancel = cancel.clone();
+            let baseline_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
+            let output_limits = prepared
+                .as_ref()
+                .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
+                .transpose()?
+                .unwrap_or_default();
             let (baseline_profile, baseline) =
-                tokio::task::spawn_blocking(move || -> Result<(String, Vec<Fact>)> {
+                tokio::task::spawn_blocking(move || -> Result<(String, Option<FactArchive>)> {
                     let reader = store.read(&baseline_id)?;
                     let profile = reader.revision().profile.clone();
                     let facts = if requested_full || profile != desired_profile {
-                        vec![]
+                        None
                     } else {
-                        reader
-                            .select(&FactFilter::default())
-                            .map_err(anyhow::Error::msg)?
+                        Some(reader.export_archive_checked_in(
+                            output_limits.bytes,
+                            output_limits.facts,
+                            baseline_disk.as_ref().map(|budget| budget.root.as_path()),
+                            || {
+                                ensure!(!baseline_cancel.is_cancelled(), "CANCELLED");
+                                if let Some(budget) = &baseline_disk {
+                                    budget.check()?;
+                                }
+                                Ok(())
+                            },
+                        )?)
                     };
                     Ok((profile, facts))
                 })
@@ -465,29 +547,62 @@ impl Engine {
         )?;
         let analyzing = Instant::now();
         let result = worker
-            .analyze(&c.manifest, &profile, &expected, &old, full, cancel)
+            .analyze(&c.manifest, &profile, &expected, old.as_ref(), full, cancel)
             .await?;
         let analyze_ms = analyzing.elapsed().as_millis() as u64;
-        let manifest_for_validation = c.manifest.clone();
-        let (result, merged) = tokio::task::spawn_blocking(move || -> Result<_> {
-            let merged = result
-                .validate(&manifest_for_validation, &old)
-                .map_err(anyhow::Error::msg)?;
-            Ok((result, merged))
+        if let Some(prepared) = &prepared {
+            prepared.verify()?;
+        }
+        let result_mode = result.header.mode.clone();
+        let revision = Revision {
+            id: String::new(),
+            target: c.target.clone(),
+            project: c.project.clone(),
+            checkout: c.checkout.clone(),
+            manifest: c.manifest.clone(),
+            profile,
+            producer: result.header.producer.clone(),
+            created: 0,
+        };
+        let store = self.store.clone();
+        let baseline_id = expected.clone();
+        let staging_cancel = cancel.clone();
+        let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
+        let candidate = tokio::task::spawn_blocking(move || {
+            store.stage_archive_with_scratch_check(
+                revision,
+                &result.header,
+                &result.records,
+                &baseline_id,
+                || {
+                    ensure!(!staging_cancel.is_cancelled(), "CANCELLED");
+                    Ok(())
+                },
+                |path| {
+                    if let Some(budget) = &candidate_disk {
+                        budget.check_candidate(Some(path))?;
+                    }
+                    Ok(())
+                },
+            )
         })
         .await??;
-        let mut evidence = Evidence::complete();
-        for f in &merged {
-            if f.kind == FactKind::Coverage && (!f.evidence_complete || f.status != "complete") {
-                evidence.semantic = false;
-                evidence
-                    .reasons
-                    .push(format!("coverage:{}:{}", f.source, f.status));
-            }
-        }
+        let limits = prepared
+            .as_ref()
+            .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
+            .transpose()?
+            .unwrap_or_default();
+        ensure!(
+            candidate.summary.fact_count <= limits.facts,
+            "JAVA_FACT_BUDGET count={} limit={}",
+            candidate.summary.fact_count,
+            limits.facts
+        );
+        let summary = candidate.summary.clone();
+        let evidence = summary.evidence.clone();
         if req.strict && !evidence.semantic {
             let mut t = TaskResult::success(Output {
-                producer: result.producer,
+                producer: worker.context.producer.clone(),
                 evidence,
                 ..Default::default()
             });
@@ -497,74 +612,64 @@ impl Engine {
             return Ok(t);
         }
         ensure!(!cancel.is_cancelled(), "CANCELLED");
-        let result_mode = result.mode.clone();
-        let revision = Revision {
-            id: String::new(),
-            target: c.target.clone(),
-            project: c.project.clone(),
-            checkout: c.checkout.clone(),
-            manifest: c.manifest.clone(),
-            profile,
-            producer: result.producer.clone(),
-            created: 0,
-        };
         let store = self.store.clone();
         let blobs = std::mem::take(&mut c.blobs);
-        let baseline_id = expected.clone();
         let task_id = id.to_owned();
         let cancellation = cancel.clone();
         let publishing = Instant::now();
         let revision = tokio::task::spawn_blocking(move || -> Result<Revision> {
             ensure!(!cancellation.is_cancelled(), "CANCELLED");
             codeana_storage::test_fault(&store.home, "before_publish")?;
-            store.put_blobs(&blobs)?;
+            store.put_blob_files(&blobs)?;
             ensure!(!cancellation.is_cancelled(), "CANCELLED");
-            store.publish(revision, &result, &baseline_id, &task_id)
+            store.publish_staged(candidate, &task_id)
         })
         .await??;
         let publish_ms = publishing.elapsed().as_millis() as u64;
         // Publication is durable; failure to acknowledge cannot turn it into a failed publication.
         let ack = worker.ack(&revision.id).await.err().map(|e| e.to_string());
+        let worker_context = worker.context.clone();
+        if ack.is_none()
+            && self.mock.is_none()
+            && self.user.daemon.java_warm_workers.unwrap_or(true)
+            && let Some(key) = pool_key
+        {
+            let id = new_id("idle-java");
+            let mut idle = self.idle_java.lock().unwrap();
+            *idle = Some(IdleJava {
+                key,
+                revision: revision.id.clone(),
+                id: id.clone(),
+                worker,
+            });
+            drop(idle);
+            let pool = self.idle_java.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(60)).await;
+                let mut pool = pool.lock().unwrap();
+                if pool.as_ref().is_some_and(|item| item.id == id) {
+                    pool.take();
+                }
+            });
+        }
         let mut t = TaskResult::success(Output {
             revision: revision.id.clone(),
             producer: revision.producer.clone(),
             evidence,
             records: vec![
-                json!({"revision":revision.id,"mode":result_mode,"facts":merged.len(),"manifest":revision.manifest.id(),"profile":revision.profile,"producer":revision.producer,"ack_warning":ack}),
+                json!({"revision":revision.id,"mode":result_mode,"facts":summary.fact_count,"manifest":revision.manifest.id(),"profile":revision.profile,"producer":revision.producer,"ack_warning":ack}),
             ],
             cursor: String::new(),
         });
         t.publication = "published".into();
         if c.effective.config.observability.mode != "off" {
             t.report = id.into();
-            let mut counts = BTreeMap::<String, usize>::new();
-            let mut diagnostic_groups = BTreeMap::<String, usize>::new();
-            let mut diagnostic_total = 0usize;
-            for fact in &merged {
-                *counts.entry(fact.kind.name().into()).or_default() += 1;
-                if fact.kind == FactKind::Diagnostic {
-                    diagnostic_total += 1;
-                    let severity = fact
-                        .attributes
-                        .get("severity")
-                        .and_then(Value::as_str)
-                        .unwrap_or("unknown");
-                    let code = fact
-                        .attributes
-                        .get("code")
-                        .and_then(Value::as_str)
-                        .unwrap_or("unknown");
-                    *diagnostic_groups
-                        .entry(format!("{severity}:{code}"))
-                        .or_default() += 1;
-                }
-            }
-            let summary = json!({"facts":merged.len(),"files":revision.manifest.files.len(),"counts":counts,"evidence":t.output.evidence,"profile":revision.profile,"capture_digest":c.effective.capture_digest,"timing":{"index_elapsed_ms":started.elapsed().as_millis() as u64,"analyze_ms":analyze_ms,"publish_ms":publish_ms},"diagnostics":{"total":diagnostic_total,"groups":diagnostic_groups,"sampled":diagnostic_total.min(100),"omitted":diagnostic_total.saturating_sub(100)}});
+            let report_summary = json!({"facts":summary.fact_count,"files":revision.manifest.files.len(),"counts":summary.counts,"evidence":t.output.evidence,"profile":revision.profile,"capture_digest":c.effective.capture_digest,"timing":{"index_elapsed_ms":started.elapsed().as_millis() as u64,"analyze_ms":analyze_ms,"publish_ms":publish_ms},"diagnostics":{"total":summary.diagnostic_total,"groups":summary.diagnostic_groups,"groups_omitted":summary.diagnostic_groups_omitted,"sampled":summary.diagnostic_samples.len(),"omitted":summary.diagnostic_total.saturating_sub(summary.diagnostic_samples.len() as u64)}});
             let full = matches!(
                 c.effective.config.observability.mode.as_str(),
                 "full" | "detailed"
             );
-            let report = json!({"id":id,"created":now(),"revision":revision.id,"level":if full{"full"}else{"basic"},"summary":summary,"result":t,"effective":if full {serde_json::to_value(&c.effective)?} else {json!({"config_digest":c.effective.config_digest,"origins":c.effective.origins})},"context":worker.context,"diagnostics":if full {merged.iter().filter(|f|f.kind==FactKind::Diagnostic).take(100).map(serde_json::to_value).collect::<std::result::Result<Vec<_>,_>>()?}else{vec![]}});
+            let report = json!({"id":id,"created":now(),"revision":revision.id,"level":if full{"full"}else{"basic"},"summary":report_summary,"result":t,"effective":if full {serde_json::to_value(&c.effective)?} else {json!({"config_digest":c.effective.config_digest,"origins":c.effective.origins})},"context":worker_context,"diagnostics":if full {summary.diagnostic_samples.iter().map(serde_json::to_value).collect::<std::result::Result<Vec<_>,_>>()?}else{vec![]}});
             let store = self.store.clone();
             let report_id = id.to_owned();
             let report_project = revision.project.clone();
@@ -630,7 +735,7 @@ impl Engine {
                 let discovery = effective.config.discovery.mode == "explicit";
                 Output {
                     records: vec![
-                        json!({"generation":self.generation,"effective":effective,"modules":effective.config.modules.iter().map(|m|json!({"id":m.id,"language":m.language,"worlds":m.worlds})).collect::<Vec<_>>(),"capabilities":{"files_snapshot":"available","search_text":"available","java_index":if java&&discovery&&self.mock.is_some(){"mock_fixture_only"}else{"unavailable"},"auto_discovery":"unavailable","rust_source_analysis":"unavailable","diff":"existing_behavior"},"java_adapter":if self.mock.is_some(){"mock-fixture-v1"}else{"unavailable"},"worker_memory_enforcement":"process_group_rss_sample_250ms"}),
+                        json!({"generation":self.generation,"effective":effective,"modules":effective.config.modules.iter().map(|m|json!({"id":m.id,"language":m.language,"worlds":m.worlds})).collect::<Vec<_>>(),"capabilities":{"files_snapshot":"available","search_text":"available","java_index":if java&&discovery&&self.mock.is_some(){"mock_fixture_only"}else if java&&self.java_available(){"java8_native"}else{"unavailable"},"auto_discovery":if self.mock.is_none()&&self.java_available(){"java_metadata_only"}else{"unavailable"},"rust_source_analysis":"unavailable","diff":"existing_behavior"},"java_adapter":if self.mock.is_some(){"mock-fixture-v1"}else if self.java_available(){"javac-java8-v1"}else{"unavailable"},"worker_memory_enforcement":"process_group_rss_sample_100ms"}),
                     ],
                     evidence: Evidence::complete(),
                     ..Default::default()
@@ -916,31 +1021,7 @@ impl Engine {
         Ok(TaskResult::success(output))
     }
     fn render(&self, id: &str, req: &Request, result: &mut TaskResult) -> Result<()> {
-        let limit = if req.max_output_bytes == 0 {
-            32768
-        } else {
-            req.max_output_bytes as usize
-        };
-        ensure!(limit >= 2048, "OUTPUT_BUDGET_TOO_SMALL: minimum 2048");
-        let mut bytes = b"codeana-text-v1\n".to_vec();
-        let mut printed = 0;
-        for record in &result.output.records {
-            let line = format!("record {}\n", serde_json::to_string(record)?);
-            if bytes.len() + line.len() + 1536 > limit {
-                result.output.evidence.enumeration = false;
-                result.output.evidence.limits.push("output_bytes".into());
-                break;
-            }
-            bytes.extend(line.as_bytes());
-            printed += 1;
-        }
-        if printed < result.output.records.len() && req.strict {
-            result.exit_code = 3;
-            result.gate = "rejected".into();
-        }
-        bytes
-            .extend(format!("terminal {}\n", serde_json::to_string(&terminal(result))?).as_bytes());
-        ensure!(bytes.len() <= limit, "TERMINAL_OUTPUT_BUDGET");
+        let bytes = output::render(req, result)?;
         for chunk in bytes.chunks(16384) {
             self.store.event(id, &Event::Output(chunk.to_vec()))?;
         }

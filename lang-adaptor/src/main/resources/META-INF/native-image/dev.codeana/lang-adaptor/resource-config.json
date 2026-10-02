@@ -1,0 +1,7 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "lombok/annotation-copy-candidates\\.txt" }
+    ]
+  }
+}

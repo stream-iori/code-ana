@@ -12,6 +12,7 @@ globset.workspace = true
 walkdir.workspace = true
 anyhow.workspace = true
 codeana-model = { path = "../model" }
+tempfile.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

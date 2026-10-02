@@ -1,10 +1,10 @@
 # 总体架构
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+> 2026-09-29 实现状态：Java 8 真实 native/javac 已接入；结构化类型、ASM 外部声明与 owner 级冷增量见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
 **用语言 worker 生成事实，用 Rust 管理事实生命周期并回答查询。查询只读已发布版本。**
 
-状态：用户已确认每用户一个 daemon、HTTP/2 + protobuf 通信，以及 `lang-adaptor/` 的 Java 25/GraalVM C ABI 原生库方案；Java 分析后端仅采用 javac，不保留 JavaParser 或回退路径（D16，2026-09-29）；javac 执行位置为 D17 待验证方案，其余模块细分和发布方式为建议，见 [决策登记](design-review.md)。
+状态：用户已确认每用户一个 daemon、HTTP/2 + protobuf 通信，以及 `lang-adaptor/` 的 Java 25/GraalVM C ABI 原生库方案；Java 分析后端仅采用 javac，不保留 JavaParser 或回退路径（D16，2026-09-29）；javac 执行位置采用 D17 目标 JDK 子进程方案（Java 8 fixture 已验证），其余模块细分和发布方式为建议，见 [决策登记](design-review.md)。
 
 ## 1. 系统边界
 
@@ -40,7 +40,7 @@ daemon -- worker IPC --> [ Rust worker host -- C ABI / FFI --> Java 原生库 ]
                         |____________ 一个隔离进程 ____________________|
 
 Java 原生库 = lang-adaptor/ 中的 Java 25 + GraalVM Native Image 构建产物
-候选内部链路（D17）：Java 原生库 -- 编译器协议 --> 目标 JDK javac 子进程
+当前内部链路（D17，Java 8）：Java 原生库 -- 编译器协议 --> 目标 JDK javac 子进程
                     <- 独立 Java 模型 -- parse/analyze（禁用处理器）
 ```
 
@@ -107,7 +107,7 @@ Java / Rust worker <---- contracts 的 wire schema
 
 配置统一入口见 [多语言 config.toml](configuration.md)：公共策略 → 语言默认 → module 覆盖 → world 条件 → CLI 显式覆盖，最后进行范围和资源上限校验。用户 daemon/工具链配置独立于可移植项目配置；Java 25 构建工具链与被分析项目的 Java 版本分开。
 
-Java 解析、绑定只走 javac；提取器和框架消费脱离编译器对象的 Java 模型，再输出公共 Fact IR。目标 JDK 子进程方案保留 D13 的 Rust host/C ABI 原生库，但增加 JVM 运行依赖；尚未通过本项目 P0。Java 8 编译器桥的字节码兼容与 Java 25 原生库构建规则分开评审，不能把 Anatomist 的 native 主程序通过验收当作内嵌 javac 已可用。详见 [Java worker](modules/java-worker.md)。
+Java 解析、绑定只走 javac；提取器和框架消费脱离编译器对象的 Java 模型，再输出公共 Fact IR。目标 JDK 子进程方案保留 D13 的 Rust host/C ABI 原生库，但增加 JVM 运行依赖；Java 8 真实共享库链路已通过 fixture 验证，完整 P0 范围另按验收表跟踪。Java 8 编译器桥的字节码兼容与 Java 25 原生库构建规则分开评审，不能把 Anatomist 的 native 主程序通过验收当作内嵌 javac 已可用。详见 [Java worker](modules/java-worker.md)。
 
 ## 3. 四条主流程
 

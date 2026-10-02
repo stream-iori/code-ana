@@ -1,6 +1,6 @@
 # Rust 实现与本地验收
 
-**Rust 主链路可用独立 mock-worker 验证。集成测试按场景隔离，并验证发布崩溃窗口、迁移回滚和报告失败；diff 保持原行为，暂不扩展。真实 javac/native 另行验收。**
+**Rust 主链路可用独立 mock-worker 验证。集成测试按场景隔离，并验证发布崩溃窗口、迁移回滚和报告失败；diff 保持原行为，暂不扩展。真实 Java 8 的实现和验收见 [Java 实现说明](java-implementation.md)。**
 
 ```text
 clap CLI ── authenticated gRPC ── Rust daemon
@@ -11,7 +11,7 @@ clap CLI ── authenticated gRPC ── Rust daemon
                                   └─ 查询 / pipeline / snapshot / diff / report / annotation / GC
 
 保留：Rust java-worker ── C ABI ── Java 25 Native Image Hello
-后续：真实 Java javac Fact IR producer，替换 mock-worker
+生产：真实 Java 8 javac Fact IR producer；mock 保留独立回归
 ```
 
 ## 运行
@@ -42,7 +42,7 @@ cli=./target/debug/codeana-cli
 "$cli" --home /tmp/codeana-example-home --project /tmp/codeana-example-project call-sites main
 ```
 
-默认生产目录为 `~/.code-ana`。普通 CLI 可启动同目录的 daemon；生产模式目前索引返回 `UNSUPPORTED_ADAPTER`，不会自动启用 mock。mock 必须显式指定独立 home，home 内模式标记禁止与生产数据混用。
+默认生产目录为 `~/.code-ana`。普通 CLI 可启动同目录的 daemon；生产模式使用已安装的 Java bundle，缺失时返回 `UNSUPPORTED_ADAPTER`，不会自动启用 mock。mock 必须显式指定独立 home，home 内模式标记禁止与生产数据混用。
 
 ## 命令
 
@@ -117,7 +117,7 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | query | 面向 FactReader 的查询和 pipeline，不依赖 SQLite |
 | cli / daemon | 命令行解析 / gRPC 接入 |
 | mock-worker | 已知输入回放与协议故障注入，不包含 Java parser |
-| java-worker | 保留原生 FFI Hello，真实语义另行接入 |
+| java-worker | Java 8 native/javac 已接入；范围见 Java 实现说明 |
 
 当前 home 共享一个 catalog，以 project/checkout/target 隔离；每个 revision 独立 SQLite。catalog schema 2、annotation schema 2 会事务升级旧库；旧标注正文与版本保留，旧记录没有可靠锚点时显示 `unbound`。GC 删除中断留下的 `cleanup_pending` 由 recover 重试。配置、报告、快照和冻结页是 catalog 中的版本化对象。
 
@@ -127,10 +127,10 @@ terminal { "execution":..., "publication":..., "evidence":... }
 |---|---|
 | 输入 | 配置文件最多 1 MiB，每文件/IPC 帧 8 MiB，单捕获/结果 64 MiB，最多扫描 100,000 项、捕获 10,000 文件、接收 100,000 事实；符号链接输入拒绝 |
 | 并发 | 默认 2 个 worker，最多 8 个活动/排队任务；用户 max_workers 上限 8 |
-| worker 内存 | 默认每 worker 256 MiB；按独立进程组 RSS 每 250ms 采样，超额终止；不是内核级硬隔离 |
+| worker 内存 | 默认每 worker 256 MiB；按独立进程组 RSS 每 100ms 调度采样，超额终止；不是内核级硬隔离 |
 | 超时 | 默认 120s，最大 3600s；捕获、查询、发布和 Git 读取在阻塞线程运行；查询在选择器/源码读取边界检查取消，正在执行的单条 SQLite 语句尚无中断钩子 |
 | 输出 | 默认 100 条、32 KiB；最多 10,000 条、8 MiB；至少 2 KiB 用于终态和记录 |
-| 发现 | mock 只支持显式 Java source_roots；`discovery.mode=auto` 索引明确报不支持。缺输入返回协议 2 的结构化 BuildAdvice，cwd 指向用户 checkout；Maven/Gradle 有效模型和真实工具链识别仍待 Java 适配器 |
+| 发现 | mock 只支持显式 Java source_roots；`discovery.mode=auto` 索引明确报不支持。缺输入返回协议 3 的结构化 BuildAdvice，cwd 指向用户 checkout；Maven/Gradle 有效模型和真实工具链识别仍待 Java 适配器 |
 | 增量 | Rust 真正执行 backup + owner 替换；mock 用全 owner 替换验证冷基线，不宣称语义失效算法 |
 | 高级语义 | 消费已有 overrides/implements 等事实；不在 Rust 重做 javac 类型推理。派发候选、impact 明确可能性 |
 | Git | 只读解析 commit/tree/blob；不运行 checkout、构建、钩子或 annotation processor |

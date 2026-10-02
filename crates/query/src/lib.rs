@@ -139,6 +139,69 @@ fn allowed(r: &dyn FactReader, req: &Request, f: &Fact) -> bool {
             && (req.scope.is_empty() || req.scope == "ALL" || s.scope == req.scope)
     })
 }
+fn fact_source(r: &dyn FactReader, f: &Fact) -> Result<(SourceUnit, Option<Span>)> {
+    if f.attributes.get("source_available") != Some(&json!(false)) {
+        return r
+            .manifest()
+            .files
+            .iter()
+            .find(|s| s.path == f.source)
+            .cloned()
+            .map(|s| (s, f.span.clone()))
+            .ok_or_else(|| anyhow::anyhow!("SOURCE_UNAVAILABLE: {} origin={}", f.id, f.origin));
+    }
+    ensure!(
+        f.kind == FactKind::ExternalSymbol && f.source.is_empty(),
+        "SOURCE_UNAVAILABLE: {}",
+        f.id
+    );
+    let origin = f
+        .attributes
+        .get("source_origin")
+        .and_then(Value::as_object)
+        .ok_or_else(|| anyhow::anyhow!("SOURCE_UNAVAILABLE: {}", f.id))?;
+    let text = |key: &str| origin.get(key).and_then(Value::as_str).unwrap_or("");
+    let source = r
+        .manifest()
+        .files
+        .iter()
+        .find(|s| {
+            s.path == text("path")
+                && s.hash == text("hash")
+                && s.world == text("world")
+                && s.module == text("module")
+                && s.scope == text("scope")
+        })
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("SOURCE_ORIGIN_MISMATCH: {}", f.id))?;
+    ensure!(!f.signature.is_empty(), "SOURCE_UNAVAILABLE: {}", f.id);
+    // Navigate a captured SOURCE declaration; never substitute its binding world or target ID.
+    let candidates = select(
+        r,
+        FactFilter {
+            kinds: vec![FactKind::Declaration],
+            source: Some(source.path.clone()),
+            world: Some(source.world.clone()),
+            ..Default::default()
+        },
+    )?
+    .into_iter()
+    .filter(|d| {
+        d.signature == f.signature
+            && d.origin == "javac"
+            && d.span.is_some()
+            && d.attributes.get("source_available") != Some(&json!(false))
+    })
+    .collect::<Vec<_>>();
+    ensure!(
+        candidates.len() == 1,
+        "SOURCE_UNAVAILABLE: {} candidates={}",
+        f.id,
+        candidates.len()
+    );
+    Ok((source, candidates[0].span.clone()))
+}
+
 fn values(facts: impl IntoIterator<Item = Fact>) -> Vec<Value> {
     facts
         .into_iter()
@@ -322,31 +385,15 @@ pub fn run(
                 records.push(json!({"counts":counts,"sources":r.manifest().files.len(),"profile":r.revision().profile}));
             }
             "source" => {
-                let sources = if let Some(s) =
-                    r.manifest().files.iter().find(|s| s.path == req.selector)
-                {
-                    vec![(s.clone(), None)]
-                } else {
-                    resolve(r, &req.selector, req.unique)?
-                        .into_iter()
-                        .map(|f| {
-                            ensure!(
-                                f.attributes.get("source_available") != Some(&json!(false)),
-                                "SOURCE_UNAVAILABLE: {}",
-                                f.id
-                            );
-                            let source = r
-                                .manifest()
-                                .files
-                                .iter()
-                                .find(|s| s.path == f.source)
-                                .cloned();
-                            source.map(|s| (s, f.span)).ok_or_else(|| {
-                                anyhow::anyhow!("SOURCE_UNAVAILABLE: {} origin={}", f.id, f.origin)
-                            })
-                        })
-                        .collect::<Result<Vec<_>>>()?
-                };
+                let sources =
+                    if let Some(s) = r.manifest().files.iter().find(|s| s.path == req.selector) {
+                        vec![(s.clone(), None)]
+                    } else {
+                        resolve(r, &req.selector, req.unique)?
+                            .into_iter()
+                            .map(|f| fact_source(r, &f))
+                            .collect::<Result<Vec<_>>>()?
+                    };
                 for (s, span) in sources {
                     let bytes = read_source(&s)?;
                     ensure!(hash(&bytes) == s.hash, "SOURCE_HASH_MISMATCH");
@@ -567,6 +614,20 @@ pub fn run(
                                 .push(format!("missing_dispatch_targets:{}", root.id));
                         }
                         for t in targets {
+                            if t.status == "possible" && !t.target.is_empty() {
+                                evidence.semantic = false;
+                                let reason = if t.origin == "reflection_model" {
+                                    "reflection_lookup_candidate"
+                                } else {
+                                    "modeled_binding"
+                                };
+                                evidence.reasons.push(format!("{reason}:{}", t.id));
+                                records.push(json!({"call_site":root.id,"target":t.target,"binding":t.status,"binding_origin":t.origin,
+                                    "operation":t.attributes.get("operation"),"basis":t.attributes.get("via").or_else(||t.attributes.get("recovery_input")),
+                                    "recovery_phase":t.attributes.get("recovery_phase"),
+                                    "proof":[t.id],"possible":true,"world":t.owner.world}));
+                                continue;
+                            }
                             if t.status != "resolved"
                                 || !t.declaration_resolved
                                 || t.target.is_empty()
@@ -582,7 +643,69 @@ pub fn run(
                                 evidence.semantic = false;
                                 evidence.reasons.push(format!("binding:{}", t.id));
                             }
-                            records.push(json!({"call_site":root.id,"target":t.target,"binding":t.status,"proof":[t.id],"possible":true,"world":t.owner.world}));
+                            let declaration = select(
+                                r,
+                                FactFilter {
+                                    ids: vec![t.target.clone()],
+                                    ..Default::default()
+                                },
+                            )?
+                            .into_iter()
+                            .next();
+                            let modifiers = declaration
+                                .as_ref()
+                                .and_then(|fact| fact.attributes.get("modifiers"))
+                                .and_then(Value::as_array);
+                            let has_modifier = |name: &str| {
+                                modifiers.is_some_and(|items| {
+                                    items.iter().any(|item| item.as_str() == Some(name))
+                                })
+                            };
+                            let class_final = if let Some(parent) =
+                                declaration.as_ref().filter(|fact| !fact.parent.is_empty())
+                            {
+                                select(
+                                    r,
+                                    FactFilter {
+                                        ids: vec![parent.parent.clone()],
+                                        ..Default::default()
+                                    },
+                                )?
+                                .into_iter()
+                                .next()
+                                .and_then(|owner| owner.attributes.get("modifiers").cloned())
+                                .and_then(|value| value.as_array().cloned())
+                                .is_some_and(|items| {
+                                    items.iter().any(|item| item.as_str() == Some("final"))
+                                })
+                            } else {
+                                declaration
+                                    .as_ref()
+                                    .and_then(|fact| fact.attributes.get("binary_class"))
+                                    .and_then(|class| class.get("access"))
+                                    .and_then(Value::as_i64)
+                                    .is_some_and(|access| access & 0x0010 != 0)
+                            };
+                            let mechanism = root
+                                .attributes
+                                .get("mechanism")
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            let exact = mechanism == "constructor"
+                                || root
+                                    .attributes
+                                    .get("reference_mode")
+                                    .and_then(Value::as_str)
+                                    == Some("NEW")
+                                || root.name.starts_with("super.")
+                                || has_modifier("static")
+                                || has_modifier("private")
+                                || has_modifier("final")
+                                || class_final;
+                            records.push(json!({"call_site":root.id,"target":t.target,"binding":t.status,"proof":[t.id],"possible":!exact,"world":t.owner.world}));
+                            if exact {
+                                continue;
+                            }
                             let mut expanded = BTreeSet::new();
                             let mut queue = VecDeque::from([(t.target, vec![t.id], 0u32)]);
                             while let Some((target, proof, depth)) = queue.pop_front() {
@@ -603,7 +726,10 @@ pub fn run(
                                     },
                                 )?;
                                 for rel in relations.into_iter().filter(|rel| {
-                                    rel.relation == "overrides" && allowed(r, req, rel)
+                                    matches!(
+                                        rel.relation.as_str(),
+                                        "overrides" | "implements_method"
+                                    ) && allowed(r, req, rel)
                                 }) {
                                     if depth >= req.depth.max(1) {
                                         evidence.enumeration = false;
@@ -616,9 +742,9 @@ pub fn run(
                                     queue.push_back((rel.parent, path, depth + 1));
                                 }
                             }
+                            evidence.semantic = false;
+                            evidence.reasons.push("open_world_dispatch".into());
                         }
-                        evidence.semantic = false;
-                        evidence.reasons.push("open_world_dispatch".into());
                     } else {
                         let incoming =
                             req.direction == "in" || req.operation == "runtime-implementations";
@@ -702,6 +828,8 @@ mod tests {
                         && (filter.kinds.is_empty() || filter.kinds.contains(&f.kind))
                         && filter.parent.as_ref().is_none_or(|v| v == &f.parent)
                         && filter.target.as_ref().is_none_or(|v| v == &f.target)
+                        && filter.source.as_ref().is_none_or(|v| v == &f.source)
+                        && filter.world.as_ref().is_none_or(|v| v == &f.owner.world)
                 })
                 .cloned()
                 .collect())
@@ -711,6 +839,130 @@ mod tests {
         }
         fn revision(&self) -> &Revision {
             &self.revision
+        }
+    }
+    #[test]
+    fn auxiliary_source_navigation_uses_captured_declaration_without_rebinding() {
+        let text = "class Api { void read() { /* 汉 */ } }";
+        let start = text.find("void read()").unwrap() as u64;
+        let end = (text.rfind('}').unwrap() - 1) as u64;
+        let source = SourceUnit {
+            path: "lib/Api.java".into(),
+            hash: hash(text),
+            size: text.len() as u64,
+            module: "lib".into(),
+            world: "lib-main".into(),
+            scope: "MAIN".into(),
+            language: "java".into(),
+            auxiliary: false,
+        };
+        let declaration: Fact = serde_json::from_value(json!({
+            "id":"producer-method", "kind":"declaration", "source":source.path,
+            "owner":{"world":source.world,"producer":"javac-java8-v1","kind":"source","id":source.path},
+            "signature":"Api#read()", "origin":"javac", "span":{"start":start,"end":end}
+        })).unwrap();
+        let auxiliary: Fact = serde_json::from_value(json!({
+            "id":"consumer-method", "kind":"external_symbol", "signature":"Api#read()", "origin":"javac",
+            "owner":{"world":"app-main","producer":"javac-java8-v1","kind":"context","id":"app@MAIN"},
+            "attributes":{"source_available":false,"source_origin":{
+                "path":source.path,"hash":source.hash,"world":source.world,"module":source.module,"scope":source.scope
+            }}
+        })).unwrap();
+        let reader = MemoryReader {
+            revision: Revision {
+                id: "rev".into(),
+                target: "t".into(),
+                project: "p".into(),
+                checkout: "c".into(),
+                manifest: Manifest {
+                    files: vec![source.clone()],
+                },
+                profile: "profile".into(),
+                producer: "javac".into(),
+                created: 0,
+            },
+            facts: vec![declaration, auxiliary.clone()],
+        };
+        let request = Request {
+            operation: "source".into(),
+            selector: auxiliary.id.clone(),
+            unique: true,
+            ..Default::default()
+        };
+        let output = run(&reader, &request, &|captured| {
+            assert_eq!(captured, &source);
+            Ok(text.as_bytes().to_vec())
+        })
+        .unwrap();
+        assert_eq!(output.records.len(), 1);
+        assert_eq!(
+            output.records[0]["text"],
+            &text[start as usize..end as usize]
+        );
+        assert_eq!(output.records[0]["path"], source.path);
+        assert_eq!(resolve(&reader, &auxiliary.id, true).unwrap()[0], auxiliary);
+        assert!(
+            run(&reader, &request, &|_| Ok(b"changed".to_vec()))
+                .unwrap_err()
+                .to_string()
+                .contains("SOURCE_HASH_MISMATCH")
+        );
+
+        for change in [
+            "stale-hash",
+            "wrong-module",
+            "wrong-scope",
+            "wrong-world",
+            "binary-only",
+            "missing-producer",
+            "modeled-only",
+            "ambiguous",
+        ] {
+            let mut altered = MemoryReader {
+                revision: reader.revision.clone(),
+                facts: reader.facts.clone(),
+            };
+            match change {
+                "stale-hash" => {
+                    altered.facts[1]
+                        .attributes
+                        .get_mut("source_origin")
+                        .unwrap()["hash"] = json!("stale")
+                }
+                "wrong-module" => {
+                    altered.facts[1]
+                        .attributes
+                        .get_mut("source_origin")
+                        .unwrap()["module"] = json!("other")
+                }
+                "wrong-scope" => {
+                    altered.facts[1]
+                        .attributes
+                        .get_mut("source_origin")
+                        .unwrap()["scope"] = json!("TEST")
+                }
+                "wrong-world" => altered.facts[0].owner.world = "other-world".into(),
+                "binary-only" => {
+                    altered.facts[1].attributes.remove("source_origin");
+                }
+                "missing-producer" => {
+                    altered.facts.remove(0);
+                }
+                "modeled-only" => altered.facts[0].origin = "lombok_model".into(),
+                "ambiguous" => {
+                    let mut duplicate = altered.facts[0].clone();
+                    duplicate.id = "duplicate".into();
+                    altered.facts.push(duplicate);
+                }
+                _ => unreachable!(),
+            }
+            assert!(
+                run(&altered, &request, &|_| bail!(
+                    "must not read unproven source"
+                ))
+                .is_err(),
+                "{change}"
+            );
         }
     }
     #[test]
@@ -760,6 +1012,171 @@ mod tests {
         .unwrap();
         assert_eq!(dispatch.records[0]["possible"], false);
         assert!(!dispatch.evidence.semantic);
+    }
+    #[test]
+    fn possible_candidates_are_explained_and_excluded_from_confirmed_calls() {
+        let owner = json!({"world":"world","producer":"javac","kind":"context","id":"ctx"});
+        let make = |value| serde_json::from_value::<Fact>(value).unwrap();
+        let mut reader = MemoryReader {
+            revision: Revision {
+                id: "rev".into(),
+                target: "t".into(),
+                project: "p".into(),
+                checkout: "c".into(),
+                manifest: Manifest::default(),
+                profile: "p".into(),
+                producer: "javac".into(),
+                created: 0,
+            },
+            facts: vec![
+                make(
+                    json!({"id":"caller","kind":"declaration","owner":owner,"signature":"Use#run()"}),
+                ),
+                make(
+                    json!({"id":"reflected","kind":"declaration","owner":owner,"signature":"Target#work()"}),
+                ),
+                make(json!({"id":"site","kind":"call_site","owner":owner,"parent":"caller"})),
+                make(
+                    json!({"id":"possible","kind":"call_target","owner":owner,"parent":"site","target":"reflected",
+                    "status":"possible","origin":"reflection_model","declaration_resolved":false,"evidence_complete":false,
+                    "attributes":{"via":"REFLECTION","operation":"METHOD_INVOKE"}}),
+                ),
+            ],
+        };
+        let calls = run(
+            &reader,
+            &Request {
+                operation: "calls".into(),
+                selector: "caller".into(),
+                ..Default::default()
+            },
+            &|_| bail!("no source"),
+        )
+        .unwrap();
+        assert!(calls.records.is_empty());
+        assert!(!calls.evidence.semantic);
+        let dispatch = run(
+            &reader,
+            &Request {
+                operation: "dispatch".into(),
+                selector: "site".into(),
+                ..Default::default()
+            },
+            &|_| bail!("no source"),
+        )
+        .unwrap();
+        assert_eq!(dispatch.records.len(), 1);
+        assert_eq!(dispatch.records[0]["binding_origin"], "reflection_model");
+        assert_eq!(dispatch.records[0]["basis"], "REFLECTION");
+        assert_eq!(dispatch.records[0]["operation"], "METHOD_INVOKE");
+        assert_eq!(dispatch.records[0]["possible"], true);
+        assert!(
+            dispatch
+                .evidence
+                .reasons
+                .contains(&"reflection_lookup_candidate:possible".into())
+        );
+        for origin in ["lombok_model", "source_recovery", "binary_recovery"] {
+            let candidate = reader.facts.last_mut().unwrap();
+            candidate.origin = origin.into();
+            candidate.declaration_resolved = origin != "lombok_model";
+            candidate.attributes = serde_json::from_value(
+                json!({"recovery_input":"modeled_expression","recovery_phase":1}),
+            )
+            .unwrap();
+            let calls = run(
+                &reader,
+                &Request {
+                    operation: "calls".into(),
+                    selector: "caller".into(),
+                    ..Default::default()
+                },
+                &|_| bail!("no source"),
+            )
+            .unwrap();
+            assert!(calls.records.is_empty());
+            assert!(!calls.evidence.semantic);
+            let dispatch = run(
+                &reader,
+                &Request {
+                    operation: "dispatch".into(),
+                    selector: "site".into(),
+                    ..Default::default()
+                },
+                &|_| bail!("no source"),
+            )
+            .unwrap();
+            assert_eq!(dispatch.records[0]["binding_origin"], origin);
+            assert_eq!(dispatch.records[0]["basis"], "modeled_expression");
+            assert_eq!(dispatch.records[0]["recovery_phase"], 1);
+            assert_eq!(dispatch.records[0]["possible"], true);
+            assert!(!dispatch.evidence.semantic);
+        }
+    }
+    #[test]
+    fn dispatch_distinguishes_exact_and_open_world_targets() {
+        let owner = json!({"world":"world","producer":"javac","kind":"source","id":"A.java"});
+        let make = |value| serde_json::from_value::<Fact>(value).unwrap();
+        let revision = Revision {
+            id: "rev".into(),
+            target: "t".into(),
+            project: "p".into(),
+            checkout: "c".into(),
+            manifest: Manifest::default(),
+            profile: "p".into(),
+            producer: "javac".into(),
+            created: 0,
+        };
+        let mut facts = vec![
+            make(
+                json!({"id":"site","kind":"call_site","owner":owner,"origin":"javac","status":"resolved","attributes":{"mechanism":"invoke"}}),
+            ),
+            make(
+                json!({"id":"binding","kind":"call_target","owner":owner,"origin":"javac","parent":"site","target":"method","status":"resolved","declaration_resolved":true,"evidence_complete":true}),
+            ),
+            make(
+                json!({"id":"method","kind":"declaration","owner":owner,"origin":"javac","parent":"class","attributes":{"modifiers":["static"]}}),
+            ),
+            make(
+                json!({"id":"class","kind":"declaration","owner":owner,"origin":"javac","attributes":{"modifiers":[]}}),
+            ),
+            make(
+                json!({"id":"child","kind":"declaration","owner":owner,"origin":"javac","parent":"child-class","attributes":{"modifiers":[]}}),
+            ),
+            make(
+                json!({"id":"edge","kind":"relation","owner":owner,"origin":"javac","parent":"child","target":"method","relation":"overrides"}),
+            ),
+        ];
+        let request = Request {
+            operation: "dispatch".into(),
+            selector: "site".into(),
+            ..Default::default()
+        };
+        let exact = run(
+            &MemoryReader {
+                revision: revision.clone(),
+                facts: facts.clone(),
+            },
+            &request,
+            &|_| bail!("no source"),
+        )
+        .unwrap();
+        assert_eq!(exact.records.len(), 1);
+        assert_eq!(exact.records[0]["possible"], false);
+        assert!(exact.evidence.semantic);
+        facts[2].attributes.insert("modifiers".into(), json!([]));
+        let virtual_call = run(&MemoryReader { revision, facts }, &request, &|_| {
+            bail!("no source")
+        })
+        .unwrap();
+        assert_eq!(virtual_call.records.len(), 2);
+        assert!(
+            virtual_call
+                .records
+                .iter()
+                .all(|record| record["possible"] == true)
+        );
+        assert!(!virtual_call.evidence.semantic);
     }
     #[test]
     fn invalid_pipeline_fails_before_read() {

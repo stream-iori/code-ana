@@ -8,12 +8,37 @@ message Fact {
  string status = 11; string origin = 12; bool evidence_complete = 13; bool declaration_resolved = 14;
  bytes attributes_json = 15;
 }
-message SourceUnit { string path = 1; string hash = 2; uint64 size = 3; string module = 4; string world = 5; string scope = 6; string language = 7; }
+message SourceUnit { string path = 1; string hash = 2; uint64 size = 3; string module = 4; string world = 5; string scope = 6; string language = 7; bool auxiliary = 8; }
 message Manifest { repeated SourceUnit files = 1; }
 message BuildContext { string language = 1; repeated string modules = 2; string source_version = 3; repeated string classpath = 4; string producer = 5; repeated string capabilities = 6; }
 message BuildAdvice { repeated string missing = 1; string cwd = 2; repeated string argv = 3; string purpose = 4; repeated string expected = 5; string impact = 6; string retry = 7; string capture = 8; string module = 9; string world = 10; }
 message Hello { uint32 protocol = 1; uint32 fact_ir = 2; string producer = 3; }
-message Discover { Manifest manifest = 1; }
+message JavaSource { SourceUnit unit = 1; string input = 2; bool publish = 3; }
+message JavaContext {
+ string id = 1; string module = 2; string world = 3; string scope = 4;
+ repeated JavaSource sources = 5; repeated string classpath = 6; string digest = 7;
+ string lombok = 8; bool spring = 9; bool spring_xml = 10; bool sofa = 11; repeated JavaSource resources = 12; bool lombok_strict = 13;
+ repeated uint32 source_indices = 14; repeated uint32 publish_indices = 15;
+ repeated uint32 classpath_indices = 16; repeated uint32 resource_indices = 17;
+ uint32 model_record_limit = 18;
+ uint64 model_archive_bytes = 19;
+ bool prerequisite = 20;
+}
+message JavaConfig {
+ string java_home = 1; string toolchain_digest = 2; string bridge = 3;
+ string scratch = 4; repeated JavaContext contexts = 5; string semantic_identity = 6;
+ uint32 parallelism = 7;
+ string cache_root = 8; bool signature_cache = 9;
+ uint64 compiler_heap_bytes = 10;
+ repeated JavaSource input_table = 11; repeated string classpath_table = 12; bool compact_inputs = 13;
+ uint32 compiler_timeout_seconds = 14;
+ uint64 native_heap_bytes = 15;
+ uint64 result_bytes = 16;
+ uint32 fact_limit = 17;
+}
+message Discover { Manifest manifest = 1; JavaConfig java = 2; }
+message BaselineChunk { uint64 seq = 1; repeated Fact facts = 2; }
+message BaselineEnd { uint64 count = 1; string checksum = 2; }
 message Analyze { Manifest manifest = 1; string profile = 2; string baseline = 3; bool full = 4; repeated Fact baseline_facts = 5; }
 message Begin { string mode = 1; string baseline = 2; string manifest = 3; string profile = 4; string producer = 5; repeated Owner replacements = 6; }
 message Chunk { uint64 seq = 1; repeated Fact facts = 2; }
@@ -21,5 +46,6 @@ message End { uint64 chunks = 1; uint64 count = 2; string checksum = 3; }
 message Replan { string reason = 1; }
 message Cancel {}
 message Ack { string revision = 1; }
+message Acked { string revision = 1; }
 message Failure { string code = 1; string message = 2; }
-message Envelope { string attempt = 1; oneof body { Hello hello = 2; Discover discover = 3; BuildContext context = 4; Analyze analyze = 5; Begin begin = 6; Chunk chunk = 7; End end = 8; Replan replan = 9; Cancel cancel = 10; Ack ack = 11; Failure failure = 12; BuildAdvice advice = 13; } }
+message Envelope { string attempt = 1; oneof body { Hello hello = 2; Discover discover = 3; BuildContext context = 4; Analyze analyze = 5; Begin begin = 6; Chunk chunk = 7; End end = 8; Replan replan = 9; Cancel cancel = 10; Ack ack = 11; Failure failure = 12; BuildAdvice advice = 13; BaselineChunk baseline_chunk = 14; BaselineEnd baseline_end = 15; Acked acked = 16; } }

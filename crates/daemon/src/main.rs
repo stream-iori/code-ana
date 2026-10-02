@@ -61,6 +61,8 @@ impl task_service_server::TaskService for Service {
                 "immutable-revisions".into(),
                 if self.0.mock.is_some() {
                     "mock-fixture-v1".into()
+                } else if self.0.java_available() {
+                    "javac-java8-v1".into()
                 } else {
                     "java-unavailable".into()
                 },

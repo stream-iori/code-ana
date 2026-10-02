@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
+use codeana_contracts::archive::{FactArchive, FactArchiveBuilder, SpooledAnalysis};
 use codeana_contracts::{
-    convert, envelope, fact_from_wire, fact_to_wire, read_frame, worker as w,
-    worker::envelope::Body, write_frame,
+    convert, envelope, fact_from_wire, read_frame, worker as w, worker::envelope::Body, write_frame,
 };
 use codeana_model::*;
 use std::{os::fd::AsRawFd, path::Path, time::Duration};
@@ -13,6 +13,7 @@ use tokio_util::sync::CancellationToken;
 pub struct Worker {
     child: Child,
     process_group: u32,
+    command: String,
     ipc: UnixStream,
     logs: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     log_task: tokio::task::JoinHandle<()>,
@@ -20,6 +21,9 @@ pub struct Worker {
     memory_exceeded: std::sync::Arc<std::sync::atomic::AtomicBool>,
     pub attempt: String,
     pub context: BuildContext,
+    output_limits: codeana_contracts::java::OutputLimits,
+    scratch: std::sync::Arc<std::sync::Mutex<Option<super::java::DiskBudget>>>,
+    scratch_exceeded: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 impl Drop for Worker {
     fn drop(&mut self) {
@@ -35,7 +39,8 @@ impl Drop for Worker {
 }
 impl Worker {
     pub async fn start(
-        fixtures: &Path,
+        fixtures: Option<&Path>,
+        java: Option<&super::java::PreparedJava>,
         checkout: &Path,
         manifest: &Manifest,
         cancel: &CancellationToken,
@@ -44,12 +49,20 @@ impl Worker {
         let (a, b) = std::os::unix::net::UnixStream::pair()?;
         a.set_nonblocking(true)?;
         let fd = b.as_raw_fd();
-        let binary = std::env::current_exe()?.with_file_name("codeana-mock-worker");
-        let mut cmd = Command::new(binary);
+        let binary = std::env::current_exe()?.with_file_name(if fixtures.is_some() {
+            "codeana-mock-worker"
+        } else {
+            "codeana-java-worker"
+        });
+        let mut cmd = Command::new(&binary);
+        if let Some(fixtures) = fixtures {
+            cmd.arg("--fixtures").arg(fixtures);
+        }
+        if let Some(java) = java {
+            cmd.arg(&java.library);
+        }
         cmd.arg("--fd")
             .arg("3")
-            .arg("--fixtures")
-            .arg(fixtures)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::piped())
@@ -67,7 +80,13 @@ impl Worker {
                 Ok(())
             });
         }
-        let mut child = cmd.spawn().context("MOCK_WORKER_NOT_INSTALLED")?;
+        let command = serde_json::to_string(
+            &std::iter::once(cmd.as_std().get_program())
+                .chain(cmd.as_std().get_args())
+                .map(|arg| arg.to_string_lossy().into_owned())
+                .collect::<Vec<_>>(),
+        )?;
+        let mut child = cmd.spawn().context("WORKER_NOT_INSTALLED")?;
         let mut stderr = child.stderr.take().context("WORKER_STDERR")?;
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let captured = logs.clone();
@@ -87,9 +106,27 @@ impl Worker {
         let pid = child.id().context("WORKER_PID_REQUIRED")?;
         let memory_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let exceeded = memory_exceeded.clone();
+        let scratch =
+            std::sync::Arc::new(std::sync::Mutex::new(java.map(|j| j.disk_budget.clone())));
+        let monitored_scratch = scratch.clone();
+        let scratch_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let disk_exceeded = scratch_exceeded.clone();
         let monitor = tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_millis(100));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             loop {
-                tokio::time::sleep(Duration::from_millis(250)).await;
+                interval.tick().await;
+                let budget = monitored_scratch.lock().unwrap().clone();
+                if let Some(budget) = budget {
+                    let check = tokio::task::spawn_blocking(move || budget.check()).await;
+                    if !matches!(check, Ok(Ok(()))) {
+                        disk_exceeded.store(true, std::sync::atomic::Ordering::SeqCst);
+                        unsafe {
+                            libc::kill(-(pid as i32), libc::SIGKILL);
+                        }
+                        break;
+                    }
+                }
                 let sample = tokio::time::timeout(
                     Duration::from_secs(1),
                     Command::new("/bin/ps")
@@ -120,10 +157,17 @@ impl Worker {
         });
         drop(b);
         let mut worker = Self {
+            output_limits: java
+                .map(|j| codeana_contracts::java::OutputLimits::from_config(&j.config))
+                .transpose()?
+                .unwrap_or_default(),
+            scratch,
+            scratch_exceeded,
             monitor,
             memory_exceeded,
             child,
             process_group: pid,
+            command,
             logs,
             log_task,
             ipc: UnixStream::from_std(a)?,
@@ -148,7 +192,12 @@ impl Worker {
             Body::Hello(h) => ensure!(
                 h.protocol == WORKER_PROTOCOL_VERSION
                     && h.fact_ir == VERSION
-                    && h.producer == "mock-fixture-v1",
+                    && h.producer
+                        == if fixtures.is_some() {
+                            "mock-fixture-v1"
+                        } else {
+                            "javac-java8-v1"
+                        },
                 "WORKER_VERSION_MISMATCH"
             ),
             _ => bail!("EXPECTED_HELLO"),
@@ -156,6 +205,7 @@ impl Worker {
         worker
             .send(Body::Discover(w::Discover {
                 manifest: Some(convert(manifest)?),
+                java: java.map(|j| j.config.clone()),
             }))
             .await?;
         worker.context = match worker.receive(cancel).await? {
@@ -187,7 +237,7 @@ impl Worker {
             _ => bail!("EXPECTED_BUILD_CONTEXT"),
         };
         ensure!(
-            worker.context.producer.starts_with("mock-"),
+            fixtures.is_none() || worker.context.producer.starts_with("mock-"),
             "MOCK_PROVENANCE_REQUIRED"
         );
         Ok(worker)
@@ -208,12 +258,13 @@ impl Worker {
                     let status=tokio::time::timeout(Duration::from_millis(100),self.child.wait()).await;
                     tokio::task::yield_now().await;
                     let logs=String::from_utf8_lossy(&self.logs.lock().unwrap()).into_owned();
+                    if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!("JAVA_SCRATCH_BUDGET");}
                     if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!("WORKER_MEMORY_BUDGET");}
                     let status=match status {Ok(Ok(s))=>s.to_string(),Ok(Err(e))=>e.to_string(),Err(_)=>"still running".into()};
-                    bail!("WORKER_PROTOCOL: {error}; exit={status}; stderr={logs}");
+                    bail!("WORKER_PROTOCOL: {error}; pid={}; command={}; exit={status}; stderr={logs}",self.process_group,self.command);
                 }
             },
-            _=cancel.cancelled()=>{let _=self.send(Body::Cancel(w::Cancel{})).await;bail!("CANCELLED")}
+            _=cancel.cancelled()=>{let _=self.send(Body::Cancel(w::Cancel{})).await;let _=tokio::time::timeout(Duration::from_secs(2),self.child.wait()).await;bail!("CANCELLED")}
         };
         ensure!(frame.attempt == self.attempt, "ATTEMPT_MISMATCH");
         match frame.body.context("EMPTY_FRAME")? {
@@ -226,23 +277,37 @@ impl Worker {
         manifest: &Manifest,
         profile: &str,
         baseline: &str,
-        old: &[Fact],
+        old: Option<&FactArchive>,
         full: bool,
         cancel: &CancellationToken,
-    ) -> Result<AnalysisResult> {
+    ) -> Result<SpooledAnalysis> {
         let mut full = full;
         for retry in 0..2 {
             self.attempt = new_id("attempt");
+            let baseline_input = if full { None } else { old };
+            let mut sequence = 0;
+            if let Some(archive) = baseline_input {
+                for chunk in archive.chunks()? {
+                    self.send(Body::BaselineChunk(w::BaselineChunk {
+                        seq: sequence,
+                        facts: chunk?,
+                    }))
+                    .await?;
+                    sequence += 1;
+                }
+            }
+            self.send(Body::BaselineEnd(w::BaselineEnd {
+                count: baseline_input.map_or(0, |a| a.count),
+                checksum: baseline_input
+                    .map_or_else(|| digest(&Vec::<Fact>::new()), |a| a.checksum.clone()),
+            }))
+            .await?;
             self.send(Body::Analyze(w::Analyze {
                 manifest: Some(convert(manifest)?),
                 profile: profile.into(),
                 baseline: baseline.into(),
                 full,
-                baseline_facts: if full {
-                    vec![]
-                } else {
-                    old.iter().map(fact_to_wire).collect::<Result<_>>()?
-                },
+                baseline_facts: vec![],
             }))
             .await?;
             let begin = match self.receive(cancel).await? {
@@ -261,37 +326,40 @@ impl Worker {
                 "RESULT_IDENTITY_MISMATCH"
             );
             ensure!(!full || begin.mode == "full", "EXPECTED_FULL_RESULT");
-            let mut facts = Vec::new();
+            let mut facts = match self.scratch.lock().unwrap().as_ref() {
+                Some(budget) => FactArchiveBuilder::new_in(
+                    self.output_limits.bytes,
+                    self.output_limits.facts,
+                    &budget.root,
+                )?,
+                None => {
+                    FactArchiveBuilder::new(self.output_limits.bytes, self.output_limits.facts)?
+                }
+            };
             let mut seq = 0;
-            let mut bytes = 0;
-            loop {
+            let archive = loop {
                 match self.receive(cancel).await? {
                     Body::Chunk(chunk) => {
                         ensure!(chunk.seq == seq, "CHUNK_SEQUENCE_MISMATCH");
                         seq += 1;
                         for f in chunk.facts {
                             let f = fact_from_wire(f)?;
-                            bytes += serde_json::to_vec(&f)?.len();
-                            ensure!(
-                                bytes <= MAX_RESULT && facts.len() < MAX_FACTS,
-                                "RESULT_BUDGET"
-                            );
-                            facts.push(f);
+                            facts.push(&f)?;
                         }
                     }
                     Body::End(end) => {
                         ensure!(
-                            end.chunks == seq
-                                && end.count == facts.len() as u64
-                                && end.checksum == digest(&facts),
+                            end.chunks == seq && end.count == facts.count(),
                             "RESULT_CHECKSUM_MISMATCH"
                         );
-                        break;
+                        let sealed = facts.seal()?;
+                        ensure!(end.checksum == sealed.checksum, "RESULT_CHECKSUM_MISMATCH");
+                        break sealed;
                     }
                     _ => bail!("UNEXPECTED_RESULT_MESSAGE"),
                 }
-            }
-            let r = AnalysisResult {
+            };
+            let r = AnalysisHeader {
                 mode: begin.mode,
                 baseline: begin.baseline,
                 manifest: begin.manifest,
@@ -302,10 +370,12 @@ impl Worker {
                     .iter()
                     .map(convert)
                     .collect::<Result<_>>()?,
-                facts,
             };
-            r.validate(manifest, old).map_err(anyhow::Error::msg)?;
-            return Ok(r);
+            r.validate(manifest).map_err(anyhow::Error::msg)?;
+            return Ok(SpooledAnalysis {
+                header: r,
+                records: archive,
+            });
         }
         bail!("REPLAN_BUDGET")
     }
@@ -314,8 +384,54 @@ impl Worker {
             revision: revision.into(),
         }))
         .await?;
-        let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
-        ensure!(status.success(), "WORKER_EXIT_AFTER_ACK");
+        if self.context.producer.starts_with("mock-") {
+            let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
+            ensure!(status.success(), "WORKER_EXIT_AFTER_ACK");
+        } else {
+            let frame =
+                tokio::time::timeout(Duration::from_secs(2), read_frame(&mut self.ipc)).await??;
+            ensure!(frame.attempt == self.attempt, "ACK_ATTEMPT_MISMATCH");
+            match frame.body {
+                Some(Body::Acked(acked)) => {
+                    ensure!(acked.revision == revision, "ACK_REVISION_MISMATCH");
+                }
+                Some(Body::Failure(failure)) => bail!("{}: {}", failure.code, failure.message),
+                _ => bail!("EXPECTED_ACKED"),
+            }
+        }
+        Ok(())
+    }
+
+    pub fn alive(&mut self) -> Result<bool> {
+        Ok(self.child.try_wait()?.is_none()
+            && !self
+                .memory_exceeded
+                .load(std::sync::atomic::Ordering::SeqCst)
+            && !self
+                .scratch_exceeded
+                .load(std::sync::atomic::Ordering::SeqCst))
+    }
+
+    pub async fn rediscover(
+        &mut self,
+        java: &super::java::PreparedJava,
+        manifest: &Manifest,
+        cancel: &CancellationToken,
+    ) -> Result<()> {
+        ensure!(self.alive()?, "WARM_WORKER_EXITED");
+        *self.scratch.lock().unwrap() = Some(java.disk_budget.clone());
+        self.output_limits = codeana_contracts::java::OutputLimits::from_config(&java.config)?;
+        self.attempt = new_id("attempt");
+        self.send(Body::Discover(w::Discover {
+            manifest: Some(convert(manifest)?),
+            java: Some(java.config.clone()),
+        }))
+        .await?;
+        self.context = match self.receive(cancel).await? {
+            Body::Context(context) => convert(&context)?,
+            _ => bail!("EXPECTED_BUILD_CONTEXT"),
+        };
+        ensure!(self.context.language == "java", "WORKER_LANGUAGE_MISMATCH");
         Ok(())
     }
 }

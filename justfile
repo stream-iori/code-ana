@@ -39,3 +39,44 @@ demo-rust:
 
 package-rust:
   ./scripts/package-rust.sh
+
+# Java bridge and model checks use SDKMAN Java 8 and the pinned GraalVM 25.
+test-java:
+  ./scripts/test-java.sh
+
+# Full parity gate records evidence and refuses to treat fixture success as 52/52 acceptance.
+test-java-alignment:
+  python3 tests/java_alignment.py
+
+test-java-alignment-fixtures:
+  python3 tests/java_alignment.py --level fixtures
+
+test-java-alignment-native:
+  python3 tests/java_alignment.py --level native
+
+test-java-maven:
+  ./scripts/build-java-maven.sh
+  python3 tests/java_maven_export.py
+  python3 tests/java_maven_alignment.py
+
+test-java-native:
+  ./scripts/build-java-native.sh
+  cargo build -p codeana-java-worker --locked
+  python3 tests/java_native_probe.py
+
+test-java-e2e:
+  cargo build --workspace --locked
+  python3 tests/java_e2e.py
+  python3 tests/java_native_crash_e2e.py
+
+package-java:
+  ./scripts/package-java.sh
+
+test-java-release:
+  ./scripts/package-java.sh
+  cd "dist/codeana-java-$(uname -s)-$(uname -m)" && shasum -a 256 -c SHA256SUMS
+  CODEANA_TEST_BIN="$PWD/dist/codeana-java-$(uname -s)-$(uname -m)/bin" python3 tests/java_e2e.py
+  CODEANA_TEST_BIN="$PWD/dist/codeana-java-$(uname -s)-$(uname -m)/bin" python3 tests/java_native_crash_e2e.py
+
+test-java-stress:
+  python3 tests/java_stress.py --rounds 20

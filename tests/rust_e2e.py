@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Isolated CLI -> gRPC -> mock process -> SQLite acceptance scenarios."""
 import json
+import contextlib
 import os
 import pathlib
 import shutil
@@ -102,7 +103,7 @@ class Product(unittest.TestCase):
                 shutil.copyfile(p, dest)
 
     def facts(self, revision):
-        with sqlite3.connect(self.home / 'revisions' / revision / 'facts.db') as db:
+        with contextlib.closing(sqlite3.connect(self.home / 'revisions' / revision / 'facts.db')) as db:
             return [json.loads(row[0]) for row in db.execute('SELECT body FROM facts ORDER BY id')]
 
     def task(self, task_id):

@@ -23,6 +23,10 @@ struct Cli {
 }
 #[derive(Subcommand)]
 enum Command {
+    JavaInputs {
+        #[command(subcommand)]
+        action: JavaInputsCommand,
+    },
     Hello {
         #[arg(default_value = "world")]
         name: String,
@@ -64,6 +68,35 @@ enum Command {
     Annotate(QueryArgs),
     Gc(QueryArgs),
     Recover(QueryArgs),
+}
+#[derive(Subcommand)]
+enum JavaInputsCommand {
+    Export(JavaInputsExport),
+}
+#[derive(Args)]
+struct JavaInputsExport {
+    #[arg(long)]
+    output: PathBuf,
+    #[arg(long, default_value = "mvn")]
+    maven: String,
+    #[arg(long)]
+    settings: Option<PathBuf>,
+    #[arg(long = "profile")]
+    profiles: Vec<String>,
+    #[arg(long = "module")]
+    modules: Vec<String>,
+    #[arg(long = "scope", value_parser = ["MAIN", "TEST"], default_values = ["MAIN", "TEST"])]
+    scopes: Vec<String>,
+    #[arg(long)]
+    offline: bool,
+    #[arg(long)]
+    source_only: bool,
+    #[arg(long, default_value_t = 300)]
+    timeout: u64,
+    #[arg(long)]
+    extension: Option<PathBuf>,
+    #[arg(long)]
+    java_home: Option<PathBuf>,
 }
 #[derive(Args, Default)]
 struct QueryArgs {
@@ -276,6 +309,44 @@ async fn main() {
 }
 async fn run() -> Result<i32> {
     let cli = Cli::parse();
+    if let Command::JavaInputs {
+        action: JavaInputsCommand::Export(args),
+    } = &cli.command
+    {
+        use codeana_application::maven_inputs::{ExportOptions, export};
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let options = ExportOptions {
+            project: cli.project.clone(),
+            output: args.output.clone(),
+            maven: args.maven.clone(),
+            settings: args.settings.clone(),
+            profiles: args.profiles.clone(),
+            modules: args.modules.clone(),
+            scopes: args.scopes.clone(),
+            offline: args.offline,
+            source_only: args.source_only,
+            timeout: args.timeout,
+            extension: args.extension.clone(),
+            java_home: args.java_home.clone(),
+        };
+        let cancel = Arc::new(AtomicBool::new(false));
+        let task_cancel = cancel.clone();
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let mut task = tokio::task::spawn_blocking(move || export(&options, &task_cancel));
+        let result = tokio::select! {
+            result = &mut task => result??,
+            _ = tokio::signal::ctrl_c() => { cancel.store(true, Ordering::Release); task.await?? },
+            _ = term.recv() => { cancel.store(true, Ordering::Release); task.await?? },
+        };
+        println!(
+            "{}",
+            serde_json::json!({"manifest":args.output,"modules":result["modules"].as_array().map_or(0,Vec::len)})
+        );
+        return Ok(0);
+    }
     if let Command::Hello { name } = &cli.command
         && let Ok(port) = std::env::var("CODEANA_PORT")
     {
@@ -298,6 +369,9 @@ async fn run() -> Result<i32> {
     let auto = !matches!(cli.command, Command::Task { .. } | Command::Daemon { .. });
     let (mut client, e) = connect(&home, auto).await?;
     let (operation, a) = match cli.command {
+        Command::JavaInputs { .. } => {
+            unreachable!("explicit Maven export returned before daemon connection")
+        }
         Command::Hello { name } => {
             let mut c = p::hello_service_client::HelloServiceClient::connect(e.address).await?;
             println!(

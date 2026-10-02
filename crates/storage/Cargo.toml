@@ -11,6 +11,7 @@ rusqlite.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
 codeana-model = { path = "../model" }
+codeana-contracts = { path = "../contracts" }
+tempfile.workspace = true
 
 [dev-dependencies]
-tempfile.workspace = true

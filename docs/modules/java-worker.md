@@ -1,6 +1,6 @@
 # Java 适配器与 worker
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+> 2026-09-29 实现状态：Java 8 真实 native/javac 已接入，范围见 [Java 实现说明](../java-implementation.md)，证据见 [验收记录](../implementation/java-validation.md)。本页更广的类型、框架与规模化设计仍为目标。
 
 **Java 分析只采用 javac。编译器负责解析与绑定，独立 Java 模型承接提取和框架分析，最终交付公共 Fact IR。**
 
@@ -8,9 +8,9 @@
 |---|---|
 | D13：`lang-adaptor/`、Java 25/GraalVM 共享库、独立 Rust host、C ABI、禁止 JNI | 用户已确认；保留该边界 |
 | D16：javac 唯一后端，无 JavaParser/SymbolSolver、无兼容 AST 或解析器回退 | 用户已确认，2026-09-29 |
-| D17：原生库协调目标 JDK 编译器子进程 | 实施候选，P0-04a 优先验证；尚非本项目已实现能力 |
+| D17：原生库协调目标 JDK 编译器子进程 | Java 8 实现已通过实际共享库与目标 JVM fixture；更广 JDK/规模门禁仍待验证 |
 
-参考实现固定为 Anatomist `dev/replace-parser@7c66251479cfc7556451be35cfbc76e94454425b`，排除未提交修改。其 native 主程序启动目标 JDK JVM；这不证明 javac 可内嵌 GraalVM 共享库。本次依据是代码与测试源码阅读，未重新运行其测试。参考位置和证据见 [设计评审](../design-review.md)。
+参考实现固定为 Anatomist `dev/replace-parser@dff2e3954096853352ec91fcbfc6b995fbd4f390`，排除未提交修改。其 native 主程序启动目标 JDK JVM；这不证明 javac 可内嵌 GraalVM 共享库。已执行冻结参考的独立 Java/Lombok fixture 与 iopengw MAIN；完整参考语义差分仍待验收。参考位置和证据见 [设计评审](../design-review.md)。
 
 ## 0. 工程与进程边界
 
@@ -24,7 +24,7 @@ Rust worker host（独立进程）
 Java 25 / GraalVM 共享库（同进程）
   ├─ 独立 Java 模型、ASM 二进制分析、框架、增量、事实提取
   └─ 编译器协调器
-       │ 编译器内部协议（D17 候选）
+       │ 编译器内部协议 7 / 独立模型 6（D17，Java 8 已实现）
        v
      目标 JDK JVM 子进程：javac parse → analyze
        └─ 禁用 annotation processor，无业务字节码生成
@@ -62,6 +62,7 @@ Java 25 / GraalVM 共享库（同进程）
 | 编码 | C ABI 可承载 worker protobuf；编译器协议独立版本化，不照搬参考项目自定义 wire 常量或版本号 |
 | 线程 | 每个进入 C entry point 的 OS 线程 attach 到对应 isolate，thread handle 不跨线程使用；控制调用使用受限线程 |
 | 异常 | Java 可恢复异常转状态/诊断，Rust panic 不跨 ABI；native 致命错误由进程边界隔离 |
+| 原生任务 Error | OOME/StackOverflow/Error 使用预留失败响应；线程已退出但无终态时拒绝继续 running。Rust host 不接收成功结果或进入热池，supervisor 回收失败 worker 并保留旧版 |
 | 退出 | 停止编译器工作并关闭管道/子进程，释放模型与缓冲，再 detach/销毁 isolate；卡死走有界终止 |
 | 内部协议 | JDK/桥/模型版本、task/attempt/context、source hash、长度/序号/校验、诊断及终态；缺块、漂移、未知必需能力均拒绝 |
 | 预算 | 单帧、总载荷、解码估算、排队结果和临时磁盘分别设限；stdout/stderr 日志不能污染协议 |
@@ -149,6 +150,10 @@ P0/P1 单个编译器子进程、串行上下文先验收。P2 可评估固定�
 
 P2 可选 NoCode 模块签名 + 独立声明目录减少重复分析上游源码。缓存不是项目可运行产物，不证明项目已编译；必须保存源码身份、注解、泛型和生成来源。键覆盖源内容、有序依赖、目标 JDK、桥/模型/规则版本、Lombok 配置；不完整/冲突/缺失时有界回退封存源码。在途引用 pin，不能通过 LRU 驱逐假装释放仍被持有的对象。
 
+当前文件级方法体编辑优化支持已验证的泛型、注解默认值、枚举常量、成员内部类和静态嵌套类。NoCode classfile 只供 javac 消费；验证过的源码目录恢复声明证据与 SOURCE 信息。缓存校验摘要、目录和无 Code 属性，文件单项 8 MiB；文件/模块共享 256 MiB 磁盘 LRU 与任务私有副本预算，超限回退 SOURCE。缺失/损坏/不完整签名、声明或外部引用变化时回退源码；可选缓存写入失败不丢失已完成的源码分析。模块归档、双向 LRU/在途副本和并行已接入，专项 JVM 验证通过；外围 TYPE_USE 路径及新完整生产/容量仍待验收。目标 JVM 在一个任务内复用，编译器上下文逐次释放；跨任务目前只复用 Rust host/native isolate。
+
+Maven `selected=false` 的模块保留捕获身份和依赖源码，但不作为独立 javac 分析根；导出器不保证为它们解析 classpath。Rust 为所选 MAIN/TEST 上下文按该 scope 的已调解 `dependencies` 读取必要 MAIN 源码，TEST 同时保留本模块 MAIN 输入。依赖源码变化仍进入消费者 digest 和增量失效；不能因未选择的无关模块缺依赖而阻断发布。
+
 ## 5. 故障与验收
 
 | 用例 | 预期 |
@@ -164,3 +169,22 @@ P2 可选 NoCode 模块签名 + 独立声明目录减少重复分析上游源码
 | ABI/模型/编译器协议不匹配 | 不兼容调用或分析开始前拒绝，不静默接受未知必需能力 |
 
 具体 fixture 与阶段映射见 [delivery](../delivery.md)、[P0](../../todo/01-p0.md)、[验收计划](../../todo/05-acceptance.md)。
+
+## 当前构建期扩展装配
+
+```text
+封存 context / javac 独立模型
+  -> JavaModelExtension   -> 校验并提交声明 overlay
+  -> Java core 提取       -> 暂存事实视图
+  -> JavaModelAnalyzer    -> 验证 producer/归属/schema/图后提交
+  -> CallSiteEvidence     -> 只补既有调用点的证据 facet
+  -> ResourceProvider     -> 筛选封存 inventory
+  -> ResourceAnalyzer     -> 从资源与完整暂存视图提取事实
+
+回调失败 -> 丢弃该回调输出 + diagnostic/partial coverage
+取消 / strict / Error -> 终止任务，旧发布版本不变
+```
+
+接口与执行器在 `lang-adaptor/src/main/java/dev/codeana/analysis/extension/`；`BuiltinExtensions.REGISTRY` 显式装配，不扫描目标 classpath 或热加载业务 JAR。扩展版本、依赖、producer、facet 与有效配置形成指纹，记录在 context provenance，进入增量与 NoCode key。
+
+当前 Spring MVC、生命周期/事件、SOFA 注解已使用独立 analyzer；静态注册是 possible，不能生成 confirmed 调用。NoCode 缩减会保留未变 owner 的事实供查找，并重跑变更源码的扩展以更新位置。当前视图按 compiler context；跨 context 的项目全局视图、单声明故障隔离与完整框架规则仍在实施。

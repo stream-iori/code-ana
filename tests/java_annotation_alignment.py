@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""Independent source/binary effective annotation and composed Spring checks."""
+import subprocess
+import unittest
+import java_model_tests as model_tests
+
+COMPONENT = 'package org.springframework.stereotype; import java.lang.annotation.*; @Target({ElementType.TYPE,ElementType.ANNOTATION_TYPE}) @Retention(RetentionPolicy.RUNTIME) public @interface Component { String value() default ""; }'
+ALIAS = 'package org.springframework.core.annotation; import java.lang.annotation.*; @Target(ElementType.METHOD) @Retention(RetentionPolicy.RUNTIME) public @interface AliasFor { String value() default ""; String attribute() default ""; Class<? extends Annotation> annotation() default Annotation.class; }'
+BASE = {'org/springframework/stereotype/Component.java': COMPONENT,
+        'org/springframework/core/annotation/AliasFor.java': ALIAS}
+FANCY = '''import java.lang.annotation.*;
+@org.springframework.stereotype.Component @Retention(RetentionPolicy.RUNTIME) @interface Fancy {
+ @org.springframework.core.annotation.AliasFor(annotation=org.springframework.stereotype.Component.class,attribute="value")
+ String name() default "";
+}'''
+
+
+class Annotations(unittest.TestCase):
+    setUp = model_tests.Models.setUp
+    context = model_tests.Models.context
+    analyze = model_tests.Models.analyze
+    merged = model_tests.Models.merged
+
+    def beans(self, facts):
+        return [f for f in facts if f['relation'] == 'java.bean']
+
+    def test_repeated_irrelevant_meta_queries_preserve_late_injection_and_alias_values(self):
+        definitions = '\n'.join(
+            ('@Noise'+str(i+1)+' ' if i < 11 else '')
+            + '@java.lang.annotation.Target({java.lang.annotation.ElementType.TYPE,java.lang.annotation.ElementType.FIELD,java.lang.annotation.ElementType.ANNOTATION_TYPE}) '
+            + '@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) '
+            + '@interface Noise'+str(i)+' {}' for i in range(12))
+        pads = '\n'.join('@Noise0 class Pad'+str(i)+' { @Noise0 int a,b,c,d,e; }' for i in range(500))
+        autowired = 'package org.springframework.beans.factory.annotation; public @interface Autowired { boolean required() default true; }'
+        files = BASE | {'Noise.java':definitions, 'Pads.java':pads, 'Fancy.java':FANCY,
+            'org/springframework/beans/factory/annotation/Autowired.java':autowired,
+            'Late.java':'class Dependency {} @Fancy(name="one") class One {} @Fancy(name="two") class Two {} @org.springframework.stereotype.Component("late") class Late { @org.springframework.beans.factory.annotation.Autowired Late(Dependency dep){} }'}
+        context = self.context('repeated', files, spring=True, sofa=True,
+                               model_record_limit=1000000, model_archive_bytes=536870912)
+        facts = self.analyze([context])['facts']
+        self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['attributes'].get('severity')=='ERROR'])
+        self.assertFalse([f for f in facts if f['kind']=='coverage'
+                          and f['attributes'].get('reason')=='ANNOTATION_QUERY_BUDGET'])
+        self.assertTrue({'one','two','late'}.issubset({f['name'] for f in self.beans(facts)}))
+        self.assertTrue(any(f['relation']=='java.spring.injection'
+                            and f['source']=='repeated/Late.java'
+                            and f['attributes'].get('role')=='constructor'
+                            and f['attributes']['injected_type'].get('element')=='Dependency'
+                            for f in facts))
+
+    def test_confirmed_constant_component_name(self):
+        files = BASE | {'Use.java': 'class Names { static final String NAME="confirmed"; } @org.springframework.stereotype.Component(Names.NAME) class Use {}'}
+        beans = self.beans(self.analyze([self.context('app', files, spring=True)])['facts'])
+        self.assertEqual([b['name'] for b in beans], ['confirmed'])
+        self.assertEqual(beans[0]['attributes']['annotation_evidence']['attribute_status'], 'static')
+
+    def test_composed_cross_annotation_alias_and_cache_equality(self):
+        files = BASE | {'Fancy.java': FANCY, 'Use.java': '@Fancy(name="aliased") class Use { void run(){System.out.println("before");} }'}
+        first = self.analyze([self.context('app', files, spring=True)], cache=True)['facts']
+        bean = self.beans(first)
+        self.assertEqual([b['name'] for b in bean], ['aliased'])
+        self.assertEqual(bean[0]['attributes']['annotation_evidence']['meta_path'], ['Fancy','org.springframework.stereotype.Component'])
+        files['Use.java'] = files['Use.java'].replace('before', 'after')
+        context = self.context('app', files, spring=True)
+        delta = self.analyze([context], first, cache=True)
+        full = self.analyze([context])
+        self.assertEqual(self.merged(first, delta), sorted(full['facts'], key=lambda f: f['id']))
+
+    def test_binary_meta_annotation_alias(self):
+        definitions = self.context('definitions', BASE | {'Fancy.java': FANCY})
+        classes = self.root / 'binary-classes'; classes.mkdir()
+        subprocess.run([str(model_tests.JDK8 / 'bin/javac'), '-proc:none', '-d', str(classes)] +
+                       [s['input'] for s in definitions['sources']], check=True, capture_output=True)
+        archive = self.root / 'annotations.jar'
+        subprocess.run([str(model_tests.JDK8 / 'bin/jar'), 'cf', str(archive), '-C', str(classes), '.'], check=True)
+        # Classfile generation is explicitly test-owned; analysis must generate no classes.
+        import shutil
+        shutil.rmtree(classes)
+        context = self.context('app', {'Use.java':'@Fancy(name="binaryName") class Use {}'}, spring=True, classpath=[str(archive)])
+        beans = self.beans(self.analyze([context])['facts'])
+        self.assertEqual([b['name'] for b in beans], ['binaryName'])
+        self.assertFalse(beans[0]['attributes']['runtime_confirmed'])
+
+    def test_conflicting_aliases_remain_partial(self):
+        bean = '''package org.springframework.context.annotation;
+          import org.springframework.core.annotation.AliasFor; public @interface Bean {
+           @AliasFor("value") String[] name() default {};
+           @AliasFor("name") String[] value() default {};
+          }'''
+        files = BASE | {'org/springframework/context/annotation/Bean.java':bean,
+                        'Use.java':'class Use { @org.springframework.context.annotation.Bean(name="one",value="two") String make(){return "";} }'}
+        facts = self.analyze([self.context('app', files, spring=True)])['facts']
+        self.assertEqual(self.beans(facts), [])
+        self.assertTrue(any(f['kind']=='coverage' and f['status']=='partial' and f['owner']['producer']=='spring-model-v1' for f in facts))
+
+    def test_meta_cycle_and_runtime_placeholder(self):
+        files = BASE | {'Use.java': '@B @interface A {} @A @interface B {} @A class Loop {} @org.springframework.stereotype.Component("${dynamic.name}") class Use {}'}
+        facts = self.analyze([self.context('app', files, spring=True)])['facts']
+        self.assertEqual(self.beans(facts), [])
+        self.assertTrue(any(f['kind']=='coverage' and f['status']=='partial' and f['owner']['producer']=='spring-model-v1' for f in facts))
+
+    def test_alias_to_missing_member_is_not_a_confirmed_name(self):
+        files = BASE | {'Fancy.java': FANCY.replace('attribute="value"', 'attribute="missing"'),
+                        'Use.java': '@Fancy(name="unproven") class Use {}'}
+        facts = self.analyze([self.context('app', files, spring=True)])['facts']
+        self.assertEqual(self.beans(facts), [])
+        self.assertTrue(any(f['kind']=='coverage' and f['status']=='partial'
+                            and f['owner']['producer']=='spring-model-v1' for f in facts))
+
+    def test_nonconstant_annotation_value_does_not_publish_error_text_as_name(self):
+        files = BASE | {'Use.java': 'class Names { static final String NAME=new String("runtime"); } @org.springframework.stereotype.Component(Names.NAME) class Use {}'}
+        facts = self.analyze([self.context('app', files, spring=True)])['facts']
+        self.assertTrue(any(f['kind']=='diagnostic' for f in facts))
+        self.assertEqual(self.beans(facts), [])
+
+    def test_literal_error_text_is_a_valid_constant_name(self):
+        files = BASE | {'Use.java': '@org.springframework.stereotype.Component("<error>") class Use {}'}
+        facts = self.analyze([self.context('app', files, spring=True)])['facts']
+        self.assertEqual([b['name'] for b in self.beans(facts)], ['<error>'])
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

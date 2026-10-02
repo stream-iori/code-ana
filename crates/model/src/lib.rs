@@ -4,12 +4,27 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const VERSION: u32 = 1;
-pub const WORKER_PROTOCOL_VERSION: u32 = 2;
+pub const WORKER_PROTOCOL_VERSION: u32 = 10;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
 pub const MAX_FACTS: usize = 100_000;
 pub fn hash(bytes: impl AsRef<[u8]>) -> String {
     format!("{:x}", Sha256::digest(bytes.as_ref()))
+}
+/// Streaming file hashing keeps toolchain verification independent of artifact size.
+pub fn hash_file(path: &std::path::Path) -> std::io::Result<String> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buffer)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 pub fn digest<T: Serialize>(value: &T) -> String {
     hash(serde_json::to_vec(value).expect("serializable domain value"))
@@ -126,6 +141,8 @@ pub struct SourceUnit {
     pub world: String,
     pub scope: String,
     pub language: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auxiliary: bool,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -186,7 +203,187 @@ pub struct AnalysisResult {
     pub replacements: Vec<Owner>,
     pub facts: Vec<Fact>,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnalysisHeader {
+    pub mode: String,
+    pub baseline: String,
+    pub manifest: String,
+    pub profile: String,
+    pub producer: String,
+    pub replacements: Vec<Owner>,
+}
+/// Shape checks have no whole-graph allocation. Graph references are checked by the staged store.
+pub struct FactValidator<'a> {
+    files: BTreeMap<&'a str, &'a SourceUnit>,
+}
+impl<'a> FactValidator<'a> {
+    pub fn new(manifest: &'a Manifest) -> Self {
+        Self {
+            files: manifest
+                .files
+                .iter()
+                .map(|s| (s.path.as_str(), s))
+                .collect(),
+        }
+    }
+    pub fn validate(&self, f: &Fact) -> Result<(), String> {
+        if f.id.is_empty()
+            || f.owner.world.is_empty()
+            || f.owner.producer.is_empty()
+            || f.origin.is_empty()
+        {
+            return Err("FACT_IDENTITY_REQUIRED".into());
+        }
+        if !f.source.is_empty() {
+            let source = self.files.get(f.source.as_str()).ok_or("UNKNOWN_SOURCE")?;
+            if source.auxiliary {
+                return Err("AUXILIARY_SOURCE_PUBLISHED".into());
+            }
+            if f.owner.world != source.world {
+                return Err("WORLD_MISMATCH".into());
+            }
+            if f.span
+                .as_ref()
+                .is_some_and(|s| s.end < s.start || s.end > source.size)
+            {
+                return Err("INVALID_SPAN".into());
+            }
+        } else if f.span.is_some() {
+            return Err("SPAN_WITHOUT_SOURCE".into());
+        }
+        if f.kind == FactKind::CallTarget && f.status == "resolved" && !f.declaration_resolved {
+            return Err("UNCONFIRMED_TARGET".into());
+        }
+        if f.kind == FactKind::CallTarget
+            && f.attributes.contains_key("binding_evidence")
+            && (f.parent.is_empty()
+                || f.attributes
+                    .get("binding_evidence")
+                    .and_then(|v| v.as_str())
+                    != Some(f.parent.as_str()))
+        {
+            return Err("INVALID_BINDING_EVIDENCE".into());
+        }
+        if f.kind == FactKind::Facet {
+            if !matches!(
+                f.relation.as_str(),
+                "java.type"
+                    | "java.syntax"
+                    | "java.method"
+                    | "java.annotation"
+                    | "java.bean"
+                    | "java.binding"
+                    | "java.lombok"
+                    | "java.sofa"
+                    | "java.spring.mvc"
+                    | "java.spring.handler"
+                    | "java.spring.injection"
+                    | "java.spring.xml"
+                    | "java.reflection"
+            ) {
+                return Err("UNSUPPORTED_REQUIRED_FACET".into());
+            }
+            let schema = f
+                .attributes
+                .get("schema_version")
+                .and_then(serde_json::Value::as_u64);
+            if schema != Some(1)
+                && !(schema == Some(2)
+                    && matches!(
+                        f.relation.as_str(),
+                        "java.type" | "java.binding" | "java.annotation" | "java.syntax"
+                    ))
+                && !(schema == Some(3) && f.relation == "java.binding")
+            {
+                return Err("UNSUPPORTED_FACET_VERSION".into());
+            }
+            if f.relation == "java.binding"
+                && schema == Some(3)
+                && (f.parent.is_empty()
+                    || f.attributes.get("evidence_owner").and_then(|v| v.as_str())
+                        != Some(f.parent.as_str())
+                    || !f
+                        .attributes
+                        .get("resolved")
+                        .is_some_and(serde_json::Value::is_boolean)
+                    || !f
+                        .attributes
+                        .get("complete")
+                        .is_some_and(serde_json::Value::is_boolean))
+            {
+                return Err("INVALID_BINDING_EVIDENCE".into());
+            }
+            if f.relation == "java.syntax" && schema == Some(2) {
+                let invalid = || "INVALID_SYNTAX_PARTITION".to_string();
+                let source = self.files.get(f.source.as_str()).ok_or_else(invalid)?;
+                let attributes = &f.attributes;
+                let index = attributes
+                    .get("chunk_index")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(invalid)?;
+                let offset = attributes
+                    .get("node_offset")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(invalid)?;
+                let total = attributes
+                    .get("total_nodes")
+                    .and_then(|v| v.as_u64())
+                    .ok_or_else(invalid)?;
+                let last = attributes
+                    .get("last_chunk")
+                    .and_then(|v| v.as_bool())
+                    .ok_or_else(invalid)?;
+                let nodes = attributes
+                    .get("nodes")
+                    .and_then(|v| v.as_array())
+                    .ok_or_else(invalid)?;
+                let end = offset.checked_add(nodes.len() as u64).ok_or_else(invalid)?;
+                if f.owner.kind != "source"
+                    || f.owner.id != f.source
+                    || attributes.get("source_hash").and_then(|v| v.as_str())
+                        != Some(source.hash.as_str())
+                    || nodes.is_empty()
+                    || end > total
+                    || last != (end == total)
+                    || (index == 0) != (offset == 0)
+                    || index > offset
+                {
+                    return Err(invalid());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+impl AnalysisHeader {
+    pub fn validate(&self, manifest: &Manifest) -> Result<(), String> {
+        if self.manifest != manifest.id() {
+            return Err("INPUT_DRIFT".into());
+        }
+        if !matches!(self.mode.as_str(), "full" | "delta") {
+            return Err("INVALID_MODE".into());
+        }
+        if self.mode == "delta" && self.baseline.is_empty() {
+            return Err("BASELINE_REQUIRED".into());
+        }
+        if self.replacements.iter().collect::<BTreeSet<_>>().len() != self.replacements.len() {
+            return Err("DUPLICATE_OWNER".into());
+        }
+        Ok(())
+    }
+}
 impl AnalysisResult {
+    pub fn header(&self) -> AnalysisHeader {
+        AnalysisHeader {
+            mode: self.mode.clone(),
+            baseline: self.baseline.clone(),
+            manifest: self.manifest.clone(),
+            profile: self.profile.clone(),
+            producer: self.producer.clone(),
+            replacements: self.replacements.clone(),
+        }
+    }
     pub fn validate(&self, manifest: &Manifest, baseline: &[Fact]) -> Result<Vec<Fact>, String> {
         if self.manifest != manifest.id() {
             return Err("INPUT_DRIFT".into());
@@ -235,6 +432,9 @@ impl AnalysisResult {
             }
             if !f.source.is_empty() {
                 let s = files.get(f.source.as_str()).ok_or("UNKNOWN_SOURCE")?;
+                if s.auxiliary {
+                    return Err("AUXILIARY_SOURCE_PUBLISHED".into());
+                }
                 if f.owner.world != s.world {
                     return Err("WORLD_MISMATCH".into());
                 }
@@ -245,6 +445,18 @@ impl AnalysisResult {
                 }
             } else if f.span.is_some() {
                 return Err("SPAN_WITHOUT_SOURCE".into());
+            }
+            if f.kind == FactKind::Facet {
+                let schema = f.attributes.get("schema_version");
+                let supported = schema == Some(&serde_json::json!(1))
+                    || matches!(
+                        f.relation.as_str(),
+                        "java.type" | "java.binding" | "java.annotation"
+                    ) && schema == Some(&serde_json::json!(2))
+                    || f.relation == "java.binding" && schema == Some(&serde_json::json!(3));
+                if !supported {
+                    return Err("UNSUPPORTED_FACET_VERSION".into());
+                }
             }
             if f.kind == FactKind::CallTarget && f.status == "resolved" && !f.declaration_resolved {
                 return Err("UNCONFIRMED_TARGET".into());
@@ -258,24 +470,72 @@ impl AnalysisResult {
             if !f.target.is_empty() && !merged.contains_key(&f.target) {
                 return Err(format!("DANGLING_TARGET: {}", f.id));
             }
+            if f.kind == FactKind::CallTarget
+                && f.attributes.contains_key("binding_evidence")
+                && (merged.get(&f.parent).is_none_or(|site| {
+                    site.kind != FactKind::CallSite
+                        || site.owner != f.owner
+                        || site.source != f.source
+                }) || f
+                    .attributes
+                    .get("binding_evidence")
+                    .and_then(|v| v.as_str())
+                    != Some(f.parent.as_str()))
+            {
+                return Err("INVALID_BINDING_EVIDENCE".into());
+            }
+            if f.kind == FactKind::Facet
+                && f.relation == "java.binding"
+                && f.attributes.get("schema_version") == Some(&serde_json::json!(3))
+                && (merged.get(&f.parent).is_none_or(|site| {
+                    site.kind != FactKind::CallSite
+                        || site.owner != f.owner
+                        || site.source != f.source
+                }) || f.attributes.get("evidence_owner").and_then(|v| v.as_str())
+                    != Some(f.parent.as_str())
+                    || !f
+                        .attributes
+                        .get("resolved")
+                        .is_some_and(serde_json::Value::is_boolean)
+                    || !f
+                        .attributes
+                        .get("complete")
+                        .is_some_and(serde_json::Value::is_boolean))
+            {
+                return Err("INVALID_BINDING_EVIDENCE".into());
+            }
             if !f.source.is_empty() && !files.contains_key(f.source.as_str()) {
                 return Err("STALE_SOURCE_FACT".into());
+            }
+            if files.get(f.source.as_str()).is_some_and(|s| s.auxiliary) {
+                return Err("AUXILIARY_SOURCE_PUBLISHED".into());
             }
             if f.kind == FactKind::Facet
                 && !matches!(
                     f.relation.as_str(),
                     "java.type"
+                        | "java.syntax"
                         | "java.method"
                         | "java.annotation"
                         | "java.bean"
                         | "java.binding"
                         | "java.lombok"
+                        | "java.sofa"
+                        | "java.spring.mvc"
+                        | "java.spring.handler"
+                        | "java.spring.injection"
+                        | "java.spring.xml"
+                        | "java.reflection"
                 )
             {
                 return Err("UNSUPPORTED_REQUIRED_FACET".into());
             }
         }
-        for s in manifest.files.iter().filter(|s| s.language == "java") {
+        for s in manifest
+            .files
+            .iter()
+            .filter(|s| s.language == "java" && !s.auxiliary)
+        {
             if !merged.values().any(|f| {
                 f.kind == FactKind::Coverage && f.source == s.path && f.owner.world == s.world
             }) {
@@ -466,6 +726,154 @@ pub struct FixtureState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_binding_evidence_requires_its_call_site() {
+        let manifest = Manifest::default();
+        let owner = serde_json::json!({"world":"w","producer":"javac","kind":"context","id":"c"});
+        let site: Fact = serde_json::from_value(serde_json::json!({
+            "id":"site", "kind":"call_site", "owner":owner, "origin":"javac",
+            "attributes":{"selected_type_model":{"kind":"EXECUTABLE"}}
+        }))
+        .unwrap();
+        let binding: Fact = serde_json::from_value(serde_json::json!({
+            "id":"binding", "kind":"facet", "parent":"site", "owner":owner,
+            "origin":"javac", "relation":"java.binding",
+            "attributes":{"schema_version":3,"evidence_owner":"site","resolved":true,"complete":true}
+        })).unwrap();
+        let validator = FactValidator::new(&manifest);
+        assert!(validator.validate(&binding).is_ok());
+        let mut result = AnalysisResult {
+            mode: "full".into(),
+            baseline: String::new(),
+            manifest: manifest.id(),
+            profile: "p".into(),
+            producer: "javac".into(),
+            replacements: vec![],
+            facts: vec![site, binding],
+        };
+        assert!(result.validate(&manifest, &[]).is_ok());
+        result.facts[0].kind = FactKind::Declaration;
+        assert_eq!(
+            result.validate(&manifest, &[]).unwrap_err(),
+            "INVALID_BINDING_EVIDENCE"
+        );
+        result.facts[0].kind = FactKind::CallSite;
+        result.facts[1]
+            .attributes
+            .insert("evidence_owner".into(), "other".into());
+        assert_eq!(
+            validator.validate(&result.facts[1]).unwrap_err(),
+            "INVALID_BINDING_EVIDENCE"
+        );
+        assert_eq!(
+            result.validate(&manifest, &[]).unwrap_err(),
+            "INVALID_BINDING_EVIDENCE"
+        );
+        let target: Fact = serde_json::from_value(serde_json::json!({
+            "id":"target", "kind":"call_target", "parent":"site", "owner":owner,
+            "origin":"javac", "attributes":{"binding_evidence":"site"}
+        }))
+        .unwrap();
+        assert!(validator.validate(&target).is_ok());
+        result.facts = vec![result.facts[0].clone(), target];
+        assert!(result.validate(&manifest, &[]).is_ok());
+        result.facts[1]
+            .attributes
+            .insert("binding_evidence".into(), "other".into());
+        assert_eq!(
+            validator.validate(&result.facts[1]).unwrap_err(),
+            "INVALID_BINDING_EVIDENCE"
+        );
+        assert_eq!(
+            result.validate(&manifest, &[]).unwrap_err(),
+            "INVALID_BINDING_EVIDENCE"
+        );
+    }
+    #[test]
+    fn java_model_four_facets_reject_unknown_versions_and_namespaces() {
+        let manifest = Manifest::default();
+        for (namespace, version, accepted) in [
+            ("java.syntax", 1, true),
+            ("java.annotation", 2, true),
+            ("java.spring.mvc", 1, true),
+            ("java.spring.handler", 1, true),
+            ("java.spring.injection", 1, true),
+            ("java.spring.xml", 1, true),
+            ("java.spring.xml", 2, false),
+            ("java.reflection", 1, true),
+            ("java.reflection", 2, false),
+            ("java.spring.mvc", 2, false),
+            ("java.syntax", 2, false),
+            ("java.annotation", 3, false),
+            ("java.unknown", 1, false),
+        ] {
+            let fact: Fact = serde_json::from_value(serde_json::json!({
+                "id":"facet", "kind":"facet", "owner":{"world":"w","producer":"p","kind":"context","id":"c"},
+                "origin":"javac", "relation":namespace, "attributes":{"schema_version":version}
+            })).unwrap();
+            let result = AnalysisResult {
+                mode: "full".into(),
+                baseline: String::new(),
+                manifest: manifest.id(),
+                profile: "p".into(),
+                producer: "javac".into(),
+                replacements: vec![],
+                facts: vec![fact],
+            };
+            assert_eq!(
+                result.validate(&manifest, &[]).is_ok(),
+                accepted,
+                "{namespace}@{version}"
+            );
+        }
+    }
+    #[test]
+    fn syntax_partitions_validate_source_hash_offsets_and_tail() {
+        let manifest = Manifest {
+            files: vec![SourceUnit {
+                auxiliary: false,
+                path: "Large.java".into(),
+                hash: "f".repeat(64),
+                size: 100,
+                module: "app".into(),
+                world: "w".into(),
+                scope: "MAIN".into(),
+                language: "java".into(),
+            }],
+        };
+        let row = serde_json::json!({
+            "id":"syntax", "kind":"facet", "source":"Large.java",
+            "owner":{"world":"w","producer":"p","kind":"source","id":"Large.java"},
+            "origin":"javac", "relation":"java.syntax",
+            "attributes":{"schema_version":2, "source_hash":"f".repeat(64),
+                "chunk_index":0,"node_offset":0,"total_nodes":2,"last_chunk":false,
+                "nodes":[{"id":"first"}]}
+        });
+        let validator = FactValidator::new(&manifest);
+        let validate = |value| validator.validate(&serde_json::from_value::<Fact>(value).unwrap());
+        assert!(validate(row.clone()).is_ok());
+        let mut tail = row.clone();
+        tail["attributes"]["chunk_index"] = 1.into();
+        tail["attributes"]["node_offset"] = 1.into();
+        tail["attributes"]["last_chunk"] = true.into();
+        assert!(validate(tail).is_ok());
+        for (name, value) in [
+            ("chunk_index", serde_json::json!(1)),
+            ("node_offset", serde_json::json!(1)),
+            ("total_nodes", serde_json::json!(0)),
+            ("last_chunk", serde_json::json!(true)),
+            ("nodes", serde_json::json!([])),
+            ("source_hash", serde_json::json!("different")),
+        ] {
+            let mut broken = row.clone();
+            broken["attributes"][name] = value;
+            assert_eq!(
+                validate(broken),
+                Err("INVALID_SYNTAX_PARTITION".into()),
+                "{name}"
+            );
+        }
+    }
     #[test]
     fn framed_keys_do_not_collide() {
         assert_ne!(key("x", &["ab", "c"]), key("x", &["a", "bc"]));

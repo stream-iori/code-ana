@@ -1,0 +1,113 @@
+{
+  "reference_commit": "dff2e3954096853352ec91fcbfc6b995fbd4f390",
+  "sources": [
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaTypeFacts.java",
+      "sha256": "10b1d2374547fd3906d05a336e7a15dcac139b61d375e5035d41ceb55534bb3c",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/GeneratedTypeReferences.java",
+      "changes": "Adapt declaration signature references for generated fields/methods/constructors, array component traversal, generic_arg multiplicity and depth5 projection. Detached maps and task budgets only; no JavaModel/ExtractionResult/database dependencies. FactExtractor resolves only captured declaration identities, labels modeled evidence and associates the generated declaration's original source span. Independent frozen jar fixture compares 36 references including coordinates, arrays, repeated generics, wildcard and depth boundary. SOURCE method/constructor parameter type references now retain callable ownership, while parameter declaration/annotation identities remain distinct. Frozen independent fixture compares 10 references including nested/repeated generics, arrays, Unicode positions and multiplicity."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java",
+      "sha256": "89d1a48c8f16f5ca65a156ad0a95812bc71d666638082cd1c2f20a96c6db7afb",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/LombokAnnotationCopies.java",
+      "changes": "Adapt JavaAnnotation to existing detached map model; add named-type copy predicate."
+    },
+    {
+      "path": "anatomist-core/src/main/resources/lombok/annotation-copy-candidates.txt",
+      "sha256": "46d78666bbfe6e2f7a44a0d07233c10fdb7cac616be41f468aaa3473bb5478f6",
+      "destination": "lang-adaptor/src/main/resources/lombok/annotation-copy-candidates.txt",
+      "changes": "Unchanged copy policy."
+    },
+    {
+      "path": "anatomist-core/src/worker/java/com/anatomist/worker/WorkerSourceAnnotations.java",
+      "sha256": "7a8e911568d34f3843df37035a8146b47c42a2ea26d5f134b9c3c1b2c7b754b9",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/WorkerSourceAnnotations.java",
+      "changes": "Package and budget exception adapted; standalone Java 8 annotation reconstruction."
+    },
+    {
+      "path": "anatomist-core/src/worker/java/com/anatomist/worker/WorkerTypes.java",
+      "sha256": "d5bb332dd06a643180f9591c9b7e2103a9799dd3f9e516cd26bf33fee746ad67",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java",
+      "changes": "Adapt written-annotation detection and source type reconstruction to detached map trees."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaCallFacts.java",
+      "sha256": "4b96b2e4fa92c663a86b3dbb21e92cb23329e264e20db0dd56cd0f4745cae5b8",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java",
+      "changes": "Align rejection of synthetic enum initializer identifiers; retain real calls in arguments. Explicit this/super calls use the complete source expression statement span. Method-reference callback/SAM/intrinsic array-constructor policy and qualifier-call ownership aligned using an independent latest-reference fixture."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
+      "sha256": "d2d506432acc3beb99b7b1bcfb11700bebf3cb184d04e7f6a47973b46df5390f",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/LombokDeclarations.java",
+      "changes": "Align written-field type annotation policy and explicit annotation option checks."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/core/java/JavaIdentities.java",
+      "sha256": "8b126cfaf0c599add5b0b31fcb4d004d1594fe26e27d8e4efa77e65d2a3f68e9",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java",
+      "changes": "Align FIELD/ENUM_CONSTANT initializer call ownership and callback lexical parent; retain detached identity encoding. Verified independent frozen facade inventory and recursive owner chains."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelAnnotations.java",
+      "sha256": "70d342ca90d3f80d73d16a8465e23f367af04787260e93b88be5a8ccd13034cb",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/ModelAnnotations.java",
+      "changes": "Adapt bounded annotation path cache keyed by immutable root selector, negative lookups, counters, sorted meta traversal, depth16 search, declaration100000/unit1000000 work budgets to detached maps. Recompute instance effective attributes and isolate exhausted budgets to source units; do not cache truncated searches."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/core/asmsolver/JavaBinaryReader.java",
+      "sha256": "d57a6ce400c48ad91a910459bdb23e6fc61101c9f0f22c271384b51467210c19",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/BinaryAnnotations.java",
+      "changes": "Adapt Java 8 declaration annotation values/defaults, parameter metadata and type reference/path visitors to detached maps; preserve primitive tags and enforce task budgets. Independent frozen-reader fixture compares 5 classes and 2118 members."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/core/asmsolver/JavaBinaryRepository.java",
+      "sha256": "cabcd28395674cee52f198c54139708d0c1663c54395a4337c823d465891ef7e",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/BinaryIndex.java",
+      "changes": "Adapt weighted LRU, consume large complete declarations uncached, remove 2048 member truncation; verify binary headers before dotted nested-name fallback."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaReflectionFacts.java",
+      "sha256": "47ac5cda6188a9048b6985e54950cc4e8d40b0f558f12af955b43ac1f8d66638",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/ReflectionModel.java",
+      "changes": "Adapt switch case branch merges, explicit default coverage and fallthrough uncertainty to detached tree flow; preserve reflection modeled evidence."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java",
+      "sha256": "f74c0be602afc6ae639fe0c1c7ffaf0035733a106f3d669eeb479820f88e8a15",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/ModeledOverrides.java",
+      "changes": "Adapt detached modeled override traversal, generic/raw class substitution, visibility paths, covariant returns, illegal override rollback and javac deduplication. Keep possible/evidence-incomplete facts; independent frozen reference covers 15 edges plus two SDK8-compiled valid raw binary edges absent in reference."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaOverrideFacts.java",
+      "sha256": "a765b20e80802b13450356140016277866695a82fe01f4f7b6eab1c52e9901c7",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/ModeledOverrides.java",
+      "changes": "Adapt detached modeled override traversal, generic/raw class substitution, visibility paths, covariant returns, illegal override rollback and javac deduplication. Keep possible/evidence-incomplete facts; independent frozen reference covers 15 edges plus two SDK8-compiled valid raw binary edges absent in reference."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java",
+      "sha256": "f74c0be602afc6ae639fe0c1c7ffaf0035733a106f3d669eeb479820f88e8a15",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/CallRecovery.java",
+      "changes": "Adapt candidate-local functional output inference from expression/block lambdas and bound/unbound member references. Infer an unbound receiver only after proving no matching static alternative; preserve javac evidence and possible recovered targets. Restore provisional observation attributes and all local inference state across candidates. Frozen independent fixtures compare 19 and 4 call targets, status/coordinates/multiplicity exactly; JVM/native cache, deletion and overload isolation regressions retained. Adapt limited expression recovery for string concatenation, primitive/boxed boolean and numeric comparisons, and equal/non-array or null/declared conditional branches; keep numeric promotion, array branches and unrelated LUBs with javac. Independent frozen fixture compares all 48 call targets including negative expressions. Defer javac arity/ambiguity veto until the candidate establishes an actual generated declaration or modeled input; preserve original diagnostics and reject unsupported arity/bounds. Recover unqualified imported static owners only from javac_selected_declaration plus captured source or binary static flags, with normal accessibility/applicability checks. Independent frozen proofs compare 7 generated-overload/poly targets and 2 binary static-import targets plus all 5 reads, including occurrence multiplicity and UTF8 spans; no additional binary enum case inference. Contextual unbound member references now project the checked SAM receiver onto the declaration owner and instantiate generic outputs; provenance only from candidate-verified modeled invocation inputs. Concrete qualifier parameters preserve static/instance ambiguity. Original selected declarations and compiler diagnostics remain unchanged; invalid.mref is rejected before modeled recovery. Four positive/negative/cache-delta regressions and a frozen independent 15-target multiset prove this bounded case, not full generic alignment. Unbound instance member references in static methods are distinguished from illegal unqualified instance invocations; normal qualifier/access/SAM/applicability checks and compiler static-context failures still apply. Frozen static Optional proof has 9 exact targets, static generic proof 15; negative this-reference/direct-instance/explicit-bound tests remain rejected. Generic constructor references project a raw qualifier through the checked SAM output and validate class bounds before recovering an instantiated result. Retired Lombok constructor references are candidate inputs to outer factories. Failed contextual checks cannot use the original functional expression type as a verified method result. Four positive/negative/full-delta tests and frozen 20-target proof cover this subset. Capture top-level argument wildcards once per call before inference/conversion; stop unchanged unbounded-variable recursion as UNKNOWN. Preserve compiler-confirmed unique binary declarations only for unavailable arguments with known incompatibilities vetoed. Block failed modeled input targets without replacing javac evidence. Candidate-local captured diamond syntax enables checked class-bound/supertype target typing, without relaxing access or overload rules. Independent collector and diamond positive/negative fixtures compare 14 and 7 exact targets. Match modeled lambda expression/block input evidence using actual recovered declarations and qualified source members, not global name potential. Existing javac-instantiated diamond types may satisfy a target with no class-formal constraints; preserve original selected-constructor evidence instead of marking it modeled just because an outer argument is modeled. A 23-target independent fixture and type-edit/removal full-delta regressions cover the real common-module regression. Adapt frozen callbackSignature using the existing checked contextual SAM and captured source/start node identities. Store recovered_callback separately without replacing javac functional/parameter type attributes; bounded per-callback failure does not poison other callbacks."
+    },
+    {
+      "path": "anatomist-core/src/worker/java/com/anatomist/worker/JavacWorker.java",
+      "sha256": "d42d7c73080db18252f22e10fdb7320e0d39f31da68f69468ee49d16815685dd",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java",
+      "changes": "Align half-open error positions at receiver-call boundaries. Do not broaden selected binding acceptance for invalid poly arguments; compiler diagnostics remain facts. Frozen independent multiset includes exact targets, resolution status and source positions. Call-node executable selection and selection-only diagnostic ranges now match the reference, guarded by the copied unique-overload/missing-declaration evidence checker; full-span diagnostic completeness and original selected declarations remain separate."
+    },
+    {
+      "path": "anatomist-core/src/worker/java/com/anatomist/worker/WorkerOverloadEvidence.java",
+      "sha256": "8d5921936c034ab3b1e8c7401a192e76d004340a6f7532eec7aacf354a8bfa46",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/WorkerOverloadEvidence.java",
+      "changes": "Copied frozen checker with package rename only. Per-job javac member cache, unique arity-compatible selection, missing declaration identity and source qualification, complete hierarchy and bounded traversal; compiled by SDKMAN Java 8."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaTypeFacts.java",
+      "sha256": "10b1d2374547fd3906d05a336e7a15dcac139b61d375e5035d41ceb55534bb3c",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/SourceTypeReferences.java",
+      "changes": "Adapt detached SOURCE signature, written declaration types, throws/bounds, lambda functional and captured parameter types. Preserve generic occurrence multiplicity and depth5 aggregate policy; explicit written excluded JDK types remain positioned. Separate body/import navigation; align hierarchy leaf positions. Guard unresolved written types, retain original compiler attributes, materialize proven external type identities, and disclose per-declaration traversal budgets as partial. Recovered callback descriptors use checked contextual SAMs, deduplicate only recovered owner/context/target, and retain possible/incomplete provenance. Seven independent frozen JVM proofs cover signatures/callbacks, nested annotations/wildcards/unknowns, supplementary Unicode/CRLF, enum/interface, ambiguous imports, collector recovery and captured functional types; native and real gates recorded separately. Apply the frozen aggregate external policy to generated signatures too, while retaining source-spelled types. Skip anonymous synthetic declaration headers but retain explicit member signatures/navigation. Independent generated and anonymous proofs compare 13 and 3 positioned relationships. Invalid UTF8 remains an explicit partial input error; no replacement decoding or mutable target input."
+    }
+  ]
+}

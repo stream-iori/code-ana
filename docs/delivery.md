@@ -1,10 +1,10 @@
 # 实施与验收
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+> 2026-09-29 实现状态：Java 8 native/javac 已接入，实际范围与证据见 [验证记录](implementation/java-validation.md)。本页完整复合门禁仍逐项推进。
 
 **Java 优先，先用 fixture 完成分析、发布和查询闭环。本项目没有旧版本，不设旧版兼容或迁移门禁。**
 
-状态：用户已确定 Java 25/GraalVM FFI、HTTP/2 + protobuf、显式语言配置、外部构建建议以及 Java fixture 优先。Java 后端仅采用 javac（D16），D17 编译器执行方案待 P0 验证；Rust mock 的部分测试已执行，逐项状态见 [验收表](../todo/05-acceptance.md)，真实 Java 验收尚未执行。
+状态：用户已确定 Java 25/GraalVM FFI、HTTP/2 + protobuf、显式语言配置、外部构建建议以及 Java fixture 优先。Java 后端仅采用 javac（D16），D17 编译器执行方案已通过 Java 8 fixture；Rust mock 的部分测试已执行，逐项状态见 [验收表](../todo/05-acceptance.md)，Java 8 已执行子集单列 [J0–J6](../todo/08-java-worker.md)。
 
 ## 1. 阶段与交付
 

@@ -4,3 +4,5 @@
 /.code-ana/
 /.mock-home/
 /dist/
+
+__pycache__/

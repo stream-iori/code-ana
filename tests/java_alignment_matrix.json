@@ -1,0 +1,1204 @@
+{
+  "version": 2,
+  "reference_commit": "dff2e3954096853352ec91fcbfc6b995fbd4f390",
+  "real_project": {
+    "path": "/Users/stream/codes/antcodes/ipay/gw-group/iopengw",
+    "commit": "267c7ced4993aa88613f8f17a8099943fec98159",
+    "include_uncommitted": false,
+    "acceptance_scopes": [
+      "MAIN",
+      "TEST"
+    ],
+    "acceptance_xml_resources": true,
+    "invalid_source_policy": "preserve_bytes_report_parse_failure_continue_healthy_sources"
+  },
+  "capabilities": [
+    {
+      "id": "J01",
+      "capability": "独立模型",
+      "status": "partial",
+      "checks": [
+        "tests/java_semantic_alignment.py",
+        "tests/java_archive_alignment.py",
+        "tests/java_syntax_alignment.py",
+        "tests/java_encoding_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "@2 有界语法分片、来源和惰性反射已接入，64/128 MiB 专项通过；完整模型目录/逐节点契约/native/真实项目仍待验收"
+      ]
+    },
+    {
+      "id": "J02",
+      "capability": "Java 8 类型与泛型",
+      "status": "partial",
+      "checks": [
+        "tests/java_semantic_alignment.py",
+        "tests/java_signature_alignment.py",
+        "tests/java_binding_alignment.py",
+        "tests/java_lombok_super_builder_alignment.py",
+        "tests/java_target_return_alignment.py",
+        "tests/java_functional_output_alignment.py",
+        "tests/java_functional_reference_alignment.py",
+        "tests/java_generic_reference_alignment.py",
+        "tests/java_native_fixture_alignment.py",
+        "tests/java_constructor_reference_alignment.py",
+        "tests/java_collector_alignment.py",
+        "tests/java_diamond_alignment.py",
+        "tests/java_lambda_input_alignment.py",
+        "tests/java_type_reference_alignment.py",
+        "tests/java_type_reference_reference.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "functional-reference",
+        "functional-reference-native",
+        "native-fixtures",
+        "type-reference",
+        "type-reference-native"
+      ],
+      "remaining_acceptance": [
+        "已补捕获身份/上下界、owner/index 与有限递归 CAPTURE、泛型继承链 actual Integer 保留和错误实参拒绝；完整目标类型/raw/复杂 SAM 与生产矩阵仍缺",
+        "变量/赋值/方法返回泛型目标约束正式/native/delta/full 已过；188 Java、7 daemon、独立参考 6 个目标相等。完整 invocation/poly lambda/raw/复杂 SAM 仍缺",
+        "泛型回调输出/非绑定接收者推断、候选隔离、SOURCE 参数类型引用归属已补；冻结参考 19/19、4/4、10/10，隔离 JVM 239/239、native 17/17、C ABI 和组合 daemon 通过。当前真实 MAIN 发布使用修复前产物；平面类型图和完整生产差分仍待。",
+        "已补静态方法中的实例 member reference、泛型 constructor/SAM 结果、替换构造器的候选输入传播和失败上下文回退拒绝；完整语义/平面类型图/生产矩阵仍待，不据局部回归关闭能力。"
+      ]
+    },
+    {
+      "id": "J03",
+      "capability": "声明与身份",
+      "status": "partial",
+      "checks": [
+        "tests/java_model_tests.py",
+        "tests/java_semantic_alignment.py",
+        "tests/java_binary_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "初始化块/lambda SOURCE 归属的 205618 原生/17 daemon 已通过；捕获稳定身份新门禁待回执，局部/匿名/枚举合成构造器完整性仍待补齐"
+      ]
+    },
+    {
+      "id": "J04",
+      "capability": "调用绑定证据",
+      "status": "partial",
+      "checks": [
+        "tests/java_binding_alignment.py",
+        "tests/java_diagnostic_boundary_alignment.py",
+        "tests/java_native_fixture_alignment.py",
+        "tests/java_collector_alignment.py",
+        "tests/java_diamond_alignment.py",
+        "tests/java_lambda_input_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "native-fixtures"
+      ],
+      "remaining_acceptance": [
+        "已补失败/选中声明、访问与静态上下文；源码/建模/JAR 恢复维度及新增 native/daemon 用例正在验证；完整错误分类/真实差分仍缺"
+      ]
+    },
+    {
+      "id": "J05",
+      "capability": "安全恢复",
+      "status": "partial",
+      "checks": [
+        "tests/java_binding_alignment.py",
+        "tests/java_target_return_alignment.py",
+        "tests/java_functional_output_alignment.py",
+        "tests/java_functional_reference_alignment.py",
+        "tests/java_expression_alignment.py",
+        "tests/java_static_import_alignment.py",
+        "tests/java_generic_reference_alignment.py",
+        "tests/java_native_fixture_alignment.py",
+        "tests/java_constructor_reference_alignment.py",
+        "tests/java_collector_alignment.py",
+        "tests/java_diamond_alignment.py",
+        "tests/java_lambda_input_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "functional-reference",
+        "functional-reference-native",
+        "native-fixtures"
+      ],
+      "remaining_acceptance": [
+        "已补 SOURCE/overlay/binary 泛型/捕获/继承、三阶段重载/varargs、链式输入及显式类型实参的有界恢复；返回目标约束、poly lambda、复杂捕获/混合继承和完整生产验收仍缺。未归属的方法引用类型实参保留 unresolved；不要求参考也不计算的完整条件分支 LUB",
+        "变量/赋值/方法返回泛型目标约束正式/native/delta/full 已过；188 Java、7 daemon、独立参考 6 个目标相等。完整 invocation/poly lambda/raw/复杂 SAM 仍缺",
+        "泛型回调输出/非绑定接收者推断、候选隔离、SOURCE 参数类型引用归属已补；冻结参考 19/19、4/4、10/10，隔离 JVM 239/239、native 17/17、C ABI 和组合 daemon 通过。当前真实 MAIN 发布使用修复前产物；平面类型图和完整生产差分仍待。",
+        "真实 MAIN 已定位 getter/null 三元表达式断 Builder 链；已按参考补字符串拼接、比较/逻辑/同类型或 null 分支恢复，JVM 4 项及完整目标多重集 48/48 独立对照通过。numeric promotion/数组分支/LUB 延续参考边界，不作猜测。新 native/真实项目仍待。",
+        "真实 getExtraContent(String) 阻断生成无参 getter：候选确认 MODEL/input 后再处理 javac veto；静态导入按已捕获 static 声明恢复 owner。独立 fixture 7/7、2/2 calls 和 5/5 reads；完整真实项目仍待，无新增 binary 枚举 label 猜测。",
+        "已补静态方法中的实例 member reference、泛型 constructor/SAM 结果、替换构造器的候选输入传播和失败上下文回退拒绝；完整语义/平面类型图/生产矩阵仍待，不据局部回归关闭能力。"
+      ]
+    },
+    {
+      "id": "J06",
+      "capability": "lambda / 方法引用",
+      "status": "partial",
+      "checks": [
+        "tests/java_binding_alignment.py",
+        "tests/java_functional_output_alignment.py",
+        "tests/java_functional_reference_alignment.py",
+        "tests/java_generic_reference_alignment.py",
+        "tests/java_native_fixture_alignment.py",
+        "tests/java_constructor_reference_alignment.py",
+        "tests/java_collector_alignment.py",
+        "tests/java_diamond_alignment.py",
+        "tests/java_lambda_input_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "functional-reference",
+        "functional-reference-native",
+        "native-fixtures"
+      ],
+      "remaining_acceptance": [
+        "已补绑定/未绑定/static/构造器方法引用、函数式接口与泛型 SAM 正反例；多态 lambda 参数/返回/目标推断、复杂继承/default/SAM 合并与完整生产验收仍缺",
+        "泛型回调输出/非绑定接收者推断、候选隔离、SOURCE 参数类型引用归属已补；冻结参考 19/19、4/4、10/10，隔离 JVM 239/239、native 17/17、C ABI 和组合 daemon 通过。当前真实 MAIN 发布使用修复前产物；平面类型图和完整生产差分仍待。",
+        "已补静态方法中的实例 member reference、泛型 constructor/SAM 结果、替换构造器的候选输入传播和失败上下文回退拒绝；完整语义/平面类型图/生产矩阵仍待，不据局部回归关闭能力。"
+      ]
+    },
+    {
+      "id": "J07",
+      "capability": "类型引用",
+      "status": "partial",
+      "checks": [
+        "tests/java_semantic_alignment.py",
+        "tests/java_functional_output_alignment.py",
+        "tests/java_functional_reference_alignment.py",
+        "tests/java_generic_reference_alignment.py",
+        "tests/java_native_fixture_alignment.py",
+        "tests/java_constructor_reference_alignment.py",
+        "tests/java_collector_alignment.py",
+        "tests/java_diamond_alignment.py",
+        "tests/java_lambda_input_alignment.py",
+        "tests/java_type_reference_alignment.py",
+        "tests/java_type_reference_reference.py",
+        "tests/java_encoding_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "functional-reference",
+        "functional-reference-native",
+        "native-fixtures",
+        "type-reference",
+        "type-reference-native"
+      ],
+      "remaining_acceptance": [
+        "所有语义位置的独立类型引用及重复出现、外部策略验收",
+        "泛型回调输出/非绑定接收者推断、候选隔离、SOURCE 参数类型引用归属已补；冻结参考 19/19、4/4、10/10，隔离 JVM 239/239、native 17/17、C ABI 和组合 daemon 通过。当前真实 MAIN 发布使用修复前产物；平面类型图和完整生产差分仍待。",
+        "已补静态方法中的实例 member reference、泛型 constructor/SAM 结果、替换构造器的候选输入传播和失败上下文回退拒绝；完整语义/平面类型图/生产矩阵仍待，不据局部回归关闭能力。"
+      ]
+    },
+    {
+      "id": "J08",
+      "capability": "字段读写",
+      "status": "partial",
+      "checks": [
+        "tests/java_semantic_alignment.py",
+        "tests/java_e2e.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "已补括号左值、this/super/数组 length 与无源码位置枚举伪访问过滤；SOURCE/binary 静态导入/继承/枚举、delta/full fixture 已验证；新 native/daemon 与完整反例矩阵待验收。冻结参考 ++/-- 只投影 writes，产品保留 read_write，差分需披露此口径"
+      ]
+    },
+    {
+      "id": "J09",
+      "capability": "词法控制上下文",
+      "status": "partial",
+      "checks": [
+        "tests/java_semantic_alignment.py",
+        "tests/java_signature_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "所有 Java 8 控制结构的角色/父链、Unicode 位置和完整增量验收"
+      ]
+    },
+    {
+      "id": "J10",
+      "capability": "注解数据",
+      "status": "pending",
+      "checks": [],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "SOURCE/binary/default/TYPE_USE 注解值全矩阵及缺失类型反例"
+      ]
+    },
+    {
+      "id": "J11",
+      "capability": "元注解与属性合成",
+      "status": "partial",
+      "checks": [
+        "tests/java_semantic_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "跨模块组合注解、AliasFor、缓存失效与预算/循环负例完整验收"
+      ]
+    },
+    {
+      "id": "J12",
+      "capability": "覆盖与派发",
+      "status": "partial",
+      "checks": [
+        "tests/java_binding_alignment.py",
+        "tests/java_native_probe.py",
+        "tests/java_e2e.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "已补生成方法覆盖、SOURCE/binary 泛型和 raw 擦除、协变返回、final/static/访问路径非法覆盖拒绝；4 类独立参考 fixture 覆盖全部 15 条参考边，另两条 raw binary 经 SDK8 编译验证。完整 native/daemon、复杂方法泛型、真实派发差分仍待验收"
+      ]
+    },
+    {
+      "id": "J13",
+      "capability": "有界反射",
+      "status": "partial",
+      "checks": [
+        "tests/java_reflection_alignment.py",
+        "tests/java_native_probe.py",
+        "tests/java_e2e.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "switch/default/fallthrough 与相同常量/句柄来源合并已实现，13 JVM fixture；冻结参考两类分支证据投影 4/4、7/7 一致。完整异常分支/帧边界、SOURCE/binary 嵌套身份及独立查找预算的新 native/daemon 验收仍待完成"
+      ]
+    },
+    {
+      "id": "J14",
+      "capability": "二进制语义",
+      "status": "partial",
+      "checks": [
+        "tests/java_model_tests.py",
+        "tests/java_archive_alignment.py",
+        "tests/java_binary_alignment.py",
+        "tests/java_binary_metadata_alignment.py",
+        "tests/java_semantic_alignment.py",
+        "tests/java_native_probe.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "有序包目录、8 JAR/64 类/8 MiB 加权缓存及旧 ZIP64 顺序读取已实现；取消 2048 成员截断，dotted nested header 校验、5 类/2118 成员的冻结参考注解/默认值/参数/type-path 零差异。新 native/daemon 完整声明查询与大型 JAR 梯度仍待验收"
+      ]
+    },
+    {
+      "id": "J15",
+      "capability": "诊断和能力边界",
+      "status": "partial",
+      "checks": [
+        "tests/java_semantic_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "分阶段语义预算、诊断上限、零事实能力披露与生产反例"
+      ]
+    },
+    {
+      "id": "E01",
+      "capability": "扩展点分工",
+      "status": "passed",
+      "checks": [
+        "tests/java_extension_alignment.py",
+        "crates/application/examples/java_worker_ipc.rs"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": true,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": []
+    },
+    {
+      "id": "E02",
+      "capability": "装配与依赖",
+      "status": "passed",
+      "checks": [
+        "tests/java_extension_alignment.py",
+        "crates/application/examples/java_worker_ipc.rs"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": true,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": []
+    },
+    {
+      "id": "E03",
+      "capability": "声明补充约束",
+      "status": "partial",
+      "checks": [
+        "tests/java_extension_alignment.py",
+        "tests/java_lombok_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "模型 overlay 校验、编译器生成构造器替换与独立 modeled metadata 已实现；完整下游绑定/覆盖反馈待验收"
+      ]
+    },
+    {
+      "id": "E04",
+      "capability": "失败隔离",
+      "status": "partial",
+      "checks": [
+        "tests/java_extension_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "单声明事务/身份诊断、成功输出保留及删除/关闭 delta 已实现；内置分析器逐声明迁移与预算完整验收待完成"
+      ]
+    },
+    {
+      "id": "E05",
+      "capability": "项目与资源视图",
+      "status": "partial",
+      "checks": [
+        "tests/java_annotation_alignment.py",
+        "tests/java_extension_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "资源 selector、事务内失败/取消隔离与不可变 type 共享已实现；独立查询/资源预算和完整生产/参考验收仍缺"
+      ]
+    },
+    {
+      "id": "E06",
+      "capability": "扩展反馈到绑定",
+      "status": "partial",
+      "checks": [
+        "tests/java_binding_alignment.py",
+        "tests/java_target_return_alignment.py",
+        "tests/java_functional_output_alignment.py",
+        "tests/java_functional_reference_alignment.py",
+        "tests/java_expression_alignment.py",
+        "tests/java_contextual_invocation_alignment.py",
+        "tests/java_real_binding_alignment.py",
+        "tests/java_collector_alignment.py",
+        "tests/java_builder_chain_alignment.py",
+        "tests/java_supplemental_signature_alignment.py",
+        "tests/java_supplemental_reference_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "functional-reference",
+        "functional-reference-native",
+        "supplemental-reference",
+        "supplemental-reference-native"
+      ],
+      "remaining_acceptance": [
+        "已补 getter/setter/构造器和链式 SOURCE/binary、泛型/继承/重载/varargs/SAM 恢复；回调目标/生成 Builder 与完整类型恢复、真实差分仍缺",
+        "变量/赋值/方法返回泛型目标约束正式/native/delta/full 已过；188 Java、7 daemon、独立参考 6 个目标相等。完整 invocation/poly lambda/raw/复杂 SAM 仍缺",
+        "生成方法 override 已接入并保留 possible/evidence-incomplete；4 类 JVM 对照覆盖全部参考边。poly invocation/复杂 lambda/SAM 与真实差分仍待验收",
+        "泛型回调输出/非绑定接收者推断、候选隔离、SOURCE 参数类型引用归属已补；冻结参考 19/19、4/4、10/10，隔离 JVM 239/239、native 17/17、C ABI 和组合 daemon 通过。当前真实 MAIN 发布使用修复前产物；平面类型图和完整生产差分仍待。",
+        "真实 MAIN 已定位 getter/null 三元表达式断 Builder 链；已按参考补字符串拼接、比较/逻辑/同类型或 null 分支恢复，JVM 4 项及完整目标多重集 48/48 独立对照通过。numeric promotion/数组分支/LUB 延续参考边界，不作猜测。新 native/真实项目仍待。",
+        "真实 TEST 定位并修复嵌套捕获参数重复推断、完整实参类型未改变时外层置信度误降、泛型工厂参数目标约束；隔离 284 JVM 与 9 新正反例通过，冻结专项 15/15、4/4、3/3。产品 native、真实完整语义与扩展差分仍待。",
+        "真实 core/service MAIN/TEST/XML 已发布，旧版调用目标仍缺188/多29；生成方法同返回类型与非泛型候选外层推断已修复，需新版全量和完整语义差分",
+        "最新 core/service MAIN/TEST/XML 已发布：TEST调用目标17632零差异；整体调用目标缺166/多32，SOURCE类型缺182/多75。长Builder、identity泛型工厂及受控生成签名再归属已接入源码，新增产品native/真实差分待验收；全reactor/类型图/完整扩展差分仍缺。",
+        "上一版core/service严格调用缺130/多31，TEST调用17632及类型1705零差异；整体SOURCE类型缺11/多3。Object回调再归属、较短Builder、ConcurrentMap目标子类型推断已接入源码，待新native与真实验收。隔离formal bounds registry因产生参考未确认目标未接入。"
+      ]
+    },
+    {
+      "id": "L01",
+      "capability": "Getter/Setter/Data/Value",
+      "status": "partial",
+      "checks": [
+        "tests/java_lombok_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "访问级别/静态/boolean 命名、冲突与 Value 有效修饰模型已实现；完整 SOURCE/binary/下游调用恢复矩阵待验收"
+      ]
+    },
+    {
+      "id": "L02",
+      "capability": "构造器与常用方法",
+      "status": "partial",
+      "checks": [
+        "tests/java_lombok_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "NoArgs/RequiredArgs/AllArgs、Data/Value 构造器与 equals/hashCode/toString/canEqual 签名已实现；更多泛型/枚举/冲突及完整下游绑定矩阵待验收"
+      ]
+    },
+    {
+      "id": "L03",
+      "capability": "Builder/SuperBuilder/UtilityClass",
+      "status": "partial",
+      "checks": [
+        "tests/java_lombok_alignment.py",
+        "tests/java_binding_alignment.py",
+        "tests/java_lombok_builder_alignment.py",
+        "tests/java_lombok_super_builder_alignment.py",
+        "tests/java_expression_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "Builder 9 / SuperBuilder 8 JVM、4 冻结参考 fixture / 63 生产 JVM 声明形状相等；真实 native/daemon 泛型继承链、Default、错误实参/删除/delta/full 已过；完整参考支持边界、TYPE_USE 与 UtilityClass 矩阵仍待验收。Lombok builtin 4",
+        "真实 MAIN 已定位 getter/null 三元表达式断 Builder 链；已按参考补字符串拼接、比较/逻辑/同类型或 null 分支恢复，JVM 4 项及完整目标多重集 48/48 独立对照通过。numeric promotion/数组分支/LUB 延续参考边界，不作猜测。新 native/真实项目仍待。"
+      ]
+    },
+    {
+      "id": "L04",
+      "capability": "日志字段/注解复制",
+      "status": "partial",
+      "checks": [
+        "tests/java_lombok_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "八类 logger 的可用性/字段策略、生成注解和 Deprecated/NonNull 复制已实现；完整成员/TYPE_USE 注解复制差分待完成"
+      ]
+    },
+    {
+      "id": "L05",
+      "capability": "lombok.config",
+      "status": "partial",
+      "checks": [
+        "tests/java_lombok_alignment.py",
+        "crates/config/src/lombok.rs"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "daemon 封存祖先/源码目录配置、逐源级联/stopBubbling/有限键与漂移拒绝已实现；Maven/MAIN/TEST 与完整 native/产品矩阵待验收"
+      ]
+    },
+    {
+      "id": "L06",
+      "capability": "逐能力披露",
+      "status": "partial",
+      "checks": [
+        "tests/java_lombok_alignment.py"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "逐声明 detected/modeled/partial/unmodeled、数量、配置证据和 signature-only strict 已实现；Builder/SuperBuilder/UtilityClass 等全能力披露待验收"
+      ]
+    },
+    {
+      "id": "F01",
+      "capability": "Spring 组件/Bean",
+      "status": "partial",
+      "checks": [
+        "tests/java_annotation_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "组合 stereotype、名称/别名、Primary/Qualifier 与完整 Bean 元信息"
+      ]
+    },
+    {
+      "id": "F02",
+      "capability": "Spring 注入",
+      "status": "partial",
+      "checks": [
+        "tests/java_annotation_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "字段/方法/构造器/参数注入、单构造器推断、javax/jakarta、qualifier 与工厂依赖"
+      ]
+    },
+    {
+      "id": "F03",
+      "capability": "Spring MVC",
+      "status": "partial",
+      "checks": [
+        "tests/java_framework_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "跨模块/组合注解/有效属性的完整 MVC 矩阵及 native/增量证据"
+      ]
+    },
+    {
+      "id": "F04",
+      "capability": "Spring 生命周期/事件",
+      "status": "partial",
+      "checks": [
+        "tests/java_framework_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "生命周期/事件注册完整正反例、binary meta 与增量证据"
+      ]
+    },
+    {
+      "id": "F05",
+      "capability": "Spring XML",
+      "status": "partial",
+      "checks": [
+        "tests/java_xml_alignment.py",
+        "tests/java_native_probe.py",
+        "tests/java_e2e.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "已补 SOURCE/JAR XML 类型提示、参数索引、别名实参、同返回类型的工厂重载；Spring 版本 4。新原生/产品矩阵和参考语义差分仍待验收"
+      ]
+    },
+    {
+      "id": "F06",
+      "capability": "SOFA 注解",
+      "status": "partial",
+      "checks": [
+        "tests/java_framework_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "SOFA API 形状校验、interfaceType/uniqueId 正反例与跨模块验收"
+      ]
+    },
+    {
+      "id": "F07",
+      "capability": "SOFA XML",
+      "status": "partial",
+      "checks": [
+        "tests/java_sofa_xml_alignment.py",
+        "tests/java_xml_alignment.py",
+        "tests/java_e2e.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "已补 SOFA 4/public service/reference、MsgBroker publisher/consumer、binding/transport/channel/event/listener 树；完整配置/来源与 native/daemon、iopengw 语义差分尚需验收"
+      ]
+    },
+    {
+      "id": "M01",
+      "capability": "生命周期前导出",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "生命周期前停止与无 install reactor 的完整 native/产品证据"
+      ]
+    },
+    {
+      "id": "M02",
+      "capability": "有效 reactor/物理目录",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "物理 basedir、宽/深 reactor、自定义布局和无关嵌套 POM 反例"
+      ]
+    },
+    {
+      "id": "M03",
+      "capability": "调解后的 reactor 图",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "所有 scope 传播、版本冲突、optional/exclusions 的完整调解矩阵"
+      ]
+    },
+    {
+      "id": "M04",
+      "capability": "依赖身份/顺序",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "外部 classifier/type 身份和有序 CP、reactor 非普通 JAR 拒绝矩阵"
+      ]
+    },
+    {
+      "id": "M05",
+      "capability": "MAIN/TEST 选择",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py",
+        "tests/java_module_signature_alignment.py",
+        "tests/java_supplemental_signature_alignment.py",
+        "tests/java_supplemental_reference_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "TEST-only 显式 auxiliary/prerequisite、MAIN/TEST CP、Maven 7 项、Rust/JVM 与真实 native/daemon 上游失效/delta/full 已过；scope 选择完整失败矩阵和冻结真实项目全 scope 验收仍缺",
+        "真实 --module component/common 导出时，未选中 migration 在缺 classpath 下仍被单独 javac 分析，导致 DIAGNOSTIC_BUDGET 未发布；已修 Rust 调度仅选中分析根，消费者按原 mediated worlds 读取依赖源码。真实选定模块及 MAIN/TEST 仍待验证。",
+        "core/service MAIN/TEST/XML 的775健康Java已发布查询；完整40模块全scope、坏编码原字节隔离和生成MAIN签名对TEST回调再归属仍需新版真实验收。"
+      ]
+    },
+    {
+      "id": "M06",
+      "capability": "源码/生成/输出根",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "源/生成/输出根及 generated 来源、缺失/共享根反例"
+      ]
+    },
+    {
+      "id": "M07",
+      "capability": "资源发现",
+      "status": "pending",
+      "checks": [],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "通用资源归属/selector/删除/关闭及 provider 独立预算验收"
+      ]
+    },
+    {
+      "id": "M08",
+      "capability": "归属/发布标签",
+      "status": "partial",
+      "checks": [
+        "crates/config/src/lib.rs",
+        "tests/java_model_tests.py",
+        "tests/java_native_probe.py",
+        "tests/java_e2e.py",
+        "tests/java_module_signature_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "rust-unit"
+      ],
+      "remaining_acceptance": [
+        "归属标签/物理 world/MAIN/TEST 与隐藏 MAIN 已实现；误发布拒绝、模块目录/上游失效/真实 daemon 与 delta/full 已过；完整归属失败矩阵与统一生产门禁仍待验收"
+      ]
+    },
+    {
+      "id": "M09",
+      "capability": "parent/profile/settings",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "parent/profile/settings 完整控制输入和漂移/缺失反例"
+      ]
+    },
+    {
+      "id": "M10",
+      "capability": "explicit CP/source-only/offline",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "explicit CP、source-only、offline 的完整调解与拒绝矩阵"
+      ]
+    },
+    {
+      "id": "M11",
+      "capability": "同会话/完整回执",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "单会话选择/解析、nonce/hash 回执和漂移的生产证据"
+      ]
+    },
+    {
+      "id": "M12",
+      "capability": "失败/取消/预算",
+      "status": "partial",
+      "checks": [
+        "tests/java_maven_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "模块/依赖/响应/时间预算、取消、未解析与错误回执完整矩阵"
+      ]
+    },
+    {
+      "id": "P01",
+      "capability": "复杂 NoCode 签名",
+      "status": "partial",
+      "checks": [
+        "tests/java_signature_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "SOURCE/binary/NoCode 复杂签名的完整模型/事实等价验收"
+      ]
+    },
+    {
+      "id": "P02",
+      "capability": "模块签名/声明目录",
+      "status": "partial",
+      "checks": [
+        "tests/java_module_signature_alignment.py",
+        "tests/java_module_parallel_alignment.py",
+        "tests/java_module_overlay_alignment.py",
+        "tests/java_shared_cache_alignment.py",
+        "tests/java_e2e.py",
+        "crates/query/src/lib.rs"
+      ],
+      "evidence": [],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "并行/原始 javac NoCode/Lombok 重应用/不同 Maven CP SOURCE 回退、共享 256 MiB 磁盘和任务 pin、captured SOURCE 五元组导航已实现并专项验证；隐藏前置不发布。新完整生产/容量和独立语义差分待验收"
+      ]
+    },
+    {
+      "id": "P03",
+      "capability": "缓存管理",
+      "status": "partial",
+      "checks": [
+        "tests/java_signature_alignment.py",
+        "tests/java_cache_alignment.py",
+        "tests/java_module_signature_alignment.py",
+        "tests/java_shared_cache_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "文件/模块共享进程锁/文件锁与磁盘 LRU、不可变 pin 合计预算、损坏恢复、跨进程写入、取消和符号链接防护已实现，4 新真实 JVM 专项通过；新 native/daemon 与完整生产容量待验收"
+      ]
+    },
+    {
+      "id": "P04",
+      "capability": "增量闭包",
+      "status": "partial",
+      "checks": [
+        "tests/java_model_tests.py",
+        "tests/java_signature_alignment.py",
+        "tests/java_framework_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "已修复源码变化但相同扩展 owner 被跳过的增量发布错误；新增模型/框架/config/resource/失败查找的完整失效闭包仍待验收"
+      ]
+    },
+    {
+      "id": "P05",
+      "capability": "javac 会话/调度",
+      "status": "partial",
+      "checks": [
+        "tests/java_session_alignment.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon"
+      ],
+      "remaining_acceptance": [
+        "全量/冷增量/热增量会话隔离、取消回收及有界调度生产验收"
+      ]
+    },
+    {
+      "id": "P06",
+      "capability": "容量/性能证据",
+      "status": "partial",
+      "checks": [
+        "crates/config/examples/capture_java_inputs.rs",
+        "tests/java_real_inputs.py",
+        "tests/java_capacity.py",
+        "tests/java_native_heap.py",
+        "tests/java_binary_alignment.py",
+        "crates/contracts/src/java.rs",
+        "tests/java_model_tests.py"
+      ],
+      "evidence": [
+        "docs/implementation/java-validation.md",
+        "target/java-alignment/evidence/iopengw-main-release-preflight-20261002-033143/catalog-publication-verification.json"
+      ],
+      "implementation_complete": false,
+      "required_gates": [
+        "java-fixtures",
+        "native-product-ipc",
+        "java-daemon",
+        "java-capacity",
+        "java-real-semantic-diff",
+        "java-release"
+      ],
+      "remaining_acceptance": [
+        "最新 MAIN 022345 在 1807.578 秒 TIMEOUT、未发布；36 模块于 1096.603 秒完成，1733.294 秒完成项目扩展并进入 result_write 后截止。RSS 1351942144 bytes，无输入/产物漂移及安全杀进程。扩展读取修复的 220 JVM/native/2 daemon 已过；后续候选 ID 精确摘要筛选和严格编码输出已接入，最终 native/MAIN 同一预算发布、独占 3 冷/3 热容量、完整语义差分与 release 待验收",
+        "033143 MAIN 已在原 1800 秒预算内发布（1603.791 秒，RSS tree 1432829952）；CLI 随后 TERMINAL_OUTPUT_BUDGET。Rust 文本终态证据投影修复和 192 文件真实 Java 回归已通过，真实项目 CLI 尚待复验。独立调用点 61527/61527 位置相等；目标/归属/类型与完整语义差分仍在核对；3 冷/3 热独占容量和最终 release 未通过。"
+      ]
+    }
+  ],
+  "acceptance_profile": {
+    "target_java": 8,
+    "platform": "macOS",
+    "process_tree_rss_bytes": 2147483648,
+    "parallelism": 1,
+    "include_uncommitted": false
+  },
+  "required_final_gates": [
+    "java-capacity",
+    "java-real-semantic-diff",
+    "java-release"
+  ],
+  "current_transport": {
+    "worker": 10,
+    "analysis_request": 4,
+    "native_abi": 2,
+    "compiler": 7,
+    "model": 6,
+    "fact_ir": 1
+  }
+}

@@ -126,7 +126,7 @@ impl Engine {
             t
         } else {
             let store = self.store.clone();
-            tokio::task::spawn_blocking(move || store.put_blobs(&c.blobs)).await??;
+            tokio::task::spawn_blocking(move || store.put_blob_files(&c.blobs)).await??;
             TaskResult::success(Output {
                 evidence: Evidence::complete(),
                 ..Default::default()

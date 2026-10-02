@@ -1,17 +1,17 @@
 # code-ana 设计文档
 
-**设计仍是实施依据；Rust 产品实现与实际能力见 [Rust 实现说明](rust-first.md)，真实 Java 语义另行验收。**
+**设计仍是实施依据；Rust 产品实现与实际能力见 [Rust 实现说明](rust-first.md)，Java 8 当前实现见 [Java 实现说明](java-implementation.md)。**
 
 | 项目 | 基线 |
 |---|---|
 | 设计来源 | [下一代 Anatomist](../../anatomist/ana-next-gen/next-gen-anatomist.md)，修订日期 2026-09-24 |
 | 原提案源码基线 | `686ee91`，Java 25，schema 32，graph semantics 25 |
-| javac 参考核查 | 2026-09-29；`dev/replace-parser@7c66251479cfc7556451be35cfbc76e94454425b` 已提交代码，排除工作区修改；未重跑测试 |
-| 本项目现状 | 已实现 Rust 配置、任务、worker IPC、SQLite、查询/历史/运维；Java 语义由显式 mock 回放，原生 FFI Hello 保留 |
+| javac 参考核查 | 2026-09-29；`dev/replace-parser@2dfc7977cb03095d14894f069ff30985551457b1` 已提交代码，排除工作区修改；未重跑测试 |
+| 本项目现状 | 已实现 Rust 配置、任务、worker IPC、SQLite、查询/历史/运维；Java 8 真实共享库/编译器桥/事实/冷增量已接入，mock 保留独立回归 |
 | 状态用语 | **原文已定**：继承提案；**用户已确认**：本轮明确选择；**建议**：本轮补充，待评审；**待验证**：需要原型或测量 |
 | 用户已确认 | 每个用户一个 daemon，内部隔离项目（D01） |
 | Java 适配技术 | Java 相关代码放在 `lang-adaptor/`；Java 25 + GraalVM shared library，由独立 Rust worker 通过 C ABI / FFI 调用，禁止 JNI（D13） |
-| Java 后端 | 仅 javac，无 JavaParser/SymbolSolver 或回退（D16）；原生库协调目标 JDK 子进程为 D17 待验证候选 |
+| Java 后端 | 仅 javac，无 JavaParser/SymbolSolver 或回退（D16）；原生库协调目标 Java 8 子进程已实现，完整 D17 门禁仍按能力范围验证 |
 | CLI 通信 | HTTP/2 + Protocol Buffers；建议用标准 gRPC 实现（D02） |
 | 产品边界 | 全新产品，无旧版兼容、数据或配置迁移要求；Anatomist 仅作设计与代码参考（D08） |
 | 目标项目编译 | 仅返回可由 Agent/人类执行的构建建议，产品不自动执行（D09） |
@@ -69,4 +69,4 @@
 | 接口设计 | 本项目独立定义命令、输出、配置与存储契约；Anatomist 示例和测试不能作为兼容门禁 |
 | 链接约定 | `../../anatomist/` 等链接指向同级参考仓库；借用源码/fixture 时记录来源并在本项目独立维护 |
 
-Rust 验收和演示见 [根目录 README](../README.md)；真实 javac 分析与正式性能基准未验收。
+Rust 验收和演示见 [根目录 README](../README.md)；Java 8 证据见 [验收记录](implementation/java-validation.md)，正式性能基准未验收。

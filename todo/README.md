@@ -1,18 +1,18 @@
 # code-ana 实施方案
 
-**执行顺序已调整：先完成 Rust 产品链路，Java-worker 暂用 mock。真实 Java 门禁保留；Rust 源码分析仍为 P3。**
+**执行顺序已调整：Rust 产品链路已接入 Java 8 native/javac，进度见 [Java-worker 实施](08-java-worker.md)。完整 Java 门禁保留；Rust 源码分析仍为 P3。**
 
 | 项目 | 基线 |
 |---|---|
-| 编制 / 修订日期 | 2026-09-24 / 2026-09-29（javac 路线） |
-| 代码基线 | `81dc37b0d9387b163261710130947ae10507700a` |
-| Java 参考代码 | Anatomist `dev/replace-parser@7c66251479cfc7556451be35cfbc76e94454425b` 已提交快照，不包含工作区修改 |
+| 编制 / 修订日期 | 2026-09-24 / 2026-09-30（Java 8 完整对齐） |
+| 代码基线 | `d77dc70f9a072f219bd39acfdac0b651b2c48991` 加当前工作区实施修改 |
+| Java 参考代码 | Anatomist `dev/replace-parser@2dfc7977cb03095d14894f069ff30985551457b1` 已提交快照，不包含工作区修改 |
 | 依据 | `docs/` 全部设计文章、配置示例，以及当前 Rust/Java/构建脚本源码 |
-| 当前完成 | Rust 产品链路及独立 mock 回放；详见 [Rust 优先实施](07-rust-first.md) |
-| 当前未完成 | 真实 javac/native 分析、Java 构建上下文/语义增量、规模化与完整分发门禁 |
+| 当前完成 | Rust 产品链路、独立 mock 与 Java 8 真实闭环；详见 [Rust 实施](07-rust-first.md)、[Java 实施](08-java-worker.md) |
+| 当前未完成 | 完整 Java 类型/框架规则、模块缓存、2 GiB 容量和 iopengw 语义差分；Gradle/Linux/目标 JDK17/25 排除本轮 |
 | 本轮产出 | Rust 实现、单元/真实进程测试、演示、分发脚本及实现文档 |
-| 用户已确认 | 2026-09-24：macOS、plain fixture + Maven 优先；2026-09-29：javac 唯一后端，未来不考虑 JavaParser。D17 子进程/桥方案仍待验证 |
-| 状态规则 | Rust 子集进度在 07 单列；含真实 Java 的复合任务不因 mock 通过整体勾选 |
+| 用户已确认 | 2026-09-24：macOS、plain fixture + Maven 优先；2026-09-29：javac 唯一后端，未来不考虑 JavaParser。D17 子进程/桥方案已通过 Java 8 fixture，更多版本待验证 |
+| 状态规则 | Rust 子集进度在 07 单列；复合任务不因部分 Java fixture 或 mock 通过整体勾选 |
 
 ## 阅读入口
 
@@ -60,7 +60,7 @@ P2：高级查询 / 历史 / 运维 / 可选签名缓存与并行
                                                |
 P3：Rust syntax -> semantic -> 混合语言
 
-Linux 另列后续工作；真实项目与正式容量指标另行安排。
+Linux 另列后续工作；Java 8 真实项目与正式容量指标按本轮 52 项对齐计划执行。
 ```
 
 同一阶段的独立工作包可以分别推进；任务表中的依赖是合入/验收前置条件，不代表必须同时开发。先稳定共享契约，避免各模块自行发明身份和状态。

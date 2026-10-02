@@ -1,0 +1,262 @@
+# Java 8 实现与验收
+
+Java 代码位于 `lang-adaptor`：`src/compiler/java` 为独立 Java 8 编译器桥；`analysis` 为独立模型到事实、框架和冷增量；`bridge` 为 Java 25 native C ABI。没有 JNI 应用调用、JavaParser 或 JVM 产品回退。
+
+```text
+CLI → daemon → 独立 Rust host → Java 25 共享库 → SDKMAN Java 8 javac
+                    专用 FD       C ABI             独立 JVM
+                                      ← 独立模型 ← parse/analyze
+                ← Fact IR ← 原生提取/框架/冷增量
+```
+
+## 构建与运行
+
+| 入口 | 内容 |
+|---|---|
+| `just test-java-alignment` | 全部 gate 与逐能力门禁；未验收能力存在时返回非零，并保存日志回执 |
+| `just test-java-alignment-fixtures` / `-native` | 分别验证 fixture 或 fixture + native/专用 IPC；不宣称整体对齐完成 |
+| `just test-java` | SDKMAN GraalVM 25 + Java 8 桥编译；独立模型、绑定、文件级缩减和 full/delta 等价测试 |
+| `just test-java-native` | 真正共享库 → Java 8 模型与生命周期测试 |
+| `just test-java-maven` | 显式运行真实 Maven 导出 fixture；不属于产品索引流程 |
+| `just test-java-e2e` | 生产 daemon → native → javac → 发布/查询；覆盖热复用、故障保留旧版，需先构建共享库 |
+| `just test-java-stress` | 长轮次热 worker、历史读者、GC、RSS 和 full/delta 等价 |
+| `just test-java-release` | 成套 release 产物校验和包内二进制验收 |
+| `just test-rust` | 独立 mock 与 Rust 回归，不要求 JDK |
+
+原生构建始终执行 `lang-adaptor/.sdkmanrc` 的 `sdk env`；桥默认 `$HOME/.sdkman/candidates/java/8.0.492-zulu`，可用 `CODEANA_JAVA8_HOME` 指定另一套 SDKMAN Java 8。SDK 真实版本以 `release` 为准，不以别名猜测。源码包的普通 JVM 测试只用于开发，产品没有 JVM fallback。
+
+用户 home 的 `config.toml`：
+
+```toml
+schema_version = 1
+kind = "user"
+[limits]
+max_workers = 1
+max_worker_memory_bytes = 536870912
+[daemon]
+java_warm_workers = true
+java_signature_cache = true
+[toolchains.java8]
+language = "java"
+home = "/absolute/path/to/.sdkman/candidates/java/8.0.492-zulu"
+```
+
+如需调整 javac 堆，在**项目** `.code-ana/config.toml` 中设置 `[resources.index] java_compiler_heap_bytes = 134217728`；它不能写入用户配置。
+
+复制 `tests/fixtures/java-native/base` 到独立目录，使用上述 home 启动 daemon，运行 `index`、`calls main`、`call-sites main`、`source main`。开发版从本项目构建目录寻找 native bundle；release 从 `bin/../lib/java` 装载，缺包明确失败。mock home 与生产 home 仍隔离。
+
+## 输入
+
+plain 使用显式 source_roots。Maven 使用外部导出 metadata：
+
+```toml
+[languages.java.discovery]
+build_system = "maven"
+inputs_manifest = ".code-ana/java-inputs.json"
+```
+
+`discovery.mode="auto"` 只展开外部准备的 schema 3 manifest。物理目录来自 MavenProject.getBasedir；清单保存有效 reactor、profile/model 摘要、生成根来源、MAIN/TEST 的已调解依赖及有序 classpath。外部制品的 coordinate/classifier/extension/path/hash 保存在 classpath；dependency_order 通过索引引用制品，避免重复身份。schema 2 须重新导出。settings 只捕获路径与摘要。
+
+显式入口：`codeana-cli --project /project java-inputs export --output /project/.code-ana/java-inputs.json`。导出编排、校验、预算和进程回收由 Rust 实现；原 `scripts/export-java-inputs.py` 只转发到 CLI。发布包的 `codeana-export-java-inputs` 直接调用 CLI，不需要 Python。支持 `--settings`、重复 `--profile`/`--module`/`--scope`、`--offline`、`--source-only`、`--timeout`。SDKMAN Java 8 下的一次 Maven 会话先导出有效模型，再接收模块/scope 选择并调用 Resolver；core extension 在生命周期前终止，不运行目标插件或处理器。未安装 reactor 使用索引占位 JAR。外部 classifier 保留身份，reactor classifier/非 JAR 明确拒绝。输出不得覆盖旧清单；不自动生成源码或执行 resource filtering。
+
+源码、资源、metadata、Lombok 控制配置和 JAR 均捕获到任务私有文件，再按哈希校验、物化和持久化。 Rust 捕获不重新编码 Java 字节；编译器桥将非 UTF-8 文件标记为 SOURCE_ENCODING_INVALID/partial，保留 source owner/hash，继续健康输入；strict 拒绝含该错误的候选发布。克隆捕获对象会 pin 临时目录；最后一个持有者释放后回收。JAR 通过流式复制捕获和发布，daemon 不累积依赖字节数组。
+
+| 预算 | 上限 |
+|---|---|
+| 源码/普通文件、IPC 单帧 | 8 MiB |
+| Maven manifest | 32 MiB |
+| 单个依赖 JAR / 全部捕获输入 | 256 MiB / 2 GiB |
+| 当前完整模型与结果 / 事实数量 | 64 MiB / 100,000；事实汇总/传输/候选发布已用任务暂存；compiler model 按行解码并共享类型表；单 context 内存视图与容量验收待完成 |
+| 编译器堆 / 原生堆 | 128 MiB 默认，可配 8–512 MiB / 256 MiB |
+
+原生分析的 OOME/StackOverflow/Error 使用预留终态响应，不让已退出线程保持 running；该 worker 失败后由 supervisor 回收。整个 worker 进程树仍受用户 RSS 限额约束。输入捕获通过不代表大项目语义索引通过。`[daemon]` 热 host 默认开启，保留一个已确认发布的空闲 worker，60 秒过期。
+
+## 能力边界
+
+| 能力 | 实现与限制 |
+|---|---|
+| 核心 | 声明、调用点/目标、字段读写、类型引用、控制上下文、独立语法节点关系、注解常量/默认值、继承/覆盖、诊断与 coverage；生成方法覆盖检查 SOURCE/JAR 泛型、raw、返回与访问规则，作为 possible 保存；错误选中不当成确认目标 |
+| 坐标 | 原始 UTF-16 → 捕获 UTF-8；生成声明无执行位置，不造 L0C0。生成签名的类型引用标注 `span_origin`，借原始生成来源的声明区间定位 |
+| 类型 | 桥输出有界结构化类型树，覆盖声明、泛型、通配符、数组、类型变量、方法类型与调用选中类型；`java.type`/`java.binding` facet 可查询。48 层 / 4096 节点预算截断向上传播 `complete=false`、告警及文件 partial，真实循环保留身份；5/20/40 层及 7 个结构化字段投影与冻结参考相等，尚未覆盖全部类型图及高级推断 |
+| 二进制 | ASM 9.8 只读 classpath JAR 与目标 Java 8 `rt.jar` 的类头/成员签名、父类型、注解、常量及异常，附在被引用外部符号；不加载业务类 |
+| 扩展 | 五类构建期 SPI 与 registry；版本/有效配置/依赖指纹；声明和事实分别暂存并校验。回调失败丢弃输出、披露 partial，strict/取消继续终止；project resource 只消费封存 inventory。全部 context 的 Java/call 输出先暂存，项目阶段按 world 可见性读取；可选单声明 SPI 有独立事务与诊断，内置分析器迁移及 selector/预算仍待补齐 |
+| Lombok model | Getter/Setter 访问级别、静态与 boolean 命名/冲突；Data/Value、三类构造器及 equals/hashCode/toString/canEqual 签名、八类 logger；有效修饰符独立保存。daemon 封存 `lombok.config` 祖先/目录层，支持 stopBubbling 和有限键；生成注解及 Deprecated/NonNull 有静态模型。Builder/SuperBuilder/UtilityClass 的有界子集已实现，完整 TYPE_USE 复制和一般建模恢复仍待补齐；只提供声明签名，不运行处理器或生成方法体，候选不当确认调用 |
+| Spring | stereotype/RestController、Bean/数组别名；字段/方法/构造器/工厂参数注入及 javax/jakarta，共享有界元注解/AliasFor。MVC、生命周期/事件与工厂成员查找。XML 采用封存 UTF-8 的有界 SAX 模型，保留 alias/parent/abstract/factory/init/destroy、嵌套 bean、集合值与 ref/idref、精确字节 span 和 SOURCE 成员关系；默认属性/完整继承配置及 binary 查询仍缺。注册只表示静态 possible，不生成确认调用 |
+| SOFA | XML service/reference、内部 4.19.1 publisher/consumer、binding/transport/channel/event/listener 配置树、重复出现和位置；明确识别内部/既有公共命名空间。SofaService/SofaReference 注解及接口形状。动态 contract/uniqueId、abstract/parent、未知 transport 保留 partial；独立于 Spring 启用，不证明运行时绑定 |
+| 增量 | 单个源码仅改方法体、上下文输入不变且其他源码可安全投影时，用磁盘 NoCode 签名分析改动文件；声明/注解或外部引用变动、缓存损坏、不完整签名则回退完整 context；泛型替换/边界、注解默认值、枚举/常量、嵌套构造器和部分 TYPE_USE 已验证。验证过的源码声明目录恢复原始声明证据，避免将 NoCode 的二进制来源发布为源码事实。签名只供索引，不含业务方法体；缩减分析也会在完整暂存视图上重跑变更源码的扩展，更新注册位置与依赖；未变源码无额外发布权限。资源字节变更、删除或 producer 禁用仍整组替换相关 owner，包括模块 NoCode 路径 |
+| 会话/并行 | 任务内复用目标 Java 8 JVM，每次创建独立 javac 上下文并关闭文件管理器；1/2/4/8 调度 fixture 已验证。产品默认按 RSS 预算选择 1/2，可显式配置 `java_parallelism=1..8`，必须通过 host/JVM 内存预约校验；取消/退出回收池中进程 |
+| 文件/模块缓存 | 共用 256 MiB 磁盘 LRU 与 256 MiB 任务私有输入预算；验证后复制到 task-owned 输入，原项驱逐不影响在途 javac。文件 catalogue 累计 64 MiB；模块保存扩展前的原始声明，消费后重新应用 Lombok。损坏、并发写、取消和 SOURCE 回退已有 fixture。父/消费模块有序 CP 不同或模型有诊断时保守回退，消费 CP 签名与完整真实容量仍待补齐 |
+| 当前范围 | Java 8、macOS arm64、同版本 Maven reactor；17/25、混合版本、JPMS、Gradle 后续。文件级缩减限安全子集；复杂语义和容量仍需扩展验证 |
+
+事实协议继续使用 Fact IR 1 的既有通用事实组；worker 协议 10，编译器桥 7 / Java 模型 6，native ABI 2 / analysis request 4。版本未知先拒绝，历史事实仍可读。基线独立分块、校验总数和摘要；结果仍由 Rust 统一校验并发布。`PublishAck` 后 worker 回 `Acked`，daemon 才将同身份 worker 放回热池。
+
+## 证据
+
+实际执行记录见 `docs/implementation/java-validation.md`；`todo/08-java-worker.md` 分别记录实现和未验收范围。fixture 通过不等同于完整框架覆盖或真实项目容量达标。
+
+
+### Collector、菱形构造器与建模输入（2026-10-02）
+
+| 项目 | 当前证据 |
+|---|---|
+| 实现 | 参数通配符捕获复用；无上界变量转换返回 UNKNOWN；复制冻结 WorkerOverloadEvidence，仅改包名，SDKMAN Java 8 编译；调用节点选择与选择区间诊断分离；保留原 javac 证据并拒绝错误建模目标；候选内 diamond 目标类型、类边界与访问校验 |
+| 回归修复 | 首次实际 common 差分发现 13 个原调用误丢和 1 个构造器状态变化，失败证据 iopengw-common-collector-diamond-20261002 保留。按真实恢复结果识别 lambda 输入，允许已验证的 javac diamond 类型满足无类形参约束的目标，并保留原构造器状态；未以 fixture 成功替代真实差分 |
+| 完整 JVM | collector-diamond-full-jvm-20261002-151200/receipt.json：34 组 / 267 项通过、无漂移。它早于后续输入判定修复；当前修正版 corrected-input-promoted-jvm.receipt.json：64 项通过、源码和产物无漂移 |
+| 当前 native | native-fixtures-20261002-153237/receipt.json：64 项通过、源码与产物无漂移。functional-reference-20261002-153421-48738：13 组独立差分全部一致，含 collector 14、diamond 7、lambda 输入 23 个目标；状态、位置、多重性一致 |
+| C ABI 与 daemon | corrected-input-native-cabi-probe.log：SDKMAN Java 8、完整/增量缓存一致、处理器陷阱、损坏包拒绝、取消/清理及主动 SIGSEGV 隔离通过。corrected-input-release-daemon.log：实际 release 发布、查询、增量/full 组合用例 13.679 秒通过 |
+| 真实模块 | iopengw-common-corrected-input-20261002：178.607 秒，发布、查询成功；输入/产物无漂移、配置恢复、无异常 signal。声明 3862/3862、调用点 5206/5206、目标 5206/5206、递归归属 5206/5206，四项核心投影零差异；详见 corrected-input-common-diff-receipt.json |
+| 下一项证据 | SOURCE/回调类型关系独立样本：当前产品 31 条、参考 23 条，含 body/import 导航混入和隐式回调遗漏。仅在 target 隔离原型验证声明签名、写明类型与回调参数投影；未合入或记作完整语义通过 |
+| 仍未完成 | 全 SOURCE/回调类型关系、平面类型图、全 reactor MAIN/TEST/XML、全部扩展语义差分、3 冷/3 热独占 2 GiB 及最终 release。52 项仍仅 E01/E02 完整验收通过；局部核心对齐不替代这些门禁 |
+
+所有耗时为观测值，不作为新增性能阈值；正确性门禁未完成前不进行最终性能验收。真实项目只使用冻结已提交内容，未运行业务构建或注解处理器。主动崩溃隔离测试不记为安全软件杀进程。
+
+
+### SOURCE 与回调类型关系（2026-10-02 续验）
+
+| 项目 | 证据 / 边界 |
+|---|---|
+| 已合入 | SourceTypeReferences：声明签名、throws/类型边界、隐式/显式回调及参数、继承叶位置；body/import/new/cast 导航使用 type_navigation；未知/歧义不作 complete，恢复关系保留 possible 和原 javac 证据 |
+| 专项 | source-types-first-jvm.log：7 项通过，含修改/删除 full-delta、Unicode/CRLF、歧义、恢复参数去重、单声明预算及文件 partial；source-reference-callback-current.receipt.json：隔离原型 64 项旧绑定回归通过且无漂移 |
+| 独立证据 | type-reference-20261002-160748-49785/receipt.json：隔离 JVM 的 7 组 SOURCE 差分一致，含位置、context、重复和状态；正式 tests/java_type_reference_reference.py 已接入 JVM/native gate。只对照 App.java 的 SOURCE 与回调，生成签名另验，不等于全语义通过 |
+| 产品验证 | SDKMAN native 构建通过；native 专项、实际 release daemon、完整 JVM 与真实 common 差分正在执行，按后续实际回执记账 |
+| 仍待 | 平面类型图、所有 MAIN/TEST/XML 与扩展语义、真实全项目独立差分、独占 3 冷/3 热 2 GiB 和 release；52 项仍只有 E01/E02 完整通过 |
+
+
+### 生成类型过滤与 TEST 编码隔离（2026-10-02）
+
+| 项目 | 当前证据 |
+|---|---|
+| SOURCE 产物已验 | native-fixtures-20261002-161132：70 项通过；type-reference-20261002-161650-81736：8 组 native 差分一致；完整 C ABI/AP trap/缓存/取消/主动 SIGSEGV 隔离通过；source-types-release-daemon-final.log：查询、增量/full 和删除通过 |
+| 完整 JVM | source-types-full-jvm-20261002-161650：36 组执行 350 项、无源码/产物漂移；其中 lambda 脚本误收集 Models/Lombok 的 73 项重复测试。已改用模块导入，后续只执行本组 3 项，不把重复项当新增能力 |
+| 真实 common | iopengw-common-source-types-20261002：128.361 秒，rev_2d6d5792c334480dabb9092430e99dfa，74061 事实，发布/查询/配置恢复通过且无漂移/异常 signal；声明 3862、调用点/目标/归属各 5206，核心零差异 |
+| 类型续验 | SOURCE 核心端点 REFERENCES 无缺失，多 408：380 条生成 JDK 类型，28 条匿名合成类型头。两项已隔离证明并合入；生成过滤保持源码写明类型，匿名显式字段/方法保留；10 组隔离参考含 13/13 生成关系和 3/3 匿名成员，当前 native/真实重新验收尚未完成 |
+| 全范围输入 | MAIN/TEST 外部导出 40 Maven 模块，80 source/resource roots；2857 MAIN、1357 TEST Java；另 3 个已提交 Java 位于资源/非 reactor 目录，不作为 MAIN/TEST Java 输入。只读取元数据，不运行业务生命周期/AP |
+| 冻结编码问题 | 1 个 TEST 源码不是合法 UTF-8，Maven 声明 UTF-8。原字节 Git blob 29ba1645c442d65c05a15dabddd55de5009ca6ee，与 HEAD 完全一致；未修改。Anatomist 首轮 full MAIN/TEST/XML 因 decoded hash 不同误报 source changed，原失败保留 |
+| 健康参考 | anatomist-main-test-xml-valid-20261002-163141：明确排除仅此无效 UTF8 文件，4213 个 Java 的参考索引 0，MAIN/TEST/XML 有输出，配置恢复/JAR 未变。它不是所有文件语义验收通过，缺失文件按输入错误单列 |
+| 编码实现 | 原字节、hash、source owner 保留；单文件 SOURCE_ENCODING_INVALID ERROR/partial，健康输入继续；全部无效也给 partial。strict 拒绝发布，修复/删除/无效字节变化 full-delta 等价。encoding-isolation-staged-corrected.log：4 项通过；已合入，新 native 构建通过，实际门禁待完成 |
+| 剩余 | 平面类型图、最新全范围产品/严格独立语义与扩展差分、独占容量/release；52 项仅 E01/E02 完整验收通过 |
+
+
+### TEST 编码口径与扩展类型共享修正（2026-10-02）
+
+| 项目 | 状态 / 证据 |
+|---|---|
+| 用户确认的编码处理 | 无效 UTF-8 文件保留原字节、Git blob 与 SHA，记录 SOURCE_ENCODING_INVALID/partial，继续其他文件；不计入语义解析通过数，strict 仍拒绝候选 |
+| 全范围实际失败 | iopengw-main-test-xml-rust-encoding-fixed-20261002/receipt.json：1433.887 秒，在 app/core/service@TEST 的 model.lombok 返回 NATIVE_HEAP_EXHAUSTED；没有发布，无源码/产物漂移，配置恢复，无异常 signal。这是失败证据，不是完整验收通过 |
+| 局部内存根因 | ExtensionContext.mutableMap 把 ModelArchive.ImmutableType 深拷贝为可变 Map。overlay-sharing-original-jvm.log：8000 个生成声明、35 层类型树耗尽 64 MiB；相同隔离修正通过 overlay-sharing-fixed-jvm.log。该证明不等于真实项目 OOM 唯一根因 |
+| 已合入修正 | ModelOverlay 使用专属 pendingMap 共享不可变编译器类型，公共 mutableMap 保持可编辑完整副本；生成声明及普通嵌套容器仍隔离。首轮 RecordArchiveProbe 发现兼容性问题，已据此修正；新增 OverlaySharingProbe 验证提交完整、类型不可变、producer 和相邻声明不互相污染 |
+| 匿名继承位置 | SourceTypeReferences 对匿名类 extends/implements 使用声明主体区间；保留显式成员和导航。隔离冻结参考 anonymous-hierarchy-staged-reference-corrected.log：7/7；当前正式 native 仍待重验 |
+| 无效对照已终止 | core-service-test-native-original-20261002/receipt.json：TEST-only classpath 误配 MAIN,TEST scan，主动终止自建 harness；604.967 秒，配置恢复、无输入/产物漂移，不作为修正效果证据 |
+| 下一门禁 | 成套 native 构建、overlay/Lombok/匿名位置回归、完整 classpath 的 TEST 定向验收，然后全 reactor MAIN/TEST/XML 和全语义差分。平面类型图原型尚未接入；容量和 release 未通过 |
+
+所有耗时只作观测，正确性通过前不作最终性能判定。
+
+
+| 扩展兼容性续验 | 结果 |
+|---|---|
+| 首轮归档回归 | RecordArchiveProbe 要求 mutableMap 的类型副本可编辑；旧直接共享修正抛 UnsupportedOperationException，失败日志保留 overlay-anonymous-archive-jvm.log |
+| 修正后的隔离证据 | overlay-sharing-compatible-jvm.log 与 overlay-sharing-compatible-archive-probe.log 均通过：仅 ModelOverlay.pendingMap 共享封存类型，mutableMap 原行为保持 |
+| 首轮 SOURCE 对照 | type-reference-20261002-174614-93677：11 组逐项一致，但运行中源文件变更，all_ok=false；不计作冻结验收，须以修正后成套产物重验 |
+
+
+### overlay 兼容修正后的正式产物回归（2026-10-02）
+
+| 检查 | 实际结果 |
+|---|---|
+| SDKMAN native 成套构建 | overlay-compatible-anonymous-native-build-20261002.log：0，类型共享仅作用于 ModelOverlay.pendingMap；公共 mutableMap 原约定保持 |
+| 完整 JVM | overlay-compatible-full-jvm-20261002-175032/receipt.json：37 组、284 项，1014.636 秒，all_ok=true，源码/产物无漂移 |
+| native 回归 | native-fixtures-20261002-175107/receipt.json：77 项，472.254 秒，all_ok=true，源码/产物无漂移 |
+| native SOURCE 冻结参考 | type-reference-20261002-175107-42012/receipt.json：11 组，all_ok=true，源码/产物无漂移，冻结参考未变；包含匿名主体继承坐标 |
+| release daemon | overlay-compatible-release-daemon.log：编码隔离/raw bytes/strict 旧 head、查询/full-delta/删除两项通过，50.213 秒 |
+| native C ABI | overlay-compatible-native-cabi.log：真实 SDKMAN Java 8、缓存/full、处理器陷阱、取消/清理、主动 SIGSEGV 隔离、损坏包拒绝通过 |
+| 补充隔离证明 | anonymous-generic-hierarchy-native-isolated.log：匿名泛型类 4/4（类型与继承）全部一致；尚未扩大正式该组的历史 3 项投影 |
+| 平面图原型 | type-graph-staged-budget-cancel.log：SDKMAN Java 8 深度超限回滚、取消后健康根保留通过；尚未接入产品或升级协议 |
+| 真实项目 | core-service-test-overlay-compatible-20261002 正在运行：已越过 model.lombok，仍需发布、查询和与冻结参考的真实语义差分。全 reactor 与最终容量/release 仍未通过 |
+
+本轮有其他验收并行，耗时不作为性能证据。真实验收的终态以对应 receipt.json 为准，不把阶段完成记为全项目通过。
+
+2026-10-02 调用恢复修正：优先使用 javac 已归属的完整 lambda 参数类型，仍保留候选局部 descriptor 覆盖；仅生成调用引起的完整实参类型实际变化才影响外层选择；隐式泛型工厂接受候选参数的目标类型约束，显式实参、边界、不适用和候选隔离仍检查。隐式匿名 Object 不再产生 extends 边，显式 extends Object 保留。正式 38 组/294 JVM、87 native、16 冻结调用和 13 冻结 SOURCE 对照及 3 daemon 回归通过；core/service 新 MAIN/TEST/XML 发布与全语义仍执行中，完整 reactor/类型图/框架差分/容量/release 未完成。
+
+## 真实 core/service 发布与第二轮调用修正（2026-10-02）
+
+| 项目 | 结果 / 边界 |
+|---|---|
+| `core-service-main-test-contextual-20261002/receipt.json` | MAIN/TEST/XML 发布及查询通过：775 个健康 Java，431508 事实，revision `rev_374679be84a644b1a5e4cb4cea4dadc3`。1335.257 秒，进程树峰值 958726144 bytes；配置恢复、无漂移和异常信号。coverage 仍 partial，完整语义未通过。 |
+| 旧版严格多重集 | 声明8332、调用点及归属35813均零差异；目标缺188/多29，SOURCE类型缺182/多75；反射成员20、extends528、implements152零差异。TEST单独投影目标缺2/多0，类型缺3/多2。新版必须重跑，不把旧版数值当作新版结果。 |
+| 根因分类 | `missing-target-classification.json`：188个缺口中，no_applicable_candidate=86、no_modeled_input=30、recovery_budget=24；其他48个含状态差异、回调描述符和不完整候选。缺少目标与状态改变保留严格差异，不按目标名称忽略。 |
+| 同返回类型生成方法 | constructor 类型未变化的处理仅限 constructor；普通生成方法即使返回类型不变，仍参与外层恢复。`println(value.toString())` 原产物漏目标，修正后 possible；新增正例及 full/delta/注解删除，11项绑定通过。 |
+| 第一轮新版 native | `native-fixtures-20261002-193044/receipt.json`：89项、274.259秒、all_ok=true，无输入/产物漂移；`functional-reference-20261002-193047-35495/receipt.json`：17项冻结参考全部一致。`root-expressions-release-daemon.log`：编码原字节/strict旧head、SOURCE查询、回调full/delta共3项通过（35.112秒）。这些证据早于下面的非泛型候选修正。 |
+| 匿名构造器根因 | 冻结的实际 TEST/OpengwMessage/MessageType 源码加 fixture 生成构造器后，原实现复现 JSONObject 目标被 recovery_budget 阻断。trace定位到非泛型构造器仍请求父调用目标类型，重复进入 Assert 重载/getData 泛型推断并耗尽工作步骤。仅含方法形式类型参数的候选才请求该上下文；不调高100000/64预算。原失败和修正通过日志均保留。 |
+| 可重跑回归 | `tests/java_real_binding_alignment.py`：校验冻结HEAD的三份原字节、锁定TEST依赖SHA，测试原始匿名构造器与 full/delta/生成构造器删除。`non-generic-context-frozen-source-staged/receipt.json` 两项通过；它是隔离源码回归，不替代真实 reactor。非泛型修正已合入并构建native，正式新版门禁待回执。 |
+| 编码政策 | 用户确认保留非法UTF-8原字节、SOURCE_ENCODING_INVALID/partial、继续其余文件；strict拒绝候选并保留旧head。不猜编码，不把坏文件计入解析成功。 |
+
+剩余顺序：新版 fixture/native/daemon → core/service 真实重验与全量差分 → 生成模块签名受控再归属、类型图与其余语义缺口 → 全 reactor MAIN/TEST/XML/框架 → 独占容量和release。仍只有 E01/E02 完整通过，不把局部发布、原型或专项相等提升为全部完成。
+
+## 新版回归与真实验收失败记录（2026-10-02）
+
+| 门禁 | 结果 |
+|---|---|
+| `non-generic-context-full-jvm-20261002-194037/receipt.json` | 38组、296项全部通过，1378.881秒，无输入及产物漂移。并行耗时不作为性能证据。 |
+| `native-fixtures-20261002-194017/receipt.json` | 89项真实native通过，854.737秒，无输入及产物漂移。 |
+| `functional-reference-20261002-194021-3791/receipt.json` | 17项冻结参考一致。 |
+| `non-generic-context-frozen-source-native/receipt.json` | 冻结原始匿名构造器和full/delta两项真实native通过。 |
+| `non-generic-context-release-daemon.log`、`non-generic-context-native-cabi.log` | release daemon三项及C ABI隔离门禁通过。 |
+| `core-service-main-test-non-generic-20261002/receipt.json` | **失败**：1407.671秒，TEST/model.lombok 报NATIVE_HEAP_EXHAUSTED，配置native heap为512MiB。未发布revision，旧head保留；无异常信号、源码/产物漂移，配置恢复。不能复用旧版发布回执证明新版通过。OOM的具体对象/保留链尚待取证。 |
+| `collector-target-staged-frozen-18/receipt.json` | 隔离嵌套collector修正与冻结参考18个专项全部一致，新样本从5/6变为6/6；8项collector正反例和full/delta通过。修正已写入产品源代码，待新构建/native/真实门禁。 |
+
+非法UTF-8政策继续按用户选择执行：保留原字节，明确失败，继续健康文件。完整40模块语义验收、生成模块签名受控再归属、类型图集成与独占容量仍未完成。
+
+## Collector修正的正式门禁与新版真实差分（2026-10-02）
+
+| 证据 | 结果 |
+|---|---|
+| `non-generic-context-full-jvm-20261002-201250/receipt.json` | 新collector修正：38组、300项全部通过，679.814秒，无输入/产物漂移。目录名沿用runner历史前缀，产物SHA以本回执为准。 |
+| `native-fixtures-20261002-201245/receipt.json` | 93项真实native全部通过，246.148秒，无输入/产物漂移。 |
+| `collector-target-native-frozen-18/receipt.json` | 18个冻结native专项全部一致，新增collector目标6/6。 |
+| `collector-target-native-cabi.log`、`collector-target-encoding-daemon.log` | 原生SDK8/C ABI/取消/故意SIGSEGV/AP陷阱/包完整性通过；非法UTF-8保留原字节、partial、strict保留旧head、修复删除delta通过。 |
+| `core-service-main-test-collector-target-1g-worker2g-20261002/receipt.json` | 实际MAIN/TEST/XML发布查询通过：775健康Java、431533事实，revision `rev_ecd764196b9a4a6fb08328a262fa1527`，500.008秒，进程树峰值812482560 bytes。native heap=1GiB，compiler=512MiB，总worker配额=2GiB；隔离runner仅改总配额，见run-profile.json。旧512MiB失败回执保留，未宣称该配额问题已解决。配置恢复，无漂移及异常信号。完整语义仍未通过。 |
+| `call-diff.json` | 严格调用投影：声明8332、调用点/归属35813零差异；目标35693/35827，缺166、多32。原版188/29已降低缺口，但状态差异也保留，不按目标名称忽略。 |
+| `test-call-diff.json` | 严格TEST投影：声明2924、调用点/归属17612、调用目标17632均零差异；不代替类型/框架或全reactor。 |
+| `supplemental-abi-expanded-staged.log`、`supplemental-abi-super-builder-recursive-staged.log` | 生成getter、泛型Builder、SuperBuilder递归自类型NoCode再归属的三个隔离样本诊断从1降到0。递归TYPEVAR只有查证到完整声明formal才允许ABI引用；缺失/不完整类型不能放行。仅隔离原型。 |
+| `supplemental-integrated-getter-staged.json` | 隔离管线保留原javac/recovered_callback，并附第二次javac/签名SHA证据；Consumer、Leaf generic_arg/parameter_type三个SOURCE类型关系完整，原诊断仍保留。未合入native，缓存失效、反例及真实EchoRecord仍待验证。 |
+
+资源harness新增显式native/worker配额与Rust预留公式校验，13项恢复/边界测试通过。manifest的output相对命令工作目录，新的导出采用项目内完整路径；两个未启动索引的路径/配额失败回执也保留。时间和单次峰值不作为最终容量验收。
+
+## 长Builder、identity工厂与生成签名再归属（2026-10-02）
+
+| 项目 | 本轮结果 / 限制 |
+|---|---|
+| 产品源码 | 长Builder仅预处理生成Builder接收者链；无参泛型工厂采用目标wildcard约束并递归推断wildcard bounds。不增加100000/64推断预算。 |
+| 生成MAIN辅助签名 | 独立NoCode仅包含声明，无业务Code；同目标SDK8 javac禁用处理器，PRIMARY回调按原路径/位置/身份对齐。保存独立signature/输入SHA及原始证据，原诊断和调用possible不变。不完整ABI保守保留SOURCE。 |
+| 产品专项 | `builder-supplemental-product-collector.log`11项、`builder-supplemental-product-chain.log`3项、`builder-supplemental-product-signatures.log`6项通过；覆盖反例、依赖类型变化、getter删除、泛型Builder及递归SuperBuilder的full/delta/cache。 |
+| 独立严格对照 | `supplemental-reference-20261002-204724-35719/receipt.json`：Getter4/4、泛型Builder3/3、SuperBuilder3/3，按相同原字节span、owner、类型上下文、置信度多重集全部相等，无漂移。上一轮测试源目录错误导致Builder参考0项的失败回执保留，未作产品结论。 |
+| 既有真实项目 | collector版本SOURCE类型仍缺182/多75，TEST类型缺3/多2。最新生成签名native/真实EchoRecord效果、整体MAIN残余目标及全40模块尚待新版验证。 |
+
+本轮尚不勾选52项完整对齐；先完成新版native/daemon/真实语义差分，再执行独占容量。
+
+新版真实native回归已通过：`native-fixtures-20261002-204914/receipt.json`105项、398.953秒，无输入/产物漂移；`functional-reference-20261002-204914-43546/receipt.json`20项调用专项，`type-reference-20261002-205107-55370/receipt.json`13项类型专项，以及`supplemental-reference-20261002-205024-49694/receipt.json`三项MAIN/TEST生成签名严格对照全部一致。`builder-supplemental-native-cabi.log`覆盖SDK8/取消/缓存/处理器陷阱/故意SIGSEGV/包校验；`builder-supplemental-release-daemon.log`两项原字节坏编码及SOURCE查询/full-delta通过。完整JVM与新版真实core/service仍运行，不计作终态通过。
+
+额外发现14层含生成getter实参的Builder链仍触发预算；`builder-getter-depth-product.json`原产物29/30，隔离修正30/30，并通过`builder-getter-depth-staged-frozen-21-corrected/receipt.json`21项冻结对照。该修正尚未合入，当前真实验收产物保持固定。
+
+## 新版真实core/service终态与严格差分（2026-10-02）
+
+| 核对项 | 新版事实 / 证据 |
+|---|---|
+| JVM | `non-generic-context-full-jvm-20261002-204914/receipt.json`40组312项，869.18秒，all_ok=true，无输入/产物漂移。 |
+| 发布与查询 | `core-service-main-test-builder-supplemental-exported-1g-worker2g-20261002/receipt.json`775健康Java、431667事实，revision `rev_1bbfb284749b4e92bce3c7d0b226ed78`，671.572秒。native1GiB/worker2GiB；配置恢复、无漂移和异常信号，coverage仍partial。新正式harness显式资源参数，无隔离配额runner。 |
+| 严格调用 | 声明8332、调用点/owner35813零差异；目标35728/35827，缺130/多31。TEST声明2924、调用点17612、目标17632全部零差异。 |
+| 严格类型 | SOURCE类型12180/12188，缺11/多3（之前缺182/多75）；TEST类型1705全部零差异，实际EchoRecord回调已对齐。反射成员20、extends528、implements152零差异。 |
+| 剩余类型根因 | 8个缺口是原javac归属成Object而SAM仍complete的回调，当前supplemental触发条件未重验此类；另ForwardInterfaceTypeHandler产品有新的javac签名证据而参考仍possible，造成2缺/3多的严格差异，未忽略或改标签。 |
+
+以上仅core/service；40模块全reactor、剩余MAIN调用/类型、类型图集成、完整扩展差分和独占容量/release均未最终完成。导出尚未落盘即尝试读取的预检失败回执保留，未启动索引、不计产品失败；完成导出后本次正式运行已通过发布查询。
+
+## Object回调、较短Builder与并发工厂（2026-10-02，新增源码待native重验）
+
+| 修正 | 取证与验证 |
+|---|---|
+| 原SAM complete但类型为Object | 有生成AUX声明时重验PRIMARY回调，只保存与原证据不同且完整的新SAM。原证据/诊断仍保留；8项fixture通过，包含PRIMARY Unicode/方法体编辑、getter删除及cached full/delta。冻结四个MAIN/TEST样本严格相等，Map链13/13（`supplemental-reference-20261002-210839-63932/receipt.json`）。 |
+| 14层含生成getter实参Builder | 预处理门槛由16改为8，仅生成Builder接收者链；推断预算100000/64不变。5项fixture通过，30/30及getter类型不适用/full-delta反例；冻结旧21项一致。 |
+| ConcurrentMap工厂赋值给Map | formal与自己相等的约束不建立自映射；根据参考returnTargetSeedable/sameNestedErasure，实参子类型先推断，随后检查目标类型。14项collector与11项poly反例通过，`collector-erasure-staged-frozen-22/receipt.json`22项全部相等。已合入源码，产品native/真实重验待新回执。 |
+| 拒绝的隔离改动 | `collector-chain-staged-frozen-24/receipt.json`未通过：类型变量边界registry额外恢复了参考未确认的toMap目标；没有接入产品TypeOperations。lambda/entry链仍需继续查证；不把额外目标或更高标签自动当作对齐。 |
+
+新版完整fixture现为40组，预计319项；之前312项/105 native及真实431667事实的回执只证明上一版，不替代本次新源码验收。

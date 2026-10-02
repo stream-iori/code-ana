@@ -5,7 +5,9 @@ pub mod v1 {
 pub mod worker {
     tonic::include_proto!("codeana.worker.v1");
 }
-use anyhow::{Result, bail};
+pub mod archive;
+pub mod java;
+use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
@@ -67,10 +69,10 @@ pub fn terminal(r: &m::TaskResult) -> v1::Terminal {
     }
 }
 pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, e: &worker::Envelope) -> Result<()> {
-    let b = e.encode_to_vec();
-    if b.len() > m::MAX_FRAME {
+    if e.encoded_len() > m::MAX_FRAME {
         bail!("FRAME_BUDGET");
     }
+    let b = e.encode_to_vec();
     w.write_u32(b.len() as u32).await?;
     w.write_all(&b).await?;
     w.flush().await?;
@@ -135,20 +137,83 @@ fn wire_fields(mut bytes: &[u8], mut visit: impl FnMut(u64, &[u8]) -> Result<()>
     }
     Ok(())
 }
+fn packed_count(bytes: &[u8]) -> Result<usize> {
+    // Empty payload also represents a scalar (unpacked) varint in wire_fields.
+    if bytes.is_empty() {
+        return Ok(1);
+    }
+    let mut count = 0;
+    let mut width = 0;
+    for &value in bytes {
+        width += 1;
+        if width > 5 || (width == 5 && value > 15) {
+            bail!("JAVA_INDEX_VARINT");
+        }
+        if value < 128 {
+            count += 1;
+            width = 0;
+        }
+    }
+    ensure!(width == 0, "JAVA_INDEX_VARINT");
+    Ok(count)
+}
+fn validate_java_config(bytes: &[u8]) -> Result<()> {
+    let mut contexts = 0;
+    let mut inputs = 0;
+    let mut table = 0;
+    let mut indices = 0;
+    wire_fields(bytes, |field, value| {
+        if matches!(field, 11 | 12) {
+            table += 1;
+            ensure!(
+                table <= 20000 && !value.is_empty(),
+                "JAVA_INPUT_TABLE_DECODE_BUDGET"
+            );
+        }
+        if field == 5 {
+            contexts += 1;
+            ensure!(contexts <= 256, "JAVA_CONTEXT_BUDGET");
+            let mut context_indices = [0usize; 4];
+            wire_fields(value, |field, value| {
+                if matches!(field, 5 | 6 | 12) {
+                    inputs += 1;
+                    ensure!(
+                        inputs <= 10000 && !value.is_empty(),
+                        "JAVA_INPUT_DECODE_BUDGET"
+                    );
+                }
+                if (14..=17).contains(&field) {
+                    let count = packed_count(value)?;
+                    indices += count;
+                    context_indices[(field - 14) as usize] += count;
+                    ensure!(
+                        indices <= 1000000 && context_indices[(field - 14) as usize] <= 10000,
+                        "JAVA_INDEX_DECODE_BUDGET"
+                    );
+                }
+                Ok(())
+            })?;
+        }
+        Ok(())
+    })
+}
 fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
     let mut bodies = 0;
     let mut attempts = 0;
     wire_fields(bytes, |tag, body| {
         if tag == 1 {
             attempts += 1;
-        } else if (2..=13).contains(&tag) {
+        } else if (2..=16).contains(&tag) {
             bodies += 1;
             let mut repeated = 0;
             wire_fields(body, |field, value| {
+                if tag == 3 && field == 2 {
+                    validate_java_config(value)?;
+                }
                 let limit = match (tag, field) {
                     (7, 2) => 1024,
                     (13, 1) | (13, 3) | (13, 5) => 1000,
-                    (5, 5) => m::MAX_FACTS,
+                    (5, 5) | (14, 2) => m::MAX_FACTS,
                     (6, 6) => m::MAX_FACTS,
                     (4, 2) | (4, 4) | (4, 6) => 10000,
                     _ => 0,
@@ -158,7 +223,7 @@ fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
                     if repeated > limit {
                         bail!("DECODE_REPEATED_BUDGET");
                     }
-                    if matches!((tag, field), (7, 2) | (5, 5)) && value.len() < 4 {
+                    if matches!((tag, field), (7, 2) | (5, 5) | (14, 2)) && value.len() < 4 {
                         bail!("EMPTY_FACT_MESSAGE");
                     }
                 }
@@ -223,5 +288,60 @@ mod tests {
         assert!(validate_envelope_wire(&empty).is_err());
         empty = vec![10, 1, b'a', 18, 0, 18, 0];
         assert!(validate_envelope_wire(&empty).is_err());
+    }
+}
+
+#[cfg(test)]
+mod java_protocol_tests {
+    use super::*;
+    #[test]
+    fn packed_java_indices_are_bounded_before_prost_allocation() {
+        let config = worker::JavaConfig {
+            compact_inputs: true,
+            contexts: vec![worker::JavaContext {
+                source_indices: vec![0; 10001],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let frame = envelope(
+            "a",
+            worker::envelope::Body::Discover(worker::Discover {
+                manifest: None,
+                java: Some(config),
+            }),
+        );
+        assert!(
+            validate_envelope_wire(&frame.encode_to_vec())
+                .unwrap_err()
+                .to_string()
+                .contains("JAVA_INDEX_DECODE_BUDGET")
+        );
+        assert!(packed_count(&[128]).is_err());
+        assert!(packed_count(&[255, 255, 255, 255, 16]).is_err());
+        assert_eq!(packed_count(&[0, 128, 1]).unwrap(), 2);
+    }
+    #[test]
+    fn bounded_java_discovery_and_baseline_frames() {
+        let java = worker::JavaConfig {
+            contexts: vec![worker::JavaContext::default(); 257],
+            ..Default::default()
+        };
+        let frame = envelope(
+            "a",
+            worker::envelope::Body::Discover(worker::Discover {
+                manifest: None,
+                java: Some(java),
+            }),
+        );
+        assert!(validate_envelope_wire(&frame.encode_to_vec()).is_err());
+        let baseline = envelope(
+            "a",
+            worker::envelope::Body::BaselineChunk(worker::BaselineChunk {
+                seq: 0,
+                facts: vec![worker::Fact::default()],
+            }),
+        );
+        assert!(validate_envelope_wire(&baseline.encode_to_vec()).is_err());
     }
 }
