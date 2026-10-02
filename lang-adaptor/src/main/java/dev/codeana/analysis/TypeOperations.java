@@ -8,6 +8,8 @@ import java.util.*;
 
 /** Detached Java 8 type operations. Unknown evidence never satisfies an applicability proof. */
 final class TypeOperations {
+    private static final Set<String> GRAPH_SINGLE=Set.of("enclosing","component","extends","super","upper","lower","return","receiver");
+    private static final Set<String> GRAPH_MANY=Set.of("arguments","bounds","alternatives","parameters","throws","type_variables");
     enum Match {
         YES,
         NO,
@@ -233,6 +235,13 @@ final class TypeOperations {
     Map<String, Object> substitute(
             Map<String, Object> type, Map<String, Map<String, Object>> bindings) {
         if (bindings.isEmpty()) return type;
+        if(!dev.codeana.common.TypeGraph.isView(type) && type.get("version") instanceof Number n && n.intValue()==3)
+            type=map(dev.codeana.common.TypeEvidence.decode(dev.codeana.common.TypeEvidence.encode(Json.object("type",type))).get("type"));
+        if(dev.codeana.common.TypeGraph.isView(type)) {
+            if(!graphNeedsSubstitution(type,bindings))return type;
+            Map<String,Object> flat=substituteConcreteGraph(type,bindings);
+            if(flat!=null)return flat;
+        }
         return substitute(type, bindings, new HashSet<>(), 0);
     }
 
@@ -288,6 +297,53 @@ final class TypeOperations {
                 }
             }
         return result == null ? type : ModelArchive.freezeType(result);
+    }
+
+    private Map<String,Object> substituteConcreteGraph(Map<String,Object> type,Map<String,Map<String,Object>> bindings) {
+        Map<String,Object> inputs=Json.object("original",type,"bindings",new TreeMap<>(bindings));
+        Map<String,Object> encoded=dev.codeana.common.TypeEvidence.encode(inputs);
+        Map<String,Object> payload=map(list(encoded.get(dev.codeana.common.TypeEvidence.TABLE)).getFirst());
+        List<Object> nodes=list(payload.get("nodes")),roots=list(payload.get("roots"));
+        Map<String,Integer> replacements=new HashMap<>();
+        for(var entry:map(encoded.get("bindings")).entrySet()) {
+            List<Object> ref=list(map(entry.getValue()).get("$java_type"));
+            if(ref.size()!=2)return null;
+            int root=((Number)roots.get(((Number)ref.get(1)).intValue())).intValue();
+            ArrayDeque<Integer> pending=new ArrayDeque<>();Set<Integer> seen=new HashSet<>();pending.add(root);
+            while(!pending.isEmpty()) {
+                step(0);int id=pending.removeFirst();if(!seen.add(id))continue;
+                Map<String,Object> node=map(nodes.get(id));
+                if(Set.of("TYPEVAR","CAPTURE").contains(kind(node)))return null;
+                for(String role:GRAPH_SINGLE) {
+                    Object child=node.get(role);if(child instanceof Number && ((Number)child).intValue()>=0)pending.add(((Number)child).intValue());
+                }
+                for(String role:GRAPH_MANY)for(Object child:list(node.get(role)))pending.add(((Number)child).intValue());
+            }
+            replacements.put(entry.getKey(),root);
+        }
+        int[] redirect=new int[nodes.size()];
+        for(int i=0;i<nodes.size();i++) {
+            Map<String,Object> node=map(nodes.get(i));redirect[i]="TYPEVAR".equals(kind(node))?replacements.getOrDefault(variable(node),i):i;
+        }
+        dev.codeana.common.TypeGraph.Builder builder=new dev.codeana.common.TypeGraph.Builder();
+        for(Object value:nodes) {
+            step(0);Map<String,Object> meta=new TreeMap<>(map(value));
+            for(String role:GRAPH_SINGLE)meta.remove(role);
+            for(String role:GRAPH_MANY)meta.remove(role);
+            builder.reserve(meta);
+        }
+        for(int i=0;i<nodes.size();i++)for(var entry:map(nodes.get(i)).entrySet()) {
+            String role=entry.getKey();Object value=entry.getValue();
+            if(GRAPH_SINGLE.contains(role)) {
+                int child=((Number)value).intValue();builder.edit(i).put(role,child<0?-1:redirect[child]);
+            }else if(GRAPH_MANY.contains(role)) {
+                List<Integer> children=new ArrayList<>();for(Object child:list(value))children.add(redirect[((Number)child).intValue()]);
+                builder.edit(i).put(role,children);
+            }
+        }
+        List<Object> original=list(map(encoded.get("original")).get("$java_type"));
+        int root=((Number)roots.get(((Number)original.get(1)).intValue())).intValue();
+        return builder.seal().view(redirect[root]);
     }
 
     private boolean graphNeedsSubstitution(Map<String,Object> type,Map<String,Map<String,Object>> bindings) {

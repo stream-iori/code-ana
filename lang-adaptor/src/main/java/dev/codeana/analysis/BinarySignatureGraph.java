@@ -8,7 +8,7 @@ import org.objectweb.asm.signature.SignatureVisitor;
 import java.util.*;
 import java.util.function.IntConsumer;
 
-/** Isolated candidate adapted from frozen Anatomist JavaBinaryTypes. Not wired into BinaryIndex. */
+/** Graph signatures adapted from frozen Anatomist JavaBinaryTypes, consumed by BinaryIndex. */
 public final class BinarySignatureGraph {
     private record Formal(String name, String owner, int root, List<Integer> bounds) {}
     private record Executable(int root, List<Formal> formals) {}
@@ -53,6 +53,13 @@ public final class BinarySignatureGraph {
             throw new IllegalArgumentException("BINARY_SIGNATURE_BUDGET");
         work = 0;
     }
+    private static void validateInput(String input) {
+        if(input==null || input.isEmpty() || input.length()>65536)throw new IllegalArgumentException("BINARY_SIGNATURE_BUDGET");
+    }
+    static void validateClassSignature(String signature){validateInput(signature);new Grammar(signature).declaration();}
+    static void validateFieldSignature(String signature){validateInput(signature);new Grammar(signature).field();}
+    static void validateMethodSignature(String signature){validateInput(signature);new Grammar(signature).method();}
+
     private void step(int depth) {
         if (depth > 64 || ++work > 4096) throw new IllegalArgumentException("BINARY_SIGNATURE_BUDGET");
         if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("CANCELLED");

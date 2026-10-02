@@ -322,3 +322,19 @@ core-service-main-test-module-abi-verified-inputs-20261003：652.956 秒完成�
 上版类型回退 179 缺/76 多已在本次正式 native/daemon 局部范围消除；调用独立缺失从 81 降为 79。尚未关闭剩余调用、全 40 模块、完整扩展语义、默认类型图、Rust 通用缓存迁移、容量或发行门禁。
 
 深层二进制额外核验：冻结 Anatomist 自身在 80 层 JavaBinaryTypes 抛出 binary type depth exceeds budget（deep-graph-binary-frozen-80.log）；因此未合入将二进制预算扩到 128 的隔离试验，不把超出原版上限记为对齐修正。仅在原版范围内继续验证 50 层 NoCode 与 TYPE_USE；deep-graph-nocode-frozen-boundary-50.log 九项通过，仍是隔离候选，待正式合入及 native 复验。
+
+
+## 深层泛型代入与 NoCode 产品修正
+
+已合入实际替换值不含 TYPEVAR/CAPTURE 的图代入；原图/未改变子树/声明泛型身份保留，其他替换继续保守递归。50 层 NoCode 头与 TYPE_USE 路径用图遍历，源码注解包装不重复计算类型层数。新图 NoCode 写入前复用 BinarySignatureGraph 现有严格语法及原版 64 层/4096 节点上限，80 层只保留 SOURCE；未扩大二进制预算。
+
+| 当前正式源码 JVM 证据 | 结果 |
+|---|---|
+| deep-graph-product-signature-regressions.log | 10 项通过，36.305 秒；包含 50 层类型/注解精确 full/cache/delta，80 层拒绝缓存仍继续解析 |
+| deep-graph-product-call-regressions.log | 4 项通过，25.849 秒；80 层实际 String/Number 叶子、候选隔离、原 T 保留、full/cache/delta/删除 |
+| deep-graph-product-binary-invariants.log | 原版六形状、形式变量 owner/递归及三个非法签名负例通过；2 项，1.641 秒 |
+| deep-graph-product-sdk8-model.log | 原版 SDK8/10001 节点/预算/归档/移交的十项保持通过，7.512 秒 |
+
+功能独立参考新增三项深层泛型正/负例，默认/native 两个入口均使用显式图上下文。正式产品 native 仍需重建验收。CallRecovery 补充回调输入的隔离候选虽五组原版对照通过，但选定真实文件只达到与已合入模块边界相同的 1413 目标（原始匿名未归一投影缺 33、多 6），没有证明额外进展，不合入。第一次隔离调用投影探针把全部声明属性放入 Map，1GiB JVM OOM；改为仅保存签名字符串后同限额成功，失败日志保留，没有外部杀进程。
+
+发现条件表达式参数原 javac kind=NONE 即使子表达式已有完整 String/boolean，恢复选择仍保留 NONE；隔离候选正在检查原版严格目标和负例，尚未合入。

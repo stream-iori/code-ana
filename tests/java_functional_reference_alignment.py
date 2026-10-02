@@ -25,7 +25,13 @@ from java_diamond_alignment import SOURCE as DIAMOND_SOURCE
 from java_lambda_input_alignment import SOURCE as LAMBDA_INPUT_SOURCE
 from java_contextual_invocation_alignment import NESTED, CONSTRUCTOR, GENERIC, METHOD_INPUT
 
+DEEP_CONCRETE_SOURCE = ('@lombok.Getter class Deep<T> { ' + 'java.util.List<' * 80 + 'T' + '>' * 80
+                        + ' value;} class Use {int read(Deep<String> d){return d.getValue().size();}}')
+
 SOURCES = {
+    'functional-deep-concrete': DEEP_CONCRETE_SOURCE,
+    'functional-deep-concrete-missing': DEEP_CONCRETE_SOURCE.replace('getValue()', 'absent()'),
+    'functional-deep-concrete-two': DEEP_CONCRETE_SOURCE.replace('Deep<String> d)', 'Deep<String> d,Deep<Number> n)').replace('return d.getValue().size();', 'int a=d.getValue().size();return n.getValue().size();'),
     'functional-unrelated-getter-chain': UNRELATED_GETTER_CHAIN_SOURCE,
     'functional-cast-reference-chain': CAST_REFERENCE_CHAIN_SOURCE,
     'functional-entry-chain': ENTRY_CHAIN_SOURCE,
@@ -140,6 +146,8 @@ def proof(name, source, evidence, native):
             context = case.controls(case.context('app', case.files(source), lombok='model'), {'app/lombok.config': CONTROL})
         else:
             context = case.context('app', {'App.java': source})
+        if name.startswith('functional-deep-concrete'):
+            context['type_graph'] = True
         facts = case.analyze([context])['facts']
         for unit in context['sources']:
             target = base / unit['path']
@@ -247,7 +255,7 @@ def proof(name, source, evidence, native):
     report = dict(kind=name, source_sha256=hashlib.sha256(source.encode()).hexdigest(), reference_commit=REFERENCE_COMMIT,
                   reference_jar_sha256=REFERENCE_SHA, reference_db_sha256=digest(base / 'index.db'), command=command,
                   native_verified=native, real_main_accepted=False, full_semantic_diff_accepted=False, **compare(left, right))
-    minimum = {'functional-unrelated-getter-chain':14, 'functional-cast-reference-chain':12, 'functional-entry-chain':9, 'functional-stable-lambda-constructor':10, 'functional-lambda-map':4, 'functional-identity-concurrent':5, 'functional-builder-getter-chain':30, 'functional-builder-chain':42, 'functional-identity-factory':5, 'functional-collector-target':6, 'functional-same-return-method':2, 'functional-nested-reentry':15, 'functional-stable-constructor':4, 'functional-poly-factory':3, 'functional-collector-capture':14, 'functional-diamond':7, 'functional-lambda-input':23, 'functional-output':19, 'functional-unbound':4, 'source-parameter-owner':10, 'expressions':15, 'functional-generated-overload':6, 'functional-static-import':2, 'functional-generic-reference':12, 'functional-receiver-boundary':9, 'functional-static-reference':9, 'functional-constructor-reference':20}[name]
+    minimum = {'functional-deep-concrete':2, 'functional-deep-concrete-missing':0, 'functional-deep-concrete-two':4, 'functional-unrelated-getter-chain':14, 'functional-cast-reference-chain':12, 'functional-entry-chain':9, 'functional-stable-lambda-constructor':10, 'functional-lambda-map':4, 'functional-identity-concurrent':5, 'functional-builder-getter-chain':30, 'functional-builder-chain':42, 'functional-identity-factory':5, 'functional-collector-target':6, 'functional-same-return-method':2, 'functional-nested-reentry':15, 'functional-stable-constructor':4, 'functional-poly-factory':3, 'functional-collector-capture':14, 'functional-diamond':7, 'functional-lambda-input':23, 'functional-output':19, 'functional-unbound':4, 'source-parameter-owner':10, 'expressions':15, 'functional-generated-overload':6, 'functional-static-import':2, 'functional-generic-reference':12, 'functional-receiver-boundary':9, 'functional-static-reference':9, 'functional-constructor-reference':20}[name]
     report['equal'] = report['equal'] and report['reference'] >= minimum
     if reads_proof is not None:
         report['static_import_reads'] = reads_proof

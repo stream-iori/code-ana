@@ -112,5 +112,40 @@ class JavaSignatures(unittest.TestCase):
         self.assertEqual(self.merged(current, delta), sorted(self.analyze([context])['facts'], key=lambda f: f['id']))
 
 
+
+
+class GraphJavaSignatures(unittest.TestCase):
+    setUp = model_tests.Models.setUp
+    analyze = model_tests.Models.analyze
+    merged = model_tests.Models.merged
+    roundtrip = JavaSignatures.roundtrip
+
+    def context(self, name, files, **options):
+        return model_tests.Models.context(self, name, files, **dict(options, type_graph=True))
+
+    def test_fifty_level_generic_field_and_method_cache_roundtrip(self):
+        deep = 'java.util.List<' * 50 + 'T' + '>' * 50
+        self.roundtrip({'Api.java': 'class Api<T> {' + deep + ' value;' + deep + ' get(){return null;}}',
+                        'Use.java': 'class Use {void read(Api<String> a){a.get().size();System.out.println("before");}}'})
+
+    def test_fifty_level_type_annotation_paths_keep_full_delta(self):
+        deep = 'java.util.List<' * 50 + '@Mark T' + '>' * 50
+        self.roundtrip({'Api.java': 'import java.lang.annotation.*;@Target(ElementType.TYPE_USE)'
+                                    '@Retention(RetentionPolicy.RUNTIME)@interface Mark{} class Api<T> {'
+                                    + deep + ' value;' + deep + ' get(){return null;}}',
+                        'Use.java': 'class Use {void read(Api<String> a){a.get().size();System.out.println("before");}}'})
+
+    def test_beyond_frozen_binary_depth_remains_source_without_poisoning_cache(self):
+        deep = 'java.util.List<' * 80 + 'T' + '>' * 80
+        files = {'Api.java': 'class Api<T> {' + deep + ' value;' + deep + ' get(){return null;}}',
+                 'Use.java': 'class Use {void read(Api<String> a){a.get().size();System.out.println("before");}}'}
+        base = self.analyze([self.context('app', files)], cache=True)['facts']
+        files['Use.java'] = files['Use.java'].replace('before', 'after')
+        changed = self.context('app', files)
+        delta = self.analyze([changed], base, cache=True)
+        full = self.analyze([changed])
+        self.assertEqual(delta['reduced_contexts'], 0)
+        self.assertEqual(self.merged(base, delta), sorted(full['facts'], key=lambda f: f['id']))
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

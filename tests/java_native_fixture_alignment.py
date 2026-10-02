@@ -8,7 +8,7 @@ import unittest
 import java_alignment as alignment
 import java_functional_reference_alignment as reference
 from java_binding_alignment import Bindings
-from java_graph_call_alignment import GraphCalls
+from java_graph_call_alignment import GraphCalls, ConcreteGraphCalls
 from java_target_return_alignment import TargetReturns
 from java_functional_output_alignment import FunctionalOutputs, SourceParameters
 from java_generic_reference_alignment import GenericReferences
@@ -32,7 +32,7 @@ def main():
     evidence.mkdir(exist_ok=False)
     frozen = alignment.input_files()
     artifacts = reference.probe_artifacts(True)
-    classes = (Bindings, GraphCalls, TargetReturns, FunctionalOutputs, SourceParameters,
+    classes = (Bindings, GraphCalls, ConcreteGraphCalls, TargetReturns, FunctionalOutputs, SourceParameters,
                GenericReferences, ConstructorReferences, Collectors, BuilderChains, SupplementalSignatures, ModuleBoundary, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports)
     suite = unittest.TestSuite()
     for case in classes:

@@ -572,11 +572,11 @@ public final class CompilerBridge implements AutoCloseable {
     /** Adapted from Anatomist WorkerTypes: Java 8 loses written type-use wrappers on mirrors. */
     private Map<String, Object> sourceType(TreePath path, int depth) {
         if (depth > 128) throw new IllegalArgumentException("SOURCE_TYPE_DEPTH_BUDGET");
-        if(graphTypes && !hasSourceAnnotations(path.getLeaf(),depth)) return typeModel(trees.getTypeMirror(path));
+        if(graphTypes && !hasSourceAnnotations(path.getLeaf(),0)) return typeModel(trees.getTypeMirror(path));
         Map<String, Object> out = mutableType(
                 graphTypes ? typeModel(trees.getTypeMirror(path)) : typeModel(trees.getTypeMirror(path), new HashSet<String>(), new int[1], depth / 2));
         if (out.containsKey("reason")) return out;
-        if (hasSourceAnnotations(path.getLeaf(), depth)) sourceStructure(out, path, depth + 1);
+        if (hasSourceAnnotations(path.getLeaf(), graphTypes ? 0 : depth)) sourceStructure(out, path, graphTypes ? depth : depth + 1);
         return out;
     }
 
@@ -609,13 +609,13 @@ public final class CompilerBridge implements AutoCloseable {
         Tree syntax = path.getLeaf();
         if (syntax instanceof AnnotatedTypeTree) {
             mergeTypeAnnotations(out, WorkerSourceAnnotations.typeUses(path, trees));
-            sourceStructure(out, new TreePath(path, ((AnnotatedTypeTree) syntax).getUnderlyingType()), depth + 1);
+            sourceStructure(out, new TreePath(path, ((AnnotatedTypeTree) syntax).getUnderlyingType()), graphTypes ? depth : depth + 1);
         } else if (syntax instanceof ParameterizedTypeTree) {
             ParameterizedTypeTree type = (ParameterizedTypeTree) syntax;
             List<Object> arguments = new ArrayList<Object>();
             for (Tree argument : type.getTypeArguments()) arguments.add(sourceType(new TreePath(path, argument), depth + 1));
             out.put("arguments", arguments);
-            sourceStructure(out, new TreePath(path, type.getType()), depth + 1);
+            sourceStructure(out, new TreePath(path, type.getType()), graphTypes ? depth : depth + 1);
         } else if (syntax instanceof ArrayTypeTree) {
             out.put("component", sourceType(new TreePath(path, ((ArrayTypeTree) syntax).getType()), depth + 1));
         } else if (syntax instanceof WildcardTree) {

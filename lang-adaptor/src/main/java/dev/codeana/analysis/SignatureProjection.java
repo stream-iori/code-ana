@@ -44,6 +44,11 @@ final class SignatureProjection {
                         .add(declaration);
             }
         }
+        boolean graphTypes=declarations.stream().anyMatch(d -> {
+            Object model=attrs(d).get("type_model");
+            return dev.codeana.common.TypeGraph.isView(model) || model instanceof Map<?,?> m
+                    && m.get("version") instanceof Number version && version.intValue()==3;
+        });
         Map<String, byte[]> output = new TreeMap<>();
         for (Map.Entry<String, Map<String, Object>> entry : types.entrySet()) {
             String name = entry.getKey();
@@ -227,7 +232,9 @@ final class SignatureProjection {
                             .visitEnd();
             }
             writer.visitEnd();
-            output.put(name, writer.toByteArray());
+            byte[] bytes=writer.toByteArray();
+            if(graphTypes)validateGraphAbi(bytes);
+            output.put(name,bytes);
         }
         return output;
     }
@@ -244,8 +251,24 @@ final class SignatureProjection {
         return name.replace('.', '/');
     }
 
+    private static void validateGraphAbi(byte[] bytes) {
+        new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9) {
+            public void visit(int version,int access,String name,String signature,String parent,String[] interfaces) {
+                if(signature!=null)BinarySignatureGraph.validateClassSignature(signature);
+            }
+            public FieldVisitor visitField(int access,String name,String descriptor,String signature,Object value) {
+                BinarySignatureGraph.validateFieldSignature(signature==null?descriptor:signature);return null;
+            }
+            public MethodVisitor visitMethod(int access,String name,String descriptor,String signature,String[] exceptions) {
+                BinarySignatureGraph.validateMethodSignature(signature==null?descriptor:signature);return null;
+            }
+        },ClassReader.SKIP_CODE | ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
+    }
+
     private static void header(Object value, int depth) {
         if (!(value instanceof Map)) return;
+        if(dev.codeana.common.TypeGraph.isView(value)){graphHeader(Json.map(value));return;}
+        if(Json.map(value).get("version") instanceof Number v && v.intValue()==3) {graphHeader(graphView(Json.map(value)));return;}
         if (depth > 32) throw new IllegalArgumentException("SIGNATURE_TYPE_BUDGET");
         Map<String, Object> type = Json.map(value);
         if ("ERROR".equals(type.get("kind")) || "UNKNOWN".equals(type.get("kind")))
@@ -256,6 +279,26 @@ final class SignatureProjection {
             if (type.containsKey(field)) header(type.get(field), depth + 1);
         for (String field : List.of("arguments", "parameters", "throws", "bounds"))
             for (Object child : items(type.get(field))) header(child, depth + 1);
+    }
+
+    private static Map<String,Object> graphView(Map<String,Object> type) {
+        return Json.map(dev.codeana.common.TypeEvidence.decode(dev.codeana.common.TypeEvidence.encode(Json.object("type",type))).get("type"));
+    }
+
+    private static void graphHeader(Map<String,Object> root) {
+        var graph=dev.codeana.common.TypeGraph.owner(root);
+        var pending=new java.util.ArrayDeque<Integer>();var seen=new java.util.HashSet<Integer>();
+        pending.add(dev.codeana.common.TypeGraph.reference(root));int work=0;
+        while(!pending.isEmpty()) {
+            if(++work>100000 || Thread.currentThread().isInterrupted())throw new IllegalArgumentException("SIGNATURE_TYPE_BUDGET");
+            int id=pending.removeFirst();if(!seen.add(id))continue;var type=graph.node(id);
+            if("ERROR".equals(type.get("kind")) || "UNKNOWN".equals(type.get("kind")))throw new IllegalArgumentException("INCOMPLETE_SIGNATURE_TYPE");
+            if(Boolean.TRUE.equals(type.get("recursive")))continue;
+            for(String role:List.of("component","return","enclosing","upper","lower","extends","super")) {
+                Object child=type.get(role);if(child instanceof Number n && n.intValue()>=0)pending.add(n.intValue());
+            }
+            for(String role:List.of("arguments","parameters","throws","bounds"))for(Object child:items(type.get(role)))pending.add(((Number)child).intValue());
+        }
     }
 
     private static Object fieldConstant(Object value, String descriptor) {
@@ -364,6 +407,8 @@ final class SignatureProjection {
             String path,
             TypeAnnotationSink sink,
             int depth) {
+        if(dev.codeana.common.TypeGraph.isView(type)){graphTypeAnnotations(type,reference,path,sink);return;}
+        if(type.get("version") instanceof Number v && v.intValue()==3) {graphTypeAnnotations(graphView(type),reference,path,sink);return;}
         if (depth > 32) throw new IllegalArgumentException("TYPE_ANNOTATION_BUDGET");
         final String currentPath = path;
         annotations(
@@ -382,6 +427,21 @@ final class SignatureProjection {
         // Nested type-annotation paths need explicit enclosing segments; keep source until modeled.
         if (type.get("enclosing") instanceof Map && hasAnnotations(Json.map(type.get("enclosing"))))
             throw new IllegalArgumentException("ENCLOSING_TYPE_ANNOTATION_REQUIRES_SOURCE");
+    }
+
+    private record AnnotationWork(Map<String,Object> type,String path) {}
+    private static void graphTypeAnnotations(Map<String,Object> root,int reference,String path,TypeAnnotationSink sink) {
+        var pending=new java.util.ArrayDeque<AnnotationWork>();pending.add(new AnnotationWork(root,path));int work=0;
+        while(!pending.isEmpty()) {
+            if(++work>100000 || Thread.currentThread().isInterrupted())throw new IllegalArgumentException("TYPE_ANNOTATION_BUDGET");
+            var current=pending.removeFirst();var type=current.type();String here=current.path();
+            if(here.length()>1024)throw new IllegalArgumentException("TYPE_ANNOTATION_BUDGET");
+            annotations(items(type.get("annotation_models")),(d,visible)->sink.visit(reference,TypePath.fromString(here),d,visible));
+            if(type.get("component") instanceof Map child)pending.add(new AnnotationWork(Json.map(child),here+"["));
+            for(String bound:List.of("extends","super"))if(type.get(bound) instanceof Map child)pending.add(new AnnotationWork(Json.map(child),here+"*"));
+            int index=0;for(Object child:items(type.get("arguments"))) {if(index>255)throw new IllegalArgumentException("TYPE_ANNOTATION_BUDGET");pending.add(new AnnotationWork(Json.map(child),here+index+++";"));}
+            if(type.get("enclosing") instanceof Map && hasAnnotations(Json.map(type.get("enclosing"))))throw new IllegalArgumentException("ENCLOSING_TYPE_ANNOTATION_REQUIRES_SOURCE");
+        }
     }
 
     private static void formalAnnotations(
@@ -422,6 +482,18 @@ final class SignatureProjection {
     }
 
     private static boolean hasAnnotations(Map<String, Object> type) {
+        if(dev.codeana.common.TypeGraph.isView(type)) {
+            var graph=dev.codeana.common.TypeGraph.owner(type);var pending=new ArrayDeque<Integer>();var seen=new HashSet<Integer>();
+            pending.add(dev.codeana.common.TypeGraph.reference(type));int work=0;
+            while(!pending.isEmpty()) {
+                if(++work>100000 || Thread.currentThread().isInterrupted())throw new IllegalArgumentException("TYPE_ANNOTATION_BUDGET");
+                int id=pending.removeFirst();if(!seen.add(id))continue;var row=graph.node(id);
+                if(!items(row.get("annotation_models")).isEmpty())return true;
+                for(Object child:items(row.get("arguments")))pending.add(((Number)child).intValue());
+                Object outer=row.get("enclosing");if(outer instanceof Number n && n.intValue()>=0)pending.add(n.intValue());
+            }
+            return false;
+        }
         if (!items(type.get("annotation_models")).isEmpty()) return true;
         for (Object argument : items(type.get("arguments")))
             if (hasAnnotations(Json.map(argument))) return true;
