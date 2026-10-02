@@ -56,9 +56,14 @@ public final class TypeSubstitutionProbe {
             Object deep = leaf;
             for (int i = 0; i < 70; i++) deep = Json.object("kind", "ARRAY", "component", deep);
             operations.reset();
+            if (operations.substitute(Json.map(deep), Map.of()) != deep)
+                throw new AssertionError("empty substitutions copied an unchanged deep type");
+            deep = variable;
+            for (int i = 0; i < 70; i++) deep = Json.object("kind", "ARRAY", "component", deep);
+            operations.reset();
             try {
-                operations.substitute(Json.map(deep), Map.of());
-                throw new AssertionError("empty substitutions bypassed the type operation budget");
+                operations.substitute(Json.map(deep), Map.of("Owner\0T", leaf));
+                throw new AssertionError("deep substitutions bypassed the type operation budget");
             } catch (TypeOperations.Budget expected) { }
         }
         System.out.println("type substitution: unchanged/shared paths, candidate isolation, immutable callbacks, capture cycles and budgets passed");
