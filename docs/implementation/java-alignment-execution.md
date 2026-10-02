@@ -245,3 +245,18 @@ MAIN 回调补充证据的独立取证：相同全部 MAIN 源码范围下，补
 正式源码 test-compile 后，`all-type-roots-product-focused.log` 的二进制签名 2、深层图调用 1、默认 Collector 20、MAIN/TEST 补充证明 10 项全部通过；SDK8 的 `all-type-roots-sdk8-model-regressions.log` 九项通过。原始冻结签名 Java oracle 位于独立 frozen-test 源集，仅专项编译，不进入产品依赖。
 
 隔离 `graph-transfer-lifecycle-candidate` 的原 512 MiB 编译器 MAIN/TEST 已终态退出 0；独立冻结数据库直接读取的九个已知差异源码调用多重集为 1411/1440，缺 35、多 6（匿名别名未统一），与旧 JVM 探针的原始目标完全相等。原先从旧差分反推参考的脚本计数错误已标为 rejected，正式诊断用 independent-call-diff.json，不使用反推结果。此不是全 module/native/容量验收。归档释放与逐源图回收未合入；首次完整候选门禁与产品 test-compile 重叠，已受控停止并保留 rejected-overlap 回执，编译完成后重跑。
+
+
+## 545f28a 正式 native 回执与真实项目复验
+
+| 同版本证据 | 结果 |
+|---|---|
+| native-fixtures-20261003-045126 | 默认 native 121 项通过，538.513 秒 |
+| type-graph-bindings-native-20261003-045128 | opt-in 图绑定 191 项通过，467 次图请求，773.642 秒 |
+| type-graph-consumers-native-20261003-045131 | opt-in 图消费者 84 项通过，215 次图请求，440.194 秒 |
+| supplemental-reference-20261003-045326-40835 | MAIN/TEST 五组独立 native 冻结投影相等 |
+| core-service-main-test-all-type-roots-20261003 | 发布/查询通过，722.852 秒；rev_5bef6ed65ad748c0bb7c63ffd1a131f5 |
+
+上述正式回执无输入/产物漂移，真实项目配置已复原，无非预期进程信号。真实调用声明 8332、调用点/归属 35813 零差异；目标缺 87、多 6，仍为 81 个独立缺失及 6 对置信度差异。反射 20、extends 528、implements 152 零差异。**SOURCE 类型缺 179、多 76，未通过**：MAIN 一律隔离补充证明的策略扩大了真实模块差分；五组简化 fixture 未覆盖 Maven 上游有效生成签名边界，不能以局部通过声称该缺口已关闭。接下来按独立上游模块的有效声明/完整 Lombok 覆盖判定修正，不降低差分要求。全 40 模块/52 项/容量仍待验收。
+
+隔离归档释放候选的 type-graph-bindings-jvm-20261003-045133 为 202 项通过、714.126 秒；type-graph-consumers-jvm-20261003-050645 为 102 项通过、212.679 秒，均无输入/产物漂移。graph-transfer-lifecycle-sdk8-model.log 九项 SDK8 模型/损坏/取消回归通过，3.442 秒。候选尚未合入，不能与正式 native 回执合并计为同一产品版本。
