@@ -1024,14 +1024,25 @@ final class CallRecovery {
     private Result unavailable(Map<String, Object> attrs, String reason) {
         attrs.put("recovery_failure", reason);
         Map<String, Object> original = calls.get(new NodeKey(currentSource, id(attrs.get("tree_id"))));
-        // Frozen Blocked: a failed local selection cannot supply a receiver or
-        // nested poly result, even when javac retained an expression type.
-        boolean blocked = reason.equals("no_applicable_candidate");
+        // A known failed constraint blocks a receiver/poly result. UNKNOWN candidates
+        // do not contradict a declaration already selected by javac; an unresolved
+        // original call still has no receiver evidence to supply.
+        boolean blocked = reason.equals("no_applicable_candidate")
+                && (uncertainPhase == Integer.MAX_VALUE || original == null
+                        || !Boolean.TRUE.equals(original.get("resolved")));
         if (original != null && Boolean.TRUE.equals(original.get("resolved"))) {
             Result result = attributedResult(attrs);
-            return new Result(result.type, false, result.parameters, result.target, blocked);
+            return cacheUnavailable(attrs, new Result(result.type, false, result.parameters, result.target, blocked));
         }
-        return new Result(Map.of(), false, List.of(), "", blocked);
+        return cacheUnavailable(attrs, new Result(Map.of(), false, List.of(), "", blocked));
+    }
+
+    // Cache failed selections too, as in the frozen resolver. Repeated evidence
+    // walks must not turn an unrelated generated name into a budget failure.
+    // Candidate-local descriptors use their own provisional cache.
+    private Result cacheUnavailable(Map<String,Object> attrs, Result result) {
+        resultCache().put(new NodeKey(currentSource, id(attrs.get("tree_id"))), result);
+        return result;
     }
 
     private boolean modeledReferenceContext(Map<String, Object> tree, int depth) {

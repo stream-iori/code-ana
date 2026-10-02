@@ -31,6 +31,9 @@ ENTRY_CHAIN_SOURCE = 'import java.util.*;import java.util.stream.*;import java.u
 
 STABLE_LAMBDA_CONSTRUCTOR_SOURCE = 'import java.util.*;import java.util.stream.*;class Other {@lombok.Getter String inputContentValue;} class InputContent {String getInputContentValue(){return "";}} class FieldSource {static FieldSource safeValueOf(String value){return null;}} @lombok.Data @lombok.AllArgsConstructor class FieldPath {FieldSource fieldSource;} class Use {List<FieldPath> read(List<InputContent> values){return values.stream().map(item -> {FieldSource value=Optional.of(item).map(InputContent::getInputContentValue).map(FieldSource::safeValueOf).orElse(null);return new FieldPath(value);}).collect(Collectors.toList());}}'
 
+UNRELATED_GETTER_CHAIN_SOURCE = 'import java.util.*; @lombok.Getter class Other {String unrelated;String scene;String secretSubjectId;String keyType;String code;String tenantId;} class Request {String getScene(){return "";} String getSecretSubjectId(){return "";} String getKeyType(){return "";}} class Client {String query(Request r){return "";}} enum SceneEnum {SIGN; String getCode(){return "";}} enum KeyType {PUBLIC; String getCode(){return "";}} class Use {void read(Client c){Mockito.when(c.query(Matchers.argThat(request -> {return request != null && SceneEnum.SIGN.getCode().equals(request.getScene()) && "305XSK5LSG01T502".equals(request.getSecretSubjectId()) && KeyType.PUBLIC.getCode().equals(request.getKeyType()) && "ALIPW3SG".equals(System.getProperty("id"));}))).thenReturn("key");}}\nclass Mockito {static <T> OngoingStubbing<T> when(T value){return null;}} interface OngoingStubbing<T>{OngoingStubbing<T> thenReturn(T value);} interface ArgumentMatcher<T>{boolean matches(T value);} class Matchers {static <T> T argThat(ArgumentMatcher<T> matcher){return null;}}'
+CAST_REFERENCE_CHAIN_SOURCE = 'import java.util.*;\nclass Properties {String getComponentType(){return "";}}\n@lombok.Getter class SingleProperties extends Properties {FieldPath fieldPath;}\n@lombok.Getter class FieldPath {FieldSource fieldSource;}\nclass FieldSource {}\n@lombok.Setter class BlackProperties {FieldSource fieldSource;}\nclass Use {static FieldSource blackPathFieldSource(FieldSource value){return value;} void read(Properties properties,BlackProperties dst){Optional.ofNullable(properties).filter(v -> v.getComponentType()=="single").map(v -> (SingleProperties)v).map(SingleProperties::getFieldPath).map(FieldPath::getFieldSource).map(Use::blackPathFieldSource).ifPresent(dst::setFieldSource);}}\n'
+
 CONCURRENT_IDENTITY_SOURCE = IDENTITY_SOURCE.replace(
     'toMap(Api::getId,Function.identity())', 'toConcurrentMap(Api::getId,Function.identity(),(a,b)->b)')
 
@@ -302,6 +305,38 @@ class Use {static String read(Explicit value){return java.util.Optional.ofNullab
                 self.assertNotIn('Api#getId()', targets)
             base = full
 
+
+
+    def pairs(self, result):
+        by = {f['id']: f for f in result['facts']}
+        return collections.Counter(((by[f['target']]['signature'], f['status']) for f in result['facts'] if f['kind'] == 'call_target'))
+
+    def test_unrelated_getter_failures_keep_original_lambda_chain_and_delta(self):
+        base = self.analyze([self.fixture(UNRELATED_GETTER_CHAIN_SOURCE)], cache=True)
+        expected = collections.Counter({('java.lang.String#equals(java.lang.Object)', 'resolved'): 4})
+        expected.update(((s, 'resolved') for s in ['Mockito#when(java.lang.Object)', 'OngoingStubbing#thenReturn(java.lang.Object)', 'Client#query(Request)', 'Matchers#argThat(ArgumentMatcher)', 'SceneEnum#getCode()', 'Request#getScene()', 'Request#getSecretSubjectId()', 'KeyType#getCode()', 'Request#getKeyType()', 'java.lang.System#getProperty(java.lang.String)']))
+        self.assertEqual(self.pairs(base), expected)
+        self.assertFalse([f for f in base['facts'] if f['attributes'].get('recovery_failure') == 'recovery_budget'])
+        for source in [UNRELATED_GETTER_CHAIN_SOURCE.replace('"ALIPW3SG"', '"OTHER"'), UNRELATED_GETTER_CHAIN_SOURCE.replace('@lombok.Getter ', '')]:
+            context = self.fixture(source)
+            delta = self.analyze([context], base['facts'], cache=True)
+            full = self.analyze([context], cache=True)
+            self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+            self.assertEqual(self.pairs(full), expected)
+            base = full
+
+    def test_cast_lambda_with_unknown_candidates_keeps_generated_reference_chain(self):
+        base = self.analyze([self.fixture(CAST_REFERENCE_CHAIN_SOURCE)], cache=True)
+        expected = collections.Counter({('java.util.Optional#map(java.util.function.Function)', 'possible'): 3})
+        expected.update(((s, 'resolved') for s in ['java.util.Optional#ofNullable(java.lang.Object)', 'java.util.Optional#filter(java.util.function.Predicate)', 'java.util.Optional#map(java.util.function.Function)', 'Properties#getComponentType()']))
+        expected.update(((s, 'possible') for s in ['java.util.Optional#ifPresent(java.util.function.Consumer)', 'SingleProperties#getFieldPath()', 'FieldPath#getFieldSource()', 'Use#blackPathFieldSource(FieldSource)', 'BlackProperties#setFieldSource(FieldSource)']))
+        self.assertEqual(self.pairs(base), expected)
+        for source in [CAST_REFERENCE_CHAIN_SOURCE.replace('FieldSource fieldSource;', 'Object fieldSource;'), CAST_REFERENCE_CHAIN_SOURCE.replace('@lombok.Getter ', '')]:
+            context = self.fixture(source)
+            delta = self.analyze([context], base['facts'], cache=True)
+            full = self.analyze([context], cache=True)
+            self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+            base = full
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
