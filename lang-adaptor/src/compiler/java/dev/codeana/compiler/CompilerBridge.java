@@ -6,6 +6,7 @@ import com.sun.source.util.*;
 import dev.codeana.common.Json;
 import dev.codeana.common.ModelArchive;
 import dev.codeana.common.ModelArchive.RowSpool;
+import dev.codeana.common.TypeGraph;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
@@ -483,6 +484,7 @@ public final class CompilerBridge implements AutoCloseable {
         if (element instanceof ExecutableElement) {
             ExecutableElement method = (ExecutableElement) element;
             Map<String, Object> originalExecutable = new LinkedHashMap<String, Object>(Json.map(a.get("type_model")));
+            Object compilerExecutable = a.get("type_model");
             a.put("return_type", stableType(method.getReturnType()));
             a.put("return_type_model", typeModel(method.getReturnType()));
             List<Object> parameters = new ArrayList<Object>();
@@ -538,6 +540,7 @@ public final class CompilerBridge implements AutoCloseable {
                     }
                     if (!originalExecutable.equals(executable) || hasTypeAnnotations(executable, 0))
                         writtenExecutableTypes.put(signature(element), executable);
+                    else a.put("type_model", compilerExecutable);
                 } catch (WorkerSourceAnnotations.Unavailable incomplete) {
                     a.put("written_type_complete", false);
                 }
@@ -568,7 +571,7 @@ public final class CompilerBridge implements AutoCloseable {
     private Map<String, Object> sourceType(TreePath path, int depth) {
         if (depth > 128) throw new IllegalArgumentException("SOURCE_TYPE_DEPTH_BUDGET");
         if(graphTypes && !hasSourceAnnotations(path.getLeaf(),depth)) return typeModel(trees.getTypeMirror(path));
-        Map<String, Object> out = new LinkedHashMap<String, Object>(
+        Map<String, Object> out = mutableType(
                 graphTypes ? typeModel(trees.getTypeMirror(path)) : typeModel(trees.getTypeMirror(path), new HashSet<String>(), new int[1], depth / 2));
         if (out.containsKey("reason")) return out;
         if (hasSourceAnnotations(path.getLeaf(), depth)) sourceStructure(out, path, depth + 1);
@@ -630,16 +633,29 @@ public final class CompilerBridge implements AutoCloseable {
     private Map<String, Object> sourceModifierAnnotations(Map<String, Object> type, TreePath path) {
         List<AnnotationMirror> annotations = WorkerSourceAnnotations.typeUses(path, trees);
         if (annotations.isEmpty()) return type;
-        type = new LinkedHashMap<String,Object>(type);
+        type = mutableType(type);
         Map<String, Object> base = type;
         for (int depth = 0; depth <= 64; depth++) {
             String edge = "ARRAY".equals(base.get("kind")) ? "component"
                     : "DECLARED".equals(base.get("kind")) && base.get("enclosing") instanceof Map ? "enclosing" : "";
             if (edge.isEmpty()) { mergeTypeAnnotations(base, annotations); return type; }
-            Map<String, Object> child = new LinkedHashMap<String, Object>(Json.map(base.get(edge)));
+            Map<String, Object> child = mutableType(Json.map(base.get(edge)));
             base.put(edge, child); base = child;
         }
         throw new IllegalArgumentException("SOURCE_TYPE_DEPTH_BUDGET");
+    }
+
+    private static Map<String,Object> mutableType(Map<String,Object> type) {
+        Map<String,Object> copy=new LinkedHashMap<String,Object>(type);
+        // The legacy traversal view hides javac's null lower bound. Written annotation
+        // overlays still need that real graph edge when their root becomes a detached map.
+        if(TypeGraph.isView(type)) {
+            TypeGraph graph=TypeGraph.owner(type);
+            Object lower=graph.node(TypeGraph.reference(type)).get("lower");
+            if(lower instanceof Number && ((Number)lower).intValue()>=0)
+                copy.put("lower",graph.view(((Number)lower).intValue()));
+        }
+        return copy;
     }
 
     private boolean hasTypeAnnotations(Object value, int depth) {

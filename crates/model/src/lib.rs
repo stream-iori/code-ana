@@ -1,4 +1,6 @@
 //! Storage- and transport-independent analysis facts and product contracts.
+pub mod java_type_graph;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -265,6 +267,14 @@ impl<'a> FactValidator<'a> {
         {
             return Err("INVALID_BINDING_EVIDENCE".into());
         }
+        java_type_graph::validate(
+            &f.attributes,
+            f.kind == FactKind::Facet
+                && (f.relation == "java.type"
+                    && f.attributes.get("schema_version") == Some(&serde_json::json!(3))
+                    || f.relation == "java.binding"
+                        && f.attributes.get("schema_version") == Some(&serde_json::json!(4))),
+        )?;
         if f.kind == FactKind::Facet {
             if !matches!(
                 f.relation.as_str(),
@@ -294,12 +304,14 @@ impl<'a> FactValidator<'a> {
                         f.relation.as_str(),
                         "java.type" | "java.binding" | "java.annotation" | "java.syntax"
                     ))
-                && !(schema == Some(3) && f.relation == "java.binding")
+                && !(schema == Some(3)
+                    && matches!(f.relation.as_str(), "java.type" | "java.binding"))
+                && !(schema == Some(4) && f.relation == "java.binding")
             {
                 return Err("UNSUPPORTED_FACET_VERSION".into());
             }
             if f.relation == "java.binding"
-                && schema == Some(3)
+                && matches!(schema, Some(3 | 4))
                 && (f.parent.is_empty()
                     || f.attributes.get("evidence_owner").and_then(|v| v.as_str())
                         != Some(f.parent.as_str())
@@ -453,7 +465,9 @@ impl AnalysisResult {
                         f.relation.as_str(),
                         "java.type" | "java.binding" | "java.annotation"
                     ) && schema == Some(&serde_json::json!(2))
-                    || f.relation == "java.binding" && schema == Some(&serde_json::json!(3));
+                    || matches!(f.relation.as_str(), "java.type" | "java.binding")
+                        && schema == Some(&serde_json::json!(3))
+                    || f.relation == "java.binding" && schema == Some(&serde_json::json!(4));
                 if !supported {
                     return Err("UNSUPPORTED_FACET_VERSION".into());
                 }
@@ -464,6 +478,14 @@ impl AnalysisResult {
             merged.insert(f.id.clone(), f.clone());
         }
         for f in merged.values() {
+            java_type_graph::validate(
+                &f.attributes,
+                f.kind == FactKind::Facet
+                    && (f.relation == "java.type"
+                        && f.attributes.get("schema_version") == Some(&serde_json::json!(3))
+                        || f.relation == "java.binding"
+                            && f.attributes.get("schema_version") == Some(&serde_json::json!(4))),
+            )?;
             if !f.parent.is_empty() && !merged.contains_key(&f.parent) {
                 return Err(format!("DANGLING_PARENT: {}", f.id));
             }
@@ -486,7 +508,12 @@ impl AnalysisResult {
             }
             if f.kind == FactKind::Facet
                 && f.relation == "java.binding"
-                && f.attributes.get("schema_version") == Some(&serde_json::json!(3))
+                && matches!(
+                    f.attributes
+                        .get("schema_version")
+                        .and_then(serde_json::Value::as_u64),
+                    Some(3 | 4)
+                )
                 && (merged.get(&f.parent).is_none_or(|site| {
                     site.kind != FactKind::CallSite
                         || site.owner != f.owner
@@ -728,20 +755,82 @@ mod tests {
     use super::*;
     #[test]
     fn shared_binding_evidence_requires_its_call_site() {
-        let manifest = Manifest::default();
-        let owner = serde_json::json!({"world":"w","producer":"javac","kind":"context","id":"c"});
-        let site: Fact = serde_json::from_value(serde_json::json!({
-            "id":"site", "kind":"call_site", "owner":owner, "origin":"javac",
-            "attributes":{"selected_type_model":{"kind":"EXECUTABLE"}}
-        }))
-        .unwrap();
-        let binding: Fact = serde_json::from_value(serde_json::json!({
+        for version in [3, 4] {
+            let manifest = Manifest::default();
+            let owner =
+                serde_json::json!({"world":"w","producer":"javac","kind":"context","id":"c"});
+            let site: Fact = serde_json::from_value(serde_json::json!({
+                "id":"site", "kind":"call_site", "owner":owner, "origin":"javac",
+                "attributes":{"selected_type_model":{"kind":"EXECUTABLE"}}
+            }))
+            .unwrap();
+            let binding: Fact = serde_json::from_value(serde_json::json!({
             "id":"binding", "kind":"facet", "parent":"site", "owner":owner,
             "origin":"javac", "relation":"java.binding",
-            "attributes":{"schema_version":3,"evidence_owner":"site","resolved":true,"complete":true}
+            "attributes":{"schema_version":version,"evidence_owner":"site","resolved":true,"complete":true}
+        })).unwrap();
+            let validator = FactValidator::new(&manifest);
+            assert!(validator.validate(&binding).is_ok());
+            let mut result = AnalysisResult {
+                mode: "full".into(),
+                baseline: String::new(),
+                manifest: manifest.id(),
+                profile: "p".into(),
+                producer: "javac".into(),
+                replacements: vec![],
+                facts: vec![site, binding],
+            };
+            assert!(result.validate(&manifest, &[]).is_ok());
+            result.facts[0].kind = FactKind::Declaration;
+            assert_eq!(
+                result.validate(&manifest, &[]).unwrap_err(),
+                "INVALID_BINDING_EVIDENCE"
+            );
+            result.facts[0].kind = FactKind::CallSite;
+            result.facts[1]
+                .attributes
+                .insert("evidence_owner".into(), "other".into());
+            assert_eq!(
+                validator.validate(&result.facts[1]).unwrap_err(),
+                "INVALID_BINDING_EVIDENCE"
+            );
+            assert_eq!(
+                result.validate(&manifest, &[]).unwrap_err(),
+                "INVALID_BINDING_EVIDENCE"
+            );
+            let target: Fact = serde_json::from_value(serde_json::json!({
+                "id":"target", "kind":"call_target", "parent":"site", "owner":owner,
+                "origin":"javac", "attributes":{"binding_evidence":"site"}
+            }))
+            .unwrap();
+            assert!(validator.validate(&target).is_ok());
+            result.facts = vec![result.facts[0].clone(), target];
+            assert!(result.validate(&manifest, &[]).is_ok());
+            result.facts[1]
+                .attributes
+                .insert("binding_evidence".into(), "other".into());
+            assert_eq!(
+                validator.validate(&result.facts[1]).unwrap_err(),
+                "INVALID_BINDING_EVIDENCE"
+            );
+            assert_eq!(
+                result.validate(&manifest, &[]).unwrap_err(),
+                "INVALID_BINDING_EVIDENCE"
+            );
+        }
+    }
+    #[test]
+    fn graph_facets_are_checked_by_both_publication_paths() {
+        let manifest = Manifest::default();
+        let mut fact: Fact = serde_json::from_value(serde_json::json!({
+            "id":"type", "kind":"facet", "owner":{"world":"w","producer":"p","kind":"context","id":"c"},
+            "origin":"javac", "relation":"java.type", "attributes":{
+                "schema_version":3,"declared":{"$java_type":[0,0]},
+                "java_type_graphs":[{"version":3,"roots":[0],"nodes":[{"version":3,"kind":"INT","complete":true}]}]
+            }
         })).unwrap();
         let validator = FactValidator::new(&manifest);
-        assert!(validator.validate(&binding).is_ok());
+        assert!(validator.validate(&fact).is_ok());
         let mut result = AnalysisResult {
             mode: "full".into(),
             baseline: String::new(),
@@ -749,44 +838,19 @@ mod tests {
             profile: "p".into(),
             producer: "javac".into(),
             replacements: vec![],
-            facts: vec![site, binding],
+            facts: vec![fact.clone()],
         };
         assert!(result.validate(&manifest, &[]).is_ok());
-        result.facts[0].kind = FactKind::Declaration;
+        fact.attributes
+            .insert("declared".into(), serde_json::json!({"$java_type":[0,1]}));
+        result.facts[0] = fact.clone();
         assert_eq!(
-            result.validate(&manifest, &[]).unwrap_err(),
-            "INVALID_BINDING_EVIDENCE"
-        );
-        result.facts[0].kind = FactKind::CallSite;
-        result.facts[1]
-            .attributes
-            .insert("evidence_owner".into(), "other".into());
-        assert_eq!(
-            validator.validate(&result.facts[1]).unwrap_err(),
-            "INVALID_BINDING_EVIDENCE"
+            validator.validate(&fact).unwrap_err(),
+            "INVALID_JAVA_TYPE_GRAPH"
         );
         assert_eq!(
             result.validate(&manifest, &[]).unwrap_err(),
-            "INVALID_BINDING_EVIDENCE"
-        );
-        let target: Fact = serde_json::from_value(serde_json::json!({
-            "id":"target", "kind":"call_target", "parent":"site", "owner":owner,
-            "origin":"javac", "attributes":{"binding_evidence":"site"}
-        }))
-        .unwrap();
-        assert!(validator.validate(&target).is_ok());
-        result.facts = vec![result.facts[0].clone(), target];
-        assert!(result.validate(&manifest, &[]).is_ok());
-        result.facts[1]
-            .attributes
-            .insert("binding_evidence".into(), "other".into());
-        assert_eq!(
-            validator.validate(&result.facts[1]).unwrap_err(),
-            "INVALID_BINDING_EVIDENCE"
-        );
-        assert_eq!(
-            result.validate(&manifest, &[]).unwrap_err(),
-            "INVALID_BINDING_EVIDENCE"
+            "INVALID_JAVA_TYPE_GRAPH"
         );
     }
     #[test]

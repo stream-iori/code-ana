@@ -53,7 +53,9 @@
         "tests/java_diamond_alignment.py",
         "tests/java_lambda_input_alignment.py",
         "tests/java_type_reference_alignment.py",
-        "tests/java_type_reference_reference.py"
+        "tests/java_type_reference_reference.py",
+        "tests/java_type_graph_alignment.py",
+        "tests/java_graph_fact_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -67,7 +69,8 @@
         "functional-reference-native",
         "native-fixtures",
         "type-reference",
-        "type-reference-native"
+        "type-reference-native",
+        "type-graph-native"
       ],
       "remaining_acceptance": [
         "已补捕获身份/上下界、owner/index 与有限递归 CAPTURE、泛型继承链 actual Integer 保留和错误实参拒绝；完整目标类型/raw/复杂 SAM 与生产矩阵仍缺",
@@ -108,7 +111,9 @@
         "tests/java_native_fixture_alignment.py",
         "tests/java_collector_alignment.py",
         "tests/java_diamond_alignment.py",
-        "tests/java_lambda_input_alignment.py"
+        "tests/java_lambda_input_alignment.py",
+        "tests/java_type_graph_alignment.py",
+        "tests/java_graph_fact_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -118,7 +123,8 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "native-fixtures"
+        "native-fixtures",
+        "type-graph-native"
       ],
       "remaining_acceptance": [
         "已补失败/选中声明、访问与静态上下文；源码/建模/JAR 恢复维度及新增 native/daemon 用例正在验证；完整错误分类/真实差分仍缺"
@@ -276,13 +282,17 @@
       "id": "J10",
       "capability": "注解数据",
       "status": "pending",
-      "checks": [],
+      "checks": [
+        "tests/java_type_graph_alignment.py",
+        "tests/java_graph_fact_alignment.py"
+      ],
       "evidence": [],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-native"
       ],
       "remaining_acceptance": [
         "SOURCE/binary/default/TYPE_USE 注解值全矩阵及缺失类型反例"
@@ -1114,7 +1124,9 @@
       "checks": [
         "tests/java_model_tests.py",
         "tests/java_signature_alignment.py",
-        "tests/java_framework_alignment.py"
+        "tests/java_framework_alignment.py",
+        "tests/java_type_graph_alignment.py",
+        "tests/java_graph_fact_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -1123,7 +1135,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-native"
       ],
       "remaining_acceptance": [
         "已修复源码变化但相同扩展 owner 被跳过的增量发布错误；新增模型/框架/config/resource/失败查找的完整失效闭包仍待验收"

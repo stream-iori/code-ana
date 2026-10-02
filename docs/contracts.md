@@ -101,6 +101,30 @@ javac Tree / Element / TypeMirror（仅编译器上下文内）
 
 编译器类型树按单次模型构造限制为 48 层 / 4096 节点，为 Rust 的 128 层 JSON 解码保留包装空间。预算截断保存 `TYPE_MODEL_DEPTH_BUDGET` / `TYPE_MODEL_NODE_BUDGET`，向上传播 `complete=false`，按源码去重告警并标记文件 coverage=partial；不能将截断冒充循环引用。真实循环以 `recursive=true` 和类型变量 owner/name 或声明身份保留，其已知身份不等于预算缺失。公共 Java JSON、归档和扩展值复制的容器上限为 256，字节、节点及归档总量预算仍独立生效。独立证明仅覆盖已验收类型，不能据此声称全部类型图与 Anatomist 相等。
 
+S2 的平面图格式目前由内部 fixture 的 `type_graph=true` 验证，产品默认和发行版本尚未切换：
+
+```text
+事实 attributes 中的 {$java_type: [0, slot]}
+                 │
+                 ▼
+java_type_graphs[0].roots[slot] → nodes[node_id]
+                                   │
+                      component / upper / arguments ...
+                                   │ 数字引用，可前向、可递归
+                                   ▼
+                              nodes[child_id]
+```
+
+| 边界 | 图格式约束 |
+|---|---|
+| 编译器 / RowSpool / 模型 | 每源码上下文共享不可变节点表；图版本 3，单图 100000 节点、构造深度 128；模型图表字节预算 64MiB。错误节点沿依赖边传播不完整，预算/取消撤销本次构造。 |
+| 公共事实 | `java.type` 3、`java.binding` 4；单事实的全部类型根组成一个联合闭包。根据完整元数据及带角色/位置的边规范化，保留捕获身份、注解值、不完整原因；编译器局部编号和对象共享方式不成为公共身份。原模型图保留，公开编号只用于当前事实。 |
+| 保留键 | 类型根用 `$java_type` 引用；用户同名对象经 `$java_object` 的键值对转义；`java_type_graphs` 为顶层证据表。保留键不能被误读成用户数据或反向绕过引用校验。 |
+| Rust | 单事实及整批发布均验证版本、节点角色、整数索引、根、边与完整性传播。`JavaTypeGraphs` 只借用已发布节点，按边返回节点句柄，递归图不展开成递归 JSON，不执行 Java 类型推断。 |
+| NoCode / 增量 | 图/树模式进入文件及模块签名键；文件目录保留平面图而非展开视图。模块恢复保持不可变图，按实际字段比较全量/增量/签名复用的公共事实。 |
+
+fixture 证明不等于原子协议切换或全 iopengw 验收；最终仍须更新编译器/模型/worker/request 和缓存版本，再执行同版本 native、daemon、全语义及容量门禁。
+
 ## 3. 事实所有权与替换
 
 | Owner 维度 | 用法 |

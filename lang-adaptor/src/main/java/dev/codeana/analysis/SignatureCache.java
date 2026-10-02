@@ -1,6 +1,7 @@
 package dev.codeana.analysis;
 
 import dev.codeana.common.Json;
+import dev.codeana.common.TypeEvidence;
 
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -79,6 +80,7 @@ final class SignatureCache {
                                         context.get("world"),
                                         source.get("path"),
                                         source.get("hash"),
+                                        Boolean.TRUE.equals(context.get("type_graph")),
                                         context.getOrDefault("extension_fingerprint", "")))
                         .getBytes(StandardCharsets.UTF_8));
     }
@@ -194,7 +196,7 @@ final class SignatureCache {
                             Files.copy(entry.resolve(name), pin.resolve(name));
                         }
                         Map<String, Object> catalogue =
-                                Json.map(Json.parse(Json.read(pin.resolve("declarations.json"))));
+                                TypeEvidence.decode(Json.map(Json.parse(Json.read(pin.resolve("declarations.json")))));
                         Files.setLastModifiedTime(entry, FileTime.from(java.time.Instant.now()));
                         bytes += size;
                         catalogueBytes += catalogueSize;
@@ -361,8 +363,9 @@ final class SignatureCache {
                 Files.writeString(
                         catalogue,
                         Json.write(
-                                Json.object(
-                                        "declarations", declarations, "external", sourceExternal)),
+                                Boolean.TRUE.equals(context.get("type_graph"))
+                                        ? TypeEvidence.encode(Json.object("declarations", declarations, "external", sourceExternal))
+                                        : Json.object("declarations", declarations, "external", sourceExternal)),
                         StandardCharsets.UTF_8);
                 if (Files.size(archive) > MAX_ENTRY || Files.size(catalogue) > MAX_ENTRY) continue;
                 Files.writeString(

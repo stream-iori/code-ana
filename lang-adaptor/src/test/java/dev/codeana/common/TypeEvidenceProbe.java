@@ -40,6 +40,20 @@ public final class TypeEvidenceProbe {
                 Json.object("kind","TYPEVAR","complete",true,"name","T","upper",2,"lower",1)));
         if(!Json.write(cycleEncoded).equals(Json.write(TypeEvidence.encode(Json.object("declared",reordered.view(3))))))
             throw new AssertionError("compiler IDs leaked into wire identity");
+        Map<String,Object> separate=TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",reordered.view(3)));
+        Map<String,Object> shared=TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",cycle.view(0)));
+        if(!Json.write(separate).equals(Json.write(shared)))throw new AssertionError("compiler context sharing leaked into public identity");
+        TypeGraph captures=new TypeGraph(Arrays.asList(
+                Json.object("kind","TYPEVAR","complete",true,"name","T","owner","capture:a","upper",2,"lower",3),
+                Json.object("kind","TYPEVAR","complete",true,"name","T","owner","capture:b","upper",2,"lower",3),
+                Json.object("kind","DECLARED","complete",true,"element","Object","arguments",Collections.emptyList()),
+                Json.object("kind","NULL","complete",true)));
+        Map<String,Object> distinct=TypeEvidence.encode(Json.object("left",captures.view(0),"right",captures.view(1)));
+        if(Json.map(distinct.get("left")).equals(Json.map(distinct.get("right"))))throw new AssertionError("distinct captures merged");
+        Map<String,Object> missing=new LinkedHashMap<String,Object>(Json.map(cycle.node(1)));
+        missing.put("arguments",Collections.emptyList());missing.put("complete",false);missing.put("reason","missing argument");
+        Map<String,Object> incomplete=TypeEvidence.encode(Json.object("known",cycle.view(1),"missing",missing));
+        if(Json.map(incomplete.get("known")).equals(Json.map(incomplete.get("missing"))))throw new AssertionError("incomplete type merged with known evidence");
         for(Object pair:Arrays.asList(Arrays.asList(9,0),Arrays.asList(0,9),Arrays.asList(0,.5),Arrays.asList("0",0),Arrays.asList(0))) {
             Map<String,Object> invalid=new TreeMap<String,Object>(cycleEncoded);invalid.put("declared",Json.object("$java_type",pair));
             try {TypeEvidence.decode(invalid);throw new AssertionError("accepted malformed public type reference");}

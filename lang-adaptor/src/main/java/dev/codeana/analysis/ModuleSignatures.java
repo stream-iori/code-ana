@@ -157,6 +157,7 @@ final class ModuleSignatures implements AutoCloseable {
                                         ctx.get("module"),
                                         ctx.get("world"),
                                         ctx.get("digest"),
+                                        Boolean.TRUE.equals(ctx.get("type_graph")),
                                         ctx.getOrDefault("extension_fingerprint", ""),
                                         proofSources(ctx),
                                         cp))
@@ -575,7 +576,7 @@ final class ModuleSignatures implements AutoCloseable {
 
     private static Object copyHeader(Object value, int depth) {
         if (depth > 64) throw new IllegalArgumentException("MODULE_HEADER_DEPTH");
-        if (value instanceof ModelArchive.ImmutableType) return value;
+        if (value instanceof ModelArchive.ImmutableType || TypeGraph.isView(value)) return value;
         if (value instanceof Map) {
             Map<String, Object> copy = new LinkedHashMap<>();
             for (var entry : Json.map(value).entrySet())

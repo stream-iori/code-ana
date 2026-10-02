@@ -83,6 +83,7 @@ def main():
             ('rust-build', ['cargo', 'build', '--workspace', '--locked'], 240),
             ('native-build', ['./scripts/build-java-native.sh'], 600),
             ('native-fixtures', [sys.executable, 'tests/java_native_fixture_alignment.py'], 600),
+            ('type-graph-native', [sys.executable, 'tests/java_graph_fact_alignment.py', '--native'], 600),
             ('native-probe', [sys.executable, 'tests/java_native_probe.py'], 300),
             ('type-reference-native', [sys.executable, 'tests/java_type_reference_reference.py', '--native'], 360),
             ('functional-reference-native', [sys.executable, 'tests/java_functional_reference_alignment.py', '--native'], 360),

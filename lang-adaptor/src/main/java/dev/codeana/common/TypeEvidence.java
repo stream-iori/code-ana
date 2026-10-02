@@ -7,27 +7,70 @@ public final class TypeEvidence {
     public static final String TABLE = "java_type_graphs";
     private TypeEvidence() {}
 
-    private static final class Group {
-        final TypeGraph graph;
-        final List<Integer> roots = new ArrayList<Integer>();
-        final Map<Integer,Integer> slots = new LinkedHashMap<Integer,Integer>();
-        Group(TypeGraph graph) { this.graph=graph; }
-        int root(int reference) {
-            Integer slot=slots.get(reference);
-            if(slot==null) {slot=roots.size();slots.put(reference,slot);roots.add(reference);}
-            return slot;
-        }
+    private static final class Node {
+        final TypeGraph graph;final int reference;final Map<String,Object> value;
+        Node(TypeGraph graph,int reference,Map<String,Object> value) {this.graph=graph;this.reference=reference;this.value=value;}
     }
     private static final class Encoder {
-        final IdentityHashMap<TypeGraph,Integer> identities=new IdentityHashMap<TypeGraph,Integer>();
-        final List<Group> groups=new ArrayList<Group>();
+        final IdentityHashMap<TypeGraph,Map<Integer,Integer>> identities=new IdentityHashMap<TypeGraph,Map<Integer,Integer>>();
+        final IdentityHashMap<Map<String,Object>,Integer> copies=new IdentityHashMap<Map<String,Object>,Integer>();
+        final List<Node> nodes=new ArrayList<Node>();
+        final List<Integer> roots=new ArrayList<Integer>();
+        final List<List<Integer>> references=new ArrayList<List<Integer>>();
+        private int view(TypeGraph graph,int reference) {
+            if(reference<0)return -1;graph.requireSealed();
+            Map<Integer,Integer> ids=identities.computeIfAbsent(graph,ignored->new HashMap<Integer,Integer>());
+            Integer id=ids.get(reference);
+            if(id==null) {id=reserve(new Node(graph,reference,null));ids.put(reference,id);}
+            return id;
+        }
+        private int reserve(Node node) {
+            if(nodes.size()>=TypeGraph.MAX_NODES)throw new IllegalArgumentException("TYPE_EVIDENCE_NODE_BUDGET");
+            int id=nodes.size();nodes.add(node);return id;
+        }
+        private int model(Map<String,Object> value) {
+            if(TypeGraph.isView(value))return view(TypeGraph.owner(value),TypeGraph.reference(value));
+            Integer id=copies.get(value);
+            if(id==null) {id=reserve(new Node(null,-1,value));copies.put(value,id);}
+            return id;
+        }
+        Map<String,Object> payload() {
+            List<Map<String,Object>> values=new ArrayList<Map<String,Object>>();
+            for(int cursor=0;cursor<nodes.size();cursor++) {
+                Node source=nodes.get(cursor);Map<String,Object> raw=source.graph==null?source.value:source.graph.node(source.reference);
+                Map<String,Object> copy=new TreeMap<String,Object>();
+                for(Map.Entry<String,Object> entry:raw.entrySet()) {
+                    String key=entry.getKey();Object value=entry.getValue();
+                    if(CanonicalTypes.SINGLE.contains(key)) {
+                        if(source.graph!=null)value=view(source.graph,((Number)value).intValue());
+                        else if(value instanceof Map)value=model(Json.map(value));
+                        else if(value==null)value=-1;
+                        else throw new IllegalArgumentException("TYPE_EVIDENCE_MODEL_EDGE");
+                    } else if(CanonicalTypes.MANY.contains(key)) {
+                        List<Integer> children=new ArrayList<Integer>();
+                        for(Object child:Json.list(value))children.add(source.graph==null?model(Json.map(child)):view(source.graph,((Number)child).intValue()));
+                        value=children;
+                    }
+                    copy.put(key,value);
+                }
+                values.add(copy);
+            }
+            Map<String,Object> payload=CanonicalTypes.encode(new TypeGraph(values),roots);
+            List<Object> canonicalRoots=Json.list(payload.get("roots"));List<Integer> unique=new ArrayList<Integer>();Map<Integer,Integer> slots=new LinkedHashMap<Integer,Integer>();
+            for(int i=0;i<canonicalRoots.size();i++) {
+                int root=((Number)canonicalRoots.get(i)).intValue();Integer slot=slots.get(root);
+                if(slot==null) {slot=unique.size();slots.put(root,slot);unique.add(root);}
+                references.get(i).set(1,slot);
+            }
+            payload.put("roots",unique);return payload;
+        }
         Object pack(Object raw,int depth) {
             if(depth>Json.MAX_DEPTH)throw new IllegalArgumentException("TYPE_EVIDENCE_DEPTH_BUDGET");
-            if(TypeGraph.isView(raw)) {
-                Map<String,Object> view=Json.map(raw);TypeGraph graph=TypeGraph.owner(view);
-                Integer group=identities.get(graph);
-                if(group==null) {group=groups.size();identities.put(graph,group);groups.add(new Group(graph));}
-                return Json.object("$java_type",Arrays.asList(group,groups.get(group).root(TypeGraph.reference(view))));
+            if(TypeGraph.isView(raw) || raw instanceof Map && Json.map(raw).get("version") instanceof Number
+                    && Json.number(Json.map(raw),"version")==3 && Json.map(raw).get("kind") instanceof String
+                    && Json.map(raw).get("complete") instanceof Boolean) {
+                int root=model(Json.map(raw));List<Integer> reference=new ArrayList<Integer>(Arrays.asList(0,roots.size()));
+                roots.add(root);references.add(reference);return Json.object("$java_type",reference);
             }
             if(raw instanceof Map) {
                 Map<String,Object> input=Json.map(raw),copy=new TreeMap<String,Object>();
@@ -52,10 +95,8 @@ public final class TypeEvidence {
     public static Map<String,Object> encode(Map<String,Object> attributes) {
         if(attributes.containsKey(TABLE))throw new IllegalArgumentException("TYPE_EVIDENCE_RESERVED_TABLE");
         Encoder encoder=new Encoder();Map<String,Object> packed=Json.map(encoder.pack(attributes,0));
-        if(encoder.groups.isEmpty())return attributes;
-        List<Object> graphs=new ArrayList<Object>();
-        for(Group group:encoder.groups)graphs.add(group.graph.canonical(group.roots));
-        packed.put(TABLE,graphs);return packed;
+        if(encoder.roots.isEmpty())return attributes;
+        packed.put(TABLE,Arrays.asList(encoder.payload()));return packed;
     }
 
     public static Map<String,Object> decode(Map<String,Object> attributes) {
