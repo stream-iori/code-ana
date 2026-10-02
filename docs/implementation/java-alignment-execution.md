@@ -418,3 +418,21 @@ cast 修复已进入源码：SDK8 syntax 只为 TYPE_CAST 保存原 javac `expre
 cast 新 native 的 31 组冻结原版目标/状态/位置对照 all_ok=true，产物不漂移。cast JVM 发现测试模块直接导入 TestCase 导致重复发现旧套件，原 runner 实际执行 60 项；改为模块导入，新增 cast 两项 10.342 秒、Builder 六项 19.379 秒通过。
 
 b4ef988 默认/图绑定 native 完整回归拒绝：导入旧 GraphFacts 导致多余测试，且操作误将不接受 --help 的构建脚本当作帮助调用，清理了主开发产物。已停止误触构建、从已安装包逐文件原样恢复运行时，重新编译开发类；失败日志保留，不将早前短专项或 31 原版组算作完整回归。daemon 安装包未改动、core-service 正式验收不受清理影响。后续完整门禁在独立源码/运行时工作区冻结执行。没有外部杀进程。
+
+## cast 同版发布差分与普通表达式原始证据
+
+b4ef988 的正式 core-service MAIN/TEST/XML：revision `rev_361ad86b2e9240b8bce57449b6994855`，852.331 秒，发布/query/config 恢复通过；源码/产物/manifest 不漂移，无异常信号。严格调用目标 35785/35827、缺 47/多 5，即 42 独立缺失、0 独立额外、5 对状态差异；净补齐 14 目标、校正 1 状态。声明8332、调用点/归属35813、SOURCE类型12188、反射20、继承528/152仍全部零差异。完整模型/框架与全 reactor 语义尚未验收。
+
+普通表达式修正从独立证据进入源码：SDK8 syntax 为非 call/new/lambda/methodref 表达式保存 javac 表达式类型；PACKAGE 是名称空间，不能写作语义类型。恢复先使用健康的表达式绑定，再使用原声明类型；PLUS/条件表达式在有限手工恢复之外只读取原 javac 的有效类型，不自行推断数字提升或无关分支共同父类。树/图及 syntax 传输沿用现有预算，绑定和诊断不覆盖。
+
+| 隔离原版/回归依据 | 结果 |
+|---|---|
+| expression-binding-candidate-reference-31/receipt.json | 31 组冻结原版严格目标/状态/span全部相等，无产物漂移 |
+| expression-binding-candidate-negatives.log / supplemental.log | 原表达式负例4项、补充签名10项通过，63.990/75.026秒 |
+| instanceof/cast 与算术拼接两个独立最小样本 | 新候选8/8、3/3；旧产品分别3/8、2/3。新增正式独立样本名与参考下限8/3 |
+| expression-binding-candidate/canonical-independent-call-diff.json | 选定14 MAIN文件2051/2081、30独立缺失/0独立额外/5状态对；比cast修复再补齐12目标。不是正式新native发布差分 |
+| 额外缺失函数算术样本 | 候选2/参考3：原版保留Key#getKey(String) possible，我们仍缺1。原PLUS早退和健康绑定试验都不能消除；保留已知差分，不注册成已通过负例，不扩大候选或预算 |
+
+普通调用链修复的 e8f9a88 独立工作区已通过默认 native 134 项；图绑定和40模块 MAIN/TEST/XML仍运行。早前受共享产物误清理的回归记录为 rejected-run.json，不与这次新回执混用。完整52项、默认类型图、缓存迁移、容量和release仍未关闭。
+
+普通表达式产品 native 构建完成（46.7秒）；expression-binding-product-sdk8.log 11 项通过（8.769秒），cast/instanceof/算术 JVM 三项及实际 native C ABI 三项通过（native25.684秒），包含健康表达式证据、错误/缺失 getter、80层图Rust校验与完整cache/full/delta。新的完整 native/图消费者/33组冻结参考尚待终态；不复用隔离31组作为正式产品验收。

@@ -36,6 +36,9 @@ CAST_REFERENCE_CHAIN_SOURCE = 'import java.util.*;\nclass Properties {String get
 
 MAP_CAST_CHAIN_SOURCE = 'import java.util.*; @lombok.Getter class Api {Map<String,Base> nodes;} class Base {} @lombok.Getter class Leaf extends Base {String name;} class Use {String read(Api api){return Optional.of(api).map(Api::getNodes).map(m -> (Leaf)m.get("x")).map(Leaf::getName).orElse("");}}'
 
+INSTANCEOF_CAST_CHAIN_SOURCE = 'import java.util.*; @lombok.Getter class Holder {Base value;} class Base{} @lombok.Getter class Leaf extends Base {String name;} class Use {String read(Holder h){return Optional.of(h).map(Holder::getValue).filter(v -> v instanceof Leaf).map(v -> (Leaf)v).map(Leaf::getName).orElse("");}}'
+ARITHMETIC_CONCAT_SOURCE = 'class Key {static String getKey(String value){return value;}} @lombok.Getter class Holder {String id;} class Use {String read(Holder h){return Key.getKey(h.getId()+"_"+System.currentTimeMillis()/2);}}'
+
 CONCURRENT_IDENTITY_SOURCE = IDENTITY_SOURCE.replace(
     'toMap(Api::getId,Function.identity())', 'toConcurrentMap(Api::getId,Function.identity(),(a,b)->b)')
 

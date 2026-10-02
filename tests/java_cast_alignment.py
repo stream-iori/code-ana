@@ -38,6 +38,23 @@ class CastBindings(unittest.TestCase):
                 failed = self.analyze([self.fixture(source)])
                 self.assertNotIn('Leaf#getName()', dict(self.targets(failed, 'read')))
 
+    def test_instanceof_cast_chain_and_arithmetic_concatenation(self):
+        for source, count, target in (
+                (collectors.INSTANCEOF_CAST_CHAIN_SOURCE, 8, 'Leaf#getName()'),
+                (collectors.ARITHMETIC_CONCAT_SOURCE, 3, 'Key#getKey(java.lang.String)')):
+            with self.subTest(target=target):
+                result = self.analyze([self.fixture(source)], cache=True)
+                targets = self.targets(result, 'read')
+                self.assertEqual(len(targets), count)
+                selected = dict(targets)[target]
+                self.assertEqual(selected['status'], 'possible')
+                self.assertFalse(selected['evidence_complete'])
+                changed = self.fixture(source.replace('String name;', 'String name; int marker;')
+                                       .replace('String id;', 'String id; int marker;'))
+                delta = self.analyze([changed], result['facts'], cache=True)
+                full = self.analyze([changed], cache=True)
+                self.assertEqual(self.merged(result['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+
     def test_graph_cast_preserves_eighty_levels_and_rust_validation(self):
         nested = 'String'
         for _ in range(80):

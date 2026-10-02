@@ -19,7 +19,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 REFERENCE_SHA = '457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e'
 REFERENCE_COMMIT = 'dff2e3954096853352ec91fcbfc6b995fbd4f390'
 CONTROL = 'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n'
-from java_collector_alignment import SOURCE as COLLECTOR_SOURCE, TARGET_SOURCE as COLLECTOR_TARGET_SOURCE, IDENTITY_SOURCE, CONCURRENT_IDENTITY_SOURCE, LAMBDA_MAP_SOURCE, ENTRY_CHAIN_SOURCE, STABLE_LAMBDA_CONSTRUCTOR_SOURCE, UNRELATED_GETTER_CHAIN_SOURCE, CAST_REFERENCE_CHAIN_SOURCE, MAP_CAST_CHAIN_SOURCE
+from java_collector_alignment import SOURCE as COLLECTOR_SOURCE, TARGET_SOURCE as COLLECTOR_TARGET_SOURCE, IDENTITY_SOURCE, CONCURRENT_IDENTITY_SOURCE, LAMBDA_MAP_SOURCE, ENTRY_CHAIN_SOURCE, STABLE_LAMBDA_CONSTRUCTOR_SOURCE, UNRELATED_GETTER_CHAIN_SOURCE, CAST_REFERENCE_CHAIN_SOURCE, MAP_CAST_CHAIN_SOURCE, INSTANCEOF_CAST_CHAIN_SOURCE, ARITHMETIC_CONCAT_SOURCE
 from java_builder_chain_alignment import SOURCE as BUILDER_CHAIN_SOURCE, GETTER_SOURCE as BUILDER_GETTER_SOURCE
 from java_diamond_alignment import SOURCE as DIAMOND_SOURCE
 from java_lambda_input_alignment import SOURCE as LAMBDA_INPUT_SOURCE
@@ -35,6 +35,8 @@ SOURCES = {
     'functional-unrelated-getter-chain': UNRELATED_GETTER_CHAIN_SOURCE,
     'functional-cast-reference-chain': CAST_REFERENCE_CHAIN_SOURCE,
     'functional-map-cast-chain': MAP_CAST_CHAIN_SOURCE,
+    'functional-instanceof-cast-chain': INSTANCEOF_CAST_CHAIN_SOURCE,
+    'functional-arithmetic-concat': ARITHMETIC_CONCAT_SOURCE,
     'functional-entry-chain': ENTRY_CHAIN_SOURCE,
     'functional-stable-lambda-constructor': STABLE_LAMBDA_CONSTRUCTOR_SOURCE,
     'functional-lambda-map': LAMBDA_MAP_SOURCE,
@@ -256,7 +258,7 @@ def proof(name, source, evidence, native):
     report = dict(kind=name, source_sha256=hashlib.sha256(source.encode()).hexdigest(), reference_commit=REFERENCE_COMMIT,
                   reference_jar_sha256=REFERENCE_SHA, reference_db_sha256=digest(base / 'index.db'), command=command,
                   native_verified=native, real_main_accepted=False, full_semantic_diff_accepted=False, **compare(left, right))
-    minimum = {'functional-deep-concrete':2, 'functional-deep-concrete-missing':0, 'functional-deep-concrete-two':4, 'functional-unrelated-getter-chain':14, 'functional-cast-reference-chain':12, 'functional-map-cast-chain':8, 'functional-entry-chain':9, 'functional-stable-lambda-constructor':10, 'functional-lambda-map':4, 'functional-identity-concurrent':5, 'functional-builder-getter-chain':30, 'functional-builder-chain':42, 'functional-identity-factory':5, 'functional-collector-target':6, 'functional-same-return-method':2, 'functional-nested-reentry':15, 'functional-stable-constructor':4, 'functional-poly-factory':3, 'functional-collector-capture':14, 'functional-diamond':7, 'functional-lambda-input':23, 'functional-output':19, 'functional-unbound':4, 'source-parameter-owner':10, 'expressions':15, 'functional-generated-overload':6, 'functional-static-import':2, 'functional-generic-reference':12, 'functional-receiver-boundary':9, 'functional-static-reference':9, 'functional-constructor-reference':20}[name]
+    minimum = {'functional-deep-concrete':2, 'functional-deep-concrete-missing':0, 'functional-deep-concrete-two':4, 'functional-unrelated-getter-chain':14, 'functional-cast-reference-chain':12, 'functional-map-cast-chain':8, 'functional-instanceof-cast-chain':8, 'functional-arithmetic-concat':3, 'functional-entry-chain':9, 'functional-stable-lambda-constructor':10, 'functional-lambda-map':4, 'functional-identity-concurrent':5, 'functional-builder-getter-chain':30, 'functional-builder-chain':42, 'functional-identity-factory':5, 'functional-collector-target':6, 'functional-same-return-method':2, 'functional-nested-reentry':15, 'functional-stable-constructor':4, 'functional-poly-factory':3, 'functional-collector-capture':14, 'functional-diamond':7, 'functional-lambda-input':23, 'functional-output':19, 'functional-unbound':4, 'source-parameter-owner':10, 'expressions':15, 'functional-generated-overload':6, 'functional-static-import':2, 'functional-generic-reference':12, 'functional-receiver-boundary':9, 'functional-static-reference':9, 'functional-constructor-reference':20}[name]
     report['equal'] = report['equal'] and report['reference'] >= minimum
     if reads_proof is not None:
         report['static_import_reads'] = reads_proof

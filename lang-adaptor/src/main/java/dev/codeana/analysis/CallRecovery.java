@@ -295,7 +295,7 @@ final class CallRecovery {
                 if (b.equals("NULL") && a.equals("DECLARED"))
                     return new Result(left.type, modeled);
             }
-            return new Result(Map.of(), modeled);
+            return new Result(attributedExpression(node), modeled);
         }
         if (kind.equals("LOGICAL_COMPLEMENT")) {
             Result value = expression(id(child(node, "expression").get("id")), depth + 1);
@@ -316,7 +316,7 @@ final class CallRecovery {
             if (kind.equals("PLUS"))
                 return new Result("java.lang.String".equals(a.get("element"))
                                 || "java.lang.String".equals(b.get("element"))
-                        ? named("java.lang.String") : Map.of(), modeled);
+                        ? named("java.lang.String") : attributedExpression(node), modeled);
             if (Set.of("LESS_THAN", "GREATER_THAN", "LESS_THAN_EQUAL", "GREATER_THAN_EQUAL")
                     .contains(kind))
                 return new Result(numeric(a) && numeric(b) ? scalar("BOOLEAN") : Map.of(), modeled);
@@ -333,6 +333,8 @@ final class CallRecovery {
             Result parameter = lambdaParameter(node, depth + 1);
             if (parameter != null) return parameter;
         }
+        Map<String, Object> attributed = attributedExpression(node);
+        if (!attributed.isEmpty()) return new Result(attributed, false);
         Map<String, Object> declaration = known.get(text(node.get("symbol")));
         if (declaration != null) {
             Map<String,Object> attributes=map(declaration.get("attributes"));
@@ -340,9 +342,6 @@ final class CallRecovery {
             if (!proof.isEmpty()) return new Result(map(proof.get("type_model")),true);
             return new Result(map(attributes.get("type_model")), false);
         }
-        Map<String, Object> attributed = map(node.get("expression_type_model"));
-        if (!attributed.isEmpty() && !Set.of("ERROR", "NONE").contains(kind(attributed)))
-            return new Result(attributed, false);
         if (kind.equals("NULL_LITERAL"))
             return new Result(Json.object("kind", "NULL", "complete", true), false);
         if (kind.equals("STRING_LITERAL")) return new Result(named("java.lang.String"), false);
@@ -351,6 +350,11 @@ final class CallRecovery {
                     Json.object("kind", kind.substring(0, kind.indexOf('_')), "complete", true),
                     false);
         return new Result(Map.of(), false);
+    }
+
+    private static Map<String, Object> attributedExpression(Map<String,Object> node) {
+        Map<String,Object> type=map(node.get("expression_type_model"));
+        return Set.of("ERROR","NONE").contains(kind(type)) ? Map.of() : type;
     }
 
     private static Map<String, Object> scalar(String kind) {
