@@ -2,6 +2,7 @@
 """Collector capture, incomplete selections, and known incompatible inputs."""
 from java_type_views import type_attributes
 import unittest
+import collections
 import java_model_tests as models
 import java_lombok_alignment as lombok
 
@@ -24,6 +25,8 @@ IDENTITY_SOURCE = '''import java.util.*;import java.util.stream.*;import java.ut
 @lombok.Getter class Api {String id;}
 class Use {Map<String,Api> read(List<Api> values){return values.stream().collect(Collectors.toMap(Api::getId,Function.identity()));}}
 '''
+LAMBDA_MAP_SOURCE = 'import java.util.*;import java.util.stream.*;import java.util.function.*;@lombok.Getter class Api {String id;} class Use {Map<String,Api> read(List<Api> values){return values.stream().filter(c ->c.getId()!=null).collect(Collectors.toMap(c -> c.getId(),c -> c,(a,b)->a));}}'
+
 CONCURRENT_IDENTITY_SOURCE = IDENTITY_SOURCE.replace(
     'toMap(Api::getId,Function.identity())', 'toConcurrentMap(Api::getId,Function.identity(),(a,b)->b)')
 
@@ -42,6 +45,34 @@ class Collectors(unittest.TestCase):
         by = {f['id']: f for f in facts}
         return [(by[f['target']]['signature'], f) for f in facts if f['kind'] == 'call_target'
                 and by[by[f['parent']]['parent']]['signature'].startswith('Use#' + method + '(')]
+
+    def assert_selected_lambda_factory(self, result, source=LAMBDA_MAP_SOURCE):
+        facts = result['facts']; by = {f['id']: f for f in facts}
+        targets = [(by[f['target']]['signature'], f) for f in facts if f['kind'] == 'call_target']
+        self.assertEqual(collections.Counter(signature for signature, _ in targets), collections.Counter({
+            'java.util.Collection#stream()': 1,
+            'java.util.stream.Stream#filter(java.util.function.Predicate)': 1,
+            'java.util.stream.Collectors#toMap(java.util.function.Function,java.util.function.Function,java.util.function.BinaryOperator)': 1,
+            'Api#getId()': 1}))
+        for signature, target in targets:
+            self.assertEqual(target['status'], 'resolved' if signature == 'java.util.Collection#stream()' else 'possible')
+        getter = next(target for signature, target in targets if signature == 'Api#getId()')
+        site = by[getter['parent']]
+        self.assertEqual(site['span']['start'], source.index('c.getId()'))
+        self.assertFalse(getter['evidence_complete'])
+
+    def test_selected_generic_lambda_factory_and_delta(self):
+        initial = self.analyze([self.fixture(LAMBDA_MAP_SOURCE)], cache=True)
+        self.assert_selected_lambda_factory(initial)
+        changed = LAMBDA_MAP_SOURCE.replace('String id;', 'Integer id;').replace('Map<String,Api>', 'Map<Integer,Api>')
+        for source in (changed, changed.replace('@lombok.Getter ', '')):
+            context = self.fixture(source)
+            delta = self.analyze([context], initial['facts'], cache=True)
+            full = self.analyze([context], cache=True)
+            self.assertEqual(self.merged(initial['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+            if '@lombok.Getter' in source:
+                self.assert_selected_lambda_factory(full, source)
+            initial = full
 
     def test_captured_collector_recovers_whole_chain(self):
         result = self.analyze([self.fixture()])

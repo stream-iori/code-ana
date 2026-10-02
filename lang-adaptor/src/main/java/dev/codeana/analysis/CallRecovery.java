@@ -36,7 +36,10 @@ final class CallRecovery {
     private String currentSource;
 
     private record Result(Map<String, Object> type, boolean modeled,
-            List<Map<String, Object>> parameters, String target) {
+            List<Map<String, Object>> parameters, String target, boolean blocked) {
+        Result(Map<String, Object> type, boolean modeled, List<Map<String, Object>> parameters, String target) {
+            this(type, modeled, parameters, target, false);
+        }
         Result(Map<String, Object> type, boolean modeled) { this(type, modeled, List.of(), ""); }
         Result(Map<String, Object> type, boolean modeled, List<Map<String, Object>> parameters) {
             this(type, modeled, parameters, "");
@@ -875,6 +878,31 @@ final class CallRecovery {
         List<Map<String, Object>> parameters = new ArrayList<>();
         boolean unavailable = false;
         List<Object> raw = list(attrs.get("parameter_type_models"));
+        if (generic && arguments.stream().allMatch(a -> !a.isEmpty()
+                && !Set.of("ERROR", "UNKNOWN").contains(kind(a)))) {
+            // The frozen confirmedBinary path distinguishes a disproved constraint
+            // from unavailable local evidence. Probes must not change the caller's phase.
+            int savedPhase = uncertainPhase;
+            boolean uncertain = false;
+            Candidate constrained = null;
+            try {
+                for (int phase = 0; phase <= 2; phase++) {
+                    uncertainPhase = Integer.MAX_VALUE;
+                    constrained = applicable(selected, variables, arguments, explicit,
+                            writtenExpected(node(id(map(call.get("attributes")).get("tree_id"))), depth + 1),
+                            true, phase, text(call.get("source")) + ":confirmed", depth + 1);
+                    uncertain |= uncertainPhase <= phase;
+                    if (constrained != null) break;
+                }
+            } finally { uncertainPhase = savedPhase; }
+            if (constrained == null && !uncertain) return null;
+            if (constrained != null) {
+                parameters.addAll(constrained.parameters);
+                return confirmedResult(call, signature, constrained.returns, parameters);
+            }
+            unavailable = true;
+        }
+
         for (int i = 0; i < arguments.size(); i++) {
             Map<String, Object> argument = arguments.get(i);
             Map<String, Object> parameter = types.substitute(map(raw.get(Math.min(i, raw.size() - 1))), variables);
@@ -883,12 +911,18 @@ final class CallRecovery {
                 unavailable = true;
                 continue;
             }
-            // A method formal needs the complete methodArguments constraints. Until
-            // they are available, keep the original missing-argument fallback only.
-            if (generic) {
-                if (kind(argument).equals("POLY")
-                        || types.convert(argument, parameter, true) == Match.NO) return null;
-                continue;
+            if (generic && kind(parameter).equals("TYPEVAR")
+                    && signature.equals(parameter.get("owner")) && kind(argument).equals("DECLARED")) {
+                String key = variable(parameter);
+                Map<String,Object> previous = variables.putIfAbsent(key, argument);
+                if (previous != null && types.same(previous, argument, depth + 1) != Match.YES) return null;
+                for (Object formal : list(attrs.get("type_parameter_models"))) {
+                    if (!key.equals(variable(map(formal)))) continue;
+                    for (Object bound : list(map(formal).get("bounds")))
+                        if (types.convert(argument, types.substitute(map(bound), variables), true) == Match.NO) return null;
+                }
+                parameter = types.substitute(parameter, variables);
+                parameters.set(i, parameter);
             }
             Match match;
             if (kind(argument).equals("POLY")) {
@@ -905,7 +939,13 @@ final class CallRecovery {
             unavailable |= match == Match.UNKNOWN;
         }
         if (!unavailable) return null;
-        Map<String, Object> returns = map(map(call.get("attributes")).get("expression_type_model"));
+        Map<String, Object> returns = generic ? types.substitute(map(attrs.get("return_type_model")), variables)
+                : map(map(call.get("attributes")).get("expression_type_model"));
+        return confirmedResult(call, signature, returns, parameters);
+    }
+
+    private Result confirmedResult(Map<String,Object> call, String signature,
+            Map<String,Object> returns, List<Map<String,Object>> parameters) {
         call.put("modeled_target", signature);
         map(call.get("attributes")).putAll(Json.object("binding_origin", "binary_recovery",
                 "recovery_failure", "", "recovery_input", "compiler_confirmed_unknown_argument",
@@ -981,9 +1021,14 @@ final class CallRecovery {
     private Result unavailable(Map<String, Object> attrs, String reason) {
         attrs.put("recovery_failure", reason);
         Map<String, Object> original = calls.get(new NodeKey(currentSource, id(attrs.get("tree_id"))));
-        if (original != null && Boolean.TRUE.equals(original.get("resolved")))
-            return attributedResult(attrs);
-        return new Result(Map.of(), false);
+        // Preserve a proved failure through nested poly invocations. An original
+        // javac expression type remains evidence, but cannot satisfy a failed constraint.
+        boolean blocked = reason.equals("no_applicable_candidate") && uncertainPhase == Integer.MAX_VALUE;
+        if (original != null && Boolean.TRUE.equals(original.get("resolved"))) {
+            Result result = attributedResult(attrs);
+            return new Result(result.type, false, result.parameters, result.target, blocked);
+        }
+        return new Result(Map.of(), false, List.of(), "", blocked);
     }
 
     private boolean modeledReferenceContext(Map<String, Object> tree, int depth) {
@@ -1232,14 +1277,13 @@ final class CallRecovery {
             if (variableArity && i >= raw.size() - 1) parameter = map(parameter.get("component"));
             if (!kind(arguments.get(i)).equals("POLY")
                     && !arguments.get(i).containsKey("poly_invocation_id")
-                    && !arguments.get(i).containsKey("diamond_constructor_id") && !infer(
-                    parameter,
-                    arguments.get(i),
-                    text(declaration.get("signature")),
-                    variables,
-                    depth + 1)) {
-                uncertainPhase = Math.min(uncertainPhase, phase);
-                return null;
+                    && !arguments.get(i).containsKey("diamond_constructor_id")) {
+                Match constraint = infer(parameter, arguments.get(i),
+                        text(declaration.get("signature")), variables, depth + 1);
+                if (constraint != Match.YES) {
+                    if (constraint == Match.UNKNOWN) uncertainPhase = Math.min(uncertainPhase, phase);
+                    return null;
+                }
             }
             if (explicitTypes.isEmpty() && kind(arguments.get(i)).equals("POLY")
                     && mentionsFormal(parameter, text(declaration.get("signature")), depth + 1)) {
@@ -1261,10 +1305,15 @@ final class CallRecovery {
                             ? "diamond_constructor_id" : "poly_invocation_id"))),
                     types.substitute(parameters.get(i), variables), depth + 1);
             Map<String, Object> contextualType = types.captureArgument(value.type, scope + "/argument/" + i);
-            if ((!value.modeled && !(!value.target.isEmpty() && !value.type.isEmpty()))
-                    || !infer(types.substitute(parameters.get(i), variables), contextualType,
-                    text(declaration.get("signature")), variables, depth + 1)) {
+            if (value.blocked) return null;
+            if (!value.modeled && !(!value.target.isEmpty() && !value.type.isEmpty())) {
                 uncertainPhase = Math.min(uncertainPhase, phase); return null;
+            }
+            Match constraint = infer(types.substitute(parameters.get(i), variables), contextualType,
+                    text(declaration.get("signature")), variables, depth + 1);
+            if (constraint != Match.YES) {
+                if (constraint == Match.UNKNOWN) uncertainPhase = Math.min(uncertainPhase, phase);
+                return null;
             }
             contextualArguments.set(i, contextualType);
         }
@@ -1549,7 +1598,8 @@ final class CallRecovery {
                     && mentionsFormal(first, owner, depth + 1)
                     && referenceStaticity(receiver, text(poly.get("name")), descriptor.parameters.size(),
                             first, depth + 1) == Match.NO) {
-                if (!infer(first, receiver, owner, variables, depth + 1)) return Match.NO;
+                Match constraint = infer(first, receiver, owner, variables, depth + 1);
+                if (constraint != Match.YES) return constraint;
                 parameter = types.substitute(parameter, variables);
                 descriptor = sam(parameter, depth + 1);
                 if (descriptor == null) return Match.UNKNOWN;
@@ -1566,12 +1616,12 @@ final class CallRecovery {
                 Map<String, Object> call = calls.get(key);
                 if (call == null) return Match.UNKNOWN;
                 Result selected = resolve(call, depth + 1);
+                if (selected.blocked) return Match.NO;
                 if (selected.type.isEmpty() || !selected.modeled && selected.target.isEmpty())
                     return Match.UNKNOWN;
                 if (kind(selected.type).equals("VOID") && !kind(descriptor.returns).equals("VOID"))
                     return Match.NO;
-                return infer(descriptor.returns, selected.type, owner, variables, depth + 1)
-                        ? Match.YES : Match.NO;
+                return infer(descriptor.returns, selected.type, owner, variables, depth + 1);
             }
             if (!"LAMBDA_EXPRESSION".equals(poly.get("kind"))) return Match.UNKNOWN;
             if (list(map(poly.get("roles")).get("parameters")).size() != descriptor.parameters.size())
@@ -1580,11 +1630,11 @@ final class CallRecovery {
             if (body.isEmpty()) return Match.UNKNOWN;
             if (!"BLOCK".equals(body.get("kind"))) {
                 Result value = expression(id(body.get("id")), depth + 1);
+                if (value.blocked) return Match.NO;
                 if (value.type.isEmpty()) return Match.UNKNOWN;
                 if (kind(value.type).equals("VOID") && !kind(descriptor.returns).equals("VOID"))
                     return Match.NO;
-                return infer(descriptor.returns, value.type, owner, variables, depth + 1)
-                        ? Match.YES : Match.NO;
+                return infer(descriptor.returns, value.type, owner, variables, depth + 1);
             }
             List<Map<String, Object>> returns = new ArrayList<>();
             collectReturns(body, returns, depth + 1);
@@ -1599,8 +1649,10 @@ final class CallRecovery {
                 Map<String, Object> returned = child(site, "expression");
                 if (returned.isEmpty()) return Match.NO;
                 Result value = expression(id(returned.get("id")), depth + 1);
+                if (value.blocked) return Match.NO;
                 if (value.type.isEmpty()) return Match.UNKNOWN;
-                if (!infer(descriptor.returns, value.type, owner, variables, depth + 1)) return Match.NO;
+                Match constraint = infer(descriptor.returns, value.type, owner, variables, depth + 1);
+                if (constraint != Match.YES) return constraint;
             }
             return Match.YES;
         } finally {
@@ -1688,6 +1740,7 @@ final class CallRecovery {
                 Result selected = resolve(call, depth + 1);
                 // A failed contextual check may retain javac's original expression
                 // type. That fallback is not a verified referenced method result.
+                if (selected.blocked) return new PolyMatch(Match.NO, false);
                 return new PolyMatch(selected.modeled || !selected.target.isEmpty()
                         && !selected.type.isEmpty() ? Match.YES : Match.UNKNOWN,
                         selected.modeled);
@@ -1709,6 +1762,7 @@ final class CallRecovery {
                     return new PolyMatch(statementExpression(text(body.get("kind"))) ? Match.YES : Match.NO,
                             modeledBody(body, depth + 1));
                 Result value = expression(id(body.get("id")), depth + 1);
+                if (value.blocked) return new PolyMatch(Match.NO, false);
                 return new PolyMatch(types.convert(value.type, descriptor.returns, true), value.modeled);
             }
             List<Map<String, Object>> returns = new ArrayList<>();
@@ -1721,6 +1775,7 @@ final class CallRecovery {
                 if (voidReturn != value.isEmpty()) return new PolyMatch(Match.NO, false);
                 if (!voidReturn) {
                     Result expression = expression(id(value.get("id")), depth + 1);
+                    if (expression.blocked) return new PolyMatch(Match.NO, false);
                     modeled |= expression.modeled;
                     Match match = types.convert(expression.type, descriptor.returns, true);
                     if (match == Match.NO) return new PolyMatch(match, false);
@@ -1806,7 +1861,7 @@ final class CallRecovery {
                 || explicitType(map(type.get("enclosing")), depth + 1);
     }
 
-    private boolean infer(
+    private Match infer(
             Map<String, Object> parameter,
             Map<String, Object> actual,
             String owner,
@@ -1814,22 +1869,24 @@ final class CallRecovery {
             int depth)
             throws IOException {
         step(depth);
+        if (!mentionsFormal(parameter, owner, depth + 1)
+                && kind(parameter).equals("DECLARED") && kind(actual).equals("DECLARED")
+                && types.convert(actual, parameter, true) == Match.NO) return Match.NO;
         if (kind(parameter).equals("TYPEVAR") && owner.equals(parameter.get("owner"))) {
-            if (Set.of("ERROR", "UNKNOWN", "NULL", "").contains(kind(actual))) return false;
+            if (Set.of("ERROR", "UNKNOWN", "NULL", "").contains(kind(actual))) return Match.UNKNOWN;
             String key = variable(parameter);
-            if (kind(actual).equals("TYPEVAR") && key.equals(variable(actual))) return true;
+            if (kind(actual).equals("TYPEVAR") && key.equals(variable(actual))) return Match.YES;
             Map<String, Object> value = boxed(actual), previous = variables.get(key);
-            if (previous != null && types.same(previous, value, 0) != Match.YES)
-                return false; // Unsupported LUB stays unavailable.
+            if (previous != null) return types.same(previous, value, depth + 1);
             variables.put(key, value);
-            return true;
+            return Match.YES;
         }
         if (kind(parameter).equals("WILDCARD")) {
             if (parameter.get("super") instanceof Map)
                 return infer(map(parameter.get("super")), actual, owner, variables, depth + 1);
             if (parameter.get("extends") instanceof Map)
                 return infer(map(parameter.get("extends")), actual, owner, variables, depth + 1);
-            return true;
+            return Match.YES;
         }
         if (kind(parameter).equals("ARRAY") && kind(actual).equals("ARRAY"))
             return infer(
@@ -1841,15 +1898,16 @@ final class CallRecovery {
         if (kind(parameter).equals("DECLARED") && kind(actual).equals("DECLARED")) {
             Projection projection = types.project(actual, text(parameter.get("element")));
             if (projection.match() != Match.YES)
-                return true; // Conversion below decides applicability.
+                return Match.YES; // Conversion below decides applicability.
             List<Object> params = list(parameter.get("arguments")),
                     values = list(projection.type().get("arguments"));
             if (params.size() == values.size())
-                for (int i = 0; i < params.size(); i++)
-                    if (!infer(map(params.get(i)), map(values.get(i)), owner, variables, depth + 1))
-                        return false;
+                for (int i = 0; i < params.size(); i++) {
+                    Match constraint = infer(map(params.get(i)), map(values.get(i)), owner, variables, depth + 1);
+                    if (constraint != Match.YES) return constraint;
+                }
         }
-        return true;
+        return Match.YES;
     }
 
     private boolean unboundTarget(Map<String, Object> type, String owner, int depth) {

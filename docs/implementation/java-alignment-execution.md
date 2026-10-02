@@ -139,3 +139,20 @@ Rust 全事实验收补充：产品 IPC 使用新 SDK8 编译器桥已通过（t
 本轮代码检查点为 122c351。图消费者、绑定和 Rust 发布校验的阶段证据已终态；新图仍内部 opt-in，不据此关闭默认图、原子版本切换、40 模块语义、容量或 52 项总验收。
 
 lambda-type-mirror-evidence.log 的独立 SDK8 javac 取证：缺失 Getter 的 filter/toMap 回调参数，VariableElement.asType 与语法类型镜像均为 Api，隐式类型树没有有效结束位置。因此“声明类型被语法类型覆盖”不足以解释残余差异，未据此修改产品。继续以候选拒绝及冻结参考为依据诊断泛型恢复。
+
+
+## 泛型编译器选中声明：实现修正
+
+已从冻结 JavaModeledCallRecovery.confirmedBinary/methodArguments/Blocked 的语义适配新的泛型约束处理。CallRecovery 的推断返回 YES/NO/UNKNOWN；明确不兼容通过内部 Result.blocked 传给嵌套工厂、lambda 和成员引用，不把失败的原 javac 表达式类型当作约束证明。候选、参数/边界检查及缓存隔离保留；证据不足时仅保留编译器精确选中的可访问二进制声明，未推断返回值保持声明结构，不造出具体结果。
+
+| 验证 | 结果 |
+|---|---|
+| generic-selected-blocked-collector.log | 隔离实现 14 项 Collector 正反例通过；早前三个负例失败方向未合入 |
+| generic-selected-blocked-bindings.log | 隔离实现其他绑定/上下文/目标返回/SAM/原 lambda 49 项通过，131.432 秒 |
+| generic-selected-blocked-frozen-22/receipt.json | 隔离实现 22 组独立冻结投影全部相等；不是 native 或真实项目证据 |
+| generic-selected-blocked-lambda-frozen/receipt.json | 新 lambda-map 与冻结参考目标多重集 4/4 相等，不补第二个 Getter |
+| generic-selected-product-collector.log | 正式源码合入后 15 项通过，57.145 秒，包含字段类型修改及 Getter 删除的 full/delta 全事实等价 |
+
+隔离诊断中的 generic-selected-tristate-collector.log 曾在暂存编译失败后运行了原类，不能作为新实现通过证据；此方向已由检查 javac 成功且校验实际覆盖类哈希的新运行替代。上述隔离回执不替代正式同版本完整回归。
+
+新 LambdaMap fixture 已加入原独立冻结对照，最低计数使用实际参考的 4 项；旧隔离脚本猜测的 6/16 不是基线。native 正在重建。S1 的真实 MAIN 差分计数仍采用上一版 92/1/30，待新版真实复验后更新，不提前宣称消除。
