@@ -172,3 +172,22 @@ lambda-type-mirror-evidence.log 的独立 SDK8 javac 取证：缺失 Getter 的 
 最初 call-diff.json/type-diff.json 未设置 module，误把局部产品和完整参考相比，保留但不作为局部验收结论；正式局部结论使用带 `--module app/core/service` 的 core-service 两份差分。完整 40 模块、框架/类型证据、容量与 release 尚未通过；同版本完整 JVM 回归仍待终态。
 
 binary-graph-isolated-frozen-reference.log 为独立目录原型直接调用冻结 JavaBinaryReader/JavaBinaryTypes 的五组投影相等：方法遮蔽、递归 class formal、交叉边界、通配符/数组/primitive、50 层泛型。不构成产品接入证明。generic-selected-product-entry-chain-frozen/functional-lambda-map/receipt.json 对更长链条为 7/9，仍缺内层 Collection.stream 和末尾 Optional.orElse；日志末尾读取回执的路径错误不改变已保存的失败差分。新的递归 modeled-input / blocked 传播仅在独立覆盖类目录探测，尚未合入产品，不混入上述正式回执。
+
+
+## 接收者模型证据与 lambda 置信度修正
+
+f6436ee 的正式 JVM 全量回执 generic-selected-full-jvm-20261003-020708 已终态：44 个命令、337 项 unittest，通过，2125.629 秒，无源码/产物漂移；其中图模式 JVM 绑定 type-graph-bindings-jvm-20261003-023200 为 194 项，634.023 秒，无漂移。core/service TEST 的最新独立投影继续零差异：声明 2924、调用点/归属 17612、目标 17632、SOURCE 类型 1705、反射 20、extends 226、implements 26。
+
+新的实现按冻结 JavaModeledCallRecovery 的 modeledInputs/modeledExpression/Blocked 规则，递归读取失败接收者下面的实际模型输入；失败的本地选择不能把原 javac 表达式类型当作后继接收者。lambda 的返回兼容性与是否含模型输入分别判断；生成构造器仍保留自己的目标，但不因其返回实例类型未变而把整条外层调用链降为 possible。删除另一个重复的 modeledBody 遍历，复用 expression/block 两个证据谓词。
+
+| 阶段证据 | 结果 |
+|---|---|
+| transitive-modeled-input-stage4-entry-frozen | 更长 entry chain 9/9 严格相等；旧版为 7/9；后续 lambda 修正仍维持 9/9 |
+| type-graph-bindings-jvm-20261003-023543 | 接收者传播隔离覆盖类：194 项、626.228 秒，无源码/产物漂移；非正式产品产物 |
+| stable-lambda-constructor-confidence-stage5-verified | 构造器/Optional/Stream fixture 10/10 严格相等；旧版存在 7 对状态差异及 1 个额外目标 |
+| stable-lambda-model-stage5-frozen-23 | 原 23 组独立冻结调用投影全部一致，无覆盖类或产品类漂移 |
+| stable-lambda-model-stage5-bindings-receipt.json | 隔离覆盖类 64 项 Collector/绑定/上下文/SAM/目标返回/lambda 正反例全部通过，覆盖类哈希不变 |
+| stable-lambda-model-stage5-entry-delta.log / constructor-delta.log | 1+2 项类型修改、构造器签名修改、Getter/构造器注解删除的全事实 full/delta 等价通过 |
+| receiver-evidence-product-collector.log | 合入正式源码后 18 项通过，53.306 秒，包含三项新增回归 |
+
+两组新来源已纳入正式独立冻结对照，最低目标数使用真实 9/10；入口共 25 组。stable-lambda-constructor-confidence-stage5 的第一次暂存编译失败，随后的原类探测已用 rejected-evidence.json 明确拒绝；正式阶段证据为验证覆盖类哈希、编译成功后才启动的 stage5-verified。隔离阶段不替代 native、发布查询和真实项目差分；本次实现后的 native 与真实 MAIN 差分待重新验证，92/0/30 仍是上版正式计数。

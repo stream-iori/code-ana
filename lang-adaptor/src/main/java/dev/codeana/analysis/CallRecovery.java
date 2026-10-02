@@ -406,11 +406,14 @@ final class CallRecovery {
                             : text(attrs.get("lookup_name"));
             if (name.isEmpty()) return unavailable(attrs, "unsupported_site");
             Map<String, Object> receiver = map(attrs.get("receiver_type_model"));
-            boolean input = reference && (modeledExpected.contains(key)
-                    || modeledReferenceContext(tree, depth + 1));
+            // Model evidence may survive an unavailable receiver invocation.
+            boolean input = modeledInputs(tree, depth + 1)
+                    || reference && (modeledExpected.contains(key)
+                            || modeledReferenceContext(tree, depth + 1));
             if ("MEMBER_SELECT".equals(selection.get("kind"))) {
                 Result value =
                         expression(id(map(selection.get("roles")).get("expression")), depth + 1);
+                if (value.blocked) return unavailable(attrs, "receiver_selection_blocked");
                 if (value.modeled || receiver.isEmpty() || kind(receiver).equals("ERROR"))
                     receiver = value.type;
                 if (value.modeled) attrs.put("recovery_receiver_type_qualifier", false);
@@ -757,7 +760,7 @@ final class CallRecovery {
         step(depth);
         Map<String, Object> selection = child(tree, "selection");
         if ("MEMBER_SELECT".equals(selection.get("kind"))
-                && expression(id(map(selection.get("roles")).get("expression")), depth + 1).modeled)
+                && modeledExpression(child(selection, "expression"), depth + 1))
             return true;
         if ("MEMBER_REFERENCE".equals(tree.get("kind"))
                 && expression(id(map(tree.get("roles")).get("qualifier")), depth + 1).modeled)
@@ -1021,9 +1024,9 @@ final class CallRecovery {
     private Result unavailable(Map<String, Object> attrs, String reason) {
         attrs.put("recovery_failure", reason);
         Map<String, Object> original = calls.get(new NodeKey(currentSource, id(attrs.get("tree_id"))));
-        // Preserve a proved failure through nested poly invocations. An original
-        // javac expression type remains evidence, but cannot satisfy a failed constraint.
-        boolean blocked = reason.equals("no_applicable_candidate") && uncertainPhase == Integer.MAX_VALUE;
+        // Frozen Blocked: a failed local selection cannot supply a receiver or
+        // nested poly result, even when javac retained an expression type.
+        boolean blocked = reason.equals("no_applicable_candidate");
         if (original != null && Boolean.TRUE.equals(original.get("resolved"))) {
             Result result = attributedResult(attrs);
             return new Result(result.type, false, result.parameters, result.target, blocked);
@@ -1760,47 +1763,35 @@ final class CallRecovery {
             if (!"BLOCK".equals(body.get("kind"))) {
                 if (voidReturn)
                     return new PolyMatch(statementExpression(text(body.get("kind"))) ? Match.YES : Match.NO,
-                            modeledBody(body, depth + 1));
+                            modeledExpression(body, depth + 1));
                 Result value = expression(id(body.get("id")), depth + 1);
                 if (value.blocked) return new PolyMatch(Match.NO, false);
-                return new PolyMatch(types.convert(value.type, descriptor.returns, true), value.modeled);
+                return new PolyMatch(types.convert(value.type, descriptor.returns, true),
+                        modeledExpression(body, depth + 1));
             }
             List<Map<String, Object>> returns = new ArrayList<>();
             collectReturns(body, returns, depth + 1);
             if (!voidReturn && !abrupt(body, depth + 1)) return new PolyMatch(Match.UNKNOWN, false);
             Match result = Match.YES;
-            boolean modeled = false;
             for (Map<String, Object> statement : returns) {
                 Map<String, Object> value = child(statement, "expression");
                 if (voidReturn != value.isEmpty()) return new PolyMatch(Match.NO, false);
                 if (!voidReturn) {
                     Result expression = expression(id(value.get("id")), depth + 1);
                     if (expression.blocked) return new PolyMatch(Match.NO, false);
-                    modeled |= expression.modeled;
                     Match match = types.convert(expression.type, descriptor.returns, true);
                     if (match == Match.NO) return new PolyMatch(match, false);
                     if (match == Match.UNKNOWN) result = match;
                 }
             }
-            return new PolyMatch(result, modeled || modeledBody(body, depth + 1));
+            // Constructor recovery preserves its own target. Its unchanged instance
+            // type does not by itself establish modeled input for the enclosing call.
+            return new PolyMatch(result, modeledBlock(body, depth + 1));
         } finally {
             provisionalResults.pop(); uncertainPhase = previousPhase;
             if (previous == null) expectedOverrides.remove(key);
             else expectedOverrides.put(key, previous);
         }
-    }
-
-    private boolean modeledBody(Map<String, Object> tree, int depth) throws IOException {
-        step(depth);
-        Map<String, Object> call = calls.get(key(tree));
-        if (call != null && resolve(call, depth + 1).modeled) return true;
-        if (Set.of("CLASS", "INTERFACE", "ENUM", "ANNOTATION_TYPE").contains(text(tree.get("kind"))))
-            return false;
-        for (Object value : map(tree.get("roles")).values()) {
-            if (value instanceof Number && modeledBody(node(id(value)), depth + 1)) return true;
-            for (Object item : list(value)) if (modeledBody(node(id(item)), depth + 1)) return true;
-        }
-        return false;
     }
 
     private static boolean statementExpression(String kind) {

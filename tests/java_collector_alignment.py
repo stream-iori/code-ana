@@ -27,6 +27,10 @@ class Use {Map<String,Api> read(List<Api> values){return values.stream().collect
 '''
 LAMBDA_MAP_SOURCE = 'import java.util.*;import java.util.stream.*;import java.util.function.*;@lombok.Getter class Api {String id;} class Use {Map<String,Api> read(List<Api> values){return values.stream().filter(c ->c.getId()!=null).collect(Collectors.toMap(c -> c.getId(),c -> c,(a,b)->a));}}'
 
+ENTRY_CHAIN_SOURCE = 'import java.util.*;import java.util.stream.*;import java.util.function.*;@lombok.Getter class Api {String id;} class Use {Map.Entry<String,Api> read(List<Api> values){return values.stream().filter(c ->c.getId()!=null).collect(Collectors.toMap(c -> c.getId(),c -> c,(a,b)->a)).entrySet().stream().filter(e -> e.getKey().startsWith("x")).max(Comparator.comparingInt(c -> c.getKey().length())).orElse(null);}}'
+
+STABLE_LAMBDA_CONSTRUCTOR_SOURCE = 'import java.util.*;import java.util.stream.*;class Other {@lombok.Getter String inputContentValue;} class InputContent {String getInputContentValue(){return "";}} class FieldSource {static FieldSource safeValueOf(String value){return null;}} @lombok.Data @lombok.AllArgsConstructor class FieldPath {FieldSource fieldSource;} class Use {List<FieldPath> read(List<InputContent> values){return values.stream().map(item -> {FieldSource value=Optional.of(item).map(InputContent::getInputContentValue).map(FieldSource::safeValueOf).orElse(null);return new FieldPath(value);}).collect(Collectors.toList());}}'
+
 CONCURRENT_IDENTITY_SOURCE = IDENTITY_SOURCE.replace(
     'toMap(Api::getId,Function.identity())', 'toConcurrentMap(Api::getId,Function.identity(),(a,b)->b)')
 
@@ -73,6 +77,71 @@ class Collectors(unittest.TestCase):
             if '@lombok.Getter' in source:
                 self.assert_selected_lambda_factory(full, source)
             initial = full
+
+    def assert_transitive_entry_chain(self, result):
+        facts = result['facts']; by = {f['id']: f for f in facts}
+        pairs = [(by[f['target']]['signature'], f['status']) for f in facts if f['kind'] == 'call_target']
+        self.assertEqual(collections.Counter(pairs), collections.Counter({
+            ('java.util.Collection#stream()', 'resolved'): 1,
+            ('java.util.Collection#stream()', 'possible'): 1,
+            ('java.util.stream.Stream#filter(java.util.function.Predicate)', 'possible'): 1,
+            ('java.util.stream.Collectors#toMap(java.util.function.Function,java.util.function.Function,java.util.function.BinaryOperator)', 'possible'): 1,
+            ('Api#getId()', 'possible'): 1,
+            ('java.util.Map$Entry#getKey()', 'resolved'): 2,
+            ('java.util.Comparator#comparingInt(java.util.function.ToIntFunction)', 'resolved'): 1,
+            ('java.util.Optional#orElse(java.lang.Object)', 'possible'): 1}))
+
+    def test_transitive_receiver_factory_and_delta(self):
+        base = self.analyze([self.fixture(ENTRY_CHAIN_SOURCE)], cache=True)
+        self.assert_transitive_entry_chain(base)
+        changed = ENTRY_CHAIN_SOURCE.replace('String id;', 'Integer id;').replace(
+            'Map.Entry<String,Api>', 'Map.Entry<Integer,Api>')
+        for source in (changed, changed.replace('@lombok.Getter ', '')):
+            context = self.fixture(source)
+            delta = self.analyze([context], base['facts'], cache=True)
+            full = self.analyze([context], cache=True)
+            self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+            if '@lombok.Getter' in source:
+                self.assert_transitive_entry_chain(full)
+            else:
+                by = {f['id']: f for f in full['facts']}
+                self.assertNotIn('Api#getId()', [by[f['target']]['signature']
+                    for f in full['facts'] if f['kind'] == 'call_target'])
+            base = full
+
+    def assert_stable_lambda_constructor_confidence(self, result, parameter='FieldSource'):
+        facts = result['facts']; by = {f['id']: f for f in facts}
+        pairs = [(by[f['target']]['signature'], f['status']) for f in facts if f['kind'] == 'call_target']
+        self.assertEqual(collections.Counter(pairs), collections.Counter({
+            ('java.util.Collection#stream()', 'resolved'): 1,
+            ('java.util.stream.Stream#map(java.util.function.Function)', 'resolved'): 1,
+            ('java.util.Optional#of(java.lang.Object)', 'resolved'): 1,
+            ('java.util.Optional#map(java.util.function.Function)', 'resolved'): 2,
+            ('java.util.Optional#orElse(java.lang.Object)', 'resolved'): 1,
+            ('InputContent#getInputContentValue()', 'resolved'): 1,
+            ('FieldSource#safeValueOf(java.lang.String)', 'resolved'): 1,
+            ('java.util.stream.Collectors#toList()', 'resolved'): 1,
+            ('FieldPath#<init>(' + parameter + ')', 'possible'): 1}))
+
+    def test_stable_constructor_preserves_jdk_and_member_confidence(self):
+        self.assert_stable_lambda_constructor_confidence(
+            self.analyze([self.fixture(STABLE_LAMBDA_CONSTRUCTOR_SOURCE)]))
+
+    def test_constructor_signature_and_removal_preserve_full_delta(self):
+        base = self.analyze([self.fixture(STABLE_LAMBDA_CONSTRUCTOR_SOURCE)], cache=True)
+        changed = STABLE_LAMBDA_CONSTRUCTOR_SOURCE.replace('FieldSource fieldSource;', 'Object fieldSource;')
+        for source in (changed, changed.replace('@lombok.AllArgsConstructor ', '')):
+            context = self.fixture(source)
+            delta = self.analyze([context], base['facts'], cache=True)
+            full = self.analyze([context], cache=True)
+            self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+            if '@lombok.AllArgsConstructor' in source:
+                self.assert_stable_lambda_constructor_confidence(full, 'java.lang.Object')
+            else:
+                by = {f['id']: f for f in full['facts']}
+                self.assertFalse([f for f in full['facts'] if f['kind'] == 'call_target'
+                    and by[f['target']]['signature'] == 'FieldPath#<init>(java.lang.Object)'])
+            base = full
 
     def test_captured_collector_recovers_whole_chain(self):
         result = self.analyze([self.fixture()])
