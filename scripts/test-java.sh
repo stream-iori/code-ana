@@ -16,6 +16,7 @@ python3 "$repo_root/tests/java_binary_alignment.py"
 python3 "$repo_root/tests/java_binary_metadata_alignment.py"
 python3 "$repo_root/tests/java_native_heap.py"
 python3 "$repo_root/tests/java_model_tests.py"
+python3 "$repo_root/tests/java_graph_fact_alignment.py"
 
 python3 "$repo_root/tests/java_encoding_alignment.py"
 python3 "$repo_root/tests/java_type_reference_alignment.py"

@@ -134,6 +134,7 @@ public final class ExtensionContext {
 
     private static Object copy(Object value, boolean immutable, int depth, boolean shareTypes) {
         if (depth > Json.MAX_DEPTH) throw new IllegalArgumentException("EXTENSION_VALUE_DEPTH");
+        if (dev.codeana.common.TypeGraph.isView(value)) return value;
         if (immutable && value instanceof dev.codeana.common.ArchiveRows)
             return ((dev.codeana.common.ArchiveRows) value).snapshot();
         if (immutable && value instanceof dev.codeana.common.ArchiveRows.Snapshot) return value;

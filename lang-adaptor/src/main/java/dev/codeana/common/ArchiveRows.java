@@ -98,7 +98,7 @@ public final class ArchiveRows extends AbstractList<Object> {
     }
 
     private Object wrap(Object value, State state) {
-        if (value instanceof ModelArchive.ImmutableType) return value;
+        if (value instanceof ModelArchive.ImmutableType || TypeGraph.isView(value)) return value;
         if (value instanceof Map) return new NestedMap(state, Json.map(value));
         if (value instanceof List) return new NestedList(state, Json.list(value));
         return value;

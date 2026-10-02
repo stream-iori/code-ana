@@ -35,10 +35,10 @@ class TypeGraphs(unittest.TestCase):
         test = models.ROOT / 'lang-adaptor/src/test/java/dev/codeana/common'
         compiler = models.ROOT / 'lang-adaptor/src/compiler/java/dev/codeana/compiler'
         compiler_test = models.ROOT / 'lang-adaptor/src/test/compiler/dev/codeana/compiler'
-        files = [main / (n + '.java') for n in ('Json', 'FactHeaders', 'RecordArchive', 'TypeGraph', 'TypeGraphArchive')]
-        files += [test / (n + '.java') for n in ('TypeGraphProbe', 'TypeGraphCanonicalProbe', 'TypeGraphArchiveProbe')]
+        files = [main / (n + '.java') for n in ('Json', 'FactHeaders', 'RecordArchive', 'TypeGraph', 'TypeGraphArchive', 'ModelGraphs', 'ModelArchive', 'ArchiveRows', 'TypeEvidence')]
+        files += [test / (n + '.java') for n in ('TypeGraphProbe', 'TypeGraphCanonicalProbe', 'TypeGraphArchiveProbe', 'ModelGraphProbe', 'TypeEvidenceProbe')]
         files += [compiler / 'CompilerTypeGraph.java']
-        files += [compiler_test / (n + '.java') for n in ('CompilerTypeGraphProbe', 'CompilerTypeGraphBudgetProbe')]
+        files += [compiler_test / (n + '.java') for n in ('CompilerTypeGraphProbe', 'CompilerTypeGraphBudgetProbe', 'CompilerGraphArchiveProbe')]
         compiled = subprocess.run([str(models.JDK8 / 'bin/javac'), '-encoding', 'UTF-8', '-source', '8', '-target', '8',
                                   '-cp', str(models.JDK8 / 'lib/tools.jar'), '-d', str(cls.classes), *map(str, files)],
                                  capture_output=True, text=True, timeout=60)
@@ -47,7 +47,7 @@ class TypeGraphs(unittest.TestCase):
         cls.classpath = os.pathsep.join(map(str, [cls.classes, models.JDK8 / 'lib/tools.jar', cls.worker]))
 
     def run_probe(self, name):
-        process = subprocess.run([str(models.JDK8 / 'bin/java'), '-Xmx64m', '-cp', self.classpath, name],
+        process = subprocess.run([str(models.JDK8 / 'bin/java'), '-Xmx64m', '-cp', self.classpath, name, str(models.ROOT / 'lang-adaptor/target/compiler-bridge.jar')],
                                  capture_output=True, text=True, timeout=60)
         self.assertEqual(process.returncode, 0, process.stderr)
         self.assertTrue(process.stdout.strip())
@@ -61,8 +61,17 @@ class TypeGraphs(unittest.TestCase):
     def test_large_flat_archive_roundtrip_corruption_and_cancel_under_64m(self):
         self.run_probe('dev.codeana.common.TypeGraphArchiveProbe')
 
+    def test_model_and_row_spool_share_flat_nodes_without_recursive_root_copies(self):
+        self.run_probe('dev.codeana.common.ModelGraphProbe')
+
+    def test_public_fact_graph_closure_sharing_identity_cycles_and_invalid_references(self):
+        self.run_probe('dev.codeana.common.TypeEvidenceProbe')
+
     def test_original_worker_types_recursive_bounds_capture_and_80_generic_levels(self):
         self.run_probe('dev.codeana.compiler.CompilerTypeGraphProbe')
+
+    def test_real_compiler_row_spool_and_final_model_preserve_deep_graph_and_errors(self):
+        self.run_probe('dev.codeana.compiler.CompilerGraphArchiveProbe')
 
     def test_compiler_depth_failure_and_cancel_do_not_poison_healthy_roots(self):
         self.run_probe('dev.codeana.compiler.CompilerTypeGraphBudgetProbe')

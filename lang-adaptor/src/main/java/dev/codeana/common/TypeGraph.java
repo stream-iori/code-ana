@@ -234,7 +234,12 @@ public final class TypeGraph {
         public Object get(Object key) {
             Object value=node(reference).get(key);
             if (value == null) return null;
-            if (SINGLE.contains(key)) return follow(((Number)value).intValue());
+            if (SINGLE.contains(key)) {
+                int next=((Number)value).intValue();
+                if(next>=0 && ("enclosing".equals(key)||"receiver".equals(key)) && "NONE".equals(node(next).get("kind"))) return null;
+                if(next>=0 && "lower".equals(key) && "NULL".equals(node(next).get("kind"))) return null;
+                return follow(next);
+            }
             if (MANY.contains(key)) {
                 final List<Object> values=Json.list(value);
                 return Collections.unmodifiableList(new AbstractList<Object>() {

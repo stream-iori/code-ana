@@ -86,6 +86,7 @@ public final class CompilerTypeGraph {
         List<Integer> output=new ArrayList<Integer>();for(TypeMirror type:types)output.add(add(type,depth));return output;
     }
     public Map<String,Object> view(TypeMirror type) { return graph.graph().view(add(type)); }
+    public Map<String,Object> view(int root) { return graph.graph().view(root); }
     public TypeGraph snapshot() { return graph.seal(); }
     public static final class Budget extends IllegalArgumentException {
         private static final long serialVersionUID=1L;

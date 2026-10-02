@@ -40,6 +40,8 @@ public final class CompilerBridge implements AutoCloseable {
     private Elements elements;
     private Types types;
     private WorkerOverloadEvidence overloadEvidence;
+    private boolean graphTypes;
+    private final Map<String,CompilerTypeGraph> typeGraphs = new HashMap<String,CompilerTypeGraph>();
     private BoundedDiagnostics listener;
     private String phase = "parse";
     private int records;
@@ -163,6 +165,7 @@ public final class CompilerBridge implements AutoCloseable {
             throw new IOException("COMPILER_PROTOCOL_VERSION");
         context = Json.string(request,"context");
         fullAuxiliaryModel = Boolean.TRUE.equals(request.get("full_auxiliary_model"));
+        graphTypes = Boolean.TRUE.equals(request.get("type_graph"));
         if (request.containsKey("model_record_limit")) {
             try { recordLimit = new java.math.BigDecimal(request.get("model_record_limit").toString()).longValueExact(); }
             catch (RuntimeException invalid) { throw new IOException("JAVA_MODEL_RECORD_LIMIT_RANGE",invalid); }
@@ -313,6 +316,8 @@ public final class CompilerBridge implements AutoCloseable {
             }
         }
         // Detached rows no longer need the compiler graph while the final archive is assembled.
+        for(CompilerTypeGraph graph:typeGraphs.values())graph.snapshot();
+        typeGraphs.clear();
         elementPaths.clear(); writtenExecutableTypes.clear(); trees = null; elements = null; types = null; listener = null;
         original.clear(); treeIds.clear(); modifierAnnotations.clear(); annotationTypes.clear(); declarationAnnotations.clear();
         return detached(request,annotationHeaders);
@@ -519,7 +524,8 @@ public final class CompilerBridge implements AutoCloseable {
                         writtenParameters.add(sourceModifierAnnotations(sourceType(new TreePath(parameterPath, parameter.getType()), 0), parameterPath));
                     }
                     a.put("parameter_type_models", writtenParameters);
-                    Map<String, Object> executable = Json.map(a.get("type_model"));
+                    Map<String, Object> executable = new LinkedHashMap<String, Object>(Json.map(a.get("type_model")));
+                    a.put("type_model", executable);
                     executable.put("parameters", writtenParameters);
                     executable.put("return", a.get("return_type_model"));
                     List<Object> exceptionsWritten = new ArrayList<Object>();
@@ -561,8 +567,9 @@ public final class CompilerBridge implements AutoCloseable {
     /** Adapted from Anatomist WorkerTypes: Java 8 loses written type-use wrappers on mirrors. */
     private Map<String, Object> sourceType(TreePath path, int depth) {
         if (depth > 128) throw new IllegalArgumentException("SOURCE_TYPE_DEPTH_BUDGET");
+        if(graphTypes && !hasSourceAnnotations(path.getLeaf(),depth)) return typeModel(trees.getTypeMirror(path));
         Map<String, Object> out = new LinkedHashMap<String, Object>(
-                typeModel(trees.getTypeMirror(path), new HashSet<String>(), new int[1], depth / 2));
+                graphTypes ? typeModel(trees.getTypeMirror(path)) : typeModel(trees.getTypeMirror(path), new HashSet<String>(), new int[1], depth / 2));
         if (out.containsKey("reason")) return out;
         if (hasSourceAnnotations(path.getLeaf(), depth)) sourceStructure(out, path, depth + 1);
         return out;
@@ -623,6 +630,7 @@ public final class CompilerBridge implements AutoCloseable {
     private Map<String, Object> sourceModifierAnnotations(Map<String, Object> type, TreePath path) {
         List<AnnotationMirror> annotations = WorkerSourceAnnotations.typeUses(path, trees);
         if (annotations.isEmpty()) return type;
+        type = new LinkedHashMap<String,Object>(type);
         Map<String, Object> base = type;
         for (int depth = 0; depth <= 64; depth++) {
             String edge = "ARRAY".equals(base.get("kind")) ? "component"
@@ -819,7 +827,40 @@ public final class CompilerBridge implements AutoCloseable {
     private static final int TYPE_MODEL_NODES = 4096;
 
     private Map<String, Object> typeModel(TypeMirror type) {
-        return typeModel(type, new HashSet<String>(), new int[1], 0);
+        if (!graphTypes) return typeModel(type, new HashSet<String>(), new int[1], 0);
+        if (type == null) return Json.object("version",3,"kind","UNKNOWN","complete",false);
+        CompilerTypeGraph graph=typeGraphs.get(currentSource);
+        if(graph==null) {
+            graph=new CompilerTypeGraph(elements,this::typeMetadata);
+            typeGraphs.put(currentSource,graph);
+        }
+        try { return graph.view(graph.add(type)); }
+        catch(CompilerTypeGraph.Budget exhausted) {
+            String reason="TYPE_GRAPH_BUDGET";
+            if(typeBudgetDiagnostics.add(currentSource+":"+reason))
+                diagnostics.add(Json.object("code",reason,"severity","WARNING","source",currentSource,
+                        "start",-1,"end",-1,"phase","type_model","message","Detached type graph exceeded budget"));
+            return Json.object("version",3,"kind","UNKNOWN","complete",false,"reason",reason);
+        }
+    }
+
+    /** Scalar metadata only: graph edges are constructed once by CompilerTypeGraph. */
+    private Map<String,Object> typeMetadata(TypeMirror type) {
+        Map<String,Object> out=Json.object("display",stableType(type),"descriptor",descriptor(type),"signature",generic(type));
+        if(type.getKind()==TypeKind.TYPEVAR) {
+            TypeVariable variable=(TypeVariable)type;
+            out.put("name",variable.asElement().getSimpleName().toString());
+            if(type instanceof com.sun.tools.javac.code.Type.CapturedType) {
+                String capture=stableType(type);int bound=capture.indexOf(" of ");
+                out.put("owner",currentSource+"#"+(bound<0?capture:capture.substring(0,bound)));out.put("capture",true);
+            } else out.put("owner",signature(((TypeParameterElement)variable.asElement()).getGenericElement()));
+        }
+        List<String> annotations=new ArrayList<String>();List<Object> models=new ArrayList<Object>();
+        for(AnnotationMirror mirror:type.getAnnotationMirrors()) {
+            annotations.add(mirror.getAnnotationType().toString());models.add(annotation(mirror,0));
+        }
+        if(!annotations.isEmpty()) {out.put("annotations",annotations);out.put("annotation_models",models);}
+        return out;
     }
 
     private Map<String, Object> typeModel(TypeMirror type, Set<String> visiting, int[] nodes, int depth) {

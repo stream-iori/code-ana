@@ -4,6 +4,7 @@ import dev.codeana.common.FactHeaders;
 import dev.codeana.common.Json;
 import dev.codeana.common.ModelArchive;
 import dev.codeana.common.RecordArchive;
+import dev.codeana.common.TypeEvidence;
 import dev.codeana.common.Utf8Offsets;
 
 import java.nio.charset.StandardCharsets;
@@ -155,6 +156,8 @@ public final class FactExtractor {
     /** Callers finish a row before requesting the next row; only compact identities remain live. */
     private void flush() {
         if (pending != null) {
+            if (Boolean.TRUE.equals(context.get("type_graph")))
+                pending.put("attributes",TypeEvidence.encode(Json.map(pending.get("attributes"))));
             rows.add(pending);
             pending = null;
         }
@@ -268,7 +271,7 @@ public final class FactExtractor {
                 type.put(
                         "attributes",
                         Json.object(
-                                "schema_version", 2,
+                                "schema_version", Boolean.TRUE.equals(context.get("type_graph")) ? 3 : 2,
                                 "declared", attrs.get("type_model"),
                                 "return", attrs.get("return_type_model"),
                                 "parameters", attrs.get("parameter_type_models")));
@@ -351,7 +354,7 @@ public final class FactExtractor {
                 binding.put("relation", "java.binding");
                 // The call site owns the complete selected/declared/expression type evidence.
                 // Facets and confirmed targets point to that owner instead of copying its graph.
-                binding.put("attributes", Json.object("schema_version", 3,
+                binding.put("attributes", Json.object("schema_version", Boolean.TRUE.equals(context.get("type_graph")) ? 4 : 3,
                         "evidence_owner", site.get("id"), "resolved", resolved, "complete", complete));
                 binding.put("evidence_complete", complete);
                 if (resolved && !n.containsKey("modeled_target")

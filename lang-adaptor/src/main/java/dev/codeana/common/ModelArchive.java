@@ -28,12 +28,14 @@ public final class ModelArchive {
 
     private static final class Encoder {
         final RecordArchive records;
+        final ModelGraphs graphs = new ModelGraphs();
         final Map<String,Integer> types = new HashMap<String,Integer>();
         final List<Integer> typePositions = new ArrayList<Integer>();
         long typeBytes;
         Encoder(RecordArchive records) { this.records=records; }
         Object pack(Object raw, int depth) {
             if (depth>Json.MAX_DEPTH) throw new IllegalArgumentException("MODEL_DEPTH_BUDGET");
+            if (TypeGraph.isView(raw)) return graphs.pack(Json.map(raw),records);
             if (raw instanceof Map) {
                 Map<String,Object> value=Json.map(raw), packed=new LinkedHashMap<String,Object>();
                 for (Map.Entry<String,Object> entry:value.entrySet()) packed.put(entry.getKey(),pack(entry.getValue(),depth+1));
@@ -51,7 +53,7 @@ public final class ModelArchive {
                     }
                     return Json.object("$type",id);
                 }
-                if (value.containsKey("$type") || value.containsKey("$object")) {
+                if (value.containsKey("$type") || value.containsKey("$object") || value.containsKey("$graph")) {
                     List<Object> entries=new ArrayList<Object>();
                     for(Map.Entry<String,Object> entry:packed.entrySet()) entries.add(Arrays.asList(entry.getKey(),entry.getValue()));
                     return Json.object("$object",entries);
@@ -75,7 +77,8 @@ public final class ModelArchive {
         private final Map<Integer,Object> cache = new LinkedHashMap<Integer,Object>(64,.75f,true) {
             protected boolean removeEldestEntry(Map.Entry<Integer,Object> entry) { return size()>64; }
         };
-        private final List<Object> types = new AbstractList<Object>() {
+        private final class SpoolTypes extends AbstractList<Object> implements ModelGraphs.Types {
+            public ModelGraphs graphs() { return encoder.graphs; }
             public int size() { return encoder.typePositions.size(); }
             public Object get(int index) {
                 if (index<0 || index>=size()) throw new IndexOutOfBoundsException();
@@ -85,7 +88,8 @@ public final class ModelArchive {
                 catch(IOException failure) { throw new UncheckedIOException(failure); }
                 cache.put(index,value); return value;
             }
-        };
+        }
+        private final List<Object> types = new SpoolTypes();
         private Object pending;
         private int count;
         private boolean closed, sealed;
@@ -114,7 +118,7 @@ public final class ModelArchive {
         public void seal() throws IOException {
             if (closed) throw new IllegalStateException("MODEL_SPOOL_CLOSED");
             if (sealed) return;
-            flush(); records.seal(); encoder.types.clear(); sealed=true;
+            flush(); records.seal(); encoder.graphs.seal(); encoder.types.clear(); sealed=true;
         }
         public int size() { return count+(pending==null ? 0 : 1); }
         public Object get(int index) {
@@ -126,7 +130,7 @@ public final class ModelArchive {
         }
         public void close() throws IOException {
             if(!closed) {
-                closed=true; pending=null; cache.clear(); positions.clear(); encoder.types.clear(); encoder.typePositions.clear();
+                closed=true; pending=null; cache.clear(); positions.clear(); encoder.types.clear(); encoder.typePositions.clear(); encoder.graphs.close();
                 try { records.close(); } finally { java.nio.file.Files.deleteIfExists(records.path()); }
             }
         }
@@ -142,12 +146,12 @@ public final class ModelArchive {
                 counts.put(section,rows.size());
                 for (Object row:rows) records.add(Json.object("kind","row","section",section,"value",encoder.pack(row,0)));
             }
-            records.add(Json.object("kind","end","counts",counts,"types",encoder.types.size()));
+            records.add(Json.object("kind","end","counts",counts,"types",encoder.types.size(),"graphs",encoder.graphs.counts()));
             records.seal(); return records.bytes();
         }
     }
     /** Validate every deferred reference and escaped object without duplicating its decoded containers. */
-    private static void validatePacked(Object raw, int types, int depth) throws IOException {
+    private static void validatePacked(Object raw, int types, ModelGraphs graphs, int depth) throws IOException {
         if (depth>Json.MAX_DEPTH) throw new IOException("MODEL_DEPTH_BUDGET");
         if (raw instanceof Map) {
             Map<String,Object> value=Json.map(raw);
@@ -157,13 +161,16 @@ public final class ModelArchive {
                 for(Object entry:Json.list(value.get("$object"))) {
                     List<Object> pair=Json.list(entry);
                     if(pair.size()!=2 || !(pair.get(0) instanceof String) || !keys.add((String)pair.get(0))) throw new IOException("MODEL_OBJECT_ESCAPE");
-                    validatePacked(pair.get(1),types,depth+1);
+                    validatePacked(pair.get(1),types,graphs,depth+1);
                 }
+            } else if(value.containsKey("$graph")) {
+                if(value.size()!=1)throw new IOException("MODEL_GRAPH_REFERENCE");
+                graphs.validate(value.get("$graph"));
             } else if(value.containsKey("$type")) {
                 long id=Json.number(value,"$type");
                 if(value.size()!=1 || id<1 || id>types) throw new IOException("MODEL_TYPE_REFERENCE");
-            } else for(Object child:value.values()) validatePacked(child,types,depth+1);
-        } else if(raw instanceof List) for(Object child:Json.list(raw)) validatePacked(child,types,depth+1);
+            } else for(Object child:value.values()) validatePacked(child,types,graphs,depth+1);
+        } else if(raw instanceof List) for(Object child:Json.list(raw)) validatePacked(child,types,graphs,depth+1);
     }
     static Object unpack(Object raw, List<Object> types, int depth) throws IOException {
         if(depth>Json.MAX_DEPTH) throw new IOException("MODEL_DEPTH_BUDGET");
@@ -179,6 +186,10 @@ public final class ModelArchive {
                     object.put((String)pair.get(0),unpack(pair.get(1),types,depth+1));
                 }
                 return object;
+            }
+            if(value.containsKey("$graph")) {
+                if(value.size()!=1 || !(types instanceof ModelGraphs.Types))throw new IOException("MODEL_GRAPH_REFERENCE");
+                return ((ModelGraphs.Types)types).graphs().view(value.get("$graph"));
             }
             if(value.containsKey("$type")) {
                 long id=Json.number(value,"$type");
@@ -207,7 +218,7 @@ public final class ModelArchive {
     }
     /** Freeze a detached semantic type while retaining already immutable compiler subtrees. */
     public static Map<String,Object> freezeType(Map<String,Object> type) {
-        if (type instanceof ImmutableType) return type;
+        if (type instanceof ImmutableType || TypeGraph.isView(type)) return type;
         return new ImmutableType(Json.map(immutable(type,0)));
     }
     /** Mutable declaration/observation sections, with immutable syntax decoded one row at a time. */
@@ -238,7 +249,7 @@ public final class ModelArchive {
     }
     static Object immutable(Object raw, int depth) {
         if (depth>Json.MAX_DEPTH) throw new IllegalArgumentException("MODEL_DEPTH_BUDGET");
-        if (raw instanceof ImmutableType) return raw;
+        if (raw instanceof ImmutableType || TypeGraph.isView(raw)) return raw;
         if (raw instanceof Map) {
             Map<String,Object> copy=new LinkedHashMap<String,Object>();
             for (Map.Entry<String,Object> entry:Json.map(raw).entrySet()) copy.put(entry.getKey(),immutable(entry.getValue(),depth+1));
@@ -267,7 +278,7 @@ public final class ModelArchive {
                 throw new IOException("MODEL_ARCHIVE_HEADER");
             Map<String,Object> model=Json.object("version",VERSION,"context",context);
             for(String section:SECTIONS) model.put(section,new ArrayList<Object>());
-            List<Object> types=new ArrayList<Object>();
+            ModelGraphs.Table types=new ModelGraphs.Table();
             Map<String,List<Integer>> lazyPositions=new LinkedHashMap<String,List<Integer>>();
             if(lazySyntax)for(String section:Arrays.asList("declarations","observations"))lazyPositions.put(section,new ArrayList<Integer>());
             int[] syntaxPositions=new int[256]; int syntaxCount=0;
@@ -282,13 +293,15 @@ public final class ModelArchive {
                     typeBytes+=Json.write(record.get("value")).getBytes(StandardCharsets.UTF_8).length;
                     if(typeBytes>MAX_TYPE_BYTES) throw new IOException("MODEL_TYPE_TABLE_BUDGET");
                     types.add(new ImmutableType(Json.map(immutable(unpack(record.get("value"),types,0),0))));
+                } else if(kind.equals("graph_node")) {
+                    types.graphs().add(record);
                 } else if(kind.equals("row")) {
                     String section=Json.string(record,"section");
                     int current=SECTIONS.indexOf(section);
                     if(current<sectionIndex || current<0) throw new IOException("MODEL_SECTION_SEQUENCE");
                     sectionIndex=current;
                     boolean lazy=lazySyntax && (section.equals("syntax") || lazyPositions.containsKey(section));
-                    if(lazy) validatePacked(record.get("value"),types.size(),0);
+                    if(lazy) validatePacked(record.get("value"),types.size(),types.graphs(),0);
                     Object value=lazy ? null : unpack(record.get("value"),types,0);
                     if(lazySyntax && lazyPositions.containsKey(section)) lazyPositions.get(section).add(i);
                     else if(lazySyntax && section.equals("syntax")) {
@@ -300,13 +313,16 @@ public final class ModelArchive {
             Map<String,Object> end=Json.map(records.get(records.size()-1));
             if(!"end".equals(end.get("kind")) || Json.number(end,"types")!=types.size())
                 throw new IOException("MODEL_ARCHIVE_END");
+            if(!Json.write(end.getOrDefault("graphs",Collections.emptyList())).equals(Json.write(types.graphs().counts())))
+                throw new IOException("MODEL_GRAPH_COUNTS");
+            types.graphs().seal();
             Map<String,Object> counts=Json.map(end.get("counts"));
             if(!counts.keySet().equals(new HashSet<String>(SECTIONS))) throw new IOException("MODEL_SECTION_COUNTS");
             for(Map.Entry<String,List<Integer>> entry:lazyPositions.entrySet()) {
                 int[] positions=new int[entry.getValue().size()];for(int i=0;i<positions.length;i++)positions[i]=entry.getValue().get(i);
-                model.put(entry.getKey(),new ArchiveRows(records,Collections.unmodifiableList(types),positions));
+                model.put(entry.getKey(),new ArchiveRows(records,types,positions));
             }
-            if(lazySyntax) model.put("syntax",new SyntaxRows(records,Collections.unmodifiableList(types),Arrays.copyOf(syntaxPositions,syntaxCount)));
+            if(lazySyntax) model.put("syntax",new SyntaxRows(records,types,Arrays.copyOf(syntaxPositions,syntaxCount)));
             for(String section:SECTIONS) if(Json.number(counts,section)!=Json.list(model.get(section)).size())
                 throw new IOException("MODEL_SECTION_COUNTS");
             return new OpenModel(records,model);
