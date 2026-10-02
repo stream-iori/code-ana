@@ -6,6 +6,17 @@ import java.util.*;
 public final class TypeGraph {
     public static final int VERSION = 3;
     public static final int MAX_NODES = 100000;
+    /** Editable root metadata; retain real edges hidden by the traversal compatibility view. */
+    public static Map<String,Object> copyRoot(Map<String,Object> type) {
+        Map<String,Object> copy = new LinkedHashMap<String,Object>(type);
+        if (isView(type)) {
+            TypeGraph graph = owner(type);
+            Object lower = graph.node(reference(type)).get("lower");
+            if (lower instanceof Number && ((Number)lower).intValue() >= 0)
+                copy.put("lower", graph.view(((Number)lower).intValue()));
+        }
+        return copy;
+    }
     private static final Set<String> SINGLE = new HashSet<String>(Arrays.asList(
             "enclosing", "component", "extends", "super", "upper", "lower", "return", "receiver"));
     private static final Set<String> MANY = new HashSet<String>(Arrays.asList(

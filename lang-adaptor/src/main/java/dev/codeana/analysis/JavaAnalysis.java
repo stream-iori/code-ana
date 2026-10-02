@@ -4,6 +4,7 @@ import dev.codeana.analysis.extension.*;
 import dev.codeana.common.Json;
 import dev.codeana.common.ModelArchive;
 import dev.codeana.common.RecordArchive;
+import dev.codeana.common.TypeEvidence;
 
 import java.util.*;
 import java.util.concurrent.*;
@@ -810,12 +811,15 @@ public final class JavaAnalysis {
             Map<String, Object> old = previous.get(Json.string(declaration, "signature"));
             if (old == null || !Objects.equals(old.get("name"), declaration.get("name")))
                 return false;
-            Map<String, Object> attributes = new TreeMap<>(Json.map(old.get("attributes")));
+            Map<String, Object> attributes = new TreeMap<>(TypeEvidence.decode(Json.map(old.get("attributes"))));
             if (!Objects.equals(attributes.remove("generated"), declaration.get("generated")))
                 return false;
             attributes.remove("source_available");
             attributes.remove("logical_key");
-            if (!equivalent(attributes, declaration.get("attributes"))) return false;
+            // Compare the complete canonical closures, after removing publication-only
+            // envelope fields. Encoded baseline markers and cached views are one type.
+            if (!equivalent(TypeEvidence.encode(attributes),
+                    TypeEvidence.encode(Json.map(declaration.get("attributes"))))) return false;
         }
         return true;
     }

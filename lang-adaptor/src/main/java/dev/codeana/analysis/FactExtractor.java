@@ -156,9 +156,14 @@ public final class FactExtractor {
     /** Callers finish a row before requesting the next row; only compact identities remain live. */
     private void flush() {
         if (pending != null) {
-            if (Boolean.TRUE.equals(context.get("type_graph")))
-                pending.put("attributes",TypeEvidence.encode(Json.map(pending.get("attributes"))));
-            rows.add(pending);
+            Map<String, Object> output = pending;
+            if (Boolean.TRUE.equals(context.get("type_graph"))) {
+                // Later recovery rows still read the call site's detached evidence.
+                // Encode the archive copy without replacing that evidence in memory.
+                output = new LinkedHashMap<>(pending);
+                output.put("attributes", TypeEvidence.encode(Json.map(pending.get("attributes"))));
+            }
+            rows.add(output);
             pending = null;
         }
     }

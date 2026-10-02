@@ -2,6 +2,7 @@ package dev.codeana.analysis.extension;
 
 import dev.codeana.common.Json;
 import dev.codeana.common.FactHeaders;
+import dev.codeana.common.TypeEvidence;
 
 import java.util.*;
 
@@ -163,6 +164,11 @@ public final class FactSink {
                 String id = Json.string(Json.map(raw), field);
                 if (!id.isEmpty() && !ids.contains(id) && !existing.ids.contains(id))
                     throw new IllegalArgumentException("EXTENSION_DANGLING_LINK");
+            }
+        if (Boolean.TRUE.equals(context.configuration().get("type_graph")))
+            for (Object raw : facts) {
+                Map<String, Object> fact = Json.map(raw);
+                fact.put("attributes", TypeEvidence.encode(Json.map(fact.get("attributes"))));
             }
         return facts;
     }

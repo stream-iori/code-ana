@@ -45,7 +45,7 @@ class Annotations(unittest.TestCase):
         self.assertTrue(any(f['relation']=='java.spring.injection'
                             and f['source']=='repeated/Late.java'
                             and f['attributes'].get('role')=='constructor'
-                            and f['attributes']['injected_type'].get('element')=='Dependency'
+                            and model_tests.type_node(f['attributes'],f['attributes']['injected_type']).get('element')=='Dependency'
                             for f in facts))
 
     def test_confirmed_constant_component_name(self):

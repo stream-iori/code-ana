@@ -1008,6 +1008,8 @@ final class LombokDeclarations {
     }
 
     private static boolean builderComplete(Map<String, Object> type, int depth) {
+        if (dev.codeana.common.TypeGraph.isView(type))
+            return Boolean.TRUE.equals(type.get("complete"));
         if (depth > 64 || type.isEmpty() || !type.containsKey("kind")) return false;
         if (Boolean.TRUE.equals(type.get("recursive")))
             return "TYPEVAR".equals(type.get("kind"))
@@ -1033,7 +1035,7 @@ final class LombokDeclarations {
     private static List<Object> builderRebaseFormals(List<Object> formals, String owner) {
         List<Object> result = new ArrayList<>();
         for (Object raw : formals) {
-            Map<String, Object> formal = new LinkedHashMap<>(Json.map(raw));
+            Map<String, Object> formal = dev.codeana.common.TypeGraph.copyRoot(Json.map(raw));
             formal.put("owner", owner);
             result.add(formal);
         }
@@ -1045,6 +1047,26 @@ final class LombokDeclarations {
     private static Object builderRebase(
             Object raw, List<Object> old, List<Object> replacements, int depth) {
         if (depth > 64) throw new IllegalArgumentException("BUILDER_TYPE_DEPTH");
+        if (dev.codeana.common.TypeGraph.isView(raw)) {
+            // Rebase graph metadata while retaining numeric edges and recursive bounds.
+            // Traversing the compatibility view would turn real NULL lower bounds and
+            // recursive references into absent edges in newly generated declarations.
+            Map<String,Object> type = Json.map(raw);
+            dev.codeana.common.TypeGraph graph = dev.codeana.common.TypeGraph.owner(type);
+            Map<String,Object> closure = graph.canonical(List.of(dev.codeana.common.TypeGraph.reference(type)));
+            for (Object value : Json.list(closure.get("nodes"))) {
+                if (Thread.currentThread().isInterrupted())
+                    throw new java.util.concurrent.CancellationException("CANCELLED");
+                Map<String,Object> node = Json.map(value);
+                if (!"TYPEVAR".equals(node.get("kind"))) continue;
+                for (int i = 0; i < old.size(); i++)
+                    if (Objects.equals(node.get("owner"), Json.map(old.get(i)).get("owner"))
+                            && Objects.equals(node.get("name"), Json.map(old.get(i)).get("name")))
+                        node.put("owner", Json.map(replacements.get(i)).get("owner"));
+            }
+            return dev.codeana.common.TypeGraph.decode(closure).view(
+                    ((Number)Json.list(closure.get("roots")).getFirst()).intValue());
+        }
         if (raw instanceof Map) {
             Map<String, Object> input = Json.map(raw);
             Map<String, Object> result = new LinkedHashMap<>();
@@ -1654,6 +1676,10 @@ final class LombokDeclarations {
     }
 
     private static boolean complete(Map<String, Object> type, int depth) {
+        // A sealed graph has already propagated incomplete children to this root.
+        // Do not impose the legacy tree traversal's 32-level cutoff on that proof.
+        if (dev.codeana.common.TypeGraph.isView(type))
+            return Boolean.TRUE.equals(type.get("complete"));
         if (depth > 32 || Set.of("ERROR", "UNKNOWN").contains(type.get("kind"))) return false;
         if (Boolean.TRUE.equals(type.get("recursive")))
             return "TYPEVAR".equals(type.get("kind"))
@@ -1827,7 +1853,7 @@ final class LombokDeclarations {
 
     private static Map<String, Object> writtenType(Map<String, Object> type, Set<String> excluded, int depth) {
         if (depth > 64) throw new IllegalArgumentException("LOMBOK_WRITTEN_TYPE_BUDGET");
-        Map<String, Object> result = new LinkedHashMap<>(type);
+        Map<String, Object> result = dev.codeana.common.TypeGraph.copyRoot(type);
         if ("ARRAY".equals(type.get("kind")))
             result.put("component", writtenType(map(type.get("component")), excluded, depth + 1));
         else {

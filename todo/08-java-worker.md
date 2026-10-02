@@ -742,3 +742,18 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 | 拒绝的隔离改动 | `collector-chain-staged-frozen-24/receipt.json`未通过：类型变量边界registry额外恢复了参考未确认的toMap目标；没有接入产品TypeOperations。lambda/entry链仍需继续查证；不把额外目标或更高标签自动当作对齐。 |
 
 新版完整fixture现为40组，预计319项；之前312项/105 native及真实431667事实的回执只证明上一版，不替代本次新源码验收。
+
+## 平面类型图消费者接入（2026-10-03）
+
+| 工作 | 当前事实 |
+|---|---|
+| 新图读取/输出边界 | 扩展按需解码单事实，保留不可变共享类型视图；验证输出后编码联合根闭包。修复 Spring 注入、SOFA 和 XML 的类型读取 |
+| 原始调用证据 | 归档只编码副本，后续恢复目标可继续读取原始模型，不再重复编码 |
+| 文件目录与基线 | 保留全部语义字段，移除发布封装字段后比较规范化闭包；不以引用槽位与视图对象的表示差异判失配 |
+| Lombok 泛型 | 重绑定通过数值边闭包保留递归和真实 NULL 下界；已封存图的 complete 证明不重复套旧树的 32 层门槛 |
+| 已通过专项 | graph-consumer-deep-getter-fact-rust.log：9 项，包括 80 层 Getter、SuperBuilder 下界与 Spring 类型 full/delta；type-graph-super-builder-rebased.log：原完整/模块缓存对照通过 |
+| 初始消费者门禁 | 102 项中 98 通过、4 失败，正式失败回执保留；修复后完整 JVM/native 回执待刷新 |
+| 最新默认基线 | native-fixtures-20261002-231556：112 项通过；最新 core/service 发布查询 493.894 秒，MAIN 调用缺 122、多 31，TEST 调用零差异 |
+| 尚未关闭 | 默认图、原子版本升级、全绑定/所有消费者、40 模块独立语义与扩展差分、容量和 release；不标记 52 项全部完成 |
+
+正式补充：target/java-alignment/evidence/type-graph-consumers-jvm-20261003-000855 的 102 项全部通过，无输入/产物漂移；type-graph-native-20261003-001015 的九项全部通过；默认 Builder/SuperBuilder/框架/扩展 51 项和 SDK8 八项回归通过。native 消费者的压缩请求 fixture 仍错误使用版本 2，版本 3 要求已由 ABI 正确拒绝，待修正测试入口并重跑。

@@ -77,7 +77,7 @@ inputs_manifest = ".code-ana/java-inputs.json"
 |---|---|
 | 核心 | 声明、调用点/目标、字段读写、类型引用、控制上下文、独立语法节点关系、注解常量/默认值、继承/覆盖、诊断与 coverage；生成方法覆盖检查 SOURCE/JAR 泛型、raw、返回与访问规则，作为 possible 保存；错误选中不当成确认目标 |
 | 坐标 | 原始 UTF-16 → 捕获 UTF-8；生成声明无执行位置，不造 L0C0。生成签名的类型引用标注 `span_origin`，借原始生成来源的声明区间定位 |
-| 类型 | 桥输出有界结构化类型树，覆盖声明、泛型、通配符、数组、类型变量、方法类型与调用选中类型；`java.type`/`java.binding` facet 可查询。48 层 / 4096 节点预算截断向上传播 `complete=false`、告警及文件 partial，真实循环保留身份；5/20/40 层及 7 个结构化字段投影与冻结参考相等，尚未覆盖全部类型图及高级推断 |
+| 类型 | 默认桥输出有界结构化类型树；内部 opt-in 平面图已接入 SDK8、归档、公共事实及 Rust 发布校验，默认协议切换仍待完整验收。覆盖声明、泛型、通配符、数组、类型变量、方法类型与调用选中类型；`java.type`/`java.binding` facet 可查询。48 层 / 4096 节点预算截断向上传播 `complete=false`、告警及文件 partial，真实循环保留身份；5/20/40 层及 7 个结构化字段投影与冻结参考相等，尚未覆盖全部类型图及高级推断 |
 | 二进制 | ASM 9.8 只读 classpath JAR 与目标 Java 8 `rt.jar` 的类头/成员签名、父类型、注解、常量及异常，附在被引用外部符号；不加载业务类 |
 | 扩展 | 五类构建期 SPI 与 registry；版本/有效配置/依赖指纹；声明和事实分别暂存并校验。回调失败丢弃输出、披露 partial，strict/取消继续终止；project resource 只消费封存 inventory。全部 context 的 Java/call 输出先暂存，项目阶段按 world 可见性读取；可选单声明 SPI 有独立事务与诊断，内置分析器迁移及 selector/预算仍待补齐 |
 | Lombok model | Getter/Setter 访问级别、静态与 boolean 命名/冲突；Data/Value、三类构造器及 equals/hashCode/toString/canEqual 签名、八类 logger；有效修饰符独立保存。daemon 封存 `lombok.config` 祖先/目录层，支持 stopBubbling 和有限键；生成注解及 Deprecated/NonNull 有静态模型。Builder/SuperBuilder/UtilityClass 的有界子集已实现，完整 TYPE_USE 复制和一般建模恢复仍待补齐；只提供声明签名，不运行处理器或生成方法体，候选不当确认调用 |

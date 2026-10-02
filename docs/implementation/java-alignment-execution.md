@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN 调用绑定：94 个独立缺失、1 个额外目标及 30 对置信度差异 | 待完成 |
+| S1 | MAIN 调用绑定：92 个独立缺失、1 个额外目标及 30 对置信度差异 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -38,7 +38,7 @@
 | complete-callback-native-cabi.log | SDK8、缓存、取消/回收、处理器陷阱、主动崩溃隔离、包校验通过 |
 | core-service-main-test-complete-callback-1g-worker2g-20261002 | MAIN/TEST/XML 发布查询通过，431682 事实；全语义/全项目/容量尚未通过 |
 
-最新真实 revision：rev_f351d8bc30f24437bf13fee492a9d0e2。严格投影：声明 8332、调用点/归属 35813 零差异；目标缺 124、多 31（其中 30 对相同目标状态差异）。SOURCE 类型缺 2、多 3，集中在 ForwardInterfaceTypeHandler 一个回调。TEST 的调用、SOURCE 类型、反射成员和继承投影全部零差异。
+最新真实 revision：rev_d6e9b601132445fd82310be63070079c（core-service-main-test-selected-binary-fresh-inputs-20261002，493.894 秒，发布及查询通过）。严格投影：声明 8332、调用点/归属 35813 零差异；目标缺 122、多 31（其中 30 对相同目标状态差异）。SOURCE 类型缺 2、多 3，集中在 ForwardInterfaceTypeHandler 一个回调。TEST 的调用、SOURCE 类型、反射成员和继承投影全部零差异。
 
 原版 SOURCE 类型缺 11 中，9 项已由本轮回调重验消除；历史文档的“8 项”计数有误。仍然保留原始回执，不将局部对照或发布成功当作 52 项完整通过。
 
@@ -56,3 +56,28 @@
 - NoCode 新图失败曾由缓存把视图展开、公共身份依赖 javac 对象共享及声明无变化仍复制类型导致。已修复，未删减比较字段；公开闭包按完整元数据及角色边进行结构划分，捕获身份和不完整原因保持不同，原始模型图不变。type-graph-compiler-model.log 的八项仍通过，含 10001 深度图、独立上下文共享差异及捕获负例。
 - Rust workspace 回归与全部 targets 的 clippy 已通过；新增校验反例继续按实际日志记录。完整消费者、原子版本切换、默认产品图、native/daemon/真实语义验收尚未完成。
 - type-graph-native-20261002-231041/receipt.json：新版 GraalVM 共享库经 release Rust host/C ABI 的七项图证明全部通过，16.444 秒，无源码或产物漂移；实际输出仍经 Rust 产品发布校验器。此为 opt-in 图的真实 native 验证；未开启默认图，未把全语义 gate 置为通过。新版默认树模式的模型 29、文件签名 7、模块签名 9 项回归通过。
+
+## 消费者接入修复（本轮）
+
+| 事项 | 证据/状态 |
+|---|---|
+| 默认 native 基线 | native-fixtures-20261002-231556：112 项通过，266.948 秒，无源码/产物漂移 |
+| 最新真实项目局部验收 | core-service-main-test-selected-binary-fresh-inputs-20261002：MAIN/TEST/XML 发布查询通过；复原配置，无非预期信号 |
+| 调用目标差分 | 缺 122、多 31；92 个独立缺失、1 个独立额外及 30 对状态差异。新增保留 Stream.filter/collect 两个原版目标 |
+| TEST 调用投影 | 声明 2924、调用点 17612、目标 17632 零差异；不替代全语义对照 |
+| 新图扩展读取 | ExtensionContext 按事实惰性解码公开引用，再返回不可变共享类型视图；FactSink 在验证完成后重新编码扩展输出 |
+| 新图恢复目标 | FactExtractor 只编码归档副本，避免改变后续恢复目标读取的调用点证据、导致重复编码 |
+| 新门禁 | java_graph_consumer_alignment.py：直接运行框架/XML/反射/模块缓存/扩展的现有断言和 full/delta 比较，不转换结果、不删减比较字段；正式 JVM 回执已通过；native 消费者回执待完成 |
+| 已完成专项 | graph-consumer-fact-rust.log：7 项通过；graph-consumer-default-framework.log：12 项通过 |
+| 未合入试验 | 无条件移除 lambda javac 参数快捷路径导致嵌套回调恢复预算失败；按 recovered_callback 存在性一律降级会破坏 46 个同类回调中的已对齐事实。两种试验均已撤销 |
+
+平面类型图仍仅内部 opt-in。默认开启、原子协议版本切换、全部 Java 消费者、全 40 模块语义差分与最终发行门禁尚未完成。初始消费者探测曾与 test-compile 重叠，相关 ClassNotFoundException 不作为产品缺陷或正式证据；正式回执必须在编译完毕、输入及产物稳定后执行。
+
+| 新正式回执 | 结果 |
+|---|---|
+| type-graph-consumers-jvm-20261003-000855 | 102 项全部通过，284.667 秒，无输入/产物漂移 |
+| type-graph-native-20261003-001015 | SDK8→native→Rust 发布校验九项全部通过，36.396 秒，无输入/产物漂移 |
+| graph-consumer-defaults-final.log | 默认 Builder/SuperBuilder/框架/扩展 51 项通过，129.781 秒 |
+| graph-consumer-sdk8-model-final.log | SDK8 图模型/归档/独立原版探测八项通过 |
+
+修复完整目录与基线表示不同导致的保守全量回退；公开注入类型断言通过类型根读取器访问新图，不修改事实或基线。SuperBuilder 重绑定以数值边保留递归和 NULL 下界，已封存图直接采用传播后的 complete 证明；80 层 Getter 能输出完整类型。

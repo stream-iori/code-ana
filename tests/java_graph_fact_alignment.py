@@ -11,6 +11,9 @@ import java_model_tests as models
 import java_module_signature_alignment as modules
 import java_alignment as alignment
 import java_functional_reference_alignment as reference
+import java_framework_alignment as frameworks
+import java_lombok_alignment as lombok
+import java_lombok_super_builder_alignment as super_builders
 
 
 class GraphFacts(models.Models):
@@ -100,6 +103,52 @@ class GraphFacts(models.Models):
         binding = next(f for f in facts if f['relation'] == 'java.binding' and f['parent'] == site['id'])
         self.assertEqual(binding['attributes']['schema_version'], 4)
         self.assertEqual(binding['attributes']['evidence_owner'], site['id'])
+
+    def test_graph_framework_reads_and_reencodes_types_before_rust_publication(self):
+        source = '''interface Api {} @org.springframework.stereotype.Component class Use {
+          @org.springframework.beans.factory.annotation.Autowired Api field;
+          @org.springframework.context.annotation.Bean Api factory(Api dependency){return dependency;}
+        }'''
+        def context(body):
+            return self.context('frameworkgraph', frameworks.BASE | frameworks.DI | {'Use.java': body},
+                                spring=True, type_graph=True)
+        facts = self.analyze([context(source)], cache=True)['facts']
+        injections = [f for f in facts if f['relation'] == 'java.spring.injection']
+        self.assertCountEqual([f['attributes']['role'] for f in injections], ['field', 'factory_parameter'])
+        for injection in injections:
+            payload, root = self.graph(injection, 'injected_type')
+            self.assertEqual(payload['nodes'][root]['element'], 'Api')
+        changed = context(source.replace('return dependency;', 'return field;'))
+        delta = self.analyze([changed], facts, cache=True)
+        full = self.analyze([changed])['facts']
+        self.assertEqual(self.merged(facts, delta), sorted(full, key=lambda f: f['id']))
+
+    def test_graph_generated_getter_retains_80_levels_and_super_builder_lower_bound(self):
+        nested = 'Leaf'
+        for _ in range(80):
+            nested = 'Box<' + nested + '>'
+        context = self.context('gettergraph', lombok.Lombok.files(
+            self, 'class Leaf{} class Box<T>{} @lombok.Getter class Use {' + nested + ' deep;}'),
+            lombok='model', type_graph=True)
+        facts = self.analyze([context])['facts']
+        getter = next(f for f in facts if f['kind'] == 'declaration' and f['signature'] == 'Use#getDeep()')
+        payload, root = self.graph(getter, 'return_type_model')
+        for _ in range(80):
+            self.assertEqual(payload['nodes'][root]['element'], 'Box')
+            self.assertTrue(payload['nodes'][root]['complete'])
+            root = payload['nodes'][root]['arguments'][0]
+        self.assertEqual(payload['nodes'][root]['element'], 'Leaf')
+        helper = super_builders.SuperBuilders()
+        helper.root = self.root
+        builder = helper.fixture('''@lombok.experimental.SuperBuilder abstract class Parent<T> {T name;}
+          @lombok.experimental.SuperBuilder class Child<N extends Number> extends Parent<String> {N value;}''')
+        builder['type_graph'] = True
+        generated = self.analyze([builder])['facts']
+        self.assertTrue(any(f['signature'] == 'Child$ChildBuilder' for f in generated))
+        field = next(f for f in generated if f['kind'] == 'declaration' and f['signature'] == 'Child#value')
+        payload, root = self.graph(field, 'type_model')
+        self.assertEqual(payload['nodes'][root]['kind'], 'TYPEVAR')
+        self.assertEqual(payload['nodes'][payload['nodes'][root]['lower']]['kind'], 'NULL')
 
     def test_graph_cold_delta_deletion_and_visit_order_keep_public_identity(self):
         original = 'class Use<T extends Comparable<T>> { T value; String read(String x){return x.trim();} }'

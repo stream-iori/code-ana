@@ -55,7 +55,8 @@
         "tests/java_type_reference_alignment.py",
         "tests/java_type_reference_reference.py",
         "tests/java_type_graph_alignment.py",
-        "tests/java_graph_fact_alignment.py"
+        "tests/java_graph_fact_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -70,7 +71,8 @@
         "native-fixtures",
         "type-reference",
         "type-reference-native",
-        "type-graph-native"
+        "type-graph-native",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "已补捕获身份/上下界、owner/index 与有限递归 CAPTURE、泛型继承链 actual Integer 保留和错误实参拒绝；完整目标类型/raw/复杂 SAM 与生产矩阵仍缺",
@@ -284,7 +286,8 @@
       "status": "pending",
       "checks": [
         "tests/java_type_graph_alignment.py",
-        "tests/java_graph_fact_alignment.py"
+        "tests/java_graph_fact_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [],
       "implementation_complete": false,
@@ -292,7 +295,8 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-native"
+        "type-graph-native",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "SOURCE/binary/default/TYPE_USE 注解值全矩阵及缺失类型反例"
@@ -303,7 +307,8 @@
       "capability": "元注解与属性合成",
       "status": "partial",
       "checks": [
-        "tests/java_semantic_alignment.py"
+        "tests/java_semantic_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -312,7 +317,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "跨模块组合注解、AliasFor、缓存失效与预算/循环负例完整验收"
@@ -347,7 +353,8 @@
       "checks": [
         "tests/java_reflection_alignment.py",
         "tests/java_native_probe.py",
-        "tests/java_e2e.py"
+        "tests/java_e2e.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -356,7 +363,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "switch/default/fallthrough 与相同常量/句柄来源合并已实现，13 JVM fixture；冻结参考两类分支证据投影 4/4、7/7 一致。完整异常分支/帧边界、SOURCE/binary 嵌套身份及独立查找预算的新 native/daemon 验收仍待完成"
@@ -666,7 +674,8 @@
       "capability": "Spring 组件/Bean",
       "status": "partial",
       "checks": [
-        "tests/java_annotation_alignment.py"
+        "tests/java_annotation_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -675,7 +684,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "组合 stereotype、名称/别名、Primary/Qualifier 与完整 Bean 元信息"
@@ -686,7 +696,8 @@
       "capability": "Spring 注入",
       "status": "partial",
       "checks": [
-        "tests/java_annotation_alignment.py"
+        "tests/java_annotation_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -695,7 +706,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "字段/方法/构造器/参数注入、单构造器推断、javax/jakarta、qualifier 与工厂依赖"
@@ -706,7 +718,8 @@
       "capability": "Spring MVC",
       "status": "partial",
       "checks": [
-        "tests/java_framework_alignment.py"
+        "tests/java_framework_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -715,7 +728,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "跨模块/组合注解/有效属性的完整 MVC 矩阵及 native/增量证据"
@@ -726,7 +740,8 @@
       "capability": "Spring 生命周期/事件",
       "status": "partial",
       "checks": [
-        "tests/java_framework_alignment.py"
+        "tests/java_framework_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -735,7 +750,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "生命周期/事件注册完整正反例、binary meta 与增量证据"
@@ -748,7 +764,8 @@
       "checks": [
         "tests/java_xml_alignment.py",
         "tests/java_native_probe.py",
-        "tests/java_e2e.py"
+        "tests/java_e2e.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -757,7 +774,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "已补 SOURCE/JAR XML 类型提示、参数索引、别名实参、同返回类型的工厂重载；Spring 版本 4。新原生/产品矩阵和参考语义差分仍待验收"
@@ -768,7 +786,8 @@
       "capability": "SOFA 注解",
       "status": "partial",
       "checks": [
-        "tests/java_framework_alignment.py"
+        "tests/java_framework_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -777,7 +796,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "SOFA API 形状校验、interfaceType/uniqueId 正反例与跨模块验收"
@@ -790,7 +810,8 @@
       "checks": [
         "tests/java_sofa_xml_alignment.py",
         "tests/java_xml_alignment.py",
-        "tests/java_e2e.py"
+        "tests/java_e2e.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -799,7 +820,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "已补 SOFA 4/public service/reference、MsgBroker publisher/consumer、binding/transport/channel/event/listener 树；完整配置/来源与 native/daemon、iopengw 语义差分尚需验收"
@@ -1056,7 +1078,8 @@
       "capability": "复杂 NoCode 签名",
       "status": "partial",
       "checks": [
-        "tests/java_signature_alignment.py"
+        "tests/java_signature_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -1065,7 +1088,8 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "SOURCE/binary/NoCode 复杂签名的完整模型/事实等价验收"
@@ -1081,14 +1105,16 @@
         "tests/java_module_overlay_alignment.py",
         "tests/java_shared_cache_alignment.py",
         "tests/java_e2e.py",
-        "crates/query/src/lib.rs"
+        "crates/query/src/lib.rs",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "并行/原始 javac NoCode/Lombok 重应用/不同 Maven CP SOURCE 回退、共享 256 MiB 磁盘和任务 pin、captured SOURCE 五元组导航已实现并专项验证；隐藏前置不发布。新完整生产/容量和独立语义差分待验收"
@@ -1126,7 +1152,8 @@
         "tests/java_signature_alignment.py",
         "tests/java_framework_alignment.py",
         "tests/java_type_graph_alignment.py",
-        "tests/java_graph_fact_alignment.py"
+        "tests/java_graph_fact_alignment.py",
+        "tests/java_graph_consumer_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -1136,7 +1163,8 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-native"
+        "type-graph-native",
+        "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
         "已修复源码变化但相同扩展 owner 被跳过的增量发布错误；新增模型/框架/config/resource/失败查找的完整失效闭包仍待验收"

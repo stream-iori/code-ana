@@ -4,6 +4,7 @@ import dev.codeana.analysis.ModelAnnotations;
 import dev.codeana.common.Json;
 import dev.codeana.common.FactHeaders;
 import dev.codeana.common.ModelArchive;
+import dev.codeana.common.TypeEvidence;
 
 import java.util.*;
 
@@ -37,7 +38,12 @@ public final class ExtensionContext {
             @Override
             public Object get(int index) {
                 Objects.checkIndex(index, length);
-                return freeze(facts.get(index));
+                Map<String, Object> fact = Json.map(facts.get(index));
+                Map<String, Object> attributes = Json.map(fact.get("attributes"));
+                if (!attributes.containsKey(TypeEvidence.TABLE)) return freeze(fact);
+                Map<String, Object> decoded = new TreeMap<>(fact);
+                decoded.put("attributes", TypeEvidence.decode(attributes));
+                return freeze(decoded);
             }
             @Override
             public Map<String, Object> factHeader(int index) {

@@ -8,6 +8,12 @@ JDK8=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME',pathlib.Path.home()/'.sdkm
 JDK25=pathlib.Path(os.environ.get('JAVA_HOME',pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'))
 sha=lambda b:hashlib.sha256(b).hexdigest()
 key=lambda n,*p:n+'_'+sha(json.dumps(p,ensure_ascii=False,separators=(',',':')).encode())
+def type_node(attributes,value):
+ """Borrow a public root node; graph child roles remain numeric references."""
+ if isinstance(value,dict) and '$java_type' in value:
+  graph,slot=value['$java_type'];payload=attributes['java_type_graphs'][graph]
+  return payload['nodes'][payload['roots'][slot]]
+ return value
 def initializer_sources(value='1'):
  text='''import java.util.stream.Stream; import java.util.function.Supplier;
  class A {
