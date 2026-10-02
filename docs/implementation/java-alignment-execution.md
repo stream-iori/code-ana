@@ -218,3 +218,10 @@ binary-signature-graph-candidate 尚未合入。独立冻结签名六组和图�
 隔离二进制图修正的 type-graph-bindings-jvm-20261003-034701 为 199 项、810.6 秒，all_ok=true；binary-signature-graph-candidate-graph-functional-27 为显式 opt-in 图模式 27 组独立冻结投影相等。恢复 CAPTURE 导出为带原始捕获身份的 TYPEVAR，未知上界保持不完整；候选中未推断的方法变量上界不能当作具体接收者的否定证据。更早的 48/62 项失败回执保留。另一个未开启 graph 的 27 组只计默认兼容性，不冒充图验证。上述图候选仍未合入、未默认切换。
 
 MAIN 回调补充证据的独立取证：相同全部 MAIN 源码范围下，补充编译证明替换基线造成 2 缺/3 多，与真实 ForwardInterfaceTypeHandler 形态一致。隔离分离后 MAIN 基线 3/3，相应 TEST 四组仍严格相等；补充完整证明保留在独立关系。首次错误逗号 source-root 枚举 0 文件的失败回执保留，不作为产品缺陷或能力证明。
+
+
+## MAIN 补充类型证明分离：产品 JVM 验证
+
+`supplemental-separated-product-regressions.log`：10 项通过，25.354 秒；新增 MAIN 原始/恢复关系保留、独立完整证明、字段类型修改及 Getter 删除 full/delta 等价。`supplemental-reference-20261003-041123-69026/receipt.json`：五组冻结对照全部通过，无输入/产物漂移，MAIN Getter 3/3、TEST Map 链 13/13、Getter 4/4、Builder 3/3、SuperBuilder 3/3。fixture 的使用方 scope/world 已改为真实 TEST，与冻结参考源根一致。
+
+产品 MAIN 的新证明保存为 `supplemental_type_reference`；基准 `type_reference` 不被替换，证明中的原 javac 证据、诊断、签名 hash/归属保留。此为 JVM 阶段终态，当前安装 native 尚未包含该修正；真实 SOURCE 类型差分仍使用上一版缺 2/多 3，待重建复验。

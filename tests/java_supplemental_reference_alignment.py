@@ -16,6 +16,7 @@ from java_supplemental_signature_alignment import SupplementalSignatures, LIBRAR
 
 
 def proof(name, library, consumer, shape, evidence, native):
+    scope = "MAIN" if name.startswith("main-") else "TEST"
     base = evidence / name
     base.mkdir()
     case = SupplementalSignatures()
@@ -23,7 +24,7 @@ def proof(name, library, consumer, shape, evidence, native):
     try:
         if native:
             case.analyze = reference.native_analyze.__get__(case)
-        context = case.fixture(library, consumer, shape)
+        context = case.fixture(library, consumer, shape, scope=scope)
         auxiliary_roots = sorted({unit['path'].split('/')[0] for unit in context['sources'] if not unit['publish']})
         facts = case.analyze([context])['facts']
         for unit in context['sources']:
@@ -41,6 +42,8 @@ def proof(name, library, consumer, shape, evidence, native):
                '--source-root', 'app@MAIN=' + ','.join(auxiliary_roots), '--source-root', 'app@TEST=use',
                '--jdk-home', str(models.JDK8), '--java-version', '8', '--lombok', 'ast',
                '--vm-classpath', 'true', '--no-classpath', '--full', '--output', str(base / 'index.db')]
+    if scope == 'MAIN':
+        command = command[:command.index('--source-root')] + ['--source-root','app@MAIN=.'] + command[command.index('--jdk-home'):]
     with (base / 'reference.log').open('wb') as stream:
         completed = subprocess.run(command, stdout=stream, stderr=subprocess.STDOUT, timeout=120,
                                    env=dict(os.environ, ANATOMIST_HOME=str(base / 'reference-state')))
@@ -97,6 +100,7 @@ def main():
     evidence.mkdir()
     inputs, artifacts = alignment.input_files(), reference.probe_artifacts(args.native)
     cases = {
+        'main-getter': (LIBRARY,CONSUMER,'getter'),
         'complete-object-callbacks': (MAP_LIBRARY, MAP_CONSUMER, 'getter'),
         'getter': (LIBRARY, CONSUMER, 'getter'),
         'generic-builder': ('@lombok.Builder @lombok.Getter class Api<T extends Leaf> {java.util.List<T> values;} class Leaf {void run(){}}',

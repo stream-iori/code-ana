@@ -21,13 +21,15 @@ class SupplementalSignatures(unittest.TestCase):
     analyze = models.Models.analyze
     merged = models.Models.merged
 
-    def fixture(self, library=LIBRARY, consumer=CONSUMER, shape='getter'):
+    def fixture(self, library=LIBRARY, consumer=CONSUMER, shape='getter', scope='TEST'):
         if shape == 'getter':
             library_context = self.context('lib', lombok.Lombok.files(self, library), lombok='model')
         else:
             helper = super_builders.SuperBuilders if shape == 'super-builder' else builders.Builders
             library_context = helper.fixture(self, library)
         context = self.context('use', {'Use.java': consumer}, lombok='model')
+        context.update(scope=scope, context='use@'+scope, world=models.key('world','use',scope))
+        context['sources'] = [unit | dict(scope=scope,world=context['world']) for unit in context['sources']]
         context['sources'] = [dict(unit, publish=False) for unit in library_context['sources']] + context['sources']
         context['digest'] = models.sha(json.dumps([(s['path'], s['hash']) for s in context['sources']]).encode())
         return context
@@ -74,6 +76,41 @@ class SupplementalSignatures(unittest.TestCase):
         self.assertEqual(len(getter), 1)
         self.assertEqual(getter[0]['status'], 'possible')
         self.assertFalse(getter[0]['evidence_complete'])
+
+    def assert_main_baseline_and_supplemental(self, facts, leaf='p.Leaf'):
+        callback = self.callback(facts)
+        by = {f['id']: f for f in facts}
+        baseline = self.references(facts, callback)
+        self.assertCountEqual([(target, f['attributes']['type_context'], f['status']) for target, f in baseline],
+                              [('java.util.function.Consumer','functional_interface','possible'),
+                               (leaf,'parameter_type','possible')])
+        self.assertTrue(all(not f['evidence_complete'] and f['origin']=='source_recovery' for _,f in baseline))
+        supplemental = [f for f in facts if f['parent']==callback['id'] and f['relation']=='supplemental_type_reference']
+        self.assertCountEqual([(by[f['target']]['signature'],f['attributes']['type_context']) for f in supplemental],
+                              [('java.util.function.Consumer','functional_interface'),
+                               (leaf,'generic_arg'),(leaf,'parameter_type')])
+        self.assertTrue(all(f['status']=='complete' and f['evidence_complete']
+                            and f['origin']=='javac_generated_signatures' for f in supplemental))
+        self.assertTrue(all(f['attributes']['signature_attribution']['evidence_owner']==callback['id'] for f in supplemental))
+        self.assertTrue(type_attributes(callback)['supplemental_callback']['sam']['complete'])
+
+    def test_main_preserves_baseline_and_stores_stronger_proof_separately(self):
+        result = self.analyze([self.fixture(scope='MAIN')])
+        self.assert_main_baseline_and_supplemental(result['facts'])
+
+    def test_main_supplemental_type_edit_and_getter_removal_preserve_full_delta(self):
+        base = self.analyze([self.fixture(scope='MAIN')],cache=True)
+        self.assert_main_baseline_and_supplemental(base['facts'])
+        changed = self.fixture(LIBRARY.replace('List<Leaf>','List<Other>'),scope='MAIN')
+        delta = self.analyze([changed],base['facts'],cache=True)
+        full = self.analyze([changed],cache=True)
+        self.assertEqual(self.merged(base['facts'],delta),sorted(full['facts'],key=lambda f:f['id']))
+        self.assert_main_baseline_and_supplemental(full['facts'],'p.Other')
+        removed = self.fixture(LIBRARY.replace('@lombok.Getter ',''),scope='MAIN')
+        delta = self.analyze([removed],full['facts'],cache=True)
+        cold = self.analyze([removed],cache=True)
+        self.assertEqual(self.merged(full['facts'],delta),sorted(cold['facts'],key=lambda f:f['id']))
+        self.assertFalse([f for f in cold['facts'] if f['relation']=='supplemental_type_reference'])
 
     def map_callbacks(self, facts):
         by = {f['id']: f for f in facts}

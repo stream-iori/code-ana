@@ -187,7 +187,7 @@ public final class FactExtractor {
     }
 
     public List<Object> extract(Map<String, Object> model) throws Exception {
-        SourceTypeReferences sourceTypes = new SourceTypeReferences(model);
+        SourceTypeReferences sourceTypes = new SourceTypeReferences(model, "TEST".equals(context.get("scope")));
         Map<String, Map<String, Object>> callSites = new HashMap<>();
         Map<String, List<String>> annotationOrigins = new HashMap<>();
         // Locals in auxiliary method bodies are compiler inputs, not dependency API. Retain
@@ -672,7 +672,8 @@ public final class FactExtractor {
                     Integer.toString(use.ordinal())), "reference", path);
             f.put("parent", symbol(signature));
             f.put("target", target);
-            f.put("relation", "type_reference");
+            f.put("relation",Boolean.FALSE.equals(use.proof().get("baseline_projection"))
+                    ? "supplemental_type_reference" : "type_reference");
             f.put("span", span(path, use.position()));
             f.put("attributes", Json.object("reference_kind", "type", "type_context", use.context(),
                     "generic_depth", use.depth(), "target_signature", use.target()));

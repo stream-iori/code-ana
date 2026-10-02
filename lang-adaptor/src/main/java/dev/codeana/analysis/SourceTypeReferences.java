@@ -25,10 +25,13 @@ final class SourceTypeReferences {
     private final List<Object> declared;
     private final Map<String,List<Integer>> callbackParameters = new HashMap<>();
     private final List<Map<String,Object>> diagnostics = new ArrayList<>();
+    private final boolean supplementalBaseline;
     private int work;
     private String source;
 
-    SourceTypeReferences(Map<String,Object> model) {
+    SourceTypeReferences(Map<String,Object> model) { this(model,false); }
+    SourceTypeReferences(Map<String,Object> model, boolean supplementalBaseline) {
+        this.supplementalBaseline=supplementalBaseline;
         syntax = list(model.get("syntax")); declared = list(model.get("declarations"));
         for (int i=0;i<syntax.size();i++) {
             Map<String,Object> n=map(syntax.get(i));
@@ -151,7 +154,7 @@ final class SourceTypeReferences {
             Map<String,Object> tree=index==null?Map.of():map(syntax.get(index));
             List<Use> collected = new ArrayList<>();
             try {
-            List<SignatureUse> uses=new ArrayList<>();
+            List<SignatureUse> uses=new ArrayList<>(),supplementalUses=new ArrayList<>();
             List<Map<String,Object>> written=new ArrayList<>();
             if(Set.of("FIELD","ENUM_CONSTANT","RECORD_COMPONENT").contains(k)) {
                 signature(map(a.get("type_model")),"field_type",0,0,uses);
@@ -177,7 +180,7 @@ final class SourceTypeReferences {
                 }
             } else if(k.equals("LAMBDA")) {
                 Map<String,Object> supplemental=map(a.get("supplemental_callback"));
-                if(!supplemental.isEmpty()) {
+                if(supplementalBaseline && !supplemental.isEmpty()) {
                     signature(map(supplemental.get("functional_type_model")),"functional_interface",0,0,uses);
                     for(Object parameter:list(supplemental.get("parameter_type_models")))
                         signature(map(parameter),"parameter_type",0,0,uses);
@@ -192,6 +195,11 @@ final class SourceTypeReferences {
                         recovered(map(parameter),"parameter_type",0,uses);
                 }
                 }
+                if(!supplementalBaseline && !supplemental.isEmpty()) {
+                    signature(map(supplemental.get("functional_type_model")),"functional_interface",0,0,supplementalUses);
+                    for(Object parameter:list(supplemental.get("parameter_type_models")))
+                        signature(map(parameter),"parameter_type",0,0,supplementalUses);
+                }
             } else continue;
             Map<String,ArrayDeque<Map<String,Object>>> positions=new HashMap<>();
             for(Map<String,Object> n:written)positions.computeIfAbsent(text(n.get("symbol")),ignored->new ArrayDeque<>()).add(n);
@@ -201,7 +209,12 @@ final class SourceTypeReferences {
                 Map<String,Object> position=queue==null || queue.isEmpty()?d:queue.removeFirst();
                 if(position!=d)used.add(id(position.get("id")));
                 collected.add(new Use(d,use.target(),position,use.context(),use.depth(),ordinal++,use.recovered(),
-                        k.equals("LAMBDA") ? map(a.get("supplemental_callback")) : Map.of()));
+                        k.equals("LAMBDA") && supplementalBaseline ? map(a.get("supplemental_callback")) : Map.of()));
+            }
+            for(SignatureUse use:supplementalUses) {
+                Map<String,Object> proof=new TreeMap<>(map(a.get("supplemental_callback")));
+                proof.put("baseline_projection",false);
+                collected.add(new Use(d,use.target(),d,use.context(),use.depth(),ordinal++,false,proof));
             }
             for(Map<String,Object> n:written) {
                 if(used.contains(id(n.get("id"))))continue;
