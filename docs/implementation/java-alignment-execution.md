@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN/TEST 调用绑定：最新局部对照 81 个独立缺失、0 个额外目标及 6 对置信度差异；TEST 调用恢复零差异 | 待完成 |
+| S1 | MAIN/TEST 调用绑定：最新已发布局部对照 79 个独立缺失、0 个额外目标及 6 对置信度差异；TEST 调用恢复零差异 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -354,3 +354,19 @@ CallRecovery 在原 argument_type_models 为 ERROR/UNKNOWN/NONE/空类型时，�
 | conditional-argument-product-builder-regressions.log | 合入后 14 项通过，35.895 秒；原 NONE 保留、错误分支、缓存/full/delta 全字段断言通过 |
 
 当前 formal MAIN/TEST 的正式计数仍为 79 个独立缺失、0 个额外、6 对置信度差异；需新 native/daemon revision 才能更新。下一步重建原生 bundle 并冻结同版完整回归。
+
+
+## 深层类型与 NONE 参数同版正式回执
+
+| 9c1d2c5 产物回执 | 结果 |
+|---|---|
+| type-graph-bindings-jvm-20261003-061746 | 210 项通过，1216.784 秒，无源码/产物漂移 |
+| native-fixtures-20261003-061746 | 131 项通过，1058.569 秒，无源码/产物漂移；以实际回执计数，不使用预计 132 |
+| type-graph-consumers-native-20261003-061746 | 91 项通过，891.157 秒，无源码/产物漂移 |
+| deep-none-functional-reference-native-30/receipt.json | 30 组独立冻结原版目标/置信度/原字节 span 多重集严格一致，无产物漂移 |
+
+native 图绑定组及 core-service MAIN/TEST/XML 新 revision 尚未终态，不能复用前版回执或把写入阶段计为发布成功。40 模块同版有效输入已重新导出；尚未执行完整 reactor 验收。并行耗时不用于性能比较。
+
+隔离图驻留候选将 external/written executable 模型移入任务 RowSpool，并在来源图封存后释放编码器原图身份。树 505 行、图 504 行的所有模型字段与当前桥完全相等；十项 SDK8 模型/归档/负例及退休身份、继续追加、树兼容、sealed/closed 拒绝、关闭删除专项通过。第一次真实图请求在原 512MiB 编译器预算内完成，但探针误带旧 CallRecovery override，仅为内存诊断；已另启正确 classpath 的新版调用探针。候选尚未合入，不称容量通过。
+
+lambda 普通辅助方法最小复现的原版目标缺一。局部回调参数 fallback 虽补齐该目标，却多产生一个原版没有的 getter 目标，未合入；完整差分字段及失败回执保留。没有观察到非预期进程被杀。
