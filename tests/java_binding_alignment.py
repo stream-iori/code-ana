@@ -394,7 +394,9 @@ class Bindings(unittest.TestCase):
         self.assertEqual(echo['origin'],'binary_recovery')
         self.assertEqual(type_attributes(echo)['recovered_return_type_model']['element'],'java.lang.String')
         external = next(f for f in facts if f['signature']=='lib.Base#echo(java.lang.CharSequence)')
-        formal = type_attributes(external)['binary_member']['type_model']['type_parameters'][0]
+        member = type_attributes(external)['binary_member']
+        formals = member.get('type_parameters', member['type_model'].get('type_parameters', []))
+        formal = formals[0]
         self.assertEqual(formal['owner'],'lib.Base#echo(java.lang.CharSequence)')
         explicit = next(f for name,_,f in recovered if name=='h.getApi().echo'
                         and type_attributes(f)['recovered_return_type_model']['element']=='java.lang.CharSequence')
