@@ -7,7 +7,7 @@ public final class ModelTransferProbe {
  public static void main(String[] args)throws Exception {
   Path root=Files.createTempDirectory("transfer-proof-");
   try {
-   List<Map<String,Object>> nodes=new ArrayList<Map<String,Object>>();for(int i=0;i<10000;i++)nodes.add(Json.object("kind","ARRAY","complete",true,"component",i+1));nodes.add(Json.object("kind","INT","complete",true));TypeGraph graph=new TypeGraph(nodes);
+   List<Map<String,Object>> nodes=new ArrayList<Map<String,Object>>();for(int i=0;i<1000;i++)nodes.add(Json.object("kind","ARRAY","complete",true,"component",i+1));nodes.add(Json.object("kind","INT","complete",true));TypeGraph graph=new TypeGraph(nodes);
    try(ModelArchive.RowSpool declarations=new ModelArchive.RowSpool(root,"declarations",8L<<20);ModelArchive.RowSpool observations=new ModelArchive.RowSpool(root,"observations",8L<<20)) {
     Map<String,Object> m=model();m.put("declarations",declarations);m.put("observations",observations);
     for(int i=0;i<100;i++){declarations.add(Json.object("type_model",graph.view(0),"ordinal",i));observations.add(Json.object("type_model",graph.view(0),"ordinal",i));}

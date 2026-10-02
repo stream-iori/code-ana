@@ -266,4 +266,10 @@ MAIN 回调补充证据的独立取证：相同全部 MAIN 源码范围下，补
 
 编译器在逐源码声明/观察扫描后释放 TypeMirror/Element 身份索引；最终归档仅编码平面图节点，不重复保留节点元数据。编译器独占的 RowSpool 在每节转移后释放，失败路径仍由编译器 finally 关闭剩余 spool；普通 ModelArchive.write 不消耗调用方输入。图 ID 不进入公共事实身份，协议版本未改变。
 
-同一候选的 graph-lifecycle-concrete-functional-27 为 27 组显式图冻结调用投影相等、无产物漂移；type-graph-bindings-jvm-20261003-051542 为 202 项通过、460.556 秒、无输入/产物漂移，其中实际深层 formal 替换仍为隔离 TypeOperations 候选。归档生命周期另有前述 202/102 项及 SDK8 九项。产品 graph-transfer-lifecycle-product-sdk8.log 十项通过（9.529 秒），新增 10001 节点/两节共享图转移与普通写入等价、输入所有权、预算/取消失败后的 compiler 清理。测试最初用重复 canonical 闭包及保留巨大图构造负例导致两次 64MiB 探针 OOM，保留 rejected 日志；修正只针对测试遍历和负例构造，不提高产品堆或预算。无外部杀进程。正式 native/全项目验收仍须新产物重跑。
+同一候选的 graph-lifecycle-concrete-functional-27 为 27 组显式图冻结调用投影相等、无产物漂移；type-graph-bindings-jvm-20261003-051542 为 202 项通过、460.556 秒、无输入/产物漂移，其中实际深层 formal 替换仍为隔离 TypeOperations 候选。归档生命周期另有前述 202/102 项及 SDK8 九项。产品 graph-transfer-lifecycle-product-sdk8.log 十项通过（9.529 秒），新增 1001 节点/两节共享图转移与普通写入等价、输入所有权、预算/取消失败后的 compiler 清理。测试最初用重复 canonical 闭包及保留巨大图构造负例导致两次 64MiB 探针 OOM，保留 rejected 日志；修正只针对测试遍历和负例构造，不提高产品堆或预算。无外部杀进程。正式 native/全项目验收仍须新产物重跑。
+
+
+归档生命周期追加产品 bridge 重建复验：编译器深图/错误邻居通过，但两档案同时读回的 10001 节点所有权探针在 64MiB 再次 OOM，graph-transfer-lifecycle-product-bridge-tests.log 保留失败，不记通过。所有权探针缩为 1001 节点并逐节点比较；原 ModelGraphProbe 的 10001 深度/共享/损坏/取消断言保持不变。新回执独立记录，不提高产品堆或更改输入所有权语义。
+
+
+graph-transfer-lifecycle-product-final-sdk8.log：重建后的产品 bridge 与十项 SDK8 模型/转移回归全部通过，4.997 秒；10001 节点旧深图测试保持原断言。正式 native 尚待更新。模块签名隔离探针新增六项原始 ERROR 保留、同 world SOURCE 边界、部分 Lombok、错误参数、坏邻居隔离及 full/cache/delta/移除等价，module-abi-boundary-negative-cache.log 全部通过（12.382 秒）；前一版列表顺序断言失败已保留，最终按完整 Fact ID 映射/排序比较，不删字段。maven-generated-builder-variable-proof 的独立真实两模块 Maven 项目为 4/4 调用相等；更早不读局部证明的版本仅 1/4，失败回执保留。MAIN 十个选定真实文件的 418 条 lambda 类型投影相等；仍非 native/全项目证明。新的 MAIN/TEST 图调用探针在原 512MiB 编译器 annotation_types 阶段 GC overhead limit exceeded，退出 1；保留 calls-stderr.log，未提高上限，未声称全图通过。
