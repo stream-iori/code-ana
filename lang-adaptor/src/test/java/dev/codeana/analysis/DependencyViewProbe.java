@@ -16,7 +16,8 @@ public final class DependencyViewProbe {
                         .mapToLong(p -> { try { return Files.size(p); } catch (Exception e) { throw new RuntimeException(e); } }).sum();
             }
             System.out.println(Json.write(Json.object("syntax", Json.list(model.get("syntax")).size(),
-                    "observations", Json.list(model.get("observations")).size(), "bytes", bytes)));
+                    "observations", Json.list(model.get("observations")).size(), "bytes", bytes,
+                    "byte_representation", "compiler_model_archive")));
         }
     }
 }

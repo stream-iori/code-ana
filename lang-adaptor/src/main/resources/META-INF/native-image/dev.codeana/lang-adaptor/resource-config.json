@@ -3,5 +3,9 @@
     "includes": [
       { "pattern": "lombok/annotation-copy-candidates\\.txt" }
     ]
-  }
+  },
+  "bundles": [
+    { "name": "com.sun.org.apache.xerces.internal.impl.msg.XMLMessages" },
+    { "name": "com.sun.org.apache.xerces.internal.impl.msg.SAXMessages" }
+  ]
 }

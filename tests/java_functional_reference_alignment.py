@@ -74,7 +74,8 @@ def probe_artifacts(native):
 
 
 def native_analyze(self, contexts, baseline=None, parallelism=1, cache=False, compact=False):
-    request = dict(version=2, facts=True, full=baseline is None, baseline=baseline or [], java_home=str(models.JDK8),
+    model_probe = getattr(self, 'probe', '') == 'dev.codeana.analysis.DependencyViewProbe'
+    request = dict(version=3 if compact else 2, facts=not model_probe, full=baseline is None, baseline=baseline or [], java_home=str(models.JDK8),
                    bridge=os.environ.get('CODEANA_TEST_BRIDGE', str(ROOT / 'lang-adaptor/target/compiler-bridge.jar')),
                    scratch=str(self.root), contexts=contexts, parallelism=parallelism)
     if cache:
@@ -91,7 +92,14 @@ def native_analyze(self, contexts, baseline=None, parallelism=1, cache=False, co
     self.assertEqual(result.returncode, 0, result.stderr)
     self.assertFalse(list(self.root.rglob('*.class')))
     self.assertFalse(list(self.root.glob('compiler-*')))
-    return json.loads(result.stdout)
+    output = json.loads(result.stdout)
+    if model_probe:
+        self.assertIsNone(baseline)
+        self.assertEqual(len(output['models']), 1)
+        model = output['models'][0]
+        return dict(syntax=len(model['syntax']), observations=len(model['observations']),
+                    bytes=len(result.stdout.encode('utf8')), byte_representation='native_model_json')
+    return output
 
 
 def canonical(value, kind=''):

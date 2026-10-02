@@ -81,3 +81,28 @@
 | graph-consumer-sdk8-model-final.log | SDK8 图模型/归档/独立原版探测八项通过 |
 
 修复完整目录与基线表示不同导致的保守全量回退；公开注入类型断言通过类型根读取器访问新图，不修改事实或基线。SuperBuilder 重绑定以数值边保留递归和 NULL 下界，已封存图直接采用传播后的 complete 证明；80 层 Getter 能输出完整类型。
+
+## native 消费者新增取证
+
+| 失败 | 根因与处理 |
+|---|---|
+| 压缩请求的两个验收用例 | native fixture 误发请求版本 2；已按现有 ABI 改为压缩请求 3，保留版本校验及非法发布反例 |
+| 辅助源码载荷探针 | 原 JVM 私有 DependencyViewProbe 返回归档统计，C ABI 默认返回事实；已通过现有 facts=false native 模型入口测实际 syntax/observations 及 UTF-8 JSON 字节，并明确 byte_representation，不替换或跳过断言 |
+| 错误 XML 牵连健康资源 | SDKMAN Java 25 java.xml 模块的 Xerces XMLMessages/SAXMessages 未进入 native bundle，抛 MissingResourceException 撤销整个项目 callback；新增诊断资源配置，待重建及严格坏/好资源共存验收 |
+
+graph-native-model-input-diagnostic.log 的三项 native 定向测试已通过；错误 XML 仍待重建后的证据，不把前一个 84 项失败回执计为通过。
+
+## 本轮终态（2026-10-03）
+
+| 正式回执 | 结果 |
+|---|---|
+| type-graph-consumers-jvm-20261003-002052 | 102 项通过；277.732 秒，无输入/产物漂移 |
+| type-graph-consumers-native-20261003-002052 | 84 项通过；297.2 秒，无输入/产物漂移 |
+| type-graph-native-20261003-002149 | 9 项通过；29.311 秒，无输入/产物漂移 |
+| native-fixtures-20261003-002120 | 112 项通过；313.451 秒，无输入/产物漂移 |
+
+graph-native-xml-resource-fixed.log：默认树/平面图两种模式均验证错误 XML 独立失败、健康 XML 继续产出；压缩协议及发布反例、native 模型载荷的三个定向验收通过。Xerces XMLMessages/SAXMessages 已进入新共享库；target/lib/java 成套替换为本轮通过产物，旧目录保留用于回滚。上一轮失败回执仍保留，不篡改为成功。上述回归均已终态，不再描述为运行中。
+
+本轮提交首先为 5b75160，随后单独提交 native XML 资源与测试入口修复。S2 尚未关闭：默认图与原子版本切换、所有绑定/类型消费者、完整真实语义仍待；S1 的 92 个独立缺失、1 个独立额外和 30 对状态差异仍未关闭。全 40 模块、全部扩展、Rust 通用缓存迁移、容量与 release 门禁未通过。
+
+产品 IPC 补充：graph-consumer-product-ipc-final.log 验证 release Rust host 使用本轮成套 native 产物，protocol10、共享输入、full/delta、校验和、事实验证、Acked 和热 host 复用全部通过。未据此关闭 40 模块语义或容量验收。

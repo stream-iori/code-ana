@@ -61,6 +61,7 @@ class DependencyViews(unittest.TestCase):
         self.probe = 'dev.codeana.analysis.DependencyViewProbe'
         original = self.analyze([context | dict(full_auxiliary_model=True)])
         compact = self.analyze([context])
+        self.assertEqual(compact['byte_representation'], original['byte_representation'])
         self.assertLess(compact['syntax'], original['syntax']//10)
         self.assertLess(compact['observations'], original['observations']//10)
         self.assertLess(compact['bytes'], original['bytes']//2)
