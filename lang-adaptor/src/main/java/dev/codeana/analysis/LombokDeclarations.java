@@ -1270,11 +1270,8 @@ final class LombokDeclarations {
                 effective.add("private");
             describe(field, summary, effective);
         } else if (!summary.detected.isEmpty()) describe(field, summary, List.of());
-        for (Object annotation : items(attrs(field).get("annotations")))
-            if (!"lombok.NonNull".equals(Json.map(annotation).get("type"))
-                    && Json.string(Json.map(annotation), "type")
-                            .matches(".*\\.(NonNull|Nonnull|Nullable|CheckForNull|NotNull)"))
-                summary.partial("annotation_propagation", "annotation_copy_pending");
+        if (needsAnnotationCopies(field))
+            aggregate.partial("annotation_propagation", "annotation_copy_pending");
         aggregate.merge(summary);
     }
 
@@ -1868,16 +1865,21 @@ final class LombokDeclarations {
         return result;
     }
 
+    private static boolean annotationCopyNeedsModel(Map<String, Object> annotation) {
+        return !"java.lang.Deprecated".equals(annotation.get("type"))
+                && LombokAnnotationCopies.needsModel(annotation);
+    }
+
     private static boolean needsAnnotationCopies(Map<String, Object> declaration) {
         if (Boolean.FALSE.equals(attrs(declaration).get("written_type_complete"))) return true;
         if (items(attrs(declaration).get("annotations")).stream()
-                .anyMatch(a -> LombokAnnotationCopies.needsModel(map(a)))) return true;
+                .anyMatch(a -> annotationCopyNeedsModel(map(a)))) return true;
         Set<Object> modifiers = new HashSet<>(items(attrs(declaration).get("modifier_annotation_types")));
         Map<String, Object> type = map(attrs(declaration).get("type_model"));
         for (int depth = 0; "ARRAY".equals(type.get("kind")) && depth < 64; depth++)
             type = map(type.get("component"));
         return items(type.get("annotation_models")).stream()
-                .anyMatch(a -> modifiers.contains(map(a).get("type")) && LombokAnnotationCopies.needsModel(map(a)));
+                .anyMatch(a -> modifiers.contains(map(a).get("type")) && annotationCopyNeedsModel(map(a)));
     }
 
     private static List<Object> copiedAnnotations(Map<String, Object> field, boolean nonNull) {

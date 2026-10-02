@@ -273,3 +273,8 @@ MAIN 回调补充证据的独立取证：相同全部 MAIN 源码范围下，补
 
 
 graph-transfer-lifecycle-product-final-sdk8.log：重建后的产品 bridge 与十项 SDK8 模型/转移回归全部通过，4.997 秒；10001 节点旧深图测试保持原断言。正式 native 尚待更新。模块签名隔离探针新增六项原始 ERROR 保留、同 world SOURCE 边界、部分 Lombok、错误参数、坏邻居隔离及 full/cache/delta/移除等价，module-abi-boundary-negative-cache.log 全部通过（12.382 秒）；前一版列表顺序断言失败已保留，最终按完整 Fact ID 映射/排序比较，不删字段。maven-generated-builder-variable-proof 的独立真实两模块 Maven 项目为 4/4 调用相等；更早不读局部证明的版本仅 1/4，失败回执保留。MAIN 十个选定真实文件的 418 条 lambda 类型投影相等；仍非 native/全项目证明。新的 MAIN/TEST 图调用探针在原 512MiB 编译器 annotation_types 阶段 GC overhead limit exceeded，退出 1；保留 calls-stderr.log，未提高上限，未声称全图通过。
+
+
+## Lombok 注解复制覆盖：产品修正
+
+不再按 NonNull/NotNull 等名称后缀推断未完成能力；使用冻结实际复制名单，Deprecated 单独遵循原政策。独立 lombok-copy-policy-frozen/receipt.json：七个调用严格相等，Validation 的完整覆盖及 CopyCandidate 的 annotation_propagation 部分覆盖逐字段相等，无产物漂移。产品 test-compile 成功；lombok-copy-policy-product-regressions.log 的新正/负例、Builder、SuperBuilder 共 22 项通过（31.366 秒）。实际复制候选继续明确 partial，未降低原门禁。native 重建复验待完成。

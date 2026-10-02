@@ -41,7 +41,7 @@
       "path": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "sha256": "d2d506432acc3beb99b7b1bcfb11700bebf3cb184d04e7f6a47973b46df5390f",
       "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/LombokDeclarations.java",
-      "changes": "Align written-field type annotation policy and explicit annotation option checks."
+      "changes": "Align written-field type annotation policy and explicit annotation option checks. Align annotation propagation with the actual frozen copy-candidate policy, excluding Deprecated, rather than annotation name suffixes; independent getter call and complete/partial metadata projections verified."
     },
     {
       "path": "anatomist-core/src/main/java/com/anatomist/core/java/JavaIdentities.java",

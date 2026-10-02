@@ -37,6 +37,27 @@ class Lombok(java_model_tests.Models):
         off=changed|dict(lombok='off')
         self.assertEqual(self.merged(full,self.analyze([off],full)),sorted(self.analyze([off])['facts'],key=lambda f:f['id']))
 
+    def test_annotation_copy_coverage_uses_frozen_policy_instead_of_name_suffix(self):
+        source = ('@lombok.Getter class Validation {@javax.validation.constraints.NotNull String name;} '
+                  '@lombok.Getter class CopyCandidate {@org.jetbrains.annotations.NotNull String name;}')
+        files = self.files(source) | {
+            'javax/validation/constraints/NotNull.java': 'package javax.validation.constraints; import java.lang.annotation.*; @Target(ElementType.FIELD) public @interface NotNull {}',
+            'org/jetbrains/annotations/NotNull.java': 'package org.jetbrains.annotations; import java.lang.annotation.*; @Target(ElementType.FIELD) public @interface NotNull {}',
+        }
+        context = self.controls(self.context('app', files, lombok='model'), {
+            'app/lombok.config': 'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n',
+        })
+        facts = self.analyze([context])['facts']
+        summary = lambda name: self.declaration(facts, name)['attributes']['model_extensions']['lombok-model-v1']['summary']
+        self.assertEqual(summary('Validation')['coverage'], 'complete')
+        self.assertEqual(summary('Validation')['partial_capabilities'], [])
+        self.assertEqual(summary('CopyCandidate')['coverage'], 'partial')
+        self.assertEqual(summary('CopyCandidate')['partial_capabilities'], ['annotation_propagation'])
+        for owner in ('Validation', 'CopyCandidate'):
+            getter = self.declaration(facts, owner + '#getName()')
+            self.assertEqual(getter['origin'], 'lombok_model')
+            self.assertFalse(getter['declaration_resolved'])
+
     def files(self, source):
         common = {
             'lombok/AccessLevel.java': 'package lombok; public enum AccessLevel { PUBLIC, PROTECTED, PRIVATE, PACKAGE, MODULE, NONE }',
