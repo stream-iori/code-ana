@@ -27,9 +27,10 @@ public final class CompilerBridge implements AutoCloseable {
     private final RowSpool declarations;
     private final RowSpool observations;
     private final Map<String,List<Object>> declarationAnnotations = new HashMap<String,List<Object>>();
-    private final Map<String, Map<String, Object>> writtenExecutableTypes =
-            new HashMap<String, Map<String, Object>>();
-    private final Map<String, Object> external = new TreeMap<String, Object>();
+    private final Map<String,Integer> writtenExecutableTypes = new HashMap<String,Integer>();
+    private final Map<String,Integer> external = new TreeMap<String,Integer>();
+    private final RowSpool externalRows;
+    private final RowSpool writtenRows;
     private final Map<String, TypeElement> annotationTypes = new TreeMap<String, TypeElement>();
     private final List<Object> diagnostics = new ArrayList<Object>();
     private final Set<String> typeBudgetDiagnostics = new HashSet<String>();
@@ -66,24 +67,35 @@ public final class CompilerBridge implements AutoCloseable {
     }
 
     private CompilerBridge(Path work, long archiveBytes) throws IOException {
-        RowSpool d = null, o = null, s = null;
+        RowSpool d = null, o = null, s = null, e = null, w = null;
         try {
             d = new RowSpool(work, "declarations", archiveBytes); o = new RowSpool(work, "observations", archiveBytes); s = new RowSpool(work, "syntax", archiveBytes);
+            e = new RowSpool(work, "external", archiveBytes);
+            w = new RowSpool(work, "written", archiveBytes);
         } catch (IOException failure) {
-            for (RowSpool row : new RowSpool[]{d,o,s}) if (row != null)
+            for (RowSpool row : new RowSpool[]{d,o,s,e,w}) if (row != null)
                 try { row.close(); } catch (IOException cleanup) { failure.addSuppressed(cleanup); }
             throw failure;
         }
-        declarations = d; observations = o; syntax = s;
+        declarations = d; observations = o; syntax = s; externalRows = e; writtenRows = w;
     }
     public void close() throws IOException {
         IOException failure = null;
-        for (RowSpool row : new RowSpool[]{declarations,observations,syntax}) {
+        for (RowSpool row : new RowSpool[]{declarations,observations,syntax,externalRows,writtenRows}) {
             try { row.close(); } catch (IOException cleanup) {
                 if (failure == null) failure = cleanup; else failure.addSuppressed(cleanup);
             }
         }
         if (failure != null) throw failure;
+    }
+
+    /** Persist a sealed source before dropping its original compiler graph owners. */
+    private void retireSourceGraph() {
+        if (!graphTypes) return;
+        CompilerTypeGraph graph = typeGraphs.remove(currentSource);
+        if (graph != null) graph.snapshot();
+        for (RowSpool row : new RowSpool[]{declarations, observations, syntax, externalRows, writtenRows})
+            row.retireCompilerIdentities();
     }
 
     public static void main(String[] args) throws Exception {
@@ -259,13 +271,13 @@ public final class CompilerBridge implements AutoCloseable {
             for (CompilationUnitTree unit : units) {
                 currentSource = Json.string(sources.get(Paths.get(unit.getSourceFile().toUri()).toRealPath().toString()),"path");
                 new Scanner(unit, true).scan(unit, null);
-                if(graphTypes) {CompilerTypeGraph graph=typeGraphs.remove(currentSource);if(graph!=null)graph.snapshot();}
+                retireSourceGraph();
             }
             phase = "observations";
             for (CompilationUnitTree unit : units) {
                 currentSource = Json.string(sources.get(Paths.get(unit.getSourceFile().toUri()).toRealPath().toString()),"path");
                 new Scanner(unit, false).scan(unit, null);
-                if(graphTypes) {CompilerTypeGraph graph=typeGraphs.remove(currentSource);if(graph!=null)graph.snapshot();}
+                retireSourceGraph();
             }
             for (Diagnostic<? extends JavaFileObject> d : listener.items) {
                 Map<String, Object> s =
@@ -341,7 +353,11 @@ public final class CompilerBridge implements AutoCloseable {
                 "syntax",
                 syntax,
                 "external",
-                new ArrayList<Object>(external.values()),
+                new AbstractList<Object>() {
+                    private final List<Integer> order=new ArrayList<Integer>(external.values());
+                    public int size(){return order.size();}
+                    public Object get(int index){return externalRows.get(order.get(index));}
+                },
                 "annotation_types", annotationHeaders,
                 "diagnostics",
                 diagnostics);
@@ -540,8 +556,10 @@ public final class CompilerBridge implements AutoCloseable {
                         TreePath receiverPath = new TreePath(path, receiver);
                         a.put("receiver_type_model", sourceModifierAnnotations(sourceType(new TreePath(receiverPath, receiver.getType()), 0), receiverPath));
                     }
-                    if (!originalExecutable.equals(executable) || hasTypeAnnotations(executable, 0))
-                        writtenExecutableTypes.put(signature(element), executable);
+                    if (!originalExecutable.equals(executable) || hasTypeAnnotations(executable, 0)) {
+                        writtenExecutableTypes.put(signature(element), writtenRows.size());
+                        writtenRows.add(executable);
+                    }
                     else a.put("type_model", compilerExecutable);
                 } catch (WorkerSourceAnnotations.Unavailable incomplete) {
                     a.put("written_type_complete", false);
@@ -1060,8 +1078,8 @@ public final class CompilerBridge implements AutoCloseable {
         String key = signature(element);
         if (key.isEmpty() || elementPath(element) != null || external.containsKey(key)) return;
         budget();
-        external.put(
-                key,
+        external.put(key,externalRows.size());
+        externalRows.add(
                 Json.object(
                         "signature",
                         key,
@@ -1573,7 +1591,7 @@ public final class CompilerBridge implements AutoCloseable {
                             target == null ? "" : stableType(target.asType()),
                             "declared_type_model",
                             target == null ? null : writtenExecutableTypes.containsKey(signature(target))
-                                    ? writtenExecutableTypes.get(signature(target)) : typeModel(target.asType()),
+                                    ? writtenRows.get(writtenExecutableTypes.get(signature(target))) : typeModel(target.asType()),
                             "binding_origin",
                             "javac"));
             Map<String, Object> attributes = Json.map(out.get("attributes"));

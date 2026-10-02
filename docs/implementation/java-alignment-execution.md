@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN/TEST 调用绑定：最新已发布局部对照 79 个独立缺失、0 个额外目标及 6 对置信度差异；TEST 调用恢复零差异 | 待完成 |
+| S1 | MAIN/TEST 调用绑定：最新已发布局部对照 56 个独立缺失、0 个额外目标及 6 对置信度差异；TEST 调用恢复零差异 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -370,3 +370,26 @@ native 图绑定组及 core-service MAIN/TEST/XML 新 revision 尚未终态，�
 隔离图驻留候选将 external/written executable 模型移入任务 RowSpool，并在来源图封存后释放编码器原图身份。树 505 行、图 504 行的所有模型字段与当前桥完全相等；十项 SDK8 模型/归档/负例及退休身份、继续追加、树兼容、sealed/closed 拒绝、关闭删除专项通过。第一次真实图请求在原 512MiB 编译器预算内完成，但探针误带旧 CallRecovery override，仅为内存诊断；已另启正确 classpath 的新版调用探针。候选尚未合入，不称容量通过。
 
 lambda 普通辅助方法最小复现的原版目标缺一。局部回调参数 fallback 虽补齐该目标，却多产生一个原版没有的 getter 目标，未合入；完整差分字段及失败回执保留。没有观察到非预期进程被杀。
+
+
+## NONE 参数新 revision 终态与图驻留修正
+
+| 9c1d2c5 同版正式证据 | 结果 |
+|---|---|
+| type-graph-bindings-native-20261003-061746 | 199 项通过，1335.495 秒，无源码/产物漂移；JVM 210、默认 native 131、消费者 native 91 均已终态 |
+| core-service-main-test-deep-none-20261003 | MAIN/TEST/XML 发布、查询通过，431718 事实；revision `rev_223ccf0341994f5f9db470c902d27e81`，1218.832 秒；配置恢复，源码/产物/manifest 不漂移，无异常信号 |
+| core-service-call-diff.json | 声明 8332、调用点/归属 35813 零差异；目标 35771/35827，缺 62、多 6；严格保留 6 对状态差异后为 56 个独立缺失、0 个独立额外，比前版恢复 23 个目标 |
+| core-service-type-diff.json | SOURCE 类型 12188/12188、反射成员 20、继承 528/152 全部零差异；完整语义/40 模块/容量仍为 false |
+
+图驻留修正已进入产品源码：external 和 written executable 采用任务模型 RowSpool；来源图 snapshot 后 flush 当前行并清除原图编码身份，后续来源继续追加，排序和原有字段不变。异常/正常关闭覆盖全部五类 spool。协议不变，真实 bridge SHA 使旧语义缓存失效；默认图尚未开启。
+
+| 合入依据 / 当前验证 | 结果 |
+|---|---|
+| compiler-graph-retention-candidate/multi-source-model-equivalence.json | 跨源继承、泛型、TYPE_USE、方法原始类型、深度 80 和错误邻居：树 514 行、图 513 行全部字段与旧桥严格相等 |
+| compiler-graph-retention-candidate/correct-product-target-equivalence.json | 正确新版 CallRecovery classpath、真实选定九文件的图/树均 1431 目标，零差异；独立冻结参考缺 15、多 6，原始匿名未归一，不替代正式完整差分 |
+| compiler-graph-retention-product-model-final.log | 新桥构建后的 11 项 SDK8 模型/归档验证通过，8.255 秒；新增 retirement 稳定行、继续追加、原图身份释放、sealed/closed 拒绝及文件清理 |
+| type-graph-native-20261003-064455 | 新 native 经 release Rust host/C ABI 的九项图证明通过，35.653 秒；各事实经过 Rust 校验 |
+
+新桥 native 默认 fixture 与图绑定完整组正在运行，完成前不标记终态通过；runtime 成套安装和同版 Maven manifest 刷新随后执行。没有放宽任何堆、节点、工作量、物理记录或归档上限。
+
+旧 supplemental 回调候选没有改善选定九文件，还存在自身索引错误：声明不含 tree_id，却以默认 0 建立回调表。新隔离探测改按 sealed source/start，并扩大到当前残余的 14 文件；尚未作为产品进展。普通辅助方法参数 fallback 的额外 getter 目标继续保持拒绝。

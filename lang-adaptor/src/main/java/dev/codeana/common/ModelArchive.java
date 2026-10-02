@@ -115,6 +115,13 @@ public final class ModelArchive {
                 pending=null;
             }
         }
+        /** The compiler seals each source graph before moving to another source. */
+        public void retireCompilerIdentities() {
+            if (closed) throw new IllegalStateException("MODEL_SPOOL_CLOSED");
+            if (sealed) throw new IllegalStateException("MODEL_SPOOL_SEALED");
+            flush();
+            encoder.graphs.retireEncoderIdentities();
+        }
         /** Finish a stable snapshot, dropping encoder identities but retaining bounded row decoding. */
         public void seal() throws IOException {
             if (closed) throw new IllegalStateException("MODEL_SPOOL_CLOSED");
