@@ -797,3 +797,5 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 | 剩余验收 | 全 40 模块 MAIN/TEST/XML、完整模型/扩展严格差分、Rust 通用缓存迁移、独占容量及统一三个最终 gate 仍未通过；52 项继续不自动勾选 |
 
 2026-10-03 cast 原 javac 表达式证据已进入源码，新 native 最小原版证明 8/8 与两项正反/增量/80 层图检查通过；14 个残余 MAIN 文件隔离对照净恢复 14 目标、校正 1 状态，剩余 42 独立缺失/0 独立额外/5 状态对，尚待完整正式回归和新发布差分。3b6803c 局部新版保持 56/0/6；独立全 40 模块在 migration/core/service 调用长链预热发现 contains(null) NPE，未发布、无异常杀进程，正在隔离修正。不勾选完整对齐。
+
+2026-10-03 migration 全范围阻断修复：普通源码类没有 modeled_capability 时不再 contains(null)；8 段普通调用链 9 个 resolved、cache/full/delta 与现有 40 setter/14 getter 正反例六项通过。cast TestCase 重复发现已纠正。上一版完整 native 回归因重复测试和误清理开发产物作废，31 组独立原版严格对照仍有效；新版本在独立工作区重跑，尚未关闭全 40 模块或完整语义。

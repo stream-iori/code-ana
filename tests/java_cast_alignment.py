@@ -2,18 +2,21 @@
 """Attributed cast types in incomplete generated-getter chains, including graph delivery."""
 import unittest
 
-from java_collector_alignment import Collectors, MAP_CAST_CHAIN_SOURCE
-from java_graph_fact_alignment import GraphFacts
+import java_collector_alignment as collectors
+import java_graph_fact_alignment as graph
+
 from java_type_views import type_attributes
+
+MAP_CAST_CHAIN_SOURCE = collectors.MAP_CAST_CHAIN_SOURCE
 
 
 class CastBindings(unittest.TestCase):
-    setUp = Collectors.setUp
-    context = Collectors.context
-    analyze = Collectors.analyze
-    merged = Collectors.merged
-    fixture = Collectors.fixture
-    targets = Collectors.targets
+    setUp = collectors.Collectors.setUp
+    context = collectors.Collectors.context
+    analyze = collectors.Collectors.analyze
+    merged = collectors.Collectors.merged
+    fixture = collectors.Collectors.fixture
+    targets = collectors.Collectors.targets
 
     def test_cast_callback_keeps_known_leaf_and_cached_full_delta(self):
         context = self.fixture(MAP_CAST_CHAIN_SOURCE)
@@ -44,7 +47,7 @@ class CastBindings(unittest.TestCase):
         context = self.fixture(source)
         context['type_graph'] = True
         result = self.analyze([context])
-        GraphFacts.validate_rust(self, [context], result)
+        graph.GraphFacts.validate_rust(self, [context], result)
         casts = [node for fact in result['facts'] if fact['relation'] == 'java.syntax'
                  for node in type_attributes(fact)['nodes'] if node['kind'] == 'TYPE_CAST']
         self.assertEqual(len(casts), 1)

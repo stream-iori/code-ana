@@ -174,7 +174,7 @@ final class CallRecovery {
         Result factory=resolve(chain.getLast(),0);
         Map<String,Object> declaration=sources.get(text(factory.type.get("element")));
         if(declaration==null || !Set.of("builder","super_builder").contains(
-                map(declaration.get("attributes")).get("modeled_capability")))return;
+                text(map(declaration.get("attributes")).get("modeled_capability"))))return;
         for(int i=chain.size()-2;i>=0;i--)resolve(chain.get(i),0);
     }
 

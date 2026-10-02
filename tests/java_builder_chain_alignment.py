@@ -26,6 +26,20 @@ class BuilderChains(unittest.TestCase):
         by = {f['id']: f for f in facts}
         return {by[f['target']]['signature']: f for f in facts if f['kind'] == 'call_target'}
 
+    def test_plain_eight_receiver_chain_ignores_absent_modeled_capability(self):
+        source = ('@lombok.Getter class Trigger {String value;} '
+                  'class Plain {Plain next(){return this;} void done(){}} '
+                  'class Use {void read(Plain p){p' + '.next()' * 8 + '.done();}}')
+        base = self.analyze([self.fixture(source)], cache=True)
+        targets = [fact for fact in base['facts'] if fact['kind'] == 'call_target']
+        self.assertEqual(len(targets), 9)
+        self.assertTrue(all(fact['status'] == 'resolved' for fact in targets))
+        changed = self.fixture(source.replace('return this;', 'return null;'))
+        delta = self.analyze([changed], base['facts'], cache=True)
+        full = self.analyze([changed], cache=True)
+        self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+        self.assertFalse([fact for fact in full['facts'] if fact['attributes'].get('recovery_failure')])
+
     def test_forty_setters_recover_build_without_relaxing_limits(self):
         facts = self.analyze([self.fixture(SOURCE)])['facts']
         targets = self.targets(facts)

@@ -410,3 +410,11 @@ cast 修复已进入源码：SDK8 syntax 只为 TYPE_CAST 保存原 javac `expre
 | migration-npe-diagnostic/product-stderr.log | JVM 独立复现：CallRecovery.warmBuilderReceiver 的 Set.of(builder,super_builder).contains(null)，普通源码类没有 modeled_capability；隔离修复中 |
 
 正式 cast 默认 native / 图绑定 / 31 组独立原版回归仍在运行；未关闭全项目、默认图、完整扩展语义、缓存迁移、容量或 release。
+
+## 普通调用链空值修正与验收调度复原
+
+在独立工作区修正 warmBuilderReceiver：普通源码类缺失 modeled_capability 时以空字符串读取，只允许 builder/super_builder 预热。新增 8 段普通调用链的回归；旧代码触发相同 NPE，新代码保留全部 9 个 resolved 目标，缓存正文修改 full/delta 完全相等，不改任何预算。原失败 migration 模块的隔离 JVM 逐调用输出成功，310 发布源码 /1264 上下文源码，分析不再崩溃；大结果 AnalysisProbe 的一次 JSON_BUDGET 是测试探针整包输出上限，保留失败证据，不扩大产品记录预算。
+
+cast 新 native 的 31 组冻结原版目标/状态/位置对照 all_ok=true，产物不漂移。cast JVM 发现测试模块直接导入 TestCase 导致重复发现旧套件，原 runner 实际执行 60 项；改为模块导入，新增 cast 两项 10.342 秒、Builder 六项 19.379 秒通过。
+
+b4ef988 默认/图绑定 native 完整回归拒绝：导入旧 GraphFacts 导致多余测试，且操作误将不接受 --help 的构建脚本当作帮助调用，清理了主开发产物。已停止误触构建、从已安装包逐文件原样恢复运行时，重新编译开发类；失败日志保留，不将早前短专项或 31 原版组算作完整回归。daemon 安装包未改动、core-service 正式验收不受清理影响。后续完整门禁在独立源码/运行时工作区冻结执行。没有外部杀进程。
