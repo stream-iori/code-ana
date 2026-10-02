@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN 调用绑定：92 个独立缺失、0 个额外目标及 30 对置信度差异 | 待完成 |
+| S1 | MAIN/TEST 调用绑定：最新局部对照 103 个独立缺失、1 个额外目标及 7 对置信度差异；先修复新增回归 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -191,3 +191,14 @@ f6436ee 的正式 JVM 全量回执 generic-selected-full-jvm-20261003-020708 已
 | receiver-evidence-product-collector.log | 合入正式源码后 18 项通过，53.306 秒，包含三项新增回归 |
 
 两组新来源已纳入正式独立冻结对照，最低目标数使用真实 9/10；入口共 25 组。stable-lambda-constructor-confidence-stage5 的第一次暂存编译失败，随后的原类探测已用 rejected-evidence.json 明确拒绝；正式阶段证据为验证覆盖类哈希、编译成功后才启动的 stage5-verified。隔离阶段不替代 native、发布查询和真实项目差分；本次实现后的 native 与真实 MAIN 差分待重新验证，92/0/30 仍是上版正式计数。
+
+
+## 接收者模型证据真实复验：回归未关闭
+
+639d530 的正式 opt-in 图绑定 JVM 197 项（837.114 秒）和 native 186 项（913.430 秒）通过；默认 native 116 项（573.969 秒）及冻结功能调用 25 组通过，均无输入/产物漂移。这些局部门禁不替代真实项目语义差分。
+
+core-service-main-test-receiver-evidence-20261003 发布/query 成功，431673 事实、863.135 秒，revision 为 rev_5ab25492812647d0b458bc798db8c00b；配置恢复、无非预期进程信号。严格 module=app/core/service、scope=MAIN,TEST 投影的声明 8332、调用点/归属 35813 零差异；目标缺 110、多 8，其中 7 对置信度差异，实际为 103 个独立缺失、1 个独立额外目标。SOURCE 类型仍缺 2、多 3；反射、extends、implements 零差异。相较 f6436ee 的 92/0/30，置信度改善但独立缺失回归；新增缺失包含两个 TEST Mockito.thenReturn，不能沿用旧版 TEST 零差异结论。
+
+隔离诊断已复现同名但无关的生成 Getter 令候选失败反复重算，100000 工作步骤耗尽后屏蔽原 javac 已解析调用。冻结参考的 resolve 会缓存失败结果；候选按相同 provisional 上下文隔离适配，最小自包含调用投影 14/14 相等。产品未合入、正式完整门禁仍待终态。另一个隔离方向仅在 javac 已选中且候选有 UNKNOWN 时保留表达式，避免把证据不全当成明确不适用；需独立负例和真实复验，不提前认定通过。
+
+binary-signature-graph-candidate 尚未合入。独立冻结签名六组和图身份/边界检查通过，但完整消费者到第 48 项发现恢复 CAPTURE 子节点不符合公开图节点形状（TYPE_GRAPH_KIND）。首次读旧 binary type_parameters 位置的 fixture 错误已改为读取真实 raw member formal，但保留 owner 断言；两份失败回执保留，均不能计作产品图通过。
