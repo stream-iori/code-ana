@@ -287,3 +287,21 @@ Java 以真实 world 和完整声明覆盖选择辅助 NoCode 输入，不再按
 module-abi-boundary-product-regressions.log：34 项产品 JVM 回归通过（85.260 秒）；额外解析失败模块负例 1 项通过（1.465 秒）。supplemental-reference-20261003-053848-18473：五组冻结 MAIN/TEST 投影相等；MAIN fixture 修正为真正单 world，并捕获与 oracle 相同的 Lombok 配置。module-abi-reference-20261003-054001：实际 Maven 两模块的完整 Builder 4/4、部分 Delegate 1/1 对照通过，两份均无输入/产物漂移。永久模块边界七项已接入 JVM、opt-in 图消费者和 native fixture 门禁；Maven oracle 支持 native 独立重跑。
 
 该阶段尚未更新 native；真实 core/service SOURCE 差分仍使用 545f28a 的缺 179/多 76，调用仍为 81 个独立缺失及 6 对状态差异。418/418 的隔离 MAIN 回调不能替代完整新版本真实对照。
+
+
+## 模块边界 native 复验（2026-10-03）
+
+产品 Java 修正为 545213b；验收入口/预算反例提交为 5050d36。新 native 已构建，并将 compiler-bridge、Maven 元数据桥、共享库、manifest 成套安装；旧目录保留。安装回执：module-abi-boundary-installed-bundle.json。
+
+| 同版本正式回执 | 结果 |
+|---|---|
+| native-fixtures-20261003-054614 | 128 项通过，470.82 秒；源码/产物漂移为空 |
+| type-graph-consumers-native-20261003-054614 | 91 项通过，377.629 秒；源码/产物漂移为空 |
+| module-abi-reference-20261003-054614 | 原版真实两模块 Maven 对照：完整 Builder 4/4、部分 Delegate 1/1 相等 |
+| supplemental-reference-20261003-054614-43395 | 五组 native 独立原版调用投影相等，all_ok=true |
+| type-graph-bindings-native-20261003-054614 | 仍在运行，尚无终态 |
+| core-service-main-test-module-abi-verified-inputs-20261003 | 重新导出 40 模块输入清单后，MAIN/TEST/XML 运行中；尚不能更新正式差分计数 |
+
+第一次真实项目运行明确 JAVA_METADATA_STALE：安装后的 Maven 桥 SHA 与旧清单不同，worker 未启动。第二次运行发现导出器 output 相对于执行目录，清单未在项目目录；保留失败回执，将外部导出的清单复制至项目并核对选定模块/桥 SHA 后重新运行。两次均无外部杀进程，未把失败改为成功。
+
+隔离候选：deep-concrete-current-boundary-values.log 三项实际泛型叶子、候选隔离及 full/cache/delta/删除通过；deep-concrete-reference-20261003-055019 的三个独立原版回执为 2/2、0/0、4/4 相等，聚合包装器最初 KeyError 的日志保留，由 verified-case-receipts.json 汇总已存在的回执，不算正式产品验收。深层 NoCode 专项揭示 BINARY_SIGNATURE_BUDGET（64 层）及 graph 源码注解层数重复累计的 SOURCE_TYPE_DEPTH_BUDGET，隔离修正中，仍未合入。完整语义、默认图、全项目、容量和发行门禁未关闭。
