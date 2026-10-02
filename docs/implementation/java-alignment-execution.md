@@ -436,3 +436,17 @@ b4ef988 的正式 core-service MAIN/TEST/XML：revision `rev_361ad86b2e9240b8bce
 普通调用链修复的 e8f9a88 独立工作区已通过默认 native 134 项；图绑定和40模块 MAIN/TEST/XML仍运行。早前受共享产物误清理的回归记录为 rejected-run.json，不与这次新回执混用。完整52项、默认类型图、缓存迁移、容量和release仍未关闭。
 
 普通表达式产品 native 构建完成（46.7秒）；expression-binding-product-sdk8.log 11 项通过（8.769秒），cast/instanceof/算术 JVM 三项及实际 native C ABI 三项通过（native25.684秒），包含健康表达式证据、错误/缺失 getter、80层图Rust校验与完整cache/full/delta。新的完整 native/图消费者/33组冻结参考尚待终态；不复用隔离31组作为正式产品验收。
+
+## 原选中声明与模型输入产品修正
+
+源自冻结JavaCallFacts实际实现：模型恢复仅Unavailable时，javac原选中声明仍有效；若依赖模型输入，保留目标但降为possible、evidence_complete=false。只有已证明不适用、歧义/访问限制或预算耗尽才拒绝。原CallSite、java.binding、ERROR参数及未解析子调用保持，CallTarget另有modeled_input和binding_evidence，不伪造恢复类型或声明。
+
+| 合入依据 | 结果 / 边界 |
+|---|---|
+| original-selection-candidate-reference-33/receipt.json | 现有33组冻结原版严格投影全部一致、无产物漂移 |
+| original-selection-candidate-new-reference/receipt.json | instanceof/cast 8/8、算术拼接3/3、缺失函数外层3/3一致；缺失子函数不生成目标 |
+| original-selection-candidate/canonical-independent-call-diff.json | 14 MAIN文件2057/2081、24独立缺失/0额外/5状态对；比前一候选再恢复6目标，非正式发布差分 |
+| original-selection-product-jvm-regressions.log | 四项通过：保留原ERROR/原选中声明、明确错误Integer输入拒绝、缺失子调用未解析、缓存full/delta全字段相等及80层图Rust校验 |
+| 新native专项 | 四项实际Rust host/C ABI通过，47.582秒；native构建72秒。完整native/图绑定/34参考与真实发布仍待验收 |
+
+完整40模块在e8f9a88独立工作区仍运行；5c6065e新core-service运行时也保持冻结。原选中声明修正在第三独立工作区实现，避免污染这两份验收。不关闭52项、完整语义、默认图、缓存迁移或容量。

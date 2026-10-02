@@ -368,10 +368,14 @@ public final class FactExtractor {
                             fact(Json.key("target", (String) site.get("id")), "call_target", path);
                     target.put("parent", site.get("id"));
                     target.put("target", symbol(Json.string(n, "target")));
-                    target.put("status", "resolved");
+                    boolean modeledInput = Boolean.TRUE.equals(Json.map(n.get("attributes"))
+                            .get("recovery_original_selected_modeled_input"));
+                    target.put("status", modeledInput ? "possible" : "resolved");
                     target.put("declaration_resolved", true);
-                    target.put("evidence_complete", complete);
-                    target.put("attributes", Json.object("binding_evidence", site.get("id")));
+                    target.put("evidence_complete", complete && !modeledInput);
+                    target.put("attributes", modeledInput
+                            ? Json.object("binding_evidence", site.get("id"), "modeled_input", true)
+                            : Json.object("binding_evidence", site.get("id")));
                 }
                 if (n.containsKey("modeled_target")) {
                     Map<String, Object> target =

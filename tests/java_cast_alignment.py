@@ -55,6 +55,30 @@ class CastBindings(unittest.TestCase):
                 full = self.analyze([changed], cache=True)
                 self.assertEqual(self.merged(result['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
 
+    def test_original_selected_with_incomplete_model_input_is_possible_and_delta_stable(self):
+        source = collectors.ARITHMETIC_MISSING_SOURCE
+        result = self.analyze([self.fixture(source)], cache=True)
+        target = dict(self.targets(result, 'read'))['Key#getKey(java.lang.String)']
+        self.assertEqual(target['status'], 'possible')
+        self.assertTrue(target['declaration_resolved'])
+        self.assertFalse(target['evidence_complete'])
+        self.assertTrue(target['attributes']['modeled_input'])
+        site = next(f for f in result['facts'] if f['id'] == target['parent'])
+        self.assertEqual(site['attributes']['javac_selected_declaration'], 'Key#getKey(java.lang.String)')
+        original = type_attributes(site)['argument_type_models'][0]
+        self.assertEqual(original['kind'], 'ERROR')
+        missing = next(f for f in result['facts'] if f['kind'] == 'call_site' and f['name'] == 'missing')
+        self.assertEqual(missing['status'], 'unresolved')
+        self.assertFalse([f for f in result['facts'] if f['kind'] == 'call_target' and f['parent'] == missing['id']])
+        changed = self.fixture(source.replace('String id;', 'String id; int marker;'))
+        delta = self.analyze([changed], result['facts'], cache=True)
+        full = self.analyze([changed], cache=True)
+        self.assertEqual(self.merged(result['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+        invalid = collectors.ARITHMETIC_CONCAT_SOURCE.replace('String id;', 'Integer id;').replace(
+            'h.getId()+"_"+System.currentTimeMillis()/2', 'h.getId()')
+        failed = self.analyze([self.fixture(invalid)])
+        self.assertNotIn('Key#getKey(java.lang.String)', dict(self.targets(failed, 'read')))
+
     def test_graph_cast_preserves_eighty_levels_and_rust_validation(self):
         nested = 'String'
         for _ in range(80):

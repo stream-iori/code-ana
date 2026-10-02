@@ -801,3 +801,5 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 2026-10-03 migration 全范围阻断修复：普通源码类没有 modeled_capability 时不再 contains(null)；8 段普通调用链 9 个 resolved、cache/full/delta 与现有 40 setter/14 getter 正反例六项通过。cast TestCase 重复发现已纠正。上一版完整 native 回归因重复测试和误清理开发产物作废，31 组独立原版严格对照仍有效；新版本在独立工作区重跑，尚未关闭全 40 模块或完整语义。
 
 2026-10-03 cast 正式 MAIN/TEST/XML 差分确认42独立缺失/0额外/5状态对，声明、调用点/归属、SOURCE类型、反射和继承全部零差异。e8f9a88 独立默认 native 134项通过；图绑定及修复NPE后的40模块继续验收。普通表达式javac绑定已进入源码，31组独立原版和14项现有正反回归通过；选定残余14 MAIN文件隔离降到30/0/5，仍待新native正式回执。异常String+缺失函数样本另缺1，不计通过；不勾选S1或全部52项。
+
+2026-10-03 原javac已选中声明的模型输入修正进入产品：恢复仅Unavailable时保留possible目标及原证据；blocked或budget仍拒绝。四项JVM/native检查、现有33组与新增缺失函数3/3独立对照通过；14 MAIN隔离残余24/0/5，完整门禁与真实发布待验收。

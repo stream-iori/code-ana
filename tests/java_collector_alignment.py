@@ -39,6 +39,8 @@ MAP_CAST_CHAIN_SOURCE = 'import java.util.*; @lombok.Getter class Api {Map<Strin
 INSTANCEOF_CAST_CHAIN_SOURCE = 'import java.util.*; @lombok.Getter class Holder {Base value;} class Base{} @lombok.Getter class Leaf extends Base {String name;} class Use {String read(Holder h){return Optional.of(h).map(Holder::getValue).filter(v -> v instanceof Leaf).map(v -> (Leaf)v).map(Leaf::getName).orElse("");}}'
 ARITHMETIC_CONCAT_SOURCE = 'class Key {static String getKey(String value){return value;}} @lombok.Getter class Holder {String id;} class Use {String read(Holder h){return Key.getKey(h.getId()+"_"+System.currentTimeMillis()/2);}}'
 
+ARITHMETIC_MISSING_SOURCE = ARITHMETIC_CONCAT_SOURCE.replace("/2", "/missing()")
+
 CONCURRENT_IDENTITY_SOURCE = IDENTITY_SOURCE.replace(
     'toMap(Api::getId,Function.identity())', 'toConcurrentMap(Api::getId,Function.identity(),(a,b)->b)')
 

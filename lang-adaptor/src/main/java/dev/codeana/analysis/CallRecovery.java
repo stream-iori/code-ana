@@ -78,12 +78,13 @@ final class CallRecovery {
                 recovery.currentSource = text(call.get("source"));
                 try {
                     recovery.warmBuilderReceiver(call);
-                    recovery.resolve(call, 0);
+                    Result selected = recovery.resolve(call, 0);
                     recovery.work = 0;
                     recovery.types.reset();
                     boolean input = recovery.modeledInputs(recovery.node(id(map(call.get("attributes")).get("tree_id"))), 0);
                     if (Boolean.TRUE.equals(call.get("resolved")) && !call.containsKey("modeled_target") && input)
-                        map(call.get("attributes")).put("recovery_target_blocked", true);
+                        map(call.get("attributes")).put(selected.blocked
+                                ? "recovery_target_blocked" : "recovery_original_selected_modeled_input", true);
                 } catch (TypeOperations.Budget exhausted) {
                     map(call.get("attributes")).put("recovery_failure", "recovery_budget");
                     map(call.get("attributes")).put("recovery_target_blocked", true);
