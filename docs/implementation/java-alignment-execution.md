@@ -814,3 +814,13 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | 字段比较 | java_field_inventory_diff只读发布库；保留原始UTF8字节/hash、SOURCE/binary端点、词法callback/initializer owner、控制上下文、状态与多重性。空control字符串和SQL NULL均表示无控制结构；不消除++/--或其它差异。数据库前后SHA变更拒绝。 |
 | JVM | field-reference-20261003-153016-47156：三组各20个字段关系严格相等，方法体/声明修改full-delta全部事实相等，26.220秒，无输入/产物漂移。 |
 | 历史真实库 | iopengw-4a-field-accesses-context-final.json：48396/47003，缺12、额外1405，equal=false。样本包含缺失switch enum/上游字段，额外JDK字段；需进一步逐项查证，不能把fixture提升为真实项目通过。 |
+
+## XML 独立绑定与参考缺陷取证（2026-10-03）
+
+| 项目 | 实际结果 |
+|---|---|
+| 字段 native | validation-field-access/field-reference-20261003-153742-34052：三组各20关系严格一致；full-delta相等，无输入/产物漂移。native复用前逐文件验证Java/Rust/proto完全一致，产物SHA另存runtime-reuse.json。 |
+| XML JVM | xml-reference-20261003-153930-43172：三组各5类绑定，constructor/factory/setter/init/destroy的bean owner、候选kind/signature、arity与全部hints严格一致；body/XML修改全事实full-delta相等，无漂移。首次比较器遗漏直接绑定property与factory角色映射，失败回执保留，按原结构补全，未删产品额外事实。 |
+| 参考缺陷 | xml-reference-20261003-154023-47248：最小构造器lambda复现参考1 CONSTRUCTOR+1 LAMBDA、产品仅正确构造器。raw_fact_equivalence=false，单独缺陷回执不当作图相等。真实25候选的取证证据保持。 |
+| 完整 daemon | rust-cache-order-daemon-all-20261003-133111：46项7462.738秒、5失败，无输入/产物漂移。三项索引TIMEOUT、一项接受发布后未观察warm worker、一项旧scratch等待子进程超时；失败未覆盖掉。新版逐项记录CLI/ack重新验证中。 |
+| 完整 JVM | spring-final-full-jvm-20261003-142329：51条命令通过，bindings第52条被1800秒harness保护终止，4462.705秒，all_ok=false，无漂移；不是非预期安全软件杀进程。旧缓存版完整52条已通过，但不能替代新版完整门禁。 |

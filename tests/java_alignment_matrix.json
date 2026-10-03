@@ -863,7 +863,8 @@
         "tests/java_xml_alignment.py",
         "tests/java_native_probe.py",
         "tests/java_e2e.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_xml_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -873,10 +874,15 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "xml-reference",
+        "xml-reference-native",
+        "xml-reference-defect",
+        "xml-reference-defect-native"
       ],
       "remaining_acceptance": [
-        "SOURCE/JAR XML 类型提示、参数索引、别名实参和工厂重载已实现；当前Spring5/injection3。完整XML属性/原生产品矩阵及40模块参考语义仍待验收。"
+        "SOURCE/JAR XML 类型提示、参数索引、别名实参和工厂重载已实现；当前Spring5/injection3。完整XML属性/原生产品矩阵及40模块参考语义仍待验收。",
+        "XML callable 五类绑定已完成独立JVM候选对照；参考构造器lambda误绑定最小复现保留raw_fact_equivalence=false，不冒充普通图对齐。完整XML树/框架图和40模块仍待验收。"
       ]
     },
     {
