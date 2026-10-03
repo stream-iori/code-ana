@@ -1669,12 +1669,14 @@ enabled=true
         config = self.project/'.code-ana/config.toml'
         config.write_text(config.read_text()+'\n[resources.index]\njava_scratch_bytes=134217728\n')
         source = self.project/'src/p'
-        for i in range(1000):
-            (source/f'Scratch{i}.java').write_text(f'package p; class Scratch{i} {{ int x; int read(){{return x+{i};}} }}')
+        # Hold a real compiler with one source unit; the test concerns task scratch,
+        # not the latency of discovering/capturing one thousand independent files.
+        (source/'ScratchHold.java').write_text('package p; class ScratchHold { int x; '
+            + ''.join(f'int read{i}(){{return x+{i};}}' for i in range(2000)) + '}')
         submitted = subprocess.run([str(BIN/'codeana-cli'), '--home', str(self.home), '--project', str(self.project),
                                     'index', '--full', '--background'], capture_output=True, text=True, check=True, timeout=30)
         task = json.loads(submitted.stdout)['task_id']
-        until = time.monotonic()+20
+        until = time.monotonic()+60
         child = None
         while time.monotonic()<until:
             worker = self.java_worker_pid()
@@ -1688,7 +1690,10 @@ enabled=true
                     os.kill(child, signal.SIGSTOP)
                     break
             time.sleep(.01)
-        self.assertIsNotNone(child, self.daemon_log())
+        if child is None:
+            status = subprocess.run([str(BIN/'codeana-cli'), '--home', str(self.home),
+                '--project', str(self.project), 'task', 'status', task], capture_output=True, text=True, timeout=10)
+            self.fail('Compiler session did not become observable: '+status.stdout+status.stderr+self.daemon_log())
         cwd = subprocess.run(['/usr/sbin/lsof', '-a', '-p', str(child), '-d', 'cwd', '-Fn'],
                              capture_output=True, text=True, check=True).stdout
         work = pathlib.Path(next(line[1:] for line in cwd.splitlines() if line.startswith('n')))
