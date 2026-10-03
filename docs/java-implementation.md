@@ -401,3 +401,12 @@ inputs_manifest = ".code-ana/java-inputs.json"
 完整清单输出的后续取证：全部上下文源码超过测试探针的单份64MiB JSON上限，JVM在完成导航后明确报`JSON_BUDGET`；原日志及现场栈保留在`iopengw-core-service-main-complete-source-api`。测试探针改为任务独占临时文件流式编码，编码成功后才输出，测试清单上限512MiB；不改变产品JSON/worker/模型限额，不删行、不抽样。`model-api-stream-output-proof.log`复现原失败，逐行UTF-8摘要验证超过64MiB的完整输出，并验证预算失败/取消零输出、临时文件清理。原native对照主动终止并另记`superseded.json`，不是安全软件杀进程，也没有算作通过。
 
 完整 MAIN 清单终态：`iopengw-core-service-main-all-source-stream-output` JVM与`iopengw-core-service-main-record-stream-native`原生均四投影严格相等，覆盖全部2624源码、42072声明、489941 AST、2763类型查询，源码位置和切片无差异、无输入/工件漂移；原生267.949秒（产品探针192.040秒）。两个原始清单各157445089字节。测试探针进一步逐条落盘，避免堆内持有完整清单；预算/取消/重复source保护及9组native专项通过。仍仅一个MAIN上下文，不替代全部80上下文或实际worker共享库发布。
+
+## 辅助 AST 的 Lombok 扩展回归修复（2026-10-03）
+
+| 项目 | 实际证据 |
+|---|---|
+| 原失败 | `validation-v9-full-gates-ab33799`完整Java回归在补充签名12项中3失败/7错误。独立`aux-syntax-lombok-original-failure.json`证实Lombok模型阶段出现`EXTENSION_CALLBACK_FAILED`，生成声明被丢弃；原数据保留。 |
+| 根因 / 修复 | 紧凑辅助AST的VARIABLE没有绑定`symbol`，旧Lombok初始化扫描把它当必填。仅对存在的非空绑定读取symbol；辅助字段继续使用javac声明头`has_initializer`。Lombok内置版本8→9，缓存/扩展指纹随之失效。其他语法消费者已核对可选绑定处理。 |
+| 回归终态 | `aux-syntax-lombok-supplemental-fixed`12项91.835秒、`full-fixed`16项143.015秒、`module-cache-fixed`9项114.460秒、`module-overlay-fixed`9项147.976秒均通过。新增明确拒绝扩展回调失败的断言，原javac未知getter诊断继续保留。 |
+| 仍待 | 含Lombok9的成套native/daemon完整回归及冻结iopengw全40模块、80上下文、14域差分。旧Lombok8正式运行主动终止并保存superseded说明，不能拼接旧回执认定新版通过；容量最后执行。 |

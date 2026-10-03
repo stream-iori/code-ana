@@ -79,8 +79,9 @@ final class LombokDeclarations {
         for (Object raw : Json.list(model.get("syntax"))) {
             Map<String, Object> n = Json.map(raw);
             if ("VARIABLE".equals(n.get("kind"))
-                    && map(n.get("roles")).get("initializer") instanceof Number)
-                initialized.add(Json.string(n, "symbol"));
+                    && map(n.get("roles")).get("initializer") instanceof Number
+                    && n.get("symbol") instanceof String symbol && !symbol.isEmpty())
+                initialized.add(symbol);
         }
     }
 

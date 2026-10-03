@@ -159,6 +159,8 @@ class SupplementalSignatures(unittest.TestCase):
 
     def test_auxiliary_getter_preserves_original_evidence_and_diagnostics(self):
         facts = self.analyze([self.fixture()])['facts']
+        self.assertFalse([f for f in facts if f['kind']=='diagnostic'
+                          and f['attributes'].get('code')=='EXTENSION_CALLBACK_FAILED'])
         self.assert_leaf(facts)
         original = type_attributes(self.callback(facts))
         self.assertFalse(original['sam']['complete'])
