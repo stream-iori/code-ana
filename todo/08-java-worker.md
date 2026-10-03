@@ -828,3 +828,12 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 | 真实调用诊断 | 树/opt-in 图在 14 个残余 MAIN 文件均 2067/ref2081，14 独立缺失、0 独立额外、4 状态对。lambda descriptor 的归属回退尝试未改善，未合入产品。继续定位上下文约束。 |
 
 4a57677 独立 40 模块 MAIN/TEST/XML 正确性仍在运行；该回执不含本次 Rust WIRES 政策，不能据此验收新版 WIRES 或全部 S3。完整扩展语义、默认图/版本切换、Rust 通用缓存、容量和 release/52 项仍未关闭。没有非预期进程杀死。
+
+## 跨模块 WIRES 捕获身份（2026-10-03）
+
+| 核对项 | 结果 / 边界 |
+|---|---|
+| Rust 策略 v2 | javac 的上游 external alias 仅按本 revision 的 path/hash/world/module/scope 精确匹配非 auxiliary 捕获，且存在唯一已发布 source/world/signature 声明时纳入。保留原 Java 事实；仅归一派生候选身份。规则版本更新 SemanticProfile，不复用 v1 基线。 |
+| Rust 正反例 | 4 项派生测试及全部 workspace 通过。hash/world/module/scope/path 各自失配、仅 auxiliary 未发布均不能生成候选；直接/间接实现、歧义、删除、坏证据和旧 head 回归保留。clippy 全 targets -D warnings、fmt/diff check 通过。 |
+| 实际产品对照 | derived-wiring-v2-product-e2e.log：2 项、29.942 秒通过。独立复制新版 Rust release 与 4a native 成套产物，artifact SHA 另存；三 Maven 模块 MAIN/TEST，跨 world 4 个歧义候选与冻结 jar 的实际 WiringResolver 相等。热缓存事实相等；实现移除后 2 个唯一候选、全量/增量完整事实相等，旧 revision 保持。同模块候选修改/删除回归也通过。 |
+| 未关闭 | 4a 全 40 模块正式运行使用旧 Rust，不包含本轮 WIRES；完整扩展差分与最终 52 项仍未通过。Java 上下文重入试验虽通过 40 组冻结 fixture，对 14 个真实残余文件没有改善，未合入。 |

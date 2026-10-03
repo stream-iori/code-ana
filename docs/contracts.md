@@ -127,7 +127,7 @@ fixture 证明不等于原子协议切换或全 iopengw 验收；最终仍须更
 
 ## 3. 事实所有权与替换
 
-Rust 索引策略 `derived-wiring-1` 从内部声明间的直接 `implements` 和 Java 提供的 `injects_possible` 推导 `wires_possible`，不做 Java 类型推断。注入关系的 registration facet 指回真实字段/参数声明；候选按目标 ID 去重排序，单候选 `confidence=inferred`，多候选 `ambiguous`。保留 `via=injection`、接口 ID `source`、全部 `candidates`、原注入位置及 `injection_evidence`。边始终 `status=possible`、`evidence_complete/declaration_resolved/runtime_confirmed=false`；不使用 qualifier/Primary 选定实现，也不写运行时 CallTarget。该政策与冻结 Anatomist WiringResolver 相同。
+Rust 索引策略 `derived-wiring-2` 从内部声明间的直接 `implements` 和 Java 提供的 `injects_possible` 推导 `wires_possible`，不做 Java 类型推断。注入关系的 registration facet 指回真实字段/参数声明；候选按目标 ID 去重排序，单候选 `confidence=inferred`，多候选 `ambiguous`。保留 `via=injection`、接口 ID `source`、全部 `candidates`、原注入位置及 `injection_evidence`。边始终 `status=possible`、`evidence_complete/declaration_resolved/runtime_confirmed=false`；不使用 qualifier/Primary 选定实现，也不写运行时 CallTarget。该政策与冻结 Anatomist WiringResolver 相同。上游源码在消费 world 内的 external alias，只有 source_origin 的 path/hash/world/module/scope 全部匹配本 revision 捕获清单、非 auxiliary，且发布声明按 source/world/signature 唯一时才转换为内部候选身份；不靠同名合并或修改 Java 原始事实。
 
 派生事实归 `Owner(world, rust.derived.wiring, aggregate, static-injection-candidates)`；Rust 的规则版本进入 SemanticProfile。候选发布前清除旧/新 manifest 的所有对应 aggregate owner，替换 adapter 事实后整体重算，任何错误或取消仍保留旧 head。存储仅提供定向候选读写/校验接口，派生政策在 Rust application。公开 revision/baseline 导出保留这些事实；返回 Java worker 的 adapter baseline 排除这些 owner，禁止 worker 冒用此 producer。`type-relations <注入声明> --relation wires_possible` 返回静态候选及开放世界的未确认说明。
 

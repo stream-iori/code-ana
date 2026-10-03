@@ -17,6 +17,25 @@ pub struct CandidateFacts<'a> {
 }
 
 impl CandidateFacts<'_> {
+    pub fn source_unit(&self, path: &str) -> Option<&SourceUnit> {
+        self.manifest.files.iter().find(|s| s.path == path)
+    }
+
+    pub fn declarations(&self, source: &str, world: &str, signature: &str) -> Result<Vec<Fact>> {
+        (self.check)()?;
+        let mut statement = self.db.prepare(
+            "SELECT body FROM facts WHERE kind='declaration' AND source=? AND world=?
+             AND json_extract(body,'$.signature')=? ORDER BY id",
+        )?;
+        let mut rows = statement.query(params![source, world, signature])?;
+        let mut output = Vec::new();
+        while let Some(row) = rows.next()? {
+            (self.check)()?;
+            output.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
+        }
+        Ok(output)
+    }
+
     pub fn relations(&self, relation: &str) -> Result<Vec<Fact>> {
         let mut statement = self
             .db

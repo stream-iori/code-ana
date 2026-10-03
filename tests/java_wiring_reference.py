@@ -22,6 +22,26 @@ def projection(facts, directory):
     source = ROOT / 'lang-adaptor/src/frozen-test/java/dev/codeana/analysis/WiringReferenceProbe.java'
     subprocess.run([str(java / 'bin/javac'), '-cp', str(reference), '-d', str(classes), str(source)], check=True, capture_output=True)
     by = {f['id']: f for f in facts}
+    # Normalize compiler-world aliases before handing the raw graph to the
+    # frozen resolver. Published source/provenance establishes identity;
+    # the resolver itself still decides every candidate and confidence.
+    published = {}
+    hashes = {}
+    for f in facts:
+        if f['kind'] == 'declaration':
+            published.setdefault((f['source'], f['owner']['world'], f['signature']), []).append(f)
+        elif f['kind'] == 'provenance':
+            hashes[(f['source'], f['owner']['world'])] = f['attributes'].get('source_hash')
+
+    def canonical(f):
+        origin = f['attributes'].get('source_origin')
+        if f['kind'] != 'external_symbol' or not origin:
+            return f
+        key = (origin['path'], origin['world'], f['signature'])
+        matches = published.get(key, [])
+        if len(matches) == 1 and hashes.get(key[:2]) == origin['hash']:
+            return matches[0]
+        return f
     inputs = []
     product = []
     for f in facts:
@@ -45,8 +65,9 @@ def projection(facts, directory):
             relation = 'INJECTS'
         else:
             continue
-        inputs.append(dict(source=point['id'], target=f['target'], relation=relation,
-                           external=point['kind'] != 'declaration' or by[f['target']]['kind'] != 'declaration',
+        point, target = canonical(point), canonical(by[f['target']])
+        inputs.append(dict(source=point['id'], target=target['id'], relation=relation,
+                           external=point['kind'] != 'declaration' or target['kind'] != 'declaration',
                            file=f['source'], span=span))
     request = directory / 'wiring-reference-input.json'
     request.write_text(json.dumps(inputs))

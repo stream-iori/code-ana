@@ -6,7 +6,7 @@ use codeana_storage::{CandidateDerivation, CandidateFacts};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const PROFILE: &str = "derived-wiring-1";
+pub(crate) const PROFILE: &str = "derived-wiring-2";
 const PRODUCER: &str = "rust.derived.wiring";
 const AGGREGATE: &str = "static-injection-candidates";
 pub(crate) struct Wiring;
@@ -41,6 +41,47 @@ fn edge_key(fact: &Fact) -> String {
     ))
 }
 
+/// An adapter may represent an upstream captured source as external within
+/// its compiler world. Only exact captured provenance can join that alias to
+/// an actually published declaration; names alone never establish identity.
+fn internal(facts: &CandidateFacts<'_>, fact: Fact) -> Result<Option<Fact>> {
+    if fact.kind == FactKind::Declaration {
+        return Ok(Some(fact));
+    }
+    if fact.kind != FactKind::ExternalSymbol {
+        return Ok(None);
+    }
+    let Some(origin) = fact
+        .attributes
+        .get("source_origin")
+        .and_then(|a| a.as_object())
+    else {
+        return Ok(None);
+    };
+    let (Some(path), Some(hash), Some(world), Some(module), Some(scope)) = (
+        origin.get("path").and_then(|a| a.as_str()),
+        origin.get("hash").and_then(|a| a.as_str()),
+        origin.get("world").and_then(|a| a.as_str()),
+        origin.get("module").and_then(|a| a.as_str()),
+        origin.get("scope").and_then(|a| a.as_str()),
+    ) else {
+        return Ok(None);
+    };
+    let Some(unit) = facts.source_unit(path) else {
+        return Ok(None);
+    };
+    if unit.auxiliary
+        || unit.hash != hash
+        || unit.world != world
+        || unit.module != module
+        || unit.scope != scope
+    {
+        return Ok(None);
+    }
+    let found = facts.declarations(path, world, &fact.signature)?;
+    Ok((found.len() == 1).then(|| found.into_iter().next().unwrap()))
+}
+
 impl CandidateDerivation for Wiring {
     fn producer(&self) -> &str {
         PRODUCER
@@ -59,11 +100,13 @@ impl CandidateDerivation for Wiring {
             else {
                 continue; // Whole-candidate validation reports dangling inputs.
             };
-            if source.kind == FactKind::Declaration && target.kind == FactKind::Declaration {
+            if let (Some(source), Some(target)) =
+                (internal(facts, source)?, internal(facts, target)?)
+            {
                 implementations
-                    .entry(edge.target)
+                    .entry(target.id)
                     .or_default()
-                    .insert(edge.parent);
+                    .insert(source.id);
             }
         }
         let mut seen: BTreeSet<_> = facts
@@ -86,14 +129,17 @@ impl CandidateDerivation for Wiring {
             let Some(interface) = facts.fact(&injection.target)? else {
                 continue;
             };
-            if point.kind != FactKind::Declaration || interface.kind != FactKind::Declaration {
+            let Some(interface) = internal(facts, interface)? else {
+                continue;
+            };
+            if point.kind != FactKind::Declaration {
                 continue;
             }
             ensure!(
                 point.owner.world == injection.owner.world && point.source == injection.source,
                 "INJECTION_EVIDENCE_IDENTITY_MISMATCH"
             );
-            let Some(candidates) = implementations.get(&injection.target) else {
+            let Some(candidates) = implementations.get(&interface.id) else {
                 continue;
             };
             let candidates: Vec<_> = candidates.iter().cloned().collect();
@@ -123,7 +169,7 @@ impl CandidateDerivation for Wiring {
                             }),
                         ),
                         ("via".into(), json!("injection")),
-                        ("source".into(), json!(injection.target)),
+                        ("source".into(), json!(interface.id)),
                         ("candidates".into(), json!(candidates)),
                         ("injection_evidence".into(), json!(injection.id)),
                         ("runtime_confirmed".into(), json!(false)),
@@ -487,5 +533,100 @@ mod tests {
         assert!(error.to_string().contains("DERIVED_PRODUCER_RESERVED"));
         assert_eq!(store.head("t").unwrap(), before.id);
         assert_eq!(wires(&store, &before.id).len(), 2);
+    }
+
+    #[test]
+    fn upstream_aliases_join_only_exact_published_capture_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::open(root.path()).unwrap();
+        let (mut revision, mut result) = fixture();
+        let bytes = b"interface Api {}";
+        let unit = SourceUnit {
+            path: "Api.java".into(),
+            hash: hash(bytes),
+            size: bytes.len() as u64,
+            module: "api".into(),
+            world: "upstream".into(),
+            scope: "MAIN".into(),
+            language: "fixture".into(),
+            auxiliary: false,
+        };
+        revision.manifest.files.push(unit.clone());
+        result.manifest = revision.manifest.id();
+        store
+            .put_blobs(&BTreeMap::from([(unit.hash.clone(), bytes.to_vec())]))
+            .unwrap();
+        let interface = result
+            .facts
+            .iter_mut()
+            .find(|f| f.id == "interface")
+            .unwrap();
+        interface.owner.world = unit.world.clone();
+        interface.owner.id = unit.path.clone();
+        interface.source = unit.path.clone();
+        interface.signature = "pkg.Api".into();
+        for (id, edge) in [
+            ("impl-alias", "a-implements"),
+            ("injection-alias", "injection"),
+        ] {
+            let mut alias = fact(id, FactKind::ExternalSymbol, "", "", "");
+            alias.source.clear();
+            alias.span = None;
+            alias.signature = "pkg.Api".into();
+            alias.attributes.insert(
+                "source_origin".into(),
+                json!({"path":unit.path,"hash":unit.hash,
+                "world":unit.world,"module":unit.module,"scope":unit.scope}),
+            );
+            result.facts.push(alias);
+            result
+                .facts
+                .iter_mut()
+                .find(|f| f.id == edge)
+                .unwrap()
+                .target = id.into();
+        }
+        result.facts.retain(|f| {
+            !matches!(
+                f.id.as_str(),
+                "a-duplicate" | "b-implements" | "external-implements"
+            )
+        });
+        let before = publish(&store, revision.clone(), &result, "");
+        let actual = wires(&store, &before.id);
+        assert_eq!(actual.len(), 1);
+        assert_eq!(actual[0].attributes["source"], "interface");
+        assert_eq!(actual[0].target, "a");
+        for field in ["hash", "world", "module", "scope", "path"] {
+            let mut corrupt = result.clone();
+            corrupt
+                .facts
+                .iter_mut()
+                .find(|f| f.id == "impl-alias")
+                .unwrap()
+                .attributes
+                .get_mut("source_origin")
+                .unwrap()[field] = json!("different");
+            let rejected = publish(
+                &store,
+                revision.clone(),
+                &corrupt,
+                &store.head("t").unwrap(),
+            );
+            assert!(wires(&store, &rejected.id).is_empty(), "{field}");
+        }
+        let mut unavailable = result;
+        unavailable.facts.retain(|f| f.id != "interface");
+        revision
+            .manifest
+            .files
+            .iter_mut()
+            .find(|s| s.path == "Api.java")
+            .unwrap()
+            .auxiliary = true;
+        unavailable.manifest = revision.manifest.id();
+        let rejected = publish(&store, revision, &unavailable, &store.head("t").unwrap());
+        assert!(wires(&store, &rejected.id).is_empty());
+        assert_eq!(wires(&store, &before.id), actual);
     }
 }

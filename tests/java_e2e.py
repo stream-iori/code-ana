@@ -108,6 +108,88 @@ class JavaProduct(unittest.TestCase):
         self.assertFalse([f for f in self.facts(delta['revision']) if f['relation'] == 'wires_possible'])
         self.assertEqual(self.facts(initial['revision']), facts)
 
+    def test_cross_module_wiring_published_aliases_main_test_and_delta(self):
+        import hashlib
+        from java_framework_alignment import DI
+        from java_wiring_reference import projection
+        shutil.rmtree(self.project / 'src')
+        sources = dict(
+            **{'api/src/' + path: text for path, text in DI.items()},
+            **{'api/src/p/Api.java': 'package p; public interface Api {}',
+               'impl/src/p/First.java': 'package p; public class First implements Api {}',
+               'app/src/p/Bindings.java': '''package p; class Second implements Api {}
+                 class Child extends First {} class Bindings {
+                   @org.springframework.beans.factory.annotation.Autowired Api dependency;
+                 }''',
+               'app/test/p/BindingsTest.java': '''package p; class BindingsTest {
+                   @org.springframework.beans.factory.annotation.Autowired Api dependency;
+                 }'''})
+        for relative, text in sources.items():
+            path = self.project / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        pom = self.project / 'pom.xml'
+        pom.write_text('<project/>')
+        sha = lambda value: hashlib.sha256(value).hexdigest()
+        modules = []
+        for module, parents in [('api', []), ('impl', ['api']), ('app', ['api', 'impl'])]:
+            roots = [dict(path='src', scope='MAIN')]
+            if module == 'app':
+                roots.append(dict(path='test', scope='TEST'))
+            modules.append(dict(id=module, root=module, source_version='8', source_roots=roots,
+                                dependencies={'MAIN': parents, 'TEST': parents}))
+        inputs = dict(schema_version=3, scopes=['MAIN', 'TEST'],
+                      controls={'pom.xml': sha(pom.read_bytes())},
+                      effective_model_sha256=sha(b'cross-module wiring'),
+                      active_profiles_sha256=sha(b'profiles'), modules=modules)
+        (self.project / '.code-ana/inputs.json').write_text(json.dumps(inputs))
+        (self.project / '.code-ana/config.toml').write_text('''schema_version=1
+kind="project"
+[scan]
+scopes=["MAIN","TEST"]
+[languages.java]
+enabled=true
+[languages.java.analysis]
+source_version="8"
+toolchain="java8"
+[languages.java.discovery]
+build_system="maven"
+inputs_manifest=".code-ana/inputs.json"
+[languages.java.extensions.spring]
+enabled=true
+[resources.index]
+java_parallelism=1
+''')
+
+        def verify(facts, count):
+            product, expected = projection(facts, self.root)
+            self.assertEqual(product, expected)
+            self.assertEqual(len(product), count)
+            self.assertTrue(all(row['confidence'] == ('AMBIGUOUS' if count == 4 else 'INFERRED')
+                                for row in product))
+            ids = {f['id']: f for f in facts}
+            wires = [f for f in facts if f['relation'] == 'wires_possible']
+            self.assertEqual(len({f['owner']['world'] for f in wires}), 2)
+            self.assertTrue(any(ids[f['target']]['owner']['world'] != f['owner']['world'] for f in wires))
+            self.assertTrue(any(f['kind'] == 'external_symbol' and f['signature'] == 'p.Api'
+                                and f['attributes'].get('source_origin') for f in facts))
+
+        _, initial = self.cli('index', '--full', timeout=180)
+        self.assertEqual(initial['publication'], 'published')
+        before = self.facts(initial['revision'])
+        verify(before, 4)
+        _, cached = self.cli('index', timeout=180)
+        self.assertEqual(before, self.facts(cached['revision']))
+        first = self.project / 'impl/src/p/First.java'
+        first.write_text('package p; public class First {}')
+        _, delta = self.cli('index', timeout=180)
+        changed = self.facts(delta['revision'])
+        verify(changed, 2)
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(changed, self.facts(full['revision']))
+        self.assertEqual(before, self.facts(initial['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_source_type_relationships_keep_navigation_queries_and_delta(self):
         from java_type_reference_alignment import SOURCE
         path = self.project / 'src/p/Types.java'
