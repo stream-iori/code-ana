@@ -945,3 +945,12 @@ Rust 修复仅压缩文本终态证据明细，标记省略数，TaskResult/type
 | 真实完整清单 | iopengw-core-service-test-model-api-streaming-reference/receipt.json：53.435秒；声明3284/3284、AST135076/135076、原源码228/228、全部474类型查找，四投影零差异、无源码/工件漂移。每个UTF16位置及声明切片逐项摘要，不抽样；编译输入2852源码与228发布源严格按冻结Maven清单校验。仅该TEST上下文，不替代全部40模块。 |
 | 上一内存修复的产品证据 | f04c5d6新共享库的177 native fixture：958.502秒全过；XML完整图三组25.027秒、DI和跨模块两项78.303秒通过。真实TEST已越过compiler_model/decode，仍在Lombok阶段；这些回执不包含之后v8 API/注解父链修复。 |
 | 仍待 | v8新native/daemon/完整Java回归；全40模块MAIN/TEST/XML与14域语义差分、全上下文模型清单、独占容量和release。仅E01/E02完整关闭，未删complete_model_api_inventory最终待验收项。 |
+# 全上下文模型清单与坏编码（2026-10-03）
+
+| 证据 | 结果 |
+|---|---|
+| `validation-model-api-v8-48544b1/.../model-api-reference-20261003-205222-67904/receipt.json` | 新v8共享AST/注解父链组合的native独立模型API五组及保护全部通过；共享库已重新构建，完整组合门禁仍在运行。 |
+| `iopengw-core-service-test-model-api-final-witness-corrected/receipt.json` | 实际原Maven请求：声明3284、AST135076、原源码228、查找474全部严格相等，150.336秒，无源码/工件漂移。冻结worker单次编译2852源码，输出98947935字节及独立hash已验证。首次误用不存在的manifest路径，预检失败原样保留；没有启动产品索引。 |
+| `model-api-reference-20261003-210320-7212/receipt.json` | 新六组JVM摘要模式通过，加入坏UTF-8真实SDK8归档：原字节/错误hash/无坏文件语义、健康位置与切片严格对照。 |
+| `model-api-v9-encoding-native.log` 指向的回执 | 相同六组通过实际native可执行模型API；坏文件只在参考请求中明确排除，产品请求保留并验证编码诊断。已有参考重复类型位置缺陷继续保留raw不相等，不能改成产品一致。 |
+| 全项目入口 | 新 `java_project_model_api_alignment.py` / 汇总可选模型回执已实现；全40模块执行、新同版本全回归/发布/14域语义及最终容量/release尚待完成。未勾选剩余50项。 |

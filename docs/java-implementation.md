@@ -377,3 +377,11 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 真实完整清单 | iopengw-core-service-test-model-api-streaming-reference/receipt.json：53.435秒；声明3284/3284、AST135076/135076、原源码228/228、全部474类型查找，四投影零差异、无源码/工件漂移。每个UTF16位置及声明切片逐项摘要，不抽样；编译输入2852源码与228发布源严格按冻结Maven清单校验。仅该TEST上下文，不替代全部40模块。 |
 | 上一内存修复的产品证据 | f04c5d6新共享库的177 native fixture：958.502秒全过；XML完整图三组25.027秒、DI和跨模块两项78.303秒通过。真实TEST已越过compiler_model/decode，仍在Lombok阶段；这些回执不包含之后v8 API/注解父链修复。 |
 | 仍待 | v8新native/daemon/完整Java回归；全40模块MAIN/TEST/XML与14域语义差分、全上下文模型清单、独占容量和release。仅E01/E02完整关闭，未删complete_model_api_inventory最终待验收项。 |
+# 全 Maven 上下文模型 API 验收入口（2026-10-03）
+
+| 项目 | 状态 / 边界 |
+|---|---|
+| 全项目入口 | `tests/java_project_model_api_alignment.py` 要求完整、已解析的40个物理模块及 MAIN/TEST，逐上下文独立SDK8编译、native模型导航和冻结单次worker对照。无Java输入的scope显式保留；失败不终止其他上下文，不按抽样关闭能力。 |
+| 坏UTF-8 | 产品编译请求保留原文件，归档必须恰有一条原hash的 `SOURCE_ENCODING_INVALID`，且该文件无声明/语法/观察。参考请求明确排除不能解码的文件；健康源码、位置、切片和所有查找继续严格对照，不宣称坏文件与参考解析相等。 |
+| 汇总门禁 | `java_real_semantic_diff.py --model-api-receipt` 仅接收完整模型清单；要求同发布源码、同Maven manifest、同compiler bridge和native共享库SHA，并重新验证每个上下文回执及实际输入数量。未提供仍保留 `complete_model_api_inventory` 待验收项。 |
+| 专项回归 | 六组JVM和native摘要导航通过，包含共享AST、坏编码、全部UTF16位置/声明切片；9项Python保护检查通过。新入口的全部40模块执行尚待完成；真实TEST仍在Rust候选写入，不代表发布/全语义/容量已通过。 |

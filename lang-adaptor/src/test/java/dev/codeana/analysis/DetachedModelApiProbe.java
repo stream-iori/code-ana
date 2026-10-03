@@ -20,10 +20,12 @@ public final class DetachedModelApiProbe {
         Map<String,Object> request=Json.map(Json.parse(Json.read(Path.of(args[0]))));
         Map<String,Object> context=Json.map(Json.list(request.get("contexts")).getFirst());
         boolean inventory=Boolean.TRUE.equals(request.get("model_api_inventory"));
+        Set<String> excluded=new HashSet<>();
+        for(Object path:Json.list(request.getOrDefault("model_api_excluded_sources",List.of())))excluded.add(path.toString());
         Set<String> selected=new HashSet<>();
         for(Object raw:Json.list(context.get("sources"))) {
             var source=Json.map(raw);
-            if(!Boolean.TRUE.equals(request.get("model_api_published_only")) || Boolean.TRUE.equals(source.get("publish")))
+            if(!excluded.contains(source.get("path")) && (!Boolean.TRUE.equals(request.get("model_api_published_only")) || Boolean.TRUE.equals(source.get("publish"))))
                 selected.add(Json.string(source,"path"));
         }
         try(CompilerSession compiler=new CompilerSession(request)) {

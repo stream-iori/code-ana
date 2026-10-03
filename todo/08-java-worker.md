@@ -1128,3 +1128,6 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 | 真实完整清单 | iopengw-core-service-test-model-api-streaming-reference/receipt.json：53.435秒；声明3284/3284、AST135076/135076、原源码228/228、全部474类型查找，四投影零差异、无源码/工件漂移。每个UTF16位置及声明切片逐项摘要，不抽样；编译输入2852源码与228发布源严格按冻结Maven清单校验。仅该TEST上下文，不替代全部40模块。 |
 | 上一内存修复的产品证据 | f04c5d6新共享库的177 native fixture：958.502秒全过；XML完整图三组25.027秒、DI和跨模块两项78.303秒通过。真实TEST已越过compiler_model/decode，仍在Lombok阶段；这些回执不包含之后v8 API/注解父链修复。 |
 | 仍待 | v8新native/daemon/完整Java回归；全40模块MAIN/TEST/XML与14域语义差分、全上下文模型清单、独占容量和release。仅E01/E02完整关闭，未删complete_model_api_inventory最终待验收项。 |
+# 全模型清单执行链路（2026-10-03）
+
+补齐完整40模块×MAIN/TEST入口、native摘要模型对照、坏UTF-8原字节及错误诊断保护、与发布版本源码/桥/共享库的身份校验。六组JVM/native导航均通过；全reactor执行仍待完成。模型清单缺席或仅局部通过时，最终语义门禁继续阻断，不自动关闭52项矩阵。最新实现提交及专项记录见 `docs/implementation/java-validation.md`；当前真实TEST已完成扩展、正在Rust候选写入，没有异常信号。

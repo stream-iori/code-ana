@@ -5,6 +5,7 @@ One context is evidence, never a certificate for all Maven scopes or native publ
 """
 import argparse
 import collections
+import hashlib
 import json
 import os
 import pathlib
@@ -40,8 +41,7 @@ def validate_inputs(project,manifest,request):
     return expected
 
 
-def type_queries(path,published):
-    names={'__codeana_model_inventory_missing_type__'}
+def archive_rows(path):
     with path.open('rb') as stream:
         if stream.read(4)!=b'CAF1':raise ValueError('MODEL_API_ARCHIVE_VERSION')
         while prefix:=stream.read(4):
@@ -50,15 +50,51 @@ def type_queries(path,published):
             if not 1<=size<=8*1024*1024:raise ValueError('MODEL_API_RECORD_BUDGET')
             body=stream.read(size)
             if len(body)!=size:raise ValueError('MODEL_API_ARCHIVE_TRUNCATED')
-            row=json.loads(body)
-            if row.get('kind')!='row' or row.get('section')!='declarations':continue
-            declaration=row['value'];attrs=declaration.get('attributes',{})
-            if declaration.get('source') not in published or attrs.get('element_kind') not in ('CLASS','INTERFACE','ENUM','ANNOTATION_TYPE'):continue
-            for name in (declaration.get('signature',''),attrs.get('binary_name','')):
-                if name:names.add(name)
-            binary=attrs.get('binary_name','')
-            if binary and attrs.get('nesting_kind') not in ('LOCAL','ANONYMOUS'):names.add(binary.replace('$','.'))
+            yield json.loads(body)
+
+
+def invalid_sources(request):
+    invalid={}
+    for source in request['sources']:
+        body=pathlib.Path(source['input']).read_bytes()
+        if hashlib.sha256(body).hexdigest()!=source['hash']:raise ValueError('MODEL_API_ORIGINAL_SOURCE_DRIFT')
+        try:body.decode('utf-8',errors='strict')
+        except UnicodeDecodeError:
+            invalid[source['path']]=dict(sha256=source['hash'],bytes=len(body),publish=source['publish'])
+    return invalid
+
+
+def archive_inventory(path,published,invalid):
+    names={'__codeana_model_inventory_missing_type__'}
+    failures=collections.Counter()
+    for row in archive_rows(path):
+        if row.get('kind')=='row' and row.get('section')=='diagnostics':diagnostics=[row['value']]
+        else:diagnostics=[]
+        for diagnostic in diagnostics:
+            if diagnostic.get('code')!='SOURCE_ENCODING_INVALID':continue
+            source=diagnostic.get('source')
+            if (source not in invalid or diagnostic.get('sha256')!=invalid[source]['sha256']
+                or diagnostic.get('severity')!='ERROR' or diagnostic.get('phase')!='input_decode'
+                or diagnostic.get('encoding')!='UTF-8' or diagnostic.get('start')!=-1 or diagnostic.get('end')!=-1):
+                raise ValueError('MODEL_API_ENCODING_DIAGNOSTIC_INVALID')
+            failures[source]+=1
+        if row.get('kind')!='row':continue
+        value=row.get('value',{})
+        if row.get('section') in ('declarations','syntax','observations') and value.get('source') in invalid:
+            raise ValueError('MODEL_API_INVALID_SOURCE_HAS_SEMANTICS')
+        if row.get('section')!='declarations':continue
+        attrs=value.get('attributes',{})
+        if value.get('source') not in published or attrs.get('element_kind') not in ('CLASS','INTERFACE','ENUM','ANNOTATION_TYPE'):continue
+        for name in (value.get('signature',''),attrs.get('binary_name','')):
+            if name:names.add(name)
+        binary=attrs.get('binary_name','')
+        if binary and attrs.get('nesting_kind') not in ('LOCAL','ANONYMOUS'):names.add(binary.replace('$','.'))
+    if failures!=collections.Counter({name:1 for name in invalid}):raise ValueError('MODEL_API_ENCODING_DIAGNOSTIC_MISSING_OR_DUPLICATE')
     return sorted(names)
+
+
+def type_queries(path,published):
+    return archive_inventory(path,published,{})
 
 
 def projections(value):
@@ -77,7 +113,11 @@ def main():
     parser.add_argument('--model-archive',type=pathlib.Path,required=True)
     parser.add_argument('--model-receipt',type=pathlib.Path,required=True)
     parser.add_argument('--evidence',type=pathlib.Path,required=True)
+    parser.add_argument('--native-executable',type=pathlib.Path)
+    parser.add_argument('--native-heap-bytes',type=int,default=1073741824)
     args=parser.parse_args();evidence=args.evidence.resolve();evidence.mkdir(parents=True,exist_ok=False)
+    if not 8*1024*1024<=args.native_heap_bytes<=1073741824 or args.native_heap_bytes%(1024*1024):
+        parser.error('native heap must be a whole MiB between 8 MiB and 1 GiB')
     started=time.monotonic();inputs={};report=dict(kind='independent_frozen_project_model_api_inventory',state='preparing',
         equal=False,projections={},publication_accepted=False,native_product_verified=False,
         full_project_all_scopes_accepted=False,full_semantic_diff_accepted=False,capacity_accepted=False)
@@ -104,14 +144,23 @@ def main():
             ordered_classpath_sha256=[digest(pathlib.Path(p)) for p in request['classpath']],
             compiler_request_sha256=digest(args.compiler_request),archive_sha256=digest(archive),
             reference_jar_sha256=REFERENCE_SHA,source_inputs=alignment.input_files())
-        selected={s['path'] for s in request['sources'] if s['publish']}
-        queries=type_queries(archive,selected)
-        if not selected or len(queries)<2:raise ValueError('MODEL_API_NONEMPTY_PUBLISHED_SCOPE_REQUIRED')
+        invalid=invalid_sources(request)
+        selected={s['path'] for s in request['sources'] if s['publish'] and s['path'] not in invalid}
+        queries=archive_inventory(archive,selected,invalid)
+        report['invalid_utf8_sources']=invalid
+        report['healthy_published_source_count']=len(selected)
+        if args.native_executable:
+            executable=args.native_executable.resolve();inputs[str(executable)]=digest(executable)
+            report['native_model_api_executable_sha256']=inputs[str(executable)]
+            report['native_model_api_heap_bytes']=args.native_heap_bytes
         adapted=dict(version=5,facts=False,java_home=str(JDK8),bridge=str(bridge),contexts=[request],
             scratch=str(evidence/'scratch'),compiler_heap_bytes=536870912,compiler_timeout_seconds=3600,
             model_api_inventory=True,model_api_published_only=True,model_api_exact_context=True,model_type_queries=queries,
+            model_api_excluded_sources=sorted(invalid),
             model_api_archive=str(archive),model_api_archive_sha256=digest(archive))
         (evidence/'scratch').mkdir();path=evidence/'request.json';atomic_json(path,adapted)
+        reference_request=dict(adapted,contexts=[dict(request,sources=[s for s in request['sources'] if s['path'] not in invalid])])
+        reference_path=evidence/'reference-request.json';atomic_json(reference_path,reference_request)
         classes=evidence/'frozen-classes';classes.mkdir()
         cp=[str(ROOT/'lang-adaptor/target/classes'),str(ROOT/'lang-adaptor/target/test-classes')]
         reference_cp=os.pathsep.join([str(classes),*cp,str(jar)])
@@ -128,7 +177,10 @@ def main():
                                     ('reference',reference_cp,'dev.codeana.analysis.DetachedModelApiReferenceProbe')):
             begin=time.monotonic()
             with (evidence/(side+'.json')).open('wb') as stdout,(evidence/(side+'.log')).open('wb') as stderr:
-                subprocess.run([str(JDK25/'bin/java'),'-Xmx1024m','-cp',classpath,probe,str(path)],
+                argument=path if side=='product' else reference_path
+                command=([str(executable),'-Xmx'+str(args.native_heap_bytes//(1024*1024))+'m',str(argument)] if side=='product' and args.native_executable else
+                    [str(JDK25/'bin/java'),'-Xmx1024m','-cp',classpath,probe,str(argument)])
+                subprocess.run(command,
                     stdout=stdout,stderr=stderr,env=env,check=True,timeout=3600)
             results[side]=json.loads((evidence/(side+'.json')).read_text())
             if set(results[side]['sources'])!=selected:raise ValueError('MODEL_API_PUBLISHED_INVENTORY_INCOMPLETE: '+side)
@@ -136,7 +188,7 @@ def main():
             report[side+'_elapsed_seconds']=round(time.monotonic()-begin,3);atomic_json(output,report)
         witness=json.loads((evidence/'scratch/exact-reference/frozen-worker-receipt.json').read_text())
         raw_reference=evidence/'scratch/exact-reference/frozen-model.bin'
-        if (witness.get('compilations')!=1 or witness.get('units')!=len(request['sources'])
+        if (witness.get('compilations')!=1 or witness.get('units')!=len(request['sources'])-len(invalid)
             or witness.get('processing') is not False or witness.get('decode_view')!='one_unit_at_a_time'
             or witness.get('response_bytes')!=raw_reference.stat().st_size
             or witness.get('response_sha256')!=digest(raw_reference)):
@@ -147,6 +199,7 @@ def main():
         report['equal']=all(row['equal'] for row in report['projections'].values())
     except Exception as error:report.update(failure=str(error),failure_type=type(error).__name__)
     finally:
+        report['inputs']=inputs
         report['changed_inputs']=[name for name,sha in inputs.items() if not pathlib.Path(name).is_file() or digest(pathlib.Path(name))!=sha]
         before=report.get('source_inputs',{});after=alignment.input_files()
         report['changed_source_inputs']=sorted(name for name in before.keys()|after.keys() if before.get(name)!=after.get(name)) if before else []

@@ -5,7 +5,7 @@ import pathlib
 import tempfile
 import unittest
 
-from java_real_semantic_diff import domain_accepted,validate_publication,proof_files,PENDING_DOMAINS
+from java_real_semantic_diff import domain_accepted,validate_publication,validate_model_inventory,proof_files,PENDING_DOMAINS
 from java_declaration_inventory_diff import digest
 
 
@@ -49,6 +49,28 @@ class SemanticAcceptance(unittest.TestCase):
             (root/'native').write_bytes(b'changed')
             with self.assertRaisesRegex(ValueError,'PROOF_DRIFT'):proof_files(root,report)
             with self.assertRaisesRegex(ValueError,'PROOF_MISSING'):proof_files(root,dict(source_inputs={},artifacts={}))
+
+    def test_full_model_proof_must_match_publication_and_actual_empty_scopes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project=pathlib.Path(temporary)
+            manifest=dict(scopes=['MAIN','TEST'],modules=[dict(id=str(i),root=str(i),selected=True,resolved_classpath=True,
+                source_roots=[dict(path='src',scope='MAIN')],dependencies=dict(MAIN=[],TEST=[]),
+                classpath=dict(MAIN=[],TEST=[])) for i in range(40)])
+            contexts=[str(i)+'@'+scope for i in range(40) for scope in ('MAIN','TEST')]
+            publication=dict(source_inputs={'source':'sha'},inputs_manifest_sha256='manifest',artifacts={
+                'target/lib/java/native/libcodeana_java.dylib':'library','target/lib/java/compiler-bridge.jar':'bridge'})
+            report=dict(kind='complete_frozen_maven_model_api_inventory',state='finished',complete_model_api_inventory=True,
+                source_inputs=publication['source_inputs'],inputs_manifest_sha256='manifest',
+                changed_inputs=[],changed_source_inputs=[],native_model_api_executable_sha256='native',
+                native_shared_library_sha256='library',compiler_bridge_sha256='bridge',expected_contexts=contexts,
+                contexts=[dict(context=c,accepted=True,no_java_inputs=True,source_count=0,published_source_count=0) for c in contexts])
+            validate_model_inventory(report,publication,manifest,project)
+            for override,reason in [(dict(native_shared_library_sha256='old'),'RUNTIME_MISMATCH'),
+                (dict(source_inputs={'source':'old'}),'INVENTORY_REQUIRED'),(dict(contexts=report['contexts'][:-1]),'INVENTORY_REQUIRED')]:
+                with self.subTest(override=override),self.assertRaisesRegex(ValueError,reason):
+                    validate_model_inventory(report|override,publication,manifest,project)
+            path=project/'0/src/A.java';path.parent.mkdir(parents=True);path.write_text('class A {}')
+            with self.assertRaisesRegex(ValueError,'SOURCE_COUNT'):validate_model_inventory(report,publication,manifest,project)
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

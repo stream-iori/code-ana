@@ -2,13 +2,36 @@
 import copy
 import json
 import pathlib
+import struct
 import tempfile
 import unittest
-from java_model_api_inventory_diff import projections, validate_inputs
+from java_model_api_inventory_diff import archive_inventory, invalid_sources, projections, validate_inputs
+from java_real_acceptance import digest
 from java_real_compiler_diagnostics import compiler_context
 
 
 class ModelInventoryGuards(unittest.TestCase):
+    def test_bad_utf8_keeps_bytes_and_requires_exact_failure_without_semantics(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=pathlib.Path(temporary);source=root/'Broken.java';source.write_bytes(b'class Broken {\xff}')
+            request=dict(sources=[dict(path='Broken.java',input=str(source),hash=digest(source),publish=True)])
+            invalid=invalid_sources(request);self.assertEqual(source.read_bytes(),b'class Broken {\xff}')
+            diagnostic=dict(code='SOURCE_ENCODING_INVALID',source='Broken.java',sha256=digest(source),severity='ERROR',
+                phase='input_decode',encoding='UTF-8',start=-1,end=-1)
+            row=dict(kind='row',section='diagnostics',value=diagnostic)
+            path=root/'model.bin'
+            def write(rows):
+                with path.open('wb') as out:
+                    out.write(b'CAF1')
+                    for value in rows:
+                        body=json.dumps(value).encode();out.write(struct.pack('>I',len(body)));out.write(body)
+            write([row]);self.assertEqual(len(archive_inventory(path,set(),invalid)),1)
+            for rows,reason in [([], 'MISSING_OR_DUPLICATE'),([row,row], 'MISSING_OR_DUPLICATE'),
+                ([dict(row,value=dict(diagnostic,sha256='changed'))], 'DIAGNOSTIC_INVALID'),
+                ([row,dict(kind='row',section='syntax',value=dict(source='Broken.java'))], 'HAS_SEMANTICS')]:
+                write(rows)
+                with self.subTest(reason=reason),self.assertRaisesRegex(ValueError,reason):archive_inventory(path,set(),invalid)
+
     def test_original_scope_source_order_and_byte_hashes(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=pathlib.Path(temporary)

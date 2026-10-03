@@ -10,6 +10,8 @@ import time
 from java_declaration_inventory_diff import connection, digest
 from java_real_acceptance import publication_accepted
 import java_real_acceptance as acceptance
+from java_project_model_api_alignment import accepted_context, expected_contexts
+from java_real_compiler_diagnostics import compiler_context as acceptance_context
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 REFERENCE_SHA='d822716b8349b2f94814500454cb1a515268b63b73f93e8e99467e54a872dba3'
@@ -31,6 +33,43 @@ DOMAINS=(
 )
 # These require independent, complete proofs before this gate can certify parity.
 PENDING_DOMAINS=('complete_model_api_inventory',)
+
+
+def validate_model_inventory(report,publication,manifest,project):
+    expected=[module+'@'+scope for module,scope in expected_contexts(manifest)]
+    if (report.get('kind')!='complete_frozen_maven_model_api_inventory' or report.get('state')!='finished'
+        or report.get('complete_model_api_inventory') is not True
+        or report.get('changed_inputs')!=[] or report.get('changed_source_inputs')!=[]
+        or report.get('inputs_manifest_sha256')!=publication.get('inputs_manifest_sha256')
+        or report.get('source_inputs')!=publication.get('source_inputs')
+        or report.get('expected_contexts')!=expected
+        or [row.get('context') for row in report.get('contexts',[])]!=expected):
+        raise ValueError('SEMANTIC_COMPLETE_MODEL_INVENTORY_REQUIRED')
+    artifacts=publication.get('artifacts',{})
+    if (not report.get('native_model_api_executable_sha256')
+        or report.get('native_shared_library_sha256')!=artifacts.get('target/lib/java/native/libcodeana_java.dylib')
+        or report.get('compiler_bridge_sha256')!=artifacts.get('target/lib/java/compiler-bridge.jar')):
+        raise ValueError('SEMANTIC_MODEL_INVENTORY_RUNTIME_MISMATCH')
+    for row in report['contexts']:
+        if row.get('accepted') is not True:raise ValueError('SEMANTIC_MODEL_CONTEXT_FAILED')
+        module,scope=row['context'].rsplit('@',1)
+        request=acceptance_context(project,manifest,module,scope)
+        if row.get('source_count')!=len(request['sources']) or row.get('published_source_count')!=sum(s['publish'] for s in request['sources']):
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_SOURCE_COUNT')
+        if row.get('no_java_inputs') is True:
+            if row.get('source_count')!=0 or row.get('published_source_count')!=0:
+                raise ValueError('SEMANTIC_MODEL_EMPTY_CONTEXT_INVALID')
+            continue
+        path=pathlib.Path(row.get('receipt',''))
+        if not path.is_file() or digest(path)!=row.get('receipt_sha256'):
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_PROOF_DRIFT')
+        value=json.loads(path.read_text())
+        if (not accepted_context(row,value) or value.get('source_inputs')!=report['source_inputs']
+            or value.get('native_model_api_executable_sha256')!=report['native_model_api_executable_sha256']):
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_INVENTORY_INCOMPLETE')
+    for name,expected_hash in report.get('inputs',{}).items():
+        if not pathlib.Path(name).is_file() or digest(name)!=expected_hash:
+            raise ValueError('SEMANTIC_MODEL_INVENTORY_PROOF_DRIFT')
 
 
 def domain_accepted(name,report):
@@ -85,6 +124,7 @@ def main():
     parser=argparse.ArgumentParser()
     for name in ('product','reference','project','publication_receipt','runtime_root','inputs_manifest','evidence'):
         parser.add_argument('--'+name.replace('_','-'),type=pathlib.Path,required=True)
+    parser.add_argument('--model-api-receipt',type=pathlib.Path)
     args=parser.parse_args()
     args.evidence.mkdir(parents=True,exist_ok=False)
     started=time.monotonic()
@@ -104,6 +144,11 @@ def main():
         report['runtime_proof']=proof_files(args.runtime_root,receipt)
         report['input_sha256']={str(p.resolve()):digest(p) for p in
             (args.product,args.reference,args.publication_receipt,args.inputs_manifest)}
+        if args.model_api_receipt:
+            validate_model_inventory(json.loads(args.model_api_receipt.read_text()),receipt,manifest,args.project.resolve())
+            report['input_sha256'][str(args.model_api_receipt.resolve())]=digest(args.model_api_receipt)
+            report['pending_domains'].remove('complete_model_api_inventory')
+            report['complete_model_api_inventory_receipt']=str(args.model_api_receipt.resolve())
         report['auditor_sha256']={str(file.relative_to(ROOT/'tests')):digest(file)
             for file in sorted((ROOT/'tests').glob('*.py'))}
         with connection(args.product) as db:

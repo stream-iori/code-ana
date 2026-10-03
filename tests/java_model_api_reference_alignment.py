@@ -10,6 +10,7 @@ import time
 import java_alignment as alignment
 import java_functional_reference_alignment as functional
 import java_model_tests as models
+from java_model_api_inventory_diff import archive_inventory, invalid_sources
 
 CASES={
  'generic-nested':{'Use.java':'// 原字节😀\r\npackage p; class Outer<T> {T field; Outer() {} static class Inner {int x; Inner(){} void run(int value) {int local=1;} } }'},
@@ -26,6 +27,7 @@ CASES={
  'duplicate-reference-span':{'One.java':'package p; class Dup {}','Two.java':'package p; class Dup {}'},
  'shared-ast':{'Use.java':'''package p; class Shared {Shared(){} java.util.List<String> first,second;
  void run(){java.util.List<String> a,b; new java.util.ArrayList<String>() {{add("原字节😀");}};}}'''},
+ 'invalid-utf8':{'Healthy.java':'package p; class Healthy {Healthy(){} int value;}','Broken.java':'package p; class Broken {}'},
 }
 
 
@@ -78,11 +80,33 @@ def main():
                 request=dict(version=5,facts=False,java_home=str(models.JDK8),bridge=str(root/'lang-adaptor/target/compiler-bridge.jar'),
                     scratch=str(case.root),contexts=[context],model_type_queries=['p.Outer','p.Outer.Inner','p.Outer$Inner','p.Flow','p.Dup','p.Missing'])
                 if args.inventory:request.update(model_api_inventory=True,model_api_exact_context=True)
+                invalid={};reference_request=request
+                if name=='invalid-utf8':
+                    broken=case.root/'app/Broken.java';broken.write_bytes(b'package p; class Broken {\xff}')
+                    next(source for source in context['sources'] if source['path']=='app/Broken.java')['hash']=functional.digest(broken)
+                    invalid=invalid_sources(context)
+                    compiler_request=base/'compiler-request.json';compiler_request.write_text(json.dumps(context))
+                    archive=base/'model.bin'
+                    with (base/'compiler.log').open('wb') as log:
+                        compiled=subprocess.run([str(models.JDK8/'bin/java'),'-Xmx128m','-cp',
+                            str(root/'lang-adaptor/target/compiler-bridge.jar')+os.pathsep+str(models.JDK8/'lib/tools.jar'),
+                            'dev.codeana.compiler.CompilerBridge',str(compiler_request),str(archive)],
+                            stdout=subprocess.PIPE,stderr=log,check=True,timeout=120)
+                    completion=json.loads(compiled.stdout)
+                    if completion.get('sha256')!=functional.digest(archive) or completion.get('bytes')!=archive.stat().st_size:
+                        raise ValueError('MODEL_API_ENCODING_ARCHIVE_COMPLETION')
+                    (base/'compiler-receipt.json').write_bytes(compiled.stdout)
+                    queries=archive_inventory(archive,{'app/Healthy.java'},invalid)
+                    request.update(model_type_queries=queries,model_api_excluded_sources=sorted(invalid),
+                        model_api_archive=str(archive),model_api_archive_sha256=functional.digest(archive))
+                    reference_request=dict(request,contexts=[dict(context,sources=[s for s in context['sources'] if s['path'] not in invalid])])
                 path=base/'request.json';path.write_text(json.dumps(request));values={}
+                reference_path=base/'reference-request.json';reference_path.write_text(json.dumps(reference_request))
                 for side,cp,probe in [('product',product_cp,'dev.codeana.analysis.DetachedModelApiProbe'),
                                      ('reference',reference_cp,'dev.codeana.analysis.DetachedModelApiReferenceProbe')]:
-                    command=([str(args.native_executable.resolve()),str(path)] if side=='product' and args.native_executable else
-                        [str(models.JDK25/'bin/java'),'-cp',cp,probe,str(path)])
+                    argument=path if side=='product' else reference_path
+                    command=([str(args.native_executable.resolve()),str(argument)] if side=='product' and args.native_executable else
+                        [str(models.JDK25/'bin/java'),'-cp',cp,probe,str(argument)])
                     process=subprocess.run(command,capture_output=True,text=True,timeout=180)
                     (base/(side+'.log')).write_text(process.stderr)
                     if process.returncode:raise RuntimeError(side+' '+process.stderr[-4000:])
@@ -90,6 +114,10 @@ def main():
                 left,right=values['product'],values['reference'];equal=left==right
                 proof=dict(name=name,product_declarations=len(left['rows']),reference_declarations=len(right['rows']),
                     product_syntax=len(left['syntax']),reference_syntax=len(right['syntax']),raw_equal=equal)
+                if invalid:
+                    if invalid_sources(context)!=invalid:raise AssertionError('MODEL_API_BAD_UTF8_BYTES_CHANGED')
+                    proof.update(invalid_utf8_sources=invalid,encoding_diagnostic_verified=True,
+                        healthy_source_inventory_equal=equal,reference_invalid_input_excluded=True)
                 if name=='duplicate-reference-span':
                     # Both models disclose ambiguity. The reference loses the
                     # second actual class span; never replace correct product evidence.
