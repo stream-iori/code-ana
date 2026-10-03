@@ -15,6 +15,19 @@ import java_alignment as alignment
 import java_functional_reference_alignment as reference
 
 
+def preflight(root):
+    target = root/'lang-adaptor/target'
+    required = [target/'compiler-bridge.jar', target/'native-classpath.txt',
+                target/'classes/dev/codeana/analysis/JavaAnalysis.class',
+                target/'test-classes/dev/codeana/analysis/AnalysisProbe.class']
+    missing = [str(path) for path in required if not path.is_file()]
+    classpath = target/'native-classpath.txt'
+    if classpath.is_file():
+        entries = classpath.read_text().strip().split(os.pathsep)
+        missing += [entry for entry in entries if not entry or not pathlib.Path(entry).is_file()]
+    return dict(passed=not missing, missing=missing)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--label', default='java-fixtures-built')
@@ -32,10 +45,17 @@ def main():
             commands.append([sys.executable, *command[1:]])
     if not commands:
         raise ValueError('NO_FIXTURE_COMMANDS')
+    preparation = preflight(root)
+    receipt = evidence/'receipt.json'
+    if not preparation['passed']:
+        receipt.write_text(json.dumps(dict(all_ok=False, preflight=preparation, gates=[],
+            full_semantic_diff_accepted=False, rebuild_performed=False), indent=2)+'\n')
+        print('FIXTURE_ARTIFACTS_MISSING: '+json.dumps(preparation['missing']), flush=True)
+        print(receipt, flush=True)
+        return 1
     inputs, artifacts = alignment.input_files(), reference.probe_artifacts(False)
     report = dict(inputs=inputs, artifacts=artifacts, gates=[], all_ok=False,
-                  full_semantic_diff_accepted=False, rebuild_performed=False)
-    receipt = evidence/'receipt.json'
+                  full_semantic_diff_accepted=False, rebuild_performed=False, preflight=preparation)
     total_started = time.monotonic()
     for index, command in enumerate(commands):
         started = time.monotonic()

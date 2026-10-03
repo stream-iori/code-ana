@@ -88,6 +88,9 @@ def probe_artifacts(native):
         files += [ROOT / 'target/release/codeana-java-worker', ROOT / 'lang-adaptor/target/native/libcodeana_java.dylib',
                   ROOT / 'lang-adaptor/target/native/manifest.json']
     else:
+        classpath = ROOT / 'lang-adaptor/target/native-classpath.txt'
+        files += [classpath]
+        files += [pathlib.Path(p) for p in classpath.read_text().strip().split(os.pathsep) if p]
         directories = [ROOT / 'lang-adaptor/target/classes', ROOT / 'lang-adaptor/target/test-classes']
         directories += [pathlib.Path(p) for p in os.environ.get('CODEANA_TEST_CLASSES', '').split(os.pathsep) if p]
         for directory in directories:

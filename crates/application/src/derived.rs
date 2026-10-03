@@ -6,7 +6,7 @@ use codeana_storage::{CandidateDerivation, CandidateFacts};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const PROFILE: &str = "derived-wiring-2";
+pub(crate) const PROFILE: &str = "derived-wiring-3";
 const PRODUCER: &str = "rust.derived.wiring";
 const AGGREGATE: &str = "static-injection-candidates";
 pub(crate) struct Wiring;
@@ -80,6 +80,142 @@ fn internal(facts: &CandidateFacts<'_>, fact: Fact) -> Result<Option<Fact>> {
     }
     let found = facts.declarations(path, world, &fact.signature)?;
     Ok((found.len() == 1).then(|| found.into_iter().next().unwrap()))
+}
+
+fn class(fact: &Fact) -> bool {
+    matches!(
+        fact.attributes.get("element_kind").and_then(|a| a.as_str()),
+        Some("CLASS" | "INTERFACE" | "ENUM" | "ANNOTATION_TYPE")
+    )
+}
+
+fn bean_type(facts: &CandidateFacts<'_>, bean: &Fact) -> Result<Option<Fact>> {
+    let configured = facts.references("config_type", Some(&bean.id))?;
+    if configured.len() == 1 {
+        return facts.fact(&configured[0].target);
+    }
+    let Some(parent) = facts.fact(&bean.parent)? else {
+        return Ok(None);
+    };
+    if class(&parent) {
+        return Ok(Some(parent));
+    }
+    // A method-backed annotation Bean supplies a Java-confirmed return-type
+    // reference. Names alone never join it to a class in another world.
+    let mut targets = BTreeMap::new();
+    for edge in facts.references("type_reference", Some(&parent.id))? {
+        if edge.attributes.get("type_context").and_then(|a| a.as_str()) != Some("return_type") {
+            continue;
+        }
+        if let Some(target) = facts.fact(&edge.target)?
+            && class(&target)
+            && bean.attributes.get("type").and_then(|a| a.as_str())
+                == Some(target.signature.as_str())
+        {
+            targets.insert(target.id.clone(), target);
+        }
+    }
+    Ok((targets.len() == 1).then(|| targets.into_values().next().unwrap()))
+}
+
+fn xml_wires(facts: &CandidateFacts<'_>) -> Result<()> {
+    for reference in facts.references("config", None)? {
+        let Some(site) = facts.fact(&reference.parent)? else {
+            continue;
+        };
+        if site.relation != "java.spring.xml"
+            || !matches!(
+                site.attributes.get("kind").and_then(|a| a.as_str()),
+                Some("bean_ref" | "idref" | "map_value_ref")
+            )
+        {
+            continue;
+        }
+        ensure!(
+            site.source == reference.source && site.owner.world == reference.owner.world,
+            "XML_CONFIGURATION_EVIDENCE_IDENTITY_MISMATCH"
+        );
+        let mut current = Some(site.clone());
+        let mut visited = BTreeSet::new();
+        let mut bean = None;
+        while let Some(node) = current {
+            ensure!(
+                visited.insert(node.id.clone()) && visited.len() <= 256,
+                "XML_CONFIGURATION_OWNER_CYCLE_OR_BUDGET"
+            );
+            if node.relation == "java.bean" {
+                bean = Some(node);
+                break;
+            }
+            current = facts.fact(&node.parent)?;
+        }
+        let (Some(bean), Some(target_bean)) = (bean, facts.fact(&reference.target)?) else {
+            continue;
+        };
+        if target_bean.relation != "java.bean" {
+            continue;
+        }
+        let configured = facts.references("config_owner", Some(&bean.id))?;
+        let source = if configured.len() == 1 {
+            facts.fact(&configured[0].target)?
+        } else {
+            None
+        };
+        let (Some(source), Some(target)) = (source, bean_type(facts, &target_bean)?) else {
+            continue;
+        };
+        let Some(source) = internal(facts, source)? else {
+            continue;
+        };
+        let target = internal(facts, target.clone())?.unwrap_or(target);
+        let mut wire = Fact {
+            id: String::new(),
+            kind: FactKind::Relation,
+            owner: owner(&reference.owner.world),
+            source: reference.source.clone(),
+            span: reference.span.clone(),
+            name: String::new(),
+            signature: String::new(),
+            parent: source.id,
+            target: target.id,
+            relation: "wires_possible".into(),
+            status: "possible".into(),
+            origin: PROFILE.into(),
+            evidence_complete: false,
+            declaration_resolved: false,
+            attributes: BTreeMap::from([
+                ("via".into(), json!("xml_configuration")),
+                (
+                    "confidence".into(),
+                    json!(if site
+                        .attributes
+                        .get("candidate_count")
+                        .and_then(|a| a.as_u64())
+                        == Some(1)
+                    {
+                        "configured"
+                    } else {
+                        "ambiguous"
+                    }),
+                ),
+                ("configuration_evidence".into(), json!(reference.id)),
+                ("source_bean".into(), json!(bean.id)),
+                ("target_bean".into(), json!(target_bean.id)),
+                (
+                    "position".into(),
+                    site.attributes
+                        .get("position")
+                        .cloned()
+                        .unwrap_or(json!(null)),
+                ),
+                ("runtime_confirmed".into(), json!(false)),
+            ]),
+        };
+        // Each captured reference is distinct evidence, including duplicates.
+        wire.id = key("derived_xml_wiring", &[PROFILE, &digest(&wire)]);
+        facts.insert(&wire)?;
+    }
+    Ok(())
 }
 
 impl CandidateDerivation for Wiring {
@@ -183,7 +319,7 @@ impl CandidateDerivation for Wiring {
                 facts.insert(&wire)?;
             }
         }
-        Ok(())
+        xml_wires(facts)
     }
 }
 
@@ -375,6 +511,124 @@ mod tests {
                 ..Default::default()
             })
             .unwrap()
+    }
+
+    #[test]
+    fn xml_configuration_preserves_occurrences_and_removes_derived_wires_atomically() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::open(root.path()).unwrap();
+        let (mut revision, mut result) = fixture();
+        let path = "beans.xml";
+        store
+            .put_blobs(&[(hash(path), path.as_bytes().to_vec())].into())
+            .unwrap();
+        revision.manifest.files.push(SourceUnit {
+            path: path.into(),
+            hash: hash(path),
+            size: path.len() as u64,
+            module: "app".into(),
+            world: "main".into(),
+            scope: "MAIN".into(),
+            language: String::new(),
+            auxiliary: false,
+        });
+        result.manifest = revision.manifest.id();
+        for id in ["a", "b"] {
+            result
+                .facts
+                .iter_mut()
+                .find(|f| f.id == id)
+                .unwrap()
+                .attributes
+                .insert("element_kind".into(), json!("CLASS"));
+        }
+        let xml_owner = Owner {
+            world: "main".into(),
+            producer: "spring-model-v1".into(),
+            kind: "resource".into(),
+            id: path.into(),
+        };
+        let mut xml = vec![
+            fact("source-bean", FactKind::Facet, "a", "", "java.bean"),
+            fact("target-bean", FactKind::Facet, "b", "", "java.bean"),
+            fact(
+                "ref-site",
+                FactKind::Facet,
+                "source-bean",
+                "",
+                "java.spring.xml",
+            ),
+            fact(
+                "ref-one",
+                FactKind::Reference,
+                "ref-site",
+                "target-bean",
+                "config",
+            ),
+            fact(
+                "ref-two",
+                FactKind::Reference,
+                "ref-site",
+                "target-bean",
+                "config",
+            ),
+            fact(
+                "owner-class",
+                FactKind::Reference,
+                "source-bean",
+                "a",
+                "config_owner",
+            ),
+        ];
+        xml[2].attributes.extend(BTreeMap::from([
+            ("kind".into(), json!("bean_ref")),
+            ("candidate_count".into(), json!(1)),
+            ("position".into(), json!({"line":1,"column":2})),
+        ]));
+        for (index, node) in xml.iter_mut().enumerate() {
+            node.source = path.into();
+            node.owner = xml_owner.clone();
+            node.span = Some(Span {
+                start: index as u64,
+                end: index as u64 + 1,
+            });
+        }
+        result.facts.extend(xml);
+        let first = publish(&store, revision.clone(), &result, "");
+        let output: Vec<_> = wires(&store, &first.id)
+            .into_iter()
+            .filter(|f| f.attributes["via"] == "xml_configuration")
+            .collect();
+        assert_eq!(output.len(), 2);
+        assert_eq!(
+            output
+                .iter()
+                .map(|f| f.attributes["configuration_evidence"].as_str().unwrap())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["ref-one", "ref-two"])
+        );
+        assert!(output.iter().all(|f| f.parent == "a"
+            && f.target == "b"
+            && f.source == path
+            && f.status == "possible"
+            && !f.evidence_complete
+            && !f.declaration_resolved));
+        let delta = AnalysisResult {
+            mode: "delta".into(),
+            baseline: first.id.clone(),
+            manifest: revision.manifest.id(),
+            profile: PROFILE.into(),
+            producer: "adapter".into(),
+            replacements: vec![xml_owner],
+            facts: vec![],
+        };
+        let second = publish(&store, revision, &delta, &first.id);
+        assert!(
+            wires(&store, &second.id)
+                .iter()
+                .all(|f| f.attributes["via"] != "xml_configuration")
+        );
+        assert_eq!(wires(&store, &first.id).len(), 4);
     }
 
     #[test]

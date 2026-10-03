@@ -852,6 +852,23 @@ public final class SpringXmlAnalysis {
                 if (declaration != null) registered.put("parent", declaration.get("id"));
                 else if (!node.attr("abstract").equalsIgnoreCase("true") || !bean.type.isEmpty())
                     doc.gaps.add("unresolved_bean_type:" + bean.name);
+                // Configuration identity and factory product identity differ. Keep
+                // Java's class lookup here; Rust derives edges from these identities.
+                String configured = node.attr("class");
+                Map<String, Object> configuredOwner = declaration(configured);
+                if (configuredOwner != null)
+                    link(doc, node, "configured-owner", bean.id,
+                            Json.string(configuredOwner, "id"), "config_owner", new TreeMap<>());
+                if (!bean.type.isBlank()) {
+                    Map<String, Object> configuredType = declaration;
+                    if (configuredType == null) {
+                        configuredType = external(bean.type, bean.type, "",
+                                Json.object("element_kind", "CLASS", "configured_only", true));
+                        Json.map(configuredType.get("attributes")).put("binding_origin", "xml_configuration");
+                    }
+                    link(doc, node, "configured-type", bean.id,
+                            Json.string(configuredType, "id"), "config_type", new TreeMap<>());
+                }
             }
         for (Doc doc : documents) {
             for (XmlModel.Node node : doc.model.nodes()) {

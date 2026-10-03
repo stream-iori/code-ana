@@ -775,9 +775,16 @@ pub fn run(
                             {
                                 if rel.relation == "wires_possible" {
                                     evidence.semantic = false;
-                                    evidence
-                                        .reasons
-                                        .push("static_injection_candidates_open_world".into());
+                                    evidence.reasons.push(
+                                        if rel.attributes.get("via").and_then(|a| a.as_str())
+                                            == Some("xml_configuration")
+                                        {
+                                            "static_xml_configuration_open_world"
+                                        } else {
+                                            "static_injection_candidates_open_world"
+                                        }
+                                        .into(),
+                                    );
                                 }
                                 records.push(serde_json::to_value(rel)?);
                             }

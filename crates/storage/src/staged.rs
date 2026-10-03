@@ -49,6 +49,21 @@ impl CandidateFacts<'_> {
         Ok(facts)
     }
 
+    /// Directed adapter references, distinct from relation records.
+    pub fn references(&self, relation: &str, parent: Option<&str>) -> Result<Vec<Fact>> {
+        let mut statement = self.db.prepare(
+            "SELECT body FROM facts WHERE kind='reference' AND relation=?
+             AND (? IS NULL OR parent=?) ORDER BY id",
+        )?;
+        let mut rows = statement.query(params![relation, parent, parent])?;
+        let mut facts = Vec::new();
+        while let Some(row) = rows.next()? {
+            (self.check)()?;
+            facts.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
+        }
+        Ok(facts)
+    }
+
     pub fn fact(&self, id: &str) -> Result<Option<Fact>> {
         (self.check)()?;
         self.db

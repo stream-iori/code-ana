@@ -145,7 +145,11 @@ public final class FactSink {
                             || !"possible".equals(f.get("status"))
                             || !extension.producer().equals(f.get("origin"))
                             || !Boolean.FALSE.equals(a.get("source_available"))
-                            || !"binary_metadata".equals(a.get("binding_origin"))
+                            || !("binary_metadata".equals(a.get("binding_origin"))
+                                    || "spring".equals(extension.id())
+                                        && "xml_configuration".equals(a.get("binding_origin"))
+                                        && Boolean.TRUE.equals(a.get("configured_only"))
+                                        && "CLASS".equals(a.get("element_kind")))
                             || Boolean.TRUE.equals(f.get("evidence_complete"))))
                 throw new IllegalArgumentException("EXTENSION_EXTERNAL_SYMBOL_EVIDENCE");
             if ("facet".equals(kind)) {

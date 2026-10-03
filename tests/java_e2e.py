@@ -13,6 +13,45 @@ class JavaProduct(unittest.TestCase):
     cleanup=harness.Product.cleanup
     daemon_log=harness.Product.daemon_log
 
+    def test_rust_xml_wiring_matches_frozen_graph_and_delta(self):
+        from java_xml_wiring_reference import SOURCE, XML, projection
+        config = self.project/'.code-ana/config.toml'
+        config.write_text(config.read_text().replace('[languages.java.extensions.spring]\nenabled = false',
+                         '[languages.java.extensions.spring]\nenabled = true\nxml = true')
+                         + '\n[[modules.resource_roots]]\npath="src/main/resources"\nscope="MAIN"\n')
+        source = self.project/'src/p/Wiring.java'
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(SOURCE)
+        resource = self.project/'src/main/resources/beans.xml'
+        resource.parent.mkdir(parents=True)
+        resource.write_text(XML)
+        _, first = self.cli('index', '--full', timeout=180)
+        initial = self.facts(first['revision'])
+        product, expected = projection(initial, self.root/'xml-reference-initial')
+        self.assertEqual(product, expected)
+        self.assertEqual(len(product), 6)
+        holder = next(f['id'] for f in initial if f['kind']=='declaration' and f['signature']=='p.Holder')
+        rows, query = self.cli('type-relations', holder, '--relation', 'wires_possible')
+        self.assertEqual(len(rows), 5)
+        self.assertFalse(query['evidence']['semantic'])
+        self.assertIn('static_xml_configuration_open_world', query['evidence']['reasons'])
+        changed_xml = XML.replace('<property name="other" ref="api"/>', '<property name="other" ref="unknown"/>')
+        resource.write_text(changed_xml)
+        _, delta = self.cli('index', timeout=180)
+        changed = self.facts(delta['revision'])
+        product, expected = projection(changed, self.root/'xml-reference-delta', xml=changed_xml)
+        self.assertEqual(product, expected)
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(changed, self.facts(full['revision']))
+        resource.unlink()
+        _, delta = self.cli('index', timeout=180)
+        self.assertFalse([f for f in self.facts(delta['revision'])
+                          if f['relation']=='wires_possible' and f['attributes'].get('via')=='xml_configuration'])
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(self.facts(delta['revision']), self.facts(full['revision']))
+        self.assertEqual(initial, self.facts(first['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_maven_xml_only_main_test_contexts_publish_and_delta(self):
         import hashlib
         shutil.rmtree(self.project/'src')
