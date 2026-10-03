@@ -1056,3 +1056,7 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 <!-- 2026-10-03：XML完整差分继续，未关闭52项。 -->
 
 资源模块补齐：真实SOFA XML差分旧库226/参考232，缺6/额外0；5处为itest-config.xml合法 `<!-->…<-->` 注释误截断，1处为common/dal无Java导致Rust未建立上下文。已修Java词法扫描与Rust资源MAIN/TEST world/依赖发现，XML12项与Rust96项/Clippy通过；新native/真实daemon/40模块仍待冻结组合验收。SOFA/MsgBroker注册完整属性与子配置独立JVM/native三组各8严格相等，无漂移；整个XML图尚未关闭。
+
+## XML 接线补齐（2026-10-03）
+
+Rust derived-wiring-3 与 Java Spring 6 已补配置类/产物身份及 XML wires_possible；真实 native/daemon 4 项通过，两组 XML 接线各 6/6 严格参考一致，删除/全量增量/旧版本均通过。历史全项目缺失269条保留为失败，新版数量仍待重验。完整 JVM 正在运行；完整 XML 图/属性、iopengw 全语义和最后容量/发行仍未关闭，不能据专项结果勾选剩余50项。证据见 [执行记录](../docs/implementation/java-alignment-execution.md)。

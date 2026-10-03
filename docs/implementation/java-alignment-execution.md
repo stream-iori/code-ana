@@ -883,3 +883,16 @@ declared-field-final/field-reference-20261003-163522-93718 native三组24/24严�
 正确性保护期限：spring-final-daemon-all-20261003-142349完整47项7207.573秒，3失败（大预算索引300秒TIMEOUT、旧2秒Ack丢worker、Lombok module ABI默认期限TIMEOUT），输入/产物无漂移；其它44项通过。旧失败保留。新大预算fixture对所有索引使用1800秒保护期限，原facts/bytes/RSS/旧head/full-delta断言不变；native177与图消费者组合保护期限同步放宽，不作为性能验收结论。最终容量仍要求独占、3冷/3热与2GiB。
 
 发布门禁补齐：package-java增加from-build与新输出目录模式、拒绝混装native/SDK8 SHA、默认输出重建去除旧包残留。java_release从真实包检查全部SHA清单并调用包内CLI/daemon/worker，核心、Maven XML-only MAIN/TEST及错误JDK三个用例；回执仍要求源码、产物、包无漂移。入口已接java_alignment最终java-release，但尚待新冻结组合执行，不据此关闭其它50项。
+
+## XML 接线与新版回归（2026-10-03）
+
+| 项目 | 实现 / 正式证据 |
+|---|---|
+| XML WIRES 缺口 | 历史 4a 发布库严格投影为 0 / 参考 269；iopengw-4a-xml-wiring-missing.json 保留失败。新增只读完整项目审计入口，核对发布身份、捕获 XML/SOURCE SHA、两侧数据库前后 SHA，保留重复引用。 |
+| Rust 派生 | derived-wiring-3 在原子候选内读取 Java config 引用，沿真实父链找到 Bean，再按 config_owner/config_type 的既有身份形成 wires_possible。显式配置类与工厂产物类型分开；不解析 XML、不按同名猜 Java 类型，不把配置当运行时确认。源码 alias 仍要求全部捕获 provenance 匹配。 |
+| Java 证据 | Spring 6 输出配置类/产物类型引用。未读取字节码的外部配置类明确 configured_only/xml_configuration；FactSink 只接受 Spring 的此类 CLASS/possible 证据，已确认/源位置/其它非法外部证据仍拒绝。 |
+| JVM / Rust | xml-config-type-jvm-final.log：12 项通过；xml-config-type-extensions.log：扩展回归通过；xml-wiring-workspace.log：97 项通过；Clippy 与 release 构建通过。 |
+| 最新 daemon | validation-xml-wiring-final/xml-wiring-final-product.json：4 项、125 秒通过，无源码/产物漂移。真实 native/SDK8 的 XML 初始/修改两组均 6 / 6 与冻结参考严格相等；包括原位置、嵌套 Bean、工厂配置类、未知外部类、无显式类的父 Bean反例、删除/full-delta/旧 revision、DI、多模块及 MAIN/TEST XML-only。独立参考数据库和原 XML 已保留在该证据目录。 |
+| 完整 native 终态 | validation-java-current/native-fixtures-20261003-163907：177 项通过、1311.19 秒，无源码/产物漂移；这是前一个 1dd587f 组合，不替代新 XML 组合的完整重验。 |
+| JVM 环境失败 | current-java-full-jvm-20261003-163903 因验收目录漏复制 native-classpath.txt，大量命令启动前失败；回执保留。新入口预检桥/类/依赖，并冻结 classpath 文件和所有依赖 SHA。完整产物目录中的 xml-wiring-full-jvm 正在重验。 |
+| 安装 / 剩余 | 根目录已成套安装 7a26bfa 的 native/SDK8 bridge；root Maven worker 86f604bf... 外部控制仍保持，未影响正在运行的旧组合 iopengw。仍须新版全部 daemon、完整 XML 图/绑定属性、40 模块语义差分、独占容量和最终发行；52 项仅 E01/E02 关闭。 |
