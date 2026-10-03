@@ -423,3 +423,13 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 事实回归 | Builder 14 项、SuperBuilder 8 项 JVM 回归通过，含泛型 owner、继承调用恢复、full-delta/删除及无跨度构造器的非确认状态。测试 native 可执行文件不代替共享库/Rust/daemon 验收。 |
 | 门禁修复 | 旧完整回归的 41 组、391 项 Java 测试通过，随后默认导航对照失败：参考重新发现坏 UTF-8 或重规划注解依赖。工具明确使用原 SDK8 单上下文，坏文件只在参考侧排除，产品原字节和诊断继续验证；旧失败不覆盖。 |
 | 仍待 | 最新同版共享库/daemon、40 模块/80 上下文/14 域与最后的容量/release。app/test@TEST 另发现图表固定 64MiB 与显式 1GiB 归档预算冲突，待修复。矩阵仍只关闭 E01/E02。 |
+
+## 显式归档预算与图表一致（2026-10-03）
+
+| 项目 | 证据 / 状态 |
+|---|---|
+| 原失败 | `validation-java-correctness-de090ea/.../iopengw-all-context-model-api/5/compiler/receipt.json`：app/test@TEST，3319 源/472 发布源，请求 1GiB 归档，却在固定 64MiB 图表预算处失败。半成品实际图节点字节累计约 64MiB，不是安全杀进程。 |
+| 修复 | 编码、RowSpool、归档按需解码的平面图表统一消费所属 RecordArchive 的预算，最大 1GiB；默认归档 64MiB、单帧、节点/图数量与旧嵌套类型表保护不提高。图节点仍按行落盘，不把完整图表装入堆。桥 SHA 变化使缓存失效；模型/协议格式不变。 |
+| 保护 | 新 ModelGraphBudgetProbe 含 65536 节点、超过 64MiB 的实际图；显式 96MiB 全节点/循环边往返成功，默认 64MiB 仍拒绝。旧类运行同一 probe 明确 MODEL_GRAPH_TABLE_BUDGET。JVM/native 均通过；原 75000 节点传输、GC 身份、分页、归档/取消/JSON 等完整 java_archive_alignment 回归通过。日志：model-graph-budget-{old-failure,native,archive-regression}.log。 |
+| 真实编译 | `iopengw-test-test-graph-budget-fixed/receipt.json`：247.967 秒成功，3319 源、472 发布源，完整归档 526510405 字节；源、classpath、manifest、桥无漂移，无异常信号。只是实际 SDK8 编译器及归档，不是 native 产品发布或容量验收。 |
+| 原生模型 | `model-api-reference-20261003-233150-7960/receipt.json`：新桥/新图表代码的 17 组 native 模型 API 专项通过。app/test@TEST 全源原生 API 清单正在对照，最新共享库/Rust/daemon 全量门禁仍待完成。 |

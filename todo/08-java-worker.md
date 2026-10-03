@@ -1137,3 +1137,5 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 后续终态：core/service MAIN全部2624源、42072声明、489941 AST、2763类型查询的JVM/native清单严格相等；测试清单逐条落盘并保留512MiB独立保护上限。完整回归另外发现无绑定辅助AST导致Lombok扩展丢弃生成声明，现修复并将Lombok版本升至9；补充签名12、Lombok16、模块缓存9和模块覆盖9共46项全部通过。须继续以含Lombok9的同版本native产物验收全项目，尚未关闭其余50项。
 
 2026-10-03 生成模型补齐：Data、Builder/SuperBuilder、默认值 provider、方法/泛型方法目标的生成参数、类型参数、父链、切片已与实际冻结 Lombok 扩展对照。JVM 默认/native 摘要 17 组通过，两个参考缺陷保持 raw 不相等；Builder/SuperBuilder 22 项事实及增量回归通过。补齐抽象 builder 默认构造器，Lombok 10 / registry v10 使旧缓存失效。默认坏编码对照和依赖重规划的工具错误已修正；全项目 app/test@TEST 新发现固定图表预算冲突，未验收通过。详情及回执见 docs/java-implementation.md。
+
+图表预算后续：按编码/RowSpool/按需解码所在归档的显式预算统一，默认64MiB保持，最大1GiB；旧嵌套类型表/单帧/节点保护保持。65536节点实际大图 JVM/native 往返及默认超限拒绝、完整归档回归通过。app/test@TEST真实 SDK8 编译成功（3319源/472发布源、526510405字节、247.967秒），无输入漂移/异常信号；全源原生API对照及最新同版全项目验收仍待。不能据此关闭容量。

@@ -8,9 +8,15 @@ import java.util.*;
 final class ModelGraphs {
     private final boolean encodingOnly;
     private final RecordArchive archive;
+    private final long maxBytes;
     ModelGraphs() {this(false);}
-    ModelGraphs(boolean encodingOnly) {this.encodingOnly=encodingOnly;this.archive=null;}
-    ModelGraphs(RecordArchive archive) {this.encodingOnly=false;this.archive=archive;}
+    ModelGraphs(boolean encodingOnly) {this(encodingOnly,ModelArchive.DEFAULT_BYTES);}
+    ModelGraphs(boolean encodingOnly,long maxBytes) {
+        this.encodingOnly=encodingOnly;this.archive=null;this.maxBytes=Math.min(maxBytes,ModelArchive.MAX_BYTES);
+    }
+    ModelGraphs(RecordArchive archive) {
+        this.encodingOnly=false;this.archive=archive;this.maxBytes=Math.min(archive.byteLimit(),ModelArchive.MAX_BYTES);
+    }
     void retireEncoderIdentities() {identities.clear();}
     private final List<List<Map<String,Object>>> nodes = new ArrayList<List<Map<String,Object>>>();
     private final List<TypeGraph> decoded = new ArrayList<TypeGraph>();
@@ -18,7 +24,6 @@ final class ModelGraphs {
     private final IdentityHashMap<Object,Integer> identities = new IdentityHashMap<Object,Integer>();
     private final List<Object> storageIdentities = new ArrayList<Object>();
     private long bytes;
-    private static final long MAX_BYTES = 64L * 1024 * 1024;
 
     interface Types { ModelGraphs graphs(); }
     static final class Table extends ArrayList<Object> implements Types {
@@ -89,7 +94,7 @@ final class ModelGraphs {
 
     private void account(Map<String,Object> value) {
         bytes=Math.addExact(bytes,Json.write(value).getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
-        if(bytes>MAX_BYTES)throw new IllegalArgumentException("MODEL_GRAPH_TABLE_BUDGET");
+        if(bytes>maxBytes)throw new IllegalArgumentException("MODEL_GRAPH_TABLE_BUDGET");
     }
 
     private int[] reference(Object raw) throws IOException {

@@ -33,9 +33,9 @@ public final class ModelArchive {
         final List<Integer> typePositions = new ArrayList<Integer>();
         long typeBytes;
         Encoder(RecordArchive records) {this(records,false);}
-        Encoder(RecordArchive records,boolean encodingOnly) { this.records=records;graphs=new ModelGraphs(encodingOnly); }
+        Encoder(RecordArchive records,boolean encodingOnly) { this.records=records;graphs=new ModelGraphs(encodingOnly,records.byteLimit()); }
         Encoder(RecordArchive records,boolean encodingOnly,boolean archiveGraphs) {
-            this.records=records;graphs=archiveGraphs ? new ModelGraphs(records) : new ModelGraphs(encodingOnly);
+            this.records=records;graphs=archiveGraphs ? new ModelGraphs(records) : new ModelGraphs(encodingOnly,records.byteLimit());
         }
         Object pack(Object raw, int depth) {
             if (depth>Json.MAX_DEPTH) throw new IllegalArgumentException("MODEL_DEPTH_BUDGET");

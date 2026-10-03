@@ -9,6 +9,9 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 JDK = pathlib.Path(os.environ.get('JAVA_HOME', pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'))
 dependencies = (ROOT/'lang-adaptor/target/native-classpath.txt').read_text().strip()
+subprocess.run([str(JDK/'bin/java'), '-Xmx256m', '-cp', os.pathsep.join([
+                str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
+                'dev.codeana.common.ModelGraphBudgetProbe'], check=True, timeout=180)
 subprocess.run([str(JDK/'bin/java'), '-Xmx512m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
                 'dev.codeana.analysis.ModelApiInventoryOutputProbe'], check=True, timeout=120)
