@@ -13,6 +13,11 @@ GETTER_SOURCE = ('@lombok.Getter class Def {' + ' '.join('String f' + str(i) + '
                  + '} class Use {Api read(Def d){return Api.builder()'
                  + ''.join('.f' + str(i) + '(d.getF' + str(i) + '())' for i in range(14)) + '.build();}}')
 
+def ordinary_chain(length):
+    return ('@lombok.Getter class Trigger {String value;} '
+            'class Plain {Plain next(){return this;} void done(){}} '
+            'class Use {void read(Plain p){p' + '.next()' * length + '.done();}}')
+
 
 class BuilderChains(unittest.TestCase):
     setUp = models.Models.setUp
@@ -39,6 +44,36 @@ class BuilderChains(unittest.TestCase):
         full = self.analyze([changed], cache=True)
         self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
         self.assertFalse([fact for fact in full['facts'] if fact['attributes'].get('recovery_failure')])
+
+    def test_plain_ten_receivers_keep_independent_call_and_expression_budgets(self):
+        for graph in (False, True):
+            with self.subTest(graph=graph):
+                context = self.fixture(ordinary_chain(10))
+                context['type_graph'] = graph
+                facts = self.analyze([context])['facts']
+                targets = [fact for fact in facts if fact['kind'] == 'call_target']
+                self.assertEqual(len(targets), 11)
+                self.assertTrue(all(fact['status'] == 'resolved' for fact in targets))
+                self.assertFalse([fact for fact in facts if fact['attributes'].get('recovery_failure')])
+
+    def test_plain_eighty_receivers_keep_frozen_budget_boundary_and_cached_delta(self):
+        source = ordinary_chain(80)
+        for graph in (False, True):
+            with self.subTest(graph=graph):
+                context = self.fixture(source)
+                context['type_graph'] = graph
+                base = self.analyze([context], cache=True)
+                targets = [fact for fact in base['facts'] if fact['kind'] == 'call_target']
+                self.assertEqual(len(targets), 32)
+                blocked = [fact for fact in base['facts'] if fact['kind'] == 'call_site'
+                           and fact['attributes'].get('recovery_failure') == 'recovery_budget']
+                self.assertEqual(len(blocked), 49)
+                self.assertTrue(all(fact['attributes'].get('recovery_target_blocked') for fact in blocked))
+                changed = self.fixture(source.replace('return this;', 'return null;'))
+                changed['type_graph'] = graph
+                delta = self.analyze([changed], base['facts'], cache=True)
+                full = self.analyze([changed], cache=True)
+                self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
 
     def test_forty_setters_recover_build_without_relaxing_limits(self):
         facts = self.analyze([self.fixture(SOURCE)])['facts']

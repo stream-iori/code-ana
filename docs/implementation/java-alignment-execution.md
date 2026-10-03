@@ -481,3 +481,9 @@ S3新取证 source-annotation-diff.json：原SOURCE注解身份/owner/span3838�
 ## SDK8 annotated mirror 的完整项目阻断修复
 
 Java8 AnnotatedType实现ArrayType/DeclaredType/ExecutableType等多种接口，与被包装类型实际kind无关。已用注解返回String/参数int/数组的最小源码在默认树和图模式分别复现相同ClassCastException。CompilerBridge的incomplete、descriptor、SAM分支、enclosing和selected_type按TypeKind选择访问器；不吞异常、不改解析器、不屏蔽源码。java_annotated_type_alignment的两项JVM检查通过，涵盖两种表示、5个完整目标、lambda/member-reference的6个完整目标和缓存full/delta（5.469秒）。真实CustomDnsResolverTest带完整Maven TEST上下文3329源码/869jar的流式专项正在验证，尚不能宣称全项目阻断已彻底关闭。
+
+## 调用/表达式/类型预算按原版边界分离
+
+新调用以自身表达式深度0开始，active调用递归仍最多64；类型证据操作使用自身的depth0，仍由TypeOperations保留64/100000限制。lambda参数的祖先身份查找和生成名扫描只消耗工作预算，不把语法包装深度算成类型推断递归；名字扫描用有界迭代队列，保留4096和100000限制。modeledExpression对调用/参数查询恢复独立预算，不增加原版允许的链长。v1-v5曾在80段负例分别缺32/2/1目标，不合入；v6与冻结原版10段11/11、80段32/32严格相等，49个超预算调用明确blocked。已有34组独立原版全部相等、无产物漂移；14个残余MAIN文件2059/2081，即22独立缺失/0独立额外/5状态对，待正式native/发布复核。
+
+logical-budget-annotated-final-focused-jvm.log：长链/Builder正反例/表达式/annotated镜像共14项通过（45.453秒），长链含两种表示、缓存full/delta及保留64层负例。默认类型图仍未切换，S1/S2/S3及52项全对齐仍未关闭。

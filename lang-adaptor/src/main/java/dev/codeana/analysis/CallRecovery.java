@@ -289,7 +289,7 @@ final class CallRecovery {
             if (!left.type.isEmpty() && !right.type.isEmpty()) {
                 String a = kind(left.type), b = kind(right.type);
                 if (!Set.of("ARRAY", "VOID").contains(a)
-                        && types.same(left.type, right.type, depth + 1) == Match.YES)
+                        && types.same(left.type, right.type, 0) == Match.YES)
                     return new Result(left.type, modeled);
                 if (a.equals("NULL") && b.equals("DECLARED"))
                     return new Result(right.type, modeled);
@@ -308,8 +308,8 @@ final class CallRecovery {
             Result left = expression(id(child(node, "left").get("id")), depth + 1);
             Result right = expression(id(child(node, "right").get("id")), depth + 1);
             boolean modeled = left.modeled || right.modeled;
-            Map<String, Object> a = types.readable(left.type, depth + 1);
-            Map<String, Object> b = types.readable(right.type, depth + 1);
+            Map<String, Object> a = types.readable(left.type, 0);
+            Map<String, Object> b = types.readable(right.type, 0);
             if (a.isEmpty() || b.isEmpty()
                     || Set.of("ERROR", "UNKNOWN", "NONE", "VOID").contains(kind(a))
                     || Set.of("ERROR", "UNKNOWN", "NONE", "VOID").contains(kind(b)))
@@ -363,7 +363,7 @@ final class CallRecovery {
     }
 
     private boolean booleanValue(Map<String, Object> type, int depth) throws IOException {
-        Map<String, Object> readable = types.readable(type, depth + 1);
+        Map<String, Object> readable = types.readable(type, 0);
         return kind(readable).equals("BOOLEAN") || "java.lang.Boolean".equals(readable.get("element"));
     }
 
@@ -374,6 +374,8 @@ final class CallRecovery {
     }
 
     private Result resolve(Map<String, Object> call, int depth) throws IOException {
+        // A call starts its own expression walk; nested call count is bounded separately.
+        depth = 0;
         step(depth);
         if (!provisionalResults.isEmpty()) {
             call = new TreeMap<>(call);
@@ -385,6 +387,7 @@ final class CallRecovery {
         NodeKey key = new NodeKey(currentSource, id);
         Result old = resultCache().get(key);
         if (old != null) return old;
+        if (active.size() >= 64) throw new TypeOperations.Budget();
         if (!active.add(key)) return new Result(Map.of(), false);
         if (provisionalResults.isEmpty() && call.remove("modeled_target") != null) {
             attrs.keySet().removeIf(name -> name.startsWith("recovery_")
@@ -399,8 +402,8 @@ final class CallRecovery {
                             && (expectedOverrides.containsKey(key) || modeledReferenceContext(node(id), depth + 1)))
                     && !(diamond(node(id)) && (expectedOverrides.containsKey(key) || modeledReferenceContext(node(id), depth + 1)))
                     && !(expectedOverrides.containsKey(key) && genericInvocation(call, depth + 1))
-                    && !potential(node(id), depth + 1)
-                    && !modeledInputs(node(id), depth + 1)) {
+                    && !potential(node(id), 0)
+                    && !modeledInputs(node(id), 0)) {
                 Result result = attributedResult(attrs);
                 resultCache().put(key, result);
                 return result;
@@ -419,7 +422,7 @@ final class CallRecovery {
             if (name.isEmpty()) return unavailable(attrs, "unsupported_site");
             Map<String, Object> receiver = map(attrs.get("receiver_type_model"));
             // Model evidence may survive an unavailable receiver invocation.
-            boolean input = modeledInputs(tree, depth + 1)
+            boolean input = modeledInputs(tree, 0)
                     || reference && (modeledExpected.contains(key)
                             || modeledReferenceContext(tree, depth + 1));
             if ("MEMBER_SELECT".equals(selection.get("kind"))) {
@@ -499,7 +502,7 @@ final class CallRecovery {
             boolean uninstantiatedMethodReceiver = kind(receiver).equals("TYPEVAR")
                     && "binary_signature".equals(receiver.get("origin"))
                     && text(receiver.get("owner")).contains("#");
-            receiver = types.readable(receiver, depth + 1);
+            receiver = types.readable(receiver, 0);
             if (!kind(receiver).equals("DECLARED"))
                 return unavailable(attrs, "receiver_unavailable");
             List<Object> argumentNodes = list(map(tree.get("roles")).get("arguments"));
@@ -533,7 +536,7 @@ final class CallRecovery {
                         Map<String,Object> originalType = map(map(nested.get("attributes")).get("expression_type_model"));
                         if (Boolean.TRUE.equals(originalType.get("complete"))
                                 && Boolean.TRUE.equals(value.type.get("complete"))
-                                && types.same(originalType, value.type, depth + 1) == Match.YES)
+                                && types.same(originalType, value.type, 0) == Match.YES)
                             changedType = false;
                     }
                     input |= changedType;
@@ -794,7 +797,7 @@ final class CallRecovery {
         if (tree.isEmpty()) return false;
         String kind = text(tree.get("kind"));
         if (kind.equals("METHOD_INVOCATION"))
-            return expression(id(tree.get("id")), depth + 1).modeled || modeledInputs(tree, depth + 1);
+            return expression(id(tree.get("id")), 0).modeled || modeledInputs(tree, depth + 1);
         if (kind.equals("MEMBER_REFERENCE"))
             return modeledReference(tree, depth + 1) || modeledInputs(tree, depth + 1);
         if (kind.equals("LAMBDA_EXPRESSION")) {
@@ -806,7 +809,7 @@ final class CallRecovery {
             }
             finally { provisionalResults.pop(); }
         }
-        if (kind.equals("IDENTIFIER")) return expression(id(tree.get("id")), depth + 1).modeled;
+        if (kind.equals("IDENTIFIER")) return expression(id(tree.get("id")), 0).modeled;
         if (kind.equals("CONDITIONAL_EXPRESSION"))
             return modeledExpression(child(tree, "condition"), depth + 1)
                     || modeledExpression(child(tree, "then"), depth + 1)
@@ -851,7 +854,7 @@ final class CallRecovery {
         Set<String> visited = new HashSet<>();
         while (!pending.isEmpty()) {
             step(depth);
-            Map<String, Object> current = types.readable(pending.removeFirst(), depth + 1);
+            Map<String, Object> current = types.readable(pending.removeFirst(), 0);
             String owner = text(current.get("element"));
             if (!visited.add(owner)) continue;
             if (visited.size() > 256) throw new TypeOperations.Budget();
@@ -937,7 +940,7 @@ final class CallRecovery {
                     && signature.equals(parameter.get("owner")) && kind(argument).equals("DECLARED")) {
                 String key = variable(parameter);
                 Map<String,Object> previous = variables.putIfAbsent(key, argument);
-                if (previous != null && types.same(previous, argument, depth + 1) != Match.YES) return null;
+                if (previous != null && types.same(previous, argument, 0) != Match.YES) return null;
                 for (Object formal : list(attrs.get("type_parameter_models"))) {
                     if (!key.equals(variable(map(formal)))) continue;
                     for (Object bound : list(map(formal).get("bounds")))
@@ -978,21 +981,31 @@ final class CallRecovery {
     }
 
     private boolean potential(Map<String, Object> tree, int depth) {
-        step(depth);
-        Map<String, Object> call = calls.get(key(tree));
-        if (call != null && modeledNames.contains(text(map(call.get("attributes")).get("lookup_name"))))
-            return true;
-        if (call != null && "NEW".equals(map(call.get("attributes")).get("reference_mode"))) {
-            Map<String, Object> qualifier = map(map(call.get("attributes")).get("qualifier_type_model"));
-            Map<String, Object> declaration = sources.get(text(qualifier.get("element")));
-            if (declaration != null && Boolean.TRUE.equals(
-                    LombokModel.summary(declaration).get("constructor_replaced"))) return true;
-        }
-        if (Set.of("CLASS", "INTERFACE", "ENUM", "ANNOTATION_TYPE").contains(text(tree.get("kind"))))
-            return false;
-        for (Object value : map(tree.get("roles")).values()) {
-            if (value instanceof Number && potential(node(id(value)), depth + 1)) return true;
-            for (Object item : list(value)) if (potential(node(id(item)), depth + 1)) return true;
+        // This is a name scan, not expression/type inference. Keep work bounded
+        // without charging syntax wrapper nodes against semantic recursion depth.
+        Deque<Map<String, Object>> pending = new ArrayDeque<>();
+        Set<NodeKey> seen = new HashSet<>();
+        pending.add(tree);
+        while (!pending.isEmpty()) {
+            step(0);
+            if (pending.size() >= 4096) throw new TypeOperations.Budget();
+            Map<String, Object> current = pending.removeLast();
+            if (current.isEmpty() || !seen.add(key(current))) continue;
+            Map<String, Object> call = calls.get(key(current));
+            if (call != null && modeledNames.contains(text(map(call.get("attributes")).get("lookup_name"))))
+                return true;
+            if (call != null && "NEW".equals(map(call.get("attributes")).get("reference_mode"))) {
+                Map<String, Object> qualifier = map(map(call.get("attributes")).get("qualifier_type_model"));
+                Map<String, Object> declaration = sources.get(text(qualifier.get("element")));
+                if (declaration != null && Boolean.TRUE.equals(
+                        LombokModel.summary(declaration).get("constructor_replaced"))) return true;
+            }
+            if (Set.of("CLASS", "INTERFACE", "ENUM", "ANNOTATION_TYPE").contains(text(current.get("kind"))))
+                continue;
+            for (Object value : map(current.get("roles")).values()) {
+                if (value instanceof Number) pending.add(node(id(value)));
+                for (Object item : list(value)) pending.add(node(id(item)));
+            }
         }
         return false;
     }
@@ -1005,7 +1018,7 @@ final class CallRecovery {
             return null;
         for (Map<String, Object> parent = node(id(expression.get("parent")));
                 !parent.isEmpty(); parent = node(id(parent.get("parent")))) {
-            step(depth++);
+            step(0);
             String kind = text(parent.get("kind"));
             if (Set.of("METHOD", "CLASS", "INTERFACE", "ENUM", "ANNOTATION_TYPE").contains(kind))
                 return null;
@@ -1020,7 +1033,7 @@ final class CallRecovery {
                 boolean modeled = modeledExpected.contains(key(parent));
                 Map<String, Object> outer = node(id(parent.get("parent")));
                 while ("PARENTHESIZED".equals(outer.get("kind"))) {
-                    step(depth++); outer = node(id(outer.get("parent")));
+                    step(0); outer = node(id(outer.get("parent")));
                 }
                 Result selected = resultCache().get(key(outer));
                 modeled |= selected != null && selected.modeled;
@@ -1917,7 +1930,7 @@ final class CallRecovery {
             String key = variable(parameter);
             if (kind(actual).equals("TYPEVAR") && key.equals(variable(actual))) return Match.YES;
             Map<String, Object> value = boxed(actual), previous = variables.get(key);
-            if (previous != null) return types.same(previous, value, depth + 1);
+            if (previous != null) return types.same(previous, value, 0);
             variables.put(key, value);
             return Match.YES;
         }
