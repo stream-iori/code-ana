@@ -12,7 +12,7 @@ import pathlib
 import sqlite3
 
 from java_declaration_inventory_diff import connection, digest
-from java_inventory_canonical import Canonical, verify_source_inputs
+from java_inventory_canonical import Canonical, verify_source_inputs, compiler_lines
 
 
 def meta_projection(facts, reference):
@@ -73,7 +73,7 @@ def projection(facts, declarations, product, reference, project):
 
     @functools.lru_cache(maxsize=128)
     def lines(path):
-        return (project/path).read_bytes().decode('utf8').splitlines(keepends=True)
+        return compiler_lines((project/path).read_bytes().decode('utf8'))
 
     def offset(path,line,column,end=False):
         if not line or not column:

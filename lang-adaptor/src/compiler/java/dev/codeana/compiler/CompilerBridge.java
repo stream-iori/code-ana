@@ -1851,11 +1851,18 @@ public final class CompilerBridge implements AutoCloseable {
             Map<String, Object> out = node("reference", tree);
             out.put("target", target);
             out.put("name", tree.toString());
-            out.put("resolved", e.asType().getKind() != TypeKind.ERROR);
+            boolean field = e.getKind() == ElementKind.FIELD || e.getKind() == ElementKind.ENUM_CONSTANT;
+            boolean valueTypeComplete = e.asType().getKind() != TypeKind.ERROR;
+            // A known field declaration remains selected when only its value
+            // type is missing. Error placeholders are not declared members.
+            boolean declaredField = field && e.getEnclosingElement() instanceof TypeElement
+                    && e.getEnclosingElement().getEnclosedElements().contains(e);
+            out.put("resolved", valueTypeComplete || declaredField);
             Map<String, Object> attributes = Json.map(out.get("attributes"));
             attributes.put("reference_kind", e instanceof TypeElement ? "type"
                     : e.getKind().name().toLowerCase(Locale.ROOT));
             if (e.getKind() == ElementKind.FIELD || e.getKind() == ElementKind.ENUM_CONSTANT) {
+                if (!valueTypeComplete) attributes.put("field_value_type_complete", false);
                 TreePath parentPath = getCurrentPath().getParentPath();
                 Tree parent = parentPath == null ? null : parentPath.getLeaf();
                 Tree expression = tree;

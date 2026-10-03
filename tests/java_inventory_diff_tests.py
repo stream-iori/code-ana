@@ -6,11 +6,14 @@ import sqlite3
 import tempfile
 import unittest
 import hashlib
-from java_inventory_canonical import Canonical,verify_source_inputs
+from java_inventory_canonical import Canonical,verify_source_inputs,compiler_lines
 from java_declaration_inventory_diff import product_attributes, product_kind, descriptor_name
 
 
 class IdentityNormalization(unittest.TestCase):
+    def test_unicode_line_separators_preserve_javac_utf16_coordinates(self):
+        self.assertEqual(compiler_lines('a\u2028b\u2029c\x85d\r\ne\rf\n'),
+                         ['a\u2028b\u2029c\x85d\r\n','e\r','f\n',''])
     def test_declaration_projection_compares_effective_overlay_without_losing_original_flags(self):
         attrs = dict(element_kind='ENUM', nesting_kind='ANONYMOUS', modifiers=['static','final'])
         fact = dict(attributes=attrs, origin='javac', source='Use.java')

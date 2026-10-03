@@ -1,6 +1,10 @@
 """Independent aliases, admitted only by unique equal original-source anonymous/local-class spans."""
 import collections,functools,re,hashlib,json
 
+def compiler_lines(text):
+ """Java line terminators are CR, LF and CRLF, not Unicode LS/PS/NEL."""
+ return re.findall(r'[^\r\n]*(?:\r\n|\r|\n|$)',text)
+
 def verify_source_inputs(product,project):
  expected={}
  for row in product.execute("select source,body from facts where kind in ('provenance','external_symbol')"):
@@ -22,7 +26,7 @@ class Canonical:
  def __init__(self,product,reference,project):
   self.aliases={};self.receipt=dict(matched_anonymous_classes=0,matched_local_classes=0,matched_source_classes=0,unmatched_product=[],unmatched_reference=[])
   @functools.lru_cache(maxsize=128)
-  def lines(path):return re.findall(r'[^\r\n]*(?:\r\n|\r|\n|$)',(project/path).read_bytes().decode('utf-8'))
+  def lines(path):return compiler_lines((project/path).read_bytes().decode('utf-8'))
   def offset(path,line,column,last=False):
    text=lines(path);return sum(len(row.encode('utf-8')) for row in text[:line-1])+len(text[line-1].encode('utf-16-le')[:(column-1+last)*2].decode('utf-16-le').encode('utf-8'))
   wanted=collections.defaultdict(list)

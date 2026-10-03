@@ -18,6 +18,7 @@ enum Mode { ONE }
 class Use extends Base {
  int value=Base.count; Mode mode=Mode.ONE;
  int sourceField=java.io.Written.flag;
+ Missing errorField; void unknownType(){errorField.read(); this.absent++;}
  Runnable callback=()->{value=inherited;};
  { value=Base.count; }
  void write(int next) {
@@ -61,6 +62,11 @@ def main():
                                  for f in facts))
             case.assertTrue(any(f['relation']=='reads' and by.get(f['target'],{}).get('signature')=='java.io.Written#flag'
                                 for f in facts))
+            case.assertTrue(any(f['relation']=='reads' and f['status']=='complete'
+                                and f['attributes'].get('field_value_type_complete') is False
+                                and by.get(f['target'],{}).get('signature')=='p.Use#errorField' for f in facts))
+            case.assertFalse(any(f['relation'] in ('reads','writes') and
+                                by.get(f['target'],{}).get('signature','').endswith('#absent') for f in facts))
             if baseline is not None: case.assertEqual(case.merged(baseline,case.analyze([context],baseline,cache=True)),sorted(facts,key=lambda f:f['id']))
             baseline=facts
             database=index_reference(folder,files)

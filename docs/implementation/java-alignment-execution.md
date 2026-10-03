@@ -873,3 +873,7 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 收齐的新native/产品：validation-xml-resource-worlds/xml-resource-product-proof.log，真实release+新native资源only MAIN/TEST、辅助SOURCE构造器/lifecycle、XML合法注释、修改/删除/旧revision及full-delta，1项31.201秒通过；sofa-xml-reference-20261003-162517-88776 native三组8/8严格相等，无漂移。6e组合native-fixtures-20261003-155356完整177项1345.033秒all_ok=true。其完整JVM仍有前述专项测试模型字段遗漏，不能篡改成全部通过。
 
 字段剩余策略取证：新增++/--与Boolean.TRUE/System.out独立样本，旧产品26/参考22，额外4；JavaFieldFacts明确mutation只WRITES并使用ExternalTypePolicy.DEFAULT。现在保持原javac read_write/新field_mutation证据，仅公开关系按参考类别与外部owner策略生成；SOURCE（包括辅助/NoCode原catalogue）不排除。field-reference-20261003-162835-36264三组23/23严格相等，无漂移，另含真实java.io.Written SOURCE反例；一度NoCode把它错当binary使full-delta失败，已按原catalogue修正且保留失败日志。SDK8桥单独构建通过，native/产品和完整真实字段差分仍待新组合。
+
+字段后续收齐：validation-field-policy-final/field-reference-20261003-163322-73415，native三组23/23严格相等、无漂移；签名缓存11项52.755秒通过。新未知值类型正反例，field-reference-20261003-163348-76522 JVM三组24/24严格相等：声明真实存在但值类型ERROR的field仍绑定原声明，记录field_value_type_complete=false、原ERROR/诊断保留；不存在this.absent不能造字段关系。原实现同数量但状态不同，失败日志保留。桥以真实TypeElement成员身份核验，不把任何ERROR placeholder认作声明。
+
+真实字段位置差分纠正：HeartbeatPoolingConnectionManager.java注释含U+2028，Python splitlines错误地增加了Java行号；Java只接受CR/LF/CRLF。Canonical、字段/注解比较器统一采用Java行规则并新增LS/PS/NEL反例。iopengw-4a-field-accesses-java-line-final：48396/47003、缺9/额外1402（此前12/1405包含3对位置误报），仍equal=false、DB无漂移；修工具没有改产品原字节或抹掉未知差异。

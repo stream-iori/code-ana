@@ -11,7 +11,7 @@ import json
 import pathlib
 
 from java_declaration_inventory_diff import connection, digest
-from java_inventory_canonical import Canonical, verify_source_inputs
+from java_inventory_canonical import Canonical, verify_source_inputs, compiler_lines
 
 
 def compare(product, reference, project):
@@ -29,7 +29,7 @@ def compare(product, reference, project):
             raise ValueError('AMBIGUOUS_LEXICAL_PARENT')
         parents[r['target_id']]=r['source_id']
     @functools.lru_cache(maxsize=128)
-    def lines(path): return (project/path).read_bytes().decode('utf8').splitlines(keepends=True)
+    def lines(path): return compiler_lines((project/path).read_bytes().decode('utf8'))
     def offset(path,line,column,end=False):
         if not line or not column: return None
         rows=lines(path)
