@@ -369,18 +369,18 @@ class JavaProduct(unittest.TestCase):
             typed=[f for f in facts if f['relation']=='wires_possible' and f['attributes'].get('projection')=='declaring_type']
             self.assertTrue(all(not f['attributes']['runtime_confirmed'] for f in typed))
             return typed
-        typed=verify(before,'initial',SOURCE,8)
+        typed=verify(before,'initial',SOURCE,10)
         self.assertEqual(len([f for f in before if f['relation']=='wires_possible' and f['attributes'].get('projection')=='injection_point']),10)
-        self.assertEqual(len([f for f in typed if len(f['attributes']['injection_points'])==2]),2)
+        self.assertTrue(all(len(f['attributes']['injection_points'])==1 for f in typed))
         owner=next(f['id'] for f in before if f['kind']=='declaration' and f['signature']=='p.Use')
         rows,query=self.cli('type-relations',owner,'--relation','wires_possible')
-        self.assertEqual(len(rows),6);self.assertFalse(query['evidence']['semantic'])
+        self.assertEqual(len(rows),8);self.assertFalse(query['evidence']['semantic'])
         self.assertIn('static_injection_candidates_open_world',query['evidence']['reasons'])
         _,cached=self.cli('index',timeout=180)
         self.assertEqual(before,self.facts(cached['revision']))
         # Body-only growth shifts original Java line locations; cached signatures must refresh them.
         shifted=SOURCE.replace('Api another) {}', 'Api another) {\n /* 原字节😀 */ int n=1;\n }')
-        for label,text,count in [('shifted',shifted,8),('unique',shifted.replace('class Second implements Api {}','class Second {}'),4)]:
+        for label,text,count in [('shifted',shifted,10),('unique',shifted.replace('class Second implements Api {}','class Second {}'),5)]:
             source.write_text(text);_,delta=self.cli('index',timeout=180)
             actual=self.facts(delta['revision']);verify(actual,label,text,count)
             _,full=self.cli('index','--full',timeout=180)

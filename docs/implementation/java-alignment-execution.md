@@ -937,3 +937,5 @@ XML 绑定完整审计新增取证：冻结发布库有2处实际 BINDS_TO 已�
 | Java / Rust 分工 | SpringInjection 4 只补充已有声明类型身份及 javac 字段/参数原行号；Rust derived-wiring-4 校验实际父链，额外生成类型级候选。同一行多个参数保留全部注入点证据；原字段/参数查询继续保留。语义 profile 改变，不复用旧派生关系。 |
 | 已通过 | di-type-projection-rust-final：6 项，通过反向输入顺序、完整证据、错误声明类型拒绝及旧版本保留。di-type-projection-positions-final：多行参数、嵌套类型、缓存方法体增长后行号/full-delta 相等。初版测试误用已有 head 首次发布产生 HEAD_CONFLICT，另一个断言误用展示嵌套名，原失败日志保留。 |
 | 新门禁 | java_di_graph_reference 对实际独立参考数据库核对类型端点、原位置、confidence/interface/candidates；产品 daemon 增加 0/1/2 候选、同一行多个参数、类型查询、热缓存、增长/删除/full-delta/旧版本。新 native 组合、真实 iopengw DI 图与完整门禁尚待验证；52 项仍仅 E01/E02 关闭。 |
+
+DI 实际产品新取证：validation-di-type-projection/di-type-product-e2e.log 三项71.499秒，旧注入点和跨模块两项通过，独立实际图一项失败（8/10）。真实 DatabaseWiringResolver 在写入批次内未先写库，两个同行参数的候选均保留；内存 WiringResolver 8 条并不代表实际发布数据库的10条。di-multiline-actual-reference 的原数据库和全部 INJECTS/WIRES 保留；Rust v5 改为逐注入点保留类型关系，与实际索引多次出现对齐。独立对照现在持久保存原数据库及 raw diff，不因 fixture 清理丢失证据。新版需重验。

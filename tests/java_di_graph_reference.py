@@ -4,6 +4,8 @@ import collections
 import hashlib
 import json
 import sqlite3
+import contextlib
+import java_alignment as alignment
 
 import java_functional_reference_alignment as functional
 from java_framework_reference_alignment import reference_index
@@ -23,6 +25,8 @@ class Use {
 
 
 def projection(facts, directory, source=SOURCE, path='src/p/Use.java'):
+    # Keep independent DBs and raw differences after the daemon fixture cleans up.
+    directory=alignment.ROOT/'target/java-alignment/evidence'/('di-graph-reference-'+directory.parent.name+'-'+directory.name)
     directory.mkdir(parents=True, exist_ok=False)
     # Index the original fixture, without supplying product facts to the resolver.
     reference_index(directory, source)
@@ -37,7 +41,7 @@ def projection(facts, directory, source=SOURCE, path='src/p/Use.java'):
     left = product_projection(facts, canonical)
     database = directory / 'index.db'
     before = functional.digest(database)
-    with sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True) as db:
+    with contextlib.closing(sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True)) as db:
         db.row_factory=sqlite3.Row
         right=reference_projection(db,canonical)
     for row in right:
@@ -51,4 +55,6 @@ def projection(facts, directory, source=SOURCE, path='src/p/Use.java'):
         **functional.compare(counter(left),counter(right)),
         full_semantic_diff_accepted=False)
     (directory/'diff.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+    (directory/'product-wires.json').write_text(json.dumps([f for f in facts if f['relation'] in
+        ('wires_possible','injects_possible','java.spring.injection')],ensure_ascii=False,indent=2)+'\n')
     return sorted(left,key=lambda r:json.dumps(r,sort_keys=True)),sorted(right,key=lambda r:json.dumps(r,sort_keys=True))

@@ -6,7 +6,7 @@ use codeana_storage::{CandidateDerivation, CandidateFacts};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const PROFILE: &str = "derived-wiring-4";
+pub(crate) const PROFILE: &str = "derived-wiring-5";
 const PRODUCER: &str = "rust.derived.wiring";
 const AGGREGATE: &str = "static-injection-candidates";
 pub(crate) struct Wiring;
@@ -368,8 +368,8 @@ impl CandidateDerivation for Wiring {
                 wire.id = key("derived_wiring", &[PROFILE, &digest(&wire)]);
                 facts.insert(&wire)?;
                 if let Some((declaring, line)) = &declaring {
-                    // A type query needs the reference's declaring-type projection;
-                    // keep all point facts and aggregate their actual evidence here.
+                    // The published reference retains distinct injection occurrences,
+                    // even when multiple parameters share the same source line.
                     let identity = digest(&(
                         &wire.owner.world,
                         &declaring.id,
@@ -377,6 +377,8 @@ impl CandidateDerivation for Wiring {
                         &wire.source,
                         line,
                         &interface.id,
+                        &point.id,
+                        &injection.id,
                     ));
                     let projected = typed.entry(identity).or_insert_with(|| {
                         let mut projected = wire.clone();
@@ -744,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn type_projection_preserves_both_points_and_validates_declaring_ancestry() {
+    fn type_projection_preserves_point_multiplicity_and_validates_declaring_ancestry() {
         let root = tempfile::tempdir().unwrap();
         let store = Store::open(root.path()).unwrap();
         let (revision, mut result) = fixture();
@@ -789,22 +791,36 @@ mod tests {
         }
         let before = publish(&store, revision.clone(), &result, "");
         let output = wires(&store, &before.id);
-        assert_eq!(output.len(), 6);
+        assert_eq!(output.len(), 8);
         let projected: Vec<_> = output.iter().filter(|f| f.parent == "container").collect();
-        assert_eq!(projected.len(), 2);
+        assert_eq!(projected.len(), 4);
         for wire in projected {
             assert_eq!(wire.span, None);
             assert_eq!(wire.attributes["projection"], "declaring_type");
             assert_eq!(wire.attributes["source_line"], 3);
             assert_eq!(
-                wire.attributes["injection_points"],
-                json!(["field", "field2"])
+                wire.attributes["injection_points"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1
             );
             assert_eq!(
-                wire.attributes["injection_evidences"],
-                json!(["injection", "injection2"])
+                wire.attributes["injection_evidences"]
+                    .as_array()
+                    .unwrap()
+                    .len(),
+                1
             );
         }
+        assert_eq!(
+            output
+                .iter()
+                .filter(|f| f.parent == "container")
+                .map(|f| f.attributes["injection_points"][0].as_str().unwrap())
+                .collect::<BTreeSet<_>>(),
+            BTreeSet::from(["field", "field2"])
+        );
         let mut reversed = result.clone();
         reversed.facts.reverse();
         let other_root = tempfile::tempdir().unwrap();
