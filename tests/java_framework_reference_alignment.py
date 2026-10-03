@@ -23,8 +23,12 @@ SOURCE = '''interface Api {}
 @org.springframework.context.annotation.Profile("prod") interface Marker {}
 @org.springframework.context.annotation.Configuration
 @org.springframework.context.annotation.Profile({ "prod", /* 原字节😀 */ "cloud" }) class Config {
+ @org.springframework.beans.factory.annotation.Qualifier("constructor-level")
  Config(Api ordinary,@com.alipay.sofa.runtime.api.annotation.SofaReference Api sofa,
         @org.springframework.beans.factory.annotation.Value("fixed") String fixed){}
+ @javax.annotation.Resource void setURL(Api arbitrary) {}
+ @org.springframework.beans.factory.annotation.Autowired Api[] many;
+ @javax.annotation.Resource(type=Object.class,lookup="") Api limited;
  @org.springframework.context.annotation.Bean(name={"first","alias"})
  @org.springframework.context.annotation.Lazy(false)
  Api api(@com.alipay.sofa.runtime.api.annotation.SofaReference Api sofa, Api ordinary) { return null; }
@@ -58,14 +62,22 @@ def product_projection(facts):
             a = type_attributes(f)
             site = by_id[f['parent']]
             owner = by_id[site['parent']] if site['attributes']['element_kind'] == 'PARAMETER' else site
-            injections.append((owner['signature'], a['injection_point'], a['injected_type']['element'],
-                               a['implicit_single_constructor']))
+            identity = owner['signature']
+            if a['role'] == 'setter':
+                identity = identity.split('#')[0] + '#setter:' + a['injection_point']
+            injections.append(dict(owner=identity, point=a['injection_point'],
+                type=a['injected_type']['display'].replace(', ', ','),
+                implicit=a['implicit_single_constructor'], qualifier=a.get('qualifier'),
+                shape=a['shape'], collection=a.get('collection_type'), element=a.get('element_type'),
+                cardinality=a.get('cardinality'), required=str(a['required']).lower() if 'required' in a else None,
+                resource_default=a.get('resource_default_name'), resource_name=a.get('resource_name'),
+                resource_written=dict(a.get('resource_written_attributes', {})), unsupported=a.get('matching_unsupported', False)))
     result = []
     for (owner, aliases), group in beans.items():
         if set(group['names']) != set(aliases):
             raise ValueError('BEAN_ALIAS_NAMES_INCOMPLETE')
         result.append(dict(owner=owner, names=list(aliases), **group['value']))
-    return dict(beans=sorted(result, key=lambda x: x['owner']), injections=sorted(injections))
+    return dict(beans=sorted(result, key=lambda x: x['owner']), injections=sorted(injections, key=lambda x: (x['owner'],x['point'])))
 
 
 def reference_projection(database):
@@ -83,15 +95,27 @@ def reference_projection(database):
                               type=a.get('className', a.get('returnType')),
                               priority=a.get('prioritySelectionUnknown', False),
                               constraints=a.get('configurationConstraints', [])))
-        for e in db.execute("SELECT metadata FROM edges WHERE relation='INJECTS'"):
+        for e in db.execute("SELECT source_id,metadata FROM edges WHERE relation='INJECTS'"):
             a = json.loads(e['metadata'])
-            role, owner, name = a['injectionSite'].split(':')
-            owner = owner.replace('.', '#', 1)
-            if role == 'constructor':
-                prefix, args = owner.split('(', 1)
-                owner = prefix.split('#')[0] + '#<init>(' + args
-            injections.append((owner, name, a['injectedType'], a.get('implicitSingleConstructor', False)))
-        return dict(beans=sorted(beans, key=lambda x: x['owner']), injections=sorted(injections))
+            parts = a['injectionSite'].split(':')
+            role, name = parts[0], parts[-1]
+            if role == 'field':
+                owner = nodes[e['source_id']]['symbol_id'] + '#' + name
+            elif role == 'setter':
+                owner = nodes[e['source_id']]['symbol_id'] + '#setter:' + name
+            else:
+                owner = parts[1].replace('.', '#', 1)
+                if role == 'constructor':
+                    prefix, args = owner.split('(', 1)
+                    owner = prefix.split('#')[0] + '#<init>(' + args
+            injections.append(dict(owner=owner, point=a['injectionPointName'],
+                type=a['injectedType'].replace(', ', ','),
+                implicit=a.get('implicitSingleConstructor', False), qualifier=a.get('qualifier'),
+                shape=a['injectionShape'], collection=a.get('collectionType'), element=a.get('elementType'),
+                cardinality=a.get('cardinality'), required=a.get('required'),
+                resource_default=a.get('resourceDefaultName'), resource_name=a.get('resourceName'),
+                resource_written=a.get('resourceAttributes', {}), unsupported=a.get('matchingUnsupported', False)))
+        return dict(beans=sorted(beans, key=lambda x: x['owner']), injections=sorted(injections, key=lambda x: (x['owner'],x['point'])))
 
 
 def reference_index(base, source):
@@ -149,7 +173,7 @@ def main():
             baseline = full
             left, right = product_projection(full), reference_index(base, source)
             case.assertEqual(len(left['beans']), 3)
-            case.assertEqual(len(left['injections']), 4 if name == 'removed' else 2)
+            case.assertEqual(len(left['injections']), 7 if name == 'removed' else 5)
             (base/'product.json').write_text(json.dumps(full, ensure_ascii=False)+'\n')
             proof = dict(name=name, product=left, reference=right, equal=left == right,
                          product_sha256=reference.digest(base/'product.json'),

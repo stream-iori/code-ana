@@ -13,6 +13,53 @@ class JavaProduct(unittest.TestCase):
     cleanup=harness.Product.cleanup
     daemon_log=harness.Product.daemon_log
 
+    def test_spring_constraints_and_exact_injection_metadata_publish_and_delta(self):
+        from java_framework_reference_alignment import DEFINITIONS, SOURCE, product_projection
+        shutil.rmtree(self.project/'src')
+        for relative, text in (DEFINITIONS | {'Use.java':SOURCE}).items():
+            path=self.project/'src'/relative
+            path.parent.mkdir(parents=True,exist_ok=True)
+            path.write_text(text)
+        config=self.project/'.code-ana/config.toml'
+        config.write_text(config.read_text()
+            .replace('[languages.java.extensions.spring]\nenabled = false','[languages.java.extensions.spring]\nenabled = true')
+            .replace('[languages.java.extensions.sofa]\nenabled = false','[languages.java.extensions.sofa]\nenabled = true'))
+        source=self.project/'src/Use.java'
+        _,first=self.cli('index','--full',timeout=180)
+        self.assertEqual(first['publication'],'published')
+        before=self.facts(first['revision'])
+        projection=product_projection(before)
+        self.assertEqual(len(projection['beans']),3)
+        self.assertEqual(len(projection['injections']),5)
+        marker=next(b for b in projection['beans'] if b['owner']=='Marker')
+        self.assertTrue(marker['priority'])
+        config_bean=next(b for b in projection['beans'] if b['owner']=='Config')
+        self.assertEqual(config_bean['constraints'][0]['attributes']['value'],'{ "prod", /* 原字节😀 */ "cloud" }')
+        constructor=next(p for p in projection['injections'] if '#<init>' in p['owner'])
+        self.assertTrue(constructor['implicit'])
+        self.assertIsNone(constructor['qualifier'])
+        limited=next(p for p in projection['injections'] if p['owner']=='Config#limited')
+        self.assertTrue(limited['unsupported'])
+        self.assertEqual(limited['resource_written'],{'type':'Object.class','lookup':'""'})
+        many=next(p for p in projection['injections'] if p['owner']=='Config#many')
+        self.assertEqual((many['shape'],many['collection'],many['element']),('array','array','Api'))
+        self.assertTrue(any(p['owner']=='Config#setter:URL' and p['resource_default']=='URL' for p in projection['injections']))
+        source.write_text(source.read_text().replace('return null;','return (Api)null;'))
+        _,delta=self.cli('index',timeout=180)
+        _,full=self.cli('index','--full',timeout=180)
+        self.assertEqual(self.facts(delta['revision']),self.facts(full['revision']))
+        source.write_text(source.read_text().replace('@javax.annotation.Priority(10)','')
+            .replace('@org.springframework.context.annotation.Lazy(false)','')
+            .replace('@com.alipay.sofa.runtime.api.annotation.SofaReference ',''))
+        _,removed=self.cli('index',timeout=180)
+        after=self.facts(removed['revision'])
+        self.assertEqual(len(product_projection(after)['injections']),7)
+        self.assertFalse(next(b for b in product_projection(after)['beans'] if b['owner']=='Marker')['priority'])
+        _,again=self.cli('index','--full',timeout=180)
+        self.assertEqual(after,self.facts(again['revision']))
+        self.assertEqual(before,self.facts(first['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_default_type_graph_deep_source_native_queries_and_delta(self):
         shutil.rmtree(self.project/'src')
         (self.project/'src').mkdir()

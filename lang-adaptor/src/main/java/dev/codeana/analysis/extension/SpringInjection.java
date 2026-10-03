@@ -33,7 +33,7 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
         return "spring-injection";
     }
 
-    public String version() { return "2"; }
+    public String version() { return "3"; }
 
     public String producer() {
         return "spring-injection-v1";
@@ -155,6 +155,13 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
             facts.gap(site, "INJECTION_TYPE_UNAVAILABLE");
             return;
         }
+        String point = Json.string(site, "name");
+        if (role.equals("setter")) {
+            point = Json.string(injectionSite, "name").substring(3);
+            if (!point.isEmpty() && !(point.length() > 1
+                    && Character.isUpperCase(point.charAt(0)) && Character.isUpperCase(point.charAt(1))))
+                point = Character.toLowerCase(point.charAt(0)) + point.substring(1);
+        }
         Map<String, Object> a =
                 Json.object(
                         "role",
@@ -162,13 +169,14 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
                         "injected_type",
                         rawType,
                         "injection_point",
-                        site.get("name"),
+                        point,
                         "injection_point_name_available",
                         role.equals("field"),
                         "implicit_single_constructor",
                         implicit,
                         "runtime_selection",
                         "unknown");
+        if (role.equals("setter")) a.put("source_parameter_name", site.get("name"));
         if (injection != null) {
             a.put("annotation", injection.root());
             a.put("annotation_evidence", injection.evidence());
@@ -179,7 +187,7 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
                 annotations
                         .first(Json.string(site, "signature"), QUALIFIER)
                         .orElseGet(
-                                () ->
+                                () -> role.equals("constructor") ? null :
                                         annotations
                                                 .first(
                                                         Json.string(injectionSite, "signature"),
@@ -192,10 +200,22 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
         if (injection != null && injection.root().endsWith(".Resource")) {
             Object resourceName = injection.values().get("name");
             a.put("resource_attributes", injection.values());
+            Map<String, Object> written = new LinkedHashMap<>();
+            for (Object rawExpression : Json.list(Json.map(injectionSite.get("attributes"))
+                    .getOrDefault("source_annotation_expressions", List.of()))) {
+                Map<String, Object> expression = Json.map(rawExpression);
+                if (injection.direct().equals(expression.get("type"))) {
+                    written.putAll(Json.map(expression.get("attributes")));
+                    if (!Boolean.TRUE.equals(expression.get("complete"))) a.put("matching_unsupported", true);
+                }
+            }
+            a.put("resource_written_attributes", written);
+            if (written.keySet().stream().anyMatch(Set.of("lookup", "mappedName", "type")::contains))
+                a.put("matching_unsupported", true);
             if (resourceName instanceof String text && !text.isBlank()) {
                 a.put("resource_name", text);
                 if (name == null) name = text;
-            } else a.put("resource_default_name", site.get("name"));
+            } else a.put("resource_default_name", point);
             if (injection.values().entrySet().stream()
                             .anyMatch(
                                     e ->
@@ -231,8 +251,10 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
     private static void shape(Map<String, Object> type, Map<String, Object> a) {
         String shape = "single";
         Object element = null;
+        String container = null;
         if ("ARRAY".equals(type.get("kind"))) {
             shape = "array";
+            container = "array";
             element = type.get("component");
         } else {
             String raw = (String) type.get("element");
@@ -246,7 +268,7 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
                                 || "java.lang.String"
                                         .equals(SpringHandlers.typeName(args.getFirst())))) {
                     element = args.getLast();
-                    a.put("collection_type", raw);
+                    container = raw;
                 } else a.put("matching_unsupported", true);
             } else if (!args.isEmpty()) {
                 shape = "parameterized";
@@ -260,6 +282,7 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
                     || !Json.list(Json.map(element).getOrDefault("arguments", List.of())).isEmpty())
                 a.put("matching_unsupported", true);
             else {
+                a.put("collection_type", container);
                 a.put("element_type", name);
                 a.put("cardinality", "many");
             }

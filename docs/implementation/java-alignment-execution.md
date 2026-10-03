@@ -724,3 +724,10 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | 冻结独立对照 | framework-reference-20261003-134212-76420：JVM三组 constraints/body/removed 全部严格一致，无输入/产物漂移。三类Bean的类型、全部别名、Priority、祖先约束和完整原表达式，以及2/4个注入点/构造器隐式状态一致；body/删除的full-delta事实完整相等。 |
 | 已有回归 | spring-constraints-framework-jvm.log12项45.539秒、annotations9项29.186秒、NoCode边界7项39.477秒通过。发现前后的原始产品/参考文件保留在framework-parity-discovery及-after；不是全框架/真实项目验收。 |
 | 后续 | native/daemon同版本专项、全部框架/类型/模型属性、全40模块语义和最终门禁继续；正在运行的缓存版完整回执与真实项目属于前一冻结版本，不含此次Spring补齐。 |
+
+
+## Spring 注入元信息的四处差分（2026-10-03）
+
+严格扩大独立对照后，观察到四处实际差异：构造器级Qualifier被误传播到参数、Resource setter默认名取参数名而非属性名、数组缺少collection_type=array、显式lookup=""/type=Object.class未披露matching_unsupported及原表达式。按冻结组件规则修复，injection版本升3；effective resource_attributes保留，另存resource_written_attributes，不冒充显式值。setter保留source_parameter_name，属性名遵循URL等双大写规则。
+
+framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入点比较完整 shape/container/element/cardinality、required、qualifier、resource默认名/显式值/原表达式、unsupported及implicit状态；Bean原约束/别名不变，full-delta仍严格相等，无漂移。新增实际daemon同一fixture验收，native/daemon专项待回执。此前差异、惰性Metadata序列化入口错误和同owner多参数的投影排序错误日志均保留，没有删减属性比较。框架12项46.092秒回归通过。
