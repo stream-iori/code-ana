@@ -1,6 +1,78 @@
 use super::*;
 use codeana_contracts::archive::{FactArchive, FactArchiveBuilder};
 
+/// A Rust indexing policy supplies the meaning of derived relations. Storage
+/// only provides private candidate reads/writes and atomic replacement.
+pub trait CandidateDerivation {
+    fn producer(&self) -> &str;
+    fn aggregate_id(&self) -> &str;
+    fn derive(&self, facts: &CandidateFacts<'_>) -> Result<()>;
+}
+
+pub struct CandidateFacts<'a> {
+    db: &'a Connection,
+    manifest: &'a Manifest,
+    policy: &'a dyn CandidateDerivation,
+    check: &'a dyn Fn() -> Result<()>,
+}
+
+impl CandidateFacts<'_> {
+    pub fn relations(&self, relation: &str) -> Result<Vec<Fact>> {
+        let mut statement = self
+            .db
+            .prepare("SELECT body FROM facts WHERE kind='relation' AND relation=? ORDER BY id")?;
+        let mut rows = statement.query([relation])?;
+        let mut facts = Vec::new();
+        while let Some(row) = rows.next()? {
+            (self.check)()?;
+            facts.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
+        }
+        Ok(facts)
+    }
+
+    pub fn fact(&self, id: &str) -> Result<Option<Fact>> {
+        (self.check)()?;
+        self.db
+            .query_row("SELECT body FROM facts WHERE id=?", [id], |r| {
+                r.get::<_, String>(0)
+            })
+            .optional()?
+            .map(|body| serde_json::from_str(&body).map_err(Into::into))
+            .transpose()
+    }
+
+    pub fn insert(&self, fact: &Fact) -> Result<()> {
+        (self.check)()?;
+        ensure!(
+            fact.owner.producer == self.policy.producer()
+                && fact.owner.kind == "aggregate"
+                && fact.owner.id == self.policy.aggregate_id(),
+            "DERIVED_OWNER_MISMATCH"
+        );
+        FactValidator::new(self.manifest)
+            .validate(fact)
+            .map_err(anyhow::Error::msg)?;
+        let body = json(fact)?;
+        ensure!(body.len() <= MAX_FRAME, "FACT_FRAME_BUDGET");
+        self.db.execute(
+            "INSERT INTO facts VALUES(?,?,?,?,?,?,?,?,?,?)",
+            params![
+                fact.id,
+                fact.kind.name(),
+                fact.owner.key(),
+                fact.parent,
+                fact.target,
+                fact.relation,
+                fact.name,
+                fact.source,
+                fact.owner.world,
+                body
+            ],
+        )?;
+        Ok(())
+    }
+}
+
 pub struct StagedCandidate {
     directory: CandidateDirectory,
     revision: Revision,
@@ -59,6 +131,19 @@ impl ReadContext {
         root: Option<&Path>,
         check: impl Fn() -> Result<()>,
     ) -> Result<FactArchive> {
+        self.export_adapter_archive_checked_in(max_bytes, max_count, root, &[], check)
+    }
+
+    /// Product-derived aggregate facts are kept in revisions but are not
+    /// returned to a language worker as adapter-owned baseline facts.
+    pub fn export_adapter_archive_checked_in(
+        &self,
+        max_bytes: u64,
+        max_count: u64,
+        root: Option<&Path>,
+        excluded_owners: &[Owner],
+        check: impl Fn() -> Result<()>,
+    ) -> Result<FactArchive> {
         check()?;
         let mut archive = match root {
             Some(path) => FactArchiveBuilder::new_in(max_bytes, max_count, path)?,
@@ -66,13 +151,19 @@ impl ReadContext {
         };
         let mut statement = self
             .connection
-            .prepare("SELECT body FROM facts ORDER BY id")?;
+            .prepare("SELECT owner,body FROM facts ORDER BY id")?;
+        let excluded: BTreeSet<_> = excluded_owners.iter().map(Owner::key).collect();
         let mut rows = statement.query([])?;
+        let mut visited = 0u64;
         while let Some(row) = rows.next()? {
-            if archive.count().is_multiple_of(256) {
+            if visited.is_multiple_of(256) {
                 check()?;
             }
-            let body: String = row.get(0)?;
+            visited += 1;
+            if excluded.contains(&row.get::<_, String>(0)?) {
+                continue;
+            }
+            let body: String = row.get(1)?;
             archive.push(&serde_json::from_str(&body)?)?;
         }
         archive.seal()
@@ -108,12 +199,34 @@ impl Store {
     }
     pub fn stage_archive_with_scratch_check(
         &self,
+        revision: Revision,
+        header: &AnalysisHeader,
+        archive: &FactArchive,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+    ) -> Result<StagedCandidate> {
+        self.stage_archive_with_derivation(
+            revision,
+            header,
+            archive,
+            expected,
+            cancellation,
+            check_directory,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn stage_archive_with_derivation(
+        &self,
         mut revision: Revision,
         header: &AnalysisHeader,
         archive: &FactArchive,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
         check_directory: impl Fn(&Path) -> Result<()>,
+        derivation: Option<&dyn CandidateDerivation>,
     ) -> Result<StagedCandidate> {
         cancellation()?;
         header
@@ -184,6 +297,25 @@ impl Store {
             CREATE INDEX IF NOT EXISTS fact_kind ON facts(kind); CREATE INDEX IF NOT EXISTS fact_owner ON facts(owner);
             CREATE INDEX IF NOT EXISTS fact_parent ON facts(parent); CREATE INDEX IF NOT EXISTS fact_target ON facts(target);
             CREATE INDEX IF NOT EXISTS fact_name ON facts(name); CREATE INDEX IF NOT EXISTS fact_source ON facts(source,world);")?;
+        if let Some(policy) = derivation {
+            let worlds: BTreeSet<_> = revision
+                .manifest
+                .files
+                .iter()
+                .chain(baseline.iter().flat_map(|r| &r.revision.manifest.files))
+                .map(|s| s.world.as_str())
+                .collect();
+            for world in worlds {
+                check()?;
+                let owner = Owner {
+                    world: world.into(),
+                    producer: policy.producer().into(),
+                    kind: "aggregate".into(),
+                    id: policy.aggregate_id().into(),
+                };
+                db.execute("DELETE FROM facts WHERE owner=?", [owner.key()])?;
+            }
+        }
         let owners: BTreeSet<_> = header.replacements.iter().collect();
         if let Some(before) = &baseline {
             let after: BTreeMap<_, _> = revision
@@ -219,6 +351,10 @@ impl Store {
                 check()?;
             }
             let f = fact?;
+            ensure!(
+                derivation.is_none_or(|p| f.owner.producer != p.producer()),
+                "DERIVED_PRODUCER_RESERVED"
+            );
             validator.validate(&f).map_err(anyhow::Error::msg)?;
             ensure!(
                 header.mode != "delta" || owners.contains(&f.owner),
@@ -240,6 +376,14 @@ impl Store {
                 .with_context(|| format!("DUPLICATE_OR_INVALID_FACT: {}", f.id))?;
         }
         drop(insert);
+        if let Some(policy) = derivation {
+            policy.derive(&CandidateFacts {
+                db: &tx,
+                manifest: &revision.manifest,
+                policy,
+                check: &check,
+            })?;
+        }
         tx.execute(
             "INSERT OR REPLACE INTO identity VALUES('revision',?)",
             [&revision.id],

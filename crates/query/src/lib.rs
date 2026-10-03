@@ -759,6 +759,9 @@ pub fn run(
                         )?;
                         for rel in relations {
                             let kinds = match req.operation.as_str() {
+                                "type-relations" if req.relation == "wires_possible" => {
+                                    ["wires_possible"].as_slice()
+                                }
                                 "type-relations" => ["extends", "implements"].as_slice(),
                                 "callable-relations" => {
                                     ["overrides", "implements_method"].as_slice()
@@ -770,6 +773,12 @@ pub fn run(
                                 && allowed(r, req, &rel)
                                 && seen.insert(rel.id.clone())
                             {
+                                if rel.relation == "wires_possible" {
+                                    evidence.semantic = false;
+                                    evidence
+                                        .reasons
+                                        .push("static_injection_candidates_open_world".into());
+                                }
                                 records.push(serde_json::to_value(rel)?);
                             }
                         }

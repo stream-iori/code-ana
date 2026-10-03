@@ -50,6 +50,8 @@
 
 存储不推导 Java 派发、不解释健康策略、不执行 pipeline，也不暴露万能 ORM。
 
+Rust application 可向 staging 提交 `CandidateDerivation`。存储在私有候选中按规则声明的 producer/aggregate ID 清理旧派生 owner，提供关系读取、按 ID 读取和受 owner/manifest 校验的插入；规则完成后仍执行全库 dangling/coverage/完整性校验。关系含义由 application 决定。派生 aggregate 不交回语言 worker，普通 revision 导出继续保留。取消、磁盘预算、派生失败和 CAS 冲突均不能改动旧 head。
+
 ## 3. 发布协议
 
 ```text

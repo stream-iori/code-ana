@@ -135,6 +135,18 @@
       "sha256": "424ee87cb9d303bc4461b509d635dd981da63adf9b8ae95cda40d83abf97b1f8",
       "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/ModuleAbiEligibility.java",
       "changes": "Adapt frozen MAIN module boundary, successful source parsing, complete aggregate Lombok coverage and verifiable NoCode projection; retain SOURCE per unavailable world and original compiler evidence."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/core/WiringResolver.java",
+      "sha256": "80cea3f1c4fd867eb2ce3bb5aa8965f4df50668e43ed921697a14a8710862f46",
+      "destination": "crates/application/src/derived.rs",
+      "changes": "Translate direct internal IMPLEMENTS + INJECTS static candidate derivation into Rust indexing policy; preserve sorted distinct candidates, inferred/ambiguous confidence, location and via/source/candidates metadata. Storage exposes private candidate reads/writes only and rebuilds per-world aggregate owners atomically; Rust semantic profile includes derived-wiring-1 and worker baselines exclude these owners. No runtime CALLS or qualifier-based selection. Actual native CLI/daemon publication, explicit query, changed/deleted implementation full-delta equivalence compared with frozen WiringResolver class."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/store/DatabaseWiringResolver.java",
+      "sha256": "90c44fca5b18c141618145dcd012cef19e763849dd6209251836847bbadfbc28",
+      "destination": "crates/application/src/derived.rs",
+      "changes": "Translate direct internal IMPLEMENTS + INJECTS static candidate derivation into Rust indexing policy; preserve sorted distinct candidates, inferred/ambiguous confidence, location and via/source/candidates metadata. Storage exposes private candidate reads/writes only and rebuilds per-world aggregate owners atomically; Rust semantic profile includes derived-wiring-1 and worker baselines exclude these owners. No runtime CALLS or qualifier-based selection. Actual native CLI/daemon publication, explicit query, changed/deleted implementation full-delta equivalence compared with frozen WiringResolver class."
     }
   ]
 }

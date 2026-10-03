@@ -4,7 +4,7 @@ use anyhow::{Context, Result, ensure};
 use codeana_model::*;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
-pub use staged::{StagedCandidate, StagedSummary};
+pub use staged::{CandidateDerivation, CandidateFacts, StagedCandidate, StagedSummary};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},

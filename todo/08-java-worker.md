@@ -815,3 +815,16 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 2026-10-03 新检查点：356587f默认native141、图绑定207、图消费者92、冻结参考37组全部终态通过，无输入/产物漂移；不关闭默认图/全语义/容量/发行。aa00873固定通配符Collector包含约束已提交，joining5/5及StringBuilder正例/Integer负例、cache/full/delta通过。回调代码块按原版YES/NO/UNKNOWN恢复TRY/IF/顺序块，排除不兼容Supplier后保留Runnable；新增两项26.156秒通过，原37组严格相等、新样本4/4。14MAIN隔离残余14独立缺失/0额外/4状态对，正式最新版真实差分待跑。
 
 2026-10-03 4a57677：1ea710c完整40模块在最终app/test@TEST汇总到1888143事实时触发4GiB归档上限，2191.629秒终态失败，无外部信号、配置恢复、无漂移。现显式结果/暂存上限8GiB/32GiB，默认预算和2GiB进程树保护不变。Rustworkspace/clippy、SDK8图13项、native图9项、冻结native参考40组、新native4项及CLI产品预算专项均通过；4a57677独立完整native/绑定/消费者及新40模块正确性验收正在运行。S1–S7与50项完整能力仍未关闭。
+
+## Rust 静态注入候选与新版门禁（2026-10-03）
+
+| 项目 | 实现 / 证据 |
+|---|---|
+| 4a57677 完整 native | 默认 144 项、图绑定 210 项（527 次 Rust 校验，1060.829 秒）、图消费者 92 项、冻结调用参考 40 组全部终态通过；输入/产物无漂移。仅 opt-in 图，不据此默认切换。 |
+| S3 WIRES | Rust application 按冻结 WiringResolver / DatabaseWiringResolver 推导直接内部实现候选。字段/参数通过 Java injection registration 取实际声明，不做容器选择；全部候选、歧义、位置与来源保留。 |
+| 发布 / 基线边界 | storage 只提供定向私有候选接口；按 aggregate owner 原子重算，规则版本进入 Rust SemanticProfile；Java worker baseline 排除派生 owner。原始 worker 不能冒用派生 producer。普通公开 revision 导出仍保留。 |
+| 正反 / 增量 | 三项 Rust 测试验证直接实现去重、不纳入外部/间接继承、不按 qualifier 唯一化、2→1 候选/删除源 full-delta 等价、旧 revision 保留、坏来源/冒用 producer 失败保 head；公开查询保留 possible 与开放世界说明。 |
+| 独立产品链路 | derived-wiring-product-e2e.log：实际 CLI→daemon→4a native，首轮 1 项 22.824 秒通过，最终重新构建后 2 项 26.656 秒通过（含非法 UTF-8 strict 保旧版）。每轮 published facts 的候选、confidence、via/source/candidates 与实际冻结 jar 的 WiringResolver 严格相等；实现变更/删除的完整事实 full-delta 相等，取消注入清空旧候选。 |
+| 真实调用诊断 | 树/opt-in 图在 14 个残余 MAIN 文件均 2067/ref2081，14 独立缺失、0 独立额外、4 状态对。lambda descriptor 的归属回退尝试未改善，未合入产品。继续定位上下文约束。 |
+
+4a57677 独立 40 模块 MAIN/TEST/XML 正确性仍在运行；该回执不含本次 Rust WIRES 政策，不能据此验收新版 WIRES 或全部 S3。完整扩展语义、默认图/版本切换、Rust 通用缓存、容量和 release/52 项仍未关闭。没有非预期进程杀死。

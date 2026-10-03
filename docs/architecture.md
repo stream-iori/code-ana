@@ -59,6 +59,8 @@ Rust worker host 是 Java 分析器的宿主，与 Rust 语言的 rust-analyzer 
 | Versioning | 捕获、历史句柄、diff、结果续页、对象引用和 GC | files 路径无需语义构建 |
 | Operations | 质量、门禁、doctor、报告、人工标注 | 报告失败不能篡改已发布事实 |
 
+跨 producer 的静态图派生由 Rust indexing policy 完成，经存储的定向候选读写接口参与原子发布；例如注入点到直接实现的 `wires_possible`。Java 只生成注入/继承的语言事实，Rust 不解析 AST、不替代 Java 类型推断。
+
 ## 2. 建议代码组织
 
 `lang-adaptor/` 是用户确定的 Java 适配项目根目录；以下子模块拆分为建议，目录不等于必须立即拆成同名 crate。

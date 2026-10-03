@@ -60,6 +60,54 @@ class JavaProduct(unittest.TestCase):
         self.assertEqual(sorted(healed, key=lambda f: f['id']),
                          sorted(self.facts(full['revision']), key=lambda f: f['id']))
 
+    def test_rust_injection_wiring_matches_frozen_resolver_query_and_delta(self):
+        from java_framework_alignment import DI
+        from java_wiring_reference import projection
+        config = self.project / '.code-ana/config.toml'
+        config.write_text(config.read_text().replace('[languages.java.extensions.spring]\nenabled = false',
+                                                    '[languages.java.extensions.spring]\nenabled = true'))
+        for relative, content in DI.items():
+            path = self.project / 'src' / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        source = self.project / 'src/p/Bindings.java'
+        source.write_text('''package p; interface Api {} class First implements Api {}
+            class Child extends First {} class Bindings {
+            @org.springframework.beans.factory.annotation.Autowired(required=false)
+            @org.springframework.beans.factory.annotation.Qualifier("first") Api dependency;
+        }''')
+        second = self.project / 'src/p/Second.java'
+        second.write_text('package p; class Second implements Api {}')
+        _, initial = self.cli('index', '--full', timeout=180)
+        self.assertEqual(initial['publication'], 'published')
+        facts = self.facts(initial['revision'])
+        product, expected = projection(facts, self.root)
+        self.assertEqual(product, expected)
+        self.assertEqual(len(product), 2)
+        self.assertTrue(all(row['confidence'] == 'AMBIGUOUS' for row in product))
+        point = next(f['id'] for f in facts if f['signature'] == 'p.Bindings#dependency')
+        rows, query = self.cli('type-relations', point, '--relation', 'wires_possible')
+        self.assertEqual(len(rows), 2)
+        self.assertFalse(query['evidence']['semantic'])
+        self.assertTrue(all(row['status'] == 'possible' for row in rows))
+        for new_source, count in [('package p; class Second {}', 1), (None, 1)]:
+            if new_source is None:
+                second.unlink()
+            else:
+                second.write_text(new_source)
+            _, delta = self.cli('index', timeout=180)
+            actual = self.facts(delta['revision'])
+            product, expected = projection(actual, self.root)
+            self.assertEqual(product, expected)
+            self.assertEqual(len(product), count)
+            self.assertTrue(all(row['confidence'] == 'INFERRED' for row in product))
+            _, full = self.cli('index', '--full', timeout=180)
+            self.assertEqual(sorted(actual, key=lambda f: f['id']), sorted(self.facts(full['revision']), key=lambda f: f['id']))
+        source.write_text(source.read_text().replace('@org.springframework.beans.factory.annotation.Autowired(required=false)', ''))
+        _, delta = self.cli('index', timeout=180)
+        self.assertFalse([f for f in self.facts(delta['revision']) if f['relation'] == 'wires_possible'])
+        self.assertEqual(self.facts(initial['revision']), facts)
+
     def test_source_type_relationships_keep_navigation_queries_and_delta(self):
         from java_type_reference_alignment import SOURCE
         path = self.project / 'src/p/Types.java'

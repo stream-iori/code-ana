@@ -1,4 +1,5 @@
 //! Application orchestration. CLI and Java adapters contain no product policy.
+mod derived;
 mod history;
 mod java;
 pub mod maven_inputs;
@@ -492,7 +493,11 @@ impl Engine {
                 }
             }
         }
-        let profile = digest(&(&c.effective.semantic_digest, &worker.context));
+        let profile = digest(&(
+            &c.effective.semantic_digest,
+            &worker.context,
+            derived::PROFILE,
+        ));
         let mut full = req.full || c.effective.config.index.mode == "full" || expected.is_empty();
         let mut old = None;
         if !expected.is_empty() {
@@ -514,10 +519,11 @@ impl Engine {
                     let facts = if requested_full || profile != desired_profile {
                         None
                     } else {
-                        Some(reader.export_archive_checked_in(
+                        Some(reader.export_adapter_archive_checked_in(
                             output_limits.bytes,
                             output_limits.facts,
                             baseline_disk.as_ref().map(|budget| budget.root.as_path()),
+                            &derived::owners(&reader.revision().manifest),
                             || {
                                 ensure!(!baseline_cancel.is_cancelled(), "CANCELLED");
                                 if let Some(budget) = &baseline_disk {
@@ -572,7 +578,7 @@ impl Engine {
         let staging_cancel = cancel.clone();
         let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
         let candidate = tokio::task::spawn_blocking(move || {
-            store.stage_archive_with_scratch_check(
+            store.stage_archive_with_derivation(
                 revision,
                 &result.header,
                 &result.records,
@@ -587,6 +593,7 @@ impl Engine {
                     }
                     Ok(())
                 },
+                Some(&derived::Wiring),
             )
         })
         .await??;
