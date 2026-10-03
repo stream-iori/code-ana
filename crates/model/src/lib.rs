@@ -10,6 +10,8 @@ pub const WORKER_PROTOCOL_VERSION: u32 = 10;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
 pub const MAX_FACTS: usize = 100_000;
+/// Explicit task deadline ceiling; compiler contexts keep their own smaller limit.
+pub const MAX_TASK_DEADLINE_SECONDS: u64 = 24 * 60 * 60;
 pub fn hash(bytes: impl AsRef<[u8]>) -> String {
     format!("{:x}", Sha256::digest(bytes.as_ref()))
 }

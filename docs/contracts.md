@@ -248,7 +248,7 @@ SubmitTask 到 WatchTask 之间有有界订阅宽限期，防止刚提交任务�
 | 未知与默认值 | 需要区分缺失/false/0 时显式 presence；枚举零值为 UNSPECIFIED；未知状态不当成功 |
 | 事件类型 | `oneof` 区分 accepted/progress/output/terminal，终态必须含真实任务与发布状态 |
 | 完成判定 | RPC status、任务终态、CLI 退出码分别处理；流结束或 HTTP 200 不代表任务成功 |
-| 超时与取消 | RPC deadline 约束该次交互；任务 deadline 约束后台执行；取消订阅按任务策略传播 |
+| 超时与取消 | RPC deadline 约束该次交互；任务 deadline 约束后台执行，默认 120 秒、显式最大 86400 秒；单 javac context 仍最大 3600 秒；取消订阅按任务策略传播 |
 | 背压与预算 | 单条 protobuf 消息、待发送队列、总输出各设上限；HTTP/2 流控不等于业务内存预算 |
 | 文本终态预算 | 先为真实终态预留空间；证据明细过大时只在文本投影中保留完整字符串样本，并标记 `terminal_evidence_details` 与省略计数。已保存 TaskResult 和 typed terminal 保留完整已收集明细；不能因此撤销发布或将 semantic/assessment 改成 complete。记录截断另标 `output_bytes`/enumeration=false；strict 拒绝文本明细或记录截断，已有失败退出码不被覆盖 |
 | 重试 | SubmitTask 使用应用幂等键；传输重试不代表允许重复执行写任务 |

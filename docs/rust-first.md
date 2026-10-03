@@ -128,7 +128,7 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | 输入 | 配置文件最多 1 MiB，每文件/IPC 帧 8 MiB，单捕获/结果 64 MiB，最多扫描 100,000 项、捕获 10,000 文件、接收 100,000 事实；符号链接输入拒绝 |
 | 并发 | 默认 2 个 worker，最多 8 个活动/排队任务；用户 max_workers 上限 8 |
 | worker 内存 | 默认每 worker 256 MiB；按独立进程组 RSS 每 100ms 调度采样，超额终止；不是内核级硬隔离 |
-| 超时 | 默认 120s，最大 3600s；捕获、查询、发布和 Git 读取在阻塞线程运行；查询在选择器/源码读取边界检查取消，正在执行的单条 SQLite 语句尚无中断钩子 |
+| 超时 | 任务默认 120s，显式 deadline 最大 86400s；单 javac context 仍最多 3600s。捕获、查询、发布和 Git 读取在阻塞线程运行；查询在选择器/源码读取边界检查取消，正在执行的单条 SQLite 语句尚无中断钩子 |
 | 输出 | 默认 100 条、32 KiB；最多 10,000 条、8 MiB；至少 2 KiB 用于终态和记录 |
 | 发现 | mock 只支持显式 Java source_roots；`discovery.mode=auto` 索引明确报不支持。缺输入返回协议 3 的结构化 BuildAdvice，cwd 指向用户 checkout；Maven/Gradle 有效模型和真实工具链识别仍待 Java 适配器 |
 | 增量 | Rust 真正执行 backup + owner 替换；mock 用全 owner 替换验证冷基线，不宣称语义失效算法 |

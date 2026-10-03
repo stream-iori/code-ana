@@ -471,3 +471,9 @@ S3新取证 source-annotation-diff.json：原SOURCE注解身份/owner/span3838�
 | 正式类型/反射/继承投影 | SOURCE类型12188、反射20、extends528、implements152 全部零差异；完整类型元数据及扩展差分尚未关闭 |
 
 以上均属于5c6065e，不能作为9fc3fcb或最终版本的通过回执。9fc3fcb从隔离分支快进合入；其34组独立原版native调用对照已终态通过，默认/图绑定完整门禁仍运行。e8f9a88的独立40模块运行继续推进，已跨过原migration空指针，不代表最新版本全部验收。
+
+9fc3fcb独立正式回执已终态：默认native136项（576.955秒）、图绑定native204项（796.176秒）、冻结原版native34组全通过，无源码/产物漂移。这些回执属于隔离工作区9fc3fcb，不替代新真实发布、全40模块或未来预算修复。
+
+全项目正确性任务保护时限：Rust原先拒绝大于3600秒的任务请求，capture另有同值钳制。现统一MAX_TASK_DEADLINE_SECONDS=86400，仍须显式指定，默认120秒、每个javac context最大3600秒和取消/内存/输出预算不变。真实验收脚本同步支持该范围。CLI→gRPC→daemon→capture→mock→发布/查询正例7200秒通过，86401秒拒绝且旧head仍可查；该专项和验收租约/回滚13项共14项通过，Rust完整E2E15项通过，workspace单元通过；全部targets的clippy通过（-D warnings）。不是性能通过结论，也不更改已运行e8任务的一小时deadline。
+
+独立e8f9a88的40模块正式失败：2601.287秒，第36个已累积context后进入app/test@TEST，在CustomDnsResolverTest.java observations抛COMPILER_FAILED/ClassCastException（Type$AnnotatedType.getComponentType）。未发布，配置复原，无源码/产物漂移、无非预期信号；进程树峰值1425850368字节仅作诊断，不作为容量通过。证据为validation-b4-next/target/java-alignment/evidence/iopengw-full-main-test-xml-e8f9a88。根因正在复现，不能记为安全软件杀进程或全项目通过。

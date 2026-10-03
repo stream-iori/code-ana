@@ -720,7 +720,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
     let deadline = std::time::Duration::from_secs(if request.deadline_seconds == 0 {
         120
     } else {
-        request.deadline_seconds.min(3600)
+        request.deadline_seconds.min(MAX_TASK_DEADLINE_SECONDS)
     });
     let root = root.canonicalize()?;
     let text_search = request.operation == "search-text";

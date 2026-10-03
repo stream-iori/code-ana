@@ -187,7 +187,10 @@ impl Engine {
             .clone()
             .try_acquire_owned()
             .map_err(|_| anyhow::anyhow!("QUEUE_BUDGET"))?;
-        ensure!(req.deadline_seconds <= 3600, "DEADLINE_BUDGET");
+        ensure!(
+            req.deadline_seconds <= MAX_TASK_DEADLINE_SECONDS,
+            "DEADLINE_BUDGET"
+        );
         ensure!(
             req.max_output_bytes <= 8 * 1024 * 1024,
             "OUTPUT_BUDGET: maximum 8 MiB"

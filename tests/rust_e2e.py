@@ -122,6 +122,14 @@ class Product(unittest.TestCase):
         if BIN.resolve() != (ROOT / 'target/debug').resolve():
             self.skipTest('fault points exist only in debug mock binary')
 
+    def test_explicit_long_deadline_indexes_and_rejects_over_ceiling(self):
+        rows, terminal = self.cli('index', '--deadline-seconds', 7200)
+        self.assertEqual((rows[0]['mode'], terminal['publication']), ('full', 'published'))
+        self.assertEqual(self.cli('calls', 'main')[0], EXPECTED['base']['calls'])
+        _, rejected = self.cli('index', '--deadline-seconds', 86401, code=1)
+        self.assertIn('DEADLINE_BUDGET', rejected['message'])
+        self.assertEqual(self.cli('calls', 'main')[0], EXPECTED['base']['calls'])
+
     def test_query_oracles_and_boundaries(self):
         rows, terminal = self.cli('index')
         self.assertEqual((rows[0]['mode'], terminal['publication'], terminal['producer']),

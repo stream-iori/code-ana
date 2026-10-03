@@ -284,8 +284,8 @@ def main():
                         help='Total worker reservation, including javac and non-heap space; at most 2 GiB')
     parser.add_argument('--evidence', type=pathlib.Path)
     args = parser.parse_args()
-    if not 1 <= args.deadline_seconds <= 3600:
-        parser.error('deadline must be within the product-supported 1..3600 seconds')
+    if not 1 <= args.deadline_seconds <= 86400:
+        parser.error('deadline must be within the product-supported 1..86400 seconds')
     try:
         configured = project_config(args.scopes.split(','), args.xml, args.inputs_manifest,
                                     args.native_heap_bytes, args.worker_memory_bytes)
