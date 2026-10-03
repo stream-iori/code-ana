@@ -115,7 +115,12 @@ def main():
     case=Xml();case.setUp()
     if args.native:case.analyze=reference.native_analyze.__get__(case)
     groups=[('baseline',SOURCE,XML),('body',SOURCE.replace('start(){}','start(){int n=1;}'),XML),
-            ('xml-change',SOURCE,XML.replace('init-method="start"','init-method="stop"'))]
+            ('xml-change',SOURCE,XML.replace('init-method="start"','init-method="stop"')),
+            ('unresolved-ambiguous',SOURCE.replace('public Use(){}',
+                'public Use(){} public void setChoice(String value){} public void setChoice(Integer value){}'),
+                '<beans><bean id="use" class="p.Use" init-method="absent">'
+                '<property name="choice"><null/></property><property name="absent" value="x"/>'
+                '</bean><bean id="unknown" class="missing.External"/></beans>')]
     if args.reference_defect:
         groups=[('constructor-lambda',SOURCE.replace('Use(){}','Use(){Runnable r=()->{};}'),
                  '<beans><bean id="use" class="p.Use"/></beans>')]
@@ -133,12 +138,23 @@ def main():
             left,right=product_projection(facts),reference_projection(database)
             case.assertTrue(left);case.assertTrue(right)
             proof=dict(name=name,product=left,reference=right,equal=left==right)
+            from java_xml_binding_inventory_diff import product_projection as requests, reference_projection as bindings
+            from java_declaration_inventory_diff import connection
+            with connection(database) as db:
+                request_left,request_right=requests(facts),bindings(db)
+            proof['request_metadata']=dict(product=request_left,reference=request_right,equal=request_left==request_right)
             if args.reference_defect:
                 case.assertEqual(left[0]['candidates'],[('p.Use#<init>()','CONSTRUCTOR')])
                 case.assertEqual(collections.Counter(kind for _,kind in right[0]['candidates']),
                                  {'CONSTRUCTOR':1,'LAMBDA':1})
                 case.assertFalse(proof['equal'])
                 proof['reference_defect_reproduced']=True
+                case.assertFalse(proof['request_metadata']['equal'])
+            else:
+                case.assertEqual(request_left,request_right)
+                if name=='unresolved-ambiguous':
+                    case.assertEqual(collections.Counter(row['resolution'] for row in request_left),
+                                     {'exact':1,'unresolved':3,'ambiguous':1})
             (folder/'product.json').write_text(json.dumps(facts,ensure_ascii=False)+'\n')
             proof.update(product_sha256=reference.digest(folder/'product.json'),reference_sha256=reference.digest(database))
             (folder/'comparison.json').write_text(json.dumps(proof,ensure_ascii=False,indent=2)+'\n')

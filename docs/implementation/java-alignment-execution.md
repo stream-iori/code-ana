@@ -917,3 +917,14 @@ declared-field-final/field-reference-20261003-163522-93718 native三组24/24严�
 | 回归 | SDK8 bridge 构建成功，archive-regressions 全组通过；新 native/真实项目仍须重建重跑，不宣称容量通过。XML 模型 d39 native 三组7/7已过，但不含此内存修复。 |
 
 补充终态：xml-model-reference-20261003-173902-24472 native 三组7/7严格一致，无漂移；xml-model-daemon-proof.json 真实发布4项109.467秒通过，无输入/产物/runtime漂移（d39 XML组合，不含后续按需图修复）。新按需图组合的源码图、二进制图、补充签名、会话回归通过；graph-facts首轮因执行旧Rust example报告3项UNSUPPORTED_REQUIRED_FACET，原失败保留。统一工具入口改用新私有Cargo目录后，graph-facts-current-validator九项通过，损坏实际编译器图反例仍拒绝。最终组合和iopengw仍待。
+
+XML 绑定完整审计新增取证：冻结发布库有2处实际 BINDS_TO 已填内部 METHOD，但 metadata 仍 resolutionStatus=unresolved/candidateCount=0（afsClient.setOssAdaptor、iopengwRuntimeExceptionHandler.setJsonViewResolver）。比较器保留原 advertised count/status 和实际端点，明确 metadata_consistent=false；不会把缺陷修成相等。首次计数不一致保护、随后把外部端点空source错误纳入XML字节校验的失败日志分别保留；校验范围修正为双方实际请求文件，Java/SOURCE端点仍走独立来源校验。
+
+## XML 全请求 / DI 实际图入口（2026-10-03）
+
+| 项目 | 证据 / 状态 |
+|---|---|
+| XML callable | java_xml_binding_inventory_diff 只读完整发布图，保留 constructor/factory/init/destroy/setter 的原输入 owner/member/arity/hints/static、原源码元素位置、候选身份/种类/计数与 exact/unresolved/ambiguous。不能把未知候选或参考错误当作已确认调用。 |
+| 独立参考 | xml-reference-20261003-175429-29128 四组各5请求严格相等，31.099秒；新增0/1/2候选及未解析/歧义反例，全量增量相等，无漂移。175501-29114 的构造器lambda参考缺陷同时在完整请求属性中复现，raw_fact_equivalence=false，5.644秒，无漂移。 |
+| 历史真实库 | iopengw-4a-xml-binding-metadata-captured：429/463请求，缺228、额外194，equal=false；两处参考边端点已补齐但原metadata仍0候选/未解析，保留明确不一致。不会据fixture关闭整个XML图。 |
+| DI 新发现 | 实际参考 SpringJavaModelComponents.fieldInjection/methodInjection/constructorInjection 的 INJECTS 源是声明类型；现有冻结resolver fixture只验证了给定字段输入的算法，尚未证明真实类型级WIRES端点能力。新增发布图审计入口继续查证，不用旧专项结果宣称全图通过。 |

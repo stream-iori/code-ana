@@ -878,7 +878,8 @@
         "tests/java_xml_model_reference_alignment.py",
         "tests/java_xml_model_inventory_diff.py",
         "lang-adaptor/src/main/java/dev/codeana/analysis/SpringXmlConfiguration.java",
-        "crates/model/src/java_xml_configuration.rs"
+        "crates/model/src/java_xml_configuration.rs",
+        "tests/java_xml_binding_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -897,8 +898,8 @@
         "xml-model-reference-native"
       ],
       "remaining_acceptance": [
-        "SOURCE/JAR XML 类型提示、参数索引、别名实参和工厂重载已实现；当前Spring5/injection3。完整XML属性/原生产品矩阵及40模块参考语义仍待验收。",
-        "XML callable 五类绑定已完成独立JVM候选对照；参考构造器lambda误绑定最小复现保留raw_fact_equivalence=false，不冒充普通图对齐。完整XML树/框架图和40模块仍待验收。"
+        "Spring7 已补全部构造/配置树元数据、隐式列表索引、Java 配置 owner/product 与 Rust XML 接线；JVM/native/真实 daemon 专项通过。完整 XML 绑定属性/原生产品矩阵及40模块参考语义仍待验收。",
+        "XML callable 已补发布库完整请求/candidate metadata 比较，包含未解析及歧义；参考构造器 lambda 误绑定保留原始差异。全部树/关系/扩展图和40模块仍须同版本实测。"
       ]
     },
     {
