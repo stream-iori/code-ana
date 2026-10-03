@@ -47,6 +47,55 @@ class SupplementalSignatures(unittest.TestCase):
         self.assertEqual(len(callbacks), 1)
         return callbacks[0]
 
+    def test_primitive_callback_expression_has_separate_javac_proof_and_invalid_delta(self):
+        library = 'package p; @lombok.Getter class Api {Integer delay;}'
+        consumer = '''package p; /* 😀中 */ class Use {void read(Api api){
+            java.util.Optional.ofNullable(api).map(Api::getDelay)
+            .map(value -> Math.min(value,10)*1000).ifPresent(value -> {
+                try{Thread.sleep(value);}catch(InterruptedException error){}
+            });}}'''
+        context = self.fixture(library, consumer)
+        first = self.analyze([context], cache=True)['facts']
+        by = {f['id']: f for f in first}
+        targets = [f for f in first if f['kind'] == 'call_target']
+        for signature in ('java.lang.Math#min(int,int)', 'java.lang.Thread#sleep(long)',
+                          'java.util.Optional#ifPresent(java.util.function.Consumer)'):
+            target = next(f for f in targets if by[f['target']]['signature'] == signature)
+            self.assertEqual(target['status'], 'possible')
+            self.assertFalse(target['evidence_complete'])
+        math = next(f for f in first if f['kind'] == 'call_site' and f['name'] == 'Math.min')
+        self.assertEqual(type_attributes(math)['expression_type_model']['kind'], 'ERROR')
+        provenance = next(f for f in first if f['kind'] == 'provenance' and f['source'] == 'use/Use.java')
+        proofs = type_attributes(provenance)['supplemental_expression_evidence']
+        multiply = next(proof for proof in proofs if proof['node_kind'] == 'MULTIPLY')
+        self.assertEqual(multiply['type_model']['kind'], 'INT')
+        self.assertEqual(multiply['original_type_kind'], 'ERROR')
+        self.assertTrue(multiply['original_evidence_retained'])
+        self.assertEqual(len(multiply['signature_sha256']), 64)
+        self.assertEqual(len(multiply['auxiliary_inputs_sha256']), 64)
+        span = multiply['span']
+        self.assertEqual(consumer.encode()[span['start']:span['end']], b'Math.min(value,10)*1000')
+        self.assertTrue([f for f in first if f['kind'] == 'diagnostic' and f['status'] == 'ERROR'])
+        before = json.dumps(first, sort_keys=True)
+        # A real incompatible generated return cannot supply primitive proof.
+        changed = self.fixture(library.replace('Integer', 'String'), consumer)
+        delta = self.analyze([changed], baseline=first, cache=True)
+        full = self.analyze([changed], cache=True)['facts']
+        self.assertEqual(self.merged(first, delta), sorted(full, key=lambda f: f['id']))
+        ids = {f['id']: f for f in full}
+        self.assertFalse([f for f in full if f['kind'] == 'call_target'
+                          and ids[f['target']]['signature'] == 'java.lang.Math#min(int,int)'])
+        proof_rows = [proof for f in full if f['kind'] == 'provenance'
+                      for proof in f['attributes'].get('supplemental_expression_evidence', [])]
+        self.assertFalse([proof for proof in proof_rows if proof['node_kind'] == 'MULTIPLY'])
+        removed = self.fixture(library.replace('@lombok.Getter ', ''), consumer)
+        delta = self.analyze([removed], baseline=first, cache=True)
+        cold = self.analyze([removed])['facts']
+        self.assertEqual(self.merged(first, delta), sorted(cold, key=lambda f: f['id']))
+        self.assertFalse([f for f in cold if f['kind'] == 'provenance'
+                          and f['attributes'].get('supplemental_expression_evidence')])
+        self.assertEqual(before, json.dumps(first, sort_keys=True))
+
     def references(self, facts, callback):
         by = {f['id']: f for f in facts}
         return [(by[f['target']]['signature'], f) for f in facts

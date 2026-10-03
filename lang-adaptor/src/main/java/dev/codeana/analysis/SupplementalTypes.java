@@ -89,6 +89,7 @@ final class SupplementalTypes {
             var supplemental=session.analyze(supplementalContext);
             int accepted=0;
             try {
+                SupplementalExpressions.derive(original, supplemental, auxiliary, checksum, inputs);
                 for(Object raw:Json.list(supplemental.get("declarations"))) {
                     var declaration=Json.map(raw); var attributes=map(declaration.get("attributes"));
                     if("LOCAL_VARIABLE".equals(attributes.get("element_kind"))) {

@@ -260,3 +260,17 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 拒绝的隔离改动 | `collector-chain-staged-frozen-24/receipt.json`未通过：类型变量边界registry额外恢复了参考未确认的toMap目标；没有接入产品TypeOperations。lambda/entry链仍需继续查证；不把额外目标或更高标签自动当作对齐。 |
 
 新版完整fixture现为40组，预计319项；之前312项/105 native及真实431667事实的回执只证明上一版，不替代本次新源码验收。
+
+
+## 基本类型表达式的独立 javac 证明（2026-10-03）
+
+| 项目 | 结果 / 边界 |
+|---|---|
+| 实现 | 第二次 SDK8 javac 已有生成辅助 NoCode 上下文中，唯一同源位置/种类的完整基本类型只作为独立证明；不自行推广算术类型。不可变原 syntax、原调用 ERROR 类型和错误诊断保留。证明随 provenance 发布，调用恢复仍 possible。 |
+| JVM / native | supplemental-expression-product-signatures.log：11 项通过；type-graph-bindings-jvm-20261003-101454：222 项、562 次图请求、532 次 Rust 校验、all_ok=true，无漂移。隔离新 native 默认 145 项（native-fixtures-20261003-102050）、专项 11 项均通过。 |
+| daemon | supplemental-expression-native-proof-e2e-final.log：实际 Rust release/native 发布、dispatch、Unicode 字节 span/证明 SHA、配置删除与恢复、Integer→String 失效、完整 full-delta 相等及旧 revision 保留，1 项 32.697 秒通过；另有产品功能与跨模块 WIRES 2 项 71.007 秒通过。 |
+| 失败定位 | 首次 daemon 测试没配置生成注解策略；实际 java.lombok 摘要 generated_annotations=partial / lombok_version_or_configuration_required，MAIN 世界正确保留 SOURCE。明确 lombok.config 后通过；删除配置负例仍验证整世界补充失效，未放宽 ABI 边界。 |
+| 真实隔离投影 | 14 MAIN 文件 2070/ref2081，11 独立缺失、0 独立额外、3 状态对，消除 Sandbox 三项及 Thread.sleep 状态差异；不是全项目新版发布证明。 |
+| 扩大独立对照 | 新表达式 frozen 类型3/3、调用7/7一致。但六组完整调用+类型对照中 recursive-super-builder 多出 Child#builder()，旧4a native也复现。失败回执保留，未掩盖候选、未记作整体通过。 |
+
+完整40模块旧4a正式运行仍处理项目级 MAIN/TEST/XML 扩展；不包含本次 Java 证明和 Rust WIRES v2。默认类型图、完整属性/框架语义差分、Rust 通用缓存、独占容量与发行门禁仍未关闭，仍只有 E01/E02 完整通过。

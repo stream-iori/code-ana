@@ -410,6 +410,8 @@ Lombok builtin 6 使用冻结参考的 basic 首字母大写规则（含第二�
 
 上文带日期的版本记录保留其历史含义；以上是当前构建契约。完整 iopengw 语义差分、容量和发布包仍按实际验收回执判断。
 
+生成辅助 NoCode 的第二次 javac 可以为原始 ERROR/UNKNOWN/NONE 表达式提供独立基本类型证明。仅接纳两侧唯一的同路径、原位置、节点种类匹配，且新类型完整；不替换原始 syntax、调用点类型或诊断。源 provenance 的 `supplemental_expression_evidence` 保留 UTF-8 字节 span、原类型种类、类型、signature/auxiliary_inputs SHA 和 `original_evidence_retained=true`。调用恢复可以消费该证明，结果仍为 possible，不据此宣称运行时调用或原始 javac 确认。辅助世界的 ABI/Lombok 覆盖不完整时不补充；配置、原始输入或生成返回类型变化必须重新归属并清除失效证明。
+
 
 ### 调用证据共用（2026-10-01）
 

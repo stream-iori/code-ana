@@ -551,6 +551,17 @@ public final class FactExtractor {
                             ModelArchive.VERSION,
                             "processor_execution",
                             false));
+            List<Object> expressionProofs = new ArrayList<>();
+            for (Object value : Json.map(model.getOrDefault("supplemental_expressions", Map.of())).values()) {
+                Map<String, Object> proof = Json.map(value);
+                if (!path.equals(proof.get("source"))) continue;
+                Map<String, Object> publicProof = new TreeMap<>(proof);
+                publicProof.put("span", span(path, proof));
+                publicProof.remove("start"); publicProof.remove("end");
+                expressionProofs.add(publicProof);
+            }
+            if (!expressionProofs.isEmpty())
+                Json.map(p.get("attributes")).put("supplemental_expression_evidence", expressionProofs);
         }
         Map<String, Object> contextFact =
                 fact(Json.key("context", world, Json.string(context, "context")), "provenance", "");

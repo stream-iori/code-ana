@@ -190,6 +190,74 @@ java_parallelism=1
         self.assertEqual(before, self.facts(initial['revision']))
         self.assertFalse(list(self.project.rglob('*.class')))
 
+    def test_supplemental_primitive_proof_publishes_and_invalidates_through_daemon(self):
+        from java_lombok_alignment import Lombok
+        library = 'package p; @lombok.Getter class Api {Integer delay;}'
+        # Stub annotations have no Lombok jar/version from which to infer this policy.
+        (self.project / 'lombok.config').write_text(
+            'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n')
+        for relative, text in Lombok.files(self, library).items():
+            path = self.project / 'src' / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        consumer = self.project / 'test/p/Use.java'
+        consumer.parent.mkdir(parents=True)
+        consumer.write_text('''package p; /* 😀中 */ class Use {void read(Api api){
+            java.util.Optional.ofNullable(api).map(Api::getDelay)
+            .map(value -> Math.min(value,10)*1000).ifPresent(value -> {
+                try{Thread.sleep(value);}catch(InterruptedException error){}
+            });}}''')
+        config = self.project / '.code-ana/config.toml'
+        config.write_text(config.read_text().replace('scopes = ["MAIN"]', 'scopes = ["MAIN", "TEST"]')
+                          + '\n[[modules.source_roots]]\npath="test"\nscope="TEST"\n'
+                            '\n[languages.java.lombok]\nmode="model"\n')
+        _, initial = self.cli('index', '--full', timeout=180)
+        self.assertEqual(initial['publication'], 'published')
+        before = self.facts(initial['revision'])
+        by = {f['id']: f for f in before}
+        target = next(f for f in before if f['kind'] == 'call_target'
+                      and by[f['target']]['signature'] == 'java.lang.Math#min(int,int)')
+        site = by[target['parent']]
+        self.assertEqual(site['attributes']['expression_type_model']['kind'], 'ERROR')
+        records, terminal = self.cli('dispatch', site['id'])
+        self.assertFalse(terminal['evidence']['semantic'])
+        self.assertTrue(any(row.get('target') == target['target'] and row.get('possible') for row in records))
+        provenance = next(f for f in before if f['kind'] == 'provenance' and f['source'] == 'test/p/Use.java')
+        proof = next(p for p in provenance['attributes']['supplemental_expression_evidence'] if p['node_kind'] == 'MULTIPLY')
+        self.assertEqual(proof['type_model']['kind'], 'INT')
+        self.assertTrue(proof['original_evidence_retained'])
+        self.assertEqual(len(proof['signature_sha256']), 64)
+        self.assertEqual(len(proof['auxiliary_inputs_sha256']), 64)
+        span = proof['span']
+        self.assertEqual(consumer.read_bytes()[span['start']:span['end']], b'Math.min(value,10)*1000')
+        self.assertTrue(any(f['kind'] == 'diagnostic' and f['status'] == 'ERROR' for f in before))
+        # Incomplete generated-annotation policy must invalidate the whole auxiliary ABI.
+        policy = self.project / 'lombok.config'
+        captured_policy = policy.read_bytes()
+        policy.unlink()
+        _, incomplete = self.cli('index', timeout=180)
+        incomplete_facts = self.facts(incomplete['revision'])
+        summary = next(f['attributes'] for f in incomplete_facts
+                       if f['relation'] == 'java.lombok' and f['source'] == 'src/App.java')
+        self.assertIn('generated_annotations', summary['partial_capabilities'])
+        self.assertFalse(any(f['attributes'].get('supplemental_expression_evidence')
+                             for f in incomplete_facts))
+        _, incomplete_full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(incomplete_facts, self.facts(incomplete_full['revision']))
+        policy.write_bytes(captured_policy)
+        _, restored = self.cli('index', timeout=180)
+        self.assertEqual(before, self.facts(restored['revision']))
+        (self.project / 'src/App.java').write_text(library.replace('Integer', 'String'))
+        _, delta = self.cli('index', timeout=180)
+        changed = self.facts(delta['revision'])
+        ids = {f['id']: f for f in changed}
+        self.assertFalse(any(f['kind'] == 'call_target' and ids[f['target']]['signature'] == 'java.lang.Math#min(int,int)'
+                             for f in changed))
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(changed, self.facts(full['revision']))
+        self.assertEqual(before, self.facts(initial['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_source_type_relationships_keep_navigation_queries_and_delta(self):
         from java_type_reference_alignment import SOURCE
         path = self.project / 'src/p/Types.java'

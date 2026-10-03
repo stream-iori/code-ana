@@ -353,8 +353,12 @@ final class CallRecovery {
         return new Result(Map.of(), false);
     }
 
-    private static Map<String, Object> attributedExpression(Map<String,Object> node) {
+    private Map<String, Object> attributedExpression(Map<String,Object> node) {
         Map<String,Object> type=map(node.get("expression_type_model"));
+        if (Set.of("ERROR", "UNKNOWN", "NONE").contains(kind(type))) {
+            Map<String, Object> supplemental = SupplementalExpressions.type(model, node);
+            if (!supplemental.isEmpty()) return supplemental;
+        }
         return Set.of("ERROR","NONE").contains(kind(type)) ? Map.of() : type;
     }
 
