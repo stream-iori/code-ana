@@ -78,6 +78,7 @@ def main():
         ('acceptance-recovery', [sys.executable, 'tests/java_real_acceptance_tests.py'], 30),
         ('java-fixtures', ['./scripts/test-java.sh'], 14400),
         ('type-reference', [sys.executable, 'tests/java_type_reference_reference.py'], 360),
+        ('model-api-reference', [sys.executable, 'tests/java_model_api_reference_alignment.py'], 600),
         ('functional-reference', [sys.executable, 'tests/java_functional_reference_alignment.py'], 360),
         ('supplemental-reference', [sys.executable, 'tests/java_supplemental_reference_alignment.py'], 360),
         ('module-abi-reference', [sys.executable, 'tests/java_module_abi_reference_alignment.py'], 360),
@@ -93,6 +94,7 @@ def main():
         ('xml-reference-defect', [sys.executable, 'tests/java_xml_reference_alignment.py', '--reference-defect'], 360),
         ('sofa-xml-reference', [sys.executable, 'tests/java_sofa_xml_reference_alignment.py'], 360),
         ('xml-model-reference', [sys.executable, 'tests/java_xml_model_reference_alignment.py'], 600),
+        ('rust-build', ['cargo', 'build', '--workspace', '--locked'], 240),
         ('maven-export', [sys.executable, 'tests/java_maven_export.py'], 180),
         ('maven-mediation', [sys.executable, 'tests/java_maven_alignment.py'], 240),
         ('rust-format', ['cargo', 'fmt', '--all', '--', '--check'], 60),
@@ -101,7 +103,6 @@ def main():
     ]
     if args.level in ('native', 'full'):
         gates += [
-            ('rust-build', ['cargo', 'build', '--workspace', '--locked'], 240),
             ('rust-release-build', ['cargo', 'build', '--workspace', '--release', '--locked'], 600),
             ('native-build', ['./scripts/build-java-native.sh'], 600),
             ('native-fixtures', [sys.executable, 'tests/java_native_fixture_alignment.py'], 14400),
@@ -111,6 +112,7 @@ def main():
             ('default-type-graph-native', [sys.executable, 'tests/java_default_graph_alignment.py', '--native'], 600),
             ('native-probe', [sys.executable, 'tests/java_native_probe.py'], 300),
             ('type-reference-native', [sys.executable, 'tests/java_type_reference_reference.py', '--native'], 360),
+            ('model-api-reference-native', [sys.executable, 'tests/java_model_api_reference_alignment.py', '--native'], 1200),
             ('functional-reference-native', [sys.executable, 'tests/java_functional_reference_alignment.py', '--native'], 360),
             ('supplemental-reference-native', [sys.executable, 'tests/java_supplemental_reference_alignment.py', '--native'], 360),
             ('module-abi-reference-native', [sys.executable, 'tests/java_module_abi_reference_alignment.py', '--native'], 360),

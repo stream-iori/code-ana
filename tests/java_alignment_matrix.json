@@ -22,7 +22,9 @@
         "tests/java_archive_alignment.py",
         "tests/java_syntax_alignment.py",
         "tests/java_encoding_alignment.py",
-        "tests/java_declaration_reference_alignment.py"
+        "tests/java_declaration_reference_alignment.py",
+        "tests/java_model_api_reference_alignment.py",
+        "lang-adaptor/src/main/java/dev/codeana/analysis/extension/DetachedJavaModel.java"
       ],
       "evidence": [],
       "implementation_complete": false,
@@ -31,10 +33,13 @@
         "native-product-ipc",
         "java-daemon",
         "declaration-reference",
-        "declaration-reference-native"
+        "declaration-reference-native",
+        "model-api-reference",
+        "model-api-reference-native"
       ],
       "remaining_acceptance": [
-        "@2 有界语法分片、来源和惰性反射已接入，64/128 MiB 专项通过；完整模型目录/逐节点契约/native/真实项目仍待验收"
+        "@2 有界语法分片、来源和惰性反射已接入，64/128 MiB 专项通过；完整模型目录/逐节点契约/native/真实项目仍待验收",
+        "新独立模型导航已在SDK8/JVM与原生专项对照：声明9/11/5、语法30/36/84及来源/父链/类型查找/预算/关闭；重复类型参考丢位置反例保持raw不同。最新产品组合、完整模型目录与真实项目仍待验收。"
       ]
     },
     {
@@ -551,7 +556,9 @@
       "status": "partial",
       "checks": [
         "tests/java_annotation_alignment.py",
-        "tests/java_extension_alignment.py"
+        "tests/java_extension_alignment.py",
+        "tests/java_model_api_reference_alignment.py",
+        "lang-adaptor/src/main/java/dev/codeana/analysis/extension/DetachedJavaModel.java"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -560,10 +567,13 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "model-api-reference",
+        "model-api-reference-native"
       ],
       "remaining_acceptance": [
-        "资源 selector、事务内失败/取消隔离与不可变 type 共享已实现；独立查询/资源预算和完整生产/参考验收仍缺"
+        "资源 selector、事务内失败/取消隔离与不可变 type 共享已实现；独立查询/资源预算和完整生产/参考验收仍缺",
+        "新独立模型导航已在SDK8/JVM与原生专项对照：声明9/11/5、语法30/36/84及来源/父链/类型查找/预算/关闭；重复类型参考丢位置反例保持raw不同。最新产品组合、完整模型目录与真实项目仍待验收。"
       ]
     },
     {

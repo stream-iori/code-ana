@@ -1088,6 +1088,8 @@ Rust derived-wiring-3 与 Java Spring 6 已补配置类/产物身份及 XML wire
 
 v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10、10/10、5/5相等，旧注入点、跨模块与XML同步回归通过。完整native fixture继续运行。新增完整语义汇总入口执行12域，拒绝selected/scopes/原始证据漂移；完整模型API、全部控制上下文、全部XML边仍保留硬阻塞，全40模块与容量及最终门禁未完成。
 
+后续终态：DI v5 177项native fixture全部通过（866.132秒）。新增独立模型导航/类型参数声明目录，SDK8/JVM与原生专项声明9/11/5、语法30/36/84严格对照；重复类型参考丢位置保留raw不同。签名11、模块9、框架14回归及取消/来源/预算保护通过，新共享库/产品及完整模型清单仍待。历史4a全12域汇总1086.88秒全部失败，原输出保留；参考XML有10组重复containment边需修正审计。按需图真实MAIN完成而TEST报内部600秒COMPILER_TIMEOUT，4171.056秒未发布，无安全杀进程/源产物漂移。完整门禁的Maven前缺Rust CLI已调整依赖顺序，17项重新通过；最终全项目/语义/容量仍未完成。
+
 | 项目 | 证据 / 状态 |
 |---|---|
 | XML callable | java_xml_binding_inventory_diff 只读完整发布图，保留 constructor/factory/init/destroy/setter 的原输入 owner/member/arity/hints/static、原源码元素位置、候选身份/种类/计数与 exact/unresolved/ambiguous。不能把未知候选或参考错误当作已确认调用。 |

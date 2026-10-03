@@ -950,3 +950,21 @@ DI v5 产品终态：validation-di-occurrences/di-occurrences-product-proof.json
 | 输入保护 | 只接受冻结5039文件/4217Java、全部40模块MAIN/TEST/XML的成功native发布；拒绝selected模块、scope缺失、数据库/revision错位、源与产物漂移。核对原发布源码/运行产物、Maven manifest、冻结参考DB和比较工具原字节。 |
 | 尚缺 | 完整模型API清单、全部词法控制上下文、全部XML图边仍是硬阻塞。即便现有12域相等，也不置 full_semantic_diff_accepted；不把解析诊断和容量混入语义通过。 |
 | 回归 | real-semantic-aggregate-guards：3项通过，验证 selected/scope/假通过/漏元注解/运行产物篡改拒绝。历史全40模块4a的完整汇总将保存实际失败，最新项目发布后再运行同入口。 |
+
+历史全域终态：iopengw-4a-semantic-all-domains/receipt.json 12域实际执行1086.88秒，全未通过，输入无漂移。调用/声明/类型/字段/注解/框架/SOFA/XML完整原始输出保留；完整XML模型图审计遇到参考10组重复containment边，首次错误归为cycle的失败日志保留，需单独修正图审计（不能删重复边后声称相等）。
+
+## 独立模型导航接口与类型参数目录（2026-10-03）
+
+| 项目 | 实现 / 证据 |
+|---|---|
+| 缺口 | 实际SDK8/Frozen JavaModel 对照证实，参考目录有TYPE_PARAMETER，而旧产品只有formal类型模型。新增javac的原始类型参数声明元数据，独立视图提供父类/方法、原位置和注解；保留既有公共图身份。 |
+| API | ExtensionContext.javaModel 提供单位、声明/成员/父链、按位置查声明/语法、明确found/ambiguous/missing类型、原字节/源码切片/UTF-16位置；语法视图提供源顺序、节点ID、父链和最近包围节点。只读既有记录及捕获源，不构造AST或引入解析器，不改变Rust编排/存储/查询边界。 |
+| 预算 / 失败 | 每单位100000声明、1000000语法节点、声明深度128/语法深度512；原源码单份64MiB、缓存4份/16MiB（单份大于8MiB不缓存）。取消含热索引检查，重复ID/父环/越界/源SHA变化明确拒绝；非法UTF-8保留原字节，取text时明确失败。首次可选binary_name缺失和热取消测试失败已修复，原日志保留。 |
+| JVM / native | model-api-reference-20261003-185957-14109 JVM与190220-50492原生专项：三个正例声明9/11/5、语法30/36/84和全部访问属性严格相等，无输入/产物漂移；源码坐标覆盖Unicode/CRLF/CR/LF。原生为测试专用SDK8协调可执行文件，证明模型代码可原生运行，不能代替共享库/Rust产品组合。 |
+| 参考反例 | 两个p.Dup类型均正确披露ambiguous；参考第二声明span=-1/-1，产品保留第二份原源码实际位置。两个原始model输出和差分均保留，raw_equal=false，未把产品正确位置改坏。 |
+| 回归 | 文件签名11项68.114秒、模块签名9项73.447秒、框架14项68.349秒通过，均含完整full-delta事实。保护测试验证源篡改、非法字节、越界/关闭、父环/深度/目录上限和热取消。新共享库/worker/daemon与真实完整模型尚需重验；52项仍只关闭E01/E02。 |
+| 来源 | 参考冻结JavaModel/JavaSyntax/JavaSource公开行为，在现有扁平归档之上实现；未复制其解析器或协议。TYPE_PARAMETER元数据来自同一SDK8 javac，模型/桥版本保持可选属性兼容，bridge SHA与staged-project-view-v7-model-api参与语义指纹。 |
+
+门禁次序修正：validation-java-paging-gates完整Java fixture及全部已到达参考门禁通过，但Maven导出/调解在Rust CLI尚未构建的干净目录中失败。新统一入口将Rust build移到Maven前，保留原失败。Root实际Maven17项70.935秒重跑通过；不能覆盖旧正式回执。
+
+按需图真实终态：validation-model-graph-paging/iopengw-core-service-graph-paging 4171.056秒，MAIN完成，TEST compiler_model超内部600秒保护时限，COMPILER_TIMEOUT，未发布；峰值1883357184 bytes、unexpected_signal_observed=false，源/产物无漂移。第二份MAIN模型OOM已在此次实际越过，但全项目与容量仍未通过，需取证TEST编译器现场。

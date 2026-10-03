@@ -15,6 +15,7 @@ public final class ExtensionContext {
     private final List<Object> factInputs;
     private final List<ProjectResource> resources;
     private dev.codeana.common.IndexedRecords declarations;
+    private DetachedJavaModel javaModel;
 
     public ExtensionContext(
             Map<String, Object> configuration,
@@ -80,6 +81,12 @@ public final class ExtensionContext {
 
     public Map<String, Object> model() {
         return model;
+    }
+
+    /** Optional detached navigation; construction never copies the archive or exposes javac. */
+    public DetachedJavaModel javaModel() {
+        if(javaModel==null)javaModel=new DetachedJavaModel(model);
+        return javaModel;
     }
 
     public List<Object> facts() {

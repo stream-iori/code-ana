@@ -502,6 +502,7 @@ public final class CompilerBridge implements AutoCloseable {
             a.put("source_name", type.getQualifiedName().toString());
             a.put("type_parameters", strings(type.getTypeParameters()));
             a.put("type_parameter_models", formalModels(type.getTypeParameters()));
+            a.put("type_parameter_declarations", formalDeclarations(type.getTypeParameters()));
             a.put("nesting_kind", type.getNestingKind().name());
             a.put("enclosing_type", signature(type.getEnclosingElement()));
             StringBuilder signature = new StringBuilder(formals(type.getTypeParameters()));
@@ -525,6 +526,7 @@ public final class CompilerBridge implements AutoCloseable {
             a.put("varargs", method.isVarArgs());
             a.put("type_parameters", strings(method.getTypeParameters()));
             a.put("type_parameter_models", formalModels(method.getTypeParameters()));
+            a.put("type_parameter_declarations", formalDeclarations(method.getTypeParameters()));
             StringBuilder signature = new StringBuilder(formals(method.getTypeParameters())).append('(');
             List<Object> parameterAnnotations = new ArrayList<Object>();
             List<String> parameterNames = new ArrayList<String>();
@@ -880,6 +882,18 @@ public final class CompilerBridge implements AutoCloseable {
             return Json.object("kind", "primitive", "type", value.getClass().getSimpleName().toLowerCase(Locale.ROOT),
                     "value", constant(value));
         return constant(value);
+    }
+
+    private List<Object> formalDeclarations(List<? extends TypeParameterElement> parameters) {
+        List<Object> declarations = new ArrayList<Object>();
+        for (TypeParameterElement parameter : parameters) {
+            TreePath path = elementPath(parameter);
+            long start = path == null ? -1 : trees.getSourcePositions().getStartPosition(path.getCompilationUnit(), path.getLeaf());
+            long end = path == null ? -1 : trees.getSourcePositions().getEndPosition(path.getCompilationUnit(), path.getLeaf());
+            declarations.add(Json.object("name",parameter.getSimpleName().toString(),"start",start,"end",end,
+                    "generated",path==null,"attributes",describe(parameter)));
+        }
+        return declarations;
     }
 
     private List<Object> formalModels(List<? extends TypeParameterElement> parameters) {
@@ -1324,6 +1338,7 @@ public final class CompilerBridge implements AutoCloseable {
                 if (tree instanceof VariableTree) record.put("name",((VariableTree)tree).getName().toString());
                 if (tree instanceof MethodTree) record.put("name",((MethodTree)tree).getName().toString());
                 if (tree instanceof ClassTree) record.put("name",((ClassTree)tree).getSimpleName().toString());
+                if (tree instanceof TypeParameterTree) record.put("name",((TypeParameterTree)tree).getName().toString());
                 if (tree instanceof MemberReferenceTree) record.put("name",((MemberReferenceTree)tree).getName().toString());
                 if (tree instanceof PrimitiveTypeTree) record.put("name", ((PrimitiveTypeTree) tree).getPrimitiveTypeKind().name().toLowerCase(Locale.ROOT));
                 record.put("roles", roles(tree));
