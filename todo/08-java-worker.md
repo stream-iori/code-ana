@@ -1053,3 +1053,6 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | JVM | model-dictionary-sharing-archive-final.log全部归档正反例通过（含60k/217MB扩展、反射、共享/释放）；SDK8桥单独构建成功；注解14项44.989秒、补充类型12项62.740秒通过。仍须重建native并验证真实项目。 |
 | native harness | 5033组合177项仅composed-meta缓存失败及缺Rust校验example；前者855已修，新完整注解14项确认。native fixture入口现在显式构建并冻结Rust validator，检验前后SHA，避免干净checkout把缺测试工具当成产品能力失败；新组合门禁待执行。 |
 | Ack产品证明 | validation-java-publication-ack/publication-ack-product-proof-final.log：修复后的真实release/native1项33.139秒通过，明确ack_warning=None、预算失败保持head、复用同worker、增量/全量事实一致。Rust workspace及Clippy通过。新native XML正常三组五类绑定相等、参考lambda缺陷模式复现，无输入/产物漂移。 |
+<!-- 2026-10-03：XML完整差分继续，未关闭52项。 -->
+
+资源模块补齐：真实SOFA XML差分旧库226/参考232，缺6/额外0；5处为itest-config.xml合法 `<!-->…<-->` 注释误截断，1处为common/dal无Java导致Rust未建立上下文。已修Java词法扫描与Rust资源MAIN/TEST world/依赖发现，XML12项与Rust96项/Clippy通过；新native/真实daemon/40模块仍待冻结组合验收。SOFA/MsgBroker注册完整属性与子配置独立JVM/native三组各8严格相等，无漂移；整个XML图尚未关闭。

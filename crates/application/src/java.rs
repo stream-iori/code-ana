@@ -147,6 +147,27 @@ fn compiler_parallelism(
         1
     })
 }
+fn context_worlds(
+    manifest: &Manifest,
+    module: &str,
+    xml_enabled: bool,
+) -> BTreeMap<String, String> {
+    manifest
+        .files
+        .iter()
+        .filter(|source| {
+            source.world == key("world", &[module, &source.scope])
+                && (source.language == "java"
+                    || (xml_enabled
+                        && source.module == module
+                        && source.language.is_empty()
+                        && matches!(source.scope.as_str(), "MAIN" | "TEST")
+                        && source.path.ends_with(".xml")))
+        })
+        .map(|source| (source.scope.clone(), source.world.clone()))
+        .collect()
+}
+
 pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<PreparedJava> {
     let library = installed_library()?;
     let bundle = library
@@ -268,10 +289,15 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
     if let Some(inputs) = &c.effective.java_inputs {
         let mut pending = Vec::new();
         for module in inputs.modules.iter().filter(|m| m.selected) {
+            let xml_enabled = c.effective.config.modules.iter().any(|configured| {
+                configured.id == module.id
+                    && ((configured.extensions.spring.enabled.unwrap_or(false)
+                        && configured.extensions.spring.xml.unwrap_or(false))
+                        || configured.extensions.sofa.enabled.unwrap_or(false))
+            });
+            let worlds = context_worlds(&c.manifest, &module.id, xml_enabled);
             for scope in ["MAIN", "TEST"] {
-                if c.manifest.files.iter().any(|source| {
-                    source.language == "java" && source.world == key("world", &[&module.id, scope])
-                }) {
+                if worlds.contains_key(scope) {
                     pending.extend(
                         module
                             .dependencies
@@ -324,20 +350,23 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
         if !selected && !upstream {
             continue;
         }
-        let worlds: BTreeMap<_, _> = c
-            .manifest
-            .files
-            .iter()
-            .filter(|s| s.language == "java" && s.world == key("world", &[&module.id, &s.scope]))
-            .map(|s| (s.scope.clone(), s.world.clone()))
-            .collect();
+        let xml_enabled = !upstream
+            && ((module.extensions.spring.enabled.unwrap_or(false)
+                && module.extensions.spring.xml.unwrap_or(false))
+                || module.extensions.sofa.enabled.unwrap_or(false));
+        let worlds = context_worlds(&c.manifest, &module.id, xml_enabled);
         for (scope, world) in worlds {
             let prerequisite = upstream
-                || c.manifest
+                || (c
+                    .manifest
                     .files
                     .iter()
-                    .filter(|s| s.language == "java" && s.world == world)
-                    .all(|s| s.auxiliary);
+                    .any(|s| s.language == "java" && s.world == world)
+                    && c.manifest
+                        .files
+                        .iter()
+                        .filter(|s| s.language == "java" && s.world == world)
+                        .all(|s| s.auxiliary));
             if prerequisite && scope != "MAIN" {
                 continue;
             }
@@ -566,6 +595,45 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn xml_only_main_and_test_worlds_require_enabled_extensions_and_exact_module() {
+        let unit = |path: &str, module: &str, scope: &str, language: &str| SourceUnit {
+            path: path.into(),
+            hash: "frozen".into(),
+            size: 1,
+            module: module.into(),
+            world: key("world", &[module, scope]),
+            scope: scope.into(),
+            language: language.into(),
+            auxiliary: false,
+        };
+        let manifest = Manifest {
+            files: vec![
+                unit("app/resources/beans.xml", "app", "MAIN", ""),
+                unit("app/test-resources/beans.xml", "app", "TEST", ""),
+                unit("app/resources/readme.txt", "app", "MAIN", ""),
+                unit("other/resources/beans.xml", "other", "MAIN", ""),
+            ],
+        };
+        assert!(context_worlds(&manifest, "app", false).is_empty());
+        assert_eq!(
+            context_worlds(&manifest, "app", true),
+            BTreeMap::from([
+                ("MAIN".into(), key("world", &["app", "MAIN"])),
+                ("TEST".into(), key("world", &["app", "TEST"])),
+            ])
+        );
+        let mut source_only = manifest.clone();
+        source_only
+            .files
+            .push(unit("app/src/Api.java", "app", "MAIN", "java"));
+        assert_eq!(context_worlds(&source_only, "app", false).len(), 1);
+        source_only
+            .files
+            .retain(|source| !source.path.ends_with(".xml") && source.language != "java");
+        assert!(context_worlds(&source_only, "app", true).is_empty());
+    }
+
     #[test]
     fn task_disk_budget_counts_captures_results_and_candidate_without_double_counting_input() {
         let root = tempfile::tempdir().unwrap();

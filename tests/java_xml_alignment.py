@@ -39,6 +39,21 @@ class Xml(unittest.TestCase):
         self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['attributes'].get('code')=='EXTENSION_CALLBACK_FAILED'])
         return facts
 
+    def test_comment_initial_greater_than_retains_original_bytes_and_all_nodes(self):
+        xml = ('<beans><!-->原字节😀<--><bean id="api" class="Api"/>'
+               '<!-- --><bean id="holder" class="Holder">'
+               '<constructor-arg ref="api"/></bean></beans>')
+        context = self.captured({'beans.xml':xml})
+        full = self.analyze([context],cache=True)['facts']
+        beans = [f for f in full if f['relation']=='java.bean']
+        self.assertCountEqual([f['name'] for f in beans],['api','holder'])
+        self.assertFalse(any('XML_LOCATION_MISMATCH' in f['attributes'].get('gaps',[]) for f in full))
+        for fact in beans:
+            self.assertTrue(xml.encode()[fact['span']['start']:fact['span']['end']].startswith(b'<bean '))
+        changed = self.captured({'beans.xml':xml.replace('原字节😀','修改😀')})
+        self.assertEqual(self.merged(full,self.analyze([changed],full,cache=True)),
+                         sorted(self.analyze([changed],cache=True)['facts'],key=lambda f:f['id']))
+
     def test_auxiliary_source_constructor_and_members_survive_header_change(self):
         xml = '<beans><bean id="shared" class="p.Shared" init-method="start"><property name="name" value="one"/></bean></beans>'
         source = 'package p; public class Shared {public Shared(){} public void setName(String name){} public void start(){}}'

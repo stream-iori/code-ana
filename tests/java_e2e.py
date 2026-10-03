@@ -13,6 +13,54 @@ class JavaProduct(unittest.TestCase):
     cleanup=harness.Product.cleanup
     daemon_log=harness.Product.daemon_log
 
+    def test_maven_xml_only_main_test_contexts_publish_and_delta(self):
+        import hashlib
+        shutil.rmtree(self.project/'src')
+        dependency=self.project/'lib/src/p/Api.java';dependency.parent.mkdir(parents=True)
+        dependency.write_text('package p;public class Api {public Api(){} public void start(){}}')
+        xml='''<beans xmlns:sofa="http://schema.alipay.com/sofa/schema/service">
+            <!-->原字节😀<--><bean id="api" class="p.Api" init-method="start"/>
+            <sofa:reference id="remote" interface="p.Api"/></beans>'''
+        resources=[]
+        for directory in ('resources','test-resources'):
+            file=self.project/'app'/directory/'beans.xml';file.parent.mkdir(parents=True)
+            file.write_text(xml);resources.append(file)
+        pom=self.project/'pom.xml';pom.write_text('<project/>')
+        sha=lambda value:hashlib.sha256(value).hexdigest()
+        metadata=dict(schema_version=3,scopes=['MAIN','TEST'],controls={'pom.xml':sha(pom.read_bytes())},
+            effective_model_sha256=sha(b'xml only'),active_profiles_sha256=sha(b'profiles'),modules=[
+                dict(id='lib',root='lib',selected=False,source_version='8',source_roots=[dict(path='src',scope='MAIN')]),
+                dict(id='app',root='app',source_version='8',source_roots=[dict(path='src',scope='MAIN'),dict(path='tests',scope='TEST')],
+                     resource_roots=[dict(path='resources',scope='MAIN'),dict(path='test-resources',scope='TEST')],
+                     dependencies={'MAIN':['lib'],'TEST':['lib']})])
+        (self.project/'.code-ana/inputs.json').write_text(json.dumps(metadata))
+        config=self.project/'.code-ana/config.toml'
+        config.write_text('schema_version=1\nkind="project"\n[scan]\nscopes=["MAIN","TEST"]\n'
+            '[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n'
+            '[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n'
+            '[languages.java.extensions.spring]\nenabled=true\nxml=true\n[languages.java.extensions.sofa]\nenabled=true\n')
+        _,first=self.cli('index','--full',timeout=180)
+        self.assertEqual(first['publication'],'published');initial=self.facts(first['revision'])
+        expected={'app/resources/beans.xml','app/test-resources/beans.xml'}
+        self.assertEqual({f['source'] for f in initial if f['relation']=='java.bean'},expected)
+        self.assertEqual({f['source'] for f in initial if f['relation']=='java.sofa'},expected)
+        self.assertEqual({f['attributes']['context'] for f in initial if f['relation']=='java.bean'}, {'app@MAIN','app@TEST'})
+        self.assertFalse([f for f in initial if f['kind']=='declaration'])
+        by={f['id']:f for f in initial}
+        self.assertEqual({by[f['target']]['signature'] for f in initial if f['relation']=='config_member'},
+                         {'p.Api#<init>()','p.Api#start()'})
+        resources[1].write_text(xml.replace('id="remote"','id="changed"'))
+        _,delta=self.cli('index',timeout=180);changed=self.facts(delta['revision'])
+        _,full=self.cli('index','--full',timeout=180)
+        self.assertEqual(changed,self.facts(full['revision']))
+        self.assertEqual(initial,self.facts(first['revision']))
+        resources[1].unlink()
+        _,delta=self.cli('index',timeout=180);deleted=self.facts(delta['revision'])
+        _,full=self.cli('index','--full',timeout=180)
+        self.assertEqual(deleted,self.facts(full['revision']))
+        self.assertFalse([f for f in deleted if f['source']=='app/test-resources/beans.xml'])
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_source_binary_meta_graph_publishes_original_provenance_and_delta(self):
         import hashlib
         shutil.rmtree(self.project/'src')

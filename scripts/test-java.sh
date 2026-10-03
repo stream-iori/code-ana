@@ -67,3 +67,4 @@ python3 "$repo_root/tests/java_override_reference_alignment.py"
 python3 "$repo_root/tests/java_field_reference_alignment.py"
 python3 "$repo_root/tests/java_xml_reference_alignment.py"
 python3 "$repo_root/tests/java_xml_reference_alignment.py" --reference-defect
+python3 "$repo_root/tests/java_sofa_xml_reference_alignment.py"

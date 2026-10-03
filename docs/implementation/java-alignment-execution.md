@@ -857,3 +857,15 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 后续收齐：registration-original-full-jvm-20261003-145054，52条命令4497.730秒all_ok=true、无源码/产物漂移；其native163项1959.980秒all_ok=true。仅对应c5原表达式/Unicode/MVC/事件/SOFA组合，不能替代后续元注解/内存修复的完整门禁。最新model-dictionary-full-jvm已冻结6e组合启动。
 
 旧真实库注册比较：iopengw-4a-registration-attributes-schema-final.json，参考279个annotation注册，产品693个facet缺新原始属性，REGISTRATION_SCHEMA_INCOMPLETE/equal=false，数据库无漂移；没有用有效默认值补写原表达式。Bean/DI比较初版被无关XML的external DEFINED_BY端点阻断，按选定annotation域先筛owner后解析，并严格拒绝其自身缺失/歧义owner；四组framework-annotation-owner-filter JVM独立对照通过。XML依然是另一个未关闭的必需域。
+
+## XML 实际缺口与资源模块（2026-10-03）
+
+| 项目 | 证据 / 改动 |
+|---|---|
+| 注解 Bean/DI | iopengw-4a-bean-injection-constraints-final：878 Bean 完整属性严格相等；528 DI 中26对仅缺 Resource 原始 name 属性，当前 injection3 已补，真实新库仍待比较。 |
+| SOFA XML 独立对照 | sofa-xml-reference-20261003-161657-36271 JVM 三组各8注册，13.189秒；161832-47551 native 三组各8，11.091秒；完整属性、全部子配置、重复注册、动态/未知transport和MsgBroker严格相等，无源码/产物漂移。第一次回执因执行中修正比较器选择范围而漂移，保留失败；后续冻结回执有效。 |
+| 真实 XML 差分 | 新 java_sofa_xml_inventory_diff 定向读取、保留重复和全部注册/子配置属性，前后DB SHA、revision capture manifest及原始XML SHA检查。旧库226/参考232、缺6/额外0，不能作为全部XML图相等。 |
+| 根因1 | itest-config.xml 的合法注释 `<!-->…<-->`：原扫描从开头+2搜索结束符，把开头的`-->`误当注释结束；SAX与词法流不一致，整文件 XML_LOCATION_MISMATCH、缺5注册。XmlModel 从完整开启符之后查找终止符，CDATA/PI同样按真实开启符；不修改输入。XML12项60.106秒通过，新增原UTF8跨度/修改/full-delta断言。 |
+| 根因2 | common/dal 仅有资源无Java，Rust prepare 从Java文件发现world，故根本未派发。新增启用XML扩展时的精确module MAIN/TEST资源world与其Maven依赖；空Java集合不再被all(auxiliary)误当prerequisite。Rust仍仅处理输入/上下文，XML解析继续Java。新增两scope真实daemon、修改/删除/旧revision与full-delta测试待新native组合执行。 |
+| JVM专项模型 | 6e完整回归 SourceTypeBudgetProbe 缺当前 annotation_types 字段，被元注解提取器拒绝；修正手工测试模型，产品严格模型不放宽。source-type-budget-schema-final.log 11项19.868秒通过，原失败回执保留。 |
+| Rust | resource-only-workspace-tests.log 共96测试通过，all-targets Clippy通过。仅这些实际回执证明，不提前判40模块/独占容量/release通过。 |

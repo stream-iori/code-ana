@@ -928,7 +928,9 @@
         "tests/java_sofa_xml_alignment.py",
         "tests/java_xml_alignment.py",
         "tests/java_e2e.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_sofa_xml_reference_alignment.py",
+        "tests/java_sofa_xml_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -938,7 +940,9 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "sofa-xml-reference",
+        "sofa-xml-reference-native"
       ],
       "remaining_acceptance": [
         "已补 SOFA 4/public service/reference、MsgBroker publisher/consumer、binding/transport/channel/event/listener 树；完整配置/来源与 native/daemon、iopengw 语义差分尚需验收"

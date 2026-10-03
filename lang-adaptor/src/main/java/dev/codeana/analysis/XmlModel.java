@@ -79,7 +79,9 @@ final class XmlModel {
             String terminator = text.startsWith("<!--", start) ? "-->"
                     : text.startsWith("<![CDATA[", start) ? "]]>": text.startsWith("<?", start) ? "?>" : null;
             if (terminator != null) {
-                int end = text.indexOf(terminator, start + 2);
+                int openingLength = text.startsWith("<!--", start) ? 4
+                        : text.startsWith("<![CDATA[", start) ? 9 : 2;
+                int end = text.indexOf(terminator, start + openingLength);
                 if (end < 0) throw new SAXException("XML_UNTERMINATED_MARKUP");
                 next = end + terminator.length(); continue;
             }

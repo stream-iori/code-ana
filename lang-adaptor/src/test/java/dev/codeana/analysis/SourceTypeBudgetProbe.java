@@ -19,7 +19,8 @@ public final class SourceTypeBudgetProbe {
                 declaration(source,"Leaf#healthy","Leaf","FIELD",leaf),
                 declaration(source,"Leaf#limited","Leaf","FIELD",deep));
         Map<String,Object> model=Json.object("syntax",List.of(),"declarations",declarations,
-                "external",List.of(),"observations",List.of(),"diagnostics",List.of());
+                "external",List.of(),"annotation_types",List.of(),
+                "observations",List.of(),"diagnostics",List.of());
         Path path=Path.of(Json.string(request,"scratch")).resolve("budget-facts.bin");
         try(RecordArchive archive=RecordArchive.create(path,16*1024*1024,1000)) {
             List<Object> facts=new FactExtractor(context,Json.string(context,"digest"),archive).extract(model);
