@@ -287,6 +287,7 @@ impl<'a> FactValidator<'a> {
                     | "java.syntax"
                     | "java.method"
                     | "java.annotation"
+                    | "java.annotation.meta"
                     | "java.bean"
                     | "java.binding"
                     | "java.lombok"
@@ -539,6 +540,7 @@ impl AnalysisResult {
                         | "java.syntax"
                         | "java.method"
                         | "java.annotation"
+                        | "java.annotation.meta"
                         | "java.bean"
                         | "java.binding"
                         | "java.lombok"
@@ -854,6 +856,8 @@ mod tests {
         for (namespace, version, accepted) in [
             ("java.syntax", 1, true),
             ("java.annotation", 2, true),
+            ("java.annotation.meta", 1, true),
+            ("java.annotation.meta", 2, false),
             ("java.spring.mvc", 1, true),
             ("java.spring.handler", 1, true),
             ("java.spring.injection", 1, true),

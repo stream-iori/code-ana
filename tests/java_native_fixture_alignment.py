@@ -29,6 +29,7 @@ from java_static_import_alignment import StaticImports
 from java_annotated_type_alignment import AnnotatedMirrors
 from java_written_annotation_alignment import WrittenAnnotations
 from java_module_annotation_alignment import ModuleAnnotations
+from java_annotation_alignment import Annotations
 
 
 def main():
@@ -37,7 +38,7 @@ def main():
     frozen = alignment.input_files()
     artifacts = reference.probe_artifacts(True)
     classes = (Bindings, GraphCalls, ConcreteGraphCalls, TargetReturns, FunctionalOutputs, SourceParameters,
-               GenericReferences, ConstructorReferences, Collectors, CastBindings, BuilderChains, SupplementalSignatures, ModuleBoundary, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports, AnnotatedMirrors, WrittenAnnotations, ModuleAnnotations)
+               GenericReferences, ConstructorReferences, Collectors, CastBindings, BuilderChains, SupplementalSignatures, ModuleBoundary, Diamonds, LambdaInputs, ContextualInvocations, SourceTypeReferences, Encodings, DiagnosticBoundaries, Expressions, StaticImports, AnnotatedMirrors, WrittenAnnotations, ModuleAnnotations, Annotations)
     suite = unittest.TestSuite()
     for case in classes:
         case.analyze = reference.native_analyze

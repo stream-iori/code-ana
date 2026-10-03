@@ -50,7 +50,8 @@ def main():
             (folder/'product.json').write_text(json.dumps(full,ensure_ascii=False)+'\n')
             proof.update(name=name,product_sha256=reference.digest(folder/'product.json'),reference_sha256=reference.digest(database))
             (folder/'comparison.json').write_text(json.dumps(proof,ensure_ascii=False,indent=2)+'\n')
-            proofs.append(proof);print(name,proof['product'],proof['reference'],proof['equal'],flush=True)
+            proofs.append(proof);print(name,proof['product'],proof['reference'],proof['equal'],
+                'meta',proof['meta']['product'],proof['meta']['reference'],proof['meta']['equal'],flush=True)
     finally:case.doCleanups()
     current,now=alignment.input_files(),reference.probe_artifacts(args.native)
     changed_inputs=sorted(k for k in inputs.keys()|current.keys() if inputs.get(k)!=current.get(k))
@@ -58,8 +59,8 @@ def main():
     report=dict(kind='frozen_source_annotation_attribute_projection',native=args.native,proofs=proofs,
         inputs=inputs,artifacts=artifacts,changed_inputs=changed_inputs,changed_artifacts=changed_artifacts,
         reference_commit=reference.REFERENCE_COMMIT,reference_sha256=reference.REFERENCE_SHA,
-        annotation_meta_graph_accepted=False,full_semantic_diff_accepted=False,elapsed_seconds=round(time.monotonic()-started,3))
-    report['all_ok']=len(proofs)==3 and all(p['equal'] for p in proofs) and not changed_inputs and not changed_artifacts
+        annotation_meta_graph_accepted=all(p['meta']['equal'] for p in proofs),full_semantic_diff_accepted=False,elapsed_seconds=round(time.monotonic()-started,3))
+    report['all_ok']=len(proofs)==3 and all(p['equal'] and p['meta']['equal'] for p in proofs) and not changed_inputs and not changed_artifacts
     (base/'receipt.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n');print(base/'receipt.json',flush=True)
     return 0 if report['all_ok'] else 1
 

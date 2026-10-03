@@ -183,6 +183,12 @@
       "sha256": "dcf1cbd4e80ab74e25a5ea0636d6b3ade9a2785035d24b9c210df7cc8a49f991",
       "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/extension/SofaAnnotations.java",
       "changes": "sofa-annotations2 preserves original written attributes beside effective/default values. Keep checked two-member API, provider/requirement contracts/unique IDs/support/transport/baseline; JVM three-group projection strict, full native/real pending."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaAnnotationFacts.java",
+      "sha256": "29b32801022ad7d8e39d66b89a294618a26936cbde86a366a01ef90e5bc28dd5",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/AnnotationMetaFacts.java",
+      "changes": "Adapt bounded meta closure from detached annotation headers; Java emits source-owned discovery facts, preserves source/binary metadata origin and captured hash/span, and follows cycle guards. Unknown header/work/depth budgets revoke an incomplete root and disclose partial coverage. Rust only admits the versioned public facet and manages publication. Independent original jar compares source uses and all unique metadata edges."
     }
   ]
 }

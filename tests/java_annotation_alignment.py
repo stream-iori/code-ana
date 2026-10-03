@@ -24,6 +24,49 @@ class Annotations(unittest.TestCase):
     def beans(self, facts):
         return [f for f in facts if f['relation'] == 'java.bean']
 
+    def test_meta_graph_cycles_source_and_binary_evidence_survive_delta_and_removal(self):
+        source='''import java.lang.annotation.*;
+          @Target({ElementType.TYPE,ElementType.ANNOTATION_TYPE}) @B @interface A {}
+          @Target({ElementType.TYPE,ElementType.ANNOTATION_TYPE}) @A @interface B {}
+          @A class One {int body=1;} @A class Two {} @Deprecated class Old {}'''
+        def verify(facts):
+            meta=[f for f in facts if f['relation']=='java.annotation.meta']
+            self.assertTrue(meta)
+            keys=[(f['source'],f['attributes']['annotation_fqn'],f['attributes']['meta_annotation_fqn'],
+                   f['attributes']['source_origin']['path']) for f in meta]
+            self.assertEqual(len(keys),len(set(keys)))
+            self.assertIn(('app/Use.java','A','B','app/Use.java'),keys)
+            self.assertIn(('app/Use.java','B','A','app/Use.java'),keys)
+            self.assertIn(('app/Use.java','java.lang.Deprecated','java.lang.annotation.Documented','app/Use.java'),keys)
+            origin=next(f['attributes']['source_origin'] for f in meta if f['attributes']['annotation_fqn']=='A')
+            self.assertEqual(origin['hash'],model_tests.sha(source.encode()))
+            self.assertEqual(source.encode()[origin['span']['start']:origin['span']['end']].decode(),
+                '@Target({ElementType.TYPE,ElementType.ANNOTATION_TYPE}) @B @interface A {}')
+            self.assertFalse([f for f in facts if f['name']=='ANNOTATION_META_INCOMPLETE'])
+            return meta
+        context=self.context('app',{'Use.java':source})
+        first=self.analyze([context],cache=True)['facts'];verify(first)
+        changed=self.context('app',{'Use.java':source.replace('body=1','body=2')})
+        full=self.analyze([changed],cache=True)['facts']
+        self.assertEqual(self.merged(first,self.analyze([changed],first,cache=True)),sorted(full,key=lambda f:f['id']))
+        changed=self.context('app',{'Use.java':'class One {}'})
+        full=self.analyze([changed],cache=True)['facts']
+        self.assertFalse([f for f in full if f['relation']=='java.annotation.meta'])
+        self.assertEqual(self.merged(first,self.analyze([changed],first,cache=True)),sorted(full,key=lambda f:f['id']))
+
+    def test_meta_depth_budget_rolls_back_root_marks_partial_and_keeps_healthy_file(self):
+        source='\n'.join(('@A'+str(i+1)+' ' if i<18 else '')+'@interface A'+str(i)+' {}' for i in range(19))
+        files={'Meta.java':source,'Broken.java':'@A0 class Broken {}','Healthy.java':'@Deprecated class Healthy {}'}
+        facts=self.analyze([self.context('app',files)])['facts']
+        gaps=[f for f in facts if f['name']=='ANNOTATION_META_INCOMPLETE']
+        self.assertTrue(gaps)
+        self.assertTrue(any(f['source']=='app/Broken.java' for f in gaps))
+        coverage={f['source']:f['status'] for f in facts if f['kind']=='coverage'}
+        self.assertEqual(coverage['app/Broken.java'],'partial')
+        self.assertEqual(coverage['app/Healthy.java'],'complete')
+        self.assertFalse([f for f in facts if f['relation']=='java.annotation.meta' and f['source']=='app/Broken.java'])
+        self.assertTrue([f for f in facts if f['relation']=='java.annotation.meta' and f['source']=='app/Healthy.java'])
+
     def test_every_annotation_occurrence_keeps_original_arguments_including_nested_type_use(self):
         source = '''import java.lang.annotation.*;
           @Target({ElementType.TYPE,ElementType.TYPE_USE}) @interface Note {

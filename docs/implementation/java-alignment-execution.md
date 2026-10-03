@@ -780,3 +780,13 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | 验收入口 | 接入覆盖关系JVM/native独立门禁；统一native门禁先构建release worker，防止只构建debug后找不到probe宿主。type比较加入OVERRIDES和比较前后数据库SHA漂移拒绝；矩阵协议纠正为compiler8/model7/worker11/request5。 |
 | 同版本新native | 原始注解三组6/6、注册三组7/7、声明三组73/73严格相等，均无源码/产物漂移；最初缺release worker的未进入测试记录保留，不计产品失败或通过。新版完整JVM/native/daemon/iopengw仍运行。 |
 | 仍待补齐 | 对照发现参考公开annotation_meta_relations有56957条，产品当前只在框架匹配内部消费header闭包，还没有发布对应图事实；继续实现。52项不据上述专项关闭。 |
+
+## 元注解公开图与产品发布（2026-10-03）
+
+| 项目 | 结果 / 边界 |
+|---|---|
+| 产品原表达式证明 | registration-original-product-e2e-final.log：真实Rust daemon/native，1项377.103秒通过。完整MVC参数/事件/SOFA原属性、Unicode转义名称、原始字面量精度；body/声明变化、扩展禁用、full-delta严格相等、旧revision和无业务class。最初role拼写错误的测试失败保留，按实际模型event/provider修正，未修改产品来迎合测试。 |
+| 元注解实现 | 新AnnotationMetaFacts适配冻结JavaAnnotationFacts.meta，SOURCE/二进制header闭包发布java.annotation.meta1。保存发现owner与真实metadata来源hash/span，取消/循环/预算/缺header处理；不把辅助源码发布成SOURCE。Rust只增加facet契约命名空间/版本校验。 |
+| 独立JVM证明 | annotation-reference-20261003-150555-90256：三组各6个原始注解、11条完整metadata图边，严格相等；full-delta相等、输入/产物无漂移。图身份按参考数据库UNIQUE定义，保留全部发现事实，明确不是删除注解使用点多重性。 |
+| 正反例 | annotation-meta-focused.log两项8.792秒通过：双向循环、SOURCE跨度/hash与JDK binary header、delta/full/删除；18级链触发明确partial、该根无候选泄漏、健康文件继续。Rust契约命名空间/版本反例通过。native/daemon/真实40模块元注解公开图尚需最新组合验收。 |
+| 全部完成条件 | 最新完整语义仍不能据11边fixture通过关闭，56957真实metadata边及其它模型/框架/XML、独占容量/release还须实际执行。仅E01/E02关闭状态保持。 |

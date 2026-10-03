@@ -491,6 +491,21 @@ public final class FactExtractor {
             }
         }
         generatedTypeReferences(model,sourceTypes);
+        AnnotationMetaFacts.emit(context,model,n -> {
+            String path=Json.string(n,"source");
+            Map<String,Object> f=fact(Json.key("annotation-meta",world,Json.string(n,"identity")),"facet",path);
+            f.put("parent",symbol(Json.string(n,"parent")));
+            f.put("relation","java.annotation.meta");
+            Map<String,Object> a=new TreeMap<>(Json.map(n.get("attributes")));
+            Map<String,Object> origin=new TreeMap<>(Json.map(a.get("source_origin")));
+            String originPath=Json.string(origin,"path");
+            if(positions.containsKey(originPath)) {
+                origin.put("span",span(originPath,origin));
+                origin.put("hash",sources.get(originPath).get("hash"));
+            }
+            origin.remove("start");origin.remove("end");a.put("source_origin",origin);
+            a.put("discovery_source",path);f.put("attributes",a);
+        });
         SyntaxFacts.emit(context, model, (id, path) -> fact(id, "facet", path));
         sourceTypeReferences(sourceTypes);
         for (Object raw : Json.list(model.get("diagnostics"))) {
@@ -511,7 +526,7 @@ public final class FactExtractor {
                 if (publishPath.isEmpty()) incomplete.addAll(sources.keySet());
                 else incomplete.add(path);
             }
-            if (Set.of("REFLECTION_FLOW_BUDGET", "MODELED_OVERRIDE_INCOMPLETE").contains(d.get("code")) && !publishPath.isEmpty())
+            if (Set.of("REFLECTION_FLOW_BUDGET", "MODELED_OVERRIDE_INCOMPLETE", "ANNOTATION_META_INCOMPLETE").contains(d.get("code")) && !publishPath.isEmpty())
                 incomplete.add(path);
             if (Set.of("TYPE_MODEL_DEPTH_BUDGET", "TYPE_MODEL_NODE_BUDGET").contains(d.get("code"))) {
                 if (publishPath.isEmpty()) incomplete.addAll(sources.keySet());

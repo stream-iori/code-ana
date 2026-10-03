@@ -15,6 +15,26 @@ from java_declaration_inventory_diff import connection, digest
 from java_inventory_canonical import Canonical, verify_source_inputs
 
 
+def meta_projection(facts, reference):
+    """The reference has a UNIQUE metadata-edge identity; discoveries remain separate facts."""
+    left, right = set(), set()
+    discoveries = 0
+    for f in facts:
+        if f['relation']!='java.annotation.meta': continue
+        a=f['attributes'];origin=a['source_origin'];discoveries+=1
+        left.add((origin['path'],a['annotation_fqn'].replace('$','.'),
+                  a['meta_annotation_fqn'].replace('$','.'),a['raw_name'].replace('$','.'),a['resolution_status']))
+    for r in reference.execute('SELECT * FROM annotation_meta_relations'):
+        key=(r['source_file'],r['annotation_fqn'].replace('$','.'),
+             (r['meta_annotation_fqn'] or '').replace('$','.'),r['raw_name'].replace('$','.'),r['resolution_status'])
+        if key in right: raise ValueError('REFERENCE_META_IDENTITY_DUPLICATE')
+        right.add(key)
+    rows=lambda values: [list(k) for k in sorted(values,key=str)[:100]]
+    return dict(discovery_facts=discoveries,product=len(left),reference=len(right),equal=left==right,
+        identity='reference_unique_metadata_edge_without_discovery_owner',
+        missing=len(right-left),extra=len(left-right),missing_sample=rows(right-left),extra_sample=rows(left-right))
+
+
 def projection(facts, declarations, product, reference, project):
     canonical = Canonical(product, reference, project)
     left, right = collections.Counter(), collections.Counter()
@@ -84,7 +104,8 @@ def fixture_projection(facts, database, project):
             ((f['kind'],f['source'],json.dumps(f)) for f in facts))
         inputs = verify_source_inputs(product,project)
         declarations = {f['id']:f for f in facts if f['kind'] in ('declaration','external_symbol')}
-        return dict(project_source_inputs=inputs,**projection(facts,declarations,product,reference,project))
+        return dict(project_source_inputs=inputs,**projection(facts,declarations,product,reference,project),
+                    meta=meta_projection(facts,reference))
 
 
 def main():
@@ -108,12 +129,15 @@ def main():
         report=dict(kind='published_source_annotation_attribute_projection',revision=revision[0],database_sha256=before,
             project_source_inputs=inputs,**projection(facts,declarations,product,reference,args.project),
             annotation_meta_graph_accepted=False,full_semantic_diff_accepted=False)
+        meta=(json.loads(r['body']) for r in product.execute("SELECT body FROM facts WHERE kind='facet' AND relation='java.annotation.meta'"))
+        report['meta']=meta_projection(meta,reference)
+        report['annotation_meta_graph_accepted']=report['meta']['equal']
     if before!=dict(product=digest(args.product),reference=digest(args.reference)):
         raise ValueError('COMPARISON_DATABASE_DRIFT')
     report['changed_databases']=[]
     args.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print({k:report[k] for k in ('product','reference','missing','extra','incomplete_written_values','equal')})
-    return 0 if report['equal'] else 1
+    return 0 if report['equal'] and report['meta']['equal'] else 1
 
 
 if __name__=='__main__':raise SystemExit(main())
