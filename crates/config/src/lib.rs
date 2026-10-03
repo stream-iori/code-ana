@@ -270,13 +270,13 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     }
     if let Some(bytes) = c.resources.index.java_scratch_bytes {
         ensure!(
-            (64 * 1024..=16 * 1024 * 1024 * 1024).contains(&bytes),
+            (64 * 1024..=codeana_model::MAX_JAVA_SCRATCH_BYTES).contains(&bytes),
             "JAVA_SCRATCH_BYTES_RANGE"
         );
     }
     if let Some(bytes) = c.resources.index.java_result_bytes {
         ensure!(
-            (64 * 1024..=4 * 1024 * 1024 * 1024).contains(&bytes),
+            (64 * 1024..=codeana_model::MAX_JAVA_RESULT_BYTES).contains(&bytes),
             "JAVA_RESULT_BYTES_RANGE"
         );
     }
@@ -1564,14 +1564,24 @@ source_roots=[{path="src",scope="MAIN",label="api"},{path="bridge",scope="MAIN",
             ),
             (
                 "java_result_bytes",
-                vec![65536u64, 67108864, 4294967296],
-                vec![0, 65535, 4294967297u64],
+                vec![
+                    65536u64,
+                    67108864,
+                    4294967296,
+                    codeana_model::MAX_JAVA_RESULT_BYTES,
+                ],
+                vec![0, 65535, codeana_model::MAX_JAVA_RESULT_BYTES + 1],
                 "JAVA_RESULT_BYTES_RANGE",
             ),
             (
                 "java_scratch_bytes",
-                vec![65536, 2147483648, 17179869184],
-                vec![0, 65535, 17179869185u64],
+                vec![
+                    65536,
+                    2147483648,
+                    17179869184,
+                    codeana_model::MAX_JAVA_SCRATCH_BYTES,
+                ],
+                vec![0, 65535, codeana_model::MAX_JAVA_SCRATCH_BYTES + 1],
                 "JAVA_SCRATCH_BYTES_RANGE",
             ),
             (

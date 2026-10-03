@@ -335,10 +335,10 @@ Native ABI 签名仍为 2；当前分析 JSON 使用 analysis request 4，支持
 | 模型归档 | 64 MiB / 64 KiB–1 GiB，每 context | compiler 声明/观察/语法 spool、最终模型、native 读取与项目暂存使用同一限额；控制 JSON 仍 64 MiB |
 | 原生堆 | 256 MiB / 8–1024 MiB | Graal v5 isolate params 传入 -Xmx；codeana_java_heap_bytes 返回实际堆并校验，warm reuse 必须一致；C ABI 仍 2 |
 | javac | 默认 128 MiB、120 秒 | heap 8–512 MiB，context deadline 1–3600 秒；超时杀掉独占子进程并清理 |
-| 事实/结果 | 100000 条、64 MiB / 最多 5000000 条、4 GiB | native 汇总/基线/结果 JSON、Rust 基线/解码/daemon 接收与存储基线导出；owner 逐个解码，先限制数量；单行/IPC 仍 8 MiB |
-| 任务 scratch | 2 GiB / 64 KiB–16 GiB | 捕获原件、prepared 输入副本、compiler 模型/私有签名 pin、native JSON、Rust 基线/结果均计入；候选 SQLite 逐批和备份逐步校验；100ms 采样超限杀 worker 进程组；失败不发布 |
+| 事实/结果 | 100000 条、64 MiB / 最多 5000000 条、8 GiB | native 汇总/基线/结果 JSON、Rust 基线/解码/daemon 接收与存储基线导出；owner 逐个解码，先限制数量；单行/IPC 仍 8 MiB |
+| 任务 scratch | 2 GiB / 64 KiB–32 GiB | 捕获原件、prepared 输入副本、compiler 模型/私有签名 pin、native JSON、Rust 基线/结果均计入；候选 SQLite 逐批和备份逐步校验；100ms 采样超限杀 worker 进程组；失败不发布 |
 
-scratch 不等于文件系统硬配额：采样写入可短暂超限；SQLite 每 256 行/备份每 128 页检查且发布前复核。按文件逻辑长度计数；缓存写入预留 64 MiB、blob 发布副本预留最大捕获文件，持久共享缓存另受缓存上限约束。模块归档与 5M/4GiB/16GiB 的完整容量验收仍缺，不能用配置上限代替验收。
+scratch 不等于文件系统硬配额：采样写入可短暂超限；SQLite 每 256 行/备份每 128 页检查且发布前复核。按文件逻辑长度计数；缓存写入预留 64 MiB、blob 发布副本预留最大捕获文件，持久共享缓存另受缓存上限约束。模块归档与 5M/8GiB/32GiB 的完整容量验收仍缺，不能用配置上限代替验收。
 
 预算进入 adapter semantic_identity 和 worker 复用身份。Context 的核心事实复制进任务归档后关闭/删除，不累计保留所有 core spool；失败/签名回退也释放。经过 archive 校验的 type 树递归不可变且带 ImmutableType 标记，扩展 callback 与 ModelOverlay 暂存路径共享此不可变节点，overlay 仅深拷贝其余可变容器；公共 mutableMap 继续提供独立且可编辑的完整副本。类型替换仅复制变化路径，派生节点同样封存为不可变类型。内置 Lombok 只复制需修改的声明/attributes 容器；不修改共享的 type 树。回调快照的修改/追加行在入口写入任务私有 RowSpool，采用同 context 模型字节上限；读取按行解码，encoder 身份表在封存后释放，成功/失败随父模型关闭删除。完成模型在同一 Java/call 阶段共用只读快照，各回调仍固定自己的事实视图长度。
 

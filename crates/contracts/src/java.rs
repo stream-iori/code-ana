@@ -100,7 +100,7 @@ impl OutputLimits {
             },
         };
         ensure!(
-            (64 * 1024..=4 * 1024 * 1024 * 1024).contains(&limits.bytes),
+            (64 * 1024..=codeana_model::MAX_JAVA_RESULT_BYTES).contains(&limits.bytes),
             "JAVA_RESULT_BYTES_RANGE"
         );
         ensure!(
@@ -365,7 +365,7 @@ mod tests {
         invalid.compiler_timeout_seconds = 3601;
         assert!(validate(&invalid).is_err());
         invalid = config.clone();
-        invalid.result_bytes = 4 * 1024 * 1024 * 1024 + 1;
+        invalid.result_bytes = codeana_model::MAX_JAVA_RESULT_BYTES + 1;
         assert!(validate(&invalid).is_err());
         invalid = config.clone();
         invalid.fact_limit = 5000001;

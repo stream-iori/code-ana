@@ -188,11 +188,16 @@ def verify_frozen(project):
                 committed_java_files=java, include_uncommitted=False)
 
 
-def project_config(scopes, xml, manifest, native_heap_bytes=536870912, worker_memory_bytes=1610612736):
+def project_config(scopes, xml, manifest, native_heap_bytes=536870912, worker_memory_bytes=1610612736,
+                   result_bytes=4294967296, scratch_bytes=17179869184):
     if not 8 * 1024 * 1024 <= native_heap_bytes <= 1024 * 1024 * 1024 or native_heap_bytes % (1024 * 1024):
         raise ValueError('JAVA_NATIVE_HEAP_RANGE')
     if not native_heap_bytes + (512 + 256 + 64) * 1024 * 1024 <= worker_memory_bytes <= 2147483648:
         raise ValueError('JAVA_PARALLELISM_MEMORY_BUDGET')
+    if not 65536 <= result_bytes <= 8589934592:
+        raise ValueError('JAVA_RESULT_BYTES_RANGE')
+    if not 65536 <= scratch_bytes <= 34359738368:
+        raise ValueError('JAVA_SCRATCH_BYTES_RANGE')
     return ('schema_version=1\nkind="project"\n[discovery]\nmode="auto"\n[scan]\n'
             'scopes=' + json.dumps(scopes) + '\ninclude=' + json.dumps(
                 ['**/*.java', '**/pom.xml'] + (['**/*.xml'] if xml else [])) + '\n'
@@ -204,7 +209,8 @@ def project_config(scopes, xml, manifest, native_heap_bytes=536870912, worker_me
             'worker_memory_bytes=' + str(worker_memory_bytes) + '\njava_compiler_heap_bytes=536870912\njava_parallelism=1\n'
             'java_model_record_limit=5000000\njava_model_archive_bytes=1073741824\n'
             'java_native_heap_bytes=' + str(native_heap_bytes) + '\njava_compiler_timeout_seconds=600\n'
-            'java_result_bytes=4294967296\njava_fact_limit=5000000\njava_scratch_bytes=17179869184\n').encode()
+            'java_result_bytes=' + str(result_bytes) + '\njava_fact_limit=5000000\n'
+            'java_scratch_bytes=' + str(scratch_bytes) + '\n').encode()
 
 
 class PhaseCapture:
@@ -282,13 +288,18 @@ def main():
                         help='Explicit correctness-run native heap; this does not certify capacity')
     parser.add_argument('--worker-memory-bytes', type=int, default=1610612736,
                         help='Total worker reservation, including javac and non-heap space; at most 2 GiB')
+    parser.add_argument('--result-bytes', type=int, default=4294967296,
+                        help='Explicit disk archive/output limit; at most 8 GiB')
+    parser.add_argument('--scratch-bytes', type=int, default=17179869184,
+                        help='Explicit total task scratch limit; at most 32 GiB')
     parser.add_argument('--evidence', type=pathlib.Path)
     args = parser.parse_args()
     if not 1 <= args.deadline_seconds <= 86400:
         parser.error('deadline must be within the product-supported 1..86400 seconds')
     try:
         configured = project_config(args.scopes.split(','), args.xml, args.inputs_manifest,
-                                    args.native_heap_bytes, args.worker_memory_bytes)
+                                    args.native_heap_bytes, args.worker_memory_bytes,
+                                    args.result_bytes, args.scratch_bytes)
     except ValueError as failure:
         parser.error(str(failure))
     previous_sigterm = signal.signal(signal.SIGTERM, interrupted)
@@ -304,6 +315,7 @@ def main():
                   full_project_all_scopes_accepted=False, time_is_performance_gate=False,
                   scopes=args.scopes.split(','), xml_resources_included=args.xml,
                   native_heap_bytes=args.native_heap_bytes,
+                  result_bytes=args.result_bytes, scratch_bytes=args.scratch_bytes,
                   compiler_heap_bytes=536870912, worker_memory_bytes=args.worker_memory_bytes,
                   protection_deadline_seconds=args.deadline_seconds, owner_pid=os.getpid())
     atomic_json(receipt, report)

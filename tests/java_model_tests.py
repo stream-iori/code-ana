@@ -179,13 +179,13 @@ class Models(unittest.TestCase):
  def test_output_fact_and_byte_budgets_reject_without_leaking_and_preserve_semantics(self):
   context=self.context('limits',{'A.java':'class A { int x; int read(){return x;} }'})
   old=self.analyze([context])['facts']
-  self.mutate_request=lambda request:request.update(result_bytes=4*1024*1024*1024,fact_limit=5000000)
+  self.mutate_request=lambda request:request.update(result_bytes=8*1024*1024*1024,fact_limit=5000000)
   self.assertEqual(old,self.analyze([context])['facts'])
   self.assertEqual(self.analyze([context],old)['facts'],[])
   self.mutate_request=lambda request:request.update(fact_limit=1)
   with self.assertRaisesRegex(AssertionError,'FACT_BUDGET.*count=1 limit=1|RECORD_ARCHIVE_BUDGET.*count_limit=1'):
    self.analyze([context])
-  for field,values,reason in [('result_bytes',(0,65535,4*1024*1024*1024+1),'JAVA_RESULT_BYTES_RANGE'),
+  for field,values,reason in [('result_bytes',(0,65535,8*1024*1024*1024+1),'JAVA_RESULT_BYTES_RANGE'),
                               ('fact_limit',(0,5000001),'JAVA_FACT_LIMIT_RANGE')]:
    for value in values:
     self.mutate_request=lambda request,key=field,cap=value:request.update({key:cap})

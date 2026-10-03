@@ -513,3 +513,9 @@ S3配置成员粗投影42/44不能作为缺2结论：核对原参考metadata发�
 按冻结abruptCompletion适配简单顺序块、IF双分支、TRY/catch/finally，保留YES/NO/UNKNOWN。已证明无返回值的Supplier代码块为NO，不再以UNKNOWN阻断合法Runnable重载；循环等复杂路径仍UNKNOWN，不增加推断权限。最小Runnable/Supplier重载旧3/4、新4/4，try/catch返回4/4；原37组冻结调用投影全部相等。新增两种表示的SAM切换、try/finally、缺失catch返回与循环负例以及cache/full/delta两项通过（26.156秒）；joining、重载、try/catch三个新独立样本5/5、4/4、4/4相等。14残余MAIN隔离2067/2081：14独立缺失、0独立额外、4状态对。不是正式新版本发布差分。
 
 356587f图绑定完整207项通过（955.942秒），无输入/产物漂移。该版本默认141、消费者92、参考37组已全部终态，不能再描述为运行中。1ea710c的40模块已越过app/test@TEST旧ClassCastException并完成事实/扩展阶段，仍须最终发布和独立差分。
+
+## 40模块结果归档预算阻断
+
+1ea710c的40模块MAIN/TEST/XML已终态失败（2191.629秒）：最后app/test@TEST已通过compiler_model/call/fact/extensions，task_accumulate在1888143条事实、4294962079字节时追加5577字节触发4GiB结果归档硬上限。未发布、配置恢复、无源码/产物/manifest漂移，无异常信号；RSS峰值1500413952字节仅作诊断。此次不是ClassCastException或安全软件杀进程。证据在validation-budget-kind的iopengw-full-main-test-xml-budget-kind-ready-1ea710c。
+
+已将显式结果磁盘上限从4GiB改为8GiB、显式任务暂存上限从16GiB改为32GiB，Rust模型常量统一config/worker契约，Java入口同步64位范围。默认64MiB/100000事实/2GiB暂存、单记录8MiB、控制帧8MiB/JSON64MiB、native和javac堆及2GiB进程树限制不变。真实验收增加独立result/scratch参数与回执字段，默认仍4GiB/16GiB；下一次显式申请8GiB/32GiB。该调整解除可配置范围不足，不据此宣称实际容量通过。Rustconfig/contracts范围回归、Java低额度拒绝与高额度语义一致（3.046秒）及harness14项（0.268秒）通过；新native和CLI→daemon实际链路仍待。

@@ -1254,7 +1254,7 @@ enabled=true
         self.assertEqual(self.cli('overview')[1]['revision'], good)
         config.write_text(original_config+'\n[resources.index]\njava_model_archive_bytes=8388608\n'
                           'java_compiler_timeout_seconds=120\njava_native_heap_bytes=536870912\n'
-                          'java_result_bytes=4294967296\njava_fact_limit=5000000\n')
+                          'java_result_bytes=8589934592\njava_fact_limit=5000000\njava_scratch_bytes=34359738368\n')
         _, accepted = self.cli('index', '--full', timeout=150)
         self.assertEqual(accepted['publication'], 'published')
         worker = self.java_worker_pid()

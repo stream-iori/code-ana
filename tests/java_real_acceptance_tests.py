@@ -15,6 +15,22 @@ from java_real_acceptance import (ConfigLease, atomic_bytes, atomic_json, proces
 
 
 class AcceptanceRecovery(unittest.TestCase):
+    def test_explicit_disk_budgets_preserve_defaults_and_reject_out_of_range(self):
+        import tomllib
+        default = tomllib.loads(project_config(['MAIN'], False, 'inputs.json').decode())
+        self.assertEqual(default['resources']['index']['java_result_bytes'], 4294967296)
+        self.assertEqual(default['resources']['index']['java_scratch_bytes'], 17179869184)
+        large = tomllib.loads(project_config(['MAIN', 'TEST'], True, 'inputs.json',
+                                            result_bytes=8589934592, scratch_bytes=34359738368).decode())
+        self.assertEqual(large['resources']['index']['java_result_bytes'], 8589934592)
+        self.assertEqual(large['resources']['index']['java_scratch_bytes'], 34359738368)
+        self.assertEqual(large['resources']['index']['worker_memory_bytes'], 1610612736)
+        for kwargs, reason in ((dict(result_bytes=8589934593), 'JAVA_RESULT_BYTES_RANGE'),
+                               (dict(result_bytes=65535), 'JAVA_RESULT_BYTES_RANGE'),
+                               (dict(scratch_bytes=34359738369), 'JAVA_SCRATCH_BYTES_RANGE')):
+            with self.subTest(kwargs=kwargs), self.assertRaisesRegex(ValueError, reason):
+                project_config(['MAIN'], False, 'inputs.json', **kwargs)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
