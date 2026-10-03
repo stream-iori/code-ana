@@ -15,7 +15,7 @@
 | 阶段 | 工作 | 状态 |
 |---|---|---|
 | S0 | 保存已有成果、刷新证据和逐能力任务 | 检查点 fc071ba 已提交；逐能力证据继续更新 |
-| S1 | MAIN/TEST 调用绑定：5c6065e 已发布局部对照 30 个独立缺失、0 个额外目标及 5 对置信度差异；9fc3fcb 保留原声明已合入，尚待新发布差分 | 待完成 |
+| S1 | MAIN/TEST 调用绑定：5c6065e 正式发布30独立缺失/0额外/5状态对；4a57677已补齐通配符与返回路径，14文件隔离仍14/0/4，正式新发布待差分 | 待完成 |
 | S2 | 平面类型图接入编译器、模型、运算、事实和查询；关闭类型证据差异 | 待完成 |
 | S3 | Java/扩展/Lombok/Spring/SOFA 完整独立对照 | 待完成 |
 | S4 | Maven 完整扫描、复杂 NoCode、Rust 通用缓存管理和增量等价 | 待完成 |
@@ -519,3 +519,7 @@ S3配置成员粗投影42/44不能作为缺2结论：核对原参考metadata发�
 1ea710c的40模块MAIN/TEST/XML已终态失败（2191.629秒）：最后app/test@TEST已通过compiler_model/call/fact/extensions，task_accumulate在1888143条事实、4294962079字节时追加5577字节触发4GiB结果归档硬上限。未发布、配置恢复、无源码/产物/manifest漂移，无异常信号；RSS峰值1500413952字节仅作诊断。此次不是ClassCastException或安全软件杀进程。证据在validation-budget-kind的iopengw-full-main-test-xml-budget-kind-ready-1ea710c。
 
 已将显式结果磁盘上限从4GiB改为8GiB、显式任务暂存上限从16GiB改为32GiB，Rust模型常量统一config/worker契约，Java入口同步64位范围。默认64MiB/100000事实/2GiB暂存、单记录8MiB、控制帧8MiB/JSON64MiB、native和javac堆及2GiB进程树限制不变。真实验收增加独立result/scratch参数与回执字段，默认仍4GiB/16GiB；下一次显式申请8GiB/32GiB。该调整解除可配置范围不足，不据此宣称实际容量通过。Rustconfig/contracts范围回归、Java低额度拒绝与高额度语义一致（3.046秒）及harness14项（0.268秒）通过；新native和CLI→daemon实际链路仍待。
+
+4a57677构建及启动前回归已终态：native构建36.5秒；Rustworkspace全部通过、clippy全部targets通过（5.37秒）；显式8GiB结果/32GiB暂存的真实CLI→daemon→native→javac→发布/查询及低预算失败旧head保留专项通过（16.065秒）；新Collector/重载/try以及高低输出预算四项实际native通过（72.731秒）；SDK8图/冻结binary模型13项通过（11.917秒）；native图9项通过（回执38.772秒）且无漂移；冻结参考native40组严格相等，无产物漂移。默认native、全图绑定、全图消费者仍运行。
+
+新40模块MAIN/TEST/XML正式运行位于validation-lambda-completion/target/java-alignment/evidence/iopengw-full-main-test-xml-archive-4a57677，显式result=8589934592/scratch=34359738368，native堆1GiB、javac堆512MiB、worker进程树2GiB保持。源码、二进制、清单在独立工作区冻结；输入由显式Maven metadata导出得到40模块，未编译业务项目。尚无最终发布、完整语义或容量回执。
