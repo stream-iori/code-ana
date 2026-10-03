@@ -7,6 +7,7 @@ use codeana_contracts::{
     write_frame,
 };
 use codeana_model::*;
+use codeana_storage::derived_cache::{DerivedCacheLimits, DerivedCacheSession};
 use serde_json::json;
 use std::{os::fd::FromRawFd, path::Path};
 use tokio::net::UnixStream;
@@ -23,6 +24,7 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
     let mut baseline_seq = 0;
     let mut baseline_sealed = false;
     let mut native: Option<Native> = None;
+    let mut derived_cache: Option<DerivedCacheSession> = None;
     let mut hello = false;
     let mut awaiting_ack = false;
     loop {
@@ -85,7 +87,16 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                     }).collect::<Result<Vec<_>>>()?;
                     let limits=codeana_contracts::java::OutputLimits::from_config(c)?;
                     let baseline=baseline.as_ref().context("BASELINE_NOT_SEALED")?;
-                    let request=json!({"version":5,"compact_inputs":c.compact_inputs,"input_table":c.input_table,"classpath_table":c.classpath_table,"facts":true,"java_home":c.java_home,"bridge":c.bridge,"scratch":c.scratch,"contexts":contexts,"parallelism":c.parallelism,"full":a.full,"baseline_archive":{"path":baseline.path(),"sha256":baseline.file_hash()?,"count":baseline.count,"bytes":baseline.bytes},"profile":a.profile,"cache_root":c.cache_root,"signature_cache":c.signature_cache,"result_bytes":limits.bytes,"fact_limit":limits.facts,"compiler_heap_bytes":c.compiler_heap_bytes,"compiler_timeout_seconds":if c.compiler_timeout_seconds==0 {120} else {c.compiler_timeout_seconds}});
+                    derived_cache = if c.signature_cache {
+                        let root = Path::new(&c.cache_root).with_extension("managed-v1");
+                        match DerivedCacheSession::open(&root, Path::new(&c.scratch),
+                            &["java-signatures", "java-signatures-modules"], DerivedCacheLimits::default()) {
+                            Ok(cache) => Some(cache),
+                            Err(error) => { eprintln!("DERIVED_CACHE_UNAVAILABLE: {error}"); None }
+                        }
+                    } else { None };
+                    let cache_root = derived_cache.as_ref().map(|cache| cache.namespace_path("java-signatures")).transpose()?;
+                    let request=json!({"version":5,"compact_inputs":c.compact_inputs,"input_table":c.input_table,"classpath_table":c.classpath_table,"facts":true,"java_home":c.java_home,"bridge":c.bridge,"scratch":c.scratch,"contexts":contexts,"parallelism":c.parallelism,"full":a.full,"baseline_archive":{"path":baseline.path(),"sha256":baseline.file_hash()?,"count":baseline.count,"bytes":baseline.bytes},"profile":a.profile,"cache_root":cache_root,"signature_cache":derived_cache.is_some(),"signature_pin_bytes":if derived_cache.is_some() {128_u64<<20} else {256_u64<<20},"result_bytes":limits.bytes,"fact_limit":limits.facts,"compiler_heap_bytes":c.compiler_heap_bytes,"compiler_timeout_seconds":if c.compiler_timeout_seconds==0 {120} else {c.compiler_timeout_seconds}});
                     let heap=if c.native_heap_bytes==0 {256*1024*1024} else {c.native_heap_bytes};
                     if native.is_none() { native=Some(Native::load_with_heap(library,heap)?); }
                     ensure!(native.as_ref().context("NATIVE_REQUIRED")?.heap_bytes()?==heap,"WARM_NATIVE_HEAP_MISMATCH");
@@ -123,6 +134,12 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                     let lib=native.as_mut().context("NATIVE_REQUIRED")?;
                     lib.ack()?;
                     lib.finish()?;
+                    if let Some(mut cache) = derived_cache.take() {
+                        match cache.commit() {
+                            Ok(stats) => eprintln!("DERIVED_CACHE: {}", serde_json::to_string(&stats)?),
+                            Err(error) => eprintln!("DERIVED_CACHE_WRITE_UNAVAILABLE: {error}"),
+                        }
+                    }
                     config=None;
                     baseline=None;
                     baseline_input=None;

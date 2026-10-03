@@ -102,7 +102,13 @@ public final class CompilerSession implements AutoCloseable {
     }
 
     public CompilerSession(Map<String, Object> request) throws IOException {
-        this(request, MAX_SIGNATURE_PINS);
+        this(request, signaturePinBudget(request));
+    }
+
+    private static long signaturePinBudget(Map<String, Object> request) throws IOException {
+        if (!request.containsKey("signature_pin_bytes")) return MAX_SIGNATURE_PINS;
+        try { return new java.math.BigDecimal(request.get("signature_pin_bytes").toString()).longValueExact(); }
+        catch (RuntimeException invalid) { throw new IOException("SIGNATURE_PIN_BUDGET", invalid); }
     }
 
     CompilerSession(Map<String, Object> request, long signaturePinLimit) throws IOException {

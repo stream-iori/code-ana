@@ -1061,8 +1061,8 @@ java_parallelism=1
         (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[resources.index]\njava_parallelism=1\n[discovery]\nmode="auto"\n[scan]\nscopes=["MAIN"]\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n')
         _,first=self.cli('index','--full',timeout=150)
         self.assertEqual(first['publication'],'published')
-        cache=self.home/'cache/java-signatures-modules'
-        self.assertTrue(list(cache.glob('*/catalogue.bin')))
+        cache=self.home/'cache/java-signatures.managed-v1/java-signatures-modules'
+        self.assertTrue(list(cache.glob('*/payload/catalogue.bin')))
         before=self.facts(first['revision'])
         def navigate_auxiliary(facts):
             auxiliary=next(f for f in facts if f['kind']=='external_symbol'
@@ -1088,7 +1088,7 @@ java_parallelism=1
             self.assertIn('SOURCE_HASH_MISMATCH',mismatch['message'])
         finally:
             captured.write_bytes(original)
-        for file in cache.glob('*/catalogue.bin'):file.write_bytes(b'corrupt source catalogue')
+        for file in cache.glob('*/payload/catalogue.bin'):file.write_bytes(b'corrupt source catalogue')
         _,rebuilt=self.cli('index','--full',timeout=150)
         self.assertEqual(before,self.facts(rebuilt['revision']))
         use=self.project/'app/p/Use.java';use.write_text(use.read_text().replace('"before"','"after"'))
@@ -1136,7 +1136,7 @@ java_parallelism=1
         (self.project/'.code-ana/inputs.json').write_text(json.dumps(metadata))
         (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[scan]\nscopes=["MAIN"]\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n[languages.java.lombok]\nmode="model"\n[resources.index]\njava_parallelism=2\n')
         _,first=self.cli('index','--full',timeout=150);self.assertEqual(first['publication'],'published')
-        before=self.facts(first['revision']);self.assertTrue(list((self.home/'cache/java-signatures-modules').glob('*/catalogue.bin')))
+        before=self.facts(first['revision']);self.assertTrue(list((self.home/'cache/java-signatures.managed-v1/java-signatures-modules').glob('*/payload/catalogue.bin')))
         self.assertTrue(any(f['kind']=='declaration' and f['signature']=='p.A#isN()' and f['origin']=='lombok_model' for f in before))
         control.write_text(control.read_text()+'lombok.getter.noIsPrefix=true\n')
         use=self.project/'client/p/Use.java';use.write_text(use.read_text().replace('value.n','value.getN()'))
@@ -1198,9 +1198,9 @@ java_parallelism=1
         (self.project/'.code-ana/inputs.json').write_text(json.dumps(metadata))
         (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[scan]\nscopes=["MAIN"]\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n[resources.index]\njava_parallelism=2\n')
         _,first=self.cli('index','--full',timeout=150);self.assertEqual(first['publication'],'published')
-        before=self.facts(first['revision']);cache=self.home/'cache/java-signatures-modules'
-        self.assertGreaterEqual(len(list(cache.glob('*/catalogue.bin'))),3)
-        for file in cache.glob('*/catalogue.bin'):file.write_bytes(b'corrupt parallel catalogue')
+        before=self.facts(first['revision']);cache=self.home/'cache/java-signatures.managed-v1/java-signatures-modules'
+        self.assertGreaterEqual(len(list(cache.glob('*/payload/catalogue.bin'))),3)
+        for file in cache.glob('*/payload/catalogue.bin'):file.write_bytes(b'corrupt parallel catalogue')
         _,rebuilt=self.cli('index','--full',timeout=150);self.assertEqual(before,self.facts(rebuilt['revision']))
         left=self.project/'left/p/Left.java';left.write_text(left.read_text().replace('N=1','N=3'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)

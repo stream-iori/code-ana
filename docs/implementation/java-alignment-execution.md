@@ -692,3 +692,15 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | 两项旧测试入口 | LookupArchiveProbe 的多行模型信封仍写死6，改用 ModelArchive.VERSION；daemon 泛型恢复返回值的一个断言遗漏惰性图读取，补齐读取器，保留原断言。 |
 | JVM 专项 | validation-rust-derived-cache/.../project-stage-order-jvm.log：完整扩展18项及池大小/乱序依赖2项，共20项、56.917秒通过。model7-archive-fixtures.log：完整归档组通过，包括128MiB下217MB扩展流和20000声明索引查询。 |
 | 完整回执 | c0520ed 的 JVM/daemon 回归继续收集终态；已知失败保留。修复版本仍需重新冻结完整门禁，不能把本轮专项视为全组通过。 |
+
+
+## Rust 通用持久缓存接入（2026-10-03）
+
+| 项目 | 实现 / 已有证据 |
+|---|---|
+| 产品边界 | Rust storage 的不透明派生缓存：内容回执、隔离副本、跨进程锁、原子提交、LRU、共享配额和清理。worker 只在发布 Ack 后提交；Java 保留签名 key/语义可复用性和任务内编译器 pin。fixture 本地缓存不代表产品持久路径。 |
+| 配额与损坏 | 持久256MiB，Rust副本128MiB + Java pin128MiB；receipt/所有payload SHA、namespace/key、严格布局和符号链接验证。未知旁路文件使条目失效；已有存储超过新配额先淘汰再复制，不发生无符号减法越界。 |
+| Rust | validation-rust-derived-cache/.../rust-derived-cache-layout-tests.log：5项通过，含两个实际并发进程、被打断的提交目录、淘汰/损坏不影响pin、未Ack丢弃、配额下降及外部符号链接。定向clippy通过；此前全workspace与clippy亦通过，新增加一项后仍须最终全组。 |
+| SDK8 | rust-cache-sdk-pin-budget.log：pin预算与共享缓存6项通过，合法/非法范围明确验证；Java默认保持独立fixture的256MiB。 |
+| 实际 daemon | rust-cache-daemon-targeted.log：4项276.940秒通过，复杂模块NoCode/损坏/并行/full-delta、真实调解classpath及provided Lombok前置。对应独立冻结运行时，不含随后项目扩展顺序修复；新版本完整回归待执行。 |
+| 剩余 | 缓存全生命周期与Maven完整扫描的同版本最终验收、全40模块语义、扩展、独占容量和发行门禁仍需完成；不据此关闭S4或52项。 |

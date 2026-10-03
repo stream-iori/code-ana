@@ -122,6 +122,17 @@ class Sessions(unittest.TestCase):
         processes = subprocess.run(['/bin/ps', '-axo', 'command='], capture_output=True, text=True, check=True).stdout
         self.assertNotIn(str(bridge), processes)
 
+    def test_signature_pin_budget_rejects_invalid_ranges_and_preserves_healthy_analysis(self):
+        context = self.context('pins', {'A.java': 'class A {}'})
+        for value in (0, -1, (256 << 20)+1, 1.5, None):
+            self.mutate_request = lambda request, value=value: request.update(signature_pin_bytes=value)
+            with self.subTest(value=value), self.assertRaisesRegex(AssertionError, 'SIGNATURE_PIN_BUDGET'):
+                self.analyze([context], cache=True)
+        self.mutate_request = lambda request: request.update(signature_pin_bytes=128 << 20)
+        facts = self.analyze([context], cache=True)['facts']
+        self.assertFalse([f for f in facts if f['kind']=='diagnostic'])
+        self.assertTrue([f for f in facts if f['kind']=='declaration' and f['signature']=='A'])
+
     def test_invalid_source_encoding_reports_original_hash_path_and_cleans_child(self):
         context = self.context('encoding', {'A.java': 'class A {}'})
         source = self.root/'encoding/A.java'

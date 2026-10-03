@@ -446,3 +446,8 @@ Lombok builtin 8 的可选 `prerequisite_annotations` / `prerequisite_annotation
 
 
 Maven输入schema3的ExportReceipt增加可选 prerequisite_classpath_rounds（旧值默认0，最大256）。同会话先返回选定模块的实际已调解输入；Rust按已确认的scope图发 AMP1/nonce/模块清单请求，桥只解析这些前置MAIN并重新封存输入回执。前置依赖新出现时继续受同一总deadline/取消/32MiB响应预算约束，不启动第二Maven进程或任何目标生命周期。未选中的 MAIN 仅在真实依赖闭包内且自有classpath已捕获时形成隐藏JavaContext；不发布其源码、框架/XML/project结果。未选中TEST和无关模块不得作为根启动，旧手工清单默认resolved=true也不能扩大范围。最终extension/input SHA进入原有配置/缓存身份。
+
+
+### 通用派生缓存（Rust）
+
+产品签名缓存使用 managed-v1 存储格式，receipt version1；不改变公开事实或 worker wire。namespace/key 和不透明 payload 的 SHA/长度均校验，单条最多192MiB/16文件，receipt最多64KiB；两个 Java namespace 合用256MiB持久配额。任务副本最多128MiB，编译器 pin 另限128MiB；显式旧树与图、模型和语言签名版本仍由 Java key 区分。拒绝 store/lock/payload 符号链接，损坏/未知条目布局不能命中；缺缓存或锁/配额异常使用 SOURCE，不修改语言证据。Rust worker 在结果已校验、发布 Ack 且 native finish 后原子提交条目；取消、失败、未 Ack 不提交。持久淘汰不影响已有任务副本。
