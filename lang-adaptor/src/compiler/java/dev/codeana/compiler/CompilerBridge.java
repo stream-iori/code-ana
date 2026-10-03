@@ -336,6 +336,7 @@ public final class CompilerBridge implements AutoCloseable {
         for(CompilerTypeGraph graph:typeGraphs.values())graph.snapshot();
         typeGraphs.clear();
         elementPaths.clear(); writtenExecutableTypes.clear(); trees = null; elements = null; types = null; listener = null;
+        overloadEvidence = null;
         original.clear(); treeIds.clear(); modifierAnnotations.clear(); annotationTypes.clear(); declarationAnnotations.clear();
         return detached(request,annotationHeaders);
     }

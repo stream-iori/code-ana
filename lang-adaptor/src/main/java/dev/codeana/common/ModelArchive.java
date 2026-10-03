@@ -34,6 +34,9 @@ public final class ModelArchive {
         long typeBytes;
         Encoder(RecordArchive records) {this(records,false);}
         Encoder(RecordArchive records,boolean encodingOnly) { this.records=records;graphs=new ModelGraphs(encodingOnly); }
+        Encoder(RecordArchive records,boolean encodingOnly,boolean archiveGraphs) {
+            this.records=records;graphs=archiveGraphs ? new ModelGraphs(records) : new ModelGraphs(encodingOnly);
+        }
         Object pack(Object raw, int depth) {
             if (depth>Json.MAX_DEPTH) throw new IllegalArgumentException("MODEL_DEPTH_BUDGET");
             if (TypeGraph.isView(raw)) return graphs.pack(Json.map(raw),records);
@@ -98,7 +101,7 @@ public final class ModelArchive {
         public RowSpool(Path work, String section, long maxBytes) throws IOException {
             records=RecordArchive.create(work.resolve("model-rows-"+section+"-"+UUID.randomUUID()+".bin"),
                     maxBytes,MAX_ROWS);
-            encoder=new Encoder(records);
+            encoder=new Encoder(records,false,true);
         }
         public boolean add(Object row) {
             if (closed) throw new IllegalStateException("MODEL_SPOOL_CLOSED");

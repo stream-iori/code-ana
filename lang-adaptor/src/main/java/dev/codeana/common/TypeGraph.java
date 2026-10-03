@@ -22,9 +22,16 @@ public final class TypeGraph {
     private static final Set<String> MANY = new HashSet<String>(Arrays.asList(
             "arguments", "bounds", "alternatives", "parameters", "throws", "type_variables"));
     private final List<Map<String,Object>> nodes;
+    // An archive dictionary entry has stable identity even when its decoded graph is reclaimed.
+    // The token owns neither rows nor compiler objects.
+    private final Object storageIdentity;
     private boolean sealed=true;
 
     public TypeGraph(List<Map<String,Object>> input) {
+        this(input,null);
+    }
+    TypeGraph(List<Map<String,Object>> input, Object storageIdentity) {
+        this.storageIdentity=storageIdentity;
         if (input.size() > MAX_NODES) throw new IllegalArgumentException("TYPE_GRAPH_NODE_BUDGET");
         List<Map<String,Object>> frozen = new ArrayList<Map<String,Object>>();
         for (Map<String,Object> raw : input) {
@@ -55,8 +62,9 @@ public final class TypeGraph {
     }
 
     private TypeGraph(List<Map<String,Object>> input, boolean live) {
-        nodes=Collections.unmodifiableList(input);sealed=false;
+        nodes=Collections.unmodifiableList(input);storageIdentity=null;sealed=false;
     }
+    Object storageIdentity() { return storageIdentity==null ? this : storageIdentity; }
     public static boolean isView(Object value) { return value instanceof TypeGraph.View; }
     public static TypeGraph owner(Map<String,Object> value) {
         if (!(value instanceof TypeGraph.View)) throw new IllegalArgumentException("TYPE_GRAPH_VIEW");

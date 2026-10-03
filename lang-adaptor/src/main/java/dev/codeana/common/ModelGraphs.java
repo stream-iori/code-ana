@@ -15,7 +15,8 @@ final class ModelGraphs {
     private final List<List<Map<String,Object>>> nodes = new ArrayList<List<Map<String,Object>>>();
     private final List<TypeGraph> decoded = new ArrayList<TypeGraph>();
     private final Map<Integer,WeakReference<TypeGraph>> borrowed = new HashMap<Integer,WeakReference<TypeGraph>>();
-    private final IdentityHashMap<TypeGraph,Integer> identities = new IdentityHashMap<TypeGraph,Integer>();
+    private final IdentityHashMap<Object,Integer> identities = new IdentityHashMap<Object,Integer>();
+    private final List<Object> storageIdentities = new ArrayList<Object>();
     private long bytes;
     private static final long MAX_BYTES = 64L * 1024 * 1024;
 
@@ -43,11 +44,13 @@ final class ModelGraphs {
 
     Object pack(Map<String,Object> view, RecordArchive records) {
         TypeGraph graph=TypeGraph.owner(view);
-        Integer id=identities.get(graph);
+        Object identity=graph.storageIdentity();
+        Integer id=identities.get(identity);
         if(id==null) {
             if(nodes.size()>=100000)throw new IllegalArgumentException("MODEL_GRAPH_COUNT_BUDGET");
-            id=nodes.size();identities.put(graph,id);
-            nodes.add(new ArrayList<Map<String,Object>>());decoded.add(null);
+            id=nodes.size();identities.put(identity,id);
+            nodes.add(archive==null ? new ArrayList<Map<String,Object>>() : new ArchivedNodes());decoded.add(null);
+            storageIdentities.add(new Object());
         }
         List<Map<String,Object>> values=nodes.get(id);
         while(values.size()<graph.size()) {
@@ -55,7 +58,12 @@ final class ModelGraphs {
             Map<String,Object> node=new LinkedHashMap<String,Object>(graph.node(index));
             account(node);
             records.add(Json.object("kind","graph_node","graph",id,"id",index,"value",node));
-            values.add(encodingOnly?null:node);decoded.set(id,null);
+            if(archive==null)values.add(encodingOnly?null:node);
+            else {
+                if(records!=archive)throw new IllegalArgumentException("MODEL_GRAPH_ARCHIVE_OWNER");
+                ((ArchivedNodes)values).append(records.size()-1);
+            }
+            decoded.set(id,null);borrowed.remove(id);
         }
         return Json.object("$graph",Arrays.asList(id,TypeGraph.reference(view)));
     }
@@ -66,7 +74,7 @@ final class ModelGraphs {
     void add(Map<String,Object> record, int position) throws IOException {
         long graph=integer(record.get("graph")),node=integer(record.get("id"));
         if(graph<0 || graph>nodes.size() || graph>=100000)throw new IOException("MODEL_GRAPH_SEQUENCE");
-        if(graph==nodes.size()) {nodes.add(archive==null ? new ArrayList<Map<String,Object>>() : new ArchivedNodes());decoded.add(null);}
+        if(graph==nodes.size()) {nodes.add(archive==null ? new ArrayList<Map<String,Object>>() : new ArchivedNodes());decoded.add(null);storageIdentities.add(new Object());}
         List<Map<String,Object>> values=nodes.get((int)graph);
         if(node!=values.size() || node>=TypeGraph.MAX_NODES)throw new IOException("MODEL_GRAPH_NODE_SEQUENCE");
         Map<String,Object> value=Json.map(record.get("value"));
@@ -110,7 +118,7 @@ final class ModelGraphs {
             graph=reference==null ? null : reference.get();
         }
         if(graph==null) {
-            try {graph=new TypeGraph(nodes.get(pair[0]));}
+            try {graph=new TypeGraph(nodes.get(pair[0]),archive==null ? null : storageIdentities.get(pair[0]));}
             catch(IllegalArgumentException failure){throw new IOException("MODEL_GRAPH_INVALID",failure);}
             if(archive==null)decoded.set(pair[0],graph);
             else borrowed.put(pair[0],new WeakReference<TypeGraph>(graph));
@@ -138,5 +146,5 @@ final class ModelGraphs {
         }
         identities.clear();
     }
-    void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();}
+    void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();}
 }

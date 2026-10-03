@@ -307,7 +307,7 @@ SubmitTask 到 WatchTask 之间有有界订阅宽限期，防止刚提交任务�
 
 当前 `java.spring.mvc`、`java.spring.handler`、`java.spring.injection`、`java.spring.xml`、`java.reflection` facet 的 schema 均为 1。`handles_possible`/`injects_possible` 表达静态注册/注入类型依据。反射 CallTarget 为 possible，origin=reflection_model，保留精确查找和值来源，默认 calls 不投影，dispatch 披露来源。Fact IR 仍为 1。项目资源阶段在全部 Java/call context 暂存后执行，以封存 source worlds 过滤可见性；上游扩展指纹变化进入失效闭包。资源 selector 在项目事务内执行，只筛选封存 provider inventory；谓词/构造失败保留其他输出，取消继续终止。独立视图预算及内置单声明级迁移仍待完成。
 
-XML 模型以 namespace 身份识别框架，DOCTYPE/外部实体/网络 schema 禁用。配置树使用捕获 UTF-8 的真实字节 span；SAX locator 另标明为 tag-end 位置。配置引用和成员引用只使用 `config`/`config_member`/`config_nested_bean` possible 关系，不制造 CallTarget 或运行时 Bean 确认。畸形/超预算文档丢弃该文档的树，保留其他成功文档并披露 partial；hash 漂移、取消继续终止。Spring 内置版本为 4、SOFA 为 2，进入扩展失效指纹。
+XML 模型以 namespace 身份识别框架，DOCTYPE/外部实体/网络 schema 禁用。配置树使用捕获 UTF-8 的真实字节 span；SAX locator 另标明为 tag-end 位置。配置引用和成员引用只使用 `config`/`config_member`/`config_nested_bean` possible 关系，不制造 CallTarget 或运行时 Bean 确认。畸形/超预算文档丢弃该文档的树，保留其他成功文档并披露 partial；hash 漂移、取消继续终止。Spring 内置版本为 7、SOFA 为 2，进入扩展失效指纹。
 
 ### worker 10 / native ABI 2 的事实暂存
 

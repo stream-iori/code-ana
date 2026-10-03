@@ -11,6 +11,9 @@ JDK = pathlib.Path(os.environ.get('JAVA_HOME', pathlib.Path.home()/'.sdkman/cand
 dependencies = (ROOT/'lang-adaptor/target/native-classpath.txt').read_text().strip()
 subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
+                'dev.codeana.common.ModelGraphTransferProbe'], check=True, timeout=120)
+subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
+                str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
                 'dev.codeana.common.ModelGraphSharingProbe'], check=True, timeout=60)
 subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),

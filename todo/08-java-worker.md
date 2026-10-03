@@ -1102,3 +1102,15 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 2026-10-03 后续：新增完整词法控制独立清单（全部owner/call/reads/writes/type/reflection，含空上下文与重复次数），真实汇总执行域从12扩至13。SDK8/JVM三组独立冻结参考严格相等，控制字符串单独篡改会失败；历史4a owner2431、call151342、writes3341相等，reads缺9/额外1402、type缺10、reflection缺20/额外20，仍保留失败。新增实际编译请求/NoCode pin捕获及SDK8单上下文诊断；2852份源码、228份TEST发布源、778个classpath，84.252秒编译完成，源/依赖/桥/manifest无漂移。这不证明产品TEST已修复，需要取得产品实际请求。新共享库组合daemon四项103.444秒通过，DI/跨模块/XML/仅资源MAIN-TEST完整delta验证无漂移；正式新版完整回归仍在运行，最终真实全40模块/完整语义/容量未关闭。
 
 2026-10-03 完整XML图专项：新增8类关系审计（CONFIGURES/XML_CONTAINS/XML_REFERS_TO/DEFINED_BY/PARENT_BEAN/FACTORY_BEAN/BINDS_TO/WIRES），实际emit的config候选是引用来源，不按同名模型猜候选；未知关系/缺模型/计数不一致明确失败。普通配置、CRLF与行数增长、缺失ref三组新native/daemon严格相等，49.273秒，无源/产物漂移，保留factory→METHOD定义与产物CLASS的区别。原八域第一次factory差异和一次脚本变量遮蔽失败保留。真实汇总扩至14域，仍不能以fixture关闭真实全图。旧4a实际执行8类全部记录（有模型缺口260）；参考494个原始BINDS_TO边及按请求463份投影分别保留。控制native三组15.964秒通过。旧正式门禁native-probe因为按旧树格式取explicit_type_argument_models.element失败；改用现有只读类型图视图后，新组合完整probe303.678秒通过，保留全部原始full/delta事实，不改产品类型编码。旧门禁仍保留失败，不导入新成功回执。
+
+
+## 编译器类型图传输的 OOM 修复（2026-10-03）
+
+| 项目 | 本次实测 |
+|---|---|
+| 实际失败 | `validation-model-api-real/.../iopengw-core-service-test-actual-compiler/receipt.json`：TEST 模型序列化 Java heap OOM，1638.028 秒、未发布；无安全软件异常信号，源码/运行工件无漂移。 |
+| 修复 | 编译器 RowSpool 的类型图只保存归档位置；最终编码按字典稳定 token 复用身份，不强持有全部已解码图；模型脱离 javac 后释放重载检查器。图/模型格式、节点/字节限额及 Rust 产品边界不变。 |
+| 可重复正反例 | SDK8、64 MiB：相同 75000 节点 RowSpool 转移，旧桥 OOM，新桥成功；循环节点、GC 后身份复用、两个独立字典不串图。已加入正式 archive gate。 |
+| 真实请求回放 | `iopengw-captured-main-test-baseline` 旧桥同 JVM MAIN→TEST 在 TEST OOM；`iopengw-captured-main-test-archive-backed` 新桥两阶段成功，MAIN 60.525 秒、TEST 101.857 秒。同 512 MiB 堆；仅物理输入路径重映射，原源码/有序 CP/原请求摘要保留。MAIN 模型 SHA 完全相等，TEST 输出 264494003 字节。回放不代表 native 发布或整体容量通过。 |
+| 回归 | 完整 archive、11 项 signature、两项 JVM 复用/诊断隔离通过。矩阵 XML 全图门禁归属纠正为 F05 Spring XML；契约的 Spring 内置版本同步为实际 7。 |
+| 仍待 | 新同版本 native/daemon、全40模块 MAIN/TEST/XML 发布与14域严格差分、完整模型 API 实项目清单、独占容量及最终 release。仍只 E01/E02 完整关闭。 |

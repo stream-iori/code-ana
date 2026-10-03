@@ -896,7 +896,9 @@
         "tests/java_xml_model_inventory_diff.py",
         "lang-adaptor/src/main/java/dev/codeana/analysis/SpringXmlConfiguration.java",
         "crates/model/src/java_xml_configuration.rs",
-        "tests/java_xml_binding_inventory_diff.py"
+        "tests/java_xml_binding_inventory_diff.py",
+        "tests/java_xml_graph_inventory_diff.py",
+        "tests/java_xml_graph_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -912,11 +914,13 @@
         "xml-reference-defect",
         "xml-reference-defect-native",
         "xml-model-reference",
-        "xml-model-reference-native"
+        "xml-model-reference-native",
+        "xml-graph-reference"
       ],
       "remaining_acceptance": [
         "Spring7 已补全部构造/配置树元数据、隐式列表索引、Java 配置 owner/product 与 Rust XML 接线；JVM/native/真实 daemon 专项通过。完整 XML 绑定属性/原生产品矩阵及40模块参考语义仍待验收。",
-        "XML callable 已补发布库完整请求/candidate metadata 比较，包含未解析及歧义；参考构造器 lambda 误绑定保留原始差异。全部树/关系/扩展图和40模块仍须同版本实测。"
+        "XML callable 已补发布库完整请求/candidate metadata 比较，包含未解析及歧义；参考构造器 lambda 误绑定保留原始差异。全部树/关系/扩展图和40模块仍须同版本实测。",
+        "新增全部8类Spring XML逻辑关系独立清单，保留未知关系、候选次数、配置模型及原始图差异。新native/daemon三组49.273秒全部严格相等（含factory/parent/refs/字段/全量增量），全40模块真实图仍需执行，不能由fixture关闭能力。"
       ]
     },
     {
@@ -927,9 +931,7 @@
         "tests/java_framework_alignment.py",
         "tests/java_graph_consumer_alignment.py",
         "tests/java_registration_reference_alignment.py",
-        "tests/java_registration_inventory_diff.py",
-        "tests/java_xml_graph_inventory_diff.py",
-        "tests/java_xml_graph_reference_alignment.py"
+        "tests/java_registration_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -941,13 +943,11 @@
         "java-daemon",
         "type-graph-consumers-native",
         "registration-reference",
-        "registration-reference-native",
-        "xml-graph-reference"
+        "registration-reference-native"
       ],
       "remaining_acceptance": [
         "sofa-annotations2 保存原始属性；三组JVM provider/requirement合约、uniqueId、API成员、supported/transport/baseline严格参考对照。完整API正反例及40模块差分待同版本native/产品验收。",
-        "已补发布库属性/端点差分入口，fixture定向投影与完整投影一致；最新40模块及完整框架/XML图仍需实际严格验收。",
-        "新增全部8类Spring XML逻辑关系独立清单，保留未知关系、候选次数、配置模型及原始图差异。新native/daemon三组49.273秒全部严格相等（含factory/parent/refs/字段/全量增量），全40模块真实图仍需执行，不能由fixture关闭能力。"
+        "已补发布库属性/端点差分入口，fixture定向投影与完整投影一致；最新40模块及完整框架/XML图仍需实际严格验收。"
       ]
     },
     {
@@ -960,9 +960,7 @@
         "tests/java_e2e.py",
         "tests/java_graph_consumer_alignment.py",
         "tests/java_sofa_xml_reference_alignment.py",
-        "tests/java_sofa_xml_inventory_diff.py",
-        "tests/java_xml_graph_inventory_diff.py",
-        "tests/java_xml_graph_reference_alignment.py"
+        "tests/java_sofa_xml_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -974,12 +972,10 @@
         "java-daemon",
         "type-graph-consumers-native",
         "sofa-xml-reference",
-        "sofa-xml-reference-native",
-        "xml-graph-reference"
+        "sofa-xml-reference-native"
       ],
       "remaining_acceptance": [
-        "已补 SOFA 4/public service/reference、MsgBroker publisher/consumer、binding/transport/channel/event/listener 树；完整配置/来源与 native/daemon、iopengw 语义差分尚需验收",
-        "新增全部8类Spring XML逻辑关系独立清单，保留未知关系、候选次数、配置模型及原始图差异。新native/daemon三组49.273秒全部严格相等（含factory/parent/refs/字段/全量增量），全40模块真实图仍需执行，不能由fixture关闭能力。"
+        "已补 SOFA 4/public service/reference、MsgBroker publisher/consumer、binding/transport/channel/event/listener 树；完整配置/来源与 native/daemon、iopengw 语义差分尚需验收"
       ]
     },
     {
