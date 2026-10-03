@@ -75,6 +75,7 @@ def main():
         ('functional-reference', [sys.executable, 'tests/java_functional_reference_alignment.py'], 360),
         ('supplemental-reference', [sys.executable, 'tests/java_supplemental_reference_alignment.py'], 360),
         ('module-abi-reference', [sys.executable, 'tests/java_module_abi_reference_alignment.py'], 360),
+        ('written-annotation-reference', [sys.executable, 'tests/java_written_annotation_reference_alignment.py'], 360),
         ('maven-export', [sys.executable, 'tests/java_maven_export.py'], 180),
         ('maven-mediation', [sys.executable, 'tests/java_maven_alignment.py'], 240),
         ('rust-format', ['cargo', 'fmt', '--all', '--', '--check'], 60),
@@ -94,6 +95,7 @@ def main():
             ('functional-reference-native', [sys.executable, 'tests/java_functional_reference_alignment.py', '--native'], 360),
             ('supplemental-reference-native', [sys.executable, 'tests/java_supplemental_reference_alignment.py', '--native'], 360),
             ('module-abi-reference-native', [sys.executable, 'tests/java_module_abi_reference_alignment.py', '--native'], 360),
+            ('written-annotation-reference-native', [sys.executable, 'tests/java_written_annotation_reference_alignment.py', '--native'], 360),
             ('native-product-ipc', ['cargo', 'run', '-p', 'codeana-application', '--example', 'java_worker_ipc', '--locked'], 240),
         ]
     if args.level == 'full':

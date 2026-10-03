@@ -611,3 +611,20 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | 失败记录 | 修复前 native 图链只剩4个目标（参考8个），日志保留；已知失败的旧 JVM 图运行由开发者主动 SIGINT 停止，见 super-builder-receiver-graph-controlled-stop.json。没有观察到安全软件杀进程。 |
 
 以上是新版专项和回归证明；完整40模块的已发布回执属于旧4a，不含此修复。新版全量语义、默认类型图、完整扩展、缓存与容量/发行门禁仍须继续，52项仍只有E01/E02关闭。
+
+
+## 未解析书写注解与反射上下文（2026-10-03）
+
+| 项目 | 实现 / 正式证据 |
+|---|---|
+| 原始注解 | 编译器 annotations 不变；未解析声明注解另存 source_annotations。唯一显式 import、已确认包类型或完整限定名可提供书写证据，含 source_options_complete；缺失/歧义 import、未知表达式不猜测。 |
+| 扩展边界 | 框架使用独立书写视图；Lombok builtin 7 仍要求原始 compiler annotation 名已属于 lombok.*。缺 jar 的 import Getter 不直接生成成员，完整限定 @lombok.Getter 可恢复已知选项，严格匹配冻结参考。 |
+| 缺失 CLASS 注解 | 仅捕获 javac Symbol.CompletionFailure；返回 ANNOTATION_TYPE_UNAVAILABLE、retention UNKNOWN、complete=false，健康二进制成员继续读取。其他编译错误正常传播。 |
+| 反射 | 原始调用点非空 control 独立传播到 reflection_lookup.type_context；无控制块不添加属性。旧4a的20对差异均为该上下文，但新版全项目消除须实际重验。 |
+| 专项 | written-annotations-fixtures-frozen-guard.log：7项通过；written-annotation-reference-20261003-115052-32706 JVM及私有validation-written-annotations/.../written-annotation-reference-20261003-115247-40664 native均8组严格一致，无漂移。 |
+| native 全默认 | validation-written-annotations/.../native-fixtures-20261003-115247：153项、538.278秒，全部通过，无漂移。 |
+| native 图消费者 | validation-written-annotations/.../type-graph-consumers-native-20261003-115247：100项、250次图请求、244次Rust校验，344.306秒，全部通过，无漂移。默认图仍关闭。 |
+| 实际 daemon | written-reflection-native-proof-e2e.log：两项40.999秒通过，涵盖原始诊断、两个独立补充证明、配置/成员删除、full-delta、旧revision保留。 |
+| 未完成 | 完整JVM回归仍运行；模块自有classpath声明证据正在隔离工作树验证，尚未合入。新版全40模块语义、全扩展、Rust通用缓存、独占容量和发行门禁仍未关闭，52项仍仅E01/E02关闭。 |
+
+失败的宽松 import Lombok 试验及空 control 读取试验回执保留，均已纠正；没有观察到非预期进程被杀。协议版本不变：新增属性是独立可选证据，bridge SHA和builtin版本使缓存失效。

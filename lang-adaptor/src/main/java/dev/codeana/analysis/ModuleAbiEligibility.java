@@ -33,8 +33,7 @@ final class ModuleAbiEligibility {
         for (var declaration : declarations) {
             var attributes = Json.map(declaration.get("attributes"));
             if ("lombok_model".equals(attributes.get("binding_origin"))) continue;
-            List<Object> annotations = attributes.get("annotations") instanceof List
-                    ? Json.list(attributes.get("annotations")) : List.of();
+            List<Object> annotations = ModelAnnotations.declared(declaration);
             boolean lombok = annotations.stream().anyMatch(raw -> {
                 String name = Json.string(Json.map(raw), "type");
                 return name.startsWith("lombok.") && !name.equals("lombok.Generated");

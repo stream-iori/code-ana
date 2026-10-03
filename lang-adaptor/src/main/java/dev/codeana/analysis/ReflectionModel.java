@@ -684,6 +684,9 @@ final class ReflectionModel {
         attributes.put("resolution", "EXACT_LOOKUP");
         attributes.put("binding_origin", "reflection_model");
         attributes.put("runtime_confirmed", false);
+        var original = calls.get(site(node));
+        String control = original == null ? "" : Json.string(Json.map(original.get("attributes")), "control");
+        if (!control.isEmpty()) attributes.put("control", control);
         Json.list(model.get("observations"))
                 .add(
                         Json.object(

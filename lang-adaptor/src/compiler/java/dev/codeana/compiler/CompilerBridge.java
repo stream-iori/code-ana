@@ -471,6 +471,8 @@ public final class CompilerBridge implements AutoCloseable {
                         "modifiers",
                         strings(element.getModifiers()));
         a.put("annotations", annotations(element));
+        List<Object> sourceAnnotations = WorkerWrittenAnnotations.derive(elementPath(element), trees, elements);
+        if (!sourceAnnotations.isEmpty()) a.put("source_annotations", sourceAnnotations);
         if (element instanceof VariableElement) {
             TreePath path = elementPath(element);
             List<Object> written = new ArrayList<Object>();
@@ -716,6 +718,19 @@ public final class CompilerBridge implements AutoCloseable {
     }
 
     private Map<String, Object> annotation(AnnotationMirror annotation, int depth) {
+        String name = signature(annotation.getAnnotationType().asElement());
+        try {
+            return annotationDetails(annotation, depth);
+        } catch (com.sun.tools.javac.code.Symbol.CompletionFailure unavailable) {
+            // Missing CLASS-retained metadata must not discard unrelated source bindings.
+            annotationTypes.remove(name);
+            return Json.object("type", name, "retention", "UNKNOWN", "explicit", Json.object(),
+                    "effective", Json.object(), "complete", false,
+                    "reason", "ANNOTATION_TYPE_UNAVAILABLE");
+        }
+    }
+
+    private Map<String, Object> annotationDetails(AnnotationMirror annotation, int depth) {
         if (depth > 16) return Json.object("complete", false);
         Element annotationType = annotation.getAnnotationType().asElement();
         if (annotationType instanceof TypeElement)

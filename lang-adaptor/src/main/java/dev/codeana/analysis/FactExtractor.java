@@ -425,7 +425,11 @@ public final class FactExtractor {
                 edge.put("evidence_complete", false);
                 edge.put("attributes", attributes);
                 if ("call_target".equals(edge.get("kind"))) edge.put("parent", site.get("id"));
-                else edge.put("relation", "reflection_lookup");
+                else {
+                    edge.put("relation", "reflection_lookup");
+                    String control = (String) attributes.getOrDefault("control", "");
+                    if (!control.isEmpty()) attributes.put("type_context", control);
+                }
             } else if (kind.equals("reference") || kind.equals("relation")) {
                 Map<String, Object> f = occurrence(kind, n);
                 f.put("target", symbol(Json.string(n, "target")));

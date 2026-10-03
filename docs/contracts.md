@@ -437,3 +437,6 @@ FactHeaders 编码传输只复制已经生成的有界 CAF1 记录，公共事�
 
 
 生成辅助 NoCode 的第二次 javac 还可提供独立生成接收者证明。接纳条件为两侧唯一同 source/start/end/lookup_name/mechanism 的调用，新调用 resolved/complete、完整 DECLARED 接收者、唯一的辅助 modeled CLASS 和选中 METHOD；原接收者须为缺失或 ERROR/UNKNOWN/NONE。`supplemental_receiver_evidence` 发布原 UTF-8 span、完整接收者、selected_declaration、signature/auxiliary_inputs SHA 与 original_evidence_retained=true。恢复仅消费该独立接收者，不据此确认上游歧义工厂。输入/生成成员/注解变更清除旧证明。继承候选遮蔽按完整 JVM descriptor（含返回类型），同参数的协变选择须明确返回转换成立；缺失 descriptor 不推断遮蔽。递归类型图的接收者及 readable 操作从真实节点引用重新遍历，仍保留查询预算与循环边界。
+
+
+未解析声明注解可附加 `source_annotations`，不覆盖 javac 的 `annotations`。书写限定与已知选项只供扩展视图；`source_options_complete` 不代表 annotation declaration 已确认，保留 `declaration_resolved=false`、来源和原始证据。Lombok builtin 7 仍先验证原始 compiler annotation 的 lombok 名，缺 jar 的简单 import Getter 不直接生成成员。缺失 CLASS annotation 定义只以 `ANNOTATION_TYPE_UNAVAILABLE`、UNKNOWN retention 和 incomplete 元数据披露。反射 occurrence 的可选 `type_context` 取自同位置原始调用点非空 `control`，不改变目标置信度。以上兼容性可选属性不切换模型/协议版本，桥 SHA 和 builtin 版本纳入缓存身份。

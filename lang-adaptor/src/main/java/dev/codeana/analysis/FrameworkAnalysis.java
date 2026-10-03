@@ -304,11 +304,11 @@ public final class FrameworkAnalysis {
             Optional<ModelAnnotations.Match> stereotype =
                     annotations
                             .first(signature, recognized)
-                            .filter(match -> match.direct().equals(annotation));
+                            .filter(match -> ModelAnnotations.matchesWritten(declaration, match.direct(), annotation));
             Optional<ModelAnnotations.Match> factory =
                     annotations
                             .first(signature, Set.of("org.springframework.context.annotation.Bean"))
-                            .filter(match -> match.direct().equals(annotation));
+                            .filter(match -> ModelAnnotations.matchesWritten(declaration, match.direct(), annotation));
             if (stage.equals("java") && stereotype.isPresent()) {
                 if ("CLASS".equals(Json.map(declaration.get("attributes")).get("element_kind")))
                     annotatedBean(

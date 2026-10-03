@@ -55,13 +55,45 @@ public final class ModelAnnotations {
             for (Object raw : items(model.get(section))) {
                 Map<String, Object> declaration = Json.map(raw);
                 List<Object> annotations =
-                        items(Json.map(declaration.get("attributes")).get("annotations"));
+                        declared(declaration);
                 // Matching needs annotation metadata, not the declaration's potentially large
                 // types.
                 declarations.put(Json.string(declaration, "signature"), annotations);
                 declarationSources.put(Json.string(declaration, "signature"),
                         declaration.get("source") instanceof String ? (String) declaration.get("source") : "");
             }
+    }
+
+    /** Extension view only. Compiler annotations and their unresolved spelling stay intact. */
+    public static List<Object> declared(Map<String, Object> declaration) {
+        var attributes = Json.map(declaration.get("attributes"));
+        List<Object> result = new ArrayList<>(items(attributes.get("annotations")));
+        for (Object raw : items(attributes.get("source_annotations"))) {
+            var written = new LinkedHashMap<>(Json.map(raw));
+            // This is completeness of the written option values in an extension view,
+            // not compiler confirmation of the annotation declaration.
+            written.put("complete", Boolean.TRUE.equals(written.get("source_options_complete")));
+            written.put("declaration_resolved", false);
+            String spelling = Json.string(written, "source_name");
+            List<Integer> matches = new ArrayList<>();
+            for (int i = 0; i < result.size(); i++) {
+                var annotation = Json.map(result.get(i));
+                if (!Boolean.TRUE.equals(annotation.get("complete"))
+                        && (spelling.equals(annotation.get("type")) || written.get("type").equals(annotation.get("type"))))
+                    matches.add(i);
+            }
+            if (matches.size() == 1) result.set(matches.getFirst(), written);
+            else if (matches.isEmpty()) result.add(written);
+        }
+        return Collections.unmodifiableList(result);
+    }
+
+    public static boolean matchesWritten(Map<String, Object> declaration, String qualified, String observed) {
+        if (qualified.equals(observed)) return true;
+        List<Object> evidence = items(Json.map(declaration.get("attributes")).get("source_annotations"));
+        return evidence.stream().map(Json::map).filter(a -> observed.equals(a.get("source_name"))).count() == 1
+                && evidence.stream().map(Json::map).anyMatch(a -> observed.equals(a.get("source_name"))
+                        && qualified.equals(a.get("type")));
     }
 
     private static List<Object> items(Object value) {

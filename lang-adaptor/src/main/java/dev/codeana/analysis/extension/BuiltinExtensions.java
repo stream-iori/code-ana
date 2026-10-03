@@ -31,7 +31,7 @@ public final class BuiltinExtensions {
         }
 
         public String version() {
-            return "6";
+            return "7";
         }
 
         public String producer() {
@@ -101,8 +101,7 @@ public final class BuiltinExtensions {
 
         private boolean annotatedReceiver(ExtensionContext context, String receiver) {
             return !receiver.isEmpty() && context.declaration(receiver).stream()
-                    .flatMap(d -> Json.list(Json.map(d.get("attributes"))
-                            .getOrDefault("annotations", List.of())).stream())
+                    .flatMap(d -> dev.codeana.analysis.ModelAnnotations.declared(d).stream())
                     .map(Json::map).anyMatch(a -> Json.string(a, "type").startsWith("lombok."));
         }
 

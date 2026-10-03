@@ -21,7 +21,7 @@ import java_model_tests as models
 MODULES = (
     'java_annotation_alignment', 'java_framework_alignment',
     'java_xml_alignment', 'java_sofa_xml_alignment',
-    'java_reflection_alignment', 'java_encoding_alignment',
+    'java_reflection_alignment', 'java_written_annotation_alignment', 'java_encoding_alignment',
     'java_module_signature_alignment', 'java_module_parallel_alignment',
     'java_module_overlay_alignment', 'java_module_abi_boundary_alignment', 'java_dependency_view_alignment',
     'java_static_import_alignment',

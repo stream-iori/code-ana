@@ -30,6 +30,26 @@ class Reflection(unittest.TestCase):
         by_id = {f['id']: f for f in facts}
         return [(f, by_id[f['target']]) for f in facts if f['kind']=='call_target' and f['origin']=='reflection_model']
 
+    def test_reflection_lookup_retains_lexical_control_and_full_delta(self):
+        body = """try {
+            if(flag) { Target.class.getMethod("run"); }
+            Target.class.getDeclaredConstructor();
+          } catch(Exception error) { Target.class.getMethod("other"); }
+          Target.class.getMethod("run");"""
+        context = self.fixture(body)
+        facts = self.analyze([context])['facts']
+        edges = [f for f in facts if f['relation']=='reflection_lookup']
+        self.assertEqual(len(edges), 4)
+        controls = [f['attributes'].get('type_context') for f in sorted(edges,key=lambda f:f['span']['start'])]
+        self.assertRegex(controls[0], r'^try@L[0-9]+>if-then@L[0-9]+$')
+        self.assertRegex(controls[1], r'^try@L[0-9]+$')
+        self.assertRegex(controls[2], r'^catch@L[0-9]+$')
+        self.assertIsNone(controls[3])
+        changed = self.fixture(body.replace('if(flag) { Target', 'if(!flag) { Target'))
+        delta = self.analyze([changed], facts)
+        full = self.analyze([changed])['facts']
+        self.assertEqual(self.merged(facts, delta), sorted(full,key=lambda f:f['id']))
+
     def test_constant_names_class_values_exact_methods_and_constructors(self):
         ctx = self.fixture('''Class<?> type=Class.forName("Tar"+"get");
           Method method=type.getMethod(NAME); method.invoke(new Target());

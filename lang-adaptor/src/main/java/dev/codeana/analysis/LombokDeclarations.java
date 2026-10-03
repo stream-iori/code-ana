@@ -1693,10 +1693,13 @@ final class LombokDeclarations {
 
     private static Map<String, Map<String, Object>> annotations(Map<String, Object> declaration) {
         Map<String, Map<String, Object>> result = new TreeMap<>();
-        for (Object raw : items(attrs(declaration).get("annotations"))) {
+        Set<String> compilerNames = new HashSet<>();
+        for (Object raw : items(attrs(declaration).get("annotations")))
+            compilerNames.add(Json.string(Json.map(raw), "type"));
+        for (Object raw : ModelAnnotations.declared(declaration)) {
             Map<String, Object> annotation = Json.map(raw);
             String name = Json.string(annotation, "type");
-            if (name.startsWith("lombok."))
+            if (name.startsWith("lombok.") && compilerNames.contains(name))
                 result.put(
                         name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1),
                         annotation);
