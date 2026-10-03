@@ -80,11 +80,18 @@ class JavaSemanticAlignment(unittest.TestCase):
           class Use {@Flag(RetentionPolicy.SOURCE) String value;}'''})
         facts=self.analyze([context])['facts'];declarations={f['id']:f for f in facts if f['kind'] in ('declaration','external_symbol')}
         reads={declarations[f['target']]['signature'] for f in facts if f['relation']=='reads'}
-        self.assertIn('java.lang.annotation.RetentionPolicy#RUNTIME',reads)
-        self.assertIn('java.lang.annotation.ElementType#FIELD',reads)
-        self.assertIn('java.lang.annotation.RetentionPolicy#CLASS',reads)
+        self.assertNotIn('java.lang.annotation.RetentionPolicy#RUNTIME',reads)
+        raw = [f for f in facts if f['kind']=='reference' and not f['relation']
+               and declarations.get(f['target'],{}).get('signature')=='java.lang.annotation.RetentionPolicy#RUNTIME']
+        self.assertTrue(raw)
+        self.assertTrue(all(f['attributes']['field_access']=='read' and f['status']=='complete'
+                            and f['evidence_complete'] for f in raw))
+        self.assertNotIn('java.lang.annotation.ElementType#FIELD',reads)
+        self.assertNotIn('java.lang.annotation.RetentionPolicy#CLASS',reads)
         constants={declarations[f['target']]['signature'] for f in facts if f['kind']=='reference' and f['target']}
         self.assertIn('java.lang.annotation.RetentionPolicy#RUNTIME',constants)
+        self.assertIn('java.lang.annotation.ElementType#FIELD',constants)
+        self.assertIn('java.lang.annotation.RetentionPolicy#CLASS',constants)
 
     def test_field_enum_and_callback_initializers_keep_their_lexical_owner(self):
         source = '''import java.util.function.*; class Use {
@@ -319,7 +326,7 @@ class JavaSemanticAlignment(unittest.TestCase):
         field = next(f for f in facts if f['signature'] == 'Use#value')
         reads = [f for f in facts if f['relation'] == 'reads' and f['target'] == field['id']]
         writes = [f for f in facts if f['relation'] == 'writes' and f['target'] == field['id']]
-        self.assertEqual(len(reads), 3)
+        self.assertEqual(len(reads), 2)
         self.assertEqual(len(writes), 3)
         branches = [f['attributes']['control'] for f in facts if f['relation'] == 'writes' and 'count' in f['name']]
         self.assertTrue(any('if-then' in c for c in branches))
@@ -345,9 +352,9 @@ class JavaSemanticAlignment(unittest.TestCase):
                     signature = ids[fact['target']]['signature']
                     key = (fact['relation'], signature)
                     counts[key] = counts.get(key, 0) + 1
-            self.assertEqual(counts, {('reads', 'Fields#count'): 5,
+            self.assertEqual(counts, {('reads', 'Fields#count'): 3,
                                      ('writes', 'Fields#count'): 4,
-                                     ('reads', 'Fields#value'): 3,
+                                     ('reads', 'Fields#value'): 1,
                                      ('writes', 'Fields#value'): 4,
                                      ('reads', 'Fields#array'): 3})
         first = self.analyze([self.context('fields', {'Use.java': source})], cache=True)['facts']
@@ -370,8 +377,8 @@ class JavaSemanticAlignment(unittest.TestCase):
             }
             Object self() { return this; }
           }'''
-        expected = {('writes', 'p.Base#value'): 3, ('reads', 'p.Base#value'): 4,
-                    ('writes', 'p.Base#count'): 4, ('reads', 'p.Base#count'): 3,
+        expected = {('writes', 'p.Base#value'): 3, ('reads', 'p.Base#value'): 3,
+                    ('writes', 'p.Base#count'): 4, ('reads', 'p.Base#count'): 1,
                     ('reads', 'p.Use#array'): 1, ('reads', 'p.Use#length'): 1,
                     ('reads', 'p.Kind#ONE'): 1}
 

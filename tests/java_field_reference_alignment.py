@@ -14,6 +14,7 @@ from java_model_tests import Models
 
 SOURCE='''package p; // 原字节😀
 class Base { static int count=1; int inherited; }
+@java.lang.annotation.Retention(java.lang.annotation.RetentionPolicy.RUNTIME) @interface Note {}
 enum Mode { ONE }
 class Use extends Base {
  int value=Base.count; Mode mode=Mode.ONE;
@@ -31,6 +32,13 @@ class Use extends Base {
   Class<?> type=Use.class;
  }
 }
+class Fields {static int count; int value; int[] array;}
+class FieldClient extends Base {void run(Fields fields) {
+ ((Fields.count))=1; (Fields.count)+=2; ++(Fields.count); ((Fields.count))--;
+ (fields.value)=3; ((fields.value))+=4; ++((fields.value)); (fields.value)--;
+ ((fields.array[Fields.count]))=5; (fields.array[Fields.count])+=6; ++((fields.array[0]));
+ this.inherited=1; super.inherited+=2; int n=this.inherited+super.inherited;
+}}
 '''
 
 
@@ -52,14 +60,17 @@ def main():
             context=case.context('app',files)
             facts=case.analyze([context],cache=True)['facts']
             raw=[f for f in facts if f['relation']=='' and f['attributes'].get('field_mutation')]
-            case.assertEqual(len(raw),2)
+            case.assertEqual(len(raw),6)
             case.assertTrue(all(f['attributes']['field_access']=='read_write' for f in raw))
             by={f['id']:f for f in facts}
             case.assertTrue(any(f['relation']=='' and by.get(f['target'],{}).get('signature')=='java.lang.Boolean#TRUE'
                                 for f in facts))
             case.assertFalse(any(f['relation'] in ('reads','writes') and
-                                 by.get(f['target'],{}).get('signature','').startswith(('java.lang.Boolean#','java.lang.System#'))
+                                 by.get(f['target'],{}).get('signature','').startswith(('java.lang.Boolean#','java.lang.System#',
+                                                                                     'java.lang.annotation.RetentionPolicy#'))
                                  for f in facts))
+            case.assertTrue(any(f['relation']=='' and by.get(f['target'],{}).get('signature')
+                                =='java.lang.annotation.RetentionPolicy#RUNTIME' for f in facts))
             case.assertTrue(any(f['relation']=='reads' and by.get(f['target'],{}).get('signature')=='java.io.Written#flag'
                                 for f in facts))
             case.assertTrue(any(f['relation']=='reads' and f['status']=='complete'
