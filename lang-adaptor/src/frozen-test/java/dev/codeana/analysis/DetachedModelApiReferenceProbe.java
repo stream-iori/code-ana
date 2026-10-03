@@ -86,6 +86,6 @@ public final class DetachedModelApiReferenceProbe {
             var candidates=entry.getValue();lookups.add(Json.object("name",entry.getKey(),"status",
                 candidates.isEmpty()?"missing":candidates.size()==1?"found":"ambiguous","candidates",candidates));
         }
-        System.out.println(Json.write(Json.object("rows",rows,"syntax",syntaxRows,"sources",sources,"types",lookups,"closed",true)));
+        ModelApiInventory.writeOutput(Json.object("rows",rows,"syntax",syntaxRows,"sources",sources,"types",lookups,"closed",true),scratch);
     }
 }

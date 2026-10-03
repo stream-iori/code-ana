@@ -86,7 +86,8 @@ public final class DetachedModelApiProbe {
                 }
                 model.close();try {model.type("p.Use");throw new AssertionError("closed model remained readable");}
                 catch(IllegalStateException expected){}
-                System.out.println(Json.write(Json.object("rows",rows,"syntax",syntaxRows,"sources",sources,"types",lookups,"closed",true)));
+                ModelApiInventory.writeOutput(Json.object("rows",rows,"syntax",syntaxRows,"sources",sources,"types",lookups,"closed",true),
+                        Path.of(Json.string(request,"scratch")));
             } finally {if(captured==null)compiler.releaseModel(archive);else captured.close();}
         }
     }

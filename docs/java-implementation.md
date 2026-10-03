@@ -397,3 +397,5 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 严格验收范围 | 实项目模型清单扩大为所有上下文源码的声明、AST、源码位置及全部类型查询；汇总拒绝仅发布源码清单。core/service MAIN 2624源的最新原生对照仍在运行；此前228个TEST发布源通过不能代替这项。 |
 | 真实发布 | f04c5d6组合的core/service TEST实际native→Rust worker→daemon→存储发布成功，6097.804秒，原始回执`validation-compiler-transfer-f04c5d6/.../iopengw-core-service-test-transfer-fixed-v2`。终态为partial，语义与容量未接受；该旧组合不包含v9修复，不作最新全项目证明。 |
 | 仍待 | 最新同版本完整Java/native/daemon回归、40模块MAIN/TEST/XML发布、80上下文完整模型清单、14域语义差分，以及最后的独占容量/release。矩阵仍只关闭E01/E02。 |
+
+完整清单输出的后续取证：全部上下文源码超过测试探针的单份64MiB JSON上限，JVM在完成导航后明确报`JSON_BUDGET`；原日志及现场栈保留在`iopengw-core-service-main-complete-source-api`。测试探针改为任务独占临时文件流式编码，编码成功后才输出，测试清单上限512MiB；不改变产品JSON/worker/模型限额，不删行、不抽样。`model-api-stream-output-proof.log`复现原失败，逐行UTF-8摘要验证超过64MiB的完整输出，并验证预算失败/取消零输出、临时文件清理。原native对照主动终止并另记`superseded.json`，不是安全软件杀进程，也没有算作通过。
