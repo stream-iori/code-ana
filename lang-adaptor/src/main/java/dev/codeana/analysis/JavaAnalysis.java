@@ -216,7 +216,9 @@ public final class JavaAnalysis {
         ModuleSignatures modules = new ModuleSignatures(request, contexts, session);
         ModuleAnnotationEvidence annotationEvidence = new ModuleAnnotationEvidence(contexts);
         work = ModuleAnnotationEvidence.expand(work, contexts);
-        if (parallelism == 1) work = modules.order(work);
+        List<List<Map<String, Object>>> batches = modules.batches(work, parallelism);
+        work = new ArrayList<>();
+        for (List<Map<String, Object>> batch : batches) work.addAll(batch);
         try {
             if (parallelism == 1 || work.size() < 2) {
                 for (Map<String, Object> ctx : work) {
@@ -235,7 +237,7 @@ public final class JavaAnalysis {
                 List<Future<ContextResult>> results = new ArrayList<>();
                 try {
                     // At most parallelism completed models can wait for consumption.
-                    for (List<Map<String, Object>> batch : modules.batches(work, parallelism)) {
+                    for (List<Map<String, Object>> batch : batches) {
                         results.clear();
                         for (Map<String, Object> ctx : batch) {
                             results.add(

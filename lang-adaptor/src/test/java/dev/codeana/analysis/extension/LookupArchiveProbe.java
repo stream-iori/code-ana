@@ -43,7 +43,7 @@ public final class LookupArchiveProbe {
             Map<String, Object> model =
                     Json.object(
                             "version",
-                            6,
+                            dev.codeana.common.ModelArchive.VERSION,
                             "context",
                             "lookup@MAIN",
                             "sources",

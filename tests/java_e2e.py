@@ -1118,7 +1118,7 @@ java_parallelism=1
         app=self.project/'src/App.java';app.write_text(app.read_text().replace('String read(Holder h)','Number read(Holder h)'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)
         actual=self.facts(full['revision']);self.assertEqual(self.facts(delta['revision']),actual)
-        self.assertEqual(targets(actual)['Api#make()']['attributes']['recovered_return_type_model']['element'],'java.lang.Number')
+        self.assertEqual(type_attributes(targets(actual)['Api#make()'])['recovered_return_type_model']['element'],'java.lang.Number')
         self.assertFalse(list(self.project.rglob('*.class')))
 
     def test_lombok_module_original_abi_configuration_and_delta(self):
