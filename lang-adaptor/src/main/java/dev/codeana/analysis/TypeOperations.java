@@ -535,7 +535,7 @@ final class TypeOperations {
         return result;
     }
 
-    private Match contained(Map<String, Object> actual, Map<String, Object> expected, int depth)
+    Match contained(Map<String, Object> actual, Map<String, Object> expected, int depth)
             throws IOException {
         step(depth);
         if (kind(expected).equals("TYPEVAR")) {

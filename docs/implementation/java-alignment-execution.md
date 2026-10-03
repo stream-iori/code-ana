@@ -501,3 +501,9 @@ CustomDnsResolverTest的隔离默认表示3329源码/869jar上下文终态成功
 SpringXmlAnalysis只认可declaration，误将带source_origin的external_symbol作为binary class查找，忽略已捕获的Maven依赖源码默认构造器/方法。现在按source_origin保留的不可变源码声明目录读取，不生成虚假业务字节码或凭空构造器。最小fixture修复前0个、修复后构造器/setter/init三个成员；原XML/SOFA/依赖视图17项通过（48.741秒），新增依赖头变化、构造器/Setter移除与cache/full/delta严格相等。fixture摘要须覆盖辅助源码，已对齐Rust生产digest(&units,classpath,resources,配置)，旧未覆盖摘要的试验失败保留日志。
 
 S3配置成员粗投影42/44不能作为缺2结论：核对原参考metadata发现11个unresolved占位，其中FlowCtrlServiceImpl无默认构造器，另外10个是未解析继承Setter；产品静态binary查得10个实际父类成员，额外证据须保留并单独审核。一个真缺口是CertificateServiceClientImpl依赖源码默认构造器，新增fixture覆盖对应机制；仍须真实新版本配置差分。完整XML树/属性/DI/WIRES语义未验收，不勾选S3。
+
+## 固定通配符的Collector输入约束
+
+冻结infer在无当前方法形参时转入assignable/contained。原实现却继续把`? super String`解包成String，错误要求CharSequence转换为String，导致合法Collectors.joining链缺collect。现复用现有类型参数包含校验；普通可写参数转换、捕获身份及预算不变。独立最小样本从4/5补齐到5/5，StringBuilder正例5/5、Integer负例4/4均与冻结参考一致；原37组冻结对照全部通过，原Collector21项通过（121.575秒）。14MAIN隔离2065/2081，16独立缺失、0独立额外、4状态对；不作为正式新版本发布差分。新增两种表示、字段类型变更/Getter移除的full/delta回归已接入。
+
+356587f正式native默认141项通过（733.017秒）、消费者92项通过（508.225秒）、冻结参考37组全部通过，均无输入/产物漂移；图绑定完整组与1ea710c的40模块真实验收仍运行。1ea710c已进入此前失败的app/test@TEST并通过compiler_model阶段，尚无最终发布回执。

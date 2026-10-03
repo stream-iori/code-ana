@@ -27,6 +27,7 @@ IDENTITY_SOURCE = '''import java.util.*;import java.util.stream.*;import java.ut
 @lombok.Getter class Api {String id;}
 class Use {Map<String,Api> read(List<Api> values){return values.stream().collect(Collectors.toMap(Api::getId,Function.identity()));}}
 '''
+JOINING_SOURCE = 'import java.util.*;import java.util.stream.*;@lombok.Getter class Api{String id;} class Use{String read(List<Api> apis){return apis.stream().map(Api::getId).collect(Collectors.joining(","));}}'
 LAMBDA_MAP_SOURCE = 'import java.util.*;import java.util.stream.*;import java.util.function.*;@lombok.Getter class Api {String id;} class Use {Map<String,Api> read(List<Api> values){return values.stream().filter(c ->c.getId()!=null).collect(Collectors.toMap(c -> c.getId(),c -> c,(a,b)->a));}}'
 
 ENTRY_CHAIN_SOURCE = 'import java.util.*;import java.util.stream.*;import java.util.function.*;@lombok.Getter class Api {String id;} class Use {Map.Entry<String,Api> read(List<Api> values){return values.stream().filter(c ->c.getId()!=null).collect(Collectors.toMap(c -> c.getId(),c -> c,(a,b)->a)).entrySet().stream().filter(e -> e.getKey().startsWith("x")).max(Comparator.comparingInt(c -> c.getKey().length())).orElse(null);}}'
@@ -52,6 +53,33 @@ class Collectors(unittest.TestCase):
     context = models.Models.context
     analyze = models.Models.analyze
     merged = models.Models.merged
+
+    def test_fixed_contravariant_collector_and_incompatible_input_delta(self):
+        for graph in (False, True):
+            with self.subTest(graph=graph):
+                def context(source):
+                    result = self.fixture(source)
+                    if graph:
+                        result['type_graph'] = True
+                    return result
+                before = self.analyze([context(JOINING_SOURCE)], cache=True)
+                self.assertEqual(len(self.targets(before, 'read')), 5)
+                for source, accepted in (
+                    (JOINING_SOURCE.replace('String id;', 'StringBuilder id;'), True),
+                    (JOINING_SOURCE.replace('String id;', 'Integer id;'), False),
+                    (JOINING_SOURCE.replace('@lombok.Getter ', ''), False),
+                ):
+                    changed = context(source)
+                    delta = self.analyze([changed], before['facts'], cache=True)
+                    full = self.analyze([changed], cache=True)
+                    self.assertEqual(self.merged(before['facts'], delta),
+                                     sorted(full['facts'], key=lambda f: f['id']))
+                    collect = [target for signature, target in self.targets(full, 'read')
+                               if signature == 'java.util.stream.Stream#collect(java.util.stream.Collector)']
+                    self.assertEqual(len(collect), int(accepted))
+                    if accepted:
+                        self.assertEqual(collect[0]['status'], 'possible')
+                        self.assertFalse(collect[0]['evidence_complete'])
 
     def test_null_branch_preserves_generic_constraints_and_rejects_conflicting_return(self):
         before = self.analyze([self.fixture(NULL_BRANCH_SOURCE)], cache=True)

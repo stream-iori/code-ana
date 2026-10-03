@@ -1924,6 +1924,10 @@ final class CallRecovery {
         step(depth);
         // Null constrains no generic variable, matching the frozen resolver.
         if (kind(actual).equals("NULL") && mentionsFormal(parameter, owner, 0)) return Match.YES;
+        // A fixed wildcard constrains containment, not conversion to its bound.
+        // Collector<CharSequence,?,String> is valid for Collector<? super String,A,R>.
+        if (!mentionsFormal(parameter, owner, 0) && kind(parameter).equals("WILDCARD"))
+            return types.contained(actual, parameter, 0);
         if (!mentionsFormal(parameter, owner, depth + 1)
                 && kind(parameter).equals("DECLARED") && kind(actual).equals("DECLARED")
                 && types.convert(actual, parameter, true) == Match.NO) return Match.NO;
