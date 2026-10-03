@@ -1,0 +1,175 @@
+#!/usr/bin/env python3
+"""Independent Spring bean constraints and constructor/non-container parameter parity.
+
+Aliases are a bean's names, not an Anatomist protocol requirement. This projection
+does not certify the complete annotation, XML, framework or real-project graph.
+"""
+import argparse
+import json
+import os
+import sqlite3
+import subprocess
+import time
+
+import java_alignment as alignment
+import java_functional_reference_alignment as reference
+from java_framework_alignment import BASE, DI, SOFA_API, Frameworks
+from java_model_tests import JDK8, JDK25
+from java_type_views import type_attributes
+
+
+SOURCE = '''interface Api {}
+@org.springframework.stereotype.Component @javax.annotation.Priority(10)
+@org.springframework.context.annotation.Profile("prod") interface Marker {}
+@org.springframework.context.annotation.Configuration
+@org.springframework.context.annotation.Profile({ "prod", /* 原字节😀 */ "cloud" }) class Config {
+ Config(Api ordinary,@com.alipay.sofa.runtime.api.annotation.SofaReference Api sofa,
+        @org.springframework.beans.factory.annotation.Value("fixed") String fixed){}
+ @org.springframework.context.annotation.Bean(name={"first","alias"})
+ @org.springframework.context.annotation.Lazy(false)
+ Api api(@com.alipay.sofa.runtime.api.annotation.SofaReference Api sofa, Api ordinary) { return null; }
+}
+'''
+DEFINITIONS = BASE | DI | SOFA_API | {
+    'org/springframework/context/annotation/Configuration.java': 'package org.springframework.context.annotation; public @interface Configuration { String value() default ""; }',
+    'org/springframework/context/annotation/Profile.java': 'package org.springframework.context.annotation; public @interface Profile { String[] value(); }',
+    'org/springframework/context/annotation/Lazy.java': 'package org.springframework.context.annotation; public @interface Lazy { boolean value() default true; }',
+    'javax/annotation/Priority.java': 'package javax.annotation; public @interface Priority { int value(); }',
+}
+
+
+def product_projection(facts):
+    by_id = {f['id']: f for f in facts}
+    beans = {}
+    injections = []
+    for f in facts:
+        if f['relation'] == 'java.bean':
+            a = f['attributes']
+            owner = by_id[f['parent']]
+            aliases = a['aliases']
+            key = (owner['signature'], tuple(aliases))
+            value = dict(type=a['type'], priority=a.get('priority_selection_unknown', False),
+                         constraints=a.get('configuration_constraints', []))
+            group = beans.setdefault(key, dict(value=value, names=[]))
+            if group['value'] != value or f['name'] in group['names']:
+                raise ValueError('BEAN_ALIAS_EVIDENCE_INCONSISTENT')
+            group['names'].append(f['name'])
+        elif f['relation'] == 'java.spring.injection':
+            a = type_attributes(f)
+            site = by_id[f['parent']]
+            owner = by_id[site['parent']] if site['attributes']['element_kind'] == 'PARAMETER' else site
+            injections.append((owner['signature'], a['injection_point'], a['injected_type']['element'],
+                               a['implicit_single_constructor']))
+    result = []
+    for (owner, aliases), group in beans.items():
+        if set(group['names']) != set(aliases):
+            raise ValueError('BEAN_ALIAS_NAMES_INCOMPLETE')
+        result.append(dict(owner=owner, names=list(aliases), **group['value']))
+    return dict(beans=sorted(result, key=lambda x: x['owner']), injections=sorted(injections))
+
+
+def reference_projection(database):
+    with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as db:
+        db.row_factory = sqlite3.Row
+        nodes = {r['id']: dict(r) for r in db.execute('SELECT * FROM nodes')}
+        owners = {r['source_id']: nodes[r['target_id']]['symbol_id'] for r in db.execute(
+            "SELECT source_id,target_id FROM edges WHERE relation='DEFINED_BY'")}
+        beans, injections = [], []
+        for n in nodes.values():
+            if n['kind'] != 'BEAN':
+                continue
+            a = json.loads(n['metadata'])
+            beans.append(dict(owner=owners[n['id']], names=a.get('aliases', [n['label']]),
+                              type=a.get('className', a.get('returnType')),
+                              priority=a.get('prioritySelectionUnknown', False),
+                              constraints=a.get('configurationConstraints', [])))
+        for e in db.execute("SELECT metadata FROM edges WHERE relation='INJECTS'"):
+            a = json.loads(e['metadata'])
+            role, owner, name = a['injectionSite'].split(':')
+            owner = owner.replace('.', '#', 1)
+            if role == 'constructor':
+                prefix, args = owner.split('(', 1)
+                owner = prefix.split('#')[0] + '#<init>(' + args
+            injections.append((owner, name, a['injectedType'], a.get('implicitSingleConstructor', False)))
+        return dict(beans=sorted(beans, key=lambda x: x['owner']), injections=sorted(injections))
+
+
+def reference_index(base, source):
+    for name, contents in (DEFINITIONS | {'Use.java': source}).items():
+        p = base / 'app' / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(contents)
+    config = base / '.anatomist/config.toml'
+    config.parent.mkdir()
+    config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\n'
+                      'javac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=false\n')
+    jar = alignment.ROOT.parent / 'anatomist/target/anatomist.jar'
+    if reference.digest(jar) != reference.REFERENCE_SHA:
+        raise ValueError('FROZEN_REFERENCE_JAR_CHANGED')
+    command = [str(JDK25/'bin/java'), '-Xmx512m', '-jar', str(jar), 'index', str(base),
+               '--source-root', 'app@MAIN=app', '--jdk-home', str(JDK8), '--java-version', '8',
+               '--lombok', 'off', '--vm-classpath', 'true', '--output', str(base/'index.db'),
+               '--full', '--no-classpath']
+    with (base/'reference.log').open('wb') as log:
+        result = subprocess.run(command, stdout=log, stderr=log, timeout=120,
+                                env=dict(os.environ, ANATOMIST_HOME=str(base/'reference-state')))
+    if result.returncode:
+        raise RuntimeError((base/'reference.log').read_text()[-4000:])
+    return reference_projection(base/'index.db')
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument('--native', action='store_true')
+    args = p.parse_args()
+    evidence = alignment.ROOT/'target/java-alignment/evidence'/('framework-reference-'
+                +time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))
+    evidence.mkdir()
+    frozen = alignment.input_files()
+    artifacts = reference.probe_artifacts(args.native)
+    case = Frameworks()
+    case.setUp()
+    if args.native:
+        case.analyze = reference.native_analyze.__get__(case)
+    proofs = []
+    try:
+        baseline = None
+        for name, source in [('constraints', SOURCE), ('body', SOURCE.replace('return null;', 'return (Api)null;')),
+                             ('removed', SOURCE.replace('@javax.annotation.Priority(10)', '')
+                              .replace('@org.springframework.context.annotation.Profile("prod")', '')
+                              .replace('@org.springframework.context.annotation.Lazy(false)', '')
+                              .replace('@com.alipay.sofa.runtime.api.annotation.SofaReference ', ''))]:
+            base = evidence/name
+            base.mkdir()
+            context = case.context('app', DEFINITIONS | {'Use.java': source}, spring=True, sofa=True)
+            full = case.analyze([context], cache=True)['facts']
+            if baseline is not None:
+                delta = case.analyze([context], baseline, cache=True)
+                case.assertEqual(case.merged(baseline, delta), sorted(full, key=lambda f: f['id']))
+            baseline = full
+            left, right = product_projection(full), reference_index(base, source)
+            case.assertEqual(len(left['beans']), 3)
+            case.assertEqual(len(left['injections']), 4 if name == 'removed' else 2)
+            (base/'product.json').write_text(json.dumps(full, ensure_ascii=False)+'\n')
+            proof = dict(name=name, product=left, reference=right, equal=left == right,
+                         product_sha256=reference.digest(base/'product.json'),
+                         reference_sha256=reference.digest(base/'index.db'))
+            (base/'comparison.json').write_text(json.dumps(proof, ensure_ascii=False, indent=2)+'\n')
+            proofs.append(proof)
+            print(name, 'equal' if proof['equal'] else 'different', flush=True)
+    finally:
+        case.doCleanups()
+    current, now = alignment.input_files(), reference.probe_artifacts(args.native)
+    drift = sorted(k for k in frozen.keys() | current.keys() if frozen.get(k) != current.get(k))
+    changed = sorted(k for k in artifacts.keys() | now.keys() if artifacts.get(k) != now.get(k))
+    report = dict(kind='frozen_spring_bean_constraints_and_parameter_projection', native=args.native,
+                  proofs=proofs, inputs=frozen, artifacts=artifacts, changed_inputs=drift,
+                  changed_artifacts=changed, full_semantic_diff_accepted=False)
+    report['all_ok'] = all(p['equal'] for p in proofs) and not drift and not changed
+    (evidence/'receipt.json').write_text(json.dumps(report, ensure_ascii=False, indent=2)+'\n')
+    print(evidence/'receipt.json', flush=True)
+    return 0 if report['all_ok'] else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

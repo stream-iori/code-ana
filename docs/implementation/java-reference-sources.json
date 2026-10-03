@@ -147,6 +147,18 @@
       "sha256": "90c44fca5b18c141618145dcd012cef19e763849dd6209251836847bbadfbc28",
       "destination": "crates/application/src/derived.rs",
       "changes": "Translate direct internal IMPLEMENTS + INJECTS static candidate derivation into Rust indexing policy; preserve sorted distinct candidates, inferred/ambiguous confidence, location and via/source/candidates metadata. Storage exposes private candidate reads/writes only and rebuilds per-world aggregate owners atomically; Rust semantic profile includes derived-wiring-1 and worker baselines exclude these owners. No runtime CALLS or qualifier-based selection. Actual native CLI/daemon publication, explicit query, changed/deleted implementation full-delta equivalence compared with frozen WiringResolver class."
+    },
+    {
+      "path": "anatomist-framework-spring/src/main/java/com/anatomist/framework/spring/SpringJavaModelComponents.java",
+      "sha256": "d49ee9c876eb48b31bae205d776f3dafc73cee279a2d857d2bbd9f9c27519381",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/FrameworkAnalysis.java",
+      "changes": "Adapt component CLASS/INTERFACE eligibility and decorate Priority/ancestor Profile, Conditional, Scope, Lazy, Import, ImportResource, ComponentScan constraints. Keep unevaluated source expressions and original annotation evidence; detached Fact IR aliases/IDs remain native to code-ana. Configuration constructor and NON_BEAN parameter filtering adapted in extension/SpringInjection.java. Spring builtin5/injection2 invalidate semantic keys. Independent frozen JVM constraints/body/removal projections plus strict full/delta pass; native/real full graph remain pending."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelAnnotations.java",
+      "sha256": "70d342ca90d3f80d73d16a8465e23f367af04787260e93b88be5a8ccd13034cb",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/WorkerWrittenAnnotations.java",
+      "changes": "Adapt explicit-source-only raw expression rule via Java8 public Tree/SourcePositions and captured CharSequence. Optional source_annotation_expressions preserve exact comments/Unicode/spacing and no annotation defaults. No source slicing or Java syntax parsing moved to Rust."
     }
   ]
 }

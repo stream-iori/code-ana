@@ -29,6 +29,7 @@ public final class FrameworkAnalysis {
             String kind = FactHeaders.kind(core, i);
             if (kind.equals("declaration") || kind.equals("external_symbol")) {
                 Map<String, Object> header = FactHeaders.get(core, i);
+                declarations.index(Json.string(header, "id"), i);
                 String signature = Json.string(header, "signature");
                 int rank = (kind.equals("declaration") ? 2 : 0)
                         + (Objects.equals(context.get("world"), header.get("world")) ? 1 : 0);
@@ -255,6 +256,7 @@ public final class FrameworkAnalysis {
             Map<String, Object> attributes = Json.map(Json.map(facts.getLast()).get("attributes"));
             attributes.put("annotation_evidence", match.evidence());
             attributes.put("aliases", names);
+            beanConstraints(attributes, declaration, path, annotations);
             String signature = Json.string(declaration, "signature");
             annotations
                     .first(signature, Set.of("org.springframework.context.annotation.Primary"))
@@ -278,6 +280,42 @@ public final class FrameworkAnalysis {
                                 attributes.put("qualifier_evidence", qualifier.evidence());
                             });
         }
+    }
+
+    // Adapted from frozen SpringJavaModelComponents.decorate; constraints are disclosed,
+    // never evaluated as runtime container selection.
+    private void beanConstraints(Map<String, Object> attributes, Map<String, Object> declaration,
+                                 String path, ModelAnnotations annotations) {
+        if (annotations.first(Json.string(declaration, "signature"),
+                Set.of("javax.annotation.Priority", "jakarta.annotation.Priority")).isPresent())
+            attributes.put("priority_selection_unknown", true);
+        Set<String> supported = Set.of("org.springframework.context.annotation.Profile",
+                "org.springframework.context.annotation.Conditional", "org.springframework.context.annotation.Scope",
+                "org.springframework.context.annotation.Lazy", "org.springframework.context.annotation.Import",
+                "org.springframework.context.annotation.ImportResource", "org.springframework.context.annotation.ComponentScan");
+        List<Object> constraints = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        Map<String, Object> current = declaration;
+        while (current != null) {
+            if (seen.size() >= 128 || !seen.add(Json.string(current, "id"))) { gaps.add(path); break; }
+            for (Object raw : ModelAnnotations.declared(current)) {
+                Map<String, Object> annotation = Json.map(raw);
+                String name = Json.string(annotation, "type");
+                if (!supported.contains(name)) continue;
+                Map<String, Object> values = new LinkedHashMap<>();
+                for (Object expression : Json.list(Json.map(current.get("attributes"))
+                        .getOrDefault("source_annotation_expressions", List.of()))) {
+                    Map<String, Object> written = Json.map(expression);
+                    if (name.equals(written.get("type"))) {
+                        values.putAll(Json.map(written.get("attributes")));
+                        if (!Boolean.TRUE.equals(written.get("complete"))) gaps.add(path);
+                    }
+                }
+                constraints.add(Json.object("annotation", name, "attributes", values, "status", "unevaluated"));
+            }
+            current = declarations.get(Json.string(current, "parent"));
+        }
+        if (!constraints.isEmpty()) attributes.put("configuration_constraints", constraints);
     }
 
     private void spring(Map<String, Object> model) throws Exception {
@@ -310,7 +348,7 @@ public final class FrameworkAnalysis {
                             .first(signature, Set.of("org.springframework.context.annotation.Bean"))
                             .filter(match -> ModelAnnotations.matchesWritten(declaration, match.direct(), annotation));
             if (stage.equals("java") && stereotype.isPresent()) {
-                if ("CLASS".equals(Json.map(declaration.get("attributes")).get("element_kind")))
+                if (Set.of("CLASS", "INTERFACE").contains(Json.map(declaration.get("attributes")).get("element_kind")))
                     annotatedBean(
                             stereotype.get(),
                             defaultName(signature),

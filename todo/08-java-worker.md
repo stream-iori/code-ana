@@ -977,3 +977,5 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 
 
 2026-10-03 补充：默认平面图已原子切换（compiler8/model7/worker11/request5）；项目扩展按依赖层顺序统一累积。Rust通用持久派生缓存已接产品 Ack 链路，Java仅保留语义key及任务内pin；五项存储反例和四项实际daemon专项通过。完整同版本回归、真实40模块语义、全扩展、容量/发行仍待最终回执，52项仍仅E01/E02关闭。详见 `docs/implementation/java-alignment-execution.md`。
+
+2026-10-03 Spring补齐：接口stereotype、Configuration隐式构造器、Value/SofaReference非容器参数、Priority及祖先配置约束的原表达式已实现；冻结JVM三组严格一致，12+9+7项回归通过。Spring5/injection2；native/daemon及完整扩展/真实项目仍待。不得用此前缓存版完整回执替代此新版验收。

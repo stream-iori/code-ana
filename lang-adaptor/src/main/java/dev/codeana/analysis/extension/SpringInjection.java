@@ -26,11 +26,14 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
                     "org.springframework.stereotype.Service",
                     "org.springframework.stereotype.Repository",
                     "org.springframework.stereotype.Controller",
-                    "org.springframework.web.bind.annotation.RestController");
+                    "org.springframework.web.bind.annotation.RestController",
+                    "org.springframework.context.annotation.Configuration");
 
     public String id() {
         return "spring-injection";
     }
+
+    public String version() { return "2"; }
 
     public String producer() {
         return "spring-injection-v1";
@@ -113,7 +116,8 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
                 if (annotations
                         .first(
                                 Json.string(parameter, "signature"),
-                                Set.of("org.springframework.beans.factory.annotation.Value"))
+                                Set.of("org.springframework.beans.factory.annotation.Value",
+                                        "com.alipay.sofa.runtime.api.annotation.SofaReference"))
                         .isPresent()) continue;
                 emit(
                         facts,

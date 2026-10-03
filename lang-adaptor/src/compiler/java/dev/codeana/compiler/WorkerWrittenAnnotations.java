@@ -48,6 +48,42 @@ final class WorkerWrittenAnnotations {
         return result;
     }
 
+    /** Original captured expressions; no evaluated defaults or Tree.toString rewriting. */
+    static List<Object> expressions(TreePath declaration, Trees trees, Elements elements) {
+        if (declaration == null) return Collections.emptyList();
+        Tree leaf = declaration.getLeaf();
+        ModifiersTree modifiers = leaf instanceof ClassTree ? ((ClassTree) leaf).getModifiers()
+                : leaf instanceof MethodTree ? ((MethodTree) leaf).getModifiers()
+                : leaf instanceof VariableTree ? ((VariableTree) leaf).getModifiers() : null;
+        if (modifiers == null || modifiers.getAnnotations().isEmpty()) return Collections.emptyList();
+        CharSequence text;
+        try { text = declaration.getCompilationUnit().getSourceFile().getCharContent(true); }
+        catch (java.io.IOException unavailable) { throw new IllegalStateException("SOURCE_ANNOTATION_EXPRESSIONS", unavailable); }
+        List<Object> result = new ArrayList<Object>();
+        TreePath path = new TreePath(declaration, modifiers);
+        for (AnnotationTree annotation : modifiers.getAnnotations()) {
+            TreePath annotationPath = new TreePath(path, annotation);
+            String name = qualified(new TreePath(annotationPath, annotation.getAnnotationType()), trees, elements);
+            if (name == null) continue;
+            Map<String, Object> values = new LinkedHashMap<String, Object>();
+            boolean complete = true;
+            for (ExpressionTree argument : annotation.getArguments()) {
+                String key = "value";
+                ExpressionTree expression = argument;
+                if (argument instanceof AssignmentTree) {
+                    key = ((AssignmentTree) argument).getVariable().toString();
+                    expression = ((AssignmentTree) argument).getExpression();
+                }
+                long start = trees.getSourcePositions().getStartPosition(declaration.getCompilationUnit(), expression);
+                long end = trees.getSourcePositions().getEndPosition(declaration.getCompilationUnit(), expression);
+                if (start < 0 || end < start || end > text.length()) { complete = false; continue; }
+                if (values.put(key, text.subSequence((int) start, (int) end).toString()) != null) complete = false;
+            }
+            result.add(Json.object("type", name, "attributes", values, "complete", complete));
+        }
+        return result;
+    }
+
     private static String qualified(TreePath path, Trees trees, Elements elements) {
         TypeMirror mirror = trees.getTypeMirror(path);
         if (mirror != null && mirror.getKind() == TypeKind.DECLARED)

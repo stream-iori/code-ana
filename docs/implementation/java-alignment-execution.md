@@ -711,3 +711,16 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 冻结真实参考中 IOpengwManagerServiceImplTest#IOpengwManagerServiceImplTest() 是 METHOD（第383行，void），并无该类 CONSTRUCTOR 行。冻结 JavaIdentities 把构造器也编码为类名，不含返回类型，因此与同参数同名普通方法身份碰撞；code-ana 以 <init> 区分，保留两者。比较器此前还把已知 METHOD 的类名同名方法误规范化为 <init>，现改为只规范化明确 CONSTRUCTOR（无kind的外部线索仍兼容旧表示）；三个身份/原字节/唯一匿名跨度反例通过。此为参考身份边界，不删除有效产品构造器来凑计数；完整模型对照仍须逐项披露并验证。
 
 新版 Rust Maven MAIN/TEST 导出已完成：40模块全部 resolved_classpath，单Maven会话，inputs SHA a7e8aeb9ffbf1b45b5ebc55b8e00078b7509d93552267c82409dc7a5059969bd；extension SHA 86f604bf69a43b4a5b331ffbcb31508978ae2fcd174b9657361edaa3e5160238。新默认图/缓存全量真实项目在独立冻结工作树启动；保护 deadline14400秒仅用于故障回收，不是整体任务或性能预算。首次误传共享快照路径被验收脚本立即拒绝，未启动daemon/未改配置；现为该工作树复制的冻结快照，先核对全部已提交文件再索引。
+
+
+## Spring Bean 约束和非容器参数（2026-10-03）
+
+| 差距 | 实现 / 证据 |
+|---|---|
+| stereotype / constructor | 冻结 SpringJavaModelComponents 支持 CLASS/INTERFACE 与 Configuration 单构造器；已补接口 Bean 和 Configuration 隐式注入。参数的 Value/SofaReference 按参考排除；原Sofa声明仍保留。 |
+| Bean 元信息 | Priority仅披露 priority_selection_unknown；当前声明及父声明的Profile/Conditional/Scope/Lazy/Import/ImportResource/ComponentScan保存 configuration_constraints，status=unevaluated，绝不当作容器已生效条件。 |
+| 原表达式 | SDK8通过Tree/SourcePositions保存 source_annotation_expressions，不使用Tree.toString替代原字节，不将effective/default值伪装成显式属性。包含Unicode、注释和空白；语言解析仍仅在lang-adaptor。 |
+| 失效 | Spring builtin5、injection2；bridge SHA参与语义身份，公开协议版本不变。NoCode与全量严格比较保留新增字段。 |
+| 冻结独立对照 | framework-reference-20261003-134212-76420：JVM三组 constraints/body/removed 全部严格一致，无输入/产物漂移。三类Bean的类型、全部别名、Priority、祖先约束和完整原表达式，以及2/4个注入点/构造器隐式状态一致；body/删除的full-delta事实完整相等。 |
+| 已有回归 | spring-constraints-framework-jvm.log12项45.539秒、annotations9项29.186秒、NoCode边界7项39.477秒通过。发现前后的原始产品/参考文件保留在framework-parity-discovery及-after；不是全框架/真实项目验收。 |
+| 后续 | native/daemon同版本专项、全部框架/类型/模型属性、全40模块语义和最终门禁继续；正在运行的缓存版完整回执与真实项目属于前一冻结版本，不含此次Spring补齐。 |
