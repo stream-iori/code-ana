@@ -41,7 +41,10 @@ public final class DetachedModelApiReferenceProbe {
         Map<String,List<Object>> lookupCandidates=new LinkedHashMap<>();
         for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of())))lookupCandidates.put(name.toString(),new ArrayList<>());
         java.util.function.Consumer<JavaAnalysisContext> consume=analysis->{
-            try(var model=new JavaModel(analysis)) {
+            try(var binaries=com.anatomist.core.asmsolver.JavaBinarySources.open(classpath,javaHome,8,16L*1024*1024);
+                var model=new JavaModel(Boolean.TRUE.equals(request.get("model_api_lombok"))
+                    ? new com.anatomist.framework.lombok.LombokJavaModelExtension(Path.of(Json.string(request,"model_api_project")),false).augment(analysis,binaries)
+                    : analysis)) {
                 for(var unit:analysis.units()) {
                     String path=paths.get(unit.path());if(path==null)throw new IllegalArgumentException("reference discovered unrequested unit");
                     if(!selected.contains(path))continue;

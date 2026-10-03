@@ -41,6 +41,8 @@ public final class DetachedModelApiProbe {
                 : null;
             Map<String,Object> archive=captured==null ? compiler.analyze(context) : captured.model();
             try {
+                if(Boolean.TRUE.equals(request.get("model_api_lombok")))
+                    new dev.codeana.analysis.extension.ExtensionRunner(context,dev.codeana.analysis.extension.BuiltinExtensions.REGISTRY).augment(archive);
                 DetachedJavaModel model=new ExtensionContext(context,archive,List.of(),List.of()).javaModel();
                 try(var output=new ModelApiInventory.Output(Path.of(Json.string(request,"scratch")))) {
                 for(String path:model.unitsInContext()) {

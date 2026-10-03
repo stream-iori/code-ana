@@ -24,6 +24,7 @@ public final class DetachedJavaModel implements AutoCloseable {
     private record Identity(String source,String signature) {}
     private final Map<String,Object> model;
     private final boolean fullAuxiliaryModel;
+    private final Map<Integer,Map<String,Object>> modeledRows=new HashMap<>();
     private Map<String,Map<String,Object>> units;
     private Map<String,List<Integer>> positions;
     private Map<Identity,List<DeclarationRef>> identities;
@@ -67,6 +68,7 @@ public final class DetachedJavaModel implements AutoCloseable {
     private void catalogue() {
         units();if(positions!=null)return;
         formalDeclarations.clear();
+        modeledRows.clear();
         Map<String,List<Integer>> rows=new LinkedHashMap<>();
         Map<Identity,List<DeclarationRef>> byIdentity=new HashMap<>();
         Map<String,List<DeclarationRef>> byType=new HashMap<>();
@@ -77,9 +79,11 @@ public final class DetachedJavaModel implements AutoCloseable {
         Set<Identity> auxiliaryBodyDeclarations=new HashSet<>();
         Map<Identity,List<Identity>> auxiliaryChildren=new HashMap<>();
         Set<List<String>> parameterHeaders=new HashSet<>();
+        Map<Identity,List<Map<String,Object>>> originalHeaders=new HashMap<>();
         for(Object raw:declarations) {
             cancelled();var value=Json.map(raw);var attributes=Json.map(value.get("attributes"));
             String source=Json.string(value,"source"),signature=Json.string(value,"signature");
+            originalHeaders.computeIfAbsent(new Identity(source,signature),ignored->new ArrayList<>()).add(value);
             if(!fullAuxiliaryModel && Boolean.FALSE.equals(unit(source).get("publish"))) {
                 Identity identity=new Identity(source,signature);
                 auxiliaryChildren.computeIfAbsent(new Identity(source,Json.string(value,"parent")),ignored->new ArrayList<>()).add(identity);
@@ -111,9 +115,40 @@ public final class DetachedJavaModel implements AutoCloseable {
             if("PARAMETER".equals(attributes.get("element_kind"))&&!callableHeaders.contains(
                     new Identity(Json.string(value,"source"),Json.string(value,"parent"))))continue;
             catalogueRows.add(i);
+            Map<String,Object> anchor=value;
+            if("lombok_model".equals(attributes.get("binding_origin")) && Boolean.TRUE.equals(value.get("generated"))) {
+                Set<Identity> seen=new HashSet<>();
+                while(number(anchor,"start")<0) {
+                    cancelled();
+                    String from=Objects.toString(Json.map(anchor.get("attributes")).get("generated_from"),"");
+                    if(from.isEmpty())break;
+                    Identity identity=new Identity(source,from);
+                    if(!seen.add(identity))throw new IllegalArgumentException("JAVA_MODEL_MODELED_ORIGIN_CYCLE");
+                    if(seen.size()>129)throw new IllegalArgumentException("JAVA_MODEL_MODELED_ORIGIN_DEPTH_BUDGET");
+                    var candidates=originalHeaders.getOrDefault(identity,List.of());
+                    if(candidates.size()!=1)break;anchor=candidates.getFirst();
+                }
+                Map<String,Object> spanAnchor=anchor;
+                // Method/constructor-target builders place their generated
+                // class and infrastructure at the enclosing class. Parameter
+                // setters/fields still keep the parameter's actual span.
+                if("builder".equals(attributes.get("modeled_capability"))
+                        && Set.of("METHOD","CONSTRUCTOR").contains(Json.map(anchor.get("attributes")).get("element_kind"))) {
+                    var owners=originalHeaders.getOrDefault(new Identity(source,Json.string(anchor,"parent")),List.of());
+                    if(owners.size()==1)spanAnchor=owners.getFirst();
+                }
+                if(!Boolean.TRUE.equals(attributes.get("modeled_implicit"))
+                        && number(spanAnchor,"start")>=0 && number(spanAnchor,"end")>=number(spanAnchor,"start")) {
+                    var view=new LinkedHashMap<>(value);view.put("start",spanAnchor.get("start"));view.put("end",spanAnchor.get("end"));
+                    modeledRows.put(i,ExtensionContext.freezeMap(view));
+                }
+            }
             // javac creates enum valueOf(String) without source parameter trees.
             // Its verified names/types already live in the compiler method header.
-            if(Boolean.TRUE.equals(attributes.get("compiler_implicit"))) {
+            if(Boolean.TRUE.equals(attributes.get("compiler_implicit"))
+                    || "lombok_model".equals(attributes.get("binding_origin"))
+                        && Boolean.TRUE.equals(value.get("generated"))
+                        && Set.of("METHOD","CONSTRUCTOR").contains(attributes.get("element_kind"))) {
                 List<Object> names=Json.list(attributes.getOrDefault("parameter_names",List.of()));
                 List<Object> parameterTypes=Json.list(attributes.getOrDefault("parameter_type_models",List.of()));
                 if(names.size()!=parameterTypes.size())throw new IllegalArgumentException("JAVA_MODEL_IMPLICIT_PARAMETER_HEADER");
@@ -122,12 +157,30 @@ public final class DetachedJavaModel implements AutoCloseable {
                     if(parameterHeaders.contains(List.of(source,owner,name)))continue;
                     formalDeclarations.add(ExtensionContext.freezeMap(Json.object("kind","declaration","source",source,
                         "signature",owner+"#parameter:"+p+":"+name,"parent",owner,"name",name,"start",-1,"end",-1,
-                        "generated",true,"attributes",Json.object("element_kind","PARAMETER","compiler_implicit",true,
+                        "generated",true,"attributes",Json.object("element_kind","PARAMETER","compiler_implicit",Boolean.TRUE.equals(attributes.get("compiler_implicit")),
+                            "binding_origin",Objects.toString(attributes.get("binding_origin"),"javac"),
                             "type_model",parameterTypes.get(p),"body_available",false))));
                     catalogueRows.add(-formalDeclarations.size());
                 }
             }
-            for(Object raw:Json.list(attributes.getOrDefault("type_parameter_declarations",List.of()))) {
+            List<Object> typeFormals=Json.list(attributes.getOrDefault("type_parameter_declarations",List.of()));
+            if(typeFormals.isEmpty() && "lombok_model".equals(attributes.get("binding_origin"))
+                    && Boolean.TRUE.equals(value.get("generated"))) {
+                typeFormals=new ArrayList<>();
+                for(Object raw:Json.list(attributes.getOrDefault("type_parameter_models",List.of()))) {
+                    cancelled();var formal=Json.map(raw);String name=Json.string(formal,"name");
+                    Map<String,Object> original=sourceFormal(anchor,name,originalHeaders);
+                    var bounds=Json.list(formal.getOrDefault("bounds",List.of()));
+                    Object upper=bounds.size()==1?bounds.getFirst():Json.object("version",2,"kind","INTERSECTION","bounds",bounds,"complete",true);
+                    var metadata=Json.object("element_kind","TYPE_PARAMETER","binding_origin","lombok_model",
+                        "body_available",false,"annotations",formal.getOrDefault("annotations",List.of()),
+                        "type_model",Json.object("version",2,"kind","TYPEVAR","name",name,"display",name,
+                            "owner",value.get("signature"),"upper",upper,"complete",formal.getOrDefault("complete",true)));
+                    typeFormals.add(Json.object("name",name,"start",original==null?-1:original.get("start"),
+                        "end",original==null?-1:original.get("end"),"generated",true,"attributes",metadata));
+                }
+            }
+            for(Object raw:typeFormals) {
                 Map<String,Object> formal=new LinkedHashMap<>(Json.map(raw));
                 formal.put("source",value.get("source"));formal.put("parent",value.get("signature"));
                 formal.put("signature",Json.string(value,"signature")+"#typevar:"+Json.string(formal,"name"));
@@ -179,8 +232,28 @@ public final class DetachedJavaModel implements AutoCloseable {
     private static long number(Map<String,Object> value,String key) {
         return value.get(key) instanceof Number number?number.longValue():-1;
     }
+    /** Default providers originate at fields; their formals belong to an enclosing source header. */
+    private static Map<String,Object> sourceFormal(Map<String,Object> anchor,String name,
+            Map<Identity,List<Map<String,Object>>> headers) {
+        Set<Identity> seen=new HashSet<>();
+        while(anchor!=null) {
+            cancelled();String source=Json.string(anchor,"source");
+            if(!seen.add(new Identity(source,Json.string(anchor,"signature"))))
+                throw new IllegalArgumentException("JAVA_MODEL_PARENT_CYCLE");
+            if(seen.size()>129)throw new IllegalArgumentException("JAVA_MODEL_PARENT_DEPTH_BUDGET");
+            var originals=Json.list(Json.map(anchor.get("attributes")).getOrDefault("type_parameter_declarations",List.of()));
+            var matches=originals.stream().map(Json::map).filter(f->name.equals(f.get("name"))).toList();
+            if(matches.size()>1)throw new IllegalArgumentException("JAVA_MODEL_MODELED_FORMAL_AMBIGUOUS");
+            if(!matches.isEmpty())return matches.getFirst();
+            var parents=headers.getOrDefault(new Identity(source,Json.string(anchor,"parent")),List.of());
+            anchor=parents.size()==1?parents.getFirst():null;
+        }
+        return null;
+    }
     private Map<String,Object> row(int position) {
-        return position<0?formalDeclarations.get(-position-1):Json.map(Json.list(model.get("declarations")).get(position));
+        if(position<0)return formalDeclarations.get(-position-1);
+        Map<String,Object> modeled=modeledRows.get(position);
+        return modeled!=null?modeled:Json.map(Json.list(model.get("declarations")).get(position));
     }
     public boolean hasModeledDeclarations() {catalogue();return modeled;}
     public List<DeclarationRef> declarations(String source) {
@@ -405,6 +478,6 @@ public final class DetachedJavaModel implements AutoCloseable {
         }
     }
     @Override public void close() {
-        if(closed)return;closed=true;units=null;positions=null;identities=null;types=null;parents=null;children=null;spans=null;syntax=null;syntaxSourceRows=null;sources.clear();formalDeclarations.clear();syntaxViews.clear();
+        if(closed)return;closed=true;units=null;positions=null;identities=null;types=null;parents=null;children=null;spans=null;syntax=null;syntaxSourceRows=null;sources.clear();formalDeclarations.clear();modeledRows.clear();syntaxViews.clear();
     }
 }

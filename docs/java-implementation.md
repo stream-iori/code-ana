@@ -410,3 +410,16 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 根因 / 修复 | 紧凑辅助AST的VARIABLE没有绑定`symbol`，旧Lombok初始化扫描把它当必填。仅对存在的非空绑定读取symbol；辅助字段继续使用javac声明头`has_initializer`。Lombok内置版本8→9，缓存/扩展指纹随之失效。其他语法消费者已核对可选绑定处理。 |
 | 回归终态 | `aux-syntax-lombok-supplemental-fixed`12项91.835秒、`full-fixed`16项143.015秒、`module-cache-fixed`9项114.460秒、`module-overlay-fixed`9项147.976秒均通过。新增明确拒绝扩展回调失败的断言，原javac未知getter诊断继续保留。 |
 | 仍待 | 含Lombok9的成套native/daemon完整回归及冻结iopengw全40模块、80上下文、14域差分。旧Lombok8正式运行主动终止并保存superseded说明，不能拼接旧回执认定新版通过；容量最后执行。 |
+
+## Lombok 生成声明的扩展导航补齐（2026-10-03）
+
+| 项目 | 实现 / 验证 |
+|---|---|
+| 生成成员 | 只读模型补齐生成参数、Builder/SuperBuilder 类型参数、父链和切片。源类型参数保留 javac 原位置，额外 C/B 与生成参数保持无跨度；默认值 provider 沿字段父链查原类类型参数。原始记录不因导航重写。 |
+| 源码锚点 | Data 使用原字段/类；方法目标 Builder 的生成类及基础方法使用原类，参数字段/setter 使用原参数。来源环、父环、深度和歧义受保护。 |
+| 生产缺口 | 补齐 SuperBuilder 抽象 builder 默认构造器，`modeled_implicit=true`、无源码跨度、Lombok 来源，非 javac 确认。Lombok 版本 10；registry `staged-project-view-v10-model-api-generated-members`，旧缓存失效。 |
+| 独立参考 | 实际冻结 LombokJavaModelExtension 消费同一次 SDK8 编译模型，不输入产品生成声明。17 组 JVM 默认模式及 native 摘要模式全部通过，无输入/工件漂移。证据：`model-api-reference-20261003-232302-49991/receipt.json`、`model-api-reference-20261003-232302-49990/receipt.json`（均在 target/java-alignment/evidence 下）。覆盖 Data、泛型/默认值/SuperBuilder、方法及泛型方法目标。 |
+| 参考缺陷 | 两例仍 raw 不相等：重复类型丢第二跨度；冻结扩展拒绝 Singular 前删除隐式构造器。独立未增强参考模型证明构造器存在，产品保留。Singular 不属于参考受支持能力。 |
+| 事实回归 | Builder 14 项、SuperBuilder 8 项 JVM 回归通过，含泛型 owner、继承调用恢复、full-delta/删除及无跨度构造器的非确认状态。测试 native 可执行文件不代替共享库/Rust/daemon 验收。 |
+| 门禁修复 | 旧完整回归的 41 组、391 项 Java 测试通过，随后默认导航对照失败：参考重新发现坏 UTF-8 或重规划注解依赖。工具明确使用原 SDK8 单上下文，坏文件只在参考侧排除，产品原字节和诊断继续验证；旧失败不覆盖。 |
+| 仍待 | 最新同版共享库/daemon、40 模块/80 上下文/14 域与最后的容量/release。app/test@TEST 另发现图表固定 64MiB 与显式 1GiB 归档预算冲突，待修复。矩阵仍只关闭 E01/E02。 |

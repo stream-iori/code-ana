@@ -15,6 +15,10 @@ class SuperBuilders(unittest.TestCase):
  def test_super_concrete_generic_defaults_and_finite_self_bounds(self):
   facts=self.analyze([self.fixture('@lombok.experimental.SuperBuilder class A<T extends Number> { T value; @lombok.Builder.Default int count=7; }')])['facts']
   b=self.declaration(facts,'A$ABuilder');impl=self.declaration(facts,'A$ABuilderImpl')
+  implicit=self.declaration(facts,'A$ABuilder#<init>()')
+  self.assertEqual(implicit['origin'],'lombok_model')
+  self.assertFalse(implicit['declaration_resolved']);self.assertFalse(implicit['evidence_complete'])
+  self.assertIsNone(implicit['span']);self.assertTrue(implicit['attributes']['modeled_implicit'])
   self.assertEqual(b['attributes']['modifiers'],['public','static','abstract'])
   self.assertEqual(impl['attributes']['modifiers'],['private','static','final'])
   self.assertEqual([f['name'] for f in type_attributes(b)['type_parameter_models']],['T','C','B'])

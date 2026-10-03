@@ -35,6 +35,14 @@ _AUXILIARY={'Aux.java':'''package p; class Aux {Aux(){} static Object value=new 
  'Use.java':'package p; class Use {Use(){} Aux value;}'}
 CASES['auxiliary-headers']=_AUXILIARY
 CASES['auxiliary-full-model']=_AUXILIARY
+CASES['lombok-data']={'App.java':'package p; @lombok.Data class Use {String name; int count;}'}
+CASES['lombok-generic-builder']={'App.java':'package p; @lombok.Builder class Box<T extends Number> {T value; int count;}'}
+CASES['lombok-singular-unsupported']={'App.java':'package p; @lombok.Builder class Use {Use(){} @lombok.Singular java.util.List<String> items; @lombok.Singular java.util.Map<String,Integer> labels;}'}
+CASES['lombok-default-builder']={'App.java':'package p; @lombok.Builder class Box<T> {@lombok.Builder.Default java.util.List<T> values=new java.util.ArrayList<T>();}'}
+CASES['lombok-super-builder']={'App.java':'package p; @lombok.experimental.SuperBuilder class Box<T extends Number> {T value;}'}
+CASES['lombok-method-builder']={'App.java':'package p; class Use {@lombok.Builder static String make(int count){return "";}}'}
+CASES['lombok-generic-method-builder']={'App.java':'package p; class Use {@lombok.Builder static <T extends Number> java.util.List<T> make(T value){return null;}}'}
+CASES['lombok-singular-reference-constructor']={'App.java':'package p; @lombok.Builder class Use {@lombok.Singular java.util.List<String> items;}'}
 
 
 def normalize(value):
@@ -82,10 +90,23 @@ def main():
         for name,files in CASES.items():
             case=models.Models();case.setUp();base=evidence/name;base.mkdir();case.root=base/'inputs';case.root.mkdir()
             try:
+                modeled=name.startswith('lombok-')
+                if modeled:
+                    from java_lombok_alignment import Lombok
+                    files=Lombok.files(case,next(iter(files.values())))
+                    files['lombok/Builder.java']='package lombok; public @interface Builder { public @interface Default {} }'
+                    files['lombok/Singular.java']='package lombok; public @interface Singular {String value() default ""; boolean ignoreNullCollections() default false;}'
+                    files['lombok/experimental/SuperBuilder.java']='package lombok.experimental; public @interface SuperBuilder {boolean toBuilder() default false;}'
                 context=case.context('app',files)
+                if modeled:
+                    context=Lombok.controls(case,context,{'lombok.config':'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n'})
+                    context['lombok']='model'
                 request=dict(version=5,facts=False,java_home=str(models.JDK8),bridge=str(root/'lang-adaptor/target/compiler-bridge.jar'),
                     scratch=str(case.root),contexts=[context],model_type_queries=['p.Outer','p.Outer.Inner','p.Outer$Inner','p.Flow','p.Dup','p.Missing'])
                 if args.inventory:request.update(model_api_inventory=True,model_api_exact_context=True)
+                if modeled:request.update(model_api_lombok=True,model_api_project=str(case.root),model_api_exact_context=True,
+                    model_type_queries=['p.Use','p.Use$UseBuilder','p.Use$StringBuilder','p.Use$ListBuilder',
+                        'p.Box','p.Box$BoxBuilder','p.Box$BoxBuilderImpl','p.Missing'])
                 if name.startswith('auxiliary-'):
                     next(source for source in context['sources'] if source['path']=='app/Aux.java')['publish']=False
                     context['full_auxiliary_model']=name=='auxiliary-full-model'
@@ -109,7 +130,8 @@ def main():
                     (base/'compiler-receipt.json').write_bytes(compiled.stdout)
                     queries=archive_inventory(archive,{'app/Healthy.java'},invalid)
                     request.update(model_type_queries=queries,model_api_excluded_sources=sorted(invalid),
-                        model_api_archive=str(archive),model_api_archive_sha256=functional.digest(archive))
+                        model_api_archive=str(archive),model_api_archive_sha256=functional.digest(archive),
+                        model_api_exact_context=True)
                     reference_request=dict(request,contexts=[dict(context,sources=[s for s in context['sources'] if s['path'] not in invalid])])
                 path=base/'request.json';path.write_text(json.dumps(request));values={}
                 reference_path=base/'reference-request.json';reference_path.write_text(json.dumps(reference_request))
@@ -139,7 +161,29 @@ def main():
                         and len(product_classes)==len(reference_classes)==2 and all(r['start']>=0 for r in product_classes)
                         and sum(r['start']<0 for r in reference_classes)==1 and left['syntax']==right['syntax'] and left['sources']==right['sources'])
                     if not proof['reference_defect_reproduced']:raise AssertionError('MODEL_API_DUPLICATE_DEFECT_CHANGED')
-                elif not equal:raise AssertionError('MODEL_API_REFERENCE_DIFFERENCE: '+name)
+                elif name=='lombok-singular-reference-constructor':
+                    # The frozen extension removes the javac implicit constructor
+                    # before rejecting unsupported Singular. Preserve the actual
+                    # compiler declaration and retain the original gap as evidence.
+                    baseline_request=base/'reference-unaugmented-request.json'
+                    baseline_request.write_text(json.dumps(dict(reference_request,model_api_lombok=False,
+                        scratch=str(base/'reference-unaugmented-scratch'))))
+                    baseline=subprocess.run([str(models.JDK25/'bin/java'),'-cp',reference_cp,
+                        'dev.codeana.analysis.DetachedModelApiReferenceProbe',str(baseline_request)],
+                        capture_output=True,text=True,timeout=180)
+                    (base/'reference-unaugmented.json').write_text(baseline.stdout)
+                    (base/'reference-unaugmented.log').write_text(baseline.stderr)
+                    if baseline.returncode:raise RuntimeError('reference baseline '+baseline.stderr[-4000:])
+                    original=normalize(json.loads(baseline.stdout))
+                    lost=[row for row in left['rows'] if row['source']=='app/App.java' and row['kind']=='CONSTRUCTOR']
+                    without=dict(left,rows=[dict(row,members=[m for m in row['members'] if m['kind']!='CONSTRUCTOR'])
+                        if row['source']=='app/App.java' else row for row in left['rows'] if row not in lost])
+                    proof['reference_defect_reproduced']=(not equal and left==original and len(lost)==1
+                        and lost[0]['start']==lost[0]['end']==-1 and without==right)
+                    if not proof['reference_defect_reproduced']:raise AssertionError('MODEL_API_SINGULAR_DEFECT_CHANGED')
+                elif not equal:
+                    (base/'diff.json').write_text(json.dumps(dict(proof=proof,product=left,reference=right),ensure_ascii=False,indent=2)+'\n')
+                    raise AssertionError('MODEL_API_REFERENCE_DIFFERENCE: '+name)
                 (base/'diff.json').write_text(json.dumps(dict(proof=proof,product=left,reference=right),ensure_ascii=False,indent=2)+'\n')
                 receipt['cases'].append(proof)
             finally:case.doCleanups()

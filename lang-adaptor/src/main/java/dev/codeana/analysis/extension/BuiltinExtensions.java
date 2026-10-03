@@ -31,7 +31,7 @@ public final class BuiltinExtensions {
         }
 
         public String version() {
-            return "9";
+            return "10";
         }
 
         public String producer() {

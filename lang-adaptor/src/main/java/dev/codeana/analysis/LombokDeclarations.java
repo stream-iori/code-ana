@@ -754,6 +754,9 @@ final class LombokDeclarations {
                         builderFormals,
                         superclass,
                         List.of("public", "static", "abstract"));
+        Map<String, Object> implicitConstructor =
+                method(builder, owner, "<init>", List.of(), primitive("void"), List.of("public"), "super_builder");
+        if (implicitConstructor != null) attrs(implicitConstructor).put("modeled_implicit", true);
         List<Map<String, Object>> selected =
                 fields.stream()
                         .filter(

@@ -56,6 +56,16 @@ public final class DetachedModelApiGuards {
             fails("CLOSED",()->model.declarations("Use.java"));
         }
         try(var model=view(source,bytes,List.of(row("A","B"),row("B","A")))) {fails("PARENT_CYCLE",()->model.type("A"));}
+        Map<String,Object> generatedA=row("GeneratedA",""),generatedB=row("GeneratedB","");
+        for(var generated:List.of(generatedA,generatedB)) {
+            generated.put("generated",true);generated.put("start",-1);generated.put("end",-1);
+            Json.map(generated.get("attributes")).put("binding_origin","lombok_model");
+        }
+        Json.map(generatedA.get("attributes")).put("generated_from","GeneratedB");
+        Json.map(generatedB.get("attributes")).put("generated_from","GeneratedA");
+        try(var model=view(source,bytes,List.of(generatedA,generatedB))) {
+            fails("MODELED_ORIGIN_CYCLE",()->model.type("GeneratedA"));
+        }
         List<Object> deep=new ArrayList<>();for(int i=0;i<131;i++)deep.add(row("A"+i,i==0?"":"A"+(i-1)));
         try(var model=view(source,bytes,deep)) {fails("DEPTH_BUDGET",()->model.type("A0"));}
         try(var model=view(source,bytes,Collections.nCopies(100001,row("A","")))) {fails("DECLARATION_BUDGET",()->model.type("A"));}
