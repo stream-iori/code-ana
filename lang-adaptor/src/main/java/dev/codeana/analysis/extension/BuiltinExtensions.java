@@ -136,7 +136,7 @@ public final class BuiltinExtensions {
         }
 
         public String version() {
-            return "6";
+            return "7";
         }
 
         public String producer() {

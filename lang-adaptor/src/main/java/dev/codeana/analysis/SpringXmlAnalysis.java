@@ -848,6 +848,8 @@ public final class SpringXmlAnalysis {
                                         node.attributes,
                                         "nested",
                                         node.parent != null && !node.parent.name.equals("beans")));
+                Json.map(registered.get("attributes")).put("xml_configuration_model",
+                        SpringXmlConfiguration.describe(doc.model, node));
                 registered.put("name", bean.name);
                 if (declaration != null) registered.put("parent", declaration.get("id"));
                 else if (!node.attr("abstract").equalsIgnoreCase("true") || !bean.type.isEmpty())

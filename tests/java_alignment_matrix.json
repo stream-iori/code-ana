@@ -874,7 +874,11 @@
         "tests/java_graph_consumer_alignment.py",
         "tests/java_xml_reference_alignment.py",
         "tests/java_xml_wiring_reference.py",
-        "tests/java_xml_wiring_inventory_diff.py"
+        "tests/java_xml_wiring_inventory_diff.py",
+        "tests/java_xml_model_reference_alignment.py",
+        "tests/java_xml_model_inventory_diff.py",
+        "lang-adaptor/src/main/java/dev/codeana/analysis/SpringXmlConfiguration.java",
+        "crates/model/src/java_xml_configuration.rs"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -888,7 +892,9 @@
         "xml-reference",
         "xml-reference-native",
         "xml-reference-defect",
-        "xml-reference-defect-native"
+        "xml-reference-defect-native",
+        "xml-model-reference",
+        "xml-model-reference-native"
       ],
       "remaining_acceptance": [
         "SOURCE/JAR XML 类型提示、参数索引、别名实参和工厂重载已实现；当前Spring5/injection3。完整XML属性/原生产品矩阵及40模块参考语义仍待验收。",

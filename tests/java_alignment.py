@@ -86,6 +86,7 @@ def main():
         ('xml-reference', [sys.executable, 'tests/java_xml_reference_alignment.py'], 360),
         ('xml-reference-defect', [sys.executable, 'tests/java_xml_reference_alignment.py', '--reference-defect'], 360),
         ('sofa-xml-reference', [sys.executable, 'tests/java_sofa_xml_reference_alignment.py'], 360),
+        ('xml-model-reference', [sys.executable, 'tests/java_xml_model_reference_alignment.py'], 600),
         ('maven-export', [sys.executable, 'tests/java_maven_export.py'], 180),
         ('maven-mediation', [sys.executable, 'tests/java_maven_alignment.py'], 240),
         ('rust-format', ['cargo', 'fmt', '--all', '--', '--check'], 60),
@@ -118,6 +119,7 @@ def main():
             ('xml-reference-native', [sys.executable, 'tests/java_xml_reference_alignment.py', '--native'], 360),
             ('xml-reference-defect-native', [sys.executable, 'tests/java_xml_reference_alignment.py', '--native', '--reference-defect'], 360),
             ('sofa-xml-reference-native', [sys.executable, 'tests/java_sofa_xml_reference_alignment.py', '--native'], 360),
+            ('xml-model-reference-native', [sys.executable, 'tests/java_xml_model_reference_alignment.py', '--native'], 600),
             ('native-product-ipc', ['cargo', 'run', '-p', 'codeana-application', '--example', 'java_worker_ipc', '--locked'], 240),
         ]
     if args.level == 'full':

@@ -1060,3 +1060,13 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 ## XML 接线补齐（2026-10-03）
 
 Rust derived-wiring-3 与 Java Spring 6 已补配置类/产物身份及 XML wires_possible；真实 native/daemon 4 项通过，两组 XML 接线各 6/6 严格参考一致，删除/全量增量/旧版本均通过。历史全项目缺失269条保留为失败，新版数量仍待重验。完整 JVM 正在运行；完整 XML 图/属性、iopengw 全语义和最后容量/发行仍未关闭，不能据专项结果勾选剩余50项。证据见 [执行记录](../docs/implementation/java-alignment-execution.md)。
+
+## XML 配置模型完整属性（2026-10-03）
+
+| 项目 | 实现 / 证据 |
+|---|---|
+| Java | Spring 7 在既有封存 XmlModel 上输出平面 xml_configuration_model v1；构造属性、别名链、匿名/嵌套 Bean、全部配置节点、隐式列表 index、顺序及 SAX 位置与冻结 SpringBeanParser 对齐。属性生成的 ref/value 明确 synthetic，并保留原包含元素字节 span；没有第二套 XML 解析器或 Rust 类型推断。 |
+| Rust | 只校验公共格式、森林身份和源码边界；悬空/重复索引、循环、不完整根、非法类型与越界 span 拒绝。xml-config-model-rust.log：workspace 98 项通过；Clippy、fmt、release 构建通过。 |
+| 独立 JVM | xml-model-reference-20261003-172939-23661：baseline/body/declaration 三组各 7/7 严格相等，17.611 秒，全量/增量相等，无输入或产物漂移。实际冻结解析器 DTO 与其发布 XML 图也逐项相等；真实 Java 输出通过 Rust 校验，重复根反例被拒绝。XML 原回归 12 项通过。 |
+| 测试工具 | 普通 Cargo example 路径曾指向旧可执行文件，无法拒绝新格式反例；保留原失败。新对照入口在证据目录单独构建并冻结实际 Rust 校验器 SHA，正例及破坏反例均执行该文件。 |
+| 剩余 | native/daemon 的新模型组合、完整 XML 绑定/边属性、iopengw 全域差分仍待执行。公开旧库缺模型时明确 schema_gap，不用推测属性补齐；52 项仍仅 E01/E02 关闭。 |

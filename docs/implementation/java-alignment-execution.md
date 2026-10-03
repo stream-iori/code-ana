@@ -896,3 +896,13 @@ declared-field-final/field-reference-20261003-163522-93718 native三组24/24严�
 | 完整 native 终态 | validation-java-current/native-fixtures-20261003-163907：177 项通过、1311.19 秒，无源码/产物漂移；这是前一个 1dd587f 组合，不替代新 XML 组合的完整重验。 |
 | JVM 环境失败 | current-java-full-jvm-20261003-163903 因验收目录漏复制 native-classpath.txt，大量命令启动前失败；回执保留。新入口预检桥/类/依赖，并冻结 classpath 文件和所有依赖 SHA。完整产物目录中的 xml-wiring-full-jvm 正在重验。 |
 | 安装 / 剩余 | 根目录已成套安装 7a26bfa 的 native/SDK8 bridge；root Maven worker 86f604bf... 外部控制仍保持，未影响正在运行的旧组合 iopengw。仍须新版全部 daemon、完整 XML 图/绑定属性、40 模块语义差分、独占容量和最终发行；52 项仅 E01/E02 关闭。 |
+
+## XML 配置模型完整属性（2026-10-03）
+
+| 项目 | 实现 / 证据 |
+|---|---|
+| Java | Spring 7 在既有封存 XmlModel 上输出平面 xml_configuration_model v1；构造属性、别名链、匿名/嵌套 Bean、全部配置节点、隐式列表 index、顺序及 SAX 位置与冻结 SpringBeanParser 对齐。属性生成的 ref/value 明确 synthetic，并保留原包含元素字节 span；没有第二套 XML 解析器或 Rust 类型推断。 |
+| Rust | 只校验公共格式、森林身份和源码边界；悬空/重复索引、循环、不完整根、非法类型与越界 span 拒绝。xml-config-model-rust.log：workspace 98 项通过；Clippy、fmt、release 构建通过。 |
+| 独立 JVM | xml-model-reference-20261003-172939-23661：baseline/body/declaration 三组各 7/7 严格相等，17.611 秒，全量/增量相等，无输入或产物漂移。实际冻结解析器 DTO 与其发布 XML 图也逐项相等；真实 Java 输出通过 Rust 校验，重复根反例被拒绝。XML 原回归 12 项通过。 |
+| 测试工具 | 普通 Cargo example 路径曾指向旧可执行文件，无法拒绝新格式反例；保留原失败。新对照入口在证据目录单独构建并冻结实际 Rust 校验器 SHA，正例及破坏反例均执行该文件。 |
+| 剩余 | native/daemon 的新模型组合、完整 XML 绑定/边属性、iopengw 全域差分仍待执行。公开旧库缺模型时明确 schema_gap，不用推测属性补齐；52 项仍仅 E01/E02 关闭。 |

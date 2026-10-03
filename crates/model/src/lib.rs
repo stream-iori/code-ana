@@ -1,5 +1,6 @@
 //! Storage- and transport-independent analysis facts and product contracts.
 pub mod java_type_graph;
+mod java_xml_configuration;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -280,6 +281,7 @@ impl<'a> FactValidator<'a> {
                     || f.relation == "java.binding"
                         && f.attributes.get("schema_version") == Some(&serde_json::json!(4))),
         )?;
+        java_xml_configuration::validate(f, self.files.get(f.source.as_str()).map(|s| s.size))?;
         if f.kind == FactKind::Facet {
             if !matches!(
                 f.relation.as_str(),
