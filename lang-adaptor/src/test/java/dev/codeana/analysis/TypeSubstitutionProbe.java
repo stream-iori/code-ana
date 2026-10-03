@@ -15,7 +15,7 @@ public final class TypeSubstitutionProbe {
         for (int i = 0; i < 40; i++)
             tree = Json.object("version", 2, "kind", "DECLARED", "element", "Box", "arguments", List.of(tree));
         Map<String, Object> pair = Json.object("version", 2, "kind", "DECLARED", "element", "Pair", "arguments", List.of(tree, variable));
-        Map<String, Object> model = Json.object("version", 6, "context", "sharing");
+        Map<String, Object> model = Json.object("version", dev.codeana.common.ModelArchive.VERSION, "context", "sharing");
         for (String section : List.of("sources", "declarations", "observations", "syntax", "external", "annotation_types", "diagnostics"))
             model.put(section, new ArrayList<>());
         Json.list(model.get("declarations")).add(Json.object("type", pair));

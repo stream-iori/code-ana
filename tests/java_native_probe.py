@@ -34,8 +34,8 @@ def main():
         source = root/'App.java'
         shutil.copyfile(ROOT/'tests/fixtures/java-native/base/src/p/App.java',source)
         record = dict(path='src/p/App.java', input=str(source), hash=hashlib.sha256(source.read_bytes()).hexdigest())
-        context = dict(version=7,context='probe-8',sources=[record],classpath=[])
-        request = dict(version=2,java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=[context])
+        context = dict(version=8,context='probe-8',sources=[record],classpath=[])
+        request = dict(version=5,java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=[context])
         path = root/'request.json';path.write_text(json.dumps(request))
         env = dict(os.environ, JAVA_HOME='/invalid', PATH='', JAVA_TOOL_OPTIONS='-invalid-option')
         result = subprocess.run([str(ROOT/'target/debug/codeana-java-worker'),str(BUNDLE),'--probe',str(path)], env=env,capture_output=True,text=True,timeout=150)
@@ -91,8 +91,8 @@ def main():
             file=root/(name.upper()+'.java')
             file.write_text('class '+name.upper()+' { void run(){ System.out.println("'+name+'"); } }')
             unit=dict(path=name+'/'+file.name,input=str(file),hash=hashlib.sha256(file.read_bytes()).hexdigest(),world='world-'+name,module=name,scope='MAIN',publish=True)
-            contexts.append(dict(version=7,context=name+'@MAIN',module=name,world=unit['world'],scope='MAIN',sources=[unit],classpath=[],digest=unit['hash'],lombok='off',spring=False,spring_xml=False,sofa=False,resources=[]))
-        request=dict(version=2,facts=True,full=True,baseline=[],java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=contexts,parallelism=2)
+            contexts.append(dict(version=8,context=name+'@MAIN',module=name,world=unit['world'],scope='MAIN',sources=[unit],classpath=[],digest=unit['hash'],lombok='off',spring=False,spring_xml=False,sofa=False,resources=[]))
+        request=dict(version=5,facts=True,full=True,baseline=[],java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=contexts,parallelism=2)
         path.write_text(json.dumps(request))
         parallel=subprocess.run([str(ROOT/'target/debug/codeana-java-worker'),str(BUNDLE),'--probe',str(path)],capture_output=True,text=True,timeout=150)
         assert parallel.returncode==0,parallel.stderr
@@ -107,8 +107,8 @@ def main():
                           ('B','class B { void call(){ System.out.println(new A().text()+"old"); } }')]:
             file=root/(name+'.java');file.write_text(text)
             cache_sources.append(dict(path='cache/'+file.name,input=str(file),hash=hashlib.sha256(file.read_bytes()).hexdigest(),world='world-cache',module='cache',scope='MAIN',publish=True))
-        cache_context=dict(version=7,context='cache@MAIN',module='cache',world='world-cache',scope='MAIN',sources=cache_sources,classpath=[],digest=hashlib.sha256(json.dumps([(s['path'],s['hash']) for s in cache_sources]).encode()).hexdigest(),lombok='off',spring=False,spring_xml=False,sofa=False,resources=[])
-        request=dict(version=2,facts=True,full=True,baseline=[],java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=[cache_context],parallelism=1,profile='native-probe',signature_cache=True,cache_root=str(root/'cache'))
+        cache_context=dict(version=8,context='cache@MAIN',module='cache',world='world-cache',scope='MAIN',sources=cache_sources,classpath=[],digest=hashlib.sha256(json.dumps([(s['path'],s['hash']) for s in cache_sources]).encode()).hexdigest(),lombok='off',spring=False,spring_xml=False,sofa=False,resources=[])
+        request=dict(version=5,facts=True,full=True,baseline=[],java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=[cache_context],parallelism=1,profile='native-probe',signature_cache=True,cache_root=str(root/'cache'))
         path.write_text(json.dumps(request))
         first=subprocess.run([str(ROOT/'target/debug/codeana-java-worker'),str(BUNDLE),'--probe',str(path)],capture_output=True,text=True,timeout=150)
         assert first.returncode==0,first.stderr
@@ -152,7 +152,7 @@ def main():
         files=MVC|{'Other.java':f'@{API}.RestController class Other {{ @{API}.GetMapping("/other") String route(){{return "other";}} }}',
                    'Use.java':f'@{API}.RestController class Use {{ void grow(){{System.out.println("short"+new Other().route());}} @{API}.GetMapping("/item") void route(){{}} }}'}
         framework=fixture.context('app',files,spring=True)
-        request=dict(version=2,facts=True,full=True,baseline=[],java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=[framework],parallelism=1,profile='native-framework',signature_cache=True,cache_root=str(root/'framework-cache'))
+        request=dict(version=5,facts=True,full=True,baseline=[],java_home=str(JDK),bridge=str(TARGET/'compiler-bridge.jar'),scratch=str(root),contexts=[framework],parallelism=1,profile='native-framework',signature_cache=True,cache_root=str(root/'framework-cache'))
         def native_facts():
             path.write_text(json.dumps(request))
             result=subprocess.run([str(ROOT/'target/debug/codeana-java-worker'),str(BUNDLE),'--probe',str(path)],capture_output=True,text=True,timeout=150)
@@ -295,7 +295,7 @@ def main():
             request.update(contexts=[context],full=True,baseline=[],signature_cache=False)
             old=native_facts()['facts'];binary_xml.assert_binary_xml(old)
             from java_model_tests import compact_request
-            legacy_request=request;request=compact_request(request);request['version']=3
+            legacy_request=request;request=compact_request(request);request['version']=5
             assert native_facts()['facts']==old
             request=legacy_request
             resource=binary_xml.root/'xml/0'
@@ -319,7 +319,7 @@ def main():
             request.update(contexts=labels.labeled_contexts(),full=True,baseline=[],signature_cache=False)
             old=native_facts()['facts'];labels.assert_labeled_facts(old)
             legacy_request=request
-            request=compact_request(request);request['version']=3
+            request=compact_request(request);request['version']=5
             assert native_facts()['facts']==old
             request=legacy_request
             request.update(contexts=labels.labeled_contexts('"b"'),full=False,baseline=old)

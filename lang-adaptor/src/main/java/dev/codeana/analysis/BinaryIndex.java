@@ -56,7 +56,7 @@ public final class BinaryIndex implements AutoCloseable {
         if (cacheWeight < 0 || cacheWeight > MAX_CLASS_CACHE_WEIGHT)
             throw new IllegalArgumentException("BINARY_CACHE_BUDGET");
         maximumClassWeight = cacheWeight;
-        typeGraph = Boolean.TRUE.equals(context.get("type_graph"));
+        typeGraph = !Boolean.FALSE.equals(context.get("type_graph"));
         for (Object item : Json.list(context.get("classpath")))
             archives.add(Path.of((String) item));
         classpathSize = archives.size();

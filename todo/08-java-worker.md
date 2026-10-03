@@ -959,3 +959,18 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | JVM | validation-default-type-graph/.../pool-order-jvm-final.log：13项、25.859秒通过。首轮构建与测试重叠导致文件缺失的入口错误单独保留，该轮不算通过。 |
 | 完整高级 native | 同工作树 type-graph-bindings-native-20261003-124525/receipt.json：213项、730.074秒、all_ok=true，无源码或产物漂移。包括此前失败的池大小2/4/8与Lombok并行检查。 |
 | 边界 | 本检查点保持compiler7/model6/worker10/request4、图opt-in。默认图及原子版本升级在另一个冻结工作树验收；不据此关闭52项、真实全语义或容量门禁。 |
+
+
+## 默认平面类型图的原子切换（2026-10-03）
+
+| 项目 | 实现 / 已有证据 |
+|---|---|
+| 产品默认 | Rust worker 显式传图模式；直接native/SDK8未传开关亦默认图，非boolean开关拒绝。Java语义、模型和扩展仍在lang-adaptor；Rust承担校验与查询。 |
+| 版本 | compiler8 / model7 / worker11 / analysis request5；ABI2、Fact IR1和CLI-daemon1不变。清单另记录默认图、type schema3、binding schema4；旧版本或缺项拒绝。文件/模块缓存format升为v10/v6-model7，图与显式旧树不复用。 |
+| 原始证据 | 泛型、递归、ASM、生成类型及TYPE_USE用共享图；恢复仍保留原始javac错误与不完整结论。NoCode原有二进制深度/节点边界、SOURCE回退和恢复预算不放宽。 |
+| 默认native | validation-type-graph-v7/.../default-type-graph-native-20261003-125639：41项、103.324秒，all_ok=true，无输入/产物漂移；包含80层、递归、复杂NoCode、full-delta、缓存图/树负例和混装/旧协议拒绝。 |
+| 消费者native | type-graph-consumers-native-20261003-125924：110项、437.435秒通过，无漂移；框架、XML、反射、模块缓存、provided证明与属性/增量断言不改写。 |
+| 高级绑定native | type-graph-bindings-native-20261003-125924：213项通过，无漂移；完整类型读取和绑定/Lombok/缓存/并行断言。 |
+| 冻结参考 | functional-reference-20261003-125924-96138：40组实际native调用投影严格相等。仅专项调用证明，不代替完整模型/框架/真实项目验收。 |
+| 实际daemon | 未传用户开关的80/81层类型、schema3/4、dispatch、增量/全量和旧revision专项通过；完整JVM与daemon在冻结工作树继续运行。测试入口误收集父类的失败回执保留；主动SIGINT停止的旧JVM轮次也单独记账，无安全软件杀进程。 |
+| 剩余 | 同版本完整JVM/daemon终态、40模块语义、全部扩展、Rust持久缓存、独占容量及发行门禁仍未关闭；52项仍仅E01/E02关闭。 |

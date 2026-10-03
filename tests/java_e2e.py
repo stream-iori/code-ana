@@ -2,6 +2,7 @@
 """Production Java worker acceptance; no mock fixtures or product fault switches."""
 import json, os, pathlib, shutil, sqlite3, subprocess, tempfile, time, unittest
 import rust_e2e as harness
+from java_type_views import type_attributes
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 BIN=pathlib.Path(os.environ.get('CODEANA_TEST_BIN', ROOT/'target/debug'))
 JDK=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME', pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu')).resolve()
@@ -11,6 +12,48 @@ class JavaProduct(unittest.TestCase):
     stop=harness.Product.stop
     cleanup=harness.Product.cleanup
     daemon_log=harness.Product.daemon_log
+
+    def test_default_type_graph_deep_source_native_queries_and_delta(self):
+        shutil.rmtree(self.project/'src')
+        (self.project/'src').mkdir()
+        source = self.project/'src/Deep.java'
+        def write(depth):
+            source.write_text('class Leaf {} class Box<T> {} class Deep { '
+                              +'Box<'*depth+'Leaf'+'>'*depth+' value; '
+                              +'String read(){return String.valueOf(1);} }')
+        def verify(facts, depth):
+            field = next(f for f in facts if f['kind']=='declaration' and f['signature']=='Deep#value')
+            self.assertIn('$java_type',field['attributes']['type_model'])
+            value = type_attributes(field)['type_model']
+            for level in range(depth):
+                self.assertEqual(value['element'],'Box',level)
+                self.assertTrue(value['complete'])
+                value = value['arguments'][0]
+            self.assertEqual(value['element'],'Leaf')
+            self.assertTrue(value['complete'])
+            self.assertTrue([f for f in facts if f['relation']=='java.type' and f['attributes']['schema_version']==3])
+            self.assertTrue([f for f in facts if f['relation']=='java.binding' and f['attributes']['schema_version']==4])
+            self.assertFalse([f for f in facts if f['kind']=='diagnostic'])
+            return field
+        write(80)
+        _, initial = self.cli('index','--full',timeout=180)
+        before = self.facts(initial['revision'])
+        field = verify(before,80)
+        rows, _ = self.cli('references',field['id'])
+        self.assertIsInstance(rows,list)
+        site = next(f for f in before if f['kind']=='call_site' and f['name']=='String.valueOf')
+        rows, terminal = self.cli('dispatch',site['id'])
+        self.assertTrue(terminal['evidence']['semantic'])
+        self.assertTrue(rows)
+        write(81)
+        _, delta = self.cli('index',timeout=180)
+        changed = self.facts(delta['revision'])
+        verify(changed,81)
+        _, full = self.cli('index','--full',timeout=180)
+        self.assertEqual(changed,self.facts(full['revision']))
+        self.assertEqual(before,self.facts(initial['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def java_worker_pid(self):
         rows=subprocess.check_output(['ps','-axo','pid=,ppid=,comm='],text=True)
         workers=[int(fields[0]) for line in rows.splitlines() if (fields:=line.split(None,2)) and len(fields)==3 and int(fields[1])==self.daemon.pid and 'codeana-java-worker' in fields[2]]
@@ -218,12 +261,12 @@ java_parallelism=1
         target = next(f for f in before if f['kind'] == 'call_target'
                       and by[f['target']]['signature'] == 'java.lang.Math#min(int,int)')
         site = by[target['parent']]
-        self.assertEqual(site['attributes']['expression_type_model']['kind'], 'ERROR')
+        self.assertEqual(type_attributes(site)['expression_type_model']['kind'], 'ERROR')
         records, terminal = self.cli('dispatch', site['id'])
         self.assertFalse(terminal['evidence']['semantic'])
         self.assertTrue(any(row.get('target') == target['target'] and row.get('possible') for row in records))
         provenance = next(f for f in before if f['kind'] == 'provenance' and f['source'] == 'test/p/Use.java')
-        proof = next(p for p in provenance['attributes']['supplemental_expression_evidence'] if p['node_kind'] == 'MULTIPLY')
+        proof = next(p for p in type_attributes(provenance)['supplemental_expression_evidence'] if p['node_kind'] == 'MULTIPLY')
         self.assertEqual(proof['type_model']['kind'], 'INT')
         self.assertTrue(proof['original_evidence_retained'])
         self.assertEqual(len(proof['signature_sha256']), 64)
@@ -287,7 +330,7 @@ java_parallelism=1
         self.assertEqual(len(targets), 8)
         self.assertNotIn('Child#builder()', {by[f['target']]['signature'] for f in targets})
         provenance = next(f for f in before if f['kind'] == 'provenance' and f['source'] == 'test/Use.java')
-        proof = next(p for p in provenance['attributes']['supplemental_receiver_evidence']
+        proof = next(p for p in type_attributes(provenance)['supplemental_receiver_evidence']
                      if p['receiver_type_model']['element'] == 'Child$ChildBuilder')
         self.assertEqual(proof['selected_declaration'], 'Parent$ParentBuilder#values(java.util.List)')
         self.assertTrue(proof['original_evidence_retained'])
@@ -299,7 +342,7 @@ java_parallelism=1
         self.assertFalse(any(f['kind'] == 'call_target' and ids[f['target']]['signature'] == 'Child$ChildBuilder#age(int)'
                              for f in changed))
         self.assertFalse(any(p['receiver_type_model'].get('element') == 'Child$ChildBuilder'
-                             for f in changed for p in f['attributes'].get('supplemental_receiver_evidence', [])))
+                             for f in changed for p in type_attributes(f).get('supplemental_receiver_evidence', [])))
         _, full = self.cli('index', '--full', timeout=180)
         self.assertEqual(changed, self.facts(full['revision']))
         self.assertEqual(before, self.facts(initial['revision']))
@@ -365,7 +408,7 @@ java_parallelism=1
             self.assertEqual(len(inner), 2)
             self.assertTrue(all(f['status'] == 'resolved' and f['evidence_complete'] for f in inner))
             constructor = next(f for f in targets if by_id[f['target']]['signature'] == 'java.util.HashMap#<init>()')
-            self.assertEqual([a['element'] for a in constructor['attributes']['recovered_return_type_model']['arguments']], ['java.lang.String', 'java.lang.String'])
+            self.assertEqual([a['element'] for a in type_attributes(constructor)['recovered_return_type_model']['arguments']], ['java.lang.String', 'java.lang.String'])
             self.assertIn('java.lang.ThreadLocal#withInitial(java.util.function.Supplier)', {by_id[f['target']]['signature'] for f in targets})
             for signature in ('java.util.stream.Stream#collect(java.util.stream.Collector)',
                               'java.util.stream.Collectors#toMap(java.util.function.Function,java.util.function.Function,java.util.function.BinaryOperator)',
@@ -373,7 +416,7 @@ java_parallelism=1
                 self.assertIn(signature, {by_id[f['target']]['signature'] for f in targets})
             setters = [f for f in targets if by_id[f['target']]['signature'] == 'p.ItemsContext#setItems(java.util.List)']
             self.assertEqual(len(setters), 1)
-            self.assertEqual(setters[0]['attributes']['recovered_parameter_type_models'][0]['arguments'][0]['element'], 'p.Rule')
+            self.assertEqual(type_attributes(setters[0])['recovered_parameter_type_models'][0]['arguments'][0]['element'], 'p.Rule')
             method = symbols['p.Use#read(p.Holder)']
             parameter_types = [f for f in facts if f['relation'] == 'type_reference' and f['parent'] == method['id'] and (f['target'] == symbols['p.Holder']['id'])]
             self.assertEqual(len(parameter_types), 1)
@@ -694,7 +737,7 @@ java_parallelism=1
             self.assertEqual(declarations[signature]['origin'],'lombok_model')
             self.assertFalse(declarations[signature]['declaration_resolved'])
         setter=declarations['A$ABuilder#value(java.lang.Number)']
-        self.assertEqual(setter['attributes']['parameter_type_models'][0]['owner'],'A$ABuilder')
+        self.assertEqual(type_attributes(setter)['parameter_type_models'][0]['owner'],'A$ABuilder')
         self.assertTrue(any(f['kind']=='call_target' and f['target']==setter['id'] and f['status']=='possible' for f in facts))
         path=self.project/'src/Bean.java'
         # The fixture's primary class filename is fixed by the shared annotation helper.
@@ -731,7 +774,7 @@ java_parallelism=1
         for signature in ('Child#builder()','Parent$ParentBuilder#name(java.lang.Object)','Child$ChildBuilder#value(java.lang.Number)','Child$ChildBuilder#count(int)','Child$ChildBuilder#build()'):
             self.assertIn(declarations[signature]['id'],targets,signature)
         call=next(f for f in facts if f['kind']=='call_site' and f['attributes'].get('lookup_name')=='value')
-        self.assertEqual(call['attributes']['recovered_parameter_type_models'][0]['element'],'java.lang.Integer')
+        self.assertEqual(type_attributes(call)['recovered_parameter_type_models'][0]['element'],'java.lang.Integer')
         path=next(p for p in (self.project/'src').glob('*.java') if 'class Child<' in p.read_text())
         path.write_text(path.read_text().replace('count=7','count=9').replace('value(1)','value("wrong")'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)
@@ -819,7 +862,7 @@ java_parallelism=1
         self.assertEqual(len(recovered),5)
         explicit = [f for f in recovered if f['attributes'].get('explicit_type_argument_models')]
         self.assertEqual(len(explicit),2)
-        self.assertTrue(all(f['attributes']['explicit_type_argument_models'][0]['element']=='java.lang.Integer' for f in explicit))
+        self.assertTrue(all(type_attributes(f)['explicit_type_argument_models'][0]['element']=='java.lang.Integer' for f in explicit))
         self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] and f['declaration_resolved'] for f in recovered))
         self.assertFalse([f for f in facts if f['kind']=='call_target' and by_id[f['parent']]['name']=='h.getApi().hidden'])
         pairs = [(by_id[f['parent']]['name'],by_id[f['target']]['signature']) for f in facts if f['kind']=='call_target']
@@ -1069,8 +1112,8 @@ java_parallelism=1
             return {rows[f['target']]['signature']:f for f in facts if f['kind']=='call_target' and rows[f['parent']]['name'].startswith('h.getApi().')}
         selected=targets(self.facts(first['revision']))
         self.assertEqual(set(selected),{'Api#values()','Api#make()'})
-        self.assertEqual(selected['Api#values()']['attributes']['recovered_return_type_model']['arguments'][0]['element'],'java.lang.String')
-        self.assertEqual(selected['Api#make()']['attributes']['recovered_return_type_model']['element'],'java.lang.String')
+        self.assertEqual(type_attributes(selected['Api#values()'])['recovered_return_type_model']['arguments'][0]['element'],'java.lang.String')
+        self.assertEqual(type_attributes(selected['Api#make()'])['recovered_return_type_model']['element'],'java.lang.String')
         self.assertTrue(all(f['status']=='possible' and f['origin']=='source_recovery' for f in selected.values()))
         app=self.project/'src/App.java';app.write_text(app.read_text().replace('String read(Holder h)','Number read(Holder h)'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)

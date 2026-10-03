@@ -75,9 +75,9 @@ class Models(unittest.TestCase):
    source=self.root/name/path;source.parent.mkdir(parents=True,exist_ok=True);source.write_text(text,encoding='utf8')
    sources.append(dict(path=name+'/'+path,input=str(source),hash=sha(source.read_bytes()),world=world,module=name,scope='MAIN',publish=True))
   digest=sha(json.dumps([(s['path'],s['hash']) for s in sources],sort_keys=True).encode())
-  return dict(version=7,context=name+'@MAIN',module=name,world=world,scope='MAIN',sources=sources,classpath=[],digest=digest,lombok='off',spring=False,spring_xml=False,sofa=False,resources=[])|options
+  return dict(version=8,context=name+'@MAIN',module=name,world=world,scope='MAIN',sources=sources,classpath=[],digest=digest,lombok='off',spring=False,spring_xml=False,sofa=False,resources=[])|options
  def analyze(self,contexts,baseline=None,parallelism=1,cache=False,compact=False):
-  request=dict(version=1,facts=True,full=baseline is None,baseline=baseline or [],java_home=str(JDK8),bridge=os.environ.get('CODEANA_TEST_BRIDGE',str(ROOT/'lang-adaptor/target/compiler-bridge.jar')),scratch=str(self.root),contexts=contexts,parallelism=parallelism)
+  request=dict(version=5,facts=True,full=baseline is None,baseline=baseline or [],java_home=str(JDK8),bridge=os.environ.get('CODEANA_TEST_BRIDGE',str(ROOT/'lang-adaptor/target/compiler-bridge.jar')),scratch=str(self.root),contexts=contexts,parallelism=parallelism)
   if cache:request.update(signature_cache=True,cache_root=str(self.root/'signature-cache'),profile='fixture-profile')
   if compact:request=compact_request(request)
   if hasattr(self,'mutate_request'):self.mutate_request(request)

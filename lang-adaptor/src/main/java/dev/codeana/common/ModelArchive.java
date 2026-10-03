@@ -5,9 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
-/** Compiler/model 5: framed rows, ordered sections, and shared immutable type trees. Java 8. */
+/** Model 7: framed rows, ordered sections, and shared immutable type graphs. Java 8. */
 public final class ModelArchive {
-    public static final int VERSION = 6;
+    public static final int VERSION = 7;
     private static final List<String> SECTIONS = Arrays.asList("sources", "declarations", "observations",
             "syntax", "external", "annotation_types", "diagnostics");
     private static final int MAX_ROWS = 2000000;

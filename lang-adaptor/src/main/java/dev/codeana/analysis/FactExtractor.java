@@ -157,7 +157,7 @@ public final class FactExtractor {
     private void flush() {
         if (pending != null) {
             Map<String, Object> output = pending;
-            if (Boolean.TRUE.equals(context.get("type_graph"))) {
+            if (!Boolean.FALSE.equals(context.get("type_graph"))) {
                 // Later recovery rows still read the call site's detached evidence.
                 // Encode the archive copy without replacing that evidence in memory.
                 output = new LinkedHashMap<>(pending);
@@ -276,7 +276,7 @@ public final class FactExtractor {
                 type.put(
                         "attributes",
                         Json.object(
-                                "schema_version", Boolean.TRUE.equals(context.get("type_graph")) ? 3 : 2,
+                                "schema_version", !Boolean.FALSE.equals(context.get("type_graph")) ? 3 : 2,
                                 "declared", attrs.get("type_model"),
                                 "return", attrs.get("return_type_model"),
                                 "parameters", attrs.get("parameter_type_models")));
@@ -359,7 +359,7 @@ public final class FactExtractor {
                 binding.put("relation", "java.binding");
                 // The call site owns the complete selected/declared/expression type evidence.
                 // Facets and confirmed targets point to that owner instead of copying its graph.
-                binding.put("attributes", Json.object("schema_version", Boolean.TRUE.equals(context.get("type_graph")) ? 4 : 3,
+                binding.put("attributes", Json.object("schema_version", !Boolean.FALSE.equals(context.get("type_graph")) ? 4 : 3,
                         "evidence_owner", site.get("id"), "resolved", resolved, "complete", complete));
                 binding.put("evidence_complete", complete);
                 if (resolved && !n.containsKey("modeled_target")

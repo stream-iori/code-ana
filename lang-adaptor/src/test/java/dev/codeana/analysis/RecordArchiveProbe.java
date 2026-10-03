@@ -45,7 +45,7 @@ public final class RecordArchiveProbe {
         rejected(() -> RecordArchive.open(archive, 10240, 2, Json.sha(archive)));
         Object type=Json.object("version",2,"kind","ARRAY","component",Json.object("version",2,"kind","DECLARED",
                 "display","example.AVeryLongTypeNameToVerifyInterning","element","example.AVeryLongTypeNameToVerifyInterning"));
-        Map<String,Object> model=Json.object("version",6,"context","fixture");
+        Map<String,Object> model=Json.object("version",dev.codeana.common.ModelArchive.VERSION,"context","fixture");
         for(String section:List.of("sources","declarations","observations","syntax","external","annotation_types","diagnostics"))
             model.put(section,new ArrayList<Object>());
         for(int i=0;i<100;i++) Json.list(model.get("declarations")).add(Json.object("id",i,"type",type,
@@ -105,7 +105,7 @@ public final class RecordArchiveProbe {
         }
         rejected(() -> ModelArchive.read(packed,Json.sha(packed),1024*1024,"wrong-context"));
         try(RecordArchive records=RecordArchive.create(root.resolve("bad-model.bin"),10240,3)) {
-            records.add(Json.object("kind","header","version",6,"context","fixture","sections",List.of(
+            records.add(Json.object("kind","header","version",dev.codeana.common.ModelArchive.VERSION,"context","fixture","sections",List.of(
                     "sources","declarations","observations","syntax","external","annotation_types","diagnostics")));
             records.add(Json.object("kind","type","id",2,"value",Json.object("kind","VOID","version",2)));
             records.add(Json.object("kind","end","counts",Map.of(),"types",1)); records.seal();

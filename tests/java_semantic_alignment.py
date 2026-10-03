@@ -5,6 +5,7 @@ import pathlib
 import subprocess
 import shutil
 import java_model_tests as model_tests
+from java_type_views import type_attributes
 
 
 class JavaSemanticAlignment(unittest.TestCase):
@@ -23,7 +24,7 @@ class JavaSemanticAlignment(unittest.TestCase):
             nested(40,'@Mark String') + ' annotated;' + nested(20,'Missing') +
             ' missing; T cyclic; int marker=1; }')
         def verify(facts):
-            fields = {f['name']:f['attributes']['type_model'] for f in facts
+            fields = {f['name']:type_attributes(f)['type_model'] for f in facts
                       if f['kind']=='declaration' and f['signature'].startswith('Deep#')
                       and f['attributes'].get('element_kind')=='FIELD'}
             for depth in (5,20,40):
@@ -54,9 +55,9 @@ class JavaSemanticAlignment(unittest.TestCase):
             self.assertEqual(len(budgets),1)
             coverage={f['source']:f['status'] for f in facts if f['kind']=='coverage'}
             self.assertEqual(coverage,{'deep/Deep.java':'partial','deep/Healthy.java':'complete'})
-        context=self.context('deep',{'Deep.java':source,'Healthy.java':'class Healthy {int ok(){return 1;}}'})
+        context=self.context('deep',{'Deep.java':source,'Healthy.java':'class Healthy {int ok(){return 1;}}'},type_graph=False)
         initial=self.analyze([context],cache=True)['facts'];verify(initial)
-        changed=self.context('deep',{'Deep.java':source.replace('marker=1','marker=2'),'Healthy.java':'class Healthy {int ok(){return 1;}}'})
+        changed=self.context('deep',{'Deep.java':source.replace('marker=1','marker=2'),'Healthy.java':'class Healthy {int ok(){return 1;}}'},type_graph=False)
         delta=self.analyze([changed],initial,cache=True)
         full=self.analyze([changed],cache=True)['facts'];verify(full)
         self.assertEqual(self.merged(initial,delta),sorted(full,key=lambda f:f['id']))
@@ -145,11 +146,11 @@ class JavaSemanticAlignment(unittest.TestCase):
         site = next(f for f in facts if f['kind']=='call_site' and f['name']=='identity')
         binding = next(f for f in facts if f['relation']=='java.binding' and f['parent']==site['id'])
         target = next(f for f in facts if f['kind']=='call_target' and f['parent']==site['id'])
-        self.assertEqual(binding['attributes'],dict(schema_version=3,evidence_owner=site['id'],resolved=True,complete=True))
+        self.assertEqual(binding['attributes'],dict(schema_version=4,evidence_owner=site['id'],resolved=True,complete=True))
         self.assertEqual(target['attributes'],dict(binding_evidence=site['id']))
-        self.assertEqual(site['attributes']['selected_type_model']['return']['element'],'java.lang.String')
-        self.assertEqual(site['attributes']['declared_type_model']['return']['kind'],'TYPEVAR')
-        self.assertEqual(site['attributes']['expression_type_model']['element'],'java.lang.String')
+        self.assertEqual(type_attributes(site)['selected_type_model']['return']['element'],'java.lang.String')
+        self.assertEqual(type_attributes(site)['declared_type_model']['return']['kind'],'TYPEVAR')
+        self.assertEqual(type_attributes(site)['expression_type_model']['element'],'java.lang.String')
 
     def test_method_reference_callbacks_and_intrinsic_array_constructors(self):
         source = '''import java.util.function.*;
@@ -264,7 +265,7 @@ class JavaSemanticAlignment(unittest.TestCase):
                            classpath=[str(jar)])
         facts = self.analyze([ctx])['facts']
         external = next(f for f in facts if f['signature'] == 'lib.Api#field2099')
-        attrs = external['attributes']
+        attrs = type_attributes(external)
         self.assertNotIn('binary_members_partial',attrs)
         self.assertEqual(attrs['binary_class']['members_omitted'], 0)
         self.assertTrue(attrs['binary_class']['members_complete'])
@@ -438,7 +439,7 @@ class JavaSemanticAlignment(unittest.TestCase):
         for key in keys:
             external = next(f for f in facts if f['kind']=='external_symbol' and f['signature']==key)
             self.assertEqual(external['attributes']['binary_member']['kind'],'METHOD')
-            self.assertEqual(external['attributes']['binary_member']['type_model']['parameters'][0].get('owner',key),key)
+            self.assertEqual(type_attributes(external)['binary_member']['type_model']['parameters'][0].get('owner',key),key)
         self.merged([],dict(facts=facts,replacements=[]))
 
     def test_annotation_constants_defaults_and_class_values(self):

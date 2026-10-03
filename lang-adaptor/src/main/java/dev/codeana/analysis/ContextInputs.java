@@ -65,6 +65,9 @@ public final class ContextInputs {
 
     public Map<String, Object> resolve(Map<String, Object> raw) {
         Map<String, Object> result = new LinkedHashMap<>(raw);
+        if (raw.containsKey("type_graph") && !(raw.get("type_graph") instanceof Boolean))
+            fail("JAVA_TYPE_GRAPH_MODE");
+        result.put("type_graph", !Boolean.FALSE.equals(raw.get("type_graph")));
         if (!compact) {
             for (String field :
                     List.of(

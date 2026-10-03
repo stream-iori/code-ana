@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const VERSION: u32 = 1;
-pub const WORKER_PROTOCOL_VERSION: u32 = 10;
+pub const WORKER_PROTOCOL_VERSION: u32 = 11;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
 pub const MAX_FACTS: usize = 100_000;

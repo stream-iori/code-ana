@@ -33,7 +33,7 @@ public final class ArchiveRowsProbe {
         Files.createDirectories(root);
         spilledSnapshots(root);
         Path file = root.resolve("rows.bin");
-        Map<String, Object> model = Json.object("version", 6, "context", "rows");
+        Map<String, Object> model = Json.object("version", dev.codeana.common.ModelArchive.VERSION, "context", "rows");
         for (String section :
                 List.of(
                         "sources",
@@ -138,7 +138,7 @@ public final class ArchiveRowsProbe {
     }
 
     private static void spilledSnapshots(Path root) throws Exception {
-        Map<String, Object> model = Json.object("version", 6, "context", "spilled");
+        Map<String, Object> model = Json.object("version", dev.codeana.common.ModelArchive.VERSION, "context", "spilled");
         for (String section : List.of("sources", "declarations", "observations", "syntax", "external", "annotation_types", "diagnostics"))
             model.put(section, new ArrayList<>());
         Json.list(model.get("declarations")).add(Json.object("attributes", Json.object("n", 0)));

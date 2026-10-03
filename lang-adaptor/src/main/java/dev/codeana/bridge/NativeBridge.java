@@ -5,6 +5,7 @@ import dev.codeana.analysis.ContextInputs;
 import dev.codeana.analysis.JavaAnalysis;
 import dev.codeana.common.AnalysisLimits;
 import dev.codeana.common.Json;
+import dev.codeana.common.ModelArchive;
 import dev.codeana.common.RecordArchive;
 
 import org.graalvm.nativeimage.IsolateThread;
@@ -51,9 +52,7 @@ public final class NativeBridge {
                 Map<String, Object> request = Json.map(Json.parse(input.toByteArray()));
                 input.reset();
                 long version = Json.number(request, "version");
-                if (version != 2 && version != 3 && version != 4
-                        || version == 3 && !Boolean.TRUE.equals(request.get("compact_inputs"))
-                        || version == 2 && Boolean.TRUE.equals(request.get("compact_inputs")))
+                if (version != 5)
                     throw new IllegalArgumentException("ABI_REQUEST_VERSION");
                 if (request.containsKey("baseline_archive") && request.containsKey("baseline"))
                     throw new IllegalArgumentException("DUPLICATE_BASELINE_INPUT");
@@ -89,7 +88,7 @@ public final class NativeBridge {
                             session.check();
                             models.add(session.analyze(inputView.resolve(Json.map(context))));
                         }
-                        result = Json.object("version", 6, "models", models);
+                        result = Json.object("version", ModelArchive.VERSION, "models", models);
                     }
                     outputDirectory =
                             Files.createTempDirectory(

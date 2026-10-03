@@ -64,7 +64,7 @@ public final class ExtensionArchiveProbe {
             Map<String, Object> model =
                     Json.object(
                             "version",
-                            6,
+                            dev.codeana.common.ModelArchive.VERSION,
                             "context",
                             "large@MAIN",
                             "sources",

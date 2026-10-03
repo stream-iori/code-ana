@@ -14,7 +14,7 @@ import java.util.jar.*;
 
 /** Verified, task-pinned module NoCode inputs. All failures leave sealed SOURCE available. */
 final class ModuleSignatures implements AutoCloseable {
-    private static final String FORMAT = "java8-module-signature-v5-model6-original-callbacks";
+    private static final String FORMAT = "java8-module-signature-v6-model7-original-graphs";
     private static final long MAX_PART = 64L << 20,
             MAX_DISK = 256L << 20,
             MAX_CATALOGUE_WEIGHT = 256L << 20;
@@ -157,7 +157,7 @@ final class ModuleSignatures implements AutoCloseable {
                                         ctx.get("module"),
                                         ctx.get("world"),
                                         ctx.get("digest"),
-                                        Boolean.TRUE.equals(ctx.get("type_graph")),
+                                        !Boolean.FALSE.equals(ctx.get("type_graph")),
                                         ctx.getOrDefault("extension_fingerprint", ""),
                                         proofSources(ctx),
                                         cp))

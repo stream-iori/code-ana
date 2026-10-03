@@ -117,7 +117,7 @@ public final class CompilerBridge implements AutoCloseable {
                 Json.write(
                         Json.object(
                                 "version",
-                                7,
+                                8,
                                 "context",
                                 request.get("context"),
                                 "bytes",
@@ -138,7 +138,7 @@ public final class CompilerBridge implements AutoCloseable {
             Map<String, Object> command = Json.map(Json.parse(commandBytes));
             Path result = Paths.get(Json.string(command, "result"));
             Path receipt = Paths.get(Json.string(command, "receipt"));
-            Map<String, Object> end = Json.object("version", 7, "nonce", command.get("nonce"));
+            Map<String, Object> end = Json.object("version", 8, "nonce", command.get("nonce"));
             CompilerBridge analysis = null;
             try {
                 Map<String, Object> request = Json.map(Json.parse(Json.read(Paths.get(Json.string(command, "request")))));
@@ -174,11 +174,13 @@ public final class CompilerBridge implements AutoCloseable {
     }
 
     private Map<String, Object> analyze(Map<String, Object> request) throws Exception {
-        if (Json.number(request, "version") != 7)
+        if (Json.number(request, "version") != 8)
             throw new IOException("COMPILER_PROTOCOL_VERSION");
         context = Json.string(request,"context");
         fullAuxiliaryModel = Boolean.TRUE.equals(request.get("full_auxiliary_model"));
-        graphTypes = Boolean.TRUE.equals(request.get("type_graph"));
+        if (request.containsKey("type_graph") && !(request.get("type_graph") instanceof Boolean))
+            throw new IOException("JAVA_TYPE_GRAPH_MODE");
+        graphTypes = !Boolean.FALSE.equals(request.get("type_graph"));
         if (request.containsKey("model_record_limit")) {
             try { recordLimit = new java.math.BigDecimal(request.get("model_record_limit").toString()).longValueExact(); }
             catch (RuntimeException invalid) { throw new IOException("JAVA_MODEL_RECORD_LIMIT_RANGE",invalid); }
@@ -341,7 +343,7 @@ public final class CompilerBridge implements AutoCloseable {
     private Map<String,Object> detached(Map<String,Object> request,List<Object> annotationHeaders) {
         return Json.object(
                 "version",
-                6,
+                ModelArchive.VERSION,
                 "context",
                 request.get("context"),
                 "sources",

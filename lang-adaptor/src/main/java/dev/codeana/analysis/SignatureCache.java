@@ -19,7 +19,7 @@ import java.util.jar.*;
 
 /** Content-verified, index-only Java 8 declarations. Unsupported shapes stay as source inputs. */
 final class SignatureCache {
-    private static final String FORMAT = "java8-source-signature-v9-model6-callbacks";
+    private static final String FORMAT = "java8-source-signature-v10-model7-graphs";
     private static final long MAX_ENTRY = 8L * 1024 * 1024;
     private static final long MAX_TOTAL = 256L * 1024 * 1024;
     private static final long MAX_CATALOGUES = 64L * 1024 * 1024;
@@ -80,7 +80,7 @@ final class SignatureCache {
                                         context.get("world"),
                                         source.get("path"),
                                         source.get("hash"),
-                                        Boolean.TRUE.equals(context.get("type_graph")),
+                                        !Boolean.FALSE.equals(context.get("type_graph")),
                                         context.getOrDefault("extension_fingerprint", "")))
                         .getBytes(StandardCharsets.UTF_8));
     }
@@ -363,7 +363,7 @@ final class SignatureCache {
                 Files.writeString(
                         catalogue,
                         Json.write(
-                                Boolean.TRUE.equals(context.get("type_graph"))
+                                !Boolean.FALSE.equals(context.get("type_graph"))
                                         ? TypeEvidence.encode(Json.object("declarations", declarations, "external", sourceExternal))
                                         : Json.object("declarations", declarations, "external", sourceExternal)),
                         StandardCharsets.UTF_8);

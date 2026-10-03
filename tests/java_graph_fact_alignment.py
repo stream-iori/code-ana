@@ -248,7 +248,7 @@ if __name__ == '__main__':
         evidence = models.ROOT / 'target/java-alignment/evidence' / ('type-graph-native-' + time.strftime('%Y%m%d-%H%M%S'))
         evidence.mkdir(exist_ok=False)
         (evidence / 'receipt.json').write_text(json.dumps(dict(tests=result.testsRun, all_ok=accepted,
-            native_verified=True, full_semantic_diff_accepted=False, product_default_enabled=False,
+            native_verified=True, full_semantic_diff_accepted=False, product_default_enabled=True,
             elapsed_seconds=round(time.monotonic()-started, 3), inputs=frozen, changed_inputs=drift,
             artifacts=artifacts, changed_artifacts=artifact_drift), indent=2) + '\n')
         print(evidence / 'receipt.json')

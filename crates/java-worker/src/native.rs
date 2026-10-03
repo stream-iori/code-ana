@@ -221,9 +221,12 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
     ensure!(
         manifest["version"] == 1
             && manifest["abi"] == 2
-            && manifest["analysis_request"] == 4
-            && manifest["compiler_protocol"] == 7
-            && manifest["java_model"] == 6,
+            && manifest["analysis_request"] == 5
+            && manifest["compiler_protocol"] == 8
+            && manifest["java_model"] == 7
+            && manifest["type_graph_default"] == true
+            && manifest["type_schema"] == 3
+            && manifest["binding_schema"] == 4,
         "BUNDLE_VERSION_MISMATCH"
     );
     let os = if cfg!(target_os = "macos") {

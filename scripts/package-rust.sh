@@ -13,7 +13,7 @@ cp tests/fixtures/mock.json "$package_dir/fixtures/"
 cp tests/fixtures/expected.json "$package_dir/fixtures/"
 cp -R tests/fixtures/java "$package_dir/fixtures/"
 cp docs/rust-first.md "$package_dir/README.md"
-printf '{"package":"codeana-rust-mock","platform":"%s","architecture":"%s","cli_daemon_protocol":1,"worker_protocol":10,"fact_ir":1,"java_adapter":"mock-fixtures-only"}\n' "$(uname -s)" "$(uname -m)" > "$package_dir/manifest.json"
+printf '{"package":"codeana-rust-mock","platform":"%s","architecture":"%s","cli_daemon_protocol":1,"worker_protocol":11,"fact_ir":1,"java_adapter":"mock-fixtures-only"}\n' "$(uname -s)" "$(uname -m)" > "$package_dir/manifest.json"
 (cd "$package_dir" && {
   shasum -a 256 bin/* manifest.json README.md
   find fixtures -type f -print | LC_ALL=C sort | while IFS= read -r fixture; do

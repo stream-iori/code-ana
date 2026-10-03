@@ -91,6 +91,7 @@ def main():
             ('type-graph-native', [sys.executable, 'tests/java_graph_fact_alignment.py', '--native'], 600),
             ('type-graph-consumers-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--native'], 900),
             ('type-graph-bindings-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--bindings', '--native'], 1800),
+            ('default-type-graph-native', [sys.executable, 'tests/java_default_graph_alignment.py', '--native'], 600),
             ('native-probe', [sys.executable, 'tests/java_native_probe.py'], 300),
             ('type-reference-native', [sys.executable, 'tests/java_type_reference_reference.py', '--native'], 360),
             ('functional-reference-native', [sys.executable, 'tests/java_functional_reference_alignment.py', '--native'], 360),

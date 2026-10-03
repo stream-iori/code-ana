@@ -151,7 +151,7 @@ def main():
                                            if artifacts.get(p) != current_artifacts.get(p)),
                   elapsed_seconds=round(time.monotonic() - started, 3),
                   log=str(log.relative_to(alignment.ROOT)), log_sha256=hashlib.sha256(log.read_bytes()).hexdigest(),
-                  product_default_enabled=False, full_semantic_diff_accepted=False)
+                  product_default_enabled=True, full_semantic_diff_accepted=False)
     report['all_ok'] = (result.wasSuccessful() and created > 0 and requests > 0 and validated > 0
                         and not report['changed_inputs'] and not report['changed_artifacts'])
     (evidence / 'receipt.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')

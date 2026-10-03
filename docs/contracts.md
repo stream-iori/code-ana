@@ -4,11 +4,11 @@
 
 **先冻结“一个事实属于谁、对应哪个输入、怎样证明交付完成”，再实现传输和表结构。**
 
-状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 10，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型版本 6、编译器桥版本 7。Java 8 字节码与真实 native 链路已验证；最新变更的完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
+状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 11，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型版本 7、编译器桥版本 8。Java 8 字节码与真实 native 链路已验证；最新变更的完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
 
 ## 1. 身份
 
-Java callable 参数 key 使用擦除后的 binary name：例如 `Api#accept(Outer$Inner,Outer$Inner[][])`。SOURCE、ASM、NoCode 目录与反射查找使用同一身份；展示名仍单独保留。原始类型注解不进入 primitive 身份。当前文件签名缓存格式为 `java8-source-signature-v9-model6-callbacks`，模块格式为 `java8-module-signature-v5-model6-original-callbacks`。
+Java callable 参数 key 使用擦除后的 binary name：例如 `Api#accept(Outer$Inner,Outer$Inner[][])`。SOURCE、ASM、NoCode 目录与反射查找使用同一身份；展示名仍单独保留。原始类型注解不进入 primitive 身份。当前文件签名缓存格式为 `java8-source-signature-v10-model7-graphs`，模块格式为 `java8-module-signature-v6-model7-original-graphs`。
 
 生成方法参与的覆盖关系使用 `origin=modeled_override`、`status=possible`，`declaration_resolved/evidence_complete=false`；保留已有 javac 覆盖事实且不重复。恢复检查 SOURCE/JAR 类泛型代入、raw 类型擦除、参数 subsignature、协变返回和整条继承路径的访问权限；final/static、降低可见性或非法返回使该方法候选全部撤销。不完整层级/类型及 256 层级节点、100000 工作步骤预算通过 `MODELED_OVERRIDE_INCOMPLETE` 明确披露；仅发布方法产生此诊断。纯 ASM 补出的外部方法使用 `binary_metadata`，不会冒充 javac 声明。
 
@@ -35,7 +35,7 @@ Java 恢复证据保持独立：CallSite 的原始 javac 选中声明、诊断�
 | SnapshotId | 历史入口身份，指向文件捕获，ANALYSIS 另指向 revision | 多个 snapshot 可以共享图字节 |
 | StorageRecordId | 库内实现键 | 不进入公共 selector、跨版本匹配或分页契约 |
 
-Java 类型引用分为两类：`type_reference` 表示声明签名、写明的声明类型和回调类型关系，按 owner/context 保留重复泛型参数与源码位置；`type_navigation` 保留 import、局部变量、new、cast、class literal 等原始 javac 类型导航。`references` 查询保留两种带 relation 的 occurrence。源码签名按冻结参考最多投影 5 层泛型，写明的通配符边界/throws/类型参数边界独立审计；回调参数读取实际捕获的声明类型。经过检查的回调恢复另存 `recovered_callback`，原 javac 属性不覆盖，其关系为 possible/evidence-incomplete，不追加未经检查的泛型参数。 补充编译按真实 world 边界选择上游 MAIN 模块：完整 Lombok 覆盖且 NoCode 投影可验证的模块使用有效声明头；本 world、解析/编码失败、部分声明或不完整 ABI 保留 SOURCE。已验证的回调投影可参与 MAIN/TEST 的 `type_reference` 基线，原 javac 属性和诊断保留；不按 scope 单独切换证据。生成嵌套类的显式局部变量在同路径/跨度/身份的独立 javac 证明通过后，另存 `supplemental_variable` 及签名/输入 SHA，恢复调用仍为 possible、evidence-incomplete。MAIN 单 world fixture 的辅助源码必须使用相同 world，TEST fixture 使用真实 MAIN/TEST 边界。未知、歧义及原始未解析类型不产生 complete 关系。单声明遍历耗尽 100000 步或 128 层时撤销该声明的类型关系，产生 `SOURCE_TYPE_REFERENCE_BUDGET` 并标记文件 partial；健康声明继续输出，取消仍中止任务。默认语义类型树仍受 48 层/4096 节点限制。内部 opt-in 平面图已贯通 SDK8、模型归档、事实与 Rust 校验；新图的扩展读取使用惰性不可变视图，扩展输出重新编码。默认切换及整体版本升级尚待完整消费者验收。 opt-in 图同时涵盖 ASM 二进制签名与生成/标量类型根；方法 formal 与类 formal 的 owner/节点身份分开，缺失外层变量不补 Object 或 owner。内部恢复 CAPTURE 导出为保留 capture_identity 的 TYPEVAR；未知上界保持不完整。 opt-in 图对实际替换值不含 TYPEVAR/CAPTURE 的泛型代入使用联合根及数值边重定向，保留元数据/不可变原图；其他替换仍使用原有保守规则。图 NoCode 以图遍历验证头和注解路径，生成前按原版二进制签名 64 层/4096 节点上限验证；超过上限保留 SOURCE，不能写入后续读取会失败的缓存。源码图的写明注解按实际类型边计层，注解包装不重复加层。旧简写声明的空参数与 wildcard 空边规范化后仍由原严格图校验器校验。深层图的泛型变量查询按节点迭代，无替换的根保持共享；调用递归及总工作预算不变。
+Java 类型引用分为两类：`type_reference` 表示声明签名、写明的声明类型和回调类型关系，按 owner/context 保留重复泛型参数与源码位置；`type_navigation` 保留 import、局部变量、new、cast、class literal 等原始 javac 类型导航。`references` 查询保留两种带 relation 的 occurrence。源码签名按冻结参考最多投影 5 层泛型，写明的通配符边界/throws/类型参数边界独立审计；回调参数读取实际捕获的声明类型。经过检查的回调恢复另存 `recovered_callback`，原 javac 属性不覆盖，其关系为 possible/evidence-incomplete，不追加未经检查的泛型参数。 补充编译按真实 world 边界选择上游 MAIN 模块：完整 Lombok 覆盖且 NoCode 投影可验证的模块使用有效声明头；本 world、解析/编码失败、部分声明或不完整 ABI 保留 SOURCE。已验证的回调投影可参与 MAIN/TEST 的 `type_reference` 基线，原 javac 属性和诊断保留；不按 scope 单独切换证据。生成嵌套类的显式局部变量在同路径/跨度/身份的独立 javac 证明通过后，另存 `supplemental_variable` 及签名/输入 SHA，恢复调用仍为 possible、evidence-incomplete。MAIN 单 world fixture 的辅助源码必须使用相同 world，TEST fixture 使用真实 MAIN/TEST 边界。未知、歧义及原始未解析类型不产生 complete 关系。单声明遍历耗尽 100000 步或 128 层时撤销该声明的类型关系，产生 `SOURCE_TYPE_REFERENCE_BUDGET` 并标记文件 partial；健康声明继续输出，取消仍中止任务。默认使用平面类型图，贯通 SDK8、模型归档、事实与 Rust 校验；扩展读取使用惰性不可变视图，扩展输出重新编码。内部 fixture 可显式使用有界旧树（48层/4096节点），产品始终传递图模式；不作解析后端回退。原子版本为 compiler8/model7/worker11/native request5，ABI2与Fact IR1不变。类型facet3、绑定facet4；旧请求/编译器上下文和混装产物均拒绝。完整真实项目语义仍须独立验收。图同时涵盖 ASM 二进制签名与生成/标量类型根；方法 formal 与类 formal 的 owner/节点身份分开，缺失外层变量不补 Object 或 owner。内部恢复 CAPTURE 导出为保留 capture_identity 的 TYPEVAR；未知上界保持不完整。 图对实际替换值不含 TYPEVAR/CAPTURE 的泛型代入使用联合根及数值边重定向，保留元数据/不可变原图；其他替换仍使用原有保守规则。图 NoCode 以图遍历验证头和注解路径，生成前按原版二进制签名 64 层/4096 节点上限验证；超过上限保留 SOURCE，不能写入后续读取会失败的缓存。源码图的写明注解按实际类型边计层，注解包装不重复加层。旧简写声明的空参数与 wildcard 空边规范化后仍由原严格图校验器校验。深层图的泛型变量查询按节点迭代，无替换的根保持共享；调用递归及总工作预算不变。
 
 Maven 声明 UTF-8、捕获字节却不合法时，Java 8 桥保留原 hash/path 并产生 `SOURCE_ENCODING_INVALID` ERROR；该文件不交给 javac，不猜编码、不替换字节、不输出伪造声明。FactExtractor 保留 source owner、诊断、partial coverage 与原始 provenance；同上下文健康文件继续解析，全部输入无效时也给出可交付 partial。strict 仍拒绝发布，修复字节或删除文件后按 owner 清理旧诊断。生成签名遵循同一默认外部类型过滤，源码写明的类型继续保留；匿名类合成类型头不产生额外声明签名引用，其显式字段/方法与类型导航保留。
 
@@ -206,7 +206,7 @@ D17 的 Java 8 实现采用目标 JDK 子进程，使用独立版本化的编译
 
 BuildAdvice 的 `argv` 为结构化参数数组，cwd 明确指向用户可操作的目标工作区；不能建议进入即将被清理的内部捕获目录。历史 commit 缺输入时说明需在哪个提交的用户 checkout 中准备产物。建议不作为进度成功事件，不触发自动构建/自动重试；Agent/人类独立执行后重新提交，daemon 再核验并捕获产物。证据不足无法给出可靠命令时，只返回所缺输入与所需信息，不猜构建参数。
 
-当前生产与 mock worker 协议均为 10，Fact IR 仍为 1；Discover 可返回 BuildContext 或结构化 BuildAdvice。已传输 `missing/cwd/argv/purpose/expected/impact/retry/capture/module/world`，project 从任务身份取得；Java Discover 传输冻结的 JavaConfig、JavaContext 和 source/resource 输入；缺 Maven metadata 返回外部导出建议，Gradle 不支持。CLI/daemon 握手协议仍为 1，旧 worker 协议在分析前拒绝。
+当前生产与 mock worker 协议均为 11，Fact IR 仍为 1；Discover 可返回 BuildContext 或结构化 BuildAdvice。已传输 `missing/cwd/argv/purpose/expected/impact/retry/capture/module/world`，project 从任务身份取得；Java Discover 传输冻结的 JavaConfig、JavaContext 和 source/resource 输入；缺 Maven metadata 返回外部导出建议，Gradle 不支持。CLI/daemon 握手协议仍为 1，旧 worker 协议在分析前拒绝。
 
 ## 5. CLI 与 daemon 协议
 

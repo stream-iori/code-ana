@@ -32,7 +32,7 @@ cp -R tests/fixtures/java-native/base "$package_dir/fixtures/"
 python3 - "$package_dir" <<'PY'
 import hashlib,json,pathlib,sys
 root=pathlib.Path(sys.argv[1])
-(root/'manifest.json').write_text(json.dumps(dict(package='codeana-java8',worker_protocol=10,fact_ir=1,abi=2,analysis_request=4,compiler_protocol=7,java_model=6,target_java=[8],toolchain='externally registered SDKMAN Java 8'),indent=2)+'\n')
+(root/'manifest.json').write_text(json.dumps(dict(package='codeana-java8',worker_protocol=11,fact_ir=1,abi=2,analysis_request=5,compiler_protocol=8,java_model=7,type_graph_default=True,type_schema=3,binding_schema=4,target_java=[8],toolchain='externally registered SDKMAN Java 8'),indent=2)+'\n')
 files=sorted(p for p in root.rglob('*') if p.is_file() and p.name!='SHA256SUMS')
 (root/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(root))+'\n' for p in files))
 PY
