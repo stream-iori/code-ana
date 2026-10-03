@@ -68,6 +68,15 @@ public final class ModelAnnotations {
     public static List<Object> declared(Map<String, Object> declaration) {
         var attributes = Json.map(declaration.get("attributes"));
         List<Object> result = new ArrayList<>(items(attributes.get("annotations")));
+        if (attributes.get("prerequisite_annotations") instanceof Map) {
+            for (Object raw : items(Json.map(attributes.get("prerequisite_annotations")).get("annotations"))) {
+                var annotation=Json.map(raw);String name=Json.string(annotation,"type");
+                String simple=name.substring(Math.max(name.lastIndexOf('.'),name.lastIndexOf('$'))+1);
+                result.removeIf(old -> !Boolean.TRUE.equals(Json.map(old).get("complete"))
+                        && simple.equals(Json.map(old).get("type")));
+                result.add(annotation);
+            }
+        }
         for (Object raw : items(attributes.get("source_annotations"))) {
             var written = new LinkedHashMap<>(Json.map(raw));
             // This is completeness of the written option values in an extension view,
@@ -75,6 +84,8 @@ public final class ModelAnnotations {
             written.put("complete", Boolean.TRUE.equals(written.get("source_options_complete")));
             written.put("declaration_resolved", false);
             String spelling = Json.string(written, "source_name");
+            if (result.stream().map(Json::map).anyMatch(a -> Boolean.TRUE.equals(a.get("complete"))
+                    && written.get("type").equals(a.get("type")))) continue;
             List<Integer> matches = new ArrayList<>();
             for (int i = 0; i < result.size(); i++) {
                 var annotation = Json.map(result.get(i));

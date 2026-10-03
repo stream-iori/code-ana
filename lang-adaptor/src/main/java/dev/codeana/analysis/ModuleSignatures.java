@@ -185,12 +185,6 @@ final class ModuleSignatures implements AutoCloseable {
     List<List<Map<String, Object>>> batches(List<Map<String, Object>> work, int parallelism)
             throws IOException {
         List<List<Map<String, Object>>> result = new ArrayList<>();
-        if (!enabled()) {
-            for (int i = 0; i < work.size(); i += parallelism)
-                result.add(
-                        new ArrayList<>(work.subList(i, Math.min(work.size(), i + parallelism))));
-            return result;
-        }
         Map<String, Map<String, Object>> remaining = new TreeMap<>();
         for (var context : work) remaining.put(Json.string(context, "world"), context);
         while (!remaining.isEmpty()) {
@@ -198,8 +192,7 @@ final class ModuleSignatures implements AutoCloseable {
             List<String> ready = new ArrayList<>();
             for (var entry : remaining.entrySet()) {
                 boolean blocked = false;
-                if (enabled())
-                    for (Object raw : Json.list(entry.getValue().get("sources"))) {
+                for (Object raw : Json.list(entry.getValue().get("sources"))) {
                         String parent = Json.string(Json.map(raw), "world");
                         if (!parent.equals(entry.getKey()) && remaining.containsKey(parent)) {
                             blocked = true;
@@ -225,7 +218,6 @@ final class ModuleSignatures implements AutoCloseable {
     }
 
     List<Map<String, Object>> order(List<Map<String, Object>> work) throws IOException {
-        if (!enabled()) return work;
         List<Map<String, Object>> ordered = new ArrayList<>();
         Set<String> visiting = new HashSet<>(), done = new HashSet<>();
         Map<String, Map<String, Object>> active = new TreeMap<>();

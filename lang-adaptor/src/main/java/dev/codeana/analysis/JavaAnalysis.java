@@ -214,12 +214,14 @@ public final class JavaAnalysis {
         Map<String, ContextResult> analyzed = new HashMap<>();
         SignatureCache cache = new SignatureCache(request);
         ModuleSignatures modules = new ModuleSignatures(request, contexts, session);
+        ModuleAnnotationEvidence annotationEvidence = new ModuleAnnotationEvidence(contexts);
+        work = ModuleAnnotationEvidence.expand(work, contexts);
         if (parallelism == 1) work = modules.order(work);
         try {
             if (parallelism == 1 || work.size() < 2) {
                 for (Map<String, Object> ctx : work) {
                     ContextResult result =
-                            analyzeContext(ctx, session, baseline, cache, full, registry, modules);
+                            analyzeContext(ctx, session, baseline, cache, full, registry, modules, annotationEvidence);
                     analyzed.put(Json.string(ctx, "world"), metadata(result));
                     try {
                         session.mark(Json.string(ctx, "context"), "task_accumulate");
@@ -241,7 +243,7 @@ public final class JavaAnalysis {
                                             () ->
                                                     analyzeContext(
                                                             ctx, session, baseline, cache, full,
-                                                            registry, modules)));
+                                                            registry, modules, annotationEvidence)));
                         }
                         for (int i = 0; i < results.size(); i++) {
                             ContextResult result = results.get(i).get();
@@ -437,7 +439,7 @@ public final class JavaAnalysis {
             SignatureCache cache,
             boolean full,
             ExtensionRegistry registry,
-            ModuleSignatures modules)
+            ModuleSignatures modules, ModuleAnnotationEvidence annotationEvidence)
             throws Exception {
         session.check();
         if (!full
@@ -495,7 +497,9 @@ public final class JavaAnalysis {
                 ExtensionRunner extensions = new ExtensionRunner(ctx, registry,
                         phase -> session.mark(Json.string(ctx, "context"), phase));
                 session.mark(Json.string(ctx, "context"), "model_extensions");
+                annotationEvidence.apply(ctx, model);
                 extensions.augment(model);
+                annotationEvidence.publish(ctx, model);
                 LombokModel.recover(model, ctx);
                 if (Boolean.TRUE.equals(ctx.get("prerequisite"))) {
                     session.mark(Json.string(ctx, "context"), "file_cache");

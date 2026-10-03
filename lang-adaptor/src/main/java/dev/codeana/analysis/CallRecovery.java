@@ -760,6 +760,8 @@ final class CallRecovery {
             Map<String, Object> returns = name.equals("<init>") ? receiver : selected.returns;
             attrs.put("recovered_return_type_model", returns);
             attrs.put("recovery_input", input ? "modeled_expression" : "modeled_declaration");
+            Object prerequisite=map(selected.declaration.get("attributes")).get("prerequisite_annotation_proof");
+            if (prerequisite instanceof Map) attrs.put("prerequisite_annotation_proof",prerequisite);
             if (reference)
                 attrs.put(
                         "recovered_sam",

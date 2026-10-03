@@ -920,3 +920,17 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | 未完成 | 完整JVM回归仍运行；模块自有classpath声明证据正在隔离工作树验证，尚未合入。新版全40模块语义、全扩展、Rust通用缓存、独占容量和发行门禁仍未关闭，52项仍仅E01/E02关闭。 |
 
 失败的宽松 import Lombok 试验及空 control 读取试验回执保留，均已纠正；没有观察到非预期进程被杀。协议版本不变：新增属性是独立可选证据，bridge SHA和builtin版本使缓存失效。
+
+
+## 依赖模块自有 classpath 注解证明（2026-10-03）
+
+| 项目 | 状态 / 正式证据 |
+|---|---|
+| 根因 | communication-common 的自有 Maven MAIN classpath 包含 provided Lombok，下游 HTTP classpath 不包含。按消费模块重新分析 AUX 会失去简单 import Getter/Builder 的原始编译器注解身份。冻结参考以模块自身上下文建立生成 API。 |
+| Java 实现 | ModuleAnnotationEvidence 只在任务内保存 MAIN 模块自有上下文的注解证明，builtin 8；不建立持久缓存。全部 SOURCE/hash、完整声明 ABI、Lombok coverage、原始配置输入须满足；歧义、循环、坏源码、清单或配置不同不复用；32MiB 超限明确失败。注解选项脱离归档后封存，跨上下文不会借用已释放类型对象。 |
+| 调度 / 原始证据 | 关闭签名缓存也按依赖顺序处理；增量补充隐藏 MAIN 前置，绝不发布其源码。原 javac annotations、ERROR 类型、诊断和选中证据保留；恢复调用仍 possible。prerequisite_annotation_proof 独立记录模块/world/context、源码 SHA、classpath SHA 和配置输入。通用持久缓存生命周期迁往 Rust 尚未完成。 |
+| native 默认 / 图 | validation-module-annotation-evidence/.../native-fixtures-20261003-121302：163项、621.648秒；type-graph-consumers-native-20261003-121302：110项、268次请求、262次Rust校验、423.560秒。两者通过、无漂移，图仍 opt-in。 |
+| 冻结 Maven 参考 | module-annotation-reference-20261003-121302：native三组通过，provided Getter 1/1、Builder链4/4、删除注解0/0，目标与状态严格一致，无漂移；JVM三组亦通过。 |
+| 真实隔离投影 | communication-closure-proof：13 MAIN模块、13078 compiler SOURCE输入，三份HTTP源文件976/ref976目标与状态完全一致。1个匿名类按双方唯一同源SHA/UTF-8跨度配对。是JVM隔离调用投影，未作新版native全项目发布或完整类型/扩展验收。单provider中间结果945/ref976保留。 |
+| 前版完整 JVM 终态 | written/reflection版本：generic-selected-full-jvm-20261003-115247，50命令、389直接测试；另外图消费者118、图绑定223，全部通过，无输入/产物漂移。不能替代本次模块证明新版的完整JVM重验。 |
+| 待完成 | 选定模块导出自有 MAIN prerequisite classpath 的 Rust/Maven链路在隔离验证，尚未合入；同版本完整JVM/高级绑定/daemon/40模块全语义与容量/发行门禁仍须继续。52项仍只有E01/E02关闭。 |

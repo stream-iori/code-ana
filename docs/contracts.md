@@ -440,3 +440,6 @@ FactHeaders 编码传输只复制已经生成的有界 CAF1 记录，公共事�
 
 
 未解析声明注解可附加 `source_annotations`，不覆盖 javac 的 `annotations`。书写限定与已知选项只供扩展视图；`source_options_complete` 不代表 annotation declaration 已确认，保留 `declaration_resolved=false`、来源和原始证据。Lombok builtin 7 仍先验证原始 compiler annotation 的 lombok 名，缺 jar 的简单 import Getter 不直接生成成员。缺失 CLASS annotation 定义只以 `ANNOTATION_TYPE_UNAVAILABLE`、UNKNOWN retention 和 incomplete 元数据披露。反射 occurrence 的可选 `type_context` 取自同位置原始调用点非空 `control`，不改变目标置信度。以上兼容性可选属性不切换模型/协议版本，桥 SHA 和 builtin 版本纳入缓存身份。
+
+
+Lombok builtin 8 的可选 `prerequisite_annotations` / `prerequisite_annotation_proof` 属于独立 Java 语义证据：要求 MAIN 依赖模块按自身捕获 classpath 分析、完整源码清单/每个 SHA 相同、配置输入和有效策略相同、完整 ABI及Lombok覆盖、无循环。消费者已完整确认的注解保持自身上下文权威性。复用不覆盖原始编译器注解或失败证据，不提升生成调用置信度；隐藏前置不发布源码。任务内证明合计32MiB，超限报 MODULE_ANNOTATION_EVIDENCE_BUDGET；不作为持久缓存实现。可选属性保持现有wire版本，builtin版本参与增量/缓存身份。

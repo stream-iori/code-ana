@@ -1547,6 +1547,12 @@ final class LombokDeclarations {
             String signature,
             Map<String, Object> attributes) {
         attributes.put("binding_origin", "lombok_model");
+        Object prerequisite=attrs(origin).get("prerequisite_annotations");
+        if (!(prerequisite instanceof Map)) prerequisite=attrs(owner).get("prerequisite_annotations");
+        if (prerequisite instanceof Map) {
+            var proof=new LinkedHashMap<>(Json.map(prerequisite));proof.remove("annotations");
+            attributes.put("prerequisite_annotation_proof",Map.copyOf(proof));
+        }
         attributes.put("generated_from", origin.get("signature"));
         attributes.put("body_available", false);
         List<Object> annotations = new ArrayList<>();
@@ -1696,6 +1702,9 @@ final class LombokDeclarations {
         Set<String> compilerNames = new HashSet<>();
         for (Object raw : items(attrs(declaration).get("annotations")))
             compilerNames.add(Json.string(Json.map(raw), "type"));
+        if (attrs(declaration).get("prerequisite_annotations") instanceof Map)
+            for (Object raw : items(Json.map(attrs(declaration).get("prerequisite_annotations")).get("annotations")))
+                compilerNames.add(Json.string(Json.map(raw),"type"));
         for (Object raw : ModelAnnotations.declared(declaration)) {
             Map<String, Object> annotation = Json.map(raw);
             String name = Json.string(annotation, "type");
