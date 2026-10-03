@@ -17,10 +17,13 @@ class Base { static int count=1; int inherited; }
 enum Mode { ONE }
 class Use extends Base {
  int value=Base.count; Mode mode=Mode.ONE;
+ int sourceField=java.io.Written.flag;
  Runnable callback=()->{value=inherited;};
  { value=Base.count; }
  void write(int next) {
   this.value=next; (value)=inherited; value+=next;
+  value++; --this.value;
+  System.out.println(Boolean.TRUE);
   if(next>0) value=inherited; else value=Base.count;
   try {value=inherited;} finally {value=Base.count;}
   int[] array=new int[1]; array[value]=next; int n=array.length;
@@ -43,8 +46,21 @@ def main():
         for name,source in [('baseline',SOURCE),('body',SOURCE.replace('count=1','count=2')),
                             ('declaration',SOURCE.replace('inherited','renamed'))]:
             folder=base/name;folder.mkdir()
-            files={'Use.java':source};context=case.context('app',files)
+            files={'Use.java':source,'java/io/Written.java':
+                   'package java.io; public class Written {public static int flag=1;}'}
+            context=case.context('app',files)
             facts=case.analyze([context],cache=True)['facts']
+            raw=[f for f in facts if f['relation']=='' and f['attributes'].get('field_mutation')]
+            case.assertEqual(len(raw),2)
+            case.assertTrue(all(f['attributes']['field_access']=='read_write' for f in raw))
+            by={f['id']:f for f in facts}
+            case.assertTrue(any(f['relation']=='' and by.get(f['target'],{}).get('signature')=='java.lang.Boolean#TRUE'
+                                for f in facts))
+            case.assertFalse(any(f['relation'] in ('reads','writes') and
+                                 by.get(f['target'],{}).get('signature','').startswith(('java.lang.Boolean#','java.lang.System#'))
+                                 for f in facts))
+            case.assertTrue(any(f['relation']=='reads' and by.get(f['target'],{}).get('signature')=='java.io.Written#flag'
+                                for f in facts))
             if baseline is not None: case.assertEqual(case.merged(baseline,case.analyze([context],baseline,cache=True)),sorted(facts,key=lambda f:f['id']))
             baseline=facts
             database=index_reference(folder,files)

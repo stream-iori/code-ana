@@ -869,3 +869,7 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | 根因2 | common/dal 仅有资源无Java，Rust prepare 从Java文件发现world，故根本未派发。新增启用XML扩展时的精确module MAIN/TEST资源world与其Maven依赖；空Java集合不再被all(auxiliary)误当prerequisite。Rust仍仅处理输入/上下文，XML解析继续Java。新增两scope真实daemon、修改/删除/旧revision与full-delta测试待新native组合执行。 |
 | JVM专项模型 | 6e完整回归 SourceTypeBudgetProbe 缺当前 annotation_types 字段，被元注解提取器拒绝；修正手工测试模型，产品严格模型不放宽。source-type-budget-schema-final.log 11项19.868秒通过，原失败回执保留。 |
 | Rust | resource-only-workspace-tests.log 共96测试通过，all-targets Clippy通过。仅这些实际回执证明，不提前判40模块/独占容量/release通过。 |
+
+收齐的新native/产品：validation-xml-resource-worlds/xml-resource-product-proof.log，真实release+新native资源only MAIN/TEST、辅助SOURCE构造器/lifecycle、XML合法注释、修改/删除/旧revision及full-delta，1项31.201秒通过；sofa-xml-reference-20261003-162517-88776 native三组8/8严格相等，无漂移。6e组合native-fixtures-20261003-155356完整177项1345.033秒all_ok=true。其完整JVM仍有前述专项测试模型字段遗漏，不能篡改成全部通过。
+
+字段剩余策略取证：新增++/--与Boolean.TRUE/System.out独立样本，旧产品26/参考22，额外4；JavaFieldFacts明确mutation只WRITES并使用ExternalTypePolicy.DEFAULT。现在保持原javac read_write/新field_mutation证据，仅公开关系按参考类别与外部owner策略生成；SOURCE（包括辅助/NoCode原catalogue）不排除。field-reference-20261003-162835-36264三组23/23严格相等，无漂移，另含真实java.io.Written SOURCE反例；一度NoCode把它错当binary使full-delta失败，已按原catalogue修正且保留失败日志。SDK8桥单独构建通过，native/产品和完整真实字段差分仍待新组合。

@@ -1867,12 +1867,15 @@ public final class CompilerBridge implements AutoCloseable {
                 }
                 boolean write = parent instanceof AssignmentTree && ((AssignmentTree) parent).getVariable() == expression;
                 boolean both = parent instanceof CompoundAssignmentTree && ((CompoundAssignmentTree) parent).getVariable() == expression;
+                boolean mutation = false;
                 if (parent instanceof UnaryTree) {
                     Tree.Kind kind = parent.getKind();
-                    both = kind == Tree.Kind.PREFIX_INCREMENT || kind == Tree.Kind.POSTFIX_INCREMENT
+                    mutation = kind == Tree.Kind.PREFIX_INCREMENT || kind == Tree.Kind.POSTFIX_INCREMENT
                             || kind == Tree.Kind.PREFIX_DECREMENT || kind == Tree.Kind.POSTFIX_DECREMENT;
+                    both = mutation;
                 }
                 attributes.put("field_access", both ? "read_write" : write ? "write" : "read");
+                if (mutation) attributes.put("field_mutation", true);
             }
             observations.add(out);
             external(e);

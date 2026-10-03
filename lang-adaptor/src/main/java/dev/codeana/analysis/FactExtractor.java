@@ -457,10 +457,20 @@ public final class FactExtractor {
                 if (n.containsKey("name")) f.put("name", n.get("name"));
                 String access = (String) Json.map(f.get("attributes")).get("field_access");
                 if (access != null) {
+                    // The raw javac observation above retains read_write for ++/--.
+                    // Public field relations follow the reference's mutation category
+                    // (WRITES), and its default external owner policy. Source owners
+                    // are exempt from that policy, including auxiliary declarations.
+                    String targetSignature = Json.string(n, "target");
+                    int member = targetSignature.indexOf('#');
+                    if (member > 0 && sourceTypes.excluded(targetSignature.substring(0, member))
+                            && !verifiedSourceDeclarations.containsKey(targetSignature.substring(0, member)))
+                        continue;
+                    boolean mutation = Boolean.TRUE.equals(Json.map(f.get("attributes")).get("field_mutation"));
                     for (String role :
-                            access.equals("read_write")
+                            access.equals("read_write") && !mutation
                                     ? List.of("reads", "writes")
-                                    : List.of(access.equals("write") ? "writes" : "reads")) {
+                                    : List.of(mutation || access.equals("write") ? "writes" : "reads")) {
                         String id = Json.key("field-access", Json.string(f, "id"), role);
                         Map<String, Object> occurrence = fact(id, "reference", path);
                         Map<String, Object> copy = new TreeMap<>(f);

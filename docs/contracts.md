@@ -14,6 +14,8 @@ Java callable 参数 key 使用擦除后的 binary name：例如 `Api#accept(Out
 
 Java 字段及枚举常量初始化中的直接调用归属 FIELD/ENUM_CONSTANT；lambda 和方法引用归属自身 callback，callback 的父链保留字段。仅显式类初始化块生成 INITIALIZER，不为字段表达式另造初始化器。该行为与冻结 Anatomist 的 JavaIdentities.owner 一致；独立 bridge 校验和进入产品语义 profile，模块 NoCode key 另含 bridge SHA。
 
+字段原始 javac occurrence 保留 `field_access=read_write` 以及 `field_mutation=true`（++/--）；公开 reads/writes 投影按冻结参考将 mutation 归类为 writes，复合赋值仍同时有 reads/writes。默认外部 owner 策略排除 java.lang/io/net/nio/math、sun/com.sun/jdk 前缀的二进制字段关系，原始 occurrence 和外部声明保留；真实 SOURCE owner 不排除。冷增量中经过 baseline/SHA 校验的原始 SOURCE catalogue 同样用于这一来源判定，NoCode 不得把 SOURCE 错当 binary。
+
 显式泛型调用另存 `explicit_type_argument_models`；恢复检查类型实参数量、已知引用类型、替换和边界后才产生 possible 候选。非泛型方法按 Java 8 规则忽略合法实参。桥未归属的显式方法引用类型仍为 UNKNOWN，保留 unresolved；不从源码文本猜类型。
 
 Java 恢复证据保持独立：CallSite 的原始 javac 选中声明、诊断和类型不覆盖；`recovered_parameter_type_models`、`recovered_return_type_model`、`recovered_sam` 另存。生成声明目标用 `lombok_model`，已捕获 SOURCE/binary 声明用 `source_recovery`/`binary_recovery`；全部 CallTarget 为 possible、evidence_complete=false，后两者可 declaration_resolved=true。默认 calls 排除这些目标，dispatch 给出恢复输入/阶段。按调用预算 100,000 步、递归 64/继承节点 256；缺候选证据、不可访问/不适用/歧义不作确定目标。语法节点身份是 `(source, tree_id)`，tree_id 只在单源码内有效。
