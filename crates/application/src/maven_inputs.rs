@@ -174,10 +174,65 @@ fn write_utf(out: &mut Vec<u8>, text: &str) -> Result<()> {
     out.extend(bytes);
     Ok(())
 }
+fn prerequisite_modules(
+    xml: &str,
+    root: &Path,
+    names: &BTreeMap<PathBuf, String>,
+    selected: &BTreeSet<PathBuf>,
+    tests: bool,
+) -> Result<BTreeSet<PathBuf>> {
+    let document = parse(xml)?;
+    let mut modules = BTreeMap::new();
+    for node in children(document.root_element(), "module") {
+        let directory = inside(root, attr(node, "directory")?)?;
+        ensure!(
+            names.contains_key(&directory) && modules.insert(directory, node).is_none(),
+            "MAVEN_MODULE_INVENTORY_CHANGED"
+        );
+    }
+    ensure!(
+        modules.len() == names.len(),
+        "MAVEN_MODULE_INVENTORY_CHANGED"
+    );
+    let mut queue: VecDeque<_> = selected.iter().cloned().collect();
+    let mut visited = BTreeSet::new();
+    let mut pending = BTreeSet::new();
+    while let Some(directory) = queue.pop_front() {
+        if !visited.insert(directory.clone()) {
+            continue;
+        }
+        let node = *modules
+            .get(&directory)
+            .context("MAVEN_PREREQUISITE_MODULE")?;
+        if node.attribute("resolved") != Some("true") {
+            ensure!(
+                !selected.contains(&directory),
+                "MAVEN_SELECTED_CLASSPATH_REQUIRED"
+            );
+            pending.insert(directory);
+            continue;
+        }
+        for tag in ["main-dependencies", "test-dependencies"] {
+            if tag == "test-dependencies" && !(tests && selected.contains(&directory)) {
+                continue;
+            }
+            if let Some(section) = children(node, tag).next() {
+                for dependency in children(section, "reactor") {
+                    let parent = inside(root, attr(dependency, "directory")?)?;
+                    ensure!(modules.contains_key(&parent), "MAVEN_PREREQUISITE_MODULE");
+                    queue.push_back(parent);
+                }
+            }
+        }
+    }
+    Ok(pending)
+}
+
 struct Logs {
     tail: Mutex<VecDeque<u8>>,
     total: AtomicUsize,
     ready: AtomicBool,
+    classpath_ready: AtomicUsize,
     complete: AtomicBool,
     closed: AtomicBool,
 }
@@ -225,6 +280,15 @@ impl Logs {
                 if s.contains(&format!("CODEANA_MAVEN_INPUTS_READY:{nonce}")) {
                     self.ready.store(true, Ordering::Release);
                 }
+                let marker = format!("CODEANA_MAVEN_CLASSPATH_READY:{nonce}:");
+                for suffix in s.split(&marker).skip(1) {
+                    if let Some((line, _)) = suffix.split_once('\n')
+                        && let Ok(round) = line.trim().parse::<usize>()
+                        && round <= 256
+                    {
+                        self.classpath_ready.fetch_max(round + 1, Ordering::Release);
+                    }
+                }
                 if s.contains("CODEANA_MAVEN_INPUTS_COMPLETE") {
                     self.complete.store(true, Ordering::Release);
                 }
@@ -266,6 +330,7 @@ impl Session {
                 Err(error) => return Err(error.into()),
             }
         }
+        self.child.stdin = Some(input);
         Ok(())
     }
     fn start(command: &mut Command, nonce: &str, timeout: u64) -> Result<Self> {
@@ -279,6 +344,7 @@ impl Session {
             tail: Mutex::new(VecDeque::new()),
             total: AtomicUsize::new(0),
             ready: AtomicBool::new(false),
+            classpath_ready: AtomicUsize::new(0),
             complete: AtomicBool::new(false),
             closed: AtomicBool::new(false),
         });
@@ -311,6 +377,19 @@ impl Session {
         loop {
             self.check(cancel)?;
             if self.logs.ready.load(Ordering::Acquire) {
+                return Ok(());
+            }
+            if let Some(status) = self.child.try_wait()? {
+                self.join();
+                bail!("MAVEN_INPUTS_FAILED status={status}: {}", self.logs.text());
+            }
+            thread::sleep(Duration::from_millis(25));
+        }
+    }
+    fn classpath_ready(&mut self, round: usize, cancel: &AtomicBool) -> Result<()> {
+        loop {
+            self.check(cancel)?;
+            if self.logs.classpath_ready.load(Ordering::Acquire) > round {
                 return Ok(());
             }
             if let Some(status) = self.child.try_wait()? {
@@ -564,6 +643,28 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
         write_utf(&mut selection, &p.to_string_lossy())?;
     }
     session.selection(&selection, cancel)?;
+    let mut classpath_rounds = 0;
+    for round in 0..=256 {
+        session.classpath_ready(round, cancel)?;
+        let (candidate, _) = response(tmp.path(), "inputs", &nonce)?;
+        let pending = if options.source_only {
+            BTreeSet::new()
+        } else {
+            prerequisite_modules(&candidate, &root, &names, &selected, tests)?
+        };
+        let mut frame = 0x414d5031u32.to_be_bytes().to_vec();
+        write_utf(&mut frame, &nonce)?;
+        frame.extend((pending.len() as u32).to_be_bytes());
+        for directory in &pending {
+            write_utf(&mut frame, &directory.to_string_lossy())?;
+        }
+        session.selection(&frame, cancel)?;
+        if pending.is_empty() {
+            break;
+        }
+        ensure!(round < 256, "MAVEN_PREREQUISITE_ROUND_BUDGET");
+        classpath_rounds += 1;
+    }
     session.finish(cancel)?;
     let (inputs, inputs_hash) = response(tmp.path(), "inputs", &nonce)?;
     let doc = parse(&inputs)?;
@@ -746,7 +847,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
             path.display()
         );
     }
-    let result = json!({"schema_version":3,"controls":control,"external_controls":external,"effective_model_sha256":hash(serde_json::to_vec(&model_hashes)?),"active_profiles_sha256":hash(serde_json::to_vec(&active)?),"selected_profiles":profiles,"scopes":scopes,"resolved_classpath":!options.source_only,"receipt":{"nonce":nonce,"metadata_sha256":metadata_hash,"inputs_sha256":inputs_hash,"extension_sha256":hash_file(&extension)?,"maven_processes":1},"modules":records});
+    let result = json!({"schema_version":3,"controls":control,"external_controls":external,"effective_model_sha256":hash(serde_json::to_vec(&model_hashes)?),"active_profiles_sha256":hash(serde_json::to_vec(&active)?),"selected_profiles":profiles,"scopes":scopes,"resolved_classpath":!options.source_only,"receipt":{"nonce":nonce,"metadata_sha256":metadata_hash,"inputs_sha256":inputs_hash,"extension_sha256":hash_file(&extension)?,"maven_processes":1,"prerequisite_classpath_rounds":classpath_rounds},"modules":records});
     let mut encoded = serde_json::to_vec_pretty(&result)?;
     encoded.push(b'\n');
     ensure!(
@@ -781,6 +882,40 @@ mod tests {
         );
         assert!(write_utf(&mut Vec::new(), &"x".repeat(65536)).is_err());
     }
+    #[test]
+    fn prerequisites_follow_only_resolved_scope_graphs() {
+        let root = tempfile::tempdir().unwrap();
+        let project_root = root.path().canonicalize().unwrap();
+        let mut names = BTreeMap::new();
+        for id in ["app", "lib", "helper", "unused"] {
+            let path = project_root.as_path().join(id);
+            fs::create_dir(&path).unwrap();
+            names.insert(path, id.to_owned());
+        }
+        let selected = BTreeSet::from([project_root.as_path().join("app")]);
+        let xml = |lib_resolved: bool| {
+            format!(
+                "<maven-inputs><module directory=\"{0}/app\" resolved=\"true\"><main-dependencies><reactor directory=\"{0}/lib\"/></main-dependencies></module><module directory=\"{0}/lib\" resolved=\"{1}\"><main-dependencies><reactor directory=\"{0}/helper\"/></main-dependencies><test-dependencies><reactor directory=\"{0}/unused\"/></test-dependencies></module><module directory=\"{0}/helper\" resolved=\"false\"/><module directory=\"{0}/unused\" resolved=\"false\"/></maven-inputs>",
+                project_root.as_path().display(),
+                lib_resolved
+            )
+        };
+        assert_eq!(
+            prerequisite_modules(&xml(false), project_root.as_path(), &names, &selected, true)
+                .unwrap(),
+            BTreeSet::from([project_root.as_path().join("lib")])
+        );
+        assert_eq!(
+            prerequisite_modules(&xml(true), project_root.as_path(), &names, &selected, true)
+                .unwrap(),
+            BTreeSet::from([project_root.as_path().join("helper")])
+        );
+        let wrong = xml(true).replace("/helper\"", "/missing\"");
+        assert!(
+            prerequisite_modules(&wrong, project_root.as_path(), &names, &selected, true).is_err()
+        );
+    }
+
     #[test]
     fn response_rejects_drift_identity_and_entities() {
         let tmp = tempfile::tempdir().unwrap();

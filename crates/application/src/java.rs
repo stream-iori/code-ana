@@ -264,6 +264,45 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             .map(|(p, h)| (p.strip_prefix(&home).unwrap(), h))
             .collect::<Vec<_>>(),
     );
+    let mut prerequisites = std::collections::BTreeSet::new();
+    if let Some(inputs) = &c.effective.java_inputs {
+        let mut pending = Vec::new();
+        for module in inputs.modules.iter().filter(|m| m.selected) {
+            for scope in ["MAIN", "TEST"] {
+                if c.manifest.files.iter().any(|source| {
+                    source.language == "java" && source.world == key("world", &[&module.id, scope])
+                }) {
+                    pending.extend(
+                        module
+                            .dependencies
+                            .get(scope)
+                            .into_iter()
+                            .flatten()
+                            .cloned(),
+                    );
+                }
+            }
+        }
+        while let Some(id) = pending.pop() {
+            if !prerequisites.insert(id.clone()) {
+                continue;
+            }
+            if let Some(module) = inputs
+                .modules
+                .iter()
+                .find(|m| m.id == id && m.resolved_classpath)
+            {
+                pending.extend(
+                    module
+                        .dependencies
+                        .get("MAIN")
+                        .into_iter()
+                        .flatten()
+                        .cloned(),
+                );
+            }
+        }
+    }
     let mut contexts = Vec::new();
     for module in modules {
         let selected = !c.effective.java_inputs.as_ref().is_some_and(|inputs| {
@@ -272,10 +311,17 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 .iter()
                 .any(|m| m.id == module.id && !m.selected)
         });
-        // Unselected reactor sources remain captured and are included in each
-        // selected consumer's mediated dependency worlds. They are not standalone
-        // analysis roots: their export deliberately omits a resolved classpath.
-        if !selected {
+        // A captured MAIN prerequisite may supply module-local Java evidence only
+        // when the external Maven receipt provides that module's own classpath.
+        let upstream = !selected
+            && prerequisites.contains(&module.id)
+            && c.effective.java_inputs.as_ref().is_some_and(|inputs| {
+                inputs
+                    .modules
+                    .iter()
+                    .any(|m| m.id == module.id && m.resolved_classpath)
+            });
+        if !selected && !upstream {
             continue;
         }
         let worlds: BTreeMap<_, _> = c
@@ -286,12 +332,12 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             .map(|s| (s.scope.clone(), s.world.clone()))
             .collect();
         for (scope, world) in worlds {
-            let prerequisite = c
-                .manifest
-                .files
-                .iter()
-                .filter(|s| s.language == "java" && s.world == world)
-                .all(|s| s.auxiliary);
+            let prerequisite = upstream
+                || c.manifest
+                    .files
+                    .iter()
+                    .filter(|s| s.language == "java" && s.world == world)
+                    .all(|s| s.auxiliary);
             if prerequisite && scope != "MAIN" {
                 continue;
             }

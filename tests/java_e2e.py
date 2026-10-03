@@ -1238,6 +1238,59 @@ java_parallelism=1
         self.assertEqual(self.cli('overview')[1]['revision'],full['revision'])
         self.assertFalse(list(self.project.rglob('*.class')))
 
+    def test_selected_maven_provider_classpath_proof_and_delta_through_daemon(self):
+        import hashlib
+        from java_maven_alignment import EXPORTER, NS
+        shutil.rmtree(self.project/'src')
+        parent = self.project/'pom.xml'
+        parent.write_text(f'<project {NS}><modelVersion>4.0.0</modelVersion><groupId>fixture.proof</groupId>'
+            '<artifactId>parent</artifactId><version>1</version><packaging>pom</packaging>'
+            '<properties><maven.compiler.source>1.8</maven.compiler.source><maven.compiler.target>1.8</maven.compiler.target></properties>'
+            '<modules><module>lib</module><module>use</module><module>bad</module></modules></project>')
+        def module(name, dependencies=''):
+            directory=self.project/name;directory.mkdir()
+            (directory/'pom.xml').write_text(f'<project {NS}><modelVersion>4.0.0</modelVersion>'
+                '<parent><groupId>fixture.proof</groupId><artifactId>parent</artifactId><version>1</version></parent>'
+                '<artifactId>'+name+'</artifactId>'+dependencies+'<build><sourceDirectory>src</sourceDirectory></build></project>')
+            (directory/'src').mkdir();return directory/'src'
+        library=module('lib','<dependencies><dependency><groupId>org.projectlombok</groupId><artifactId>lombok</artifactId>'
+            '<version>1.18.6</version><scope>provided</scope></dependency></dependencies>')/'Api.java'
+        library.write_text('package p;import lombok.Getter;@Getter public class Api {String name;}')
+        use=module('use','<dependencies><dependency><groupId>fixture.proof</groupId><artifactId>lib</artifactId><version>1</version></dependency></dependencies>')/'Use.java'
+        use.write_text('package p;class Use {int read(Api api){return api.getName().length();}}')
+        bad=module('bad')/'Broken.java';bad.write_text('class Broken {'+''.join('Missing'+str(i)+' x'+str(i)+';' for i in range(10020))+'}')
+        (self.project/'lombok.config').write_text('config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n')
+        output=self.project/'.code-ana/inputs.json'
+        metadata=EXPORTER.export(self.project,output,str(pathlib.Path.home()/'.sdkman/candidates/maven/current/bin/mvn'),
+            modules=('use',),scopes=('MAIN',),offline=True)
+        lib=next(m for m in metadata['modules'] if m['id']=='lib')
+        self.assertFalse(lib['selected']);self.assertTrue(lib['resolved_classpath'])
+        self.assertEqual(metadata['receipt']['prerequisite_classpath_rounds'],1)
+        self.assertTrue(any('lombok' in jar['coordinate'] for jar in lib['classpath']['MAIN']))
+        self.assertFalse(any('lombok' in jar['coordinate'] for m in metadata['modules'] if m['id']=='use' for jar in m['classpath']['MAIN']))
+        (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[scan]\nscopes=["MAIN"]\n'
+            '[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n'
+            '[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n[languages.java.lombok]\nmode="model"\n')
+        def check(facts,present):
+            ids={f['id']:f for f in facts};calls=[f for f in facts if f['kind']=='call_target' and ids[f['target']]['signature']=='p.Api#getName()']
+            self.assertEqual(len(calls),int(present))
+            if present:
+                self.assertEqual(calls[0]['status'],'possible');self.assertFalse(calls[0]['evidence_complete'])
+                proof=calls[0]['attributes']['prerequisite_annotation_proof'];self.assertEqual(proof['context'],'lib@MAIN')
+                self.assertEqual(proof['source_hash'],hashlib.sha256(library.read_bytes()).hexdigest())
+                self.assertTrue(any(f['kind']=='diagnostic' and f['source']=='use/src/Use.java' for f in facts))
+            self.assertFalse([f for f in facts if f['kind']=='declaration' and f['source'].startswith(('lib/','bad/'))])
+            self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['source'].startswith('bad/')])
+        _,first=self.cli('index','--full',timeout=180);self.assertEqual(first['publication'],'published')
+        before=self.facts(first['revision']);check(before,True)
+        use.write_text(use.read_text().replace('api.getName().length()','api.getName().length()+1'))
+        _,delta=self.cli('index',timeout=180);check(self.facts(delta['revision']),True)
+        _,full=self.cli('index','--full',timeout=180);self.assertEqual(self.facts(delta['revision']),self.facts(full['revision']))
+        library.write_text(library.read_text().replace('@Getter ',''))
+        _,removed=self.cli('index',timeout=180);check(self.facts(removed['revision']),False)
+        _,full=self.cli('index','--full',timeout=180);self.assertEqual(self.facts(removed['revision']),self.facts(full['revision']))
+        self.assertEqual(self.facts(first['revision']),before);self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_selected_module_with_unrelated_broken_module_and_source_dependency(self):
         import hashlib
         from java_lombok_alignment import Lombok

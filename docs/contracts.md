@@ -443,3 +443,6 @@ FactHeaders 编码传输只复制已经生成的有界 CAF1 记录，公共事�
 
 
 Lombok builtin 8 的可选 `prerequisite_annotations` / `prerequisite_annotation_proof` 属于独立 Java 语义证据：要求 MAIN 依赖模块按自身捕获 classpath 分析、完整源码清单/每个 SHA 相同、配置输入和有效策略相同、完整 ABI及Lombok覆盖、无循环。消费者已完整确认的注解保持自身上下文权威性。复用不覆盖原始编译器注解或失败证据，不提升生成调用置信度；隐藏前置不发布源码。任务内证明合计32MiB，超限报 MODULE_ANNOTATION_EVIDENCE_BUDGET；不作为持久缓存实现。可选属性保持现有wire版本，builtin版本参与增量/缓存身份。
+
+
+Maven输入schema3的ExportReceipt增加可选 prerequisite_classpath_rounds（旧值默认0，最大256）。同会话先返回选定模块的实际已调解输入；Rust按已确认的scope图发 AMP1/nonce/模块清单请求，桥只解析这些前置MAIN并重新封存输入回执。前置依赖新出现时继续受同一总deadline/取消/32MiB响应预算约束，不启动第二Maven进程或任何目标生命周期。未选中的 MAIN 仅在真实依赖闭包内且自有classpath已捕获时形成隐藏JavaContext；不发布其源码、框架/XML/project结果。未选中TEST和无关模块不得作为根启动，旧手工清单默认resolved=true也不能扩大范围。最终extension/input SHA进入原有配置/缓存身份。

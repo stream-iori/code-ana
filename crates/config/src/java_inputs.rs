@@ -30,6 +30,8 @@ pub struct ExportReceipt {
     pub inputs_sha256: String,
     pub extension_sha256: String,
     pub maven_processes: u32,
+    #[serde(default)]
+    pub prerequisite_classpath_rounds: u32,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -138,6 +140,7 @@ impl JavaInputs {
         if let Some(receipt) = &value.receipt {
             ensure!(
                 receipt.maven_processes == 1
+                    && receipt.prerequisite_classpath_rounds <= 256
                     && receipt.nonce.len() == 36
                     && [
                         &receipt.metadata_sha256,
@@ -449,6 +452,26 @@ mod tests {
         assert!(advice.argv.is_empty());
         assert_eq!(advice.missing, vec![".code-ana/inputs.json"]);
     }
+    #[test]
+    fn prerequisite_receipt_is_backward_compatible_and_bounded() {
+        let root = tempfile::tempdir().unwrap();
+        let mut value = input(root.path());
+        value["receipt"] = serde_json::json!({"nonce":"00000000-0000-0000-0000-000000000000",
+            "metadata_sha256":"0".repeat(64),"inputs_sha256":"1".repeat(64),
+            "extension_sha256":"2".repeat(64),"maven_processes":1});
+        let path = root.path().join("inputs.json");
+        for round in [None, Some(2), Some(257)] {
+            if let Some(round) = round {
+                value["receipt"]["prerequisite_classpath_rounds"] = serde_json::json!(round);
+            }
+            std::fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+            assert_eq!(
+                JavaInputs::read(root.path(), "inputs.json").is_ok(),
+                round != Some(257)
+            );
+        }
+    }
+
     #[test]
     fn rejects_changed_external_maven_settings() {
         let root = tempfile::tempdir().unwrap();

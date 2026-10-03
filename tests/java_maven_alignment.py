@@ -106,6 +106,70 @@ class MavenAlignment(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'MAVEN_INPUTS_FAILED'):
             self.export(modules=('app',), scopes=('MAIN', 'TEST'))
 
+    def test_selected_consumer_preserves_provider_own_provided_and_optional_classpath(self):
+        result = self.export(modules=('app',), scopes=('MAIN',))
+        lib = next(m for m in result['modules'] if m['id'] == 'lib')
+        self.assertFalse(lib['selected'])
+        self.assertTrue(lib['resolved_classpath'])
+        self.assertEqual(self.artifacts(lib, 'MAIN'), {'fixture.external:comp:1',
+            'fixture.external:hidden:1', 'fixture.external:optional:1', 'fixture.external:provided:1'})
+        self.assertEqual(self.artifacts(self.app(result), 'MAIN'), {'fixture.external:comp:2'})
+        self.assertEqual(result['receipt']['maven_processes'], 1)
+        self.assertEqual(result['receipt']['prerequisite_classpath_rounds'], 1)
+        self.assertFalse(list(self.project.rglob('*.class')))
+
+    def test_prerequisite_does_not_resolve_its_missing_test_dependency(self):
+        pom = self.project / 'lib/pom.xml'
+        pom.write_text(pom.read_text().replace('</dependencies>',
+            dependency('missing-provider-test', extra='<scope>test</scope>') + '</dependencies>'))
+        result = self.export(modules=('app',), scopes=('TEST',))
+        lib = next(m for m in result['modules'] if m['id'] == 'lib')
+        self.assertTrue(lib['resolved_classpath'])
+        self.assertEqual(lib['classpath']['TEST'], [])
+        self.assertIn('fixture.external:provided:1', self.artifacts(lib, 'MAIN'))
+
+    def test_unrelated_module_with_missing_external_dependency_is_not_resolved(self):
+        pom = self.project / 'pom.xml'
+        pom.write_text(pom.read_text().replace('</modules>', '<module>unused</module></modules>'))
+        self.write('unused/pom.xml', self.module('unused', '<dependencies>' + dependency('missing-unused') + '</dependencies>'))
+        result = self.export(modules=('app',), scopes=('MAIN',))
+        unused = next(m for m in result['modules'] if m['id'] == 'unused')
+        self.assertFalse(unused['selected']); self.assertFalse(unused['resolved_classpath'])
+        self.assertEqual(unused['classpath']['MAIN'], [])
+
+    def test_external_dependency_can_reveal_a_reactor_prerequisite_after_resolution(self):
+        directory = self.repo / 'fixture/external/bridge/1'
+        directory.mkdir(parents=True)
+        (directory / 'bridge-1.pom').write_text(f'<project {NS}><modelVersion>4.0.0</modelVersion>'
+            '<groupId>fixture.external</groupId><artifactId>bridge</artifactId><version>1</version>'
+            '<dependencies><dependency><groupId>fixture.reactor</groupId><artifactId>lib</artifactId>'
+            '<version>1</version></dependency></dependencies></project>')
+        with zipfile.ZipFile(directory / 'bridge-1.jar', 'w') as jar: jar.writestr('META-INF/fixture', 'bridge')
+        self.write('app/pom.xml', self.module('app', '<dependencies>' + dependency('bridge') + '</dependencies>'))
+        result = self.export(modules=('app',), scopes=('MAIN',))
+        self.assertEqual(self.app(result)['dependencies']['MAIN'], ['lib'])
+        lib = next(m for m in result['modules'] if m['id'] == 'lib')
+        self.assertTrue(lib['resolved_classpath'])
+        self.assertIn('fixture.external:provided:1', self.artifacts(lib, 'MAIN'))
+        self.assertEqual(result['receipt']['prerequisite_classpath_rounds'], 1)
+
+    def test_provider_provided_reactor_dependency_requires_another_official_round(self):
+        pom = self.project / 'pom.xml'
+        pom.write_text(pom.read_text().replace('</modules>', '<module>helper</module></modules>'))
+        self.write('helper/pom.xml', self.module('helper', '<dependencies>' + dependency('provided', extra='<scope>provided</scope>') + '</dependencies>'))
+        pom = self.project / 'lib/pom.xml'
+        pom.write_text(pom.read_text().replace('</dependencies>', '<dependency><groupId>fixture.reactor</groupId>'
+            '<artifactId>helper</artifactId><version>1</version><scope>provided</scope></dependency></dependencies>'))
+        result = self.export(modules=('app',), scopes=('MAIN',))
+        self.assertEqual(self.app(result)['dependencies']['MAIN'], ['lib'])
+        lib = next(m for m in result['modules'] if m['id'] == 'lib')
+        helper = next(m for m in result['modules'] if m['id'] == 'helper')
+        self.assertEqual(lib['dependencies']['MAIN'], ['helper'])
+        self.assertTrue(helper['resolved_classpath'])
+        self.assertEqual(self.artifacts(helper, 'MAIN'), {'fixture.external:provided:1'})
+        self.assertEqual(result['receipt']['prerequisite_classpath_rounds'], 2)
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_source_only_needs_no_external_archives(self):
         import shutil
         shutil.rmtree(self.repo)

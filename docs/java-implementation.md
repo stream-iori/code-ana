@@ -334,3 +334,16 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 真实隔离投影 | communication-closure-proof：13 MAIN模块、13078 compiler SOURCE输入，三份HTTP源文件976/ref976目标与状态完全一致。1个匿名类按双方唯一同源SHA/UTF-8跨度配对。是JVM隔离调用投影，未作新版native全项目发布或完整类型/扩展验收。单provider中间结果945/ref976保留。 |
 | 前版完整 JVM 终态 | written/reflection版本：generic-selected-full-jvm-20261003-115247，50命令、389直接测试；另外图消费者118、图绑定223，全部通过，无输入/产物漂移。不能替代本次模块证明新版的完整JVM重验。 |
 | 待完成 | 选定模块导出自有 MAIN prerequisite classpath 的 Rust/Maven链路在隔离验证，尚未合入；同版本完整JVM/高级绑定/daemon/40模块全语义与容量/发行门禁仍须继续。52项仍只有E01/E02关闭。 |
+
+
+## 选定 Maven 模块的 MAIN 前置 classpath（2026-10-03）
+
+| 项目 | 实现 / 验证 |
+|---|---|
+| Rust 边界 | Rust 基于实际已调解的 MAIN/TEST 依赖决定需要的前置模块；前置只沿自己的 MAIN 图递进。处理外部依赖解析后才出现的 reactor，以及 provided reactor 引出的后续前置。只调度实际捕获源码的依赖闭包，保留手工旧清单 resolved_classpath 默认 true 的兼容性，绝不据此启动无关模块。 |
+| 最小 Maven 桥 | 同一 Maven 进程在生命周期前分轮返回官方模型/Resolver 图，按 Rust 明确请求解析前置 MAIN classpath。模块解析结果仅在该会话内复用；MAIN 前置不解析未选中 TEST。所有轮次核对 nonce、清单、内容 SHA 和源模型快照；最大256轮，复用既有取消/时间/响应预算。 |
+| 回执 | schema3增加可选 prerequisite_classpath_rounds，默认0，限制0..256；旧回执仍接受。新增 AMP1 前置交互，最终输入响应/extension SHA使缓存失效，Java native/worker其他wire版本保持不变。 |
+| Maven | validation-maven-prerequisite-classpath/target-maven-fixtures-receipt-final.log：17项21.647秒通过，包含 provided/optional、未传播的TEST、无关缺依赖模块、外部依赖发现 reactor、二轮 provided 前置、scope/order/classifier及禁止生命周期。 |
+| Rust | target-rust-tests-closure-final.log：全工作区85项通过；target-rust-clippy-closure-final.log及cargo fmt --check通过。新增回执兼容/预算和真实已调解scope前置图反例。 |
+| daemon | target-maven-all-daemon-final.log：3项187.077秒通过；真实导出→Rust捕获/隐藏调度→native/SDK8→发布，消费模块无Lombok而前置provided有Lombok、原诊断/proof SHA、body增量、删除注解、full-delta相等、旧revision、无关坏模块和TEST-only。没有业务class生成或非预期杀进程。 |
+| 限制 | 当前 daemon证明使用隔离的组合产物；根目录同版本完整JVM/native/daemon/40模块全语义仍须重验。复杂NoCode完整验收、Rust通用持久缓存、默认类型图、容量和发行门禁未关闭；52项仍仅E01/E02关闭。 |

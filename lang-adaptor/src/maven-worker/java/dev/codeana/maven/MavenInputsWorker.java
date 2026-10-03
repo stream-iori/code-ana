@@ -31,6 +31,7 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
     protected ProjectDependenciesResolver resolver;
     private final Map<Path, String> snapshots = new LinkedHashMap<Path, String>();
     private Path projectRoot;
+    private final Map<String, DependencyResolutionResult> graphs = new HashMap<String, DependencyResolutionResult>();
 
     @Override
     public void afterSessionStart(MavenSession session) throws MavenExecutionException {
@@ -138,6 +139,8 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                     Boolean.parseBoolean(
                             session.getUserProperties()
                                     .getProperty("codeana.inputs.interactive", "false"));
+            DataInputStream selection = null;
+            Set<String> prerequisites = new HashSet<String>();
             if (interactive) {
                 writeResponse(
                         output,
@@ -148,10 +151,11 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                         repository,
                         false,
                         includeTests,
-                        null);
+                        null,
+                        prerequisites);
                 System.out.println("CODEANA_MAVEN_INPUTS_READY:" + nonce);
                 System.out.flush();
-                DataInputStream selection = new DataInputStream(new BufferedInputStream(System.in));
+                selection = new DataInputStream(new BufferedInputStream(System.in));
                 if (selection.readInt() != 0x414d5331 || !nonce.equals(selection.readUTF()))
                     throw new IOException("invalid Maven selection identity");
                 includeTests = selection.readBoolean();
@@ -177,7 +181,29 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                     repository,
                     resolve,
                     includeTests,
-                    selected);
+                    selected,
+                    prerequisites);
+            if (interactive) {
+                Set<String> allowed = new HashSet<String>();
+                for (MavenProject project : projects) allowed.add(project.getBasedir().getCanonicalPath());
+                for (int round = 0; round <= 256; round++) {
+                    System.out.println("CODEANA_MAVEN_CLASSPATH_READY:" + nonce + ":" + round);
+                    System.out.flush();
+                    if (selection.readInt() != 0x414d5031 || !nonce.equals(selection.readUTF()))
+                        throw new IOException("invalid Maven prerequisite identity");
+                    int count = selection.readInt();
+                    if (count < 0 || count > 10000) throw new IOException("Maven prerequisite exceeds budget");
+                    if (count == 0) break;
+                    if (!resolve || round == 256) throw new IOException("Maven prerequisite resolution budget");
+                    for (int i = 0; i < count; i++) {
+                        String module = selection.readUTF();
+                        if (!allowed.contains(module) || selected.contains(module) || !prerequisites.add(module))
+                            throw new IOException("invalid Maven prerequisite module");
+                    }
+                    writeResponse(output, "inputs", nonce, projects, reactor, repository,
+                            resolve, includeTests, selected, prerequisites);
+                }
+            }
         } catch (Exception failure) {
             throw new MavenExecutionException(
                     "CODEANA_MAVEN_INPUTS_FAILED: " + failure.getMessage(), failure);
@@ -196,7 +222,7 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
             DefaultRepositorySystemSession repository,
             boolean resolve,
             boolean includeTests,
-            Set<String> selected)
+            Set<String> selected, Set<String> prerequisites)
             throws Exception {
         Path pending = output.resolve(name + ".xml.part");
         try (OutputStream bytes =
@@ -219,8 +245,9 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                             resolve
                                     && (selected == null
                                             || selected.contains(
-                                                    project.getBasedir().getAbsolutePath())),
-                            includeTests);
+                                                    project.getBasedir().getAbsolutePath())
+                                            || prerequisites.contains(project.getBasedir().getAbsolutePath())),
+                            includeTests && (selected == null || selected.contains(project.getBasedir().getAbsolutePath())));
                 xml.writeEndElement();
                 xml.writeEndDocument();
                 xml.flush();
@@ -234,7 +261,7 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
             if (!snapshot.getValue().equals(hash(snapshot.getKey())))
                 throw new IOException(
                         "Maven model changed during resolution: " + snapshot.getKey());
-        Files.move(pending, output.resolve(name + ".xml"), StandardCopyOption.ATOMIC_MOVE);
+        Files.move(pending, output.resolve(name + ".xml"), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         Files.write(
                 output.resolve(name + ".sha256"),
                 hash(output.resolve(name + ".xml")).getBytes(StandardCharsets.US_ASCII));
@@ -293,6 +320,35 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
             element(xml, "main-resource", resource.getDirectory());
         for (org.apache.maven.model.Resource resource : project.getTestResources())
             element(xml, "test-resource", resource.getDirectory());
+        DependencyResolutionResult resolved = resolveGraph(project, repository, resolve, includeTests);
+        for (String scope :
+                includeTests
+                        ? Arrays.asList("compile", "test")
+                        : Collections.singletonList("compile")) {
+            xml.writeStartElement(
+                    scope.equals("compile") ? "main-dependencies" : "test-dependencies");
+            PreorderNodeListGenerator visitor = new PreorderNodeListGenerator();
+            resolved.getDependencyGraph()
+                    .accept(
+                            new FilteringDependencyVisitor(
+                                    visitor, DependencyFilterUtils.classpathFilter(scope)));
+            List<org.eclipse.aether.graph.Dependency> dependencies =
+                    visitor.getDependencies(!resolve);
+            if (dependencies.size() > 100000)
+                throw new IOException("module dependency budget exceeded");
+            for (org.eclipse.aether.graph.Dependency dependency : dependencies)
+                dependency(xml, dependency.getArtifact(), reactor, resolve);
+            xml.writeEndElement();
+        }
+        if (!includeTests) xml.writeEmptyElement("test-dependencies");
+        xml.writeEndElement();
+    }
+
+    private DependencyResolutionResult resolveGraph(MavenProject project,
+            DefaultRepositorySystemSession repository, boolean resolve, boolean includeTests) throws Exception {
+        String key = project.getBasedir().getCanonicalPath() + "|" + resolve + "|" + includeTests;
+        DependencyResolutionResult cached = graphs.get(key);
+        if (cached != null) return cached;
         if (!includeTests) {
             repository = new DefaultRepositorySystemSession(repository);
             repository.setDependencySelector(
@@ -316,27 +372,8 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                                                 ? DependencyFilterUtils.classpathFilter(
                                                         includeTests ? "test" : "compile")
                                                 : (node, parentsPath) -> false));
-        for (String scope :
-                includeTests
-                        ? Arrays.asList("compile", "test")
-                        : Collections.singletonList("compile")) {
-            xml.writeStartElement(
-                    scope.equals("compile") ? "main-dependencies" : "test-dependencies");
-            PreorderNodeListGenerator visitor = new PreorderNodeListGenerator();
-            resolved.getDependencyGraph()
-                    .accept(
-                            new FilteringDependencyVisitor(
-                                    visitor, DependencyFilterUtils.classpathFilter(scope)));
-            List<org.eclipse.aether.graph.Dependency> dependencies =
-                    visitor.getDependencies(!resolve);
-            if (dependencies.size() > 100000)
-                throw new IOException("module dependency budget exceeded");
-            for (org.eclipse.aether.graph.Dependency dependency : dependencies)
-                dependency(xml, dependency.getArtifact(), reactor, resolve);
-            xml.writeEndElement();
-        }
-        if (!includeTests) xml.writeEmptyElement("test-dependencies");
-        xml.writeEndElement();
+        graphs.put(key, resolved);
+        return resolved;
     }
 
     private static void dependency(
