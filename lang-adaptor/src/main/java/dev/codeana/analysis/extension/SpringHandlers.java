@@ -12,6 +12,7 @@ public final class SpringHandlers implements JavaModelAnalyzer {
             "org.springframework.context.event.EventListener", "event",
             "org.springframework.transaction.event.TransactionalEventListener", "event");
     public String id() { return "spring-handlers"; }
+    public String version() { return "2"; }
     public String producer() { return "spring-handlers-v1"; }
     public Set<String> requires() { return Set.of("spring"); }
     public boolean enabled(Map<String, Object> c) { return Boolean.TRUE.equals(c.get("spring")); }
@@ -31,6 +32,8 @@ public final class SpringHandlers implements JavaModelAnalyzer {
                 a.put("role", mechanism); a.put("mechanism", "spring.annotation." + mechanism);
                 a.put("attributes", role.values()); a.put("condition_status", "unknown");
                 a.put("parameter_types", methodAttributes.getOrDefault("parameter_type_models", List.of()));
+                a.put("source_parameter_types", methodAttributes.getOrDefault("source_parameter_types", List.of()));
+                a.put("written_attributes", FrameworkFacts.writtenAttributes(method, role.direct()));
                 if (role.root().endsWith("TransactionalEventListener")) {
                     a.put("transaction_phase", role.values().get("phase")); a.put("delivery_status", "runtime-dependent");
                 }

@@ -136,6 +136,17 @@ final class FrameworkFacts {
         sink.add(fact);
     }
 
+    static Map<String, Object> writtenAttributes(Map<String, Object> declaration, String annotation) {
+        Map<String, Object> written = new LinkedHashMap<>();
+        for (Object raw : Json.list(Json.map(declaration.get("attributes"))
+                .getOrDefault("source_annotation_expressions", List.of()))) {
+            Map<String, Object> expression = Json.map(raw);
+            if (annotation.equals(expression.get("type")))
+                written.putAll(Json.map(expression.get("attributes")));
+        }
+        return written;
+    }
+
     void annotationLimits(dev.codeana.analysis.ModelAnnotations annotations) {
         Set<String> limited = annotations.limitedSources();
         if (!limited.isEmpty())

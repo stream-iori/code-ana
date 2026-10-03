@@ -159,6 +159,30 @@
       "sha256": "70d342ca90d3f80d73d16a8465e23f367af04787260e93b88be5a8ccd13034cb",
       "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/WorkerWrittenAnnotations.java",
       "changes": "Adapt explicit-source-only raw expression rule via Java8 public Tree/SourcePositions and captured CharSequence. Optional source_annotation_expressions preserve exact comments/Unicode/spacing and no annotation defaults. No source slicing or Java syntax parsing moved to Rust."
+    },
+    {
+      "path": "anatomist-core/src/main/java/com/anatomist/extract/JavaAnnotationFacts.java",
+      "sha256": "29b32801022ad7d8e39d66b89a294618a26936cbde86a366a01ef90e5bc28dd5",
+      "destination": "lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java",
+      "changes": "Adapt syntax literal/array values and preserve original nonliteral expressions as independent written_values. Original compiler effective/explicit values and ownership remain separate; Unicode token starts repaired from captured bytes, repeated/budget/unavailable values disclose incompleteness. Parameter callable/path/index/name are independent acceptance projections, not product protocol compatibility."
+    },
+    {
+      "path": "anatomist-framework-spring/src/main/java/com/anatomist/framework/spring/SpringJavaModelMvc.java",
+      "sha256": "373d12565886d8b9418d79e9811471c6d41f0ede85375677476a5a15ab66ca1d",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/extension/SpringMvc.java",
+      "changes": "Adapt original source parameter spelling alongside resolved types; MVC2 preserves parameter binding/meta/value, composed route evidence and static HANDLES semantics. Independent frozen JVM registration/body/declaration projection and full-delta checks; native and real full graph pending."
+    },
+    {
+      "path": "anatomist-framework-spring/src/main/java/com/anatomist/framework/spring/SpringJavaModelHandlers.java",
+      "sha256": "907ef4766bf441fc9923f6361a176534fa6c60e4a63cc196977758ae8aab24ff",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/extension/SpringHandlers.java",
+      "changes": "handlers2 stores original written attributes and source parameter spellings beside compiler types/effective values; static event phase/delivery and HANDLES remain explicit. No runtime evaluation. Independent JVM graph attributes/full-delta projection; full native/real pending."
+    },
+    {
+      "path": "anatomist-framework-sofa/src/main/java/com/anatomist/framework/sofa/SofaJavaModelAnnotations.java",
+      "sha256": "dcf1cbd4e80ab74e25a5ea0636d6b3ade9a2785035d24b9c210df7cc8a49f991",
+      "destination": "lang-adaptor/src/main/java/dev/codeana/analysis/extension/SofaAnnotations.java",
+      "changes": "sofa-annotations2 preserves original written attributes beside effective/default values. Keep checked two-member API, provider/requirement contracts/unique IDs/support/transport/baseline; JVM three-group projection strict, full native/real pending."
     }
   ]
 }

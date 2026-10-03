@@ -10,6 +10,7 @@ public final class SpringMvc implements JavaModelAnalyzer {
     private static final Set<String> MAPPINGS = Set.of(API + "RequestMapping", API + "GetMapping", API + "PostMapping",
             API + "PutMapping", API + "DeleteMapping", API + "PatchMapping");
     public String id() { return "spring-mvc"; }
+    public String version() { return "2"; }
     public String producer() { return "spring-mvc-v1"; }
     public Set<String> requires() { return Set.of("spring"); }
     public boolean enabled(Map<String, Object> c) { return Boolean.TRUE.equals(c.get("spring")); }
@@ -71,11 +72,14 @@ public final class SpringMvc implements JavaModelAnalyzer {
         Map<String, Object> a = Json.map(method.get("attributes"));
         List<Object> types = Json.list(a.getOrDefault("parameter_type_models", List.of()));
         List<Object> names = Json.list(a.getOrDefault("parameter_names", List.of()));
+        List<Object> sourceTypes = Json.list(a.getOrDefault("source_parameter_types", List.of()));
         List<Object> declared = Json.list(a.getOrDefault("parameter_annotations", List.of()));
         List<Object> result = new ArrayList<>();
         for (int i = 0; i < types.size(); i++) {
+            Object resolved = Json.map(types.get(i)).get("display");
+            Object written = i < sourceTypes.size() ? sourceTypes.get(i) : null;
             Map<String, Object> row = Json.object("index", i, "name", i < names.size() ? names.get(i) : "",
-                    "type", Json.map(types.get(i)).get("display"));
+                    "type", written instanceof String ? written : resolved, "resolved_type", resolved);
             if (i < declared.size()) annotations.firstOn(Json.list(declared.get(i)), Set.of(API + "PathVariable", API + "RequestParam", API + "RequestBody"))
                     .ifPresent(match -> { row.put("binding", match.root()); row.put("binding_evidence", match.evidence()); row.put("attributes", match.values()); });
             result.add(row);

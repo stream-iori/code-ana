@@ -8,6 +8,7 @@ import java.util.*;
 public final class SofaAnnotations implements JavaModelAnalyzer {
     private static final String API = "com.alipay.sofa.runtime.api.annotation.";
     public String id() { return "sofa-annotations"; }
+    public String version() { return "2"; }
     public String producer() { return "sofa-annotations-v1"; }
     public Set<String> requires() { return Set.of("sofa"); }
     public boolean enabled(Map<String, Object> c) { return Boolean.TRUE.equals(c.get("sofa")); }
@@ -40,6 +41,7 @@ public final class SofaAnnotations implements JavaModelAnalyzer {
             a.put("mechanism", "sofa.annotation." + (provider ? "provider" : "requirement"));
             a.put("contract", contract == null ? "" : contract); a.put("unique_id", unique instanceof String ? unique : "");
             a.put("attributes", annotation.values()); a.put("api_members", members.orElse(Set.of()).stream().sorted().toList());
+            a.put("written_attributes", FrameworkFacts.writtenAttributes(declaration, annotation.direct()));
             a.put("contract_supported", supported); a.put("transport", supported ? "jvm" : "unknown");
             a.put("contract_baseline", supported ? "internal-runtime-4.19.1-api" : "unverified-api");
             facts.registration(declaration, "java.sofa", provider ? "provider" : "requirement", Json.string(declaration, "signature"), a);

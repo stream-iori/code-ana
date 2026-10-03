@@ -541,6 +541,10 @@ public final class CompilerBridge implements AutoCloseable {
             TreePath path = elementPath(element);
             if (path != null && path.getLeaf() instanceof MethodTree) {
                 MethodTree syntax = (MethodTree) path.getLeaf();
+                List<Object> parameterSourceTypes = new ArrayList<Object>();
+                for (VariableTree parameter : syntax.getParameters())
+                    parameterSourceTypes.add(sourceText(path, parameter.getType()));
+                a.put("source_parameter_types", parameterSourceTypes);
                 try {
                     if (syntax.getReturnType() != null)
                         a.put("return_type_model", sourceModifierAnnotations(sourceType(new TreePath(path, syntax.getReturnType()), 0), path));
@@ -591,6 +595,72 @@ public final class CompilerBridge implements AutoCloseable {
                 a.put("constant_value", constant(variable.getConstantValue()));
         }
         return a;
+    }
+
+    /** Preserve the source spelling used by framework declarations, independently of bindings. */
+    private String sourceText(TreePath path, Tree tree) {
+        if (tree == null) return null;
+        long start = trees.getSourcePositions().getStartPosition(path.getCompilationUnit(), tree);
+        long end = trees.getSourcePositions().getEndPosition(path.getCompilationUnit(), tree);
+        if (start < 0 || end < start) return null;
+        try {
+            CharSequence text = path.getCompilationUnit().getSourceFile().getCharContent(true);
+            return end <= text.length() ? text.subSequence(unicodeTokenStart(text, (int) start), (int) end).toString() : null;
+        } catch (java.io.IOException unavailable) {
+            throw new IllegalStateException("SOURCE_PARAMETER_TYPE", unavailable);
+        }
+    }
+
+    /** javac can report a token start on the final hex digit of its Unicode escape. */
+    private static int unicodeTokenStart(CharSequence text, int start) {
+        for (int hex = Math.max(0, start - 3); hex <= start && hex + 4 <= text.length(); hex++) {
+            boolean valid = true;
+            for (int i = 0; i < 4; i++)
+                if ("0123456789abcdefABCDEF".indexOf(text.charAt(hex + i)) < 0) { valid = false; break; }
+            if (!valid) continue;
+            int slash = hex - 1;
+            while (slash >= 0 && text.charAt(slash) == 'u') slash--;
+            if (slash < 0 || slash == hex - 1 || text.charAt(slash) != '\\') continue;
+            int preceding = slash - 1;
+            while (preceding >= 0 && text.charAt(preceding) == '\\') preceding--;
+            if ((slash - preceding - 1) % 2 == 0) return slash;
+        }
+        return start;
+    }
+
+    /** Written literal values and original nonliteral expressions, without constant evaluation. */
+    private Object annotationSyntaxValue(TreePath path, Tree tree, int depth, int[] work, boolean[] complete) {
+        if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("CANCELLED");
+        if (depth > 32 || ++work[0] > 100000) {
+            complete[0] = false;
+            return sourceText(path, tree);
+        }
+        if (tree instanceof NewArrayTree) {
+            List<Object> result = new ArrayList<Object>();
+            List<? extends ExpressionTree> values = ((NewArrayTree) tree).getInitializers();
+            if (values != null && values.size() > 100000 - work[0]) {
+                complete[0] = false;
+                return sourceText(path, tree);
+            }
+            if (values != null) for (ExpressionTree value : values)
+                result.add(annotationSyntaxValue(path, value, depth + 1, work, complete));
+            return result;
+        }
+        if (tree instanceof LiteralTree) {
+            Object value = ((LiteralTree) tree).getValue();
+            if (value instanceof Character) return value.toString();
+            if (value instanceof Float || value instanceof Double) {
+                String text = sourceText(path, tree);
+                if (text == null) { complete[0] = false; return null; }
+                try {
+                    double number = Double.parseDouble(text.replace("_", ""));
+                    if (Double.isNaN(number) || Double.isInfinite(number)) { complete[0] = false; return text; }
+                    return number;
+                } catch (NumberFormatException unavailable) { complete[0] = false; return text; }
+            }
+            return value;
+        }
+        return sourceText(path, tree);
     }
 
     /** Adapted from Anatomist WorkerTypes: Java 8 loses written type-use wrappers on mirrors. */
@@ -1836,6 +1906,29 @@ public final class CompilerBridge implements AutoCloseable {
                                 "source_name",
                                 tree.getAnnotationType().toString()));
                 Map<String, Object> attributes = Json.map(out.get("attributes"));
+                Map<String, Object> written = new LinkedHashMap<String, Object>();
+                attributes.put("written_name", sourceText(getCurrentPath(), tree.getAnnotationType()));
+                Map<String, Object> writtenValues = new LinkedHashMap<String, Object>();
+                boolean[] valuesComplete = new boolean[] {true};
+                int[] writtenWork = new int[] {0};
+                boolean writtenComplete = true;
+                for (ExpressionTree argument : tree.getArguments()) {
+                    String key = "value";
+                    Tree expression = argument;
+                    if (argument instanceof AssignmentTree) {
+                        AssignmentTree assignment = (AssignmentTree) argument;
+                        key = assignment.getVariable().toString();
+                        expression = assignment.getExpression();
+                    }
+                    String text = sourceText(getCurrentPath(), expression);
+                    if (text == null) { writtenComplete = false; continue; }
+                    if (written.put(key, text) != null) writtenComplete = false;
+                    writtenValues.put(key, annotationSyntaxValue(getCurrentPath(), expression, 0, writtenWork, valuesComplete));
+                }
+                attributes.put("written_attributes", written);
+                attributes.put("written_attributes_complete", writtenComplete);
+                attributes.put("written_values", writtenValues);
+                attributes.put("written_values_complete", writtenComplete && valuesComplete[0]);
                 for (Object value : declarationAnnotations.getOrDefault(owner, Collections.<Object>emptyList()))
                     if (Objects.equals(Json.map(value).get("type"), signature(e)))
                         attributes.putAll(Json.map(value));

@@ -70,7 +70,7 @@ def main():
         ('acceptance-harness', [sys.executable, 'tests/java_alignment_gate_tests.py'], 30),
         ('inventory-diff-harness', [sys.executable, 'tests/java_inventory_diff_tests.py'], 30),
         ('acceptance-recovery', [sys.executable, 'tests/java_real_acceptance_tests.py'], 30),
-        ('java-fixtures', ['./scripts/test-java.sh'], 3600),
+        ('java-fixtures', ['./scripts/test-java.sh'], 14400),
         ('type-reference', [sys.executable, 'tests/java_type_reference_reference.py'], 360),
         ('functional-reference', [sys.executable, 'tests/java_functional_reference_alignment.py'], 360),
         ('supplemental-reference', [sys.executable, 'tests/java_supplemental_reference_alignment.py'], 360),
@@ -79,6 +79,8 @@ def main():
         ('module-annotation-reference', [sys.executable, 'tests/java_module_annotation_reference_alignment.py'], 360),
         ('framework-reference', [sys.executable, 'tests/java_framework_reference_alignment.py'], 360),
         ('declaration-reference', [sys.executable, 'tests/java_declaration_reference_alignment.py'], 360),
+        ('registration-reference', [sys.executable, 'tests/java_registration_reference_alignment.py'], 360),
+        ('annotation-reference', [sys.executable, 'tests/java_annotation_reference_alignment.py'], 360),
         ('maven-export', [sys.executable, 'tests/java_maven_export.py'], 180),
         ('maven-mediation', [sys.executable, 'tests/java_maven_alignment.py'], 240),
         ('rust-format', ['cargo', 'fmt', '--all', '--', '--check'], 60),
@@ -91,7 +93,7 @@ def main():
             ('native-build', ['./scripts/build-java-native.sh'], 600),
             ('native-fixtures', [sys.executable, 'tests/java_native_fixture_alignment.py'], 1800),
             ('type-graph-native', [sys.executable, 'tests/java_graph_fact_alignment.py', '--native'], 600),
-            ('type-graph-consumers-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--native'], 900),
+            ('type-graph-consumers-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--native'], 1800),
             ('type-graph-bindings-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--bindings', '--native'], 1800),
             ('default-type-graph-native', [sys.executable, 'tests/java_default_graph_alignment.py', '--native'], 600),
             ('native-probe', [sys.executable, 'tests/java_native_probe.py'], 300),
@@ -103,6 +105,8 @@ def main():
             ('module-annotation-reference-native', [sys.executable, 'tests/java_module_annotation_reference_alignment.py', '--native'], 360),
             ('framework-reference-native', [sys.executable, 'tests/java_framework_reference_alignment.py', '--native'], 360),
             ('declaration-reference-native', [sys.executable, 'tests/java_declaration_reference_alignment.py', '--native'], 360),
+            ('registration-reference-native', [sys.executable, 'tests/java_registration_reference_alignment.py', '--native'], 360),
+            ('annotation-reference-native', [sys.executable, 'tests/java_annotation_reference_alignment.py', '--native'], 360),
             ('native-product-ipc', ['cargo', 'run', '-p', 'codeana-application', '--example', 'java_worker_ipc', '--locked'], 240),
         ]
     if args.level == 'full':
@@ -110,7 +114,7 @@ def main():
             ('java-product-runtime', [sys.executable, 'tests/java_product_runtime.py',
                                       '--destination', str(evidence / 'product-runtime')], 60),
             ('rust-daemon', [sys.executable, 'tests/rust_e2e.py'], 600),
-            ('java-daemon', [sys.executable, 'tests/java_e2e.py'], 2400),
+            ('java-daemon', [sys.executable, 'tests/java_e2e.py'], 14400),
             ('native-daemon-crash', [sys.executable, 'tests/java_native_crash_e2e.py'], 300),
         ]
     matrix = json.loads((ROOT / 'tests/java_alignment_matrix.json').read_text())

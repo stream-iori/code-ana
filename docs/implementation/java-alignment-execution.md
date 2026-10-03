@@ -754,3 +754,18 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | 独立 fixture | declaration-reference-20261003-142103-54055：JVM baseline/body/declaration 三组各73个声明，六项属性严格相等；保留修改与声明变化的全部full-delta事实等价，原字节和输入/产物无漂移，18.272秒。含接口、泛型、数组、枚举匿名体、Data、UtilityClass和普通成员。 |
 | 比较器反例 | java_inventory_diff_tests.py 5项通过，新增有效overlay/原flags、匿名kind和不删除类型显示注解的断言；验收会计5项通过。矩阵记录新Spring5/injection3和Rust持久缓存证据，未把50个剩余项标完成。 |
 | 最新 native | validation-spring-constraints/type-graph-consumers-native-20261003-135840：all_ok=true，954.844秒，无源码/产物漂移。冻结缓存版消费者也all_ok=true，1000.842秒；完整绑定/JVM/daemon及真实项目仍待终态。 |
+
+## 原始注解、MVC/事件参数和注册图（2026-10-03）
+
+| 项目 | 实现 / 证据 |
+|---|---|
+| 原源码类型 | SDK8 describe 保存 source_parameter_types；MVC2 的 parameter.type 使用原切片（包括泛型内注释、Unicode和varargs），resolved_type另存。handlers2 保留原parameter_types模型，另存source_parameter_types。Java仍只在lang-adaptor解析。 |
+| 原始属性 | handlers2和sofa-annotations2另存written_attributes，不覆盖有效/default属性。所有java.annotation使用点另存written_name、written_attributes、written_values；后者仅求字面量，常量/enum/class/其他表达式保留原字符串；javac explicit/effective不变。重复属性/不可用span/非有限或不合法浮点/32层或100000工作预算明确complete=false。 |
+| Unicode缺陷取证 | Javac标识符起点可落在Unicode转义末位，原始名称被双方切成eote。产品sourceText按完整合法转义扩大起点，保留原javac名称/证据；annotation-unicode-token-focused-final.log通过，得到原字节\\u004eote及独立source_name=Note。reference第一次六项对照虽相等，但双方原名都错；该回执不作为本边界通过证据。 |
+| 注册独立对照 | registration-reference-20261003-143939-49155：JVM三组各7注册，MVC路径/HTTP/consumes/produces/params、全部参数原写法/binding/meta/value、事件原属性/参数/事务phase、SOFA角色/合约/uniqueId/API/transport/baseline及全部HANDLES严格一致；body/声明修改full-delta严格相等，无漂移。尚非全部XML/CONFIGURES/框架图。 |
+| 注解独立对照 | annotation-reference-20261003-144452-73846：正常标识符三组各6个注解，全部owner、parameter path/index/name、源码span、raw name、解析名称和written values严格一致；body/注解变化full-delta严格相等，无漂移。元注解图、局部/TYPE_USE/生成事实额外部分不删，40模块比较仍需完成。 |
+| JVM回归 | java-final-typed-checkpoint-jvm.log：注解12项38.591秒、框架13项53.084秒、复杂签名组，以及两组独立注册/声明对照通过；最终Unicode起点修复之后上述原名称专项和独立注解对照通过。初始遗漏桥独立构建的失败及CancellationException限定名编译失败保留，均已修正。 |
+| 比较器 | 新java_annotation_inventory_diff.py只读已发布库，参数注解按真实声明索引投影到callable+parameter[i]，保留字段/局部/type-use/生成额外事实、重复和不完整值，不把数量/子集相同包装成完整语义。 |
+| 门禁保护 | 实测完整fixture3775秒和daemon5182秒超过旧3600/2400秒终止值；fixture/daemon故障保护改14400秒、native消费者1800秒。只是单门禁故障回收上限，不是整体任务或性能预算；性能仍须最后独占测量。 |
+
+冻结缓存版完整回执已收齐：rust-cache-order-full-jvm-20261003-132959，52条fixture命令、all_ok=true、3775.548秒；native-fixtures163项1048.045秒、消费者110项1000.842秒、高级绑定214项1425.661秒、默认图41项192.826秒，以及functional-reference40组严格相等，均无漂移。旧c052完整daemon46项5182.426秒仅上述泛型读取器/scratch启动测试入口失败，无漂移；修复后缓存版和Spring版daemon、40模块发布仍运行。最新原表达式/Unicode/MVC2/handlers2/sofa2尚需新的native与完整产品验收，50项和S1–S7仍未关闭。

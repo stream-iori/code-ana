@@ -307,6 +307,8 @@ inputs_manifest = ".code-ana/java-inputs.json"
 
 ## 未解析书写注解与反射上下文（2026-10-03）
 
+后续原字节补充：所有SOURCE注解使用点保存 `written_name`、`written_attributes`（原表达式）及 `written_values`（字面量值，其他表达式不求值），分别披露完整性；原javac显式/有效值保持独立。SDK8修复Unicode转义标识符的原切片起点。MVC2保存原参数写法及独立 `resolved_type`；handlers2和sofa-annotations2保存原属性，事件参数原写法独立保存。对应缓存按bridge SHA和各extension版本失效；公开wire版本不变。独立声明/注解/注册JVM对照通过，完整最新native/daemon/真实项目回执仍须完成，详见[执行记录](implementation/java-alignment-execution.md)。
+
 | 项目 | 实现 / 正式证据 |
 |---|---|
 | 原始注解 | 编译器 annotations 不变；未解析声明注解另存 source_annotations。唯一显式 import、已确认包类型或完整限定名可提供书写证据，含 source_options_complete；缺失/歧义 import、未知表达式不猜测。 |

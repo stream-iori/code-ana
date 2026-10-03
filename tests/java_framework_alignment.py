@@ -125,6 +125,25 @@ class Frameworks(unittest.TestCase):
         self.assertEqual(routes[0]['attributes']['meta_path'], ['Composed',API+'.GetMapping'])
         self.assertTrue(any(f['kind']=='coverage' and f['owner']['producer']=='spring-mvc-v1' and f['status']=='partial' for f in facts))
 
+    def test_mvc_parameter_spelling_is_original_source_and_binding_is_separate(self):
+        source = f'''import java.util.List;
+          @{API}.RestController class Use {{
+            @{API}.GetMapping("/raw") void read(
+              @{API}.RequestParam("names") List< /* 中文😀 */ String > names, String... rest) {{}}
+          }}'''
+        context = self.context('app', MVC | {'Use.java':source}, spring=True)
+        first = self.analyze([context],cache=True)['facts']
+        route = next(f for f in first if f['relation']=='java.spring.mvc')
+        parameters = route['attributes']['parameters']
+        self.assertEqual(parameters[0]['type'], 'List< /* 中文😀 */ String >')
+        self.assertEqual(parameters[0]['resolved_type'], 'java.util.List<java.lang.String>')
+        self.assertEqual(parameters[0]['attributes']['value'], 'names')
+        self.assertEqual(parameters[1]['type'], 'String...')
+        self.assertEqual(parameters[1]['resolved_type'], 'java.lang.String[]')
+        changed = self.context('app', MVC | {'Use.java':source.replace('rest) {}','rest) {int body=1;}')},spring=True)
+        delta = self.analyze([changed],first,cache=True)
+        self.assertEqual(self.merged(first,delta),sorted(self.analyze([changed])['facts'],key=lambda f:f['id']))
+
     def test_lifecycle_and_transactional_event_metadata(self):
         files = {f'{namespace.replace(".","/")}/{name}.java':f'package {namespace}; public @interface {name} {{}}'
                  for namespace in ['javax.annotation','jakarta.annotation'] for name in ['PostConstruct','PreDestroy']}

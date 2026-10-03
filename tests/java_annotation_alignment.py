@@ -24,6 +24,51 @@ class Annotations(unittest.TestCase):
     def beans(self, facts):
         return [f for f in facts if f['relation'] == 'java.bean']
 
+    def test_every_annotation_occurrence_keeps_original_arguments_including_nested_type_use(self):
+        source = '''import java.lang.annotation.*;
+          @Target({ElementType.TYPE,ElementType.TYPE_USE}) @interface Note {
+            String[] value(); String name() default "default";
+          }
+          @Note(name="中文😀",value={ "one", /* 原字节 */ "two" }) class Use {
+            void read(java.util.List<@Note(value = { "inner" }) String> values){}
+          }'''
+        context=self.context('app',{'Use.java':source})
+        first=self.analyze([context],cache=True)['facts']
+        annotations=[f['attributes'] for f in first if f['relation']=='java.annotation'
+                     and f['attributes']['resolved_type']=='Note']
+        self.assertEqual(len(annotations),2)
+        self.assertTrue(all(a['written_attributes_complete'] for a in annotations))
+        self.assertTrue(all(a['written_values_complete'] for a in annotations))
+        self.assertCountEqual([a['written_attributes'] for a in annotations],
+            [dict(name='"中文😀"',value='{ "one", /* 原字节 */ "two" }'),dict(value='{ "inner" }')])
+        self.assertCountEqual([a['written_values'] for a in annotations],
+            [dict(name='中文😀',value=['one','two']),dict(value=['inner'])])
+        changed=self.context('app',{'Use.java':source.replace('"inner"','"changed"')})
+        full=self.analyze([changed])['facts']
+        self.assertEqual(self.merged(first,self.analyze([changed],first,cache=True)),sorted(full,key=lambda f:f['id']))
+
+    def test_duplicate_written_annotation_attribute_discloses_incomplete_source_values(self):
+        source='@interface Note {String value();} @Note(value="first",value="second") class Broken {} class Healthy {}'
+        facts=self.analyze([self.context('app',{'Use.java':source})])['facts']
+        annotation=next(f for f in facts if f['relation']=='java.annotation' and f['attributes']['resolved_type']=='Note')
+        self.assertFalse(annotation['attributes']['written_attributes_complete'])
+        self.assertFalse(annotation['attributes']['written_values_complete'])
+        self.assertTrue(any(f['kind']=='diagnostic' for f in facts))
+        self.assertTrue(any(f['signature']=='Healthy' and f['kind']=='declaration' for f in facts))
+
+    def test_written_annotation_values_keep_nonliteral_expressions_and_literal_precision(self):
+        source='''@interface Note {String text();char ch();float fraction();boolean enabled();int count();Class<?> type();}
+          class Constants {static final int COUNT=10;}
+          @\\u004eote(text="\\u4e2d\\n",ch='x',fraction=0.1F,enabled=true,count=Constants.COUNT,type=String.class) class Use {}'''
+        facts=self.analyze([self.context('app',{'Use.java':source})])['facts']
+        annotation=next(f for f in facts if f['relation']=='java.annotation' and f['attributes']['resolved_type']=='Note')
+        a=annotation['attributes']
+        self.assertEqual(a['written_values'],dict(text='中\n',ch='x',fraction=0.1,enabled=True,count='Constants.COUNT',type='String.class'))
+        self.assertEqual(a['written_attributes']['fraction'],'0.1F')
+        self.assertEqual(a['written_name'],'\\u004eote')
+        self.assertEqual(a['source_name'],'Note')
+        self.assertEqual(a['explicit']['count'],10)
+
     def test_repeated_irrelevant_meta_queries_preserve_late_injection_and_alias_values(self):
         definitions = '\n'.join(
             ('@Noise'+str(i+1)+' ' if i < 11 else '')
