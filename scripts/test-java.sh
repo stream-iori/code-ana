@@ -64,3 +64,4 @@ python3 "$repo_root/tests/java_sofa_xml_alignment.py"
 python3 "$repo_root/tests/java_graph_consumer_alignment.py"
 python3 "$repo_root/tests/java_graph_consumer_alignment.py" --bindings
 python3 "$repo_root/tests/java_override_reference_alignment.py"
+python3 "$repo_root/tests/java_field_reference_alignment.py"

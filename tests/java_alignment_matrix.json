@@ -275,7 +275,9 @@
       "status": "partial",
       "checks": [
         "tests/java_semantic_alignment.py",
-        "tests/java_e2e.py"
+        "tests/java_e2e.py",
+        "tests/java_field_inventory_diff.py",
+        "tests/java_field_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -284,10 +286,13 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "field-reference",
+        "field-reference-native"
       ],
       "remaining_acceptance": [
-        "已补括号左值、this/super/数组 length 与无源码位置枚举伪访问过滤；SOURCE/binary 静态导入/继承/枚举、delta/full fixture 已验证；新 native/daemon 与完整反例矩阵待验收。冻结参考 ++/-- 只投影 writes，产品保留 read_write，差分需披露此口径"
+        "已补括号左值、this/super/数组 length 与无源码位置枚举伪访问过滤；SOURCE/binary 静态导入/继承/枚举、delta/full fixture 已验证；新 native/daemon 与完整反例矩阵待验收。冻结参考 ++/-- 只投影 writes，产品保留 read_write，差分需披露此口径",
+        "严格只读全项目字段投影尚有缺失/额外，不过滤该差异；field-reference JVM 三组各20个原字节/owner/control/status/multiplicity 严格一致，native与最新40模块还需验证。"
       ]
     },
     {
@@ -296,7 +301,9 @@
       "status": "partial",
       "checks": [
         "tests/java_semantic_alignment.py",
-        "tests/java_signature_alignment.py"
+        "tests/java_signature_alignment.py",
+        "tests/java_field_inventory_diff.py",
+        "tests/java_field_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -305,10 +312,13 @@
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "field-reference",
+        "field-reference-native"
       ],
       "remaining_acceptance": [
-        "所有 Java 8 控制结构的角色/父链、Unicode 位置和完整增量验收"
+        "所有 Java 8 控制结构的角色/父链、Unicode 位置和完整增量验收",
+        "严格只读全项目字段投影尚有缺失/额外，不过滤该差异；field-reference JVM 三组各20个原字节/owner/control/status/multiplicity 严格一致，native与最新40模块还需验证。"
       ]
     },
     {
