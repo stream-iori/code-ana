@@ -150,6 +150,11 @@ final class TypeOperations {
             int depth)
             throws IOException {
         step(depth);
+        // A receiver is a new traversal root. Retaining its caller's path would
+        // turn a real recursive formal into a boundary-only summary.
+        if (dev.codeana.common.TypeGraph.isView(receiver))
+            receiver = dev.codeana.common.TypeGraph.owner(receiver).view(
+                    dev.codeana.common.TypeGraph.reference(receiver));
         if (receiver.get("enclosing") instanceof Map)
             collectBindings(
                     map(receiver.get("enclosing")), capture + "/enclosing", result, depth + 1);
@@ -418,6 +423,9 @@ final class TypeOperations {
 
     Map<String, Object> readable(Map<String, Object> type, int depth) {
         step(depth);
+        if (dev.codeana.common.TypeGraph.isView(type))
+            type = dev.codeana.common.TypeGraph.owner(type).view(
+                    dev.codeana.common.TypeGraph.reference(type));
         if (kind(type).equals("CAPTURE") && !(type.get("upper") instanceof Map)) {
             Map<String, Object> captured = captures.get(text(type.get("capture")));
             if (captured != null) return readable(captured, depth + 1);

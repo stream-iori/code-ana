@@ -258,6 +258,53 @@ java_parallelism=1
         self.assertEqual(before, self.facts(initial['revision']))
         self.assertFalse(list(self.project.rglob('*.class')))
 
+    def test_super_builder_receiver_proof_preserves_ambiguity_and_removal_through_daemon(self):
+        from java_lombok_alignment import Lombok
+        from java_supplemental_signature_alignment import SUPER_LIBRARY, SUPER_CONSUMER
+        (self.project / 'lombok.config').write_text(
+            'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n')
+        files = Lombok.files(self, SUPER_LIBRARY)
+        files['lombok/experimental/SuperBuilder.java'] = (
+            'package lombok.experimental;public @interface SuperBuilder {'
+            'String builderMethodName() default "builder";String buildMethodName() default "build";'
+            'boolean toBuilder() default false;String setterPrefix() default "";}')
+        for relative, content in files.items():
+            path = self.project / 'src' / relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content)
+        consumer = self.project / 'test/Use.java'
+        consumer.parent.mkdir(parents=True)
+        consumer.write_text(SUPER_CONSUMER)
+        config = self.project / '.code-ana/config.toml'
+        config.write_text(config.read_text().replace('scopes = ["MAIN"]', 'scopes = ["MAIN", "TEST"]')
+                          + '\n[[modules.source_roots]]\npath="test"\nscope="TEST"\n'
+                            '\n[languages.java.lombok]\nmode="model"\n')
+        _, initial = self.cli('index', '--full', timeout=180)
+        self.assertEqual(initial['publication'], 'published')
+        before = self.facts(initial['revision'])
+        by = {f['id']: f for f in before}
+        targets = [f for f in before if f['kind'] == 'call_target' and f['source'] == 'test/Use.java']
+        self.assertEqual(len(targets), 8)
+        self.assertNotIn('Child#builder()', {by[f['target']]['signature'] for f in targets})
+        provenance = next(f for f in before if f['kind'] == 'provenance' and f['source'] == 'test/Use.java')
+        proof = next(p for p in provenance['attributes']['supplemental_receiver_evidence']
+                     if p['receiver_type_model']['element'] == 'Child$ChildBuilder')
+        self.assertEqual(proof['selected_declaration'], 'Parent$ParentBuilder#values(java.util.List)')
+        self.assertTrue(proof['original_evidence_retained'])
+        (self.project / 'src/App.java').write_text(
+            SUPER_LIBRARY.replace('@lombok.experimental.SuperBuilder class Child', 'class Child'))
+        _, delta = self.cli('index', timeout=180)
+        changed = self.facts(delta['revision'])
+        ids = {f['id']: f for f in changed}
+        self.assertFalse(any(f['kind'] == 'call_target' and ids[f['target']]['signature'] == 'Child$ChildBuilder#age(int)'
+                             for f in changed))
+        self.assertFalse(any(p['receiver_type_model'].get('element') == 'Child$ChildBuilder'
+                             for f in changed for p in f['attributes'].get('supplemental_receiver_evidence', [])))
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(changed, self.facts(full['revision']))
+        self.assertEqual(before, self.facts(initial['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_source_type_relationships_keep_navigation_queries_and_delta(self):
         from java_type_reference_alignment import SOURCE
         path = self.project / 'src/p/Types.java'

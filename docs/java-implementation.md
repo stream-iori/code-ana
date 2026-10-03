@@ -273,4 +273,33 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 真实隔离投影 | 14 MAIN 文件 2070/ref2081，11 独立缺失、0 独立额外、3 状态对，消除 Sandbox 三项及 Thread.sleep 状态差异；不是全项目新版发布证明。 |
 | 扩大独立对照 | 新表达式 frozen 类型3/3、调用7/7一致。但六组完整调用+类型对照中 recursive-super-builder 多出 Child#builder()，旧4a native也复现。失败回执保留，未掩盖候选、未记作整体通过。 |
 
-完整40模块旧4a正式运行仍处理项目级 MAIN/TEST/XML 扩展；不包含本次 Java 证明和 Rust WIRES v2。默认类型图、完整属性/框架语义差分、Rust 通用缓存、独占容量与发行门禁仍未关闭，仍只有 E01/E02 完整通过。
+完整40模块旧4a正式运行已发布，独立差分仍有缺口；不包含本次 Java 证明和 Rust WIRES v2。默认类型图、完整属性/框架语义差分、Rust 通用缓存、独占容量与发行门禁仍未关闭，仍只有 E01/E02 完整通过。
+
+
+## 首次全40模块 MAIN/TEST/XML 发布与独立差分（2026-10-03）
+
+| 验收 | 正式终态 / 边界 |
+|---|---|
+| 4a57677 全项目 | iopengw-full-main-test-xml-archive-4a57677/receipt.json：7962.354 秒，3,036,628 事实，revision rev_7005f59b51ce41cb9ad939e0b1357aa8；发布、catalog head/commit 和 CLI 查询通过。配置恢复，输入/产物无漂移，无非预期信号。8GiB 结果、32GiB scratch 为显式正确性保护配置；并行取证的 RSS 不算独占容量证明。 |
+| 冻结输入 | 已提交5039文件、4217 Java；Maven范围4214 Java，其中1份非法UTF-8按既定政策隔离，其余4213健康文件与冻结参考对照。所有4214捕获Java SHA已校验；457个匿名/局部类双方唯一同原字节位置配对。 |
+| 调用清单 | iopengw-full-4a-independent-calls.json：声明49938/ref49937，多1；调用点151342及全部归属完全相同；目标150424/ref151381，缺1265、多308，其中980独立缺失、23独立额外、285状态对。正确退出1，不能记作完整语义通过。 |
+| 类型 occurrence | iopengw-full-4a-independent-types.json：SOURCE56095/ref56105，缺10、多0；反射182/ref182，但20对严格投影差异；extends1795、implements1173均零差异。不是完整类型属性/框架验收。 |
+| 单声明差异 | IOpengwManagerServiceImplTest 的顶层隐式构造器产品存在、参考不存在；双方匿名类构造器均存在。保留差异，尚未定位参考为何缺少；未删有效产品证据凑计数。 |
+| 后续优先 | 通信模块 MAIN/TEST 的调用恢复和10个回调类型缺口、反射20对差异；随后全属性、注解与扩展/WIRES/XML、默认类型图、Rust缓存生命周期及最终门禁。该运行不含本轮表达式证明和Rust WIRES v2，不能代替新版验收。 |
+
+完整52项仍只有E01/E02关闭。新版生成接收者/递归图修复的完整回归另取终态，不能导入4a回执代替。
+
+
+## SuperBuilder 独立接收者证明与递归类型图修复（2026-10-03）
+
+| 项目 | 结果 / 边界 |
+|---|---|
+| 冻结参考根因 | 继承遮蔽比较完整 JVM descriptor（含返回类型）；同参数的协变选择仍须返回转换明确为 YES。具体 Parent/Child 的 builder 工厂在冻结参考中有歧义；不能将 Child#builder 额外发布为已选目标。 |
+| 接收者证明 | 第二次 SDK8 javac 的完整已确认调用可为原 ERROR/UNKNOWN/NONE 提供独立生成类型接收者。两侧调用须同路径、原位置、lookup_name/mechanism 且各自唯一；生成 owner/selected 声明也须唯一，分别为 modeled CLASS/METHOD。只辅助后续调用，不确认上游歧义 factory。原类型与诊断保留，provenance 发布 UTF-8 span 和输入/签名 SHA。 |
+| 类型图 | 新接收者及 readable 操作从真实 GraphRef 重新开始遍历，避免沿用祖先路径将递归形式参数误当作缺少 bounds 的摘要。既有图预算和 Rust 校验不放宽。 |
+| JVM 终态 | type-graph-bindings-jvm-20261003-111508：223 项、567 次图请求、537 次 Rust 校验，690.488 秒，无漂移；functional-reference-20261003-111511-20893：40 组全部通过。 |
+| native 终态 | type-graph-bindings-native-20261003-111915：212 项、566 次图请求、537 次 Rust 校验，677.992 秒，无漂移。supplemental-reference-20261003-112712-53271：8 组调用/类型严格一致，包含错误实参、Child 注解删除反例。 |
+| 实际产品 | super-builder-graph-reroot-native-proof-e2e.log：两项 Rust daemon/native 回归 49.546 秒通过，覆盖两个独立证明、配置/成员删除、full-delta 相等、旧 revision 保留、不生成业务 class。 |
+| 失败记录 | 修复前 native 图链只剩4个目标（参考8个），日志保留；已知失败的旧 JVM 图运行由开发者主动 SIGINT 停止，见 super-builder-receiver-graph-controlled-stop.json。没有观察到安全软件杀进程。 |
+
+以上是新版专项和回归证明；完整40模块的已发布回执属于旧4a，不含此修复。新版全量语义、默认类型图、完整扩展、缓存与容量/发行门禁仍须继续，52项仍只有E01/E02关闭。

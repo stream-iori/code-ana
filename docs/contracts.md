@@ -434,3 +434,6 @@ Lombok builtin 6 使用冻结参考的 basic 首字母大写规则（含第二�
 FactHeaders 编码传输只复制已经生成的有界 CAF1 记录，公共事实布局不变。记录计数、字节上限、取消、关闭/封存、索引范围与完整 framing 检查仍执行；排序/拼接视图显式传递原始位置，不通过 hash 丢弃重复。
 
 二进制声明完整读取 class 文件内成员，不按 2048 条截断。类缓存同时受 64 条 / 8 MiB 加权上限约束，超出单类缓存权重仍完整读取且不缓存；class 输入保持 2 MiB 上限，最多 8 个打开的 JAR。ASM 保存 `annotation_metadata` 的显式值/可见性、`annotation_default`、参数及 TYPE_USE reference/path；这些原始元数据不冒充 javac 的 effective annotation 值。dotted nested 查找须由实际 binary header 证明，精确 binary 名优先。
+
+
+生成辅助 NoCode 的第二次 javac 还可提供独立生成接收者证明。接纳条件为两侧唯一同 source/start/end/lookup_name/mechanism 的调用，新调用 resolved/complete、完整 DECLARED 接收者、唯一的辅助 modeled CLASS 和选中 METHOD；原接收者须为缺失或 ERROR/UNKNOWN/NONE。`supplemental_receiver_evidence` 发布原 UTF-8 span、完整接收者、selected_declaration、signature/auxiliary_inputs SHA 与 original_evidence_retained=true。恢复仅消费该独立接收者，不据此确认上游歧义工厂。输入/生成成员/注解变更清除旧证明。继承候选遮蔽按完整 JVM descriptor（含返回类型），同参数的协变选择须明确返回转换成立；缺失 descriptor 不推断遮蔽。递归类型图的接收者及 readable 操作从真实节点引用重新遍历，仍保留查询预算与循环边界。

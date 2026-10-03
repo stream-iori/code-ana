@@ -32,6 +32,8 @@ final class CallRecovery {
     private final List<Object> syntax;
     private final BinaryIndex binary;
     private final TypeOperations types;
+    private final SupplementalAbi signatureAbi;
+    private final Map<String, String> descriptors = new HashMap<>();
     private int work, uncertainPhase;
     private String currentSource;
 
@@ -153,6 +155,7 @@ final class CallRecovery {
                 calls.put(new NodeKey(text(call.get("source")), id.longValue()), call);
         }
         types = new TypeOperations(sources, binary);
+        signatureAbi = new SupplementalAbi(new ArrayList<>(known.values()));
     }
 
     // Warm only a generated builder receiver chain. Poly arguments keep their
@@ -432,6 +435,10 @@ final class CallRecovery {
             if ("MEMBER_SELECT".equals(selection.get("kind"))) {
                 Result value =
                         expression(id(map(selection.get("roles")).get("expression")), depth + 1);
+                if (value.type.isEmpty() || value.blocked) {
+                    var proof = SupplementalReceivers.receiver(model, call);
+                    if (!proof.isEmpty()) value = new Result(proof, true);
+                }
                 if (value.blocked) return unavailable(attrs, "receiver_selection_blocked");
                 if (value.modeled || receiver.isEmpty() || kind(receiver).equals("ERROR"))
                     receiver = value.type;
@@ -602,10 +609,11 @@ final class CallRecovery {
                                             signature.indexOf('#') + 1, signature.indexOf('('))
                                     : "";
                     if (!method.equals(name)) continue;
-                    String override = signature.substring(signature.indexOf('#') + 1);
-                    Integer nearer = hidden.get(override);
+                    // The frozen selector compares full JVM descriptors, including returns.
+                    String override = descriptor(declaration, method);
+                    Integer nearer = override.isEmpty() ? null : hidden.get(override);
                     if (nearer != null && nearer < location.depth) continue;
-                    hidden.merge(override, location.depth, Math::min);
+                    if (!override.isEmpty()) hidden.merge(override, location.depth, Math::min);
                     if (!accessible(declaration, call, receiver, location.depth, depth + 1))
                         continue;
                     List<Map<String, Object>> inputs = arguments;
@@ -2031,7 +2039,24 @@ final class CallRecovery {
         if (strict) return true;
         String a = text(first.declaration.get("parent")),
                 b = text(second.declaration.get("parent"));
-        return !a.equals(b) && types.project(named(a), b).match() == Match.YES;
+        return !a.equals(b) && types.project(named(a), b).match() == Match.YES
+                && types.convert(first.returns, second.returns, false) == Match.YES;
+    }
+
+    private String descriptor(Map<String, Object> declaration, String method) {
+        String identity = text(declaration.get("source")) + ':' + text(declaration.get("signature"));
+        return descriptors.computeIfAbsent(identity, ignored -> {
+            var attributes = map(declaration.get("attributes"));
+            String descriptor = text(attributes.get("jvm_descriptor"));
+            if (descriptor.isEmpty()) {
+                try {
+                    descriptor = text(map(signatureAbi.project(declaration).get("attributes")).get("jvm_descriptor"));
+                } catch (IllegalArgumentException incomplete) {
+                    return "";
+                }
+            }
+            return descriptor.isEmpty() ? "" : method + descriptor;
+        });
     }
 
     private boolean accessible(

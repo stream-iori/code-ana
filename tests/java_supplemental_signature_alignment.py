@@ -13,6 +13,8 @@ LIBRARY = 'package p;@lombok.Getter class Api {java.util.List<Leaf> values;} cla
 CONSUMER = 'package p;class Use {void read(Api api){api.getValues().forEach(leaf -> leaf.run());}}'
 MAP_LIBRARY = 'package p;@lombok.Getter class Api {java.util.Map<String,String> values;}'
 MAP_CONSUMER = 'package p;class Use {String read(java.util.List<Api> apis){return apis.stream().map(api -> api.getValues()).filter(map -> map!=null).map(map -> map.get("id")).findFirst().orElse(null);}}'
+SUPER_LIBRARY = '@lombok.experimental.SuperBuilder @lombok.Getter class Parent<T> {java.util.List<T> values;} @lombok.experimental.SuperBuilder class Child extends Parent<Leaf> {int age;} class Leaf {void run(){}}'
+SUPER_CONSUMER = 'class Use {void read(){Child.builder().values(java.util.Arrays.asList(new Leaf())).age(1).build().getValues().forEach(leaf -> leaf.run());}}'
 
 
 class SupplementalSignatures(unittest.TestCase):
@@ -46,6 +48,41 @@ class SupplementalSignatures(unittest.TestCase):
                      and f['source'] == 'use/Use.java' and f['attributes'].get('element_kind') == 'LAMBDA']
         self.assertEqual(len(callbacks), 1)
         return callbacks[0]
+
+    def test_super_builder_ambiguity_keeps_only_proved_receiver_chain_and_invalidates(self):
+        context = self.fixture(SUPER_LIBRARY, SUPER_CONSUMER, 'super-builder')
+        first = self.analyze([context], cache=True)['facts']
+        by = {f['id']: f for f in first}
+        targets = [f for f in first if f['kind'] == 'call_target' and f['source'] == 'use/Use.java']
+        self.assertEqual(len(targets), 8)
+        self.assertNotIn('Child#builder()', {by[f['target']]['signature'] for f in targets})
+        self.assertIn('Parent$ParentBuilder#values(java.util.List)', {by[f['target']]['signature'] for f in targets})
+        provenance = next(f for f in first if f['kind'] == 'provenance' and f['source'] == 'use/Use.java')
+        proofs = type_attributes(provenance)['supplemental_receiver_evidence']
+        proof = next(p for p in proofs if p['selected_declaration'] == 'Parent$ParentBuilder#values(java.util.List)')
+        self.assertEqual(proof['receiver_type_model']['element'], 'Child$ChildBuilder')
+        self.assertEqual(len(proof['signature_sha256']), 64)
+        self.assertTrue(proof['original_evidence_retained'])
+        span = proof['span']
+        self.assertEqual(SUPER_CONSUMER.encode()[span['start']:span['end']],
+                         b'Child.builder().values(java.util.Arrays.asList(new Leaf()))')
+        for library, consumer in ((SUPER_LIBRARY, SUPER_CONSUMER.replace('new Leaf()', '"wrong"')),
+                                  (SUPER_LIBRARY.replace('@lombok.experimental.SuperBuilder class Child', 'class Child'), SUPER_CONSUMER)):
+            changed = self.fixture(library, consumer, 'super-builder')
+            delta = self.analyze([changed], baseline=first, cache=True)
+            cold = self.analyze([changed])['facts']
+            self.assertEqual(self.merged(first, delta), sorted(cold, key=lambda f: f['id']))
+            changed_proofs = [p for f in cold if f['kind'] == 'provenance'
+                              for p in type_attributes(f).get('supplemental_receiver_evidence', [])]
+            self.assertFalse([p for p in changed_proofs if p['receiver_type_model'].get('element') == 'Child$ChildBuilder'])
+            ids = {f['id']: f for f in cold}
+            self.assertFalse([f for f in cold if f['kind'] == 'call_target'
+                              and ids[f['target']]['signature'] == 'Child$ChildBuilder#age(int)'])
+            if library == SUPER_LIBRARY:
+                self.assertEqual(changed_proofs, [])
+            else:
+                self.assertTrue(changed_proofs)
+                self.assertTrue(all(p['signature_sha256'] != proof['signature_sha256'] for p in changed_proofs))
 
     def test_primitive_callback_expression_has_separate_javac_proof_and_invalid_delta(self):
         library = 'package p; @lombok.Getter class Api {Integer delay;}'

@@ -17,7 +17,7 @@ final class SupplementalTypes {
                 Json.number(declaration,"end"),text(declaration.get("signature")));
     }
 
-    private static boolean complete(Map<String,Object> type, int depth) {
+    static boolean complete(Map<String,Object> type, int depth) {
         if (Thread.currentThread().isInterrupted()) throw new java.util.concurrent.CancellationException("CANCELLED");
         if (depth >= 64 || type.isEmpty() || !Boolean.TRUE.equals(type.get("complete"))) return false;
         if (Set.of("ERROR","UNKNOWN","CAPTURE").contains(text(type.get("kind")))) return false;
@@ -90,6 +90,7 @@ final class SupplementalTypes {
             int accepted=0;
             try {
                 SupplementalExpressions.derive(original, supplemental, auxiliary, checksum, inputs);
+                SupplementalReceivers.derive(original, supplemental, auxiliary, checksum, inputs);
                 for(Object raw:Json.list(supplemental.get("declarations"))) {
                     var declaration=Json.map(raw); var attributes=map(declaration.get("attributes"));
                     if("LOCAL_VARIABLE".equals(attributes.get("element_kind"))) {
