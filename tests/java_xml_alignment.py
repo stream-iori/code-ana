@@ -39,6 +39,30 @@ class Xml(unittest.TestCase):
         self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['attributes'].get('code')=='EXTENSION_CALLBACK_FAILED'])
         return facts
 
+    def test_auxiliary_source_constructor_and_members_survive_header_change(self):
+        xml = '<beans><bean id="shared" class="p.Shared" init-method="start"><property name="name" value="one"/></bean></beans>'
+        source = 'package p; public class Shared {public Shared(){} public void setName(String name){} public void start(){}}'
+
+        def fixture(text):
+            library = self.context('lib', {'p/Shared.java': text})
+            app = self.captured({'beans.xml': xml})
+            app['sources'] = [dict(unit, publish=False) for unit in library['sources']] + app['sources']
+            app['digest'] = models.sha(json.dumps(app['sources'], sort_keys=True).encode())
+            return app
+
+        base = self.analyze([fixture(source)], cache=True)
+        by = {fact['id']: fact for fact in base['facts']}
+        members = {by[fact['target']]['signature'] for fact in base['facts'] if fact['relation'] == 'config_member'}
+        self.assertEqual(members, {'p.Shared#<init>()', 'p.Shared#setName(java.lang.String)', 'p.Shared#start()'})
+        for changed in (source.replace('Shared(){}', 'Shared(int n){}'), source.replace('setName(String name)', 'setOther(String name)')):
+            context = fixture(changed)
+            delta = self.analyze([context], base['facts'], cache=True)
+            full = self.analyze([context], cache=True)
+            self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+            by = {fact['id']: fact for fact in full['facts']}
+            members = {by[fact['target']]['signature'] for fact in full['facts'] if fact['relation'] == 'config_member'}
+            self.assertNotIn('p.Shared#<init>()' if 'Shared(int n)' in changed else 'p.Shared#setName(java.lang.String)', members)
+
     def test_module_nocode_resource_identical_edit_disable_and_delete_owners(self):
         xml = ('<beans xmlns:sofa="http://sofastack.io/schema/sofa">'
                '<bean id="shared" class="Shared"/>'

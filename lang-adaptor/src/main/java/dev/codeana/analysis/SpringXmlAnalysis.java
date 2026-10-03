@@ -383,10 +383,17 @@ public final class SpringXmlAnalysis {
         return "";
     }
 
+    private static boolean sourceDeclaration(Map<String, Object> fact) {
+        if ("declaration".equals(fact.get("kind"))) return true;
+        Object origin = Json.map(fact.get("attributes")).get("source_origin");
+        return origin instanceof Map && Json.map(origin).get("path") instanceof String path
+                && !path.isEmpty();
+    }
+
     private Map<String, Object> binaryClass(String name) throws Exception {
         if (name.isBlank()) return null;
         Map<String, Object> source = declaration(name);
-        if (source != null && "declaration".equals(source.get("kind"))) return null;
+        if (source != null && sourceDeclaration(source)) return null;
         if (binary == null)
             binary = new BinaryIndex(context, Path.of(Json.string(context, "target_java_home")));
         return binary.readClass(name);
@@ -555,7 +562,7 @@ public final class SpringXmlAnalysis {
                                 methodDeclaration(
                                         entry.getKey(), raw, classDeclaration(owner, found)));
                 }
-            } else if (declaration != null && "declaration".equals(declaration.get("kind"))) {
+            } else if (declaration != null && sourceDeclaration(declaration)) {
                 if (staticOnly
                         && !owner.equals(type)
                         && "INTERFACE".equals(attributes.get("element_kind"))) continue;

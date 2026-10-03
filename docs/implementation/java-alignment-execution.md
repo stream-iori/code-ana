@@ -495,3 +495,9 @@ logical-budget-annotated-final-focused-jvm.log：长链/Builder正反例/表达�
 1ea710c独立默认native140项（504.978秒）、冻结参考native36组已通过，无漂移；图绑定206项失败2项，均为新增长链测试显式type_graph=false，被严格门禁拒绝，不能记录整体通过。根因属于测试接入；在主工作区修正默认模式不覆盖门禁context工厂，两项实际native图+Rust校验通过（15.648秒），全图绑定仍须在新版本重跑。
 
 CustomDnsResolverTest的隔离默认表示3329源码/869jar上下文终态成功，137目标对参考137，差分仅匿名构造器javac二进制名与源码名尚未建立span映射；这不是全项目语义通过。相同图模式隔离探针在512MiB javac诊断格式化阶段OOM，保留原日志，S2默认图与容量仍未关闭。
+
+## XML读取已捕获依赖源码成员
+
+SpringXmlAnalysis只认可declaration，误将带source_origin的external_symbol作为binary class查找，忽略已捕获的Maven依赖源码默认构造器/方法。现在按source_origin保留的不可变源码声明目录读取，不生成虚假业务字节码或凭空构造器。最小fixture修复前0个、修复后构造器/setter/init三个成员；原XML/SOFA/依赖视图17项通过（48.741秒），新增依赖头变化、构造器/Setter移除与cache/full/delta严格相等。fixture摘要须覆盖辅助源码，已对齐Rust生产digest(&units,classpath,resources,配置)，旧未覆盖摘要的试验失败保留日志。
+
+S3配置成员粗投影42/44不能作为缺2结论：核对原参考metadata发现11个unresolved占位，其中FlowCtrlServiceImpl无默认构造器，另外10个是未解析继承Setter；产品静态binary查得10个实际父类成员，额外证据须保留并单独审核。一个真缺口是CertificateServiceClientImpl依赖源码默认构造器，新增fixture覆盖对应机制；仍须真实新版本配置差分。完整XML树/属性/DI/WIRES语义未验收，不勾选S3。
