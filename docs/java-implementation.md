@@ -385,3 +385,15 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 坏UTF-8 | 产品编译请求保留原文件，归档必须恰有一条原hash的 `SOURCE_ENCODING_INVALID`，且该文件无声明/语法/观察。参考请求明确排除不能解码的文件；健康源码、位置、切片和所有查找继续严格对照，不宣称坏文件与参考解析相等。 |
 | 汇总门禁 | `java_real_semantic_diff.py --model-api-receipt` 仅接收完整模型清单；要求同发布源码、同Maven manifest、同compiler bridge和native共享库SHA，并重新验证每个上下文回执及实际输入数量。未提供仍保留 `complete_model_api_inventory` 待验收项。 |
 | 专项回归 | 六组JVM和native摘要导航通过，包含共享AST、坏编码、全部UTF16位置/声明切片；9项Python保护检查通过。新入口的全部40模块执行尚待完成；真实TEST仍在Rust候选写入，不代表发布/全语义/容量已通过。 |
+
+## 辅助源码与隐式 enum 模型对齐（2026-10-03）
+
+| 项目 | 实现 / 实测 |
+|---|---|
+| 真实缺口 | 全上下文类型查找发现63个辅助源码匿名类型被产品额外暴露；MAIN 模型缺14个 enum `valueOf(String)` 隐式参数。保留原失败清单，不缩小查询范围。 |
+| Java 修复 | 辅助声明 API 默认只展示命名类型及声明头，`full_auxiliary_model` 明确启用完整导航；根据 javac 已验证的隐式方法参数头补齐只读参数视图。紧凑辅助 AST 保留字段初始化表达式及空方法块，省略类初始化块及方法体语句；不附加参考没有的绑定/表达式类型图。registry 为 `staged-project-view-v9-model-api-aux-headers`。 |
+| 缓存正确性 | 桥继续遍历方法体收集原外部符号，仅抑制紧凑 AST 输出。第一次剪枝遍历造成冷/缓存结果差4个外部符号，原始差分保留；修复后完整模块缓存9项94.752秒通过，编译范围缩减仍有效。 |
+| 模型专项 | `model-api-reference-20261003-213731-19943` JVM与`213940-46904` native共9组通过，新增隐式enum、辅助声明头、完整辅助模型。重复类型的参考位置缺陷仍明确保留为raw不同。 |
+| 严格验收范围 | 实项目模型清单扩大为所有上下文源码的声明、AST、源码位置及全部类型查询；汇总拒绝仅发布源码清单。core/service MAIN 2624源的最新原生对照仍在运行；此前228个TEST发布源通过不能代替这项。 |
+| 真实发布 | f04c5d6组合的core/service TEST实际native→Rust worker→daemon→存储发布成功，6097.804秒，原始回执`validation-compiler-transfer-f04c5d6/.../iopengw-core-service-test-transfer-fixed-v2`。终态为partial，语义与容量未接受；该旧组合不包含v9修复，不作最新全项目证明。 |
+| 仍待 | 最新同版本完整Java/native/daemon回归、40模块MAIN/TEST/XML发布、80上下文完整模型清单、14域语义差分，以及最后的独占容量/release。矩阵仍只关闭E01/E02。 |

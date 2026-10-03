@@ -145,17 +145,21 @@ def main():
             compiler_request_sha256=digest(args.compiler_request),archive_sha256=digest(archive),
             reference_jar_sha256=REFERENCE_SHA,source_inputs=alignment.input_files())
         invalid=invalid_sources(request)
-        selected={s['path'] for s in request['sources'] if s['publish'] and s['path'] not in invalid}
-        queries=archive_inventory(archive,selected,invalid)
+        selected={s['path'] for s in request['sources'] if s['path'] not in invalid}
+        report['navigation_scope']='all_context_sources'
+        # Type lookup is context-wide: include auxiliary source headers too.
+        queries=archive_inventory(archive,{s['path'] for s in request['sources'] if s['path'] not in invalid},invalid)
+        report['type_lookup_scope']='all_context_source_types'
         report['invalid_utf8_sources']=invalid
-        report['healthy_published_source_count']=len(selected)
+        report['healthy_published_source_count']=sum(s['publish'] and s['path'] not in invalid for s in request['sources'])
+        report['healthy_context_source_count']=len(selected)
         if args.native_executable:
             executable=args.native_executable.resolve();inputs[str(executable)]=digest(executable)
             report['native_model_api_executable_sha256']=inputs[str(executable)]
             report['native_model_api_heap_bytes']=args.native_heap_bytes
         adapted=dict(version=5,facts=False,java_home=str(JDK8),bridge=str(bridge),contexts=[request],
             scratch=str(evidence/'scratch'),compiler_heap_bytes=536870912,compiler_timeout_seconds=3600,
-            model_api_inventory=True,model_api_published_only=True,model_api_exact_context=True,model_type_queries=queries,
+            model_api_inventory=True,model_api_published_only=False,model_api_exact_context=True,model_type_queries=queries,
             model_api_excluded_sources=sorted(invalid),
             model_api_archive=str(archive),model_api_archive_sha256=digest(archive))
         (evidence/'scratch').mkdir();path=evidence/'request.json';atomic_json(path,adapted)

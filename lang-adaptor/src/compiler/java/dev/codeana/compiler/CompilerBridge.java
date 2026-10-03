@@ -1326,6 +1326,7 @@ public final class CompilerBridge implements AutoCloseable {
         final java.net.URI sourceUri;
         final boolean declarationsOnly;
         final boolean emitBody;
+        int compactSyntaxDepth;
         String owner = "";
         boolean callbackCreation;
         final Deque<Tree> lexical = new ArrayDeque<Tree>();
@@ -1339,7 +1340,11 @@ public final class CompilerBridge implements AutoCloseable {
         @Override
         public Void scan(Tree tree, Void p) {
             if (tree == null) return null;
-            if (!declarationsOnly && emitBody && original.containsKey(tree)) {
+            boolean declarationSyntax = !declarationsOnly && !emitBody;
+            // Anatomist's compact source syntax keeps method blocks (with no
+            // statements) and field initializers, but omits class init blocks.
+            boolean classInitializer=declarationSyntax && tree instanceof BlockTree && lexical.peek() instanceof ClassTree;
+            if (!declarationsOnly && original.containsKey(tree) && (!declarationSyntax || compactSyntaxDepth==0) && !classInitializer) {
                 Map<String, Object> record = Json.object("id", treeIds.get(tree), "parent",
                         sourceSyntaxParent(),
                         "kind", tree.getKind().name(), "source", source.get("path"),
@@ -1356,11 +1361,18 @@ public final class CompilerBridge implements AutoCloseable {
                 if (tree instanceof TypeParameterTree) record.put("name",((TypeParameterTree)tree).getName().toString());
                 if (tree instanceof MemberReferenceTree) record.put("name",((MemberReferenceTree)tree).getName().toString());
                 if (tree instanceof PrimitiveTypeTree) record.put("name", ((PrimitiveTypeTree) tree).getPrimitiveTypeKind().name().toLowerCase(Locale.ROOT));
-                record.put("roles", roles(tree));
+                Map<String,Object> childRoles=roles(tree);
+                if(declarationSyntax && tree instanceof BlockTree)childRoles.put("statements",Collections.emptyList());
+                if(declarationSyntax && tree instanceof ClassTree) {
+                    List<Tree> members=new ArrayList<Tree>();
+                    for(Tree member:((ClassTree)tree).getMembers())if(!(member instanceof BlockTree))members.add(member);
+                    role(childRoles,"members",members);
+                }
+                record.put("roles", childRoles);
                 TreePath path = tree == unit ? new TreePath(unit) : new TreePath(getCurrentPath(),tree);
-                Element symbol = trees.getElement(path);
+                Element symbol = emitBody ? trees.getElement(path) : null;
                 if (symbol != null) record.put("symbol",signature(symbol));
-                if (tree instanceof ExpressionTree && !(tree instanceof MethodInvocationTree)
+                if (emitBody && tree instanceof ExpressionTree && !(tree instanceof MethodInvocationTree)
                         && !(tree instanceof NewClassTree) && !(tree instanceof LambdaExpressionTree)
                         && !(tree instanceof MemberReferenceTree)) {
                     TypeMirror attributed = trees.getTypeMirror(path);
@@ -1370,8 +1382,10 @@ public final class CompilerBridge implements AutoCloseable {
                 syntax.add(record);
             }
             lexical.push(tree);
+            boolean compactBlock=declarationSyntax && tree instanceof BlockTree;
+            if(compactBlock)compactSyntaxDepth++;
             try { return super.scan(tree, p); }
-            finally { lexical.pop(); }
+            finally { if(compactBlock)compactSyntaxDepth--;lexical.pop(); }
         }
 
         private String control(Tree site) {

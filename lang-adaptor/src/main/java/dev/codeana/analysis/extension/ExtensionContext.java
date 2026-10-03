@@ -85,7 +85,7 @@ public final class ExtensionContext {
 
     /** Optional detached navigation; construction never copies the archive or exposes javac. */
     public DetachedJavaModel javaModel() {
-        if(javaModel==null)javaModel=new DetachedJavaModel(model);
+        if(javaModel==null)javaModel=new DetachedJavaModel(model,Boolean.TRUE.equals(configuration.get("full_auxiliary_model")));
         return javaModel;
     }
 

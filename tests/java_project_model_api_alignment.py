@@ -30,6 +30,8 @@ def accepted_context(row,report):
         and set(report.get('projections',{}))==set(PROJECTIONS)
         and all(value.get('equal') is True for value in report['projections'].values())
         and report.get('changed_inputs')==[] and report.get('changed_source_inputs')==[]
+        and report.get('type_lookup_scope')=='all_context_source_types'
+        and report.get('navigation_scope')=='all_context_sources'
         and report.get('native_model_api_executable_sha256')==row.get('native_model_api_executable_sha256')
         and report.get('reference_compilation',{}).get('compilations')==1)
 

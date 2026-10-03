@@ -28,7 +28,13 @@ CASES={
  'shared-ast':{'Use.java':'''package p; class Shared {Shared(){} java.util.List<String> first,second;
  void run(){java.util.List<String> a,b; new java.util.ArrayList<String>() {{add("原字节😀");}};}}'''},
  'invalid-utf8':{'Healthy.java':'package p; class Healthy {Healthy(){} int value;}','Broken.java':'package p; class Broken {}'},
+ 'implicit-enum':{'Kinds.java':'package p; enum Kinds {ONE,TWO;} class Other {Other(){} enum Nested {YES,NO;}}'},
 }
+_AUXILIARY={'Aux.java':'''package p; class Aux {Aux(){} static Object value=new Object(){int hidden;};
+ static class Nested {Nested(){}} void run(){class Local{Local(){}}}}''',
+ 'Use.java':'package p; class Use {Use(){} Aux value;}'}
+CASES['auxiliary-headers']=_AUXILIARY
+CASES['auxiliary-full-model']=_AUXILIARY
 
 
 def normalize(value):
@@ -80,6 +86,11 @@ def main():
                 request=dict(version=5,facts=False,java_home=str(models.JDK8),bridge=str(root/'lang-adaptor/target/compiler-bridge.jar'),
                     scratch=str(case.root),contexts=[context],model_type_queries=['p.Outer','p.Outer.Inner','p.Outer$Inner','p.Flow','p.Dup','p.Missing'])
                 if args.inventory:request.update(model_api_inventory=True,model_api_exact_context=True)
+                if name.startswith('auxiliary-'):
+                    next(source for source in context['sources'] if source['path']=='app/Aux.java')['publish']=False
+                    context['full_auxiliary_model']=name=='auxiliary-full-model'
+                    request.update(model_api_exact_context=True,
+                        model_type_queries=['p.Aux','p.Aux$Nested','p.Aux.Nested','p.Aux$1','p.Aux$1Local','p.Use','p.Missing'])
                 invalid={};reference_request=request
                 if name=='invalid-utf8':
                     broken=case.root/'app/Broken.java';broken.write_bytes(b'package p; class Broken {\xff}')

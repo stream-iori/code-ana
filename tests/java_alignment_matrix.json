@@ -26,7 +26,9 @@
         "tests/java_model_api_reference_alignment.py",
         "lang-adaptor/src/main/java/dev/codeana/analysis/extension/DetachedJavaModel.java",
         "tests/java_model_api_inventory_diff.py",
-        "tests/java_model_api_inventory_diff_tests.py"
+        "tests/java_model_api_inventory_diff_tests.py",
+        "tests/java_project_model_api_alignment.py",
+        "tests/java_project_model_api_alignment_tests.py"
       ],
       "evidence": [],
       "implementation_complete": false,
@@ -38,12 +40,14 @@
         "declaration-reference-native",
         "model-api-reference",
         "model-api-reference-native",
-        "model-api-inventory-harness"
+        "model-api-inventory-harness",
+        "project-model-api-harness"
       ],
       "remaining_acceptance": [
         "@2 有界语法分片、来源和惰性反射已接入，64/128 MiB 专项通过；完整模型目录/逐节点契约/native/真实项目仍待验收",
         "新独立模型导航已在SDK8/JVM与原生专项对照：声明9/11/5、语法30/36/84及来源/父链/类型查找/预算/关闭；重复类型参考丢位置反例保持raw不同。最新产品组合、完整模型目录与真实项目仍待验收。",
-        "新增实际单编译上下文的完整模型清单：core/service TEST 声明3284、AST135076、源码228、类型查找474全相等。修正共享AST、注解合成父链及声明成员投影；参考按单位流式消费同一次原worker响应，保留原整体解码预算失败，不宣称容量或全40模块完成。新v8指纹组合仍待native和全范围验收。"
+        "新增实际单编译上下文的完整模型清单：core/service TEST 声明3284、AST135076、源码228、类型查找474全相等。修正共享AST、注解合成父链及声明成员投影；参考按单位流式消费同一次原worker响应，保留原整体解码预算失败，不宣称容量或全40模块完成。新v8指纹组合仍待native和全范围验收。",
+        "已补全部40模块MAIN/TEST逐上下文native模型API入口；坏UTF-8原字节/诊断与健康源严格对照，完整真实清单与同版本发布仍待执行，不以core/service专项关闭。"
       ]
     },
     {
@@ -526,7 +530,9 @@
         "tests/java_extension_alignment.py",
         "tests/java_lombok_alignment.py",
         "tests/java_model_api_inventory_diff.py",
-        "tests/java_model_api_inventory_diff_tests.py"
+        "tests/java_model_api_inventory_diff_tests.py",
+        "tests/java_project_model_api_alignment.py",
+        "tests/java_project_model_api_alignment_tests.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -536,11 +542,13 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "model-api-inventory-harness"
+        "model-api-inventory-harness",
+        "project-model-api-harness"
       ],
       "remaining_acceptance": [
         "模型 overlay 校验、编译器生成构造器替换与独立 modeled metadata 已实现；完整下游绑定/覆盖反馈待验收",
-        "新增实际单编译上下文的完整模型清单：core/service TEST 声明3284、AST135076、源码228、类型查找474全相等。修正共享AST、注解合成父链及声明成员投影；参考按单位流式消费同一次原worker响应，保留原整体解码预算失败，不宣称容量或全40模块完成。新v8指纹组合仍待native和全范围验收。"
+        "新增实际单编译上下文的完整模型清单：core/service TEST 声明3284、AST135076、源码228、类型查找474全相等。修正共享AST、注解合成父链及声明成员投影；参考按单位流式消费同一次原worker响应，保留原整体解码预算失败，不宣称容量或全40模块完成。新v8指纹组合仍待native和全范围验收。",
+        "已补全部40模块MAIN/TEST逐上下文native模型API入口；坏UTF-8原字节/诊断与健康源严格对照，完整真实清单与同版本发布仍待执行，不以core/service专项关闭。"
       ]
     },
     {
@@ -573,7 +581,9 @@
         "tests/java_model_api_reference_alignment.py",
         "lang-adaptor/src/main/java/dev/codeana/analysis/extension/DetachedJavaModel.java",
         "tests/java_model_api_inventory_diff.py",
-        "tests/java_model_api_inventory_diff_tests.py"
+        "tests/java_model_api_inventory_diff_tests.py",
+        "tests/java_project_model_api_alignment.py",
+        "tests/java_project_model_api_alignment_tests.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -585,12 +595,14 @@
         "java-daemon",
         "model-api-reference",
         "model-api-reference-native",
-        "model-api-inventory-harness"
+        "model-api-inventory-harness",
+        "project-model-api-harness"
       ],
       "remaining_acceptance": [
         "资源 selector、事务内失败/取消隔离与不可变 type 共享已实现；独立查询/资源预算和完整生产/参考验收仍缺",
         "新独立模型导航已在SDK8/JVM与原生专项对照：声明9/11/5、语法30/36/84及来源/父链/类型查找/预算/关闭；重复类型参考丢位置反例保持raw不同。最新产品组合、完整模型目录与真实项目仍待验收。",
-        "新增实际单编译上下文的完整模型清单：core/service TEST 声明3284、AST135076、源码228、类型查找474全相等。修正共享AST、注解合成父链及声明成员投影；参考按单位流式消费同一次原worker响应，保留原整体解码预算失败，不宣称容量或全40模块完成。新v8指纹组合仍待native和全范围验收。"
+        "新增实际单编译上下文的完整模型清单：core/service TEST 声明3284、AST135076、源码228、类型查找474全相等。修正共享AST、注解合成父链及声明成员投影；参考按单位流式消费同一次原worker响应，保留原整体解码预算失败，不宣称容量或全40模块完成。新v8指纹组合仍待native和全范围验收。",
+        "已补全部40模块MAIN/TEST逐上下文native模型API入口；坏UTF-8原字节/诊断与健康源严格对照，完整真实清单与同版本发布仍待执行，不以core/service专项关闭。"
       ]
     },
     {

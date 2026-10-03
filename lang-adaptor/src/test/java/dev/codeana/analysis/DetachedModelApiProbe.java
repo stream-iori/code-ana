@@ -16,6 +16,12 @@ public final class DetachedModelApiProbe {
     private static Map<String,Object> syntaxKey(Map<String,Object> node) {
         return Json.object("kind",node.get("kind"),"start",node.get("start"),"end",node.get("end"));
     }
+    private static Map<String,Object> typeKey(DetachedJavaModel model,DetachedJavaModel.DeclarationRef reference) {
+        Map<String,Object> declaration=model.declaration(reference),result=key(declaration);
+        result.put("source",reference.source());
+        result.put("binary_name",Json.map(declaration.get("attributes")).get("binary_name"));
+        return result;
+    }
     public static void main(String[] args) throws Exception {
         Map<String,Object> request=Json.map(Json.parse(Json.read(Path.of(args[0]))));
         Map<String,Object> context=Json.map(Json.list(request.get("contexts")).getFirst());
@@ -74,8 +80,8 @@ public final class DetachedModelApiProbe {
                 List<Object> lookups=new ArrayList<>();
                 for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of()))) {
                     var lookup=model.type(name.toString());List<Object> candidates=new ArrayList<>();
-                    if(lookup instanceof DetachedJavaModel.FoundType found)candidates.add(key(model.declaration(found.declaration())));
-                    if(lookup instanceof DetachedJavaModel.AmbiguousType ambiguous)for(var ref:ambiguous.declarations())candidates.add(key(model.declaration(ref)));
+                    if(lookup instanceof DetachedJavaModel.FoundType found)candidates.add(typeKey(model,found.declaration()));
+                    if(lookup instanceof DetachedJavaModel.AmbiguousType ambiguous)for(var ref:ambiguous.declarations())candidates.add(typeKey(model,ref));
                     lookups.add(Json.object("name",name,"status",lookup instanceof DetachedJavaModel.MissingType?"missing":candidates.size()==1?"found":"ambiguous","candidates",candidates));
                 }
                 model.close();try {model.type("p.Use");throw new AssertionError("closed model remained readable");}

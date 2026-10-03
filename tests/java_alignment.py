@@ -62,9 +62,10 @@ def main():
     parser.add_argument('--level', choices=('fixtures', 'native', 'full'), default='full')
     for name in ('real-publication-receipt','real-reference','real-project','real-runtime-root','real-inputs-manifest'):
         parser.add_argument('--'+name,type=pathlib.Path)
+    parser.add_argument('--real-model-api-receipt',type=pathlib.Path)
     args = parser.parse_args()
     real_inputs=[args.real_publication_receipt,args.real_reference,args.real_project,args.real_runtime_root,args.real_inputs_manifest]
-    if any(real_inputs) and (not all(real_inputs) or args.level!='full'):
+    if (any(real_inputs) or args.real_model_api_receipt) and (not all(real_inputs) or args.level!='full'):
         parser.error('真实语义门禁需 --level full 和全部五个 --real-* 输入')
     evidence = ROOT / 'target/java-alignment/evidence' / (time.strftime('%Y%m%d-%H%M%S') + '-' + str(os.getpid()))
     evidence.mkdir(parents=True)
@@ -160,6 +161,8 @@ def main():
             '--publication-receipt',str(args.real_publication_receipt),'--reference',str(args.real_reference),
             '--project',str(args.real_project),'--runtime-root',str(args.real_runtime_root),
             '--inputs-manifest',str(args.real_inputs_manifest),'--evidence',str(evidence/'real-semantic-diff')],None))
+        if args.real_model_api_receipt:
+            gates[-1][1].extend(['--model-api-receipt',str(args.real_model_api_receipt)])
     product_artifacts = None
     for name, command, timeout in gates:
         started = time.monotonic()

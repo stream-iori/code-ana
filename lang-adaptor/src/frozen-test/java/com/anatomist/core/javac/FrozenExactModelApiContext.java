@@ -32,7 +32,8 @@ public final class FrozenExactModelApiContext {
         var command=List.of(home.resolve("bin/java").toString(),"-Xmx512m","-cp",
                 worker+File.pathSeparator+home.resolve("lib/tools.jar"),"com.anatomist.worker.JavacWorker","1");
         var cache=new JavacDeclarationCache(64L<<20);
-        try(var lease=cache.lease(sources,published,true,toolchain.fingerprint());
+        Set<Path> fullModels=Boolean.TRUE.equals(context.get("full_auxiliary_model"))?new LinkedHashSet<>(sources):published;
+        try(var lease=cache.lease(sources,fullModels,true,toolchain.fingerprint());
             var session=new JavacWorkerSession(command,scratch,Duration.ofSeconds(3600))) {
             Path response=scratch.resolve("frozen-model.bin");
             var results=session.executeBatch(List.of(new JavacBatchProtocol.Request(1,0,0,

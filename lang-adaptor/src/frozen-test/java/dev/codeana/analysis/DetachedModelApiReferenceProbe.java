@@ -15,6 +15,11 @@ public final class DetachedModelApiReferenceProbe {
     private static Map<String,Object> syntaxKey(JavaNode node) {
         return Json.object("kind",node.kind(),"start",node.start(),"end",node.end());
     }
+    private static Map<String,Object> typeKey(JavaModel model,JavaModel.DeclarationRef reference,Map<Path,String> paths) {
+        JavaDeclaration declaration=model.declaration(reference);Map<String,Object> result=key(declaration);
+        result.put("source",paths.get(reference.source()));result.put("binary_name",declaration.binaryName());
+        return result;
+    }
     public static void main(String[] args) throws Exception {
         Map<String,Object> request=Json.map(Json.parse(Json.read(Path.of(args[0]))));
         Map<String,Object> context=Json.map(Json.list(request.get("contexts")).getFirst());
@@ -66,8 +71,8 @@ public final class DetachedModelApiReferenceProbe {
                 }
                 for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of()))) {
                     var lookup=model.type(name.toString());List<Object> candidates=new ArrayList<>();
-                    if(lookup instanceof JavaModel.FoundType found)candidates.add(key(model.declaration(found.declaration())));
-                    if(lookup instanceof JavaModel.AmbiguousType ambiguous)for(var ref:ambiguous.declarations())candidates.add(key(model.declaration(ref)));
+                    if(lookup instanceof JavaModel.FoundType found)candidates.add(typeKey(model,found.declaration(),paths));
+                    if(lookup instanceof JavaModel.AmbiguousType ambiguous)for(var ref:ambiguous.declarations())candidates.add(typeKey(model,ref,paths));
                     lookupCandidates.get(name.toString()).addAll(candidates);
                 }
                 model.close();try {model.type("p.Use");throw new AssertionError("reference closed model remained readable");}

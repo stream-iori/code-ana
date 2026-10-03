@@ -21,10 +21,12 @@ class ProjectModelInventoryGuards(unittest.TestCase):
     def test_jvm_or_incomplete_or_replanned_inventory_cannot_close_native_context(self):
         row=dict(exit_code=0,native_model_api_executable_sha256='native')
         report=dict(state='finished',equal=True,projections={name:dict(equal=True) for name in PROJECTIONS},
-            changed_inputs=[],changed_source_inputs=[],native_model_api_executable_sha256='native',reference_compilation=dict(compilations=1))
+            changed_inputs=[],changed_source_inputs=[],native_model_api_executable_sha256='native',reference_compilation=dict(compilations=1),
+            type_lookup_scope='all_context_source_types',navigation_scope='all_context_sources')
         self.assertTrue(accepted_context(row,report))
         for override in (dict(native_model_api_executable_sha256=None),dict(reference_compilation=dict(compilations=21)),
-            dict(projections={}),dict(changed_source_inputs=['parser']),dict(changed_inputs=['source']),dict(state='running')):
+            dict(projections={}),dict(changed_source_inputs=['parser']),dict(changed_inputs=['source']),dict(state='running'),
+            dict(type_lookup_scope='published_only'),dict(navigation_scope='published_only')):
             with self.subTest(override=override):self.assertFalse(accepted_context(row,report|override))
 
 

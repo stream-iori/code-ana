@@ -23,6 +23,7 @@ public final class DetachedJavaModel implements AutoCloseable {
     private record Span(String source,long start,long end) {}
     private record Identity(String source,String signature) {}
     private final Map<String,Object> model;
+    private final boolean fullAuxiliaryModel;
     private Map<String,Map<String,Object>> units;
     private Map<String,List<Integer>> positions;
     private Map<Identity,List<DeclarationRef>> identities;
@@ -40,7 +41,10 @@ public final class DetachedJavaModel implements AutoCloseable {
         @Override protected boolean removeEldestEntry(Map.Entry<String,Source> entry) {return size()>4;}
     };
 
-    DetachedJavaModel(Map<String,Object> immutableModel) { model=immutableModel; }
+    DetachedJavaModel(Map<String,Object> immutableModel) { this(immutableModel,false); }
+    DetachedJavaModel(Map<String,Object> immutableModel,boolean fullAuxiliaryModel) {
+        model=immutableModel;this.fullAuxiliaryModel=fullAuxiliaryModel;
+    }
     private void open() {if(closed)throw new IllegalStateException("JAVA_MODEL_CLOSED");cancelled();}
     private static void cancelled() {
         if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException("CANCELLED");
@@ -70,13 +74,36 @@ public final class DetachedJavaModel implements AutoCloseable {
         List<Object> declarations=Json.list(model.get("declarations"));
         List<Integer> catalogueRows=new ArrayList<>();
         Set<Identity> callableHeaders=new HashSet<>();
+        Set<Identity> auxiliaryBodyDeclarations=new HashSet<>();
+        Map<Identity,List<Identity>> auxiliaryChildren=new HashMap<>();
+        Set<List<String>> parameterHeaders=new HashSet<>();
         for(Object raw:declarations) {
             cancelled();var value=Json.map(raw);var attributes=Json.map(value.get("attributes"));
+            String source=Json.string(value,"source"),signature=Json.string(value,"signature");
+            if(!fullAuxiliaryModel && Boolean.FALSE.equals(unit(source).get("publish"))) {
+                Identity identity=new Identity(source,signature);
+                auxiliaryChildren.computeIfAbsent(new Identity(source,Json.string(value,"parent")),ignored->new ArrayList<>()).add(identity);
+                if(Set.of("LOCAL","ANONYMOUS").contains(Objects.toString(attributes.get("nesting_kind"),"")))
+                    auxiliaryBodyDeclarations.add(identity);
+            }
             if(Set.of("METHOD","CONSTRUCTOR").contains(Json.string(attributes,"element_kind")))
                 callableHeaders.add(new Identity(Json.string(value,"source"),Json.string(value,"signature")));
+            if("PARAMETER".equals(attributes.get("element_kind")))
+                parameterHeaders.add(List.of(source,Json.string(value,"parent"),Json.string(value,"name")));
+        }
+        Deque<Identity> pending=new ArrayDeque<>(auxiliaryBodyDeclarations);
+        while(!pending.isEmpty()) {
+            cancelled();Identity parent=pending.removeFirst();
+            for(Identity child:auxiliaryChildren.getOrDefault(parent,List.of()))
+                if(auxiliaryBodyDeclarations.add(child))pending.addLast(child);
         }
         for(int i=0;i<declarations.size();i++) {
             cancelled();Map<String,Object> value=Json.map(declarations.get(i)),attributes=Json.map(value.get("attributes"));
+            String source=Json.string(value,"source");
+            // The raw compiler model retains field-initializer anonymous types
+            // for semantic consumers. The dependency declaration view contains
+            // named headers and their members, without body-local inventories.
+            if(auxiliaryBodyDeclarations.contains(new Identity(source,Json.string(value,"signature"))))continue;
             // The compiler also retains body symbols for graph consumers. The
             // detached declaration inventory follows the reference's headers.
             if(Set.of("LOCAL_VARIABLE","EXCEPTION_PARAMETER","RESOURCE_VARIABLE","INITIALIZER","LAMBDA","METHOD_REF")
@@ -84,6 +111,22 @@ public final class DetachedJavaModel implements AutoCloseable {
             if("PARAMETER".equals(attributes.get("element_kind"))&&!callableHeaders.contains(
                     new Identity(Json.string(value,"source"),Json.string(value,"parent"))))continue;
             catalogueRows.add(i);
+            // javac creates enum valueOf(String) without source parameter trees.
+            // Its verified names/types already live in the compiler method header.
+            if(Boolean.TRUE.equals(attributes.get("compiler_implicit"))) {
+                List<Object> names=Json.list(attributes.getOrDefault("parameter_names",List.of()));
+                List<Object> parameterTypes=Json.list(attributes.getOrDefault("parameter_type_models",List.of()));
+                if(names.size()!=parameterTypes.size())throw new IllegalArgumentException("JAVA_MODEL_IMPLICIT_PARAMETER_HEADER");
+                for(int p=0;p<names.size();p++) {
+                    String name=names.get(p).toString(),owner=Json.string(value,"signature");
+                    if(parameterHeaders.contains(List.of(source,owner,name)))continue;
+                    formalDeclarations.add(ExtensionContext.freezeMap(Json.object("kind","declaration","source",source,
+                        "signature",owner+"#parameter:"+p+":"+name,"parent",owner,"name",name,"start",-1,"end",-1,
+                        "generated",true,"attributes",Json.object("element_kind","PARAMETER","compiler_implicit",true,
+                            "type_model",parameterTypes.get(p),"body_available",false))));
+                    catalogueRows.add(-formalDeclarations.size());
+                }
+            }
             for(Object raw:Json.list(attributes.getOrDefault("type_parameter_declarations",List.of()))) {
                 Map<String,Object> formal=new LinkedHashMap<>(Json.map(raw));
                 formal.put("source",value.get("source"));formal.put("parent",value.get("signature"));
