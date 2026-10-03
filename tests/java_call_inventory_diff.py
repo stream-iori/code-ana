@@ -60,6 +60,7 @@ def compare(left, right):
                 missing_count=sum(missing.values()), extra_count=sum(extra.values()),
                 missing_sample=rows(missing), extra_sample=rows(extra), accepted=left == right)
 
+before = dict(product=sha(a.product), reference=sha(a.reference))
 with connection(a.product) as db, connection(a.reference) as ref:
     if a.product_kind=='published_native':
         revision=db.execute("SELECT value FROM identity WHERE key='revision'").fetchone()
@@ -139,12 +140,15 @@ with connection(a.product) as db, connection(a.reference) as ref:
         reference_targets[key + (canonical(signature,node.get('kind')), status)] += 1
     report = dict(kind=a.product_kind+'_core_call_inventory', native_verified=a.product_kind=='published_native', reference_commit='dff2e3954096853352ec91fcbfc6b995fbd4f390',
                   project_commit='267c7ced4993aa88613f8f17a8099943fec98159', scope=a.scope.split(','), identity_aliases=canonical.receipt,
-                  product_sha256=sha(a.product), reference_sha256=sha(a.reference), project_source_inputs=captured_inputs,
+                  product_sha256=before['product'], reference_sha256=before['reference'], project_source_inputs=captured_inputs,
                   canonicalization=['binary nesting $ to source dot','varargs to array','constructor final member name to <init>', 'anonymous class names unified only by uniquely equal original-source spans', 'anonymous enum bodies use the reference graph ANONYMOUS_CLASS category; original compiler kind remains unchanged','UTF-16 inclusive reference coordinates to UTF-8 half-open bytes','callback/initializer identity by kind, source span and recursively verified lexical parent'],
                   declarations=compare(product_decls,reference_decls), sites=compare(product_sites,reference_sites),
                   targets=compare(product_targets,reference_targets), owners=compare(product_owners,reference_owners),
                   type_evidence_equivalence_accepted=False, framework_equivalence_accepted=False,
                   full_semantic_diff_accepted=False, capacity_accepted=False)
+if before != dict(product=sha(a.product), reference=sha(a.reference)):
+    raise ValueError('COMPARISON_DATABASE_DRIFT')
+report['changed_databases'] = []
 a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
 print(json.dumps({k:v for k,v in report.items() if k in ('kind','declarations','sites','targets','owners')},ensure_ascii=False))
 

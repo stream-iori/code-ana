@@ -66,8 +66,8 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 源码/普通文件、IPC 单帧 | 8 MiB |
 | Maven manifest | 32 MiB |
 | 单个依赖 JAR / 全部捕获输入 | 256 MiB / 2 GiB |
-| 当前完整模型与结果 / 事实数量 | 64 MiB / 100,000；事实汇总/传输/候选发布已用任务暂存；compiler model 按行解码并共享类型表；单 context 内存视图与容量验收待完成 |
-| 编译器堆 / 原生堆 | 128 MiB 默认，可配 8–512 MiB / 256 MiB |
+| 模型 / 结果 / 事实 | 默认模型64MiB、结果64MiB、100,000事实；可显式配置至模型1GiB、结果8GiB、5,000,000事实。按行暂存、类型图共享同一不可变字典，单context及真实容量仍需最终验收 |
+| 编译器堆 / 原生堆 | 128MiB默认，可配8–512MiB / 256MiB默认，可配8MiB–1GiB；worker整体仍受用户RSS限制 |
 
 原生分析的 OOME/StackOverflow/Error 使用预留终态响应，不让已退出线程保持 running；该 worker 失败后由 supervisor 回收。整个 worker 进程树仍受用户 RSS 限额约束。输入捕获通过不代表大项目语义索引通过。`[daemon]` 热 host 默认开启，保留一个已确认发布的空闲 worker，60 秒过期。
 
@@ -349,3 +349,5 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | Rust | target-rust-tests-closure-final.log：全工作区85项通过；target-rust-clippy-closure-final.log及cargo fmt --check通过。新增回执兼容/预算和真实已调解scope前置图反例。 |
 | daemon | target-maven-all-daemon-final.log：3项187.077秒通过；真实导出→Rust捕获/隐藏调度→native/SDK8→发布，消费模块无Lombok而前置provided有Lombok、原诊断/proof SHA、body增量、删除注解、full-delta相等、旧revision、无关坏模块和TEST-only。没有业务class生成或非预期杀进程。 |
 | 限制 | 当前 daemon证明使用隔离的组合产物；根目录同版本完整JVM/native/daemon/40模块全语义仍须重验。复杂NoCode完整验收、Rust通用持久缓存、默认类型图、容量和发行门禁未关闭；52项仍仅E01/E02关闭。 |
+
+当前专项修复已通过原始属性、元注解增量、生成覆盖跨度、字段/XML独立对照及发布确认测试；最新完整门禁尚未关闭。旧冻结缓存组合的iopengw运行在core/service MAIN第二份模型读取时OOME，未发布、未发生异常进程信号；去掉字典重复副本后已冻结新native重跑，详见[执行记录](implementation/java-alignment-execution.md)。

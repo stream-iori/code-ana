@@ -10,7 +10,7 @@
 | D16：javac 唯一后端，无 JavaParser/SymbolSolver、无兼容 AST 或解析器回退 | 用户已确认，2026-09-29 |
 | D17：原生库协调目标 JDK 编译器子进程 | Java 8 实现已通过实际共享库与目标 JVM fixture；更广 JDK/规模门禁仍待验证 |
 
-参考实现固定为 Anatomist `dev/replace-parser@dff2e3954096853352ec91fcbfc6b995fbd4f390`，排除未提交修改。其 native 主程序启动目标 JDK JVM；这不证明 javac 可内嵌 GraalVM 共享库。已执行冻结参考的独立 Java/Lombok fixture 与 iopengw MAIN；完整参考语义差分仍待验收。参考位置和证据见 [设计评审](../design-review.md)。
+参考实现固定为 Anatomist `dev/replace-parser@dff2e3954096853352ec91fcbfc6b995fbd4f390`，排除未提交修改。其 native 主程序启动目标 JDK JVM；这不证明 javac 可内嵌 GraalVM 共享库。已执行冻结参考的独立 Java/Lombok fixture 与 iopengw MAIN/TEST/XML（无效 UTF8 单文件按输入错误单列）；产品完整语义差分仍待验收。参考位置和证据见 [设计评审](../design-review.md)。
 
 ## 0. 工程与进程边界
 
@@ -24,7 +24,7 @@ Rust worker host（独立进程）
 Java 25 / GraalVM 共享库（同进程）
   ├─ 独立 Java 模型、ASM 二进制分析、框架、增量、事实提取
   └─ 编译器协调器
-       │ 编译器内部协议 7 / 独立模型 6（D17，Java 8 已实现）
+       │ 编译器内部协议 8 / 独立模型 7（D17，Java 8 已实现）
        v
      目标 JDK JVM 子进程：javac parse → analyze
        └─ 禁用 annotation processor，无业务字节码生成
@@ -133,7 +133,7 @@ Lombok `mode=model` 仅补声明模型，不执行处理器、不合成可执行
 | 对象 | 生命周期 / 限制 |
 |---|---|
 | javac compiler/task/file manager/Tree/Element | 一个编译上下文；子进程可复用但上下文不跨任务泄漏 |
-| 独立 Java 模型 | 按上下文解码、同步消费后释放；框架只留必要摘要，不留整树 |
+| 独立 Java 模型 | 按上下文解码、同步消费后释放；类型字典验证后共享同一不可变节点，原packed副本不驻留；框架只留必要摘要，不留整树 |
 | 类型/Bean/依赖与基线 | 本轮完整逻辑视图；计入冷增量峰值和复制成本 |
 | 最终事实 | 冻结到完整交付；分块、有背压，不积累多份整图序列化副本 |
 | 编码结果/语法暂存 | D17 原型评估是否需要有界临时文件；若引入须定槽位、总字节、清理与磁盘满行为，不能默认无限 spill |
@@ -188,3 +188,5 @@ Maven `selected=false` 的模块保留捕获身份和依赖源码，但不作为
 接口与执行器在 `lang-adaptor/src/main/java/dev/codeana/analysis/extension/`；`BuiltinExtensions.REGISTRY` 显式装配，不扫描目标 classpath 或热加载业务 JAR。扩展版本、依赖、producer、facet 与有效配置形成指纹，记录在 context provenance，进入增量与 NoCode key。
 
 当前 Spring MVC、生命周期/事件、SOFA 注解已使用独立 analyzer；静态注册是 possible，不能生成 confirmed 调用。NoCode 缩减会保留未变 owner 的事实供查找，并重跑变更源码的扩展以更新位置。当前视图按 compiler context；跨 context 的项目全局视图、单声明故障隔离与完整框架规则仍在实施。
+
+Java发布确认等待最多30秒，包括native释放和Rust缓存原子提交；确认失败披露ack_warning且不进入热池，已发布head保持。该故障期限不是项目性能目标。元注解公开图、原始注解/MVC/事件/SOFA属性、生成覆盖跨度和当前真实项目失败/修复回执见[执行记录](../implementation/java-alignment-execution.md)。

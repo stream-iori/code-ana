@@ -51,7 +51,7 @@ def product_projection(facts):
             a = f['attributes']
             owner = by_id[f['parent']]
             aliases = a['aliases']
-            key = (owner['signature'], tuple(aliases))
+            key = (owner['signature'], tuple(aliases), f['owner']['world'])
             value = dict(type=a['type'], priority=a.get('priority_selection_unknown', False),
                          constraints=a.get('configuration_constraints', []))
             group = beans.setdefault(key, dict(value=value, names=[]))
@@ -73,14 +73,14 @@ def product_projection(facts):
                 resource_default=a.get('resource_default_name'), resource_name=a.get('resource_name'),
                 resource_written=dict(a.get('resource_written_attributes', {})), unsupported=a.get('matching_unsupported', False)))
     result = []
-    for (owner, aliases), group in beans.items():
+    for (owner, aliases, _world), group in beans.items():
         if set(group['names']) != set(aliases):
             raise ValueError('BEAN_ALIAS_NAMES_INCOMPLETE')
         result.append(dict(owner=owner, names=list(aliases), **group['value']))
     return dict(beans=sorted(result, key=lambda x: x['owner']), injections=sorted(injections, key=lambda x: (x['owner'],x['point'])))
 
 
-def reference_projection(database):
+def reference_projection(database, annotation_only=False):
     with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as db:
         db.row_factory = sqlite3.Row
         nodes = {r['id']: dict(r) for r in db.execute('SELECT * FROM nodes')}
@@ -91,6 +91,8 @@ def reference_projection(database):
             if n['kind'] != 'BEAN':
                 continue
             a = json.loads(n['metadata'])
+            if annotation_only and a.get('source') != 'annotation':
+                continue
             beans.append(dict(owner=owners[n['id']], names=a.get('aliases', [n['label']]),
                               type=a.get('className', a.get('returnType')),
                               priority=a.get('prioritySelectionUnknown', False),
@@ -177,6 +179,13 @@ def main():
                 case.assertEqual(case.merged(baseline, delta), sorted(full, key=lambda f: f['id']))
             baseline = full
             left, right = product_projection(full), reference_index(base, source)
+            from java_framework_inventory_diff import select_facts
+            with sqlite3.connect(':memory:') as inventory:
+                inventory.row_factory = sqlite3.Row
+                inventory.execute('CREATE TABLE facts(id,relation,body)')
+                inventory.executemany('INSERT INTO facts VALUES(?,?,?)',
+                    ((f['id'], f['relation'], json.dumps(f)) for f in full))
+                case.assertEqual(product_projection(select_facts(inventory)), left)
             case.assertEqual(len(left['beans']), 3)
             case.assertEqual(len(left['injections']), 7 if name == 'removed' else 5)
             (base/'product.json').write_text(json.dumps(full, ensure_ascii=False)+'\n')

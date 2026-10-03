@@ -760,7 +760,8 @@
       "checks": [
         "tests/java_annotation_alignment.py",
         "tests/java_graph_consumer_alignment.py",
-        "tests/java_framework_reference_alignment.py"
+        "tests/java_framework_reference_alignment.py",
+        "tests/java_framework_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -775,7 +776,8 @@
         "framework-reference-native"
       ],
       "remaining_acceptance": [
-        "Spring5 接口/Configuration、全部别名、Priority及祖先配置原表达式已与冻结参考在 JVM/native 三组严格对照；完整 Bean/组合 stereotype 元信息和40模块同版本语义仍待验收。"
+        "Spring5 接口/Configuration、全部别名、Priority及祖先配置原表达式已与冻结参考在 JVM/native 三组严格对照；完整 Bean/组合 stereotype 元信息和40模块同版本语义仍待验收。",
+        "已补发布库属性/端点差分入口，fixture定向投影与完整投影一致；最新40模块及完整框架/XML图仍需实际严格验收。"
       ]
     },
     {
@@ -787,7 +789,8 @@
         "tests/java_graph_consumer_alignment.py",
         "tests/java_wiring_reference.py",
         "tests/java_e2e.py",
-        "tests/java_framework_reference_alignment.py"
+        "tests/java_framework_reference_alignment.py",
+        "tests/java_framework_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -802,7 +805,8 @@
         "framework-reference-native"
       ],
       "remaining_acceptance": [
-        "injection3 全部 fixture 注入点的 required/qualifier/shape/container/element/cardinality、Resource setter默认名/显式原表达式/不支持状态、Value/SofaReference排除及Configuration构造器，已在 JVM/native/daemon 验证；Rust wiring 严格参考对照保留。全部角色/完整属性与40模块同版本语义仍待验收。"
+        "injection3 全部 fixture 注入点的 required/qualifier/shape/container/element/cardinality、Resource setter默认名/显式原表达式/不支持状态、Value/SofaReference排除及Configuration构造器，已在 JVM/native/daemon 验证；Rust wiring 严格参考对照保留。全部角色/完整属性与40模块同版本语义仍待验收。",
+        "已补发布库属性/端点差分入口，fixture定向投影与完整投影一致；最新40模块及完整框架/XML图仍需实际严格验收。"
       ]
     },
     {
@@ -812,7 +816,8 @@
       "checks": [
         "tests/java_framework_alignment.py",
         "tests/java_graph_consumer_alignment.py",
-        "tests/java_registration_reference_alignment.py"
+        "tests/java_registration_reference_alignment.py",
+        "tests/java_registration_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -827,7 +832,8 @@
         "registration-reference-native"
       ],
       "remaining_acceptance": [
-        "MVC2 已补原源码参数写法，解析类型另存；三组JVM注册/元路径/参数绑定/属性及HANDLES严格对照。完整MVC正反例、跨模块binary meta和40模块差分仍待同版本native/产品验收。"
+        "MVC2 已补原源码参数写法，解析类型另存；三组JVM注册/元路径/参数绑定/属性及HANDLES严格对照。完整MVC正反例、跨模块binary meta和40模块差分仍待同版本native/产品验收。",
+        "已补发布库属性/端点差分入口，fixture定向投影与完整投影一致；最新40模块及完整框架/XML图仍需实际严格验收。"
       ]
     },
     {
@@ -837,7 +843,8 @@
       "checks": [
         "tests/java_framework_alignment.py",
         "tests/java_graph_consumer_alignment.py",
-        "tests/java_registration_reference_alignment.py"
+        "tests/java_registration_reference_alignment.py",
+        "tests/java_registration_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -852,7 +859,8 @@
         "registration-reference-native"
       ],
       "remaining_acceptance": [
-        "handlers2 原始事件属性/参数写法、事务phase与HANDLES已在三组JVM严格参考对照；既有生命周期查找保留。全部binary meta/工厂生命周期和40模块差分待同版本native/产品验收。"
+        "handlers2 原始事件属性/参数写法、事务phase与HANDLES已在三组JVM严格参考对照；既有生命周期查找保留。全部binary meta/工厂生命周期和40模块差分待同版本native/产品验收。",
+        "已补发布库属性/端点差分入口，fixture定向投影与完整投影一致；最新40模块及完整框架/XML图仍需实际严格验收。"
       ]
     },
     {
@@ -892,7 +900,8 @@
       "checks": [
         "tests/java_framework_alignment.py",
         "tests/java_graph_consumer_alignment.py",
-        "tests/java_registration_reference_alignment.py"
+        "tests/java_registration_reference_alignment.py",
+        "tests/java_registration_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -907,7 +916,8 @@
         "registration-reference-native"
       ],
       "remaining_acceptance": [
-        "sofa-annotations2 保存原始属性；三组JVM provider/requirement合约、uniqueId、API成员、supported/transport/baseline严格参考对照。完整API正反例及40模块差分待同版本native/产品验收。"
+        "sofa-annotations2 保存原始属性；三组JVM provider/requirement合约、uniqueId、API成员、supported/transport/baseline严格参考对照。完整API正反例及40模块差分待同版本native/产品验收。",
+        "已补发布库属性/端点差分入口，fixture定向投影与完整投影一致；最新40模块及完整框架/XML图仍需实际严格验收。"
       ]
     },
     {

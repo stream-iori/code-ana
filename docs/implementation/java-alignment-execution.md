@@ -843,3 +843,13 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | JVM | model-dictionary-sharing-archive-final.log全部归档正反例通过（含60k/217MB扩展、反射、共享/释放）；SDK8桥单独构建成功；注解14项44.989秒、补充类型12项62.740秒通过。仍须重建native并验证真实项目。 |
 | native harness | 5033组合177项仅composed-meta缓存失败及缺Rust校验example；前者855已修，新完整注解14项确认。native fixture入口现在显式构建并冻结Rust validator，检验前后SHA，避免干净checkout把缺测试工具当成产品能力失败；新组合门禁待执行。 |
 | Ack产品证明 | validation-java-publication-ack/publication-ack-product-proof-final.log：修复后的真实release/native1项33.139秒通过，明确ack_warning=None、预算失败保持head、复用同worker、增量/全量事实一致。Rust workspace及Clippy通过。新native XML正常三组五类绑定相等、参考lambda缺陷模式复现，无输入/产物漂移。 |
+
+## 已发布框架属性差分入口（2026-10-03）
+
+| 项目 | 实现 / 已执行证明 |
+|---|---|
+| 定向读取 | 新java_framework_inventory_diff比较annotation Bean/DI的完整约束/注入属性；java_registration_inventory_diff比较MVC/事件/SOFA原属性和HANDLES，定向读取相关facet、真实owner/target，不加载三百万条事实的全部JSON。XML及其它框架图是独立未完成域，whole_framework_graph_accepted=false保持。 |
+| 身份 | Bean别名按owner+aliases+world分组，跨world同名不会合并；输出保留多重性。SOURCE字节与发布hash严格校验；两侧数据库前后SHA变更拒绝。核心call比较也新增数据库漂移拒绝。 |
+| JVM | framework-reference-20261003-155929-28378四组严格一致；registration-reference-20261003-155933-29732三组各7注册严格一致。全部full-delta事实相等，无输入/产物漂移，并证明真实数据库选择函数与完整fixture投影严格相等。 |
+| 旧库缺口 | 初次4a注册属性比较明确KeyError written_attributes；旧版事实没有新原始属性，不能从有效默认值猜补，也不能当作对齐。入口新增REGISTRATION_SCHEMA_INCOMPLETE失败回执及缺失属性样本，旧库取证和最新完整项目差分继续执行。 |
+| 当前真实运行 | validation-model-dictionary-sharing已构建完整新native/SDK8桥，Rust源码完全一致后复用619的release产物；40模块MAIN/TEST/XML重跑、native177项正在执行，原1GiB native/2GiB worker上限保持。这里不预报通过或性能收益。 |

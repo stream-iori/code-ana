@@ -137,6 +137,15 @@ def main():
             baseline=full
             database=index_reference(folder,files)
             left,right=product_projection(full),reference_projection(database)
+            from java_registration_inventory_diff import facts_for_registrations, schema_gaps
+            with sqlite3.connect(':memory:') as inventory:
+                inventory.row_factory=sqlite3.Row
+                inventory.execute('CREATE TABLE facts(id,relation,body)')
+                inventory.executemany('INSERT INTO facts VALUES(?,?,?)',
+                    ((f['id'],f['relation'],json.dumps(f)) for f in full))
+                selected=facts_for_registrations(inventory)
+                case.assertEqual(schema_gaps(selected),[])
+                case.assertEqual(product_projection(selected),left)
             case.assertEqual(right.total(),7)
             (folder/'product.json').write_text(json.dumps(full,ensure_ascii=False)+'\n')
             proof=dict(name=name,**reference.compare(left,right),product_sha256=reference.digest(folder/'product.json'),reference_sha256=reference.digest(database))
