@@ -25,13 +25,20 @@ public final class FactExtractor {
     private final Set<String> knownSymbols = new HashSet<>();
     private final String world;
     private final String contextDigest;
+    private final Map<String,Map<String,Object>> verifiedSourceDeclarations;
     private final Map<String, Integer> sourceSequences = new HashMap<>();
     private int sequence;
 
     public FactExtractor(Map<String, Object> context, String contextDigest, RecordArchive rows)
             throws Exception {
+        this(context,contextDigest,rows,Map.of());
+    }
+
+    FactExtractor(Map<String,Object> context,String contextDigest,RecordArchive rows,
+            Map<String,Map<String,Object>> verifiedSourceDeclarations) throws Exception {
         this.context = context;
         this.contextDigest = contextDigest;
+        this.verifiedSourceDeclarations = verifiedSourceDeclarations;
         this.rows = rows;
         world = Json.string(context, "world");
         if (context.get("known_signatures") instanceof List)
@@ -491,7 +498,7 @@ public final class FactExtractor {
             }
         }
         generatedTypeReferences(model,sourceTypes);
-        AnnotationMetaFacts.emit(context,model,n -> {
+        AnnotationMetaFacts.emit(context,model,verifiedSourceDeclarations,n -> {
             String path=Json.string(n,"source");
             Map<String,Object> f=fact(Json.key("annotation-meta",world,Json.string(n,"identity")),"facet",path);
             f.put("parent",symbol(Json.string(n,"parent")));

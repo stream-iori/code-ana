@@ -1000,3 +1000,15 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | 独立JVM证明 | annotation-reference-20261003-150555-90256：三组各6个原始注解、11条完整metadata图边，严格相等；full-delta相等、输入/产物无漂移。图身份按参考数据库UNIQUE定义，保留全部发现事实，明确不是删除注解使用点多重性。 |
 | 正反例 | annotation-meta-focused.log两项8.792秒通过：双向循环、SOURCE跨度/hash与JDK binary header、delta/full/删除；18级链触发明确partial、该根无候选泄漏、健康文件继续。Rust契约命名空间/版本反例通过。native/daemon/真实40模块元注解公开图尚需最新组合验收。 |
 | 全部完成条件 | 最新完整语义仍不能据11边fixture通过关闭，56957真实metadata边及其它模型/框架/XML、独占容量/release还须实际执行。仅E01/E02关闭状态保持。 |
+
+## 元注解冷增量来源修复（2026-10-03）
+
+| 项目 | 根因 / 验证 |
+|---|---|
+| 真实产品发现 | annotation-meta-product-e2e-final.log：body修改后来源从src/Meta.java退成src/Use.java，明确失败；初始无序next断言错误另存前版日志。未删来源/hash/span或full-delta断言。 |
+| 根因 | 文件NoCode只编译改变的文件，analyzeReduced已有经过baseline与SHA严格验证的sourceModels；新的元注解提取只读model.declarations，遗漏被省去的原始声明。二进制header又会丢SOURCE-retained元注解。 |
+| 修复 | FactExtractor接收该路径已有的已验证源码catalogue，仅供Java元注解提取使用。SOURCE元数据优先读取原声明及其注解，binary才读取header；保留原path/hash/span，没有重读工作区、伪造源码声明或移动解析到Rust。 |
+| JVM | annotation-meta-cached-source-signatures.log：11项109.901秒通过，包括新SOURCE-retained元注解/来源证明，明确reduced_contexts=1/compiler_sources=1，全部full-delta事实相等；原泛型/嵌套/注解/50层图/缓存损坏反例仍通过。元注解循环/预算组继续验证；最新native/daemon待重建组合。 |
+| 同版本专项 | 5033冻结组合的native：注解使用点3×6与元数据边3×11、覆盖7/7/4、Bean/DI及注册3×7严格相等，无漂移；不据此忽略上面的文件缓存产品失败。 |
+| Rust | annotation-meta-rust-workspace.log：92项通过；all-targets Clippy通过，fmt通过。当前阶段是正确性验证，没有性能验收结论。 |
+| 比较器 | 构造器/方法注入owner按真实完整类型名拆分，不再错误地把包名第一个点换成#；framework-reference-20261003-151102-18573新增package p正例，与原三组全部严格相等。 |

@@ -17,7 +17,8 @@ final class AnnotationMetaFacts {
     private String discovery;
     private int work;
 
-    private AnnotationMetaFacts(Map<String,Object> context,Map<String,Object> model,Consumer<Map<String,Object>> output) {
+    private AnnotationMetaFacts(Map<String,Object> context,Map<String,Object> model,
+            Map<String,Map<String,Object>> verifiedSources,Consumer<Map<String,Object>> output) {
         this.model=model;this.output=output;
         for(Object raw:Json.list(context.get("sources"))) {
             var source=Json.map(raw);
@@ -29,10 +30,16 @@ final class AnnotationMetaFacts {
         for(Object raw:Json.list(model.get("declarations"))) {
             var declaration=Json.map(raw);declarations.put(Json.string(declaration,"signature"),declaration);
         }
+        // File NoCode removes unchanged source declarations from the compiler
+        // model. These original catalogues were checked against the published
+        // baseline before use; binary annotations must not replace them.
+        for(var entry:verifiedSources.entrySet())
+            if(entry.getValue().get("source") instanceof String) declarations.put(entry.getKey(),entry.getValue());
     }
 
-    static void emit(Map<String,Object> context,Map<String,Object> model,Consumer<Map<String,Object>> output) {
-        new AnnotationMetaFacts(context,model,output).generate();
+    static void emit(Map<String,Object> context,Map<String,Object> model,
+            Map<String,Map<String,Object>> verifiedSources,Consumer<Map<String,Object>> output) {
+        new AnnotationMetaFacts(context,model,verifiedSources,output).generate();
     }
 
     private void generate() {
@@ -74,12 +81,15 @@ final class AnnotationMetaFacts {
             int total=sourceWork.merge(discovery,1,Integer::sum);
             if(++work>100000 || total>1000000) throw new Incomplete("annotation-meta-work-budget");
             var header=headers.get(name);
-            if(header==null || !Boolean.TRUE.equals(header.get("complete"))) throw new Incomplete("annotation-meta-header-unavailable");
             var declaration=declarations.get(name);
+            boolean sourceAnnotation=declaration!=null && "ANNOTATION_TYPE".equals(Json.map(declaration.get("attributes")).get("element_kind"));
+            if(!sourceAnnotation && (header==null || !Boolean.TRUE.equals(header.get("complete"))))
+                throw new Incomplete("annotation-meta-header-unavailable");
             if(declaration!=null) {
                 originSource=Json.string(declaration,"source");position=declaration;
             }
-            List<Object> annotations=Json.list(header.get("annotations"));
+            List<Object> annotations=!sourceAnnotation ? Json.list(header.get("annotations"))
+                    : Json.list(Json.map(declaration.get("attributes")).get("annotations"));
             if(depth>=16 && !annotations.isEmpty()) throw new Incomplete("annotation-meta-depth-budget");
             for(Object raw:annotations) {
                 String parent=Json.string(Json.map(raw),"type");

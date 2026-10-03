@@ -715,7 +715,7 @@ public final class JavaAnalysis {
             publicationContext.put("known_signatures", known);
             coreArchive = session.newFactArchive();
             List<Object> core =
-                    new FactExtractor(publicationContext, Json.string(ctx, "digest"), coreArchive)
+                    new FactExtractor(publicationContext, Json.string(ctx, "digest"), coreArchive, sourceModels)
                             .extract(model);
             if (!equivalent(
                             declarationView(baseline, changedPath),

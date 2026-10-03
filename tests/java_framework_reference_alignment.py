@@ -104,7 +104,11 @@ def reference_projection(database):
             elif role == 'setter':
                 owner = nodes[e['source_id']]['symbol_id'] + '#setter:' + name
             else:
-                owner = parts[1].replace('.', '#', 1)
+                type_name = nodes[e['source_id']]['symbol_id']
+                prefix = type_name+'.'
+                if not parts[1].startswith(prefix):
+                    raise ValueError('INJECTION_CALLABLE_OWNER_MISMATCH: '+parts[1])
+                owner = type_name+'#'+parts[1][len(prefix):]
                 if role == 'constructor':
                     prefix, args = owner.split('(', 1)
                     owner = prefix.split('#')[0] + '#<init>(' + args
@@ -159,6 +163,7 @@ def main():
     try:
         baseline = None
         for name, source in [('constraints', SOURCE), ('body', SOURCE.replace('return null;', 'return (Api)null;')),
+                             ('qualified', 'package p; '+SOURCE),
                              ('removed', SOURCE.replace('@javax.annotation.Priority(10)', '')
                               .replace('@org.springframework.context.annotation.Profile("prod")', '')
                               .replace('@org.springframework.context.annotation.Lazy(false)', '')

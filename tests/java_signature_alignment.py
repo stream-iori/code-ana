@@ -11,6 +11,26 @@ class JavaSignatures(unittest.TestCase):
     analyze = model_tests.Models.analyze
     merged = model_tests.Models.merged
 
+    def test_source_meta_catalogue_preserves_origin_and_source_retention_in_reduced_compiler(self):
+        definitions='''import java.lang.annotation.*;
+          @Retention(RetentionPolicy.SOURCE) @Target(ElementType.ANNOTATION_TYPE) @interface Parent {}
+          @Parent @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.TYPE) @interface Mark {}'''
+        files={'Meta.java':definitions,'Use.java':'@Mark class Use {String read(){return "before";}}'}
+        first=self.analyze([self.context('app',files)],cache=True)['facts']
+        files['Use.java']=files['Use.java'].replace('"before"','"after"')
+        changed=self.context('app',files)
+        delta=self.analyze([changed],first,cache=True)
+        self.assertEqual(delta['reduced_contexts'],1)
+        self.assertEqual(delta['compiler_sources'],1)
+        full=self.analyze([changed])['facts']
+        self.assertEqual(self.merged(first,delta),sorted(full,key=lambda f:f['id']))
+        meta=[f for f in delta['facts'] if f['relation']=='java.annotation.meta' and f['source']=='app/Use.java']
+        edge=next(f for f in meta if f['attributes']['annotation_fqn']=='Mark' and f['attributes']['meta_annotation_fqn']=='Parent')
+        origin=edge['attributes']['source_origin']
+        self.assertEqual(origin['path'],'app/Meta.java')
+        self.assertEqual(origin['hash'],model_tests.sha(definitions.encode()))
+        self.assertIn('@interface Mark {}',definitions.encode()[origin['span']['start']:origin['span']['end']].decode())
+
     def roundtrip(self, files):
         first = self.analyze([self.context('app', files)], cache=True)['facts']
         files = dict(files)

@@ -13,6 +13,50 @@ class JavaProduct(unittest.TestCase):
     cleanup=harness.Product.cleanup
     daemon_log=harness.Product.daemon_log
 
+    def test_source_binary_meta_graph_publishes_original_provenance_and_delta(self):
+        import hashlib
+        shutil.rmtree(self.project/'src')
+        (self.project/'src').mkdir()
+        definitions=self.project/'src/Meta.java'
+        definitions.write_text('''package p; import java.lang.annotation.*;
+            @Target({ElementType.TYPE,ElementType.ANNOTATION_TYPE}) @B @interface A {}
+            @Target({ElementType.TYPE,ElementType.ANNOTATION_TYPE}) @A @interface B {}''')
+        use=self.project/'src/Use.java'
+        use.write_text('package p; @A @Deprecated class Use {int body=1;}')
+        def verify(facts):
+            meta=[f for f in facts if f['relation']=='java.annotation.meta']
+            source=next(f for f in meta if f['source']=='src/Use.java' and f['attributes']['annotation_fqn']=='p.A'
+                        and f['attributes']['meta_annotation_fqn']=='java.lang.annotation.Target')
+            self.assertEqual(source['attributes']['meta_annotation_fqn'], 'java.lang.annotation.Target')
+            origin=source['attributes']['source_origin']
+            self.assertEqual(origin['path'],'src/Meta.java')
+            self.assertEqual(origin['hash'],hashlib.sha256(definitions.read_bytes()).hexdigest())
+            self.assertIn('@interface A {}',definitions.read_bytes()[origin['span']['start']:origin['span']['end']].decode())
+            self.assertTrue(any(f['source']=='src/Use.java' and f['attributes']['annotation_fqn']=='java.lang.Deprecated'
+                                and f['attributes']['source_origin']['path']=='src/Use.java' for f in meta))
+            self.assertFalse([f for f in facts if f['name']=='ANNOTATION_META_INCOMPLETE'])
+            return meta
+        _,first=self.cli('index','--full',timeout=180)
+        before=self.facts(first['revision']);verify(before)
+        use.write_text(use.read_text().replace('body=1','body=2'))
+        _,delta=self.cli('index',timeout=180)
+        changed=self.facts(delta['revision']);verify(changed)
+        _,full=self.cli('index','--full',timeout=180)
+        self.assertEqual(changed,self.facts(full['revision']))
+        use.write_text(use.read_text().replace('@A @Deprecated ',''))
+        _,delta=self.cli('index',timeout=180)
+        removed=self.facts(delta['revision'])
+        self.assertFalse([f for f in removed if f['relation']=='java.annotation.meta' and f['source']=='src/Use.java'])
+        self.assertTrue([f for f in removed if f['relation']=='java.annotation.meta' and f['source']=='src/Meta.java'])
+        definitions.unlink()
+        _,delta=self.cli('index',timeout=180)
+        deleted=self.facts(delta['revision'])
+        self.assertFalse([f for f in deleted if f['relation']=='java.annotation.meta'])
+        _,full=self.cli('index','--full',timeout=180)
+        self.assertEqual(deleted,self.facts(full['revision']))
+        self.assertEqual(before,self.facts(first['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_registration_original_evidence_publishes_and_survives_delta(self):
         from java_registration_reference_alignment import DEFINITIONS, SOURCE, product_projection
         shutil.rmtree(self.project/'src')
