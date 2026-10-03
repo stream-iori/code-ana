@@ -433,3 +433,5 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 保护 | 新 ModelGraphBudgetProbe 含 65536 节点、超过 64MiB 的实际图；显式 96MiB 全节点/循环边往返成功，默认 64MiB 仍拒绝。旧类运行同一 probe 明确 MODEL_GRAPH_TABLE_BUDGET。JVM/native 均通过；原 75000 节点传输、GC 身份、分页、归档/取消/JSON 等完整 java_archive_alignment 回归通过。日志：model-graph-budget-{old-failure,native,archive-regression}.log。 |
 | 真实编译 | `iopengw-test-test-graph-budget-fixed/receipt.json`：247.967 秒成功，3319 源、472 发布源，完整归档 526510405 字节；源、classpath、manifest、桥无漂移，无异常信号。只是实际 SDK8 编译器及归档，不是 native 产品发布或容量验收。 |
 | 原生模型 | `model-api-reference-20261003-233150-7960/receipt.json`：新桥/新图表代码的 17 组 native 模型 API 专项通过。app/test@TEST 全源原生 API 清单正在对照，最新共享库/Rust/daemon 全量门禁仍待完成。 |
+
+大上下文原生终态：`iopengw-test-test-graph-budget-native-api/receipt.json` 678.220 秒完成，全部3319源、51969声明、651055 AST、3553类型查询的四投影严格相等，无输入/工具源码漂移。新成套共享库的17组原生专项也通过（`validation-java-correctness-391f0cf/.../model-api-reference-20261003-233750-57761`），已启动该固定提交的全项目发布、80上下文及完整回归；旧de090ea清单主动SIGTERM并保存superseded回执，旧发布仍继续作为独立诊断证据。最终全语义和容量尚未通过。
