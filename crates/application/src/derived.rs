@@ -6,7 +6,7 @@ use codeana_storage::{CandidateDerivation, CandidateFacts};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const PROFILE: &str = "derived-wiring-3";
+pub(crate) const PROFILE: &str = "derived-wiring-4";
 const PRODUCER: &str = "rust.derived.wiring";
 const AGGREGATE: &str = "static-injection-candidates";
 pub(crate) struct Wiring;
@@ -87,6 +87,31 @@ fn class(fact: &Fact) -> bool {
         fact.attributes.get("element_kind").and_then(|a| a.as_str()),
         Some("CLASS" | "INTERFACE" | "ENUM" | "ANNOTATION_TYPE")
     )
+}
+
+fn declaring_type(facts: &CandidateFacts<'_>, point: &Fact) -> Result<Option<Fact>> {
+    let mut current = point.clone();
+    let mut visited = BTreeSet::new();
+    for _ in 0..256 {
+        ensure!(visited.insert(current.id.clone()), "INJECTION_PARENT_CYCLE");
+        ensure!(
+            current.kind == FactKind::Declaration
+                && current.source == point.source
+                && current.owner.world == point.owner.world,
+            "INJECTION_PARENT_IDENTITY_MISMATCH"
+        );
+        if class(&current) {
+            return Ok(Some(current));
+        }
+        if current.parent.is_empty() {
+            return Ok(None);
+        }
+        let Some(parent) = facts.fact(&current.parent)? else {
+            return Ok(None);
+        };
+        current = parent;
+    }
+    anyhow::bail!("INJECTION_PARENT_BUDGET")
 }
 
 fn bean_type(facts: &CandidateFacts<'_>, bean: &Fact) -> Result<Option<Fact>> {
@@ -250,6 +275,7 @@ impl CandidateDerivation for Wiring {
             .iter()
             .map(edge_key)
             .collect();
+        let mut typed = BTreeMap::<String, Fact>::new();
         for injection in facts.relations("injects_possible")? {
             let Some(registration) = facts.fact(&injection.parent)? else {
                 continue;
@@ -279,6 +305,29 @@ impl CandidateDerivation for Wiring {
                 continue;
             };
             let candidates: Vec<_> = candidates.iter().cloned().collect();
+            let declaring = if let (Some(expected), Some(line)) = (
+                registration
+                    .attributes
+                    .get("declaring_type")
+                    .and_then(|v| v.as_str()),
+                registration
+                    .attributes
+                    .get("source_line")
+                    .and_then(|v| v.as_u64()),
+            ) {
+                ensure!(
+                    line > 0 && line <= u32::MAX as u64,
+                    "INJECTION_SOURCE_LINE_INVALID"
+                );
+                let actual = declaring_type(facts, &point)?;
+                ensure!(
+                    actual.as_ref().is_some_and(|f| f.id == expected),
+                    "INJECTION_DECLARING_TYPE_MISMATCH"
+                );
+                actual.map(|f| (f, line))
+            } else {
+                None
+            };
             for target in &candidates {
                 let mut wire = Fact {
                     id: String::new(),
@@ -305,6 +354,7 @@ impl CandidateDerivation for Wiring {
                             }),
                         ),
                         ("via".into(), json!("injection")),
+                        ("projection".into(), json!("injection_point")),
                         ("source".into(), json!(interface.id)),
                         ("candidates".into(), json!(candidates)),
                         ("injection_evidence".into(), json!(injection.id)),
@@ -317,7 +367,69 @@ impl CandidateDerivation for Wiring {
                 }
                 wire.id = key("derived_wiring", &[PROFILE, &digest(&wire)]);
                 facts.insert(&wire)?;
+                if let Some((declaring, line)) = &declaring {
+                    // A type query needs the reference's declaring-type projection;
+                    // keep all point facts and aggregate their actual evidence here.
+                    let identity = digest(&(
+                        &wire.owner.world,
+                        &declaring.id,
+                        target,
+                        &wire.source,
+                        line,
+                        &interface.id,
+                    ));
+                    let projected = typed.entry(identity).or_insert_with(|| {
+                        let mut projected = wire.clone();
+                        projected.id.clear();
+                        projected.parent = declaring.id.clone();
+                        projected.span = None;
+                        projected
+                            .attributes
+                            .insert("projection".into(), json!("declaring_type"));
+                        projected
+                            .attributes
+                            .insert("source_line".into(), json!(line));
+                        projected
+                            .attributes
+                            .insert("injection_points".into(), json!([]));
+                        projected
+                            .attributes
+                            .insert("injection_evidences".into(), json!([]));
+                        projected
+                    });
+                    for (name, value) in [
+                        ("injection_points", &point.id),
+                        ("injection_evidences", &injection.id),
+                    ] {
+                        let values = projected
+                            .attributes
+                            .get_mut(name)
+                            .unwrap()
+                            .as_array_mut()
+                            .unwrap();
+                        if !values.contains(&json!(value)) {
+                            values.push(json!(value));
+                        }
+                    }
+                }
             }
+        }
+        for mut wire in typed.into_values() {
+            for name in ["injection_points", "injection_evidences"] {
+                wire.attributes
+                    .get_mut(name)
+                    .unwrap()
+                    .as_array_mut()
+                    .unwrap()
+                    .sort_by(|a, b| a.as_str().cmp(&b.as_str()));
+            }
+            // The primary evidence is stable regardless of SQLite traversal order.
+            wire.attributes.insert(
+                "injection_evidence".into(),
+                wire.attributes["injection_evidences"][0].clone(),
+            );
+            wire.id = key("derived_wiring", &[PROFILE, &digest(&wire)]);
+            facts.insert(&wire)?;
         }
         xml_wires(facts)
     }
@@ -629,6 +741,102 @@ mod tests {
                 .all(|f| f.attributes["via"] != "xml_configuration")
         );
         assert_eq!(wires(&store, &first.id).len(), 4);
+    }
+
+    #[test]
+    fn type_projection_preserves_both_points_and_validates_declaring_ancestry() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::open(root.path()).unwrap();
+        let (revision, mut result) = fixture();
+        let mut container = fact("container", FactKind::Declaration, "", "", "");
+        container
+            .attributes
+            .insert("element_kind".into(), json!("CLASS"));
+        result.facts.push(container);
+        result
+            .facts
+            .iter_mut()
+            .find(|f| f.id == "field")
+            .unwrap()
+            .parent = "container".into();
+        for id in ["registration", "registration2"] {
+            if id == "registration2" {
+                result
+                    .facts
+                    .push(fact("field2", FactKind::Declaration, "container", "", ""));
+                result.facts.push(fact(
+                    id,
+                    FactKind::Facet,
+                    "field2",
+                    "",
+                    "java.spring.injection",
+                ));
+                result.facts.push(fact(
+                    "injection2",
+                    FactKind::Relation,
+                    id,
+                    "interface",
+                    "injects_possible",
+                ));
+            }
+            let registration = result.facts.iter_mut().find(|f| f.id == id).unwrap();
+            registration
+                .attributes
+                .insert("declaring_type".into(), json!("container"));
+            registration
+                .attributes
+                .insert("source_line".into(), json!(3));
+        }
+        let before = publish(&store, revision.clone(), &result, "");
+        let output = wires(&store, &before.id);
+        assert_eq!(output.len(), 6);
+        let projected: Vec<_> = output.iter().filter(|f| f.parent == "container").collect();
+        assert_eq!(projected.len(), 2);
+        for wire in projected {
+            assert_eq!(wire.span, None);
+            assert_eq!(wire.attributes["projection"], "declaring_type");
+            assert_eq!(wire.attributes["source_line"], 3);
+            assert_eq!(
+                wire.attributes["injection_points"],
+                json!(["field", "field2"])
+            );
+            assert_eq!(
+                wire.attributes["injection_evidences"],
+                json!(["injection", "injection2"])
+            );
+        }
+        let mut reversed = result.clone();
+        reversed.facts.reverse();
+        let other_root = tempfile::tempdir().unwrap();
+        let other_store = Store::open(other_root.path()).unwrap();
+        let full = publish(&other_store, revision.clone(), &reversed, "");
+        assert_eq!(output, wires(&other_store, &full.id));
+        let mut wrong = result.clone();
+        wrong
+            .facts
+            .iter_mut()
+            .find(|f| f.id == "registration")
+            .unwrap()
+            .attributes
+            .insert("declaring_type".into(), json!("a"));
+        let error = store
+            .stage_archive_with_derivation(
+                revision,
+                &wrong.header(),
+                &archive(&wrong.facts),
+                &before.id,
+                || Ok(()),
+                |_| Ok(()),
+                Some(&Wiring),
+            )
+            .err()
+            .unwrap();
+        assert!(
+            error
+                .to_string()
+                .contains("INJECTION_DECLARING_TYPE_MISMATCH")
+        );
+        assert_eq!(output, wires(&store, &before.id));
     }
 
     #[test]

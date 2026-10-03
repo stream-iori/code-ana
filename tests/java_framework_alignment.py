@@ -66,6 +66,24 @@ class Frameworks(unittest.TestCase):
         self.assertTrue(all(not f['attributes']['runtime_confirmed'] and not f['declaration_resolved'] for f in registrations))
         self.merged([], dict(facts=facts, replacements=[]))
 
+    def test_injection_declaring_type_and_multiline_source_positions(self):
+        from java_di_graph_reference import SOURCE
+        files=BASE|DI|{'Use.java':SOURCE}
+        first=self.analyze([self.context('app',files,spring=True)],cache=True)['facts']
+        def positions(facts):
+            by={f['id']:f for f in facts}
+            return sorted((by[f['attributes']['declaring_type']]['signature'],f['attributes']['injection_point'],f['attributes']['source_line'])
+                          for f in facts if f['relation']=='java.spring.injection')
+        self.assertEqual(positions(first),[('p.Use','another',6),('p.Use','field',4),('p.Use','ordinary',6),
+                                         ('p.Use','ordinary',7),('p.Use$Nested','other',8)])
+        changed=SOURCE.replace('Api another) {}','Api another) {\n /* 原字节😀 */ int n=1;\n }')
+        delta=self.analyze([self.context('app',files|{'Use.java':changed},spring=True)],first,cache=True)
+        merged=self.merged(first,delta)
+        full=self.analyze([self.context('app',files|{'Use.java':changed},spring=True)])['facts']
+        self.assertEqual(positions(merged),positions(full))
+        self.assertEqual(positions(full),[('p.Use','another',6),('p.Use','field',4),('p.Use','ordinary',6),
+                                        ('p.Use','ordinary',9),('p.Use$Nested','other',10)])
+
     def test_injection_unknown_shapes_and_multiple_constructor_negative(self):
         files = BASE | DI | {'Use.java': '''import org.springframework.beans.factory.annotation.*;
           interface Api {} @org.springframework.stereotype.Component class Use {

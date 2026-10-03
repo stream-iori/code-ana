@@ -928,3 +928,12 @@ XML 绑定完整审计新增取证：冻结发布库有2处实际 BINDS_TO 已�
 | 独立参考 | xml-reference-20261003-175429-29128 四组各5请求严格相等，31.099秒；新增0/1/2候选及未解析/歧义反例，全量增量相等，无漂移。175501-29114 的构造器lambda参考缺陷同时在完整请求属性中复现，raw_fact_equivalence=false，5.644秒，无漂移。 |
 | 历史真实库 | iopengw-4a-xml-binding-metadata-captured：429/463请求，缺228、额外194，equal=false；两处参考边端点已补齐但原metadata仍0候选/未解析，保留明确不一致。不会据fixture关闭整个XML图。 |
 | DI 新发现 | 实际参考 SpringJavaModelComponents.fieldInjection/methodInjection/constructorInjection 的 INJECTS 源是声明类型；现有冻结resolver fixture只验证了给定字段输入的算法，尚未证明真实类型级WIRES端点能力。新增发布图审计入口继续查证，不用旧专项结果宣称全图通过。 |
+
+## DI 类型级查询端点（2026-10-03）
+
+| 项目 | 证据 / 状态 |
+|---|---|
+| 独立参考 | di-declaring-type-reference-20261003-180414：真实冻结索引 3 个 INJECTS 均从 p.Use 类型出发，6 个 WIRES 指向两个直接实现；不是向 WiringResolver 喂入产品字段事实的算法测试。 |
+| Java / Rust 分工 | SpringInjection 4 只补充已有声明类型身份及 javac 字段/参数原行号；Rust derived-wiring-4 校验实际父链，额外生成类型级候选。同一行多个参数保留全部注入点证据；原字段/参数查询继续保留。语义 profile 改变，不复用旧派生关系。 |
+| 已通过 | di-type-projection-rust-final：6 项，通过反向输入顺序、完整证据、错误声明类型拒绝及旧版本保留。di-type-projection-positions-final：多行参数、嵌套类型、缓存方法体增长后行号/full-delta 相等。初版测试误用已有 head 首次发布产生 HEAD_CONFLICT，另一个断言误用展示嵌套名，原失败日志保留。 |
+| 新门禁 | java_di_graph_reference 对实际独立参考数据库核对类型端点、原位置、confidence/interface/candidates；产品 daemon 增加 0/1/2 候选、同一行多个参数、类型查询、热缓存、增长/删除/full-delta/旧版本。新 native 组合、真实 iopengw DI 图与完整门禁尚待验证；52 项仍仅 E01/E02 关闭。 |

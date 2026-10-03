@@ -788,6 +788,8 @@
         "tests/java_annotation_alignment.py",
         "tests/java_graph_consumer_alignment.py",
         "tests/java_wiring_reference.py",
+        "tests/java_di_graph_reference.py",
+        "tests/java_wiring_inventory_diff.py",
         "tests/java_e2e.py",
         "tests/java_framework_reference_alignment.py",
         "tests/java_framework_inventory_diff.py"

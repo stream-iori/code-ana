@@ -351,6 +351,47 @@ class JavaProduct(unittest.TestCase):
         self.assertEqual(sorted(healed, key=lambda f: f['id']),
                          sorted(self.facts(full['revision']), key=lambda f: f['id']))
 
+    def test_di_declaring_type_graph_matches_independent_index_and_delta(self):
+        from java_framework_reference_alignment import DEFINITIONS
+        from java_di_graph_reference import SOURCE, projection
+        config=self.project/'.code-ana/config.toml'
+        config.write_text(config.read_text().replace('[languages.java.extensions.spring]\nenabled = false',
+                                                    '[languages.java.extensions.spring]\nenabled = true'))
+        for name,text in DEFINITIONS.items():
+            path=self.project/'src'/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(text)
+        source=self.project/'src/p/Use.java';source.parent.mkdir(parents=True,exist_ok=True);source.write_text(SOURCE)
+        _,initial=self.cli('index','--full',timeout=180)
+        self.assertEqual(initial['publication'],'published')
+        before=self.facts(initial['revision'])
+        def verify(facts, label, text, count):
+            left,right=projection(facts,self.root/label,text)
+            self.assertEqual(left,right);self.assertEqual(len(left),count)
+            typed=[f for f in facts if f['relation']=='wires_possible' and f['attributes'].get('projection')=='declaring_type']
+            self.assertTrue(all(not f['attributes']['runtime_confirmed'] for f in typed))
+            return typed
+        typed=verify(before,'initial',SOURCE,8)
+        self.assertEqual(len([f for f in before if f['relation']=='wires_possible' and f['attributes'].get('projection')=='injection_point']),10)
+        self.assertEqual(len([f for f in typed if len(f['attributes']['injection_points'])==2]),2)
+        owner=next(f['id'] for f in before if f['kind']=='declaration' and f['signature']=='p.Use')
+        rows,query=self.cli('type-relations',owner,'--relation','wires_possible')
+        self.assertEqual(len(rows),6);self.assertFalse(query['evidence']['semantic'])
+        self.assertIn('static_injection_candidates_open_world',query['evidence']['reasons'])
+        _,cached=self.cli('index',timeout=180)
+        self.assertEqual(before,self.facts(cached['revision']))
+        # Body-only growth shifts original Java line locations; cached signatures must refresh them.
+        shifted=SOURCE.replace('Api another) {}', 'Api another) {\n /* 原字节😀 */ int n=1;\n }')
+        for label,text,count in [('shifted',shifted,8),('unique',shifted.replace('class Second implements Api {}','class Second {}'),4)]:
+            source.write_text(text);_,delta=self.cli('index',timeout=180)
+            actual=self.facts(delta['revision']);verify(actual,label,text,count)
+            _,full=self.cli('index','--full',timeout=180)
+            self.assertEqual(actual,self.facts(full['revision']))
+        source.unlink();_,deleted=self.cli('index',timeout=180)
+        self.assertFalse([f for f in self.facts(deleted['revision']) if f['relation']=='wires_possible'])
+        _,full=self.cli('index','--full',timeout=180)
+        self.assertEqual(self.facts(deleted['revision']),self.facts(full['revision']))
+        self.assertEqual(before,self.facts(initial['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_rust_injection_wiring_matches_frozen_resolver_query_and_delta(self):
         from java_framework_alignment import DI
         from java_wiring_reference import projection

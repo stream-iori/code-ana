@@ -50,6 +50,8 @@ def projection(facts, directory):
         span = json.dumps(f.get('span'), sort_keys=True, separators=(',', ':'))
         if f['relation'] == 'wires_possible':
             a = f['attributes']
+            if a.get('projection') == 'declaring_type':
+                continue  # This gate independently checks point-level resolver inputs.
             product.append(dict(source=f['parent'], target=f['target'], file=f['source'], span=span,
                                 confidence=a['confidence'].upper(),
                                 metadata=dict(via=a['via'], source=a['source'], candidates=a['candidates'])))

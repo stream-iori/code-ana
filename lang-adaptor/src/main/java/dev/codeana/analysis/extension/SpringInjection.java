@@ -33,7 +33,7 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
         return "spring-injection";
     }
 
-    public String version() { return "3"; }
+    public String version() { return "4"; }
 
     public String producer() {
         return "spring-injection-v1";
@@ -176,6 +176,21 @@ public final class SpringInjection implements ProjectResourceAnalyzer {
                         implicit,
                         "runtime_selection",
                         "unknown");
+        Map<String, Object> declaringType = site;
+        Set<String> ancestors = new HashSet<>();
+        while (declaringType != null && ancestors.add(Json.string(declaringType,"id"))
+                && ancestors.size() <= 256) {
+            String declaringKind = Json.string(Json.map(declaringType.get("attributes")),"element_kind");
+            if (Set.of("CLASS","INTERFACE","ENUM","ANNOTATION_TYPE").contains(declaringKind)) break;
+            declaringType = facts.declarationsById.get(Json.string(declaringType,"parent"));
+        }
+        if (declaringType != null && Set.of("CLASS","INTERFACE","ENUM","ANNOTATION_TYPE").contains(
+                Json.string(Json.map(declaringType.get("attributes")),"element_kind"))) {
+            a.put("declaring_type",declaringType.get("id"));
+            Object line = Json.map(site.get("attributes")).get("source_line");
+            if (line == null) line = Json.map(declaringType.get("attributes")).get("source_line");
+            if (line instanceof Number && ((Number)line).longValue() > 0) a.put("source_line",line);
+        }
         if (role.equals("setter")) a.put("source_parameter_name", site.get("name"));
         if (injection != null) {
             a.put("annotation", injection.root());

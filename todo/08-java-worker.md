@@ -1084,6 +1084,8 @@ Rust derived-wiring-3 与 Java Spring 6 已补配置类/产物身份及 XML wire
 
 ## XML 全请求 / DI 实际图入口（2026-10-03）
 
+新增 DI 类型级实现：Java SpringInjection 4 输出真实 declaring_type/source_line，Rust derived-wiring-4 保留注入点并增加类型查询关系，同一行多个参数汇总全部证据。Rust 6项与 Java 多行/嵌套/缓存行号回归通过；实际独立参考索引已确认旧产品缺类型级端点。新 native/daemon 对照、真实全图及最终门禁尚待完成，状态仍仅 E01/E02 关闭。详细证据见 docs/implementation/java-alignment-execution.md 的“DI 类型级查询端点”。
+
 | 项目 | 证据 / 状态 |
 |---|---|
 | XML callable | java_xml_binding_inventory_diff 只读完整发布图，保留 constructor/factory/init/destroy/setter 的原输入 owner/member/arity/hints/static、原源码元素位置、候选身份/种类/计数与 exact/unresolved/ambiguous。不能把未知候选或参考错误当作已确认调用。 |

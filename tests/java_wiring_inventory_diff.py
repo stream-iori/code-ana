@@ -13,27 +13,40 @@ from java_inventory_canonical import Canonical,verify_source_inputs
 def select_facts(db):
     facts={r['id']:json.loads(r['body']) for r in db.execute(
         "SELECT id,body FROM facts WHERE relation='wires_possible' "
-        "AND json_extract(body,'$.attributes.via')='injection'")}
+        "AND json_extract(body,'$.attributes.via')='injection' "
+        "AND json_extract(body,'$.attributes.projection')='declaring_type'")}
     pending=set()
     for f in facts.values():
         pending.update([f['parent'],f['target'],f['attributes']['source'],f['attributes']['injection_evidence']])
         pending.update(f['attributes']['candidates'])
+        pending.update(f['attributes']['injection_evidences'])
+        pending.update(f['attributes']['injection_points'])
     while pending:
         identity=pending.pop()
         if identity in facts:continue
         row=db.execute('SELECT body FROM facts WHERE id=?',(identity,)).fetchone()
         if row is None:raise ValueError('WIRING_EVIDENCE_ENDPOINT_MISSING: '+identity)
         fact=json.loads(row['body']);facts[identity]=fact
+        if fact['parent']:pending.add(fact['parent'])
     return list(facts.values())
 
 
 def product_projection(facts,canonical):
     by={f['id']:f for f in facts};rows=[]
     for f in facts:
-        if f['relation']!='wires_possible' or f['attributes'].get('via')!='injection':continue
-        a=f['attributes'];evidence=by[a['injection_evidence']]
-        if evidence['relation']!='injects_possible' or (f['source'],f['span'])!=(evidence['source'],evidence['span']):
-            raise ValueError('WIRING_INJECTION_EVIDENCE_DRIFT')
+        if f['relation']!='wires_possible' or f['attributes'].get('projection')!='declaring_type':continue
+        a=f['attributes']
+        if f['span'] is not None or not a['injection_evidences'] or not a['injection_points']:
+            raise ValueError('WIRING_TYPE_PROJECTION_EVIDENCE_MISSING')
+        observed=set()
+        for identity in a['injection_evidences']:
+            evidence=by[identity];registration=by[evidence['parent']]
+            if evidence['relation']!='injects_possible' or f['source']!=evidence['source']:
+                raise ValueError('WIRING_INJECTION_EVIDENCE_DRIFT')
+            if registration['attributes']['declaring_type']!=f['parent'] or registration['attributes']['source_line']!=a['source_line']:
+                raise ValueError('WIRING_TYPE_PROJECTION_IDENTITY_DRIFT')
+            observed.add(registration['parent'])
+        if observed!=set(a['injection_points']):raise ValueError('WIRING_POINT_MULTIPLICITY_DRIFT')
         if f['status']!='possible' or f['evidence_complete'] or f['declaration_resolved'] or a['runtime_confirmed']:
             raise ValueError('WIRING_RUNTIME_SELECTION_FABRICATED')
         def identity(value):
@@ -41,6 +54,7 @@ def product_projection(facts,canonical):
             path=target['source'] or target['attributes'].get('source_origin',{}).get('path',f['source'])
             return canonical(target['signature'],target['attributes'].get('element_kind'),path,'product')
         rows.append(dict(file=f['source'],owner=identity(f['parent']),target=identity(f['target']),
+            location='L'+str(a['source_line']),
             confidence=a['confidence'].upper(),via=a['via'],interface=identity(a['source']),
             candidates=sorted(identity(candidate) for candidate in a['candidates'])))
     return rows
@@ -55,6 +69,7 @@ def reference_projection(db,canonical):
             if node is None:raise ValueError('REFERENCE_WIRING_ENDPOINT_MISSING: '+value)
             return canonical(node['symbol_id'],node['kind'],edge['source_file'],'reference')
         rows.append(dict(file=edge['source_file'],owner=identity(edge['source_id']),target=identity(edge['target_id']),
+            location=edge['source_location'],
             confidence=edge['confidence'],via=metadata['via'],interface=identity(metadata['source']),
             candidates=sorted(identity(candidate) for candidate in metadata['candidates'])))
     return rows

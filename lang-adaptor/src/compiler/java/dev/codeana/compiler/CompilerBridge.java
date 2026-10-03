@@ -473,6 +473,13 @@ public final class CompilerBridge implements AutoCloseable {
                         "modifiers",
                         strings(element.getModifiers()));
         a.put("annotations", annotations(element));
+        TreePath sourcePath = elementPath(element);
+        if (sourcePath != null && sourcePath.getCompilationUnit().getLineMap() != null) {
+            long sourceOffset = trees.getSourcePositions().getStartPosition(
+                    sourcePath.getCompilationUnit(), sourcePath.getLeaf());
+            if (sourceOffset >= 0)
+                a.put("source_line", sourcePath.getCompilationUnit().getLineMap().getLineNumber(sourceOffset));
+        }
         List<Object> writtenExpressions = WorkerWrittenAnnotations.expressions(elementPath(element), trees, elements);
         if (!writtenExpressions.isEmpty()) a.put("source_annotation_expressions", writtenExpressions);
         List<Object> sourceAnnotations = WorkerWrittenAnnotations.derive(elementPath(element), trees, elements);
