@@ -60,7 +60,12 @@ def input_files():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--level', choices=('fixtures', 'native', 'full'), default='full')
+    for name in ('real-publication-receipt','real-reference','real-project','real-runtime-root','real-inputs-manifest'):
+        parser.add_argument('--'+name,type=pathlib.Path)
     args = parser.parse_args()
+    real_inputs=[args.real_publication_receipt,args.real_reference,args.real_project,args.real_runtime_root,args.real_inputs_manifest]
+    if any(real_inputs) and (not all(real_inputs) or args.level!='full'):
+        parser.error('真实语义门禁需 --level full 和全部五个 --real-* 输入')
     evidence = ROOT / 'target/java-alignment/evidence' / (time.strftime('%Y%m%d-%H%M%S') + '-' + str(os.getpid()))
     evidence.mkdir(parents=True)
     frozen = input_files()
@@ -69,6 +74,7 @@ def main():
     gates = [
         ('acceptance-harness', [sys.executable, 'tests/java_alignment_gate_tests.py'], 30),
         ('inventory-diff-harness', [sys.executable, 'tests/java_inventory_diff_tests.py'], 30),
+        ('real-semantic-diff-harness', [sys.executable, 'tests/java_real_semantic_diff_tests.py'], 30),
         ('acceptance-recovery', [sys.executable, 'tests/java_real_acceptance_tests.py'], 30),
         ('java-fixtures', ['./scripts/test-java.sh'], 14400),
         ('type-reference', [sys.executable, 'tests/java_type_reference_reference.py'], 360),
@@ -139,6 +145,12 @@ def main():
                   parity_pending=[c['id'] for c in matrix['capabilities']],
                   alignment_complete=False)
     receipt = evidence / 'receipt.json'
+    if all(real_inputs):
+        gates.append(('java-real-semantic-diff',[sys.executable,'tests/java_real_semantic_diff.py',
+            '--product',json.loads(args.real_publication_receipt.read_text())['published_facts'],
+            '--publication-receipt',str(args.real_publication_receipt),'--reference',str(args.real_reference),
+            '--project',str(args.real_project),'--runtime-root',str(args.real_runtime_root),
+            '--inputs-manifest',str(args.real_inputs_manifest),'--evidence',str(evidence/'real-semantic-diff')],None))
     product_artifacts = None
     for name, command, timeout in gates:
         started = time.monotonic()

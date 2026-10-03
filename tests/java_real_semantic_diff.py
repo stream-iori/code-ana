@@ -1,0 +1,130 @@
+#!/usr/bin/env python3
+"""Execute every available published-graph audit; keep missing domains explicit."""
+import argparse
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+from java_declaration_inventory_diff import connection, digest
+from java_real_acceptance import publication_accepted
+import java_real_acceptance as acceptance
+
+ROOT=pathlib.Path(__file__).resolve().parents[1]
+REFERENCE_SHA='d822716b8349b2f94814500454cb1a515268b63b73f93e8e99467e54a872dba3'
+DOMAINS=(
+    ('calls','java_call_inventory_diff.py'),
+    ('declaration_attributes','java_declaration_inventory_diff.py'),
+    ('types_hierarchy_reflection','java_type_inventory_diff.py'),
+    ('fields_control_owners','java_field_inventory_diff.py'),
+    ('annotations_meta','java_annotation_inventory_diff.py'),
+    ('beans_injections','java_framework_inventory_diff.py'),
+    ('framework_registrations','java_registration_inventory_diff.py'),
+    ('sofa_xml','java_sofa_xml_inventory_diff.py'),
+    ('xml_configuration_models','java_xml_model_inventory_diff.py'),
+    ('xml_callable_bindings','java_xml_binding_inventory_diff.py'),
+    ('xml_wiring','java_xml_wiring_inventory_diff.py'),
+    ('di_wiring','java_wiring_inventory_diff.py'),
+)
+# These require independent, complete proofs before this gate can certify parity.
+PENDING_DOMAINS=('complete_model_api_inventory','all_lexical_control_contexts','complete_xml_graph_edges')
+
+
+def domain_accepted(name,report):
+    if name=='calls':return all(report.get(key,{}).get('accepted') is True for key in ('declarations','sites','targets','owners'))
+    if name=='types_hierarchy_reflection':
+        values=report.get('projections',{})
+        return set(values)=={'type_reference','reflection_member','extends','implements','overrides'} and all(v.get('equal') is True for v in values.values())
+    if name=='annotations_meta':return report.get('equal') is True and report.get('meta',{}).get('equal') is True
+    return report.get('equal') is True
+
+
+def validate_publication(receipt,product,manifest):
+    if receipt.get('state')!='finished' or not publication_accepted(receipt):raise ValueError('SEMANTIC_PUBLISHED_NATIVE_REQUIRED')
+    if pathlib.Path(receipt.get('published_facts','')).resolve()!=product.resolve():raise ValueError('SEMANTIC_PUBLICATION_DATABASE_MISMATCH')
+    if (receipt.get('commit')!='267c7ced4993aa88613f8f17a8099943fec98159'
+        or receipt.get('include_uncommitted') is not False
+        or receipt.get('verified_committed_files')!=5039 or receipt.get('committed_java_files')!=4217):
+        raise ValueError('SEMANTIC_FROZEN_PROJECT_REQUIRED')
+    if set(receipt.get('scopes',[]))!={'MAIN','TEST'} or receipt.get('xml_resources_included') is not True:
+        raise ValueError('SEMANTIC_ALL_SCOPES_XML_REQUIRED')
+    if (receipt.get('unexpected_signal_observed') is not False or receipt.get('changed_artifacts')
+        or receipt.get('changed_source_inputs') or receipt.get('inputs_manifest_changed') is not False):
+        raise ValueError('SEMANTIC_PUBLICATION_INPUT_DRIFT')
+    if set(manifest.get('scopes',[]))!={'MAIN','TEST'} or len(manifest.get('modules',[]))!=40:
+        raise ValueError('SEMANTIC_FULL_REACTOR_REQUIRED')
+    if any(module.get('selected',True) is not True for module in manifest['modules']):
+        raise ValueError('SEMANTIC_SELECTED_REACTOR_NOT_FULL')
+
+
+def proof_files(runtime,receipt):
+    frozen={}
+    for group in ('source_inputs','artifacts'):
+        values=receipt.get(group,{})
+        if not values:raise ValueError('SEMANTIC_PUBLICATION_PROOF_MISSING: '+group)
+        for relative,expected in values.items():
+            path=runtime/relative
+            if not path.resolve().is_relative_to(runtime.resolve()) or digest(path)!=expected:
+                raise ValueError('SEMANTIC_RUNTIME_PROOF_DRIFT: '+relative)
+            frozen[str(path.resolve())]=expected
+    return frozen
+
+
+def main():
+    parser=argparse.ArgumentParser()
+    for name in ('product','reference','project','publication_receipt','runtime_root','inputs_manifest','evidence'):
+        parser.add_argument('--'+name.replace('_','-'),type=pathlib.Path,required=True)
+    args=parser.parse_args()
+    args.evidence.mkdir(parents=True,exist_ok=False)
+    started=time.monotonic()
+    report=dict(kind='frozen_project_all_semantic_domains',state='running',domains=[],
+                pending_domains=list(PENDING_DOMAINS),full_semantic_diff_accepted=False,capacity_accepted=False)
+    output=args.evidence/'receipt.json'
+    def save():output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
+    save()
+    try:
+        receipt=json.loads(args.publication_receipt.read_text())
+        manifest=json.loads(args.inputs_manifest.read_text())
+        validate_publication(receipt,args.product,manifest)
+        if digest(args.inputs_manifest)!=receipt['inputs_manifest_sha256']:raise ValueError('SEMANTIC_MAVEN_MANIFEST_DRIFT')
+        if digest(args.reference)!=REFERENCE_SHA:raise ValueError('SEMANTIC_FROZEN_REFERENCE_REQUIRED')
+        acceptance.ROOT=args.runtime_root.resolve()
+        report['frozen_project']=acceptance.verify_frozen(args.project.resolve())
+        report['runtime_proof']=proof_files(args.runtime_root,receipt)
+        report['input_sha256']={str(p.resolve()):digest(p) for p in
+            (args.product,args.reference,args.publication_receipt,args.inputs_manifest)}
+        report['auditor_sha256']={str(file.relative_to(ROOT/'tests')):digest(file)
+            for file in sorted((ROOT/'tests').glob('*.py'))}
+        with connection(args.product) as db:
+            identity=dict(db.execute('SELECT key,value FROM identity'))
+            if identity.get('revision')!=receipt['published_revision']:raise ValueError('SEMANTIC_REVISION_IDENTITY_DRIFT')
+            report['revision']=identity['revision'];report['semantic_profile']=identity['profile']
+        for name,file in DOMAINS:
+            domain_output=args.evidence/(name+'.json');log=args.evidence/(name+'.log')
+            command=[sys.executable,str(ROOT/'tests'/file),'--product',str(args.product),
+                     '--reference',str(args.reference),'--project',str(args.project),'--output',str(domain_output)]
+            tick=time.monotonic()
+            with log.open('wb') as stream:
+                process=subprocess.run(command,cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT)
+            value=json.loads(domain_output.read_text()) if domain_output.exists() else {}
+            ok=process.returncode==0 and domain_accepted(name,value)
+            report['domains'].append(dict(name=name,accepted=ok,exit_code=process.returncode,
+                elapsed_seconds=round(time.monotonic()-tick,3),output=str(domain_output),
+                output_sha256=digest(domain_output) if value else None,log=str(log),log_sha256=digest(log)))
+            save();print(name+': '+('passed' if ok else 'failed'),flush=True)
+        report['available_domains_accepted']=all(value['accepted'] for value in report['domains'])
+        changed=[path for path,expected in report['input_sha256'].items() if digest(pathlib.Path(path))!=expected]
+        changed.extend(path for path,expected in report['runtime_proof'].items() if digest(pathlib.Path(path))!=expected)
+        changed.extend(str(ROOT/'tests'/file) for file,expected in report['auditor_sha256'].items() if digest(ROOT/'tests'/file)!=expected)
+        if changed:raise ValueError('SEMANTIC_COMPARISON_INPUT_DRIFT: '+str(changed))
+        report['changed_inputs']=[]
+        report['full_semantic_diff_accepted']=report['available_domains_accepted'] and not report['pending_domains']
+    except Exception as error:
+        report.update(failure=str(error),failure_type=type(error).__name__)
+    finally:
+        report.update(state='finished',elapsed_seconds=round(time.monotonic()-started,3));save()
+    return 0 if report['full_semantic_diff_accepted'] else 1
+
+
+if __name__=='__main__':raise SystemExit(main())

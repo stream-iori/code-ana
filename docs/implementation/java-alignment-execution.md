@@ -939,3 +939,14 @@ XML 绑定完整审计新增取证：冻结发布库有2处实际 BINDS_TO 已�
 | 新门禁 | java_di_graph_reference 对实际独立参考数据库核对类型端点、原位置、confidence/interface/candidates；产品 daemon 增加 0/1/2 候选、同一行多个参数、类型查询、热缓存、增长/删除/full-delta/旧版本。新 native 组合、真实 iopengw DI 图与完整门禁尚待验证；52 项仍仅 E01/E02 关闭。 |
 
 DI 实际产品新取证：validation-di-type-projection/di-type-product-e2e.log 三项71.499秒，旧注入点和跨模块两项通过，独立实际图一项失败（8/10）。真实 DatabaseWiringResolver 在写入批次内未先写库，两个同行参数的候选均保留；内存 WiringResolver 8 条并不代表实际发布数据库的10条。di-multiline-actual-reference 的原数据库和全部 INJECTS/WIRES 保留；Rust v5 改为逐注入点保留类型关系，与实际索引多次出现对齐。独立对照现在持久保存原数据库及 raw diff，不因 fixture 清理丢失证据。新版需重验。
+
+DI v5 产品终态：validation-di-occurrences/di-occurrences-product-proof.json 四项132.687秒全部通过，运行产物无漂移；实际独立参考初始10/10、行号增长10/10、唯一候选5/5严格相等，类型查询/同一行多个参数/嵌套类型/删除/full-delta/旧版均通过。原注入点、跨模块 MAIN/TEST 与 XML 接线同步回归通过。Java 产物复用前逐一核对140个源码/构建文件 SHA，Rust复用核对46个源码/契约文件 SHA；冻结的独立参考数据库及 raw diff 保留。新版全部 native fixture 正在运行；完整 iopengw 及容量仍待验收。
+
+## 完整语义汇总执行入口（2026-10-03）
+
+| 项目 | 实现 / 状态 |
+|---|---|
+| 执行 | java_real_semantic_diff 实际顺序运行12域发布库差分，保留原输出、退出码、日志与 SHA；失败仍继续其余域，不将历史局部成功拼成全通过。统一 full 入口接受五个 --real-* 输入并注册 java-real-semantic-diff。 |
+| 输入保护 | 只接受冻结5039文件/4217Java、全部40模块MAIN/TEST/XML的成功native发布；拒绝selected模块、scope缺失、数据库/revision错位、源与产物漂移。核对原发布源码/运行产物、Maven manifest、冻结参考DB和比较工具原字节。 |
+| 尚缺 | 完整模型API清单、全部词法控制上下文、全部XML图边仍是硬阻塞。即便现有12域相等，也不置 full_semantic_diff_accepted；不把解析诊断和容量混入语义通过。 |
+| 回归 | real-semantic-aggregate-guards：3项通过，验证 selected/scope/假通过/漏元注解/运行产物篡改拒绝。历史全40模块4a的完整汇总将保存实际失败，最新项目发布后再运行同入口。 |
