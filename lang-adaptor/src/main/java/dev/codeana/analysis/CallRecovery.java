@@ -1922,6 +1922,8 @@ final class CallRecovery {
             int depth)
             throws IOException {
         step(depth);
+        // Null constrains no generic variable, matching the frozen resolver.
+        if (kind(actual).equals("NULL") && mentionsFormal(parameter, owner, 0)) return Match.YES;
         if (!mentionsFormal(parameter, owner, depth + 1)
                 && kind(parameter).equals("DECLARED") && kind(actual).equals("DECLARED")
                 && types.convert(actual, parameter, true) == Match.NO) return Match.NO;

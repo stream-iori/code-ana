@@ -49,7 +49,8 @@ class BuilderChains(unittest.TestCase):
         for graph in (False, True):
             with self.subTest(graph=graph):
                 context = self.fixture(ordinary_chain(10))
-                context['type_graph'] = graph
+                if graph:
+                    context['type_graph'] = True
                 facts = self.analyze([context])['facts']
                 targets = [fact for fact in facts if fact['kind'] == 'call_target']
                 self.assertEqual(len(targets), 11)
@@ -61,7 +62,8 @@ class BuilderChains(unittest.TestCase):
         for graph in (False, True):
             with self.subTest(graph=graph):
                 context = self.fixture(source)
-                context['type_graph'] = graph
+                if graph:
+                    context['type_graph'] = True
                 base = self.analyze([context], cache=True)
                 targets = [fact for fact in base['facts'] if fact['kind'] == 'call_target']
                 self.assertEqual(len(targets), 32)
@@ -70,7 +72,8 @@ class BuilderChains(unittest.TestCase):
                 self.assertEqual(len(blocked), 49)
                 self.assertTrue(all(fact['attributes'].get('recovery_target_blocked') for fact in blocked))
                 changed = self.fixture(source.replace('return this;', 'return null;'))
-                changed['type_graph'] = graph
+                if graph:
+                    changed['type_graph'] = True
                 delta = self.analyze([changed], base['facts'], cache=True)
                 full = self.analyze([changed], cache=True)
                 self.assertEqual(self.merged(base['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))

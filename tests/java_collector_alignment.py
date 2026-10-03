@@ -15,6 +15,8 @@ static void wrongExplicit(java.util.List<Rule> rules){rules.stream().collect(jav
 '''
 
 
+NULL_BRANCH_SOURCE = 'import java.util.*;\n@lombok.Getter class Ratio {Map<String,Integer> clientIds;Map<String,Integer> merchantIds;}\nclass Control {static Ratio getRatio(){return null;}}\nclass Use {Integer read(String id,String key,boolean flag){return Optional.ofNullable(Control.getRatio())\n .map(v -> {if(flag) return v.getClientIds(); else if(id != null) return v.getMerchantIds(); else return null;})\n .filter(v -> true)\n .map(tmpMap -> Optional.ofNullable(tmpMap.get(id)).orElseGet(() -> Optional.ofNullable(key).map(tmpMap::get).orElse(null)))\n .orElse(-1);}}'
+
 TARGET_SOURCE = '''import java.util.*;import java.util.stream.*;
 @lombok.Getter class Api {String id;} class Validator {}
 class Cache {static List<Validator> getValidators(String id){return null;}}
@@ -50,6 +52,18 @@ class Collectors(unittest.TestCase):
     context = models.Models.context
     analyze = models.Models.analyze
     merged = models.Models.merged
+
+    def test_null_branch_preserves_generic_constraints_and_rejects_conflicting_return(self):
+        before = self.analyze([self.fixture(NULL_BRANCH_SOURCE)], cache=True)
+        pairs = self.targets(before, 'read')
+        self.assertEqual(len(pairs), 11)
+        changed = self.fixture(NULL_BRANCH_SOURCE.replace('return null;', 'return null; /* unchanged type */'))
+        delta = self.analyze([changed], before['facts'], cache=True)
+        full = self.analyze([changed], cache=True)
+        self.assertEqual(self.merged(before['facts'], delta), sorted(full['facts'], key=lambda f: f['id']))
+        failed = self.analyze([self.fixture(NULL_BRANCH_SOURCE.replace('return v.getMerchantIds();', 'return 1;'))])
+        self.assertFalse([target for signature, target in self.targets(failed, 'read')
+                          if signature.startswith('java.util.Optional#map(')])
 
     def fixture(self, source=SOURCE):
         return self.context('app', lombok.Lombok.files(self, source), lombok='model')

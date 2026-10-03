@@ -26,19 +26,19 @@ class AnnotatedMirrors(unittest.TestCase):
    }'''
   for graph in (False,True):
    with self.subTest(graph=graph):
-    result=self.analyze([self.context('app',{'Api.java':source},type_graph=graph)])
+    result=self.analyze([self.context('app',{'Api.java':source},**({'type_graph':True} if graph else {}))])
     targets=[f for f in result['facts'] if f['kind']=='call_target']
     self.assertEqual(len(targets),6)
     self.assertTrue(all(f['status']=='resolved' and f['evidence_complete'] for f in targets))
  def test_annotated_declared_primitive_and_array_selected_executables(self):
   for graph in (False,True):
    with self.subTest(graph=graph):
-    context=self.context('app',{'Api.java':SOURCE},type_graph=graph)
+    context=self.context('app',{'Api.java':SOURCE},**({'type_graph':True} if graph else {}))
     result=self.analyze([context],cache=True)
     targets=[f for f in result['facts'] if f['kind']=='call_target']
     self.assertEqual(len(targets),5)
     self.assertTrue(all(f['status']=='resolved' and f['evidence_complete'] for f in targets))
-    changed=self.context('app',{'Api.java':SOURCE.replace('return text;','return null;')},type_graph=graph)
+    changed=self.context('app',{'Api.java':SOURCE.replace('return text;','return null;')},**({'type_graph':True} if graph else {}))
     delta=self.analyze([changed],result['facts'],cache=True)
     full=self.analyze([changed],cache=True)
     self.assertEqual(self.merged(result['facts'],delta),sorted(full['facts'],key=lambda f:f['id']))

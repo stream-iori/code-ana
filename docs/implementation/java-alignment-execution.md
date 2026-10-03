@@ -487,3 +487,11 @@ Java8 AnnotatedType实现ArrayType/DeclaredType/ExecutableType等多种接口，
 新调用以自身表达式深度0开始，active调用递归仍最多64；类型证据操作使用自身的depth0，仍由TypeOperations保留64/100000限制。lambda参数的祖先身份查找和生成名扫描只消耗工作预算，不把语法包装深度算成类型推断递归；名字扫描用有界迭代队列，保留4096和100000限制。modeledExpression对调用/参数查询恢复独立预算，不增加原版允许的链长。v1-v5曾在80段负例分别缺32/2/1目标，不合入；v6与冻结原版10段11/11、80段32/32严格相等，49个超预算调用明确blocked。已有34组独立原版全部相等、无产物漂移；14个残余MAIN文件2059/2081，即22独立缺失/0独立额外/5状态对，待正式native/发布复核。
 
 logical-budget-annotated-final-focused-jvm.log：长链/Builder正反例/表达式/annotated镜像共14项通过（45.453秒），长链含两种表示、缓存full/delta及保留64层负例。默认类型图仍未切换，S1/S2/S3及52项全对齐仍未关闭。
+
+## 泛型null分支约束恢复
+
+冻结JavaModeledCallRecovery.infer对含方法形参的NULL实参返回YES，不绑定或覆盖已有推断值。旧CallRecovery将NULL与ERROR归为UNKNOWN，造成有类型getter分支/null分支的回调丢失已有Map约束。现仅在参数包含当前方法形参时跳过null约束，已知冲突返回仍拒绝。最小样本8/11变11/11，新增缓存full/delta与Map/Integer冲突负例通过；已有36组冻结原版全部严格一致、无产物漂移。14残余MAIN隔离2062/2081，原始缺23/多4，即19独立缺失/0独立额外/4状态对，另修复ofNullable置信度。新正式native和全项目发布尚待重跑。
+
+1ea710c独立默认native140项（504.978秒）、冻结参考native36组已通过，无漂移；图绑定206项失败2项，均为新增长链测试显式type_graph=false，被严格门禁拒绝，不能记录整体通过。根因属于测试接入；在主工作区修正默认模式不覆盖门禁context工厂，两项实际native图+Rust校验通过（15.648秒），全图绑定仍须在新版本重跑。
+
+CustomDnsResolverTest的隔离默认表示3329源码/869jar上下文终态成功，137目标对参考137，差分仅匿名构造器javac二进制名与源码名尚未建立span映射；这不是全项目语义通过。相同图模式隔离探针在512MiB javac诊断格式化阶段OOM，保留原日志，S2默认图与容量仍未关闭。
