@@ -797,7 +797,7 @@ public final class CompilerBridge implements AutoCloseable {
 
     private String descriptor(TypeMirror type) {
         if (type == null) return "";
-        if (type instanceof ExecutableType) {
+        if (type.getKind() == TypeKind.EXECUTABLE) {
             ExecutableType executable = (ExecutableType) type;
             StringBuilder out = new StringBuilder("(");
             for (TypeMirror parameter : executable.getParameterTypes()) out.append(descriptor(parameter));
@@ -827,7 +827,7 @@ public final class CompilerBridge implements AutoCloseable {
             TypeElement element = (TypeElement) declared.asElement();
             StringBuilder out;
             TypeMirror enclosing = declared.getEnclosingType();
-            if (enclosing instanceof DeclaredType && !element.getModifiers().contains(Modifier.STATIC)) {
+            if (enclosing.getKind() == TypeKind.DECLARED && !element.getModifiers().contains(Modifier.STATIC)) {
                 String outer = generic(enclosing);
                 out = new StringBuilder(outer.substring(0, outer.length() - 1)).append('.').append(element.getSimpleName());
             } else out = new StringBuilder("L").append(signature(element).replace('.', '/'));
@@ -1019,7 +1019,7 @@ public final class CompilerBridge implements AutoCloseable {
     }
 
     private Map<String, Object> sam(TypeMirror target) {
-        if (target instanceof IntersectionType) {
+        if (target != null && target.getKind() == TypeKind.INTERSECTION) {
             Map<String, Object> selected = null;
             for (TypeMirror bound : ((IntersectionType) target).getBounds()) {
                 Map<String, Object> candidate = sam(bound);
@@ -1032,7 +1032,7 @@ public final class CompilerBridge implements AutoCloseable {
                     ? Json.object("complete", false, "reason", "SAM_INTERSECTION_UNRESOLVED")
                     : selected;
         }
-        if (!(target instanceof DeclaredType))
+        if (target == null || target.getKind() != TypeKind.DECLARED)
             return Json.object("complete", false, "reason", "SAM_TARGET_NOT_DECLARED");
         DeclaredType declared = (DeclaredType) target;
         if (!(declared.asElement() instanceof TypeElement))
@@ -1092,9 +1092,11 @@ public final class CompilerBridge implements AutoCloseable {
     private boolean incomplete(TypeMirror t, int depth) {
         if (t == null || depth > 16) return true;
         if (t.getKind() == TypeKind.ERROR) return true;
-        if (t instanceof ArrayType)
+        // javac 8 AnnotatedType implements several TypeMirror interfaces regardless
+        // of its underlying kind. Interface membership cannot select an accessor.
+        if (t.getKind() == TypeKind.ARRAY)
             return incomplete(((ArrayType) t).getComponentType(), depth + 1);
-        if (t instanceof ExecutableType) {
+        if (t.getKind() == TypeKind.EXECUTABLE) {
             ExecutableType e = (ExecutableType) t;
             if (incomplete(e.getReturnType(), depth + 1)) return true;
             for (TypeMirror p : e.getParameterTypes()) if (incomplete(p, depth + 1)) return true;
@@ -1591,7 +1593,8 @@ public final class CompilerBridge implements AutoCloseable {
                             "expression_type_model",
                             typeModel(trees.getTypeMirror(getCurrentPath())),
                             "selected_type",
-                            selectedType instanceof ExecutableType ? stableType(selectedType) : null,
+                            selectedType != null && selectedType.getKind() == TypeKind.EXECUTABLE
+                                    ? stableType(selectedType) : null,
                             "selected_type_model",
                             typeModel(selectedType),
                             "declared_type",

@@ -477,3 +477,7 @@ S3新取证 source-annotation-diff.json：原SOURCE注解身份/owner/span3838�
 全项目正确性任务保护时限：Rust原先拒绝大于3600秒的任务请求，capture另有同值钳制。现统一MAX_TASK_DEADLINE_SECONDS=86400，仍须显式指定，默认120秒、每个javac context最大3600秒和取消/内存/输出预算不变。真实验收脚本同步支持该范围。CLI→gRPC→daemon→capture→mock→发布/查询正例7200秒通过，86401秒拒绝且旧head仍可查；该专项和验收租约/回滚13项共14项通过，Rust完整E2E15项通过，workspace单元通过；全部targets的clippy通过（-D warnings）。不是性能通过结论，也不更改已运行e8任务的一小时deadline。
 
 独立e8f9a88的40模块正式失败：2601.287秒，第36个已累积context后进入app/test@TEST，在CustomDnsResolverTest.java observations抛COMPILER_FAILED/ClassCastException（Type$AnnotatedType.getComponentType）。未发布，配置复原，无源码/产物漂移、无非预期信号；进程树峰值1425850368字节仅作诊断，不作为容量通过。证据为validation-b4-next/target/java-alignment/evidence/iopengw-full-main-test-xml-e8f9a88。根因正在复现，不能记为安全软件杀进程或全项目通过。
+
+## SDK8 annotated mirror 的完整项目阻断修复
+
+Java8 AnnotatedType实现ArrayType/DeclaredType/ExecutableType等多种接口，与被包装类型实际kind无关。已用注解返回String/参数int/数组的最小源码在默认树和图模式分别复现相同ClassCastException。CompilerBridge的incomplete、descriptor、SAM分支、enclosing和selected_type按TypeKind选择访问器；不吞异常、不改解析器、不屏蔽源码。java_annotated_type_alignment的两项JVM检查通过，涵盖两种表示、5个完整目标、lambda/member-reference的6个完整目标和缓存full/delta（5.469秒）。真实CustomDnsResolverTest带完整Maven TEST上下文3329源码/869jar的流式专项正在验证，尚不能宣称全项目阻断已彻底关闭。
