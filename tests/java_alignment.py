@@ -74,6 +74,7 @@ def main():
     gates = [
         ('acceptance-harness', [sys.executable, 'tests/java_alignment_gate_tests.py'], 30),
         ('inventory-diff-harness', [sys.executable, 'tests/java_inventory_diff_tests.py'], 30),
+        ('xml-graph-diff-harness', [sys.executable, 'tests/java_xml_graph_inventory_diff_tests.py'], 30),
         ('real-semantic-diff-harness', [sys.executable, 'tests/java_real_semantic_diff_tests.py'], 30),
         ('acceptance-recovery', [sys.executable, 'tests/java_real_acceptance_tests.py'], 30),
         ('compiler-diagnostic-inputs', [sys.executable, 'tests/java_real_compiler_diagnostics_tests.py'], 30),
@@ -139,6 +140,7 @@ def main():
                                       '--destination', str(evidence / 'product-runtime')], 60),
             ('rust-daemon', [sys.executable, 'tests/rust_e2e.py'], 600),
             ('java-daemon', [sys.executable, 'tests/java_e2e.py'], 14400),
+            ('xml-graph-reference', [sys.executable, 'tests/java_xml_graph_reference_alignment.py'], 600),
             ('native-daemon-crash', [sys.executable, 'tests/java_native_crash_e2e.py'], 300),
             ('java-release', [sys.executable, 'tests/java_release.py'], 3000),
         ]
@@ -162,7 +164,7 @@ def main():
         log = evidence / (name + '.log')
         with log.open('wb') as output:
             env = os.environ.copy()
-            if name in ('java-daemon', 'native-daemon-crash'):
+            if name in ('java-daemon', 'native-daemon-crash', 'xml-graph-reference'):
                 env['CODEANA_TEST_BIN'] = str(evidence / 'product-runtime/target/debug')
             process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT,
                                        start_new_session=True)

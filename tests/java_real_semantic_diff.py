@@ -26,13 +26,19 @@ DOMAINS=(
     ('xml_configuration_models','java_xml_model_inventory_diff.py'),
     ('xml_callable_bindings','java_xml_binding_inventory_diff.py'),
     ('xml_wiring','java_xml_wiring_inventory_diff.py'),
+    ('xml_complete_graph','java_xml_graph_inventory_diff.py'),
     ('di_wiring','java_wiring_inventory_diff.py'),
 )
 # These require independent, complete proofs before this gate can certify parity.
-PENDING_DOMAINS=('complete_model_api_inventory','complete_xml_graph_edges')
+PENDING_DOMAINS=('complete_model_api_inventory',)
 
 
 def domain_accepted(name,report):
+    if name=='xml_complete_graph':
+        values=report.get('projections',{})
+        return (report.get('equal') is True and report.get('schema_gaps')==[] and report.get('unknown_reference_edges')==[]
+            and set(values)=={'CONFIGURES','XML_CONTAINS','XML_REFERS_TO','DEFINED_BY','PARENT_BEAN','FACTORY_BEAN','BINDS_TO','WIRES'}
+            and all(value.get('equal') is True for value in values.values()))
     if name=='lexical_controls':
         values=report.get('projections',{})
         return set(values)=={'lexical_owners','calls','reads','writes','type_reference','reflection_lookup'} and all(v.get('equal') is True for v in values.values())

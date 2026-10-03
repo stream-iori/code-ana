@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Real shared-library proof. Expectations are derived from this repository's fixture."""
 import hashlib, json, os, pathlib, shutil, struct, subprocess, tempfile, zipfile
+from java_type_views import type_attributes
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 JDK = pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME', pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu')).resolve()
 TARGET = ROOT/'lang-adaptor/target'
@@ -246,7 +247,7 @@ def main():
             recovered = [p[2] for p in pairs if p[2]['origin']=='source_recovery']
             assert len(recovered)==5
             explicit = [f for f in recovered if f['attributes'].get('explicit_type_argument_models')]
-            assert len(explicit)==2 and all(f['attributes']['explicit_type_argument_models'][0]['element']=='java.lang.Integer' for f in explicit)
+            assert len(explicit)==2 and all(type_attributes(f)['explicit_type_argument_models'][0]['element']=='java.lang.Integer' for f in explicit)
             request.update(full=False, baseline=recovered_facts)
             assert native_facts()['facts']==[]
             binding_files['App.java'] = binding_files['App.java'].replace('choose(long value)','choose(double value)')
