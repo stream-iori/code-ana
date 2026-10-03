@@ -399,3 +399,5 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 仍待 | 最新同版本完整Java/native/daemon回归、40模块MAIN/TEST/XML发布、80上下文完整模型清单、14域语义差分，以及最后的独占容量/release。矩阵仍只关闭E01/E02。 |
 
 完整清单输出的后续取证：全部上下文源码超过测试探针的单份64MiB JSON上限，JVM在完成导航后明确报`JSON_BUDGET`；原日志及现场栈保留在`iopengw-core-service-main-complete-source-api`。测试探针改为任务独占临时文件流式编码，编码成功后才输出，测试清单上限512MiB；不改变产品JSON/worker/模型限额，不删行、不抽样。`model-api-stream-output-proof.log`复现原失败，逐行UTF-8摘要验证超过64MiB的完整输出，并验证预算失败/取消零输出、临时文件清理。原native对照主动终止并另记`superseded.json`，不是安全软件杀进程，也没有算作通过。
+
+完整 MAIN 清单终态：`iopengw-core-service-main-all-source-stream-output` JVM与`iopengw-core-service-main-record-stream-native`原生均四投影严格相等，覆盖全部2624源码、42072声明、489941 AST、2763类型查询，源码位置和切片无差异、无输入/工件漂移；原生267.949秒（产品探针192.040秒）。两个原始清单各157445089字节。测试探针进一步逐条落盘，避免堆内持有完整清单；预算/取消/重复source保护及9组native专项通过。仍仅一个MAIN上下文，不替代全部80上下文或实际worker共享库发布。

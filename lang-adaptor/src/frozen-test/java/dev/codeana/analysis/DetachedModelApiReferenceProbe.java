@@ -37,7 +37,7 @@ public final class DetachedModelApiReferenceProbe {
         List<Path> classpath=new ArrayList<>();
         for(Object value:Json.list(context.getOrDefault("classpath",List.of())))classpath.add(Path.of(value.toString()));
         var backend=new JavacBackend(toolchain,classpath,List.of(paths.keySet().iterator().next().getParent()),options);
-        List<Object> rows=new ArrayList<>(),lookups=new ArrayList<>(),syntaxRows=new ArrayList<>();Map<String,Object> sources=new TreeMap<>();
+        try(var output=new ModelApiInventory.Output(scratch)) {
         Map<String,List<Object>> lookupCandidates=new LinkedHashMap<>();
         for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of())))lookupCandidates.put(name.toString(),new ArrayList<>());
         java.util.function.Consumer<JavaAnalysisContext> consume=analysis->{
@@ -47,7 +47,7 @@ public final class DetachedModelApiReferenceProbe {
                     if(!selected.contains(path))continue;
                     var source=model.source(unit.path());String text=source.text();List<Object> positions=new ArrayList<>();
                     for(int offset=0;!inventory&&offset<=text.length();offset++) {var p=source.position(offset);positions.add(List.of(p.line(),p.column()));}
-                    sources.put(path,inventory ? ModelApiInventory.source(text.getBytes(java.nio.charset.StandardCharsets.UTF_8),text,offset->{
+                    output.source(path,inventory ? ModelApiInventory.source(text.getBytes(java.nio.charset.StandardCharsets.UTF_8),text,offset->{
                         var p=source.position(offset);return new int[]{p.line(),p.column()};
                     }) : Json.object("sha256",Json.sha(text.getBytes(java.nio.charset.StandardCharsets.UTF_8)),"text",text,"positions",positions));
                     var syntax=model.syntax(unit.path());
@@ -56,7 +56,7 @@ public final class DetachedModelApiReferenceProbe {
                         Map<String,Object> row=syntaxKey(node);row.put("source",path);
                         row.put("parent",syntax.parent(node).map(DetachedModelApiReferenceProbe::syntaxKey).orElse(null));
                         row.put("enclosing",syntax.enclosing(node,Set.of("METHOD","CLASS","INTERFACE","ENUM","ANNOTATION_TYPE"))
-                                .map(DetachedModelApiReferenceProbe::syntaxKey).orElse(null));syntaxRows.add(row);
+                                .map(DetachedModelApiReferenceProbe::syntaxKey).orElse(null));output.syntax(row);
                     }
                     for(var ref:model.declarations(unit.path())) {
                         var d=model.declaration(ref);List<Object> members=new ArrayList<>();
@@ -66,7 +66,7 @@ public final class DetachedModelApiReferenceProbe {
                         if(d.span().present()&&!model.declarationsAt(unit.path(),d.span()).contains(ref))throw new AssertionError("reference span catalogue missed declaration");
                         Map<String,Object> row=key(d);row.put("source",path);row.put("parent",parent);row.put("members",members);row.put("syntax",node);
                         String slice=d.span().present()?source.slice(d.span()):null;
-                        row.put("slice",inventory ? ModelApiInventory.slice(slice) : slice);rows.add(row);
+                        row.put("slice",inventory ? ModelApiInventory.slice(slice) : slice);output.row(row);
                     }
                 }
                 for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of()))) {
@@ -83,9 +83,10 @@ public final class DetachedModelApiReferenceProbe {
             FrozenExactModelApiContext.analyze(context,javaHome,scratch.resolve("exact-reference"),consume);
         else backend.analyzeFiles(new ArrayList<>(paths.keySet()),consume);
         for(var entry:lookupCandidates.entrySet()) {
-            var candidates=entry.getValue();lookups.add(Json.object("name",entry.getKey(),"status",
+            var candidates=entry.getValue();output.type(Json.object("name",entry.getKey(),"status",
                 candidates.isEmpty()?"missing":candidates.size()==1?"found":"ambiguous","candidates",candidates));
         }
-        ModelApiInventory.writeOutput(Json.object("rows",rows,"syntax",syntaxRows,"sources",sources,"types",lookups,"closed",true),scratch);
+        output.finish();
+        }
     }
 }

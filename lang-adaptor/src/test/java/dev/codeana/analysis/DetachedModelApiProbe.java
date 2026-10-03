@@ -42,7 +42,7 @@ public final class DetachedModelApiProbe {
             Map<String,Object> archive=captured==null ? compiler.analyze(context) : captured.model();
             try {
                 DetachedJavaModel model=new ExtensionContext(context,archive,List.of(),List.of()).javaModel();
-                List<Object> rows=new ArrayList<>(),syntaxRows=new ArrayList<>();Map<String,Object> sources=new TreeMap<>();
+                try(var output=new ModelApiInventory.Output(Path.of(Json.string(request,"scratch")))) {
                 for(String path:model.unitsInContext()) {
                     if(!selected.contains(path))continue;
                     DetachedJavaModel.Source source=model.source(path);String text=source.text();
@@ -50,7 +50,7 @@ public final class DetachedModelApiProbe {
                     for(int offset=0;!inventory&&offset<=text.length();offset++) {
                         var p=source.position(offset);positions.add(List.of(p.line(),p.column()));
                     }
-                    sources.put(path,inventory ? ModelApiInventory.source(source.bytes(),text,offset->{
+                    output.source(path,inventory ? ModelApiInventory.source(source.bytes(),text,offset->{
                         var p=source.position(offset);return new int[]{p.line(),p.column()};
                     }) : Json.object("sha256",Json.sha(source.bytes()),"text",text,"positions",positions));
                     byte[] copy=source.bytes();if(copy.length>0)copy[0]^=1;
@@ -62,7 +62,7 @@ public final class DetachedModelApiProbe {
                         Map<String,Object> row=syntaxKey(node);row.put("source",path);
                         row.put("parent",syntax.parent(node).map(DetachedModelApiProbe::syntaxKey).orElse(null));
                         row.put("enclosing",syntax.enclosing(node,Set.of("METHOD","CLASS","INTERFACE","ENUM","ANNOTATION_TYPE"))
-                                .map(DetachedModelApiProbe::syntaxKey).orElse(null));syntaxRows.add(row);
+                                .map(DetachedModelApiProbe::syntaxKey).orElse(null));output.syntax(row);
                     }
                     for(var ref:model.declarations(path)) {
                         Map<String,Object> d=model.declaration(ref);long start=Json.number(d,"start"),end=Json.number(d,"end");
@@ -72,22 +72,21 @@ public final class DetachedModelApiProbe {
                         if(start>=0&&end>=start&&!model.declarationsAt(path,start,end).contains(ref))throw new AssertionError("span catalogue missed declaration");
                         Map<String,Object> row=key(d);row.put("source",path);row.put("parent",parent);row.put("members",members);row.put("syntax",node);
                         String slice=start>=0&&end>=start?source.slice(start,end):null;
-                        row.put("slice",inventory ? ModelApiInventory.slice(slice) : slice);rows.add(row);
+                        row.put("slice",inventory ? ModelApiInventory.slice(slice) : slice);output.row(row);
                         try {d.put("name","changed");throw new AssertionError("mutable declaration escape");}
                         catch(UnsupportedOperationException expected){}
                     }
                 }
-                List<Object> lookups=new ArrayList<>();
                 for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of()))) {
                     var lookup=model.type(name.toString());List<Object> candidates=new ArrayList<>();
                     if(lookup instanceof DetachedJavaModel.FoundType found)candidates.add(typeKey(model,found.declaration()));
                     if(lookup instanceof DetachedJavaModel.AmbiguousType ambiguous)for(var ref:ambiguous.declarations())candidates.add(typeKey(model,ref));
-                    lookups.add(Json.object("name",name,"status",lookup instanceof DetachedJavaModel.MissingType?"missing":candidates.size()==1?"found":"ambiguous","candidates",candidates));
+                    output.type(Json.object("name",name,"status",lookup instanceof DetachedJavaModel.MissingType?"missing":candidates.size()==1?"found":"ambiguous","candidates",candidates));
                 }
                 model.close();try {model.type("p.Use");throw new AssertionError("closed model remained readable");}
                 catch(IllegalStateException expected){}
-                ModelApiInventory.writeOutput(Json.object("rows",rows,"syntax",syntaxRows,"sources",sources,"types",lookups,"closed",true),
-                        Path.of(Json.string(request,"scratch")));
+                output.finish();
+                }
             } finally {if(captured==null)compiler.releaseModel(archive);else captured.close();}
         }
     }

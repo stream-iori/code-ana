@@ -29,7 +29,32 @@ public final class ModelApiInventoryOutputProbe {
             for(int i=0;i<count;i++) {if(i>0)expected.update((byte)',');expected.update(bytes);}
             expected.update("],\"closed\":true}\n".getBytes(StandardCharsets.UTF_8));
             if(!Arrays.equals(actual.digest(),expected.digest()))throw new AssertionError("inventory lost or reordered rows");
+            actual=MessageDigest.getInstance("SHA-256");expected=MessageDigest.getInstance("SHA-256");
+            try(var sink=new DigestOutputStream(OutputStream.nullOutputStream(),actual);
+                var stream=new ModelApiInventory.Output(scratch,sink,512L*1024*1024)) {
+                for(int i=0;i<count;i++)stream.row(row);
+                stream.finish();
+            }
+            expected.update("{\"rows\":[".getBytes(StandardCharsets.UTF_8));
+            for(int i=0;i<count;i++) {if(i>0)expected.update((byte)',');expected.update(bytes);}
+            expected.update("],\"syntax\":[],\"sources\":{},\"types\":[],\"closed\":true}\n".getBytes(StandardCharsets.UTF_8));
+            if(!Arrays.equals(actual.digest(),expected.digest()))throw new AssertionError("stream lost or reordered rows");
             ByteArrayOutputStream output=new ByteArrayOutputStream();
+            try(var stream=new ModelApiInventory.Output(scratch,output,4096)) {
+                stream.row(row);stream.syntax(row);stream.type(row);stream.source("原字节😀",row);
+                stream.finish();
+                throw new AssertionError("stream budget ignored");
+            } catch(IOException failure) {if(!"JSON_BYTE_BUDGET".equals(failure.getMessage()))throw failure;}
+            if(output.size()!=0)throw new AssertionError("failed stream output was published");
+            try(var stream=new ModelApiInventory.Output(scratch,output,4096)) {
+                stream.source("same",row);
+                try {stream.source("same",row);throw new AssertionError("duplicate source accepted");}
+                catch(IllegalArgumentException failure) {if(!"MODEL_API_OUTPUT_DUPLICATE_SOURCE".equals(failure.getMessage()))throw failure;}
+                Thread.currentThread().interrupt();
+                try {stream.finish();throw new AssertionError("stream cancel ignored");}
+                catch(IOException failure) {if(!"CANCELLED".equals(failure.getMessage()))throw failure;}
+                finally {Thread.interrupted();}
+            }
             try {ModelApiInventory.writeOutput(row,scratch,output,32);throw new AssertionError("output budget ignored");}
             catch(IOException failure) {if(!"JSON_BYTE_BUDGET".equals(failure.getMessage()))throw failure;}
             if(output.size()!=0)throw new AssertionError("failed output was published");
