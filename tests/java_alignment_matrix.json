@@ -242,7 +242,8 @@
         "tests/java_type_reference_alignment.py",
         "tests/java_type_reference_reference.py",
         "tests/java_encoding_alignment.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_override_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md",
@@ -258,7 +259,9 @@
         "native-fixtures",
         "type-reference",
         "type-reference-native",
-        "type-graph-bindings-native"
+        "type-graph-bindings-native",
+        "override-reference",
+        "override-reference-native"
       ],
       "remaining_acceptance": [
         "所有语义位置的独立类型引用及重复出现、外部策略验收",
@@ -1334,11 +1337,11 @@
     "java-release"
   ],
   "current_transport": {
-    "worker": 10,
-    "analysis_request": 4,
+    "worker": 11,
+    "analysis_request": 5,
     "native_abi": 2,
-    "compiler": 7,
-    "model": 6,
+    "compiler": 8,
+    "model": 7,
     "fact_ir": 1
   }
 }

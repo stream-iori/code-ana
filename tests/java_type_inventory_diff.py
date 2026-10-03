@@ -25,6 +25,7 @@ def offset(path,line,col,end=False):
 def compare(left,right):
  def sample(values):return [dict(key=k,count=v) for k,v in sorted(values.items(),key=lambda x:str(x[0]))[:100]]
  return dict(product=left.total(),reference=right.total(),missing=(right-left).total(),extra=(left-right).total(),equal=left==right,missing_sample=sample(right-left),extra_sample=sample(left-right))
+before=dict(product=digest(a.product),reference=digest(a.reference))
 with connect(a.product) as db,connect(a.reference) as ref:
  assert db.execute("select value from identity where key='revision'").fetchone(),'published revision required'
  spec=importlib.util.spec_from_file_location('canonical',pathlib.Path(__file__).with_name('java_inventory_canonical.py'));mod=importlib.util.module_from_spec(spec);spec.loader.exec_module(mod)
@@ -49,27 +50,28 @@ with connect(a.product) as db,connect(a.reference) as ref:
   if r.get('kind') in ('LAMBDA','METHOD_REF','SOURCE_REGION'):
    return('INITIALIZER' if r['kind']=='SOURCE_REGION' else r['kind'],r['source_file'],offset(r['source_file'],r['begin_line'],r['begin_column']),offset(r['source_file'],r['end_line'],r['end_column'],True),ro(parents.get(identity,'')))
   return canonical(r.get('symbol_id','<missing-owner>'),r.get('kind'))
- rels={'type_reference':'REFERENCES','reflection_member':'REFERENCES','extends':'INHERITS','implements':'IMPLEMENTS'}
+ rels={'type_reference':'REFERENCES','reflection_member':'REFERENCES','extends':'INHERITS','implements':'IMPLEMENTS','overrides':'OVERRIDES'}
  left={r:collections.Counter() for r in rels};right={r:collections.Counter() for r in rels};excluded=collections.Counter()
  for row in db.execute("select body from facts where kind in ('reference','relation')"):
   f=json.loads(row['body']);r='reflection_member' if f['relation']=='reflection_lookup' else f['relation'];path=f['source']
   if r not in rels or (a.module and not path.startswith(a.module+'/')):continue
   if worlds is not None and f['owner']['world'] not in worlds:continue
-  if f['origin']=='modeled_override':excluded['modeled_override']+=1;continue
   target=product.get(f['target']);assert target,'missing target '+f['target']
   span=f.get('span') or {}
   left[r][(path,po(f['parent']),canonical(target['signature'],target['attributes'].get('element_kind'),path,'product'),span.get('start'),span.get('end'),f['attributes'].get('type_context'),f['status'])]+=1
- for row in ref.execute("select * from edges where relation in ('REFERENCES','INHERITS','IMPLEMENTS')"):
+ for row in ref.execute("select * from edges where relation in ('REFERENCES','INHERITS','IMPLEMENTS','OVERRIDES')"):
   path=row['source_file']
   if a.module and not path.startswith(a.module+'/'):continue
   owner=nodes.get(row['source_id']);assert owner,'missing owner'
   if owner['scope'] not in scopes:continue
-  target=nodes.get(row['target_id'],{});r={'REFERENCES':'type_reference','INHERITS':'extends','IMPLEMENTS':'implements'}[row['relation']]
+  target=nodes.get(row['target_id'],{});r={'REFERENCES':'type_reference','INHERITS':'extends','IMPLEMENTS':'implements','OVERRIDES':'overrides'}[row['relation']]
   if row['relation']=='REFERENCES' and (target.get('kind') in ('METHOD','CONSTRUCTOR','FIELD','ENUM_CONSTANT') or '#' in (target.get('symbol_id') or row['external_target_symbol'] or '')):r='reflection_member'
   metadata=json.loads(owner['metadata'] or '{}');generated=metadata.get('generator')=='lombok'
   status='possible' if generated or row['confidence']=='INFERRED' else 'complete'
   right[r][(path,ro(row['source_id']),canonical(target.get('symbol_id') or row['external_target_symbol'] or row['external_target_fqn'],target.get('kind')),offset(path,row['begin_line'],row['begin_column']),offset(path,row['end_line'],row['end_column'],True),row['context'],status)]+=1
- result=dict(kind='published_native_type_occurrence_projection',identity_aliases=canonical.receipt,product_sha256=digest(a.product),reference_sha256=digest(a.reference),project_source_inputs=captured_inputs,module=a.module,scope=sorted(scopes),projections={k:compare(left[k],right[k]) for k in rels},excluded=dict(excluded),full_semantic_diff_accepted=False)
+ result=dict(kind='published_native_type_occurrence_projection',identity_aliases=canonical.receipt,product_sha256=before['product'],reference_sha256=before['reference'],project_source_inputs=captured_inputs,module=a.module,scope=sorted(scopes),projections={k:compare(left[k],right[k]) for k in rels},excluded=dict(excluded),full_semantic_diff_accepted=False)
+if before!=dict(product=digest(a.product),reference=digest(a.reference)):raise ValueError('COMPARISON_DATABASE_DRIFT')
+result['changed_databases']=[]
 a.output.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n')
 print({k:{field:value for field,value in v.items() if not field.endswith('sample')} for k,v in result['projections'].items()})
 

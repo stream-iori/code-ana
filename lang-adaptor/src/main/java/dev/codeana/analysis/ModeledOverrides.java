@@ -212,9 +212,23 @@ final class ModeledOverrides {
             Json.list(model.get("external")).add(Json.object("signature",target.signature,
                     "name",target.signature.substring(target.signature.indexOf('#')+1,target.signature.indexOf('(')),"attributes",target.attributes));
         }
-        Json.list(model.get("observations")).add(Json.object("kind","relation","source",method.get("source"),"start",method.get("start"),
-                "end",method.get("end"),"parent",signature,"target",target.signature,"relation","overrides","resolved",false,"complete",false,
-                "attributes",Json.object("binding_origin","modeled_override","modeled_input",true,"evidence_complete",false,
-                        "declaration_resolved",false,"generated_from",attrs(method).get("generated_from"))));
+        Map<String,Object> position=method;
+        // Generated methods have no body/span. Locate the original field/type
+        // that generated them, without pretending this is a method body.
+        if (modeled(method) && (Json.number(method,"start")<0 || Json.number(method,"end")<0)) {
+            Map<String,Object> origin=known.get(text(attrs(method).get("generated_from")));
+            if (origin==null || Json.number(origin,"start")<0 || Json.number(origin,"end")<0)
+                origin=sources.get(text(method.get("parent")));
+            if (origin!=null && Objects.equals(origin.get("source"),method.get("source"))) position=origin;
+        }
+        var evidence=Json.object("binding_origin","modeled_override","modeled_input",true,"evidence_complete",false,
+                "declaration_resolved",false,"generated_from",attrs(method).get("generated_from"));
+        if (position!=method) {
+            evidence.put("source_span_origin","generated_origin");
+            evidence.put("source_span_owner",position.get("signature"));
+        }
+        Json.list(model.get("observations")).add(Json.object("kind","relation","source",method.get("source"),"start",position.get("start"),
+                "end",position.get("end"),"parent",signature,"target",target.signature,"relation","overrides","resolved",false,"complete",false,
+                "attributes",evidence));
     }
 }

@@ -13,6 +13,77 @@ class JavaProduct(unittest.TestCase):
     cleanup=harness.Product.cleanup
     daemon_log=harness.Product.daemon_log
 
+    def test_registration_original_evidence_publishes_and_survives_delta(self):
+        from java_registration_reference_alignment import DEFINITIONS, SOURCE, product_projection
+        shutil.rmtree(self.project/'src')
+        for relative, text in (DEFINITIONS | {'Use.java': SOURCE}).items():
+            path = self.project/'src'/relative
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
+        annotation = self.project/'src/Note.java'
+        annotation.write_text('''package p; import java.lang.annotation.*;
+            @Target(ElementType.FIELD) @interface Note { float value(); String text(); }
+            class Annotated { @\\u004eote(value=0.1F,text="原字节😀") int marked; }''')
+        config = self.project/'.code-ana/config.toml'
+        config.write_text(config.read_text()
+            .replace('[languages.java.extensions.spring]\nenabled = false', '[languages.java.extensions.spring]\nenabled = true')
+            .replace('[languages.java.extensions.sofa]\nenabled = false', '[languages.java.extensions.sofa]\nenabled = true'))
+
+        def verify(facts, route, unique, number):
+            by = {f['id']: f for f in facts}
+            projection = product_projection(facts)
+            self.assertEqual(projection.total(), 7)
+            registrations = [f for f in facts if f['relation']=='java.spring.mvc']
+            raw = next(f for f in registrations if f['attributes']['path']=='/base/'+route)
+            self.assertEqual(raw['attributes']['parameters'][0]['type'], 'List< /* 中文😀 */ String >')
+            self.assertEqual(raw['attributes']['parameters'][1]['type'], 'String...')
+            self.assertEqual(raw['attributes']['parameters'][0]['resolved_type'], 'java.util.List<java.lang.String>')
+            event = next(f for f in facts if f['relation']=='java.spring.handler' and f['attributes']['mechanism']=='spring.annotation.event'
+                         and by[f['parent']]['name']=='event')
+            self.assertEqual(event['attributes']['source_parameter_types'], ['List< /* 原字节😀 */ String >'])
+            self.assertEqual(event['attributes']['written_attributes']['condition'], '"event.valid"')
+            service = next(f for f in facts if f['relation']=='java.sofa' and f['attributes']['role']=='provider')
+            self.assertEqual(service['attributes']['unique_id'], unique)
+            self.assertEqual(service['attributes']['written_attributes']['uniqueId'], '"'+unique+'"')
+            use = next(f for f in facts if f['relation']=='java.annotation' and by[f['parent']]['signature']=='p.Annotated#marked')
+            self.assertEqual(use['attributes']['written_name'], '\\u004eote')
+            self.assertEqual(use['attributes']['source_name'], 'Note')
+            self.assertEqual(use['attributes']['written_values'], dict(value=number, text='原字节😀'))
+            self.assertTrue(use['attributes']['written_values_complete'])
+            self.assertEqual(use['attributes']['written_attributes']['value'], str(number)+'F')
+            self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['status']=='ERROR'])
+            return projection
+
+        _, first = self.cli('index', '--full', timeout=180)
+        self.assertEqual(first['publication'], 'published')
+        before = self.facts(first['revision'])
+        initial = verify(before, 'raw', 'one', 0.1)
+        source = self.project/'src/Use.java'
+        source.write_text(source.read_text().replace('void init(){}', 'void init(){int changed=1;}'))
+        _, delta = self.cli('index', timeout=180)
+        body = self.facts(delta['revision'])
+        self.assertEqual(verify(body, 'raw', 'one', 0.1), initial)
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(body, self.facts(full['revision']))
+        source.write_text(source.read_text().replace('"/raw"', '"/changed"').replace('uniqueId="one"', 'uniqueId="two"'))
+        annotation.write_text(annotation.read_text().replace('0.1F', '0.2F'))
+        _, delta = self.cli('index', timeout=180)
+        changed = self.facts(delta['revision'])
+        self.assertNotEqual(verify(changed, 'changed', 'two', 0.2), initial)
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(changed, self.facts(full['revision']))
+        config.write_text(config.read_text()
+            .replace('[languages.java.extensions.spring]\nenabled = true', '[languages.java.extensions.spring]\nenabled = false')
+            .replace('[languages.java.extensions.sofa]\nenabled = true', '[languages.java.extensions.sofa]\nenabled = false'))
+        _, disabled = self.cli('index', timeout=180)
+        after = self.facts(disabled['revision'])
+        self.assertFalse([f for f in after if f['relation'] in ('java.spring.mvc','java.spring.handler','java.sofa','handles_possible')])
+        self.assertTrue([f for f in after if f['relation']=='java.annotation'])
+        _, full = self.cli('index', '--full', timeout=180)
+        self.assertEqual(after, self.facts(full['revision']))
+        self.assertEqual(before, self.facts(first['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_spring_constraints_and_exact_injection_metadata_publish_and_delta(self):
         from java_framework_reference_alignment import DEFINITIONS, SOURCE, product_projection
         shutil.rmtree(self.project/'src')

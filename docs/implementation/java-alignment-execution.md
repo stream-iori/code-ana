@@ -769,3 +769,14 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | 门禁保护 | 实测完整fixture3775秒和daemon5182秒超过旧3600/2400秒终止值；fixture/daemon故障保护改14400秒、native消费者1800秒。只是单门禁故障回收上限，不是整体任务或性能预算；性能仍须最后独占测量。 |
 
 冻结缓存版完整回执已收齐：rust-cache-order-full-jvm-20261003-132959，52条fixture命令、all_ok=true、3775.548秒；native-fixtures163项1048.045秒、消费者110项1000.842秒、高级绑定214项1425.661秒、默认图41项192.826秒，以及functional-reference40组严格相等，均无漂移。旧c052完整daemon46项5182.426秒仅上述泛型读取器/scratch启动测试入口失败，无漂移；修复后缓存版和Spring版daemon、40模块发布仍运行。最新原表达式/Unicode/MVC2/handlers2/sofa2尚需新的native与完整产品验收，50项和S1–S7仍未关闭。
+
+## 覆盖关系原始证据补齐（2026-10-03）
+
+| 项目 | 实现 / 验证边界 |
+|---|---|
+| 原因 | 历史 iopengw 4a 的 OVERRIDES 两侧各8153条，1799对仍有差异，样本为生成方法缺原始跨度；新比较保留跨度、状态、多重性，equal=false。 |
+| 实现 | ModeledOverrides 使用 generated_from 指向的原字段/类型跨度；不可用才取所属类型。另存 source_span_origin=generated_origin/source_span_owner，生成方法仍没有方法体/span，关系保持 possible/evidence-incomplete。已查参考 JavaModelExtractor 的 owner坐标补全及 Lombok getter/setter 的 field.span。 |
+| JVM 独立证明 | override-reference-20261003-145841-47463：基线7/7、方法体修改7/7、移除生成声明4/4，端点/原字节跨度/状态/多重性及全部full-delta事实严格相等，输入/产物无漂移。override-original-source-focused-final.log 两项11.265秒通过。最新native/40模块仍待验收。 |
+| 验收入口 | 接入覆盖关系JVM/native独立门禁；统一native门禁先构建release worker，防止只构建debug后找不到probe宿主。type比较加入OVERRIDES和比较前后数据库SHA漂移拒绝；矩阵协议纠正为compiler8/model7/worker11/request5。 |
+| 同版本新native | 原始注解三组6/6、注册三组7/7、声明三组73/73严格相等，均无源码/产物漂移；最初缺release worker的未进入测试记录保留，不计产品失败或通过。新版完整JVM/native/daemon/iopengw仍运行。 |
+| 仍待补齐 | 对照发现参考公开annotation_meta_relations有56957条，产品当前只在框架匹配内部消费header闭包，还没有发布对应图事实；继续实现。52项不据上述专项关闭。 |

@@ -979,3 +979,14 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 2026-10-03 补充：默认平面图已原子切换（compiler8/model7/worker11/request5）；项目扩展按依赖层顺序统一累积。Rust通用持久派生缓存已接产品 Ack 链路，Java仅保留语义key及任务内pin；五项存储反例和四项实际daemon专项通过。完整同版本回归、真实40模块语义、全扩展、容量/发行仍待最终回执，52项仍仅E01/E02关闭。详见 `docs/implementation/java-alignment-execution.md`。
 
 2026-10-03 Spring补齐：接口stereotype、Configuration隐式构造器、Value/SofaReference非容器参数、Priority及祖先配置约束的原表达式已实现；冻结JVM三组严格一致，12+9+7项回归通过。Spring5/injection2；native/daemon及完整扩展/真实项目仍待。不得用此前缓存版完整回执替代此新版验收。
+
+## 覆盖关系原始证据补齐（2026-10-03）
+
+| 项目 | 实现 / 验证边界 |
+|---|---|
+| 原因 | 历史 iopengw 4a 的 OVERRIDES 两侧各8153条，1799对仍有差异，样本为生成方法缺原始跨度；新比较保留跨度、状态、多重性，equal=false。 |
+| 实现 | ModeledOverrides 使用 generated_from 指向的原字段/类型跨度；不可用才取所属类型。另存 source_span_origin=generated_origin/source_span_owner，生成方法仍没有方法体/span，关系保持 possible/evidence-incomplete。已查参考 JavaModelExtractor 的 owner坐标补全及 Lombok getter/setter 的 field.span。 |
+| JVM 独立证明 | override-reference-20261003-145841-47463：基线7/7、方法体修改7/7、移除生成声明4/4，端点/原字节跨度/状态/多重性及全部full-delta事实严格相等，输入/产物无漂移。override-original-source-focused-final.log 两项11.265秒通过。最新native/40模块仍待验收。 |
+| 验收入口 | 接入覆盖关系JVM/native独立门禁；统一native门禁先构建release worker，防止只构建debug后找不到probe宿主。type比较加入OVERRIDES和比较前后数据库SHA漂移拒绝；矩阵协议纠正为compiler8/model7/worker11/request5。 |
+| 同版本新native | 原始注解三组6/6、注册三组7/7、声明三组73/73严格相等，均无源码/产物漂移；最初缺release worker的未进入测试记录保留，不计产品失败或通过。新版完整JVM/native/daemon/iopengw仍运行。 |
+| 仍待补齐 | 对照发现参考公开annotation_meta_relations有56957条，产品当前只在框架匹配内部消费header闭包，还没有发布对应图事实；继续实现。52项不据上述专项关闭。 |

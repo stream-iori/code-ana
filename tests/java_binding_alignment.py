@@ -82,6 +82,18 @@ class Bindings(unittest.TestCase):
         self.assertEqual(explicit['origin'], 'javac')
         self.assertEqual(explicit['status'], 'complete')
         self.assertTrue(explicit['evidence_complete'])
+        declarations = {f['id']: f for f in facts if f['kind']=='declaration'}
+        for _, _, fact in edges:
+            method = declarations[fact['parent']]
+            if fact['origin']=='modeled_override':
+                self.assertIsNone(method['span'])
+                origin = next(f for f in declarations.values() if f['signature']==method['attributes']['generated_from'])
+                self.assertEqual(fact['span'], origin['span'])
+                self.assertEqual(fact['attributes']['source_span_origin'], 'generated_origin')
+                self.assertEqual(fact['attributes']['source_span_owner'], origin['signature'])
+            else:
+                self.assertEqual(fact['span'], method['span'])
+                self.assertNotIn('source_span_origin', fact['attributes'])
         self.assertFalse([f for f in facts if f['kind']=='diagnostic'
                           and f['attributes'].get('code')=='MODELED_OVERRIDE_INCOMPLETE'])
 
