@@ -9,6 +9,7 @@ import time
 import unittest
 import java_alignment as alignment
 import java_functional_reference_alignment as reference
+import java_rust_validator
 from java_binding_alignment import Bindings
 from java_graph_call_alignment import GraphCalls, ConcreteGraphCalls
 from java_target_return_alignment import TargetReturns
@@ -39,12 +40,7 @@ def main():
     evidence.mkdir(exist_ok=False)
     # CastBindings calls the public Rust graph validator without running its script's
     # main. A clean native checkout must build and freeze that executable as well.
-    with (evidence / 'rust-validator-build.log').open('wb') as stream:
-        subprocess.run(['cargo', 'build', '-p', 'codeana-model', '--example',
-                        'validate_java_graph_facts', '--locked'], cwd=alignment.ROOT,
-                       stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=240)
-    validator = evidence / 'validate_java_graph_facts'
-    shutil.copy2(alignment.ROOT / 'target/debug/examples/validate_java_graph_facts', validator)
+    validator = java_rust_validator.build(alignment.ROOT, evidence)
     validator_sha = reference.digest(validator)
     frozen = alignment.input_files()
     artifacts = reference.probe_artifacts(True)

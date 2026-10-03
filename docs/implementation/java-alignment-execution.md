@@ -906,3 +906,14 @@ declared-field-final/field-reference-20261003-163522-93718 native三组24/24严�
 | 独立 JVM | xml-model-reference-20261003-172939-23661：baseline/body/declaration 三组各 7/7 严格相等，17.611 秒，全量/增量相等，无输入或产物漂移。实际冻结解析器 DTO 与其发布 XML 图也逐项相等；真实 Java 输出通过 Rust 校验，重复根反例被拒绝。XML 原回归 12 项通过。 |
 | 测试工具 | 普通 Cargo example 路径曾指向旧可执行文件，无法拒绝新格式反例；保留原失败。新对照入口在证据目录单独构建并冻结实际 Rust 校验器 SHA，正例及破坏反例均执行该文件。 |
 | 剩余 | native/daemon 的新模型组合、完整 XML 绑定/边属性、iopengw 全域差分仍待执行。公开旧库缺模型时明确 schema_gap，不用推测属性补齐；52 项仍仅 E01/E02 关闭。 |
+
+## 第二份模型仍 OOM 与按需图读取（2026-10-03）
+
+| 项目 | 证据 / 状态 |
+|---|---|
+| 全项目终态 | iopengw-full-model-dictionary-sharing：6050.253 秒，core/service@MAIN 第二份 compiler_model 仍 NATIVE_HEAP_EXHAUSTED，未发布；进程树峰值 1967177728 bytes。配置恢复，源码/产物/manifest 无漂移，unexpected_signal_observed=false；不是安全软件杀进程。此前仅去掉 packed/decoded 重复副本不足以通过。 |
+| 新实现 | ModelArchive 类型字典保留原归档位置，逐图验证全部节点，再按需解码；弱引用只复用存活图，实际类型视图仍保持不可变及原身份。取消/校验/字节与节点上限、模型格式不变；compiler_model_decode 单独记录读取阶段。任务归档仍由 Java 编译器模型生命周期管理，Rust 持久缓存边界不变。 |
+| 正反证据 | model-graph-paging/red-sdk8.log：旧 d39 读取器在同样64MiB堆下，第二份模型 ModelGraphs.add/account OOM；green.log：新 SDK8 读取器同时打开两份各50000节点归档成功。逐图循环一致、存活图身份、不可变逃逸值/关闭、末尾未读取的损坏节点拒绝均通过。首次红例误用了 Java25 class 的 UnsupportedClassVersionError 单独保留，不算 OOM 证明。 |
+| 回归 | SDK8 bridge 构建成功，archive-regressions 全组通过；新 native/真实项目仍须重建重跑，不宣称容量通过。XML 模型 d39 native 三组7/7已过，但不含此内存修复。 |
+
+补充终态：xml-model-reference-20261003-173902-24472 native 三组7/7严格一致，无漂移；xml-model-daemon-proof.json 真实发布4项109.467秒通过，无输入/产物/runtime漂移（d39 XML组合，不含后续按需图修复）。新按需图组合的源码图、二进制图、补充签名、会话回归通过；graph-facts首轮因执行旧Rust example报告3项UNSUPPORTED_REQUIRED_FACET，原失败保留。统一工具入口改用新私有Cargo目录后，graph-facts-current-validator九项通过，损坏实际编译器图反例仍拒绝。最终组合和iopengw仍待。

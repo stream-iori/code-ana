@@ -16,6 +16,7 @@ import unittest
 
 import java_alignment as alignment
 import java_model_tests as models
+import java_rust_validator
 
 
 MODULES = (
@@ -103,14 +104,7 @@ def main():
     # must be installed before importing it, including for native dispatch.
     import java_functional_reference_alignment as reference
     from java_graph_fact_alignment import GraphFacts
-    compiled = subprocess.run(['cargo', 'build', '-p', 'codeana-model', '--example', 'validate_java_graph_facts', '--locked'],
-                              cwd=alignment.ROOT, capture_output=True, text=True, timeout=180)
-    if compiled.returncode:
-        raise RuntimeError(compiled.stderr)
-    # Workspace builds can replace the shared target output during a gate. Each
-    # task executes and fingerprints its own immutable copy instead.
-    validator = evidence / 'validate-java-graph-facts'
-    shutil.copy2(alignment.ROOT / 'target/debug/examples/validate_java_graph_facts', validator)
+    validator = java_rust_validator.build(alignment.ROOT, evidence)
     def probe_artifacts():
         artifacts = reference.probe_artifacts(args.native)
         artifacts[str(validator)] = reference.digest(validator)

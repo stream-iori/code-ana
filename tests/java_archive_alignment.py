@@ -13,6 +13,9 @@ subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
                 'dev.codeana.common.ModelGraphSharingProbe'], check=True, timeout=60)
 subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
+                str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
+                'dev.codeana.common.ModelGraphPagingProbe'], check=True, timeout=120)
+subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes'), dependencies]),
                 'dev.codeana.analysis.extension.OverlaySharingProbe'], check=True, timeout=60)
 

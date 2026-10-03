@@ -299,7 +299,7 @@ public final class ModelArchive {
                 throw new IOException("MODEL_ARCHIVE_HEADER");
             Map<String,Object> model=Json.object("version",VERSION,"context",context);
             for(String section:SECTIONS) model.put(section,new ArrayList<Object>());
-            ModelGraphs.Table types=new ModelGraphs.Table();
+            ModelGraphs.Table types=new ModelGraphs.Table(records);
             Map<String,List<Integer>> lazyPositions=new LinkedHashMap<String,List<Integer>>();
             if(lazySyntax)for(String section:Arrays.asList("declarations","observations"))lazyPositions.put(section,new ArrayList<Integer>());
             int[] syntaxPositions=new int[256]; int syntaxCount=0;
@@ -315,7 +315,7 @@ public final class ModelArchive {
                     if(typeBytes>MAX_TYPE_BYTES) throw new IOException("MODEL_TYPE_TABLE_BUDGET");
                     types.add(new ImmutableType(Json.map(immutable(unpack(record.get("value"),types,0),0))));
                 } else if(kind.equals("graph_node")) {
-                    types.graphs().add(record);
+                    types.graphs().add(record,i);
                 } else if(kind.equals("row")) {
                     String section=Json.string(record,"section");
                     int current=SECTIONS.indexOf(section);

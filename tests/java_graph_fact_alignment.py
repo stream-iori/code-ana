@@ -14,16 +14,15 @@ import java_functional_reference_alignment as reference
 import java_framework_alignment as frameworks
 import java_lombok_alignment as lombok
 import java_lombok_super_builder_alignment as super_builders
+import java_rust_validator
 
 
 class GraphFacts(models.Models):
     native = False
     @classmethod
     def setUpClass(cls):
-        compiled = subprocess.run(['cargo', 'build', '-p', 'codeana-model', '--example', 'validate_java_graph_facts', '--locked'],
-                                  cwd=models.ROOT, capture_output=True, text=True, timeout=120)
-        if compiled.returncode:
-            raise RuntimeError(compiled.stderr)
+        if not hasattr(cls, 'rust_validator'):
+            cls.rust_validator = java_rust_validator.default(models.ROOT)
 
     def validate_rust(self, contexts, result, baseline=None, accepted=True):
         sources = {}
@@ -44,7 +43,9 @@ class GraphFacts(models.Models):
                        replacements=result['replacements'], baseline=baseline or [])
         path = self.root / 'rust-graph-facts.json'
         path.write_text(json.dumps(payload))
-        validator = getattr(self, 'rust_validator', models.ROOT / 'target/debug/examples/validate_java_graph_facts')
+        validator = getattr(self, 'rust_validator', None)
+        if validator is None:
+            validator = java_rust_validator.default(models.ROOT)
         process = subprocess.run([str(validator), str(path)],
                                  capture_output=True, text=True, timeout=60)
         if accepted:
@@ -234,13 +235,16 @@ if __name__ == '__main__':
     parser.add_argument('--native', action='store_true')
     args = parser.parse_args()
     GraphFacts.native = args.native
+    GraphFacts.setUpClass()
     frozen = alignment.input_files()
     artifacts = reference.probe_artifacts(args.native)
+    artifacts[str(GraphFacts.rust_validator)] = reference.digest(GraphFacts.rust_validator)
     started = time.monotonic()
     suite = unittest.TestSuite(GraphFacts(name) for name in unittest.defaultTestLoader.getTestCaseNames(GraphFacts) if name.startswith('test_graph_'))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     current = alignment.input_files()
     current_artifacts = reference.probe_artifacts(args.native)
+    current_artifacts[str(GraphFacts.rust_validator)] = reference.digest(GraphFacts.rust_validator)
     drift = sorted(path for path in frozen.keys() | current.keys() if frozen.get(path) != current.get(path))
     artifact_drift = sorted(path for path in artifacts.keys() | current_artifacts.keys() if artifacts.get(path) != current_artifacts.get(path))
     accepted = result.wasSuccessful() and not drift and not artifact_drift

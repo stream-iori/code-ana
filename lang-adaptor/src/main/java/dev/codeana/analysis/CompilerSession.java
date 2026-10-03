@@ -260,6 +260,7 @@ public final class CompilerSession implements AutoCloseable {
                 throw new IOException("COMPILER_RESULT_MISMATCH");
             Path retained = scratch.resolve("input-model-" + UUID.randomUUID() + ".bin");
             Files.move(result, retained);
+            mark(Json.string(context,"context"), "compiler_model_decode");
             ModelArchive.OpenModel model =
                     ModelArchive.open(
                             retained,
