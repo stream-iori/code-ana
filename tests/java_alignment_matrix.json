@@ -21,14 +21,17 @@
         "tests/java_semantic_alignment.py",
         "tests/java_archive_alignment.py",
         "tests/java_syntax_alignment.py",
-        "tests/java_encoding_alignment.py"
+        "tests/java_encoding_alignment.py",
+        "tests/java_declaration_reference_alignment.py"
       ],
       "evidence": [],
       "implementation_complete": false,
       "required_gates": [
         "java-fixtures",
         "native-product-ipc",
-        "java-daemon"
+        "java-daemon",
+        "declaration-reference",
+        "declaration-reference-native"
       ],
       "remaining_acceptance": [
         "@2 有界语法分片、来源和惰性反射已接入，64/128 MiB 专项通过；完整模型目录/逐节点契约/native/真实项目仍待验收"
@@ -56,7 +59,8 @@
         "tests/java_type_reference_reference.py",
         "tests/java_type_graph_alignment.py",
         "tests/java_graph_fact_alignment.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_declaration_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md",
@@ -74,7 +78,9 @@
         "type-reference-native",
         "type-graph-native",
         "type-graph-consumers-native",
-        "type-graph-bindings-native"
+        "type-graph-bindings-native",
+        "declaration-reference",
+        "declaration-reference-native"
       ],
       "remaining_acceptance": [
         "已补捕获身份/上下界、owner/index 与有限递归 CAPTURE、泛型继承链 actual Integer 保留和错误实参拒绝；完整目标类型/raw/复杂 SAM 与生产矩阵仍缺",
@@ -91,7 +97,8 @@
         "tests/java_model_tests.py",
         "tests/java_semantic_alignment.py",
         "tests/java_binary_alignment.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_declaration_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md",
@@ -102,7 +109,9 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-bindings-native"
+        "type-graph-bindings-native",
+        "declaration-reference",
+        "declaration-reference-native"
       ],
       "remaining_acceptance": [
         "初始化块/lambda SOURCE 归属的 205618 原生/17 daemon 已通过；捕获稳定身份新门禁待回执，局部/匿名/枚举合成构造器完整性仍待补齐"
@@ -583,7 +592,8 @@
       "status": "partial",
       "checks": [
         "tests/java_lombok_alignment.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_declaration_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-alignment-execution.md"
@@ -593,7 +603,9 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-bindings-native"
+        "type-graph-bindings-native",
+        "declaration-reference",
+        "declaration-reference-native"
       ],
       "remaining_acceptance": [
         "访问级别/静态/boolean 命名、冲突与 Value 有效修饰模型已实现；完整 SOURCE/binary/下游调用恢复矩阵待验收"
@@ -605,7 +617,8 @@
       "status": "partial",
       "checks": [
         "tests/java_lombok_alignment.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_declaration_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-alignment-execution.md"
@@ -615,7 +628,9 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-bindings-native"
+        "type-graph-bindings-native",
+        "declaration-reference",
+        "declaration-reference-native"
       ],
       "remaining_acceptance": [
         "NoArgs/RequiredArgs/AllArgs、Data/Value 构造器与 equals/hashCode/toString/canEqual 签名已实现；更多泛型/枚举/冲突及完整下游绑定矩阵待验收"
@@ -631,7 +646,8 @@
         "tests/java_lombok_builder_alignment.py",
         "tests/java_lombok_super_builder_alignment.py",
         "tests/java_expression_alignment.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_declaration_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-alignment-execution.md"
@@ -641,7 +657,9 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-bindings-native"
+        "type-graph-bindings-native",
+        "declaration-reference",
+        "declaration-reference-native"
       ],
       "remaining_acceptance": [
         "Builder 9 / SuperBuilder 8 JVM、4 冻结参考 fixture / 63 生产 JVM 声明形状相等；真实 native/daemon 泛型继承链、Default、错误实参/删除/delta/full 已过；完整参考支持边界、TYPE_USE 与 UtilityClass 矩阵仍待验收。Lombok builtin 4",
@@ -721,7 +739,8 @@
       "status": "partial",
       "checks": [
         "tests/java_annotation_alignment.py",
-        "tests/java_graph_consumer_alignment.py"
+        "tests/java_graph_consumer_alignment.py",
+        "tests/java_framework_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -731,10 +750,12 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "framework-reference",
+        "framework-reference-native"
       ],
       "remaining_acceptance": [
-        "组合 stereotype、名称/别名、Primary/Qualifier 与完整 Bean 元信息"
+        "Spring5 接口/Configuration、全部别名、Priority及祖先配置原表达式已与冻结参考在 JVM/native 三组严格对照；完整 Bean/组合 stereotype 元信息和40模块同版本语义仍待验收。"
       ]
     },
     {
@@ -745,7 +766,8 @@
         "tests/java_annotation_alignment.py",
         "tests/java_graph_consumer_alignment.py",
         "tests/java_wiring_reference.py",
-        "tests/java_e2e.py"
+        "tests/java_e2e.py",
+        "tests/java_framework_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -755,10 +777,12 @@
         "java-fixtures",
         "native-product-ipc",
         "java-daemon",
-        "type-graph-consumers-native"
+        "type-graph-consumers-native",
+        "framework-reference",
+        "framework-reference-native"
       ],
       "remaining_acceptance": [
-        "Java 注入 fixture/native 消费者已通过；Rust derived-wiring-2 候选、查询、歧义、跨 Maven 模块 MAIN/TEST 捕获别名和修改/删除 full-delta 已经实际 CLI/native + 冻结 WiringResolver 严格对照。全部角色/完整属性与新 40 模块独立语义差分仍待，不能据此关闭整个 F02。"
+        "injection3 全部 fixture 注入点的 required/qualifier/shape/container/element/cardinality、Resource setter默认名/显式原表达式/不支持状态、Value/SofaReference排除及Configuration构造器，已在 JVM/native/daemon 验证；Rust wiring 严格参考对照保留。全部角色/完整属性与40模块同版本语义仍待验收。"
       ]
     },
     {
@@ -826,7 +850,7 @@
         "type-graph-consumers-native"
       ],
       "remaining_acceptance": [
-        "已补 SOURCE/JAR XML 类型提示、参数索引、别名实参、同返回类型的工厂重载；Spring 版本 4。新原生/产品矩阵和参考语义差分仍待验收"
+        "SOURCE/JAR XML 类型提示、参数索引、别名实参和工厂重载已实现；当前Spring5/injection3。完整XML属性/原生产品矩阵及40模块参考语义仍待验收。"
       ]
     },
     {
@@ -1196,7 +1220,7 @@
         "type-graph-bindings-native"
       ],
       "remaining_acceptance": [
-        "文件/模块共享进程锁/文件锁与磁盘 LRU、不可变 pin 合计预算、损坏恢复、跨进程写入、取消和符号链接防护已实现，4 新真实 JVM 专项通过；新 native/daemon 与完整生产容量待验收"
+        "Rust通用持久缓存已在产品接入：回执/SHA、独立任务副本、跨进程锁、原子提交、共享LRU、符号链接和未Ack不提交；5项Rust及4项真实daemon专项通过。Java只管理签名key与任务内pin。最新完整回归、取消/故障生命周期和真实项目独占容量仍待验收。"
       ]
     },
     {

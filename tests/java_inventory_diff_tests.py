@@ -7,9 +7,34 @@ import tempfile
 import unittest
 import hashlib
 from java_inventory_canonical import Canonical,verify_source_inputs
+from java_declaration_inventory_diff import product_attributes, product_kind, descriptor_name
 
 
 class IdentityNormalization(unittest.TestCase):
+    def test_declaration_projection_compares_effective_overlay_without_losing_original_flags(self):
+        attrs = dict(element_kind='ENUM', nesting_kind='ANONYMOUS', modifiers=['static','final'])
+        fact = dict(attributes=attrs, origin='javac', source='Use.java')
+        self.assertEqual(product_kind(fact), 'CLASS')
+        self.assertEqual(attrs['element_kind'], 'ENUM')
+        fact['attributes'] = dict(element_kind='CLASS', modifiers=['public'], model_extensions={
+            'lombok-model-v1': {'effective_modifiers': ['public','final']}})
+        norm = lambda value, **unused: value
+        self.assertEqual(product_attributes(fact,norm)['modifiers'], ['final','public'])
+        self.assertEqual(fact['attributes']['modifiers'], ['public'])
+        fact['attributes']['model_extensions']['lombok-model-v1']['effective_modifiers'] = []
+        self.assertEqual(product_attributes(fact,norm)['modifiers'], ['public'])
+
+    def test_type_annotation_display_differences_are_not_erased_to_make_comparison_pass(self):
+        fact = dict(origin='lombok_model', source='Use.java', attributes=dict(
+            element_kind='METHOD', modifiers=['public'], parameter_names=['value'],
+            parameter_type_models=[{'display':'java.util.List<@Use String>'}],
+            return_type_model={'display':'(@Use :: int)'}))
+        attributes = product_attributes(fact,lambda value, **unused: value)
+        self.assertEqual(attributes['return'], '(@Use :: int)')
+        self.assertEqual(attributes['parameters'][0]['type'], 'java.util.List<@Use String>')
+        self.assertEqual(descriptor_name('[[Lp/Outer$Inner;'), 'p.Outer$Inner[][]')
+        self.assertIsNone(descriptor_name('?'))
+
     def test_source_coordinates_require_exact_captured_bytes(self):
         with tempfile.TemporaryDirectory() as temp:
             root=pathlib.Path(temp)

@@ -742,3 +742,15 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | 最新 Spring daemon | spring-injection-complete-daemon.log：真实daemon/native发布、原表达式/5或7注入点、修改/删除/full-delta及旧revision，1项313.760秒通过，无业务class。 |
 | scratch负例 | 前版完整daemon及新版专项均在20秒内未观察到javac，会在注入超限前失败；不算回收行为失败证据。将1000份文件改为单个2000方法源码，保护等待60秒并在失败时记录task状态。scratch-budget-single-unit-e2e.log：1项124.214秒通过，真正SIGSTOP javac后触发JAVA_SCRATCH_BUDGET，旧head不变、进程及scratch清理。SIGSTOP/SIGKILL是本负例的主动操作。 |
 | 尚未终态 | 缓存版完整JVM/native消费者/绑定/daemon、最新Spring消费者、全40模块MAIN/TEST/XML发布仍在各自冻结工作树运行；完整真实语义与容量/发行不据专项关闭。 |
+
+## 声明属性独立对照（2026-10-03）
+
+| 项目 | 结果 / 边界 |
+|---|---|
+| 比较内容 | 新 java_declaration_inventory_diff.py 只读已发布库，逐源码/类型/签名比较有效修饰符、生成来源、字段擦除类型、参数名/类型、返回类型；校验捕获原字节和前后数据库 SHA。保留全部有意义的重复。 |
+| 合法映射 | javac 的匿名枚举子类 ENUM 映射到参考图 ANONYMOUS_CLASS 类别，仍保留原 compiler kind；Lombok 有效修饰符读取产品显式 overlay，不覆盖原 compiler flags。空 overlay 不丢原 flags；已知 METHOD 不按类名变成构造器。 |
+| 真实历史差分 | iopengw-4a-declaration-attributes-final.json：49938/49937，missing3/extra4；8个匿名枚举类别和1个UtilityClass有效修饰符映射后不再产生假差异。剩余三对是类型显示注解，额外构造器是上述冻结参考身份碰撞；报告仍 equal=false，无豁免。 |
+| 参考代码取证 | 冻结 LombokJavaModelExtension.writtenType 排除注解时保留旧 type.display()；primitive 查找仅检查 kind/annotations 为空，因此可复用仍带旧注解显示的 int/boolean。ProxyConfig.hashCode、SSLHandshakeDetectRequest.equals/canEqual 的参考返回字符串包含字段NotBlank。暂不复制显示污染，也不删除类型注解比较；完整模型与独立复现继续。 |
+| 独立 fixture | declaration-reference-20261003-142103-54055：JVM baseline/body/declaration 三组各73个声明，六项属性严格相等；保留修改与声明变化的全部full-delta事实等价，原字节和输入/产物无漂移，18.272秒。含接口、泛型、数组、枚举匿名体、Data、UtilityClass和普通成员。 |
+| 比较器反例 | java_inventory_diff_tests.py 5项通过，新增有效overlay/原flags、匿名kind和不删除类型显示注解的断言；验收会计5项通过。矩阵记录新Spring5/injection3和Rust持久缓存证据，未把50个剩余项标完成。 |
+| 最新 native | validation-spring-constraints/type-graph-consumers-native-20261003-135840：all_ok=true，954.844秒，无源码/产物漂移。冻结缓存版消费者也all_ok=true，1000.842秒；完整绑定/JVM/daemon及真实项目仍待终态。 |
