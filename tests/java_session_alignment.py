@@ -58,6 +58,24 @@ class Sessions(unittest.TestCase):
         self.assertFalse(any(f['kind'] == 'diagnostic' and f['owner']['world'] == contexts[1]['world']
                              for f in result['facts']))
 
+    def test_dependency_layers_and_scrambled_inputs_preserve_fact_order(self):
+        root = self.context('root', {'Root.java': 'public class Root { public static int value(){return 1;} }'})
+        left = self.context('left', {'Left.java': 'public class Left { public static int value(){return Root.value();} }'})
+        right = self.context('right', {'Right.java': 'public class Right { public static int value(){return Root.value();} }'})
+        leaf = self.context('leaf', {'Leaf.java': 'class Leaf { int run(){return Left.value()+Right.value();} }'})
+        independent = self.context('independent', {'Independent.java': 'class Independent {}'})
+        for context, parents in ((left, [root]), (right, [root]), (leaf, [left, right, root])):
+            context['sources'] += [dict(source, publish=False, auxiliary=True)
+                                   for parent in parents for source in parent['sources']
+                                   if source['world'] == parent['world']]
+        contexts = [leaf, independent, right, root, left]
+        baseline = self.analyze(contexts)['facts']
+        self.assertFalse([fact for fact in baseline if fact['kind'] == 'diagnostic'])
+        for size in (2, 4, 8):
+            with self.subTest(size=size):
+                self.assertEqual(self.analyze(contexts, parallelism=size)['facts'], baseline)
+        self.assertEqual(self.analyze(list(reversed(contexts)))['facts'], baseline)
+
     def test_large_class_path_lookup_has_stable_declaration_and_reference_identity(self):
         context = self.context('large', {'Large.java':'class Large {'+
             ''.join(f'int m{i}(){{int x={i}; return x+x;}}' for i in range(10000))+'}'},

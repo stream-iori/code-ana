@@ -655,3 +655,15 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | Rust | target-rust-tests-closure-final.log：全工作区85项通过；target-rust-clippy-closure-final.log及cargo fmt --check通过。新增回执兼容/预算和真实已调解scope前置图反例。 |
 | daemon | target-maven-all-daemon-final.log：3项187.077秒通过；真实导出→Rust捕获/隐藏调度→native/SDK8→发布，消费模块无Lombok而前置provided有Lombok、原诊断/proof SHA、body增量、删除注解、full-delta相等、旧revision、无关坏模块和TEST-only。没有业务class生成或非预期杀进程。 |
 | 限制 | 当前 daemon证明使用隔离的组合产物；根目录同版本完整JVM/native/daemon/40模块全语义仍须重验。复杂NoCode完整验收、Rust通用持久缓存、默认类型图、容量和发行门禁未关闭；52项仍仅E01/E02关闭。 |
+
+
+## 串行与并行的事实输出顺序（2026-10-03）
+
+| 项目 | 证据 / 处理 |
+|---|---|
+| 根因 | 模块自有注解证明接入后，串行 DFS 按输入顺序累积，并行按 world 排序的依赖层累积。逐 ID 的全部事实严格相等，仅数组顺序不同。保留此前高级 native 的4项失败回执，未修改事实或放宽比较。 |
+| 实现 | 串行直接复用依赖分层调度；每层统一按 world 排序，循环及其受阻下游统一保留 SOURCE。并行完成顺序不改变结果累积顺序，关闭缓存亦成立。 |
+| 加强验证 | 新增乱序的菱形依赖及独立模块，检查1/2/4/8并行度、反转输入顺序；provided Lombok 的缓存/并行和循环负例改为比较完整有序事实数组。 |
+| JVM | validation-default-type-graph/.../pool-order-jvm-final.log：13项、25.859秒通过。首轮构建与测试重叠导致文件缺失的入口错误单独保留，该轮不算通过。 |
+| 完整高级 native | 同工作树 type-graph-bindings-native-20261003-124525/receipt.json：213项、730.074秒、all_ok=true，无源码或产物漂移。包括此前失败的池大小2/4/8与Lombok并行检查。 |
+| 边界 | 本检查点保持compiler7/model6/worker10/request4、图opt-in。默认图及原子版本升级在另一个冻结工作树验收；不据此关闭52项、真实全语义或容量门禁。 |

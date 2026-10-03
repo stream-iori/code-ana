@@ -27,7 +27,7 @@ class ModuleAnnotations(unittest.TestCase):
  def test_parallel_and_cache_are_semantically_equal(self):
   plan=self.plan();base=self.analyze(plan)['facts']
   for parallelism,cache in ((2,False),(1,True),(2,True)):
-   self.assertEqual({f['id']:f for f in base},{f['id']:f for f in self.analyze(plan,parallelism=parallelism,cache=cache)['facts']})
+   self.assertEqual(base,self.analyze(plan,parallelism=parallelism,cache=cache)['facts'])
  def test_consumer_delta_reanalyzes_unchanged_provider_without_publishing_it(self):
   base=self.analyze(self.plan())['facts'];changed=self.plan('return api.getName()+"x";')
   delta=self.analyze(changed,base);full=self.analyze(changed)['facts']
@@ -57,7 +57,7 @@ class ModuleAnnotations(unittest.TestCase):
  def test_cyclic_worlds_are_order_independent_and_keep_source(self):
   plan=self.plan();plan[1]['sources'] += [dict(s,publish=False) for s in plan[0]['sources'] if s['module']=='use']
   serial=self.analyze(plan)['facts'];parallel=self.analyze(plan,parallelism=2)['facts']
-  self.assertEqual({f['id']:f for f in serial},{f['id']:f for f in parallel});self.assertFalse(self.targets(dict(facts=serial)))
+  self.assertEqual(serial,parallel);self.assertFalse(self.targets(dict(facts=serial)))
  def test_imported_builder_type_recovers_chain_and_keeps_original_error(self):
   plan=self.plan('return Api.builder().name("x").build().getName();',annotation='@Getter @lombok.Builder')
   result=self.analyze(plan);self.assertCountEqual([s for s,f in self.targets(result)],['p.Api#builder()','p.Api$ApiBuilder#name(java.lang.String)','p.Api$ApiBuilder#build()','p.Api#getName()'])

@@ -219,37 +219,10 @@ final class ModuleSignatures implements AutoCloseable {
 
     List<Map<String, Object>> order(List<Map<String, Object>> work) throws IOException {
         List<Map<String, Object>> ordered = new ArrayList<>();
-        Set<String> visiting = new HashSet<>(), done = new HashSet<>();
-        Map<String, Map<String, Object>> active = new TreeMap<>();
-        for (var ctx : work) active.put(Json.string(ctx, "world"), ctx);
-        for (var ctx : work) visit(ctx, active, visiting, done, ordered);
+        // The serial and pooled paths must consume exactly the same dependency layers.
+        // DFS changes independent-world order and handles cycles differently from batches.
+        for (List<Map<String, Object>> batch : batches(work, 1)) ordered.addAll(batch);
         return ordered;
-    }
-
-    private void visit(
-            Map<String, Object> ctx,
-            Map<String, Map<String, Object>> active,
-            Set<String> visiting,
-            Set<String> done,
-            List<Map<String, Object>> ordered)
-            throws IOException {
-        session.check();
-        String world = Json.string(ctx, "world");
-        if (done.contains(world)) return;
-        if (!visiting.add(world)) {
-            reason(ctx, "cyclic semantic input worlds; use SOURCE");
-            return;
-        }
-        Set<String> parents = new TreeSet<>();
-        for (Object raw : Json.list(ctx.get("sources"))) {
-            String dependency = Json.string(Json.map(raw), "world");
-            if (!dependency.equals(world)) parents.add(dependency);
-        }
-        for (String dependency : parents)
-            if (active.containsKey(dependency))
-                visit(active.get(dependency), active, visiting, done, ordered);
-        visiting.remove(world);
-        if (done.add(world)) ordered.add(ctx);
     }
 
     private static boolean original(List<Object> declarations, Map<String, Object> model) {
