@@ -34,6 +34,8 @@ class SemanticAcceptance(unittest.TestCase):
         self.assertFalse(domain_accepted('calls',dict(full_semantic_diff_accepted=True)))
         self.assertFalse(domain_accepted('calls',dict(sites=dict(accepted=True))))
         self.assertFalse(domain_accepted('types_hierarchy_reflection',dict(projections={})))
+        self.assertFalse(domain_accepted('lexical_controls',dict(equal=True)))
+        self.assertFalse(domain_accepted('lexical_controls',dict(projections={'calls':dict(equal=True)})))
         self.assertFalse(domain_accepted('annotations_meta',dict(equal=True,meta=dict(equal=False))))
         self.assertTrue(domain_accepted('annotations_meta',dict(equal=True,meta=dict(equal=True))))
         self.assertTrue(PENDING_DOMAINS)  # Missing complete proofs remain blockers.

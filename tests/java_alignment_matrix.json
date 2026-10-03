@@ -308,7 +308,9 @@
         "tests/java_semantic_alignment.py",
         "tests/java_signature_alignment.py",
         "tests/java_field_inventory_diff.py",
-        "tests/java_field_reference_alignment.py"
+        "tests/java_field_reference_alignment.py",
+        "tests/java_control_inventory_diff.py",
+        "tests/java_control_reference_alignment.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"
@@ -319,11 +321,14 @@
         "native-product-ipc",
         "java-daemon",
         "field-reference",
-        "field-reference-native"
+        "field-reference-native",
+        "control-reference",
+        "control-reference-native"
       ],
       "remaining_acceptance": [
         "所有 Java 8 控制结构的角色/父链、Unicode 位置和完整增量验收",
-        "严格只读全项目字段投影尚有缺失/额外，不过滤该差异；field-reference JVM 三组各20个原字节/owner/control/status/multiplicity 严格一致，native与最新40模块还需验证。"
+        "严格只读全项目字段投影尚有缺失/额外，不过滤该差异；field-reference JVM 三组各20个原字节/owner/control/status/multiplicity 严格一致，native与最新40模块还需验证。",
+        "新增全词法owner/调用/字段/类型/反射控制清单。JVM三组所有Java8控制结构及callback边界、Unicode/CRLF/行数增长、篡改拒绝严格相等；历史4a真实owner2431、调用151342、writes3341相等，reads/type/reflection差异保留，新native和同版本真实全图仍待。"
       ]
     },
     {

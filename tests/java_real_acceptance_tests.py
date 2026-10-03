@@ -43,6 +43,20 @@ class AcceptanceRecovery(unittest.TestCase):
             self.assertEqual(run.call_count, 1)
             self.assertEqual(run.call_args.args[0][0], 'ps')
 
+    def test_actual_compiler_input_preserves_generated_pin_before_cleanup(self):
+        scratch=self.root/'compiler-fixture';context=scratch/'context-one';context.mkdir(parents=True)
+        pin=scratch/'signatures.jar';pin.write_bytes(b'NoCode-pin')
+        request=context/'request.json'
+        request.write_text(json.dumps(dict(version=8,context='app@TEST',sources=[],classpath=[str(pin)])))
+        diagnostics=CompilerDiagnostics(self.evidence);diagnostics.capture_requests(scratch)
+        self.assertEqual(len(diagnostics.requests),1)
+        proof=diagnostics.requests[0];copy=pathlib.Path(proof['local_jars'][str(pin)]['path'])
+        request.unlink();pin.unlink()
+        self.assertEqual(copy.read_bytes(),b'NoCode-pin')
+        self.assertEqual(json.loads(pathlib.Path(proof['path']).read_text())['context'],'app@TEST')
+        diagnostics.capture_requests(scratch)
+        self.assertEqual(len(diagnostics.requests),1)
+
     def test_explicit_disk_budgets_preserve_defaults_and_reject_out_of_range(self):
         import tomllib
         default = tomllib.loads(project_config(['MAIN'], False, 'inputs.json').decode())

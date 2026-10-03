@@ -1098,3 +1098,5 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 | DI 新发现 | 实际参考 SpringJavaModelComponents.fieldInjection/methodInjection/constructorInjection 的 INJECTS 源是声明类型；现有冻结resolver fixture只验证了给定字段输入的算法，尚未证明真实类型级WIRES端点能力。新增发布图审计入口继续查证，不用旧专项结果宣称全图通过。 |
 
 2026-10-03：已补单次编译器时限显式配置及本次任务SDK线程栈取证（恢复/保护16项通过），TEST超时尚未解决。完整XML模型审计保留重复边、分别比较冻结解析器与已发布参考图（保护8项通过）；旧真实项目159份XML实际解析279个Bean，参考库277个、重复包含边14组，原始差分保留。不得据此关闭完整XML图或真实项目能力项。
+
+2026-10-03 后续：新增完整词法控制独立清单（全部owner/call/reads/writes/type/reflection，含空上下文与重复次数），真实汇总执行域从12扩至13。SDK8/JVM三组独立冻结参考严格相等，控制字符串单独篡改会失败；历史4a owner2431、call151342、writes3341相等，reads缺9/额外1402、type缺10、reflection缺20/额外20，仍保留失败。新增实际编译请求/NoCode pin捕获及SDK8单上下文诊断；2852份源码、228份TEST发布源、778个classpath，84.252秒编译完成，源/依赖/桥/manifest无漂移。这不证明产品TEST已修复，需要取得产品实际请求。新共享库组合daemon四项103.444秒通过，DI/跨模块/XML/仅资源MAIN-TEST完整delta验证无漂移；正式新版完整回归仍在运行，最终真实全40模块/完整语义/容量未关闭。

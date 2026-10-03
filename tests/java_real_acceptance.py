@@ -244,6 +244,8 @@ class PhaseCapture:
                 work = pathlib.Path(line[1:])
                 if work.name.startswith('jvm-') and work.parent.name.startswith('compiler-') and work.parent.parent.name.startswith('codeana-java-'):
                     self.paths.add(work.parent / 'phases.ndjson')
+                    if self.diagnostics:
+                        self.diagnostics.capture_requests(work.parent)
         compilers = {}
         for row in rows:
             pid = int(row[0])
@@ -275,6 +277,48 @@ class CompilerDiagnostics:
     def __init__(self, evidence):
         self.evidence, self.phase, self.started = evidence, None, None
         self.samples, self.attempted = [], set()
+        self.requests, self.request_paths, self.capture_bytes = [], set(), 0
+
+    def capture_requests(self, scratch):
+        """Keep the actual reduced javac input before task cleanup removes it."""
+        for path in sorted(scratch.glob('context-*/request.json')):
+            if str(path) in self.request_paths:
+                continue
+            try:
+                if path.is_symlink() or not path.is_file():
+                    continue
+                with path.open('rb') as source:
+                    body = source.read(32 * 1024 * 1024 + 1)
+                if len(body)>32*1024*1024:raise ValueError('COMPILER_DIAGNOSTIC_REQUEST_BUDGET')
+                try:value=json.loads(body)
+                except (ValueError,UnicodeError):continue  # Writer may still be writing this request.
+                if value.get('version')!=8 or not isinstance(value.get('sources'),list):
+                    raise ValueError('COMPILER_DIAGNOSTIC_REQUEST_INVALID')
+                if len(self.requests)>=256 or self.capture_bytes+len(body)>512*1024*1024:
+                    raise ValueError('COMPILER_DIAGNOSTIC_CAPTURE_BUDGET')
+                directory=self.evidence/'compiler-inputs'
+                directory.mkdir(exist_ok=True)
+                target=directory/(str(len(self.requests))+'-request.json')
+                local_jars={}
+                for item in value.get('classpath',[]):
+                    jar=pathlib.Path(item)
+                    if not jar.resolve().is_relative_to(scratch.resolve()):continue
+                    if jar.is_symlink() or not jar.is_file() or jar.stat().st_size>128*1024*1024:
+                        raise ValueError('COMPILER_DIAGNOSTIC_PIN_INVALID')
+                    checksum=digest(jar);pin=directory/(checksum+'.jar')
+                    if not pin.exists():
+                        if self.capture_bytes+len(body)+jar.stat().st_size>512*1024*1024:
+                            raise ValueError('COMPILER_DIAGNOSTIC_CAPTURE_BUDGET')
+                        atomic_bytes(pin,jar.read_bytes());self.capture_bytes+=pin.stat().st_size
+                    local_jars[item]=dict(path=str(pin),sha256=checksum)
+                atomic_bytes(target,body);self.capture_bytes+=len(body)
+                self.requests.append(dict(original=str(path),context=value['context'],path=str(target),
+                    sha256=digest(target),sources=len(value['sources']),classpath=len(value.get('classpath',[])),
+                    local_jars=local_jars))
+                self.request_paths.add(str(path))
+                atomic_json(self.evidence/'compiler-inputs.json',self.requests)
+            except FileNotFoundError:
+                continue  # Completed contexts are deleted by the product.
 
     def sample(self, phase, compilers):
         key = json.dumps(phase, sort_keys=True)

@@ -18,6 +18,7 @@ DOMAINS=(
     ('declaration_attributes','java_declaration_inventory_diff.py'),
     ('types_hierarchy_reflection','java_type_inventory_diff.py'),
     ('fields_control_owners','java_field_inventory_diff.py'),
+    ('lexical_controls','java_control_inventory_diff.py'),
     ('annotations_meta','java_annotation_inventory_diff.py'),
     ('beans_injections','java_framework_inventory_diff.py'),
     ('framework_registrations','java_registration_inventory_diff.py'),
@@ -28,10 +29,13 @@ DOMAINS=(
     ('di_wiring','java_wiring_inventory_diff.py'),
 )
 # These require independent, complete proofs before this gate can certify parity.
-PENDING_DOMAINS=('complete_model_api_inventory','all_lexical_control_contexts','complete_xml_graph_edges')
+PENDING_DOMAINS=('complete_model_api_inventory','complete_xml_graph_edges')
 
 
 def domain_accepted(name,report):
+    if name=='lexical_controls':
+        values=report.get('projections',{})
+        return set(values)=={'lexical_owners','calls','reads','writes','type_reference','reflection_lookup'} and all(v.get('equal') is True for v in values.values())
     if name=='calls':return all(report.get(key,{}).get('accepted') is True for key in ('declarations','sites','targets','owners'))
     if name=='types_hierarchy_reflection':
         values=report.get('projections',{})

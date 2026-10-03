@@ -972,3 +972,5 @@ DI v5 产品终态：validation-di-occurrences/di-occurrences-product-proof.json
 2026-10-03 后续取证：真实项目验收工具新增显式 `--compiler-timeout-seconds`（默认600，产品范围1..3600）和可选 `--compiler-thread-dumps`。仅对本次daemon后代中身份仍匹配的CompilerBridge抓取SDK线程栈，每次5秒保护时限；业务进程与复用PID均不附加。保护/恢复16项通过；这不代表TEST问题已解决，也不调整产品默认时限。
 
 XML模型审计修正了将重复包含边误判为环的问题，逐条保留边出现次数，仅拒绝当前路径上的真实环。保护测试8项通过。对旧4a真实发布重新审计，读取全部159份捕获XML、调用冻结SpringBeanParser：实际解析279个Bean，参考库只保留277个，CONFIGURES/XML_CONTAINS共有14组重复边。原始图和实际解析模型分别出具差分，不去重、不将参考信息损失复制到产品。旧产品260个XML Bean均无完整模型，审计失败符合版本范围。证据：`target/java-alignment/evidence/iopengw-4a-xml-model-parser-audit.json` 及同名 `-frozen-parser.json`；新版本完整项目仍需重验。
+
+2026-10-03 后续：新增完整词法控制独立清单（全部owner/call/reads/writes/type/reflection，含空上下文与重复次数），真实汇总执行域从12扩至13。SDK8/JVM三组独立冻结参考严格相等，控制字符串单独篡改会失败；历史4a owner2431、call151342、writes3341相等，reads缺9/额外1402、type缺10、reflection缺20/额外20，仍保留失败。新增实际编译请求/NoCode pin捕获及SDK8单上下文诊断；2852份源码、228份TEST发布源、778个classpath，84.252秒编译完成，源/依赖/桥/manifest无漂移。这不证明产品TEST已修复，需要取得产品实际请求。新共享库组合daemon四项103.444秒通过，DI/跨模块/XML/仅资源MAIN-TEST完整delta验证无漂移；正式新版完整回归仍在运行，最终真实全40模块/完整语义/容量未关闭。
