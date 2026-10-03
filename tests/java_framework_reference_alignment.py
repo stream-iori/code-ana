@@ -84,8 +84,20 @@ def reference_projection(database, annotation_only=False):
     with sqlite3.connect(database.resolve().as_uri() + '?mode=ro', uri=True) as db:
         db.row_factory = sqlite3.Row
         nodes = {r['id']: dict(r) for r in db.execute('SELECT * FROM nodes')}
-        owners = {r['source_id']: nodes[r['target_id']]['symbol_id'] for r in db.execute(
-            "SELECT source_id,target_id FROM edges WHERE relation='DEFINED_BY'")}
+        selected_beans = {n['id'] for n in nodes.values() if n['kind'] == 'BEAN'
+                          and (not annotation_only or json.loads(n['metadata']).get('source') == 'annotation')}
+        owners = {}
+        for edge in db.execute("SELECT * FROM edges WHERE relation='DEFINED_BY'"):
+            if edge['source_id'] not in selected_beans:
+                continue
+            target = nodes.get(edge['target_id'])
+            owner = (target['symbol_id'] if target else
+                     edge['external_target_symbol'] or edge['external_target_fqn'])
+            if not owner:
+                raise ValueError('REFERENCE_BEAN_OWNER_MISSING: '+edge['source_id'])
+            if edge['source_id'] in owners and owners[edge['source_id']] != owner:
+                raise ValueError('REFERENCE_BEAN_OWNER_AMBIGUOUS: '+edge['source_id'])
+            owners[edge['source_id']] = owner
         beans, injections = [], []
         for n in nodes.values():
             if n['kind'] != 'BEAN':

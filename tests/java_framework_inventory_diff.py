@@ -28,7 +28,7 @@ def select_facts(db):
 
 
 def counter(values):
-    return collections.Counter(json.dumps(value,ensure_ascii=False,sort_keys=True) for value in values)
+    return collections.Counter((json.dumps(value,ensure_ascii=False,sort_keys=True),) for value in values)
 
 
 def main():

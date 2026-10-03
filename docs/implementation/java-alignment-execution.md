@@ -853,3 +853,7 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | JVM | framework-reference-20261003-155929-28378四组严格一致；registration-reference-20261003-155933-29732三组各7注册严格一致。全部full-delta事实相等，无输入/产物漂移，并证明真实数据库选择函数与完整fixture投影严格相等。 |
 | 旧库缺口 | 初次4a注册属性比较明确KeyError written_attributes；旧版事实没有新原始属性，不能从有效默认值猜补，也不能当作对齐。入口新增REGISTRATION_SCHEMA_INCOMPLETE失败回执及缺失属性样本，旧库取证和最新完整项目差分继续执行。 |
 | 当前真实运行 | validation-model-dictionary-sharing已构建完整新native/SDK8桥，Rust源码完全一致后复用619的release产物；40模块MAIN/TEST/XML重跑、native177项正在执行，原1GiB native/2GiB worker上限保持。这里不预报通过或性能收益。 |
+
+后续收齐：registration-original-full-jvm-20261003-145054，52条命令4497.730秒all_ok=true、无源码/产物漂移；其native163项1959.980秒all_ok=true。仅对应c5原表达式/Unicode/MVC/事件/SOFA组合，不能替代后续元注解/内存修复的完整门禁。最新model-dictionary-full-jvm已冻结6e组合启动。
+
+旧真实库注册比较：iopengw-4a-registration-attributes-schema-final.json，参考279个annotation注册，产品693个facet缺新原始属性，REGISTRATION_SCHEMA_INCOMPLETE/equal=false，数据库无漂移；没有用有效默认值补写原表达式。Bean/DI比较初版被无关XML的external DEFINED_BY端点阻断，按选定annotation域先筛owner后解析，并严格拒绝其自身缺失/歧义owner；四组framework-annotation-owner-filter JVM独立对照通过。XML依然是另一个未关闭的必需域。
