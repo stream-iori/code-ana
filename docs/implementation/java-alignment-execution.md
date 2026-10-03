@@ -968,3 +968,7 @@ DI v5 产品终态：validation-di-occurrences/di-occurrences-product-proof.json
 门禁次序修正：validation-java-paging-gates完整Java fixture及全部已到达参考门禁通过，但Maven导出/调解在Rust CLI尚未构建的干净目录中失败。新统一入口将Rust build移到Maven前，保留原失败。Root实际Maven17项70.935秒重跑通过；不能覆盖旧正式回执。
 
 按需图真实终态：validation-model-graph-paging/iopengw-core-service-graph-paging 4171.056秒，MAIN完成，TEST compiler_model超内部600秒保护时限，COMPILER_TIMEOUT，未发布；峰值1883357184 bytes、unexpected_signal_observed=false，源/产物无漂移。第二份MAIN模型OOM已在此次实际越过，但全项目与容量仍未通过，需取证TEST编译器现场。
+
+2026-10-03 后续取证：真实项目验收工具新增显式 `--compiler-timeout-seconds`（默认600，产品范围1..3600）和可选 `--compiler-thread-dumps`。仅对本次daemon后代中身份仍匹配的CompilerBridge抓取SDK线程栈，每次5秒保护时限；业务进程与复用PID均不附加。保护/恢复16项通过；这不代表TEST问题已解决，也不调整产品默认时限。
+
+XML模型审计修正了将重复包含边误判为环的问题，逐条保留边出现次数，仅拒绝当前路径上的真实环。保护测试8项通过。对旧4a真实发布重新审计，读取全部159份捕获XML、调用冻结SpringBeanParser：实际解析279个Bean，参考库只保留277个，CONFIGURES/XML_CONTAINS共有14组重复边。原始图和实际解析模型分别出具差分，不去重、不将参考信息损失复制到产品。旧产品260个XML Bean均无完整模型，审计失败符合版本范围。证据：`target/java-alignment/evidence/iopengw-4a-xml-model-parser-audit.json` 及同名 `-frozen-parser.json`；新版本完整项目仍需重验。

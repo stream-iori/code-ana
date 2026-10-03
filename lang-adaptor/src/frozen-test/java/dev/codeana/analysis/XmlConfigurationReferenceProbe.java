@@ -3,6 +3,7 @@ package dev.codeana.analysis;
 import com.anatomist.core.SpringBeanParser;
 import dev.codeana.common.Json;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.*;
 
 /** Run the frozen parser itself; never reconstruct expected XML from product facts. */
@@ -32,9 +33,9 @@ public final class XmlConfigurationReferenceProbe {
         if (value != null) map.put(key, value);
     }
 
-    public static void main(String[] args) throws Exception {
+    private static List<Object> models(Path source) {
         List<Object> result = new ArrayList<>();
-        for (SpringBeanParser.ParsedBean bean : new SpringBeanParser().parse(Path.of(args[0]))) {
+        for (SpringBeanParser.ParsedBean bean : new SpringBeanParser().parse(source)) {
             List<Object> nodes = new ArrayList<>(), roots = new ArrayList<>();
             for (SpringBeanParser.XmlConfigNode child : bean.children()) roots.add(append(child, nodes));
             Map<String, Object> construction = Json.object(
@@ -44,6 +45,20 @@ public final class XmlConfigurationReferenceProbe {
                     "nestedIn", bean.nestedIn(), "ordinal", bean.ordinal(), "attributes", bean.attributes());
             result.add(Json.object("version", 1, "construction", construction, "roots", roots, "nodes", nodes));
         }
-        System.out.println(Json.write(result));
+        return result;
+    }
+
+    public static void main(String[] args) throws Exception {
+        if (args.length == 1) {
+            System.out.println(Json.write(models(Path.of(args[0]))));
+        } else if (args.length == 2 && args[0].equals("--inventory")) {
+            List<Object> result = new ArrayList<>();
+            for (Object item : Json.list(Json.parse(Files.readAllBytes(Path.of(args[1]))))) {
+                Map<String,Object> input = Json.map(item);
+                result.add(Json.object("file", Json.string(input,"file"),
+                        "models", models(Path.of(Json.string(input,"path")))));
+            }
+            System.out.println(Json.write(result));
+        } else throw new IllegalArgumentException("XML_INPUT_REQUIRED");
     }
 }

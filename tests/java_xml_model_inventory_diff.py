@@ -4,6 +4,9 @@ import argparse
 import collections
 import json
 import pathlib
+import os
+import subprocess
+import tempfile
 
 from java_declaration_inventory_diff import connection, digest
 from java_inventory_canonical import verify_source_inputs
@@ -25,12 +28,14 @@ def reference_models(db):
         attributes = metadata[bean['id']]
         if bean['kind'] != 'BEAN' or attributes.get('source') != 'xml':
             continue
-        values, roots, visited = [], [], set()
+        values, roots, active = [], [], set()
 
         def append(identity):
-            if identity in visited or len(visited) >= 30000:
+            # An edge occurrence is not a node visit: duplicate published edges
+            # must remain visible. Only a repeat on the active path is a cycle.
+            if identity in active or len(values) >= 30000:
                 raise ValueError('REFERENCE_XML_CONFIGURATION_CYCLE_OR_BUDGET')
-            visited.add(identity)
+            active.add(identity)
             node = nodes[identity]
             index = len(values)
             nested = []
@@ -39,6 +44,7 @@ def reference_models(db):
                               end_line=node['end_line'],end_column=node['end_column'])))
             ordered = sorted(children[identity],key=lambda child:(nodes[child]['source_ordinal'],child))
             for child in ordered:nested.append(append(child))
+            active.remove(identity)
             return index
 
         ordered = sorted(children[bean['id']],key=lambda child:(nodes[child]['source_ordinal'],child))
@@ -51,6 +57,42 @@ def reference_models(db):
                 if key in ('primary','autowireCandidate','aliases') or key.startswith('unresolved:')})
         result.append(dict(file=bean['source_file'],model=dict(version=1,construction=construction,roots=roots,nodes=values)))
     return result
+
+
+def graph_multiplicity(db):
+    return [dict(row) for row in db.execute("SELECT relation,source_id,target_id,count(*) AS occurrences "
+        "FROM edges WHERE producer_id='spring-xml' AND relation IN ('CONFIGURES','XML_CONTAINS') "
+        "GROUP BY relation,source_id,target_id HAVING count(*)>1 ORDER BY relation,source_id,target_id")]
+
+
+def parser_models(project, files, evidence):
+    """Run the frozen parser on every captured XML, independent of either graph."""
+    import java_alignment as alignment
+    import java_functional_reference_alignment as frozen
+    from java_model_tests import JDK25
+    root = alignment.ROOT
+    jar = root.parent/'anatomist/target/anatomist.jar'
+    if digest(jar) != frozen.REFERENCE_SHA:
+        raise ValueError('XML_MODEL_REFERENCE_ARTIFACT_DRIFT')
+    source = root/'lang-adaptor/src/frozen-test/java/dev/codeana/analysis/XmlConfigurationReferenceProbe.java'
+    checks = {str(jar):digest(jar), str(source):digest(source)}
+    with tempfile.TemporaryDirectory(prefix='xml-model-reference-') as temporary:
+        classes = pathlib.Path(temporary)
+        classpath = os.pathsep.join((str(jar),str(root/'lang-adaptor/target/classes'),str(classes)))
+        subprocess.run([str(JDK25/'bin/javac'),'-cp',classpath,'-d',str(classes),str(source)],
+                       check=True,capture_output=True,timeout=30)
+        inventory = classes/'inputs.json'
+        inventory.write_text(json.dumps([dict(file=file,path=str(project/file)) for file in sorted(files)]))
+        with evidence.open('wb') as output:
+            subprocess.run([str(JDK25/'bin/java'),'-Xmx512m','-cp',classpath,
+                'dev.codeana.analysis.XmlConfigurationReferenceProbe','--inventory',str(inventory)],
+                stdout=output,stderr=subprocess.PIPE,check=True,timeout=180)
+    if any(digest(pathlib.Path(path))!=sha for path,sha in checks.items()):
+        raise ValueError('XML_MODEL_PARSER_PROOF_DRIFT')
+    rows=json.loads(evidence.read_text())
+    if sorted(row['file'] for row in rows)!=sorted(files):
+        raise ValueError('XML_MODEL_PARSER_INPUT_COVERAGE')
+    return [dict(file=row['file'],model=model) for row in rows for model in row['models']], checks
 
 
 def main():
@@ -67,18 +109,29 @@ def main():
                 "AND json_extract(body,'$.attributes.kind')='xml_bean'")]
         missing=[f['id'] for f in facts if 'xml_configuration_model' not in f['attributes']]
         right=reference_models(ref)
+        duplicates=graph_multiplicity(ref)
         # Missing product facts must not let a reference XML input escape the
         # same captured-byte check used for the successful product projection.
         xml,captured=verify_xml_inputs(args.product,args.project,revision[0],
-            facts+[dict(source=row['file']) for row in right])
+            facts+[dict(source=row['file']) for row in right]+[dict(source=row['path']) for row in
+                json.loads((args.product.parent/'revision.json').read_text())['manifest']['files']
+                if row['path'].endswith('.xml')])
         counter=lambda rows:collections.Counter((row['file'],json.dumps(row['model'],sort_keys=True,ensure_ascii=False)) for row in rows)
         left=[dict(file=f['source'],model=projection([f])[0]) for f in facts if 'xml_configuration_model' in f['attributes']]
         result=compare(counter(left),counter(right))
+        parser_output=args.output.with_name(args.output.stem+'-frozen-parser.json')
+        parsed,parser_proof=parser_models(args.project,xml,parser_output)
+        actual=compare(counter(left),counter(parsed))
+        published=compare(counter(right),counter(parsed))
         report=dict(kind='published_spring_xml_construction_and_configuration_models',revision=revision[0],
             project_source_inputs=sources,xml_source_sha256=xml,captured_manifest=captured,database_sha256=before,
             **result,schema_gap_count=len(missing),schema_gap_sample=missing[:100],
+            reference_duplicate_containment_edges=duplicates,
+            actual_parser_comparison=actual,reference_parser_published_graph_comparison=published,
+            frozen_parser_proof=parser_proof,frozen_parser_output=str(parser_output),
+            frozen_parser_output_sha256=digest(parser_output),
             whole_xml_graph_accepted=False,full_semantic_diff_accepted=False)
-        report['equal']=result['equal'] and not missing
+        report['equal']=result['equal'] and actual['equal'] and published['equal'] and not missing
     if before!=dict(product=digest(args.product),reference=digest(args.reference)):
         raise ValueError('COMPARISON_DATABASE_DRIFT')
     if digest(pathlib.Path(captured['path']))!=captured['sha256'] or any(

@@ -11,10 +11,38 @@ import unittest
 from unittest import mock
 
 from java_real_acceptance import (ConfigLease, atomic_bytes, atomic_json, process_identity,
-                                  still_alive, publication_accepted, project_config)
+                                  still_alive, publication_accepted, project_config, CompilerDiagnostics)
 
 
 class AcceptanceRecovery(unittest.TestCase):
+    def test_compiler_protection_is_explicit_and_not_the_task_deadline(self):
+        import tomllib
+        default = tomllib.loads(project_config(['TEST'], True, 'inputs.json').decode())
+        self.assertEqual(default['resources']['index']['java_compiler_timeout_seconds'], 600)
+        extended = tomllib.loads(project_config(['TEST'], True, 'inputs.json', compiler_timeout_seconds=3600).decode())
+        self.assertEqual(extended['resources']['index']['java_compiler_timeout_seconds'], 3600)
+        for value in (0, 3601, True, 1.5):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, 'JAVA_COMPILER_TIMEOUT_RANGE'):
+                project_config(['TEST'], True, 'inputs.json', compiler_timeout_seconds=value)
+
+    def test_thread_dump_never_attaches_to_unrelated_or_reused_process(self):
+        diagnostics = CompilerDiagnostics(self.evidence)
+        phase = dict(context='service@TEST', phase='compiler_model')
+        with mock.patch('java_real_acceptance.time.monotonic', side_effect=[0, 0, 130]), \
+             mock.patch('java_real_acceptance.still_alive', return_value=False), \
+             mock.patch('java_real_acceptance.subprocess.run') as run:
+            diagnostics.sample(phase, {123: ('/sdk/bin/java', dict(pid=123, identity='old'))})
+            diagnostics.sample(phase, {123: ('/sdk/bin/java', dict(pid=123, identity='old'))})
+            run.assert_not_called()
+        diagnostics = CompilerDiagnostics(self.evidence)
+        with mock.patch('java_real_acceptance.time.monotonic', side_effect=[0, 0, 130]), \
+             mock.patch('java_real_acceptance.still_alive', return_value=True), \
+             mock.patch('java_real_acceptance.subprocess.run', return_value=mock.Mock(stdout='java BusinessApp')) as run:
+            diagnostics.sample(phase, {123: ('/sdk/bin/java', dict(pid=123, identity='new'))})
+            diagnostics.sample(phase, {123: ('/sdk/bin/java', dict(pid=123, identity='new'))})
+            self.assertEqual(run.call_count, 1)
+            self.assertEqual(run.call_args.args[0][0], 'ps')
+
     def test_explicit_disk_budgets_preserve_defaults_and_reject_out_of_range(self):
         import tomllib
         default = tomllib.loads(project_config(['MAIN'], False, 'inputs.json').decode())

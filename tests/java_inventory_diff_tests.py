@@ -8,6 +8,40 @@ import unittest
 import hashlib
 from java_inventory_canonical import Canonical,verify_source_inputs,compiler_lines
 from java_declaration_inventory_diff import product_attributes, product_kind, descriptor_name
+from java_xml_model_inventory_diff import reference_models, graph_multiplicity
+
+
+class XmlGraphOccurrences(unittest.TestCase):
+    def setUp(self):
+        self.db=sqlite3.connect(':memory:');self.db.row_factory=sqlite3.Row
+        self.addCleanup(self.db.close)
+        self.db.execute('CREATE TABLE nodes(id,kind,label,source_file,source_ordinal,metadata,begin_line,begin_column,end_line,end_column,producer_id)')
+        self.db.execute('CREATE TABLE edges(source_id,target_id,relation,producer_id)')
+        self.db.execute('INSERT INTO nodes VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+            ('bean','BEAN','use','beans.xml',0,json.dumps(dict(source='xml',abstract=False)),1,1,4,1,'spring-xml'))
+        for identity,kind in [('property','property'),('value','value')]:
+            self.db.execute('INSERT INTO nodes VALUES(?,?,?,?,?,?,?,?,?,?,?)',
+                (identity,'XML_'+kind.upper(),kind,'beans.xml',0,json.dumps(dict(xmlKind=kind,ordinal=0)),2,1,3,1,'spring-xml'))
+
+    def edge(self,source,target,relation):
+        self.db.execute('INSERT INTO edges VALUES(?,?,?,?)',(source,target,relation,'spring-xml'))
+
+    def test_repeated_published_edge_remains_two_occurrences(self):
+        self.edge('bean','property','CONFIGURES');self.edge('bean','property','CONFIGURES')
+        self.edge('property','value','XML_CONTAINS')
+        model=reference_models(self.db)[0]['model']
+        self.assertEqual(model['roots'],[0,2])
+        self.assertEqual(len(model['nodes']),4)
+        self.assertEqual([row['metadata']['xmlKind'] for row in model['nodes']],['property','value','property','value'])
+        self.assertEqual(graph_multiplicity(self.db),[dict(relation='CONFIGURES',source_id='bean',target_id='property',occurrences=2)])
+
+    def test_shared_descendant_is_not_a_cycle_but_cycle_is_rejected(self):
+        self.edge('bean','property','CONFIGURES');self.edge('bean','value','CONFIGURES')
+        self.edge('property','value','XML_CONTAINS')
+        self.assertEqual(len(reference_models(self.db)[0]['model']['nodes']),3)
+        self.edge('value','property','XML_CONTAINS')
+        with self.assertRaisesRegex(ValueError,'REFERENCE_XML_CONFIGURATION_CYCLE'):
+            reference_models(self.db)
 
 
 class IdentityNormalization(unittest.TestCase):

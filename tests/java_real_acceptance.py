@@ -189,7 +189,9 @@ def verify_frozen(project):
 
 
 def project_config(scopes, xml, manifest, native_heap_bytes=536870912, worker_memory_bytes=1610612736,
-                   result_bytes=4294967296, scratch_bytes=17179869184):
+                   result_bytes=4294967296, scratch_bytes=17179869184, compiler_timeout_seconds=600):
+    if not isinstance(compiler_timeout_seconds, int) or isinstance(compiler_timeout_seconds, bool) or not 1 <= compiler_timeout_seconds <= 3600:
+        raise ValueError('JAVA_COMPILER_TIMEOUT_RANGE')
     if not 8 * 1024 * 1024 <= native_heap_bytes <= 1024 * 1024 * 1024 or native_heap_bytes % (1024 * 1024):
         raise ValueError('JAVA_NATIVE_HEAP_RANGE')
     if not native_heap_bytes + (512 + 256 + 64) * 1024 * 1024 <= worker_memory_bytes <= 2147483648:
@@ -208,16 +210,17 @@ def project_config(scopes, xml, manifest, native_heap_bytes=536870912, worker_me
             '[languages.java.extensions.sofa]\nenabled=true\n[resources.index]\n'
             'worker_memory_bytes=' + str(worker_memory_bytes) + '\njava_compiler_heap_bytes=536870912\njava_parallelism=1\n'
             'java_model_record_limit=5000000\njava_model_archive_bytes=1073741824\n'
-            'java_native_heap_bytes=' + str(native_heap_bytes) + '\njava_compiler_timeout_seconds=600\n'
+            'java_native_heap_bytes=' + str(native_heap_bytes) + '\njava_compiler_timeout_seconds=' + str(compiler_timeout_seconds) + '\n'
             'java_result_bytes=' + str(result_bytes) + '\njava_fact_limit=5000000\n'
             'java_scratch_bytes=' + str(scratch_bytes) + '\n').encode()
 
 
 class PhaseCapture:
-    def __init__(self, daemon, evidence):
+    def __init__(self, daemon, evidence, thread_dumps=False):
         self.daemon, self.evidence = daemon, evidence
         self.paths, self.last = set(), {}
         self.failure = None
+        self.diagnostics = CompilerDiagnostics(evidence) if thread_dumps else None
 
     def sample(self):
         table = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,comm='], text=True, timeout=3)
@@ -241,6 +244,11 @@ class PhaseCapture:
                 work = pathlib.Path(line[1:])
                 if work.name.startswith('jvm-') and work.parent.name.startswith('compiler-') and work.parent.parent.name.startswith('codeana-java-'):
                     self.paths.add(work.parent / 'phases.ndjson')
+        compilers = {}
+        for row in rows:
+            pid = int(row[0])
+            if len(row) == 3 and pid in owned and row[2].endswith('/java'):
+                compilers[pid] = (row[2], identities.get(pid))
         for path in self.paths:
             try:
                 with path.open('rb') as stream:
@@ -257,7 +265,53 @@ class PhaseCapture:
                 atomic_bytes(self.evidence / 'compiler-phases.ndjson', body)
                 self.last = rows[-1]
                 print('Phase: ' + json.dumps(self.last), flush=True)
+        if self.diagnostics:
+            self.diagnostics.sample(self.last, compilers)
         return identities
+
+
+class CompilerDiagnostics:
+    """Opt-in development evidence for this harness's own javac descendants."""
+    def __init__(self, evidence):
+        self.evidence, self.phase, self.started = evidence, None, None
+        self.samples, self.attempted = [], set()
+
+    def sample(self, phase, compilers):
+        key = json.dumps(phase, sort_keys=True)
+        if key != self.phase:
+            self.phase, self.started, self.attempted = key, time.monotonic(), set()
+        if phase.get('stage') != 'compiler_model' and phase.get('phase') != 'compiler_model':
+            return
+        elapsed = time.monotonic() - self.started
+        for threshold in (120, 300, 550, 1100, 1700, 2900):
+            if elapsed < threshold or threshold in self.attempted:
+                continue
+            self.attempted.add(threshold)
+            for pid, (executable, identity) in compilers.items():
+                if not identity or not still_alive(identity):
+                    continue
+                # Only the SDK's actual CompilerBridge command is attachable.
+                command = subprocess.run(['ps', '-p', str(pid), '-o', 'command='],
+                    capture_output=True, text=True, timeout=3).stdout.strip()
+                if 'dev.codeana.compiler.CompilerBridge --session' not in command:
+                    continue
+                tool = pathlib.Path(executable).parent / 'jstack'
+                if not tool.is_file():
+                    continue
+                number = len(self.samples)
+                output = self.evidence / ('compiler-thread-dump-' + str(number) + '.log')
+                value = dict(process=identity, command=command, phase=phase, threshold_seconds=threshold,
+                             elapsed_in_phase=round(elapsed, 3), output=str(output))
+                with output.open('wb') as log:
+                    try:
+                        result = subprocess.run([str(tool), '-l', str(pid)], stdout=log,
+                            stderr=subprocess.STDOUT, timeout=5)
+                        value['exit_code'] = result.returncode
+                    except subprocess.TimeoutExpired:
+                        value['failure'] = 'JSTACK_TIMEOUT'
+                value['sha256'] = digest(output)
+                self.samples.append(value)
+                atomic_json(self.evidence / 'compiler-diagnostics.json', self.samples)
 
 
 def stop(process):
@@ -292,6 +346,10 @@ def main():
                         help='Explicit disk archive/output limit; at most 8 GiB')
     parser.add_argument('--scratch-bytes', type=int, default=17179869184,
                         help='Explicit total task scratch limit; at most 32 GiB')
+    parser.add_argument('--compiler-timeout-seconds', type=int, default=600,
+                        help='Per javac request protection limit, 1..3600; not a performance gate')
+    parser.add_argument('--compiler-thread-dumps', action='store_true',
+                        help='Development only: bounded jstack snapshots of this run\'s javac children')
     parser.add_argument('--evidence', type=pathlib.Path)
     args = parser.parse_args()
     if not 1 <= args.deadline_seconds <= 86400:
@@ -299,7 +357,7 @@ def main():
     try:
         configured = project_config(args.scopes.split(','), args.xml, args.inputs_manifest,
                                     args.native_heap_bytes, args.worker_memory_bytes,
-                                    args.result_bytes, args.scratch_bytes)
+                                    args.result_bytes, args.scratch_bytes, args.compiler_timeout_seconds)
     except ValueError as failure:
         parser.error(str(failure))
     previous_sigterm = signal.signal(signal.SIGTERM, interrupted)
@@ -317,6 +375,8 @@ def main():
                   native_heap_bytes=args.native_heap_bytes,
                   result_bytes=args.result_bytes, scratch_bytes=args.scratch_bytes,
                   compiler_heap_bytes=536870912, worker_memory_bytes=args.worker_memory_bytes,
+                  compiler_timeout_seconds=args.compiler_timeout_seconds,
+                  compiler_thread_dumps_enabled=args.compiler_thread_dumps,
                   protection_deadline_seconds=args.deadline_seconds, owner_pid=os.getpid())
     atomic_json(receipt, report)
     lease = ConfigLease(project, evidence)
@@ -355,7 +415,7 @@ def main():
                 if time.monotonic() >= end:
                     raise RuntimeError('DAEMON_START_TIMEOUT')
                 time.sleep(.05)
-            phases = PhaseCapture(daemon.pid, evidence)
+            phases = PhaseCapture(daemon.pid, evidence, args.compiler_thread_dumps)
             with Rss(daemon.pid) as usage:
                 with (evidence / 'index.stdout').open('wb') as output, (evidence / 'index.stderr').open('wb') as error:
                     cli = subprocess.Popen(command + ['index', '--full', '--deadline-seconds', str(args.deadline_seconds)],

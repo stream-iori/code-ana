@@ -1096,3 +1096,5 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 | 独立参考 | xml-reference-20261003-175429-29128 四组各5请求严格相等，31.099秒；新增0/1/2候选及未解析/歧义反例，全量增量相等，无漂移。175501-29114 的构造器lambda参考缺陷同时在完整请求属性中复现，raw_fact_equivalence=false，5.644秒，无漂移。 |
 | 历史真实库 | iopengw-4a-xml-binding-metadata-captured：429/463请求，缺228、额外194，equal=false；两处参考边端点已补齐但原metadata仍0候选/未解析，保留明确不一致。不会据fixture关闭整个XML图。 |
 | DI 新发现 | 实际参考 SpringJavaModelComponents.fieldInjection/methodInjection/constructorInjection 的 INJECTS 源是声明类型；现有冻结resolver fixture只验证了给定字段输入的算法，尚未证明真实类型级WIRES端点能力。新增发布图审计入口继续查证，不用旧专项结果宣称全图通过。 |
+
+2026-10-03：已补单次编译器时限显式配置及本次任务SDK线程栈取证（恢复/保护16项通过），TEST超时尚未解决。完整XML模型审计保留重复边、分别比较冻结解析器与已发布参考图（保护8项通过）；旧真实项目159份XML实际解析279个Bean，参考库277个、重复包含边14组，原始差分保留。不得据此关闭完整XML图或真实项目能力项。
