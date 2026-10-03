@@ -877,3 +877,9 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 字段后续收齐：validation-field-policy-final/field-reference-20261003-163322-73415，native三组23/23严格相等、无漂移；签名缓存11项52.755秒通过。新未知值类型正反例，field-reference-20261003-163348-76522 JVM三组24/24严格相等：声明真实存在但值类型ERROR的field仍绑定原声明，记录field_value_type_complete=false、原ERROR/诊断保留；不存在this.absent不能造字段关系。原实现同数量但状态不同，失败日志保留。桥以真实TypeElement成员身份核验，不把任何ERROR placeholder认作声明。
 
 真实字段位置差分纠正：HeartbeatPoolingConnectionManager.java注释含U+2028，Python splitlines错误地增加了Java行号；Java只接受CR/LF/CRLF。Canonical、字段/注解比较器统一采用Java行规则并新增LS/PS/NEL反例。iopengw-4a-field-accesses-java-line-final：48396/47003、缺9/额外1402（此前12/1405包含3对位置误报），仍equal=false、DB无漂移；修工具没有改产品原字节或抹掉未知差异。
+
+declared-field-final/field-reference-20261003-163522-93718 native三组24/24严格相等，无源码/产物漂移；原native与Rust复用前逐文件核验编译来源，SDK8桥从d37源码单独重建并更新真实manifest SHA。未拿旧桥假装新字段绑定证明。
+
+正确性保护期限：spring-final-daemon-all-20261003-142349完整47项7207.573秒，3失败（大预算索引300秒TIMEOUT、旧2秒Ack丢worker、Lombok module ABI默认期限TIMEOUT），输入/产物无漂移；其它44项通过。旧失败保留。新大预算fixture对所有索引使用1800秒保护期限，原facts/bytes/RSS/旧head/full-delta断言不变；native177与图消费者组合保护期限同步放宽，不作为性能验收结论。最终容量仍要求独占、3冷/3热与2GiB。
+
+发布门禁补齐：package-java增加from-build与新输出目录模式、拒绝混装native/SDK8 SHA、默认输出重建去除旧包残留。java_release从真实包检查全部SHA清单并调用包内CLI/daemon/worker，核心、Maven XML-only MAIN/TEST及错误JDK三个用例；回执仍要求源码、产物、包无漂移。入口已接java_alignment最终java-release，但尚待新冻结组合执行，不据此关闭其它50项。

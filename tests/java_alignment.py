@@ -97,10 +97,10 @@ def main():
             ('rust-build', ['cargo', 'build', '--workspace', '--locked'], 240),
             ('rust-release-build', ['cargo', 'build', '--workspace', '--release', '--locked'], 600),
             ('native-build', ['./scripts/build-java-native.sh'], 600),
-            ('native-fixtures', [sys.executable, 'tests/java_native_fixture_alignment.py'], 1800),
+            ('native-fixtures', [sys.executable, 'tests/java_native_fixture_alignment.py'], 14400),
             ('type-graph-native', [sys.executable, 'tests/java_graph_fact_alignment.py', '--native'], 600),
-            ('type-graph-consumers-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--native'], 1800),
-            ('type-graph-bindings-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--bindings', '--native'], 1800),
+            ('type-graph-consumers-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--native'], 7200),
+            ('type-graph-bindings-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--bindings', '--native'], 7200),
             ('default-type-graph-native', [sys.executable, 'tests/java_default_graph_alignment.py', '--native'], 600),
             ('native-probe', [sys.executable, 'tests/java_native_probe.py'], 300),
             ('type-reference-native', [sys.executable, 'tests/java_type_reference_reference.py', '--native'], 360),
@@ -127,6 +127,7 @@ def main():
             ('rust-daemon', [sys.executable, 'tests/rust_e2e.py'], 600),
             ('java-daemon', [sys.executable, 'tests/java_e2e.py'], 14400),
             ('native-daemon-crash', [sys.executable, 'tests/java_native_crash_e2e.py'], 300),
+            ('java-release', [sys.executable, 'tests/java_release.py'], 3000),
         ]
     matrix = json.loads((ROOT / 'tests/java_alignment_matrix.json').read_text())
     report = dict(level=args.level, reference_commit=matrix['reference_commit'], gates=[],

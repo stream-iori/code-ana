@@ -2,13 +2,40 @@
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
+from_build=false
+package_dir="$repo_root/dist/codeana-java-$(uname -s)-$(uname -m)"
+custom_output=false
+while (($#)); do
+  case "$1" in
+    --from-build) from_build=true; shift ;;
+    --output)
+      if (($# < 2)); then echo "--output requires a new directory" >&2; exit 2; fi
+      package_dir="$2"; custom_output=true; shift 2 ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
+  esac
+done
 if [[ "$(uname -s)" != Darwin ]]; then
   echo "Java release packaging currently supports macOS only" >&2
   exit 1
 fi
-cargo build --release --locked --workspace
-"$repo_root/scripts/build-java-native.sh"
-package_dir="$repo_root/dist/codeana-java-$(uname -s)-$(uname -m)"
+if [[ "$from_build" == false ]]; then
+  cargo build --release --locked --workspace
+  "$repo_root/scripts/build-java-native.sh"
+fi
+# Never package a mixed native/SDK8 build or old files left by a previous package.
+python3 - "$repo_root/lang-adaptor/target" <<'VERIFY'
+import hashlib,json,pathlib,sys
+root=pathlib.Path(sys.argv[1]).resolve()
+manifest=json.loads((root/'native/manifest.json').read_text())
+for name in ('native/libcodeana_java.dylib','compiler-bridge.jar'):
+    path=root/name
+    assert path.resolve().is_relative_to(root), 'NATIVE_ARTIFACT_PATH'
+    assert hashlib.sha256(path.read_bytes()).hexdigest()==manifest['files'][name], 'NATIVE_BUILD_CHECKSUM: '+name
+VERIFY
+if [[ "$custom_output" == true && -e "$package_dir" ]]; then
+  echo "Package output already exists: $package_dir" >&2; exit 2
+fi
+if [[ "$custom_output" == false ]]; then rm -rf "$package_dir"; fi
 mkdir -p "$package_dir/bin" "$package_dir/lib/java/native" "$package_dir/include" "$package_dir/fixtures"
 for binary in codeana-cli codeana-daemon codeana-java-worker; do
   cp "target/release/$binary" "$package_dir/bin/"

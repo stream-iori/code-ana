@@ -2,6 +2,8 @@
 
 包内包含 CLI、daemon、Rust worker、GraalVM 共享库、Java 8 编译器桥和 C header。目标 JDK 由本机 SDKMAN 提供，不随包分发。
 
+开发验收可用 `scripts/package-java.sh --from-build --output /new/package/path` 从已冻结产物打包，先检查 native/SDK8 桥 SHA，不重新编译；指定输出目录必须尚不存在。`python3 tests/java_release.py` 检查完整包校验清单，并从包内 bin/lib 执行真实 CLI、daemon、Java worker 的核心及 Maven 资源模块正反例。该门禁不替代全部能力差分和独占容量验收。
+
 ## 验证并运行 fixture
 
 在解压目录执行；以下 `demo-home` 应为新建目录：

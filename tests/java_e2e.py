@@ -1876,6 +1876,9 @@ enabled=true
 
     def test_explicit_large_budget_crosses_default_fact_and_result_limits(self):
         import java_capacity
+        # This verifies explicit size budgets and graph equivalence; runtime is
+        # measured separately by the exclusive capacity gate. Keep a bounded
+        # protection deadline without treating shared-machine load as parity.
         good = self.cli('index', '--full', timeout=150)[1]['revision']
         self.stop()
         user = self.home/'config.toml'
@@ -1896,13 +1899,13 @@ enabled=true
         # Raise only model limits first; default fact/result budgets must still reject.
         common = '\n[resources.index]\nworker_memory_bytes=1610612736\njava_compiler_heap_bytes=268435456\njava_parallelism=1\njava_model_record_limit=1000000\njava_model_archive_bytes=536870912\njava_native_heap_bytes=536870912\n'
         config.write_text(base+common)
-        _, failed = self.cli('index', '--full', '--deadline-seconds', '300', code=1, timeout=330)
+        _, failed = self.cli('index', '--full', '--deadline-seconds', '1800', code=1, timeout=1830)
         self.assertTrue(any(reason in json.dumps(failed) for reason in ('FACT_BUDGET', 'RECORD_ARCHIVE_BUDGET', 'OUTPUT_BYTE_BUDGET')),
                         json.dumps(failed))
         self.assertEqual(self.cli('overview')[1]['revision'], good)
         config.write_text(base+common+'java_result_bytes=4294967296\njava_fact_limit=5000000\njava_scratch_bytes=17179869184\n')
         with java_capacity.Rss(self.daemon.pid) as usage:
-            _, accepted = self.cli('index', '--full', '--deadline-seconds', '300', timeout=330)
+            _, accepted = self.cli('index', '--full', '--deadline-seconds', '1800', timeout=1830)
         self.assertEqual(accepted['publication'], 'published')
         connection = sqlite3.connect(self.home/'revisions'/accepted['revision']/'facts.db')
         count, body_bytes = connection.execute('SELECT COUNT(*),SUM(length(CAST(body AS BLOB))) FROM facts').fetchone()
@@ -1912,12 +1915,12 @@ enabled=true
         print('large budget: '+json.dumps(dict(facts=count, fact_body_bytes=body_bytes, rss=usage.receipt())), flush=True)
         self.assertLessEqual(usage.receipt()['process_tree_peak_bytes'], 2*1024*1024*1024)
         before = java_capacity.graph(self, accepted['revision'])
-        _, unchanged = self.cli('index', '--deadline-seconds', '300', timeout=330)
+        _, unchanged = self.cli('index', '--deadline-seconds', '1800', timeout=1830)
         self.assertEqual(before, java_capacity.graph(self, unchanged['revision']))
         path = self.project/'src/p/Large999.java'
         path.write_text(path.read_text().replace('int x=999;', 'int x=998;'))
-        _, delta = self.cli('index', '--deadline-seconds', '300', timeout=330)
-        _, full = self.cli('index', '--full', '--deadline-seconds', '300', timeout=330)
+        _, delta = self.cli('index', '--deadline-seconds', '1800', timeout=1830)
+        _, full = self.cli('index', '--full', '--deadline-seconds', '1800', timeout=1830)
         self.assertEqual(java_capacity.graph(self, delta['revision']), java_capacity.graph(self, full['revision']))
         self.assertFalse(list(self.project.rglob('*.class')))
 

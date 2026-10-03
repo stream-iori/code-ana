@@ -1332,7 +1332,8 @@
         "tests/java_native_heap.py",
         "tests/java_binary_alignment.py",
         "crates/contracts/src/java.rs",
-        "tests/java_model_tests.py"
+        "tests/java_model_tests.py",
+        "tests/java_release.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md",
