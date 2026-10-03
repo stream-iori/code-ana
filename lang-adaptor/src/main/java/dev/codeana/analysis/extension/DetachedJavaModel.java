@@ -1,6 +1,7 @@
 package dev.codeana.analysis.extension;
 
 import dev.codeana.common.Json;
+import dev.codeana.common.TypeGraph;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CodingErrorAction;
@@ -68,12 +69,20 @@ public final class DetachedJavaModel implements AutoCloseable {
         Map<Span,List<DeclarationRef>> bySpan=new HashMap<>();
         List<Object> declarations=Json.list(model.get("declarations"));
         List<Integer> catalogueRows=new ArrayList<>();
+        Set<Identity> callableHeaders=new HashSet<>();
+        for(Object raw:declarations) {
+            cancelled();var value=Json.map(raw);var attributes=Json.map(value.get("attributes"));
+            if(Set.of("METHOD","CONSTRUCTOR").contains(Json.string(attributes,"element_kind")))
+                callableHeaders.add(new Identity(Json.string(value,"source"),Json.string(value,"signature")));
+        }
         for(int i=0;i<declarations.size();i++) {
             cancelled();Map<String,Object> value=Json.map(declarations.get(i)),attributes=Json.map(value.get("attributes"));
             // The compiler also retains body symbols for graph consumers. The
             // detached declaration inventory follows the reference's headers.
             if(Set.of("LOCAL_VARIABLE","EXCEPTION_PARAMETER","RESOURCE_VARIABLE","INITIALIZER","LAMBDA","METHOD_REF")
                     .contains(Json.string(attributes,"element_kind")))continue;
+            if("PARAMETER".equals(attributes.get("element_kind"))&&!callableHeaders.contains(
+                    new Identity(Json.string(value,"source"),Json.string(value,"parent"))))continue;
             catalogueRows.add(i);
             for(Object raw:Json.list(attributes.getOrDefault("type_parameter_declarations",List.of()))) {
                 Map<String,Object> formal=new LinkedHashMap<>(Json.map(raw));
@@ -106,6 +115,8 @@ public final class DetachedJavaModel implements AutoCloseable {
         for(var entry:rows.entrySet())for(int ordinal=0;ordinal<entry.getValue().size();ordinal++) {
             cancelled();DeclarationRef ref=new DeclarationRef(entry.getKey(),ordinal);
             Map<String,Object> value=row(entry.getValue().get(ordinal));
+            if(Set.of("CLASS","INTERFACE","ENUM","ANNOTATION_TYPE").contains(Json.string(Json.map(value.get("attributes")),"element_kind"))
+                    &&Set.of("LOCAL","ANONYMOUS").contains(Objects.toString(Json.map(value.get("attributes")).get("nesting_kind"),"")))continue;
             String owner=Json.string(value,"parent");if(owner.isEmpty())continue;
             List<DeclarationRef> candidates=byIdentity.getOrDefault(new Identity(ref.source(),owner),List.of());
             if(candidates.size()!=1)continue;DeclarationRef parent=candidates.getFirst();
@@ -153,12 +164,63 @@ public final class DetachedJavaModel implements AutoCloseable {
     }
     private void syntax() {
         open();if(syntax!=null)return;Map<Span,List<Integer>> found=new HashMap<>();List<Object> rows=Json.list(model.get("syntax"));
+        Map<String,List<Integer>> sourceRows=new HashMap<>();Map<String,Map<Integer,Integer>> identities=new HashMap<>();
+        Map<String,Map<Integer,List<Integer>>> parentEdges=new HashMap<>();
         for(int i=0;i<rows.size();i++) {
             cancelled();if(i>=2000000)throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_BUDGET");
             Map<String,Object> row=Json.map(rows.get(i));String source=Json.string(row,"source");unit(source);
-            found.computeIfAbsent(new Span(source,number(row,"start"),number(row,"end")),ignored->new ArrayList<>()).add(i);
+            int id=Math.toIntExact(Json.number(row,"id")),parent=Math.toIntExact(Json.number(row,"parent"));
+            if(id<=0||parent<0)throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_IDENTITY");
+            parentEdges.computeIfAbsent(source,ignored->new HashMap<>()).computeIfAbsent(id,ignored->new ArrayList<>()).add(parent);
+            Integer previous=identities.computeIfAbsent(source,ignored->new HashMap<>()).putIfAbsent(id,i);
+            if(previous!=null) {
+                if(!sameSyntax(Json.map(rows.get(previous)),row))throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_IDENTITY");
+                continue; // javac shares anonymous base types and multi-variable type/modifier trees.
+            }
+            sourceRows.computeIfAbsent(source,ignored->new ArrayList<>()).add(i);
+            long start=number(row,"start"),end=number(row,"end");
+            if(start>=0&&end>=start)found.computeIfAbsent(new Span(source,start,end),ignored->new ArrayList<>()).add(i);
         }
-        syntax=found;
+        for(var edges:parentEdges.values())validateSyntaxParents(edges);
+        syntax=found;syntaxSourceRows=sourceRows;
+    }
+    private record SyntaxVisit(int id,Iterator<Integer> parents) {}
+    private static void validateSyntaxParents(Map<Integer,List<Integer>> edges) {
+        Map<Integer,Integer> depths=new HashMap<>();depths.put(0,-1);Set<Integer> active=new HashSet<>();
+        Deque<SyntaxVisit> pending=new ArrayDeque<>();
+        for(int root:edges.keySet()) {
+            cancelled();if(depths.containsKey(root))continue;
+            active.add(root);pending.push(new SyntaxVisit(root,edges.get(root).iterator()));
+            while(!pending.isEmpty()) {
+                cancelled();SyntaxVisit current=pending.peek();
+                if(current.parents().hasNext()) {
+                    int parent=current.parents().next();if(depths.containsKey(parent))continue;
+                    if(!edges.containsKey(parent))throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_PARENT_OUTSIDE_SOURCE");
+                    if(!active.add(parent))throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_PARENT_CYCLE");
+                    if(pending.size()>=513)throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_DEPTH_BUDGET");
+                    pending.push(new SyntaxVisit(parent,edges.get(parent).iterator()));
+                } else {
+                    int depth=0;for(int parent:edges.get(current.id()))depth=Math.max(depth,depths.get(parent)+1);
+                    if(depth>512)throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_DEPTH_BUDGET");
+                    depths.put(current.id(),depth);active.remove(current.id());pending.pop();
+                }
+            }
+        }
+    }
+    private Map<String,List<Integer>> syntaxSourceRows;
+    private static boolean sameSyntax(Map<String,Object> left,Map<String,Object> right) {
+        Set<String> keys=new HashSet<>(left.keySet());keys.addAll(right.keySet());keys.remove("parent");keys.remove("owner");
+        for(String key:keys) {
+            if(left.containsKey(key)!=right.containsKey(key))return false;
+            Object a=left.get(key),b=right.get(key);
+            if(TypeGraph.isView(a)&&TypeGraph.isView(b)) {
+                var ga=TypeGraph.owner(Json.map(a));var gb=TypeGraph.owner(Json.map(b));
+                int ra=TypeGraph.reference(Json.map(a)),rb=TypeGraph.reference(Json.map(b));
+                if(ga==gb&&ra==rb)continue;
+                if(!ga.canonical(List.of(ra)).equals(gb.canonical(List.of(rb))))return false;
+            } else if(!Objects.equals(a,b))return false;
+        }
+        return true;
     }
     public List<Map<String,Object>> syntaxAt(String source,long start,long end) {
         unit(source);syntax();List<Map<String,Object>> result=new ArrayList<>();
@@ -180,16 +242,16 @@ public final class DetachedJavaModel implements AutoCloseable {
     /** Source-order navigation follows the compiler's existing IDs and parent edges. */
     public Syntax syntax(String source) {
         unit(source);Syntax cached=syntaxViews.get(source);if(cached!=null)return cached;
-        Syntax found=new Syntax(source,Json.list(model.get("syntax")));syntaxViews.put(source,found);return found;
+        syntax();Syntax found=new Syntax(source,Json.list(model.get("syntax")),syntaxSourceRows.getOrDefault(source,List.of()));syntaxViews.put(source,found);return found;
     }
     public static final class Syntax {
         private final String source;private final List<Object> rows;
         private final List<Integer> order=new ArrayList<>();
         private final Map<Integer,Integer> positions=new HashMap<>(),parents=new HashMap<>();
         private final Map<Span,List<Integer>> spans=new HashMap<>();
-        private Syntax(String source,List<Object> rows) {
+        private Syntax(String source,List<Object> rows,List<Integer> sourceRows) {
             this.source=source;this.rows=rows;
-            for(int i=0;i<rows.size();i++) {
+            for(int i:sourceRows) {
                 cancelled();Map<String,Object> node=Json.map(rows.get(i));if(!source.equals(node.get("source")))continue;
                 if(order.size()>=1000000)throw new IllegalArgumentException("JAVA_MODEL_SYNTAX_BUDGET");
                 int id=Math.toIntExact(Json.number(node,"id")),parent=Math.toIntExact(Json.number(node,"parent"));
@@ -300,6 +362,6 @@ public final class DetachedJavaModel implements AutoCloseable {
         }
     }
     @Override public void close() {
-        if(closed)return;closed=true;units=null;positions=null;identities=null;types=null;parents=null;children=null;spans=null;syntax=null;sources.clear();formalDeclarations.clear();syntaxViews.clear();
+        if(closed)return;closed=true;units=null;positions=null;identities=null;types=null;parents=null;children=null;spans=null;syntax=null;syntaxSourceRows=null;sources.clear();formalDeclarations.clear();syntaxViews.clear();
     }
 }

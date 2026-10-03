@@ -1286,7 +1286,15 @@ public final class CompilerBridge implements AutoCloseable {
             InstanceOfTree n=(InstanceOfTree)tree; role(roles,"expression",n.getExpression()); role(roles,"type",n.getType());
         } else if (tree instanceof ParenthesizedTree) role(roles,"expression",((ParenthesizedTree)tree).getExpression());
         else if (tree instanceof AnnotationTree) {
-            AnnotationTree n=(AnnotationTree)tree; role(roles,"type",n.getAnnotationType()); role(roles,"arguments",n.getArguments());
+            AnnotationTree n=(AnnotationTree)tree; role(roles,"type",n.getAnnotationType());
+            List<Tree> arguments=new ArrayList<Tree>();
+            for(ExpressionTree argument:n.getArguments()) {
+                // javac inserts value= around an unnamed annotation argument during attribution.
+                if(!original.containsKey(argument)&&argument instanceof AssignmentTree)
+                    arguments.add(((AssignmentTree)argument).getExpression());
+                else arguments.add(argument);
+            }
+            role(roles,"arguments",arguments);
         } else if (tree instanceof ArrayAccessTree) {
             ArrayAccessTree n=(ArrayAccessTree)tree; role(roles,"expression",n.getExpression()); role(roles,"index",n.getIndex());
         } else if (tree instanceof ParameterizedTypeTree) {
@@ -1321,13 +1329,19 @@ public final class CompilerBridge implements AutoCloseable {
         String owner = "";
         boolean callbackCreation;
         final Deque<Tree> lexical = new ArrayDeque<Tree>();
+        private int sourceSyntaxParent() {
+            for(Tree ancestor:lexical) {
+                Integer id=treeIds.get(ancestor);if(id!=null)return id;
+            }
+            return 0;
+        }
 
         @Override
         public Void scan(Tree tree, Void p) {
             if (tree == null) return null;
             if (!declarationsOnly && emitBody && original.containsKey(tree)) {
                 Map<String, Object> record = Json.object("id", treeIds.get(tree), "parent",
-                        lexical.isEmpty() ? 0 : treeIds.containsKey(lexical.peek()) ? treeIds.get(lexical.peek()) : 0,
+                        sourceSyntaxParent(),
                         "kind", tree.getKind().name(), "source", source.get("path"),
                         "start", start(tree), "end", end(tree), "owner", owner);
                 if (tree instanceof LiteralTree)

@@ -20,8 +20,29 @@ public final class DetachedModelApiGuards {
         catch(Exception failure) {if(!failure.toString().contains(reason))throw failure;}
     }
     private interface Action {void run() throws Exception;}
+    private static Map<String,Object> syntax(int id,int parent,String kind) {
+        return Json.object("id",id,"parent",parent,"source","Use.java","kind",kind,"start",0,"end",1,"roles",Map.of());
+    }
+    private static DetachedJavaModel syntaxView(List<Object> syntax) {
+        return new DetachedJavaModel(ExtensionContext.freezeMap(Json.object("sources",List.of(Json.object("path","Use.java")),
+                "declarations",List.of(),"syntax",syntax)));
+    }
     public static void main(String[] args) throws Exception {
         Path directory=Path.of(args[0]);Files.createDirectories(directory);Path source=directory.resolve("Use.java");
+        try(var model=syntaxView(List.of(syntax(1,0,"CLASS"),syntax(2,1,"NEW_CLASS"),syntax(3,2,"IDENTIFIER"),
+                                       syntax(4,2,"CLASS"),syntax(3,4,"IDENTIFIER")))) {
+            var syntax=model.syntax("Use.java");
+            if(syntax.nodes().size()!=4||model.syntaxAt("Use.java",0,1).size()!=4
+                ||Json.number(syntax.parent(syntax.node(3).orElseThrow()).orElseThrow(),"id")!=2)
+                throw new AssertionError("shared syntax did not keep first parent");
+        }
+        try(var model=syntaxView(List.of(syntax(1,0,"CLASS"),syntax(1,0,"METHOD")))) {fails("SYNTAX_IDENTITY",()->model.syntax("Use.java"));}
+        try(var model=syntaxView(List.of(syntax(1,0,"CLASS"),syntax(2,1,"IDENTIFIER"),syntax(2,99,"IDENTIFIER")))) {
+            fails("PARENT_OUTSIDE_SOURCE",()->model.syntax("Use.java"));
+        }
+        try(var model=syntaxView(List.of(syntax(1,0,"CLASS"),syntax(2,0,"CLASS"),syntax(1,2,"CLASS"),syntax(2,1,"CLASS")))) {
+            fails("PARENT_CYCLE",()->model.syntax("Use.java"));
+        }
         byte[] bytes="// 原字节😀\r\na\rb\nc\u2028d".getBytes(java.nio.charset.StandardCharsets.UTF_8);Files.write(source,bytes);
         try(var model=view(source,bytes,List.of(row("A","")))) {
             var escaped=model.source("Use.java");String text=escaped.text();

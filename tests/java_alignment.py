@@ -75,6 +75,7 @@ def main():
         ('acceptance-harness', [sys.executable, 'tests/java_alignment_gate_tests.py'], 30),
         ('inventory-diff-harness', [sys.executable, 'tests/java_inventory_diff_tests.py'], 30),
         ('xml-graph-diff-harness', [sys.executable, 'tests/java_xml_graph_inventory_diff_tests.py'], 30),
+        ('model-api-inventory-harness', [sys.executable, 'tests/java_model_api_inventory_diff_tests.py'], 30),
         ('real-semantic-diff-harness', [sys.executable, 'tests/java_real_semantic_diff_tests.py'], 30),
         ('acceptance-recovery', [sys.executable, 'tests/java_real_acceptance_tests.py'], 30),
         ('compiler-diagnostic-inputs', [sys.executable, 'tests/java_real_compiler_diagnostics_tests.py'], 30),

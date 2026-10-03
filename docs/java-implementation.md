@@ -363,3 +363,17 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 真实请求回放 | `iopengw-captured-main-test-baseline` 旧桥同 JVM MAIN→TEST 在 TEST OOM；`iopengw-captured-main-test-archive-backed` 新桥两阶段成功，MAIN 60.525 秒、TEST 101.857 秒。同 512 MiB 堆；仅物理输入路径重映射，原源码/有序 CP/原请求摘要保留。MAIN 模型 SHA 完全相等，TEST 输出 264494003 字节。回放不代表 native 发布或整体容量通过。 |
 | 回归 | 完整 archive、11 项 signature、两项 JVM 复用/诊断隔离通过。矩阵 XML 全图门禁归属纠正为 F05 Spring XML；契约的 Spring 内置版本同步为实际 7。 |
 | 仍待 | 新同版本 native/daemon、全40模块 MAIN/TEST/XML 发布与14域严格差分、完整模型 API 实项目清单、独占容量及最终 release。仍只 E01/E02 完整关闭。 |
+
+
+## 真实项目完整模型导航对照（2026-10-03）
+
+| 项目 | 证据 / 状态 |
+|---|---|
+| 真正缺口 | iopengw TEST 原完整清单在 JAVA_MODEL_SYNTAX_IDENTITY 失败：228 文件含242份共享节点出现，匿名基类型/多变量声明由 javac 共享 Tree。注解省略 value= 时，javac 插入合成赋值节点，原桥把父链误记为0；原失败和未归一清单保留。 |
+| 产品修复 | API按源码节点身份只展示一次，校验内在字段相等，保留首次父链（与冻结JavaSyntax一致）；所有替代父边仍校验未知父/环/深度。只建一次按文件索引。桥跳过合成祖先、恢复注解原参数角色；声明API分清声明成员与词法归属，匿名/局部类不作为方法声明成员、lambda参数不冒充方法形参。原始事实及共享节点出现次数不删。 |
+| 新身份 | registry升为 staged-project-view-v8-model-api-dag，进入模型/模块失效身份；模型/Fact IR/ABI版本不变。 |
+| 独立参考 | 原Backend把该请求重排成21个编译上下文，造成假缺失；单次全源码原worker响应又触发冻结解码器全响应512MiB入场限额，失败原样保留。新测试适配器固定原workerSHA，用相同2852源码/有序778CP编译一次，委托原冻结帧/类型/声明解码函数，逐单位在同512MiB上限内消费真实JavaModel，汇总查找候选。完整响应hash/EOF/完成计数验证，不改冻结JAR/worker/模型算法、不生成业务字节码；这不是参考或产品容量验收。 |
+| 正反例 | 五组SDK8导航/摘要模式全部相等：泛型嵌套、方法形参、控制语法、共享AST；重复类的参考丢失第二位置缺陷仍raw不同且复现。保护覆盖冲突节点、未知父、仅替代边成环，以及SOURCE hash/范围/次序/重复与四投影篡改。 |
+| 真实完整清单 | iopengw-core-service-test-model-api-streaming-reference/receipt.json：53.435秒；声明3284/3284、AST135076/135076、原源码228/228、全部474类型查找，四投影零差异、无源码/工件漂移。每个UTF16位置及声明切片逐项摘要，不抽样；编译输入2852源码与228发布源严格按冻结Maven清单校验。仅该TEST上下文，不替代全部40模块。 |
+| 上一内存修复的产品证据 | f04c5d6新共享库的177 native fixture：958.502秒全过；XML完整图三组25.027秒、DI和跨模块两项78.303秒通过。真实TEST已越过compiler_model/decode，仍在Lombok阶段；这些回执不包含之后v8 API/注解父链修复。 |
+| 仍待 | v8新native/daemon/完整Java回归；全40模块MAIN/TEST/XML与14域语义差分、全上下文模型清单、独占容量和release。仅E01/E02完整关闭，未删complete_model_api_inventory最终待验收项。 |

@@ -24,6 +24,8 @@ CASES={
  switch(values.length){case 1:return 0;default:break;} return -1;
  }}'''},
  'duplicate-reference-span':{'One.java':'package p; class Dup {}','Two.java':'package p; class Dup {}'},
+ 'shared-ast':{'Use.java':'''package p; class Shared {Shared(){} java.util.List<String> first,second;
+ void run(){java.util.List<String> a,b; new java.util.ArrayList<String>() {{add("原字节😀");}};}}'''},
 }
 
 
@@ -41,6 +43,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--native-executable',type=pathlib.Path)
     parser.add_argument('--native',action='store_true')
+    parser.add_argument('--inventory',action='store_true',help='Compare every source position and slice by lossless digest')
     args=parser.parse_args();root=alignment.ROOT
     evidence=root/'target/java-alignment/evidence'/('model-api-reference-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))
     evidence.mkdir(parents=True);frozen=alignment.input_files()
@@ -48,9 +51,11 @@ def main():
     if not jar.exists():jar=root/'target/java-alignment/anatomist/target/anatomist.jar'
     if functional.digest(jar)!=functional.REFERENCE_SHA:raise ValueError('MODEL_API_FROZEN_REFERENCE_DRIFT')
     classes=evidence/'frozen-classes';classes.mkdir()
-    reference_cp=os.pathsep.join([str(classes),str(root/'lang-adaptor/target/classes'),str(jar)])
+    reference_cp=os.pathsep.join([str(classes),str(root/'lang-adaptor/target/classes'),
+        str(root/'lang-adaptor/target/test-classes'),str(jar)])
     subprocess.run([str(models.JDK25/'bin/javac'),'-cp',reference_cp,'-d',str(classes),
-        str(root/'lang-adaptor/src/frozen-test/java/dev/codeana/analysis/DetachedModelApiReferenceProbe.java')],check=True,timeout=60)
+        str(root/'lang-adaptor/src/frozen-test/java/dev/codeana/analysis/DetachedModelApiReferenceProbe.java'),
+        str(root/'lang-adaptor/src/frozen-test/java/com/anatomist/core/javac/FrozenExactModelApiContext.java')],check=True,timeout=60)
     product_cp=os.pathsep.join([str(root/'lang-adaptor/target/classes'),str(root/'lang-adaptor/target/test-classes'),
         (root/'lang-adaptor/target/native-classpath.txt').read_text().strip()])
     if args.native and args.native_executable:parser.error('使用 --native 或 --native-executable，不能同时指定')
@@ -72,6 +77,7 @@ def main():
                 context=case.context('app',files)
                 request=dict(version=5,facts=False,java_home=str(models.JDK8),bridge=str(root/'lang-adaptor/target/compiler-bridge.jar'),
                     scratch=str(case.root),contexts=[context],model_type_queries=['p.Outer','p.Outer.Inner','p.Outer$Inner','p.Flow','p.Dup','p.Missing'])
+                if args.inventory:request.update(model_api_inventory=True,model_api_exact_context=True)
                 path=base/'request.json';path.write_text(json.dumps(request));values={}
                 for side,cp,probe in [('product',product_cp,'dev.codeana.analysis.DetachedModelApiProbe'),
                                      ('reference',reference_cp,'dev.codeana.analysis.DetachedModelApiReferenceProbe')]:

@@ -3,6 +3,7 @@ package dev.codeana.analysis;
 import dev.codeana.analysis.extension.ExtensionContext;
 import dev.codeana.analysis.extension.DetachedJavaModel;
 import dev.codeana.common.Json;
+import dev.codeana.common.ModelArchive;
 import java.nio.file.Path;
 import java.util.*;
 
@@ -18,18 +19,32 @@ public final class DetachedModelApiProbe {
     public static void main(String[] args) throws Exception {
         Map<String,Object> request=Json.map(Json.parse(Json.read(Path.of(args[0]))));
         Map<String,Object> context=Json.map(Json.list(request.get("contexts")).getFirst());
+        boolean inventory=Boolean.TRUE.equals(request.get("model_api_inventory"));
+        Set<String> selected=new HashSet<>();
+        for(Object raw:Json.list(context.get("sources"))) {
+            var source=Json.map(raw);
+            if(!Boolean.TRUE.equals(request.get("model_api_published_only")) || Boolean.TRUE.equals(source.get("publish")))
+                selected.add(Json.string(source,"path"));
+        }
         try(CompilerSession compiler=new CompilerSession(request)) {
-            Map<String,Object> archive=compiler.analyze(context);
+            ModelArchive.OpenModel captured=request.containsKey("model_api_archive")
+                ? ModelArchive.open(Path.of(Json.string(request,"model_api_archive")),
+                    Json.string(request,"model_api_archive_sha256"),ModelArchive.byteLimit(context),Json.string(context,"context"))
+                : null;
+            Map<String,Object> archive=captured==null ? compiler.analyze(context) : captured.model();
             try {
                 DetachedJavaModel model=new ExtensionContext(context,archive,List.of(),List.of()).javaModel();
                 List<Object> rows=new ArrayList<>(),syntaxRows=new ArrayList<>();Map<String,Object> sources=new TreeMap<>();
                 for(String path:model.unitsInContext()) {
+                    if(!selected.contains(path))continue;
                     DetachedJavaModel.Source source=model.source(path);String text=source.text();
                     List<Object> positions=new ArrayList<>();
-                    for(int offset=0;offset<=text.length();offset++) {
+                    for(int offset=0;!inventory&&offset<=text.length();offset++) {
                         var p=source.position(offset);positions.add(List.of(p.line(),p.column()));
                     }
-                    sources.put(path,Json.object("sha256",Json.sha(source.bytes()),"text",text,"positions",positions));
+                    sources.put(path,inventory ? ModelApiInventory.source(source.bytes(),text,offset->{
+                        var p=source.position(offset);return new int[]{p.line(),p.column()};
+                    }) : Json.object("sha256",Json.sha(source.bytes()),"text",text,"positions",positions));
                     byte[] copy=source.bytes();if(copy.length>0)copy[0]^=1;
                     if(!Json.sha(source.bytes()).equals(Json.string(model.unit(path),"hash")))throw new AssertionError("mutable source escape");
                     var syntax=model.syntax(path);
@@ -48,7 +63,8 @@ public final class DetachedModelApiProbe {
                         Object node=model.syntax(ref).map(n->n.get("kind")).orElse(null);
                         if(start>=0&&end>=start&&!model.declarationsAt(path,start,end).contains(ref))throw new AssertionError("span catalogue missed declaration");
                         Map<String,Object> row=key(d);row.put("source",path);row.put("parent",parent);row.put("members",members);row.put("syntax",node);
-                        row.put("slice",start>=0&&end>=start?source.slice(start,end):null);rows.add(row);
+                        String slice=start>=0&&end>=start?source.slice(start,end):null;
+                        row.put("slice",inventory ? ModelApiInventory.slice(slice) : slice);rows.add(row);
                         try {d.put("name","changed");throw new AssertionError("mutable declaration escape");}
                         catch(UnsupportedOperationException expected){}
                     }
@@ -63,7 +79,7 @@ public final class DetachedModelApiProbe {
                 model.close();try {model.type("p.Use");throw new AssertionError("closed model remained readable");}
                 catch(IllegalStateException expected){}
                 System.out.println(Json.write(Json.object("rows",rows,"syntax",syntaxRows,"sources",sources,"types",lookups,"closed",true)));
-            } finally {compiler.releaseModel(archive);}
+            } finally {if(captured==null)compiler.releaseModel(archive);else captured.close();}
         }
     }
 }
