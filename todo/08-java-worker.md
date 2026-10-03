@@ -848,3 +848,15 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 | 超时 | 最新默认 native 全回归已有 753.507 秒终态通过，旧 runner 的 600 秒上限不足。仅将该门禁的防挂保护设为 1800 秒，不设置整体工作时间预算或提高产品超时/资源配额。 |
 
 WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回归另有 derived-wiring-v2-cache-encoding-e2e.log，两项 19.511 秒通过。完整 40 模块仍运行，全部语义对齐未通过。
+
+## 可提交的独立语义清单差分（2026-10-03）
+
+原先 ignored 取证脚本已转入 tests/java_call_inventory_diff.py、java_type_inventory_diff.py 和共享 java_inventory_canonical.py，正式源码可重跑。调用对照包含声明、调用点、归属、目标及状态的多重集；类型对照包含 SOURCE occurrence/上下文/状态、反射成员、extends/implements。任一对应投影不同均退出 1；不会把脚本成功启动计为通过。比较前校验 provenance/upstream source_origin 的捕获 Java SHA；匿名/局部类的别名必须两侧各有唯一相等原字节 span。
+
+| 验证 | 结果 / 边界 |
+|---|---|
+| 负例 | committed-inventory-harness.log：Unicode UTF-16→UTF-8、两侧重复 span 拒绝别名、原字节变化拒绝坐标比较两项通过；已进入统一 runner。 |
+| 历史 5c core/service 调用 | committed-inventory-core-calls.json：校验 2851 个捕获源码 SHA；声明8332、点/归属35813均零差异；目标35797/ref35827，缺35/多5（30独立缺失+5状态对），正确退出1。不是本轮新版发布验收。 |
+| 历史 5c 类型 | committed-inventory-core-types.json：SOURCE12188、反射20、extends528、implements152四个投影均零差异，退出0。仅 occurrence 投影，不替代完整类型属性/框架差分。 |
+
+两个工具都明确 full_semantic_diff_accepted=false；它们尚不代替 java-real-semantic-diff 最终门禁。最新 4a 全40模块已完成逐上下文分析，项目级 Spring 汇总仍运行，发布与新版差分待终态。

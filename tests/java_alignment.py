@@ -68,6 +68,7 @@ def main():
     inputs.write_text(json.dumps(frozen, sort_keys=True, indent=2) + '\n')
     gates = [
         ('acceptance-harness', [sys.executable, 'tests/java_alignment_gate_tests.py'], 30),
+        ('inventory-diff-harness', [sys.executable, 'tests/java_inventory_diff_tests.py'], 30),
         ('acceptance-recovery', [sys.executable, 'tests/java_real_acceptance_tests.py'], 30),
         ('java-fixtures', ['./scripts/test-java.sh'], 3600),
         ('type-reference', [sys.executable, 'tests/java_type_reference_reference.py'], 360),
