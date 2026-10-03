@@ -10,6 +10,28 @@ use tokio::{
     process::{Child, Command},
 };
 use tokio_util::sync::CancellationToken;
+// A Java Ack also releases the native task and atomically persists bounded derived
+// artifacts. The cache lock alone may wait five seconds; the old two-second IPC
+// deadline killed healthy workers after a successful publication.
+const JAVA_ACK_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn receive_ack(
+    ipc: &mut UnixStream,
+    attempt: &str,
+    revision: &str,
+    timeout: Duration,
+) -> Result<()> {
+    let frame = tokio::time::timeout(timeout, read_frame(ipc)).await??;
+    ensure!(frame.attempt == attempt, "ACK_ATTEMPT_MISMATCH");
+    match frame.body {
+        Some(Body::Acked(acked)) => {
+            ensure!(acked.revision == revision, "ACK_REVISION_MISMATCH");
+        }
+        Some(Body::Failure(failure)) => bail!("{}: {}", failure.code, failure.message),
+        _ => bail!("EXPECTED_ACKED"),
+    }
+    Ok(())
+}
 pub struct Worker {
     child: Child,
     process_group: u32,
@@ -388,16 +410,7 @@ impl Worker {
             let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
             ensure!(status.success(), "WORKER_EXIT_AFTER_ACK");
         } else {
-            let frame =
-                tokio::time::timeout(Duration::from_secs(2), read_frame(&mut self.ipc)).await??;
-            ensure!(frame.attempt == self.attempt, "ACK_ATTEMPT_MISMATCH");
-            match frame.body {
-                Some(Body::Acked(acked)) => {
-                    ensure!(acked.revision == revision, "ACK_REVISION_MISMATCH");
-                }
-                Some(Body::Failure(failure)) => bail!("{}: {}", failure.code, failure.message),
-                _ => bail!("EXPECTED_ACKED"),
-            }
+            receive_ack(&mut self.ipc, &self.attempt, revision, JAVA_ACK_TIMEOUT).await?;
         }
         Ok(())
     }
@@ -433,5 +446,77 @@ impl Worker {
         };
         ensure!(self.context.language == "java", "WORKER_LANGUAGE_MISMATCH");
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn delayed_java_ack_preserves_identity_and_exceeds_old_deadline() {
+        let (mut receiver, mut sender) = UnixStream::pair().unwrap();
+        let reply = tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(2100)).await;
+            write_frame(
+                &mut sender,
+                &envelope(
+                    "attempt",
+                    Body::Acked(w::Acked {
+                        revision: "revision".into(),
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        });
+        receive_ack(&mut receiver, "attempt", "revision", JAVA_ACK_TIMEOUT)
+            .await
+            .unwrap();
+        reply.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn java_ack_rejects_wrong_attempt_revision_and_unexpected_message() {
+        for (attempt, body, expected) in [
+            (
+                "wrong",
+                Body::Acked(w::Acked {
+                    revision: "revision".into(),
+                }),
+                "ACK_ATTEMPT_MISMATCH",
+            ),
+            (
+                "attempt",
+                Body::Acked(w::Acked {
+                    revision: "wrong".into(),
+                }),
+                "ACK_REVISION_MISMATCH",
+            ),
+            ("attempt", Body::Cancel(w::Cancel {}), "EXPECTED_ACKED"),
+        ] {
+            let (mut receiver, mut sender) = UnixStream::pair().unwrap();
+            write_frame(&mut sender, &envelope(attempt, body))
+                .await
+                .unwrap();
+            let error = receive_ack(&mut receiver, "attempt", "revision", JAVA_ACK_TIMEOUT)
+                .await
+                .unwrap_err();
+            assert!(error.to_string().contains(expected), "{error}");
+        }
+    }
+
+    #[tokio::test]
+    async fn stalled_java_ack_still_has_a_deadline() {
+        let (mut receiver, _sender) = UnixStream::pair().unwrap();
+        let error = receive_ack(
+            &mut receiver,
+            "attempt",
+            "revision",
+            Duration::from_millis(20),
+        )
+        .await
+        .unwrap_err();
+        assert!(error.to_string().contains("deadline has elapsed"));
     }
 }

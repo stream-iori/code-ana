@@ -824,3 +824,11 @@ framework-reference-20261003-135114-22558：JVM三组严格一致，5/7个注入
 | 参考缺陷 | xml-reference-20261003-154023-47248：最小构造器lambda复现参考1 CONSTRUCTOR+1 LAMBDA、产品仅正确构造器。raw_fact_equivalence=false，单独缺陷回执不当作图相等。真实25候选的取证证据保持。 |
 | 完整 daemon | rust-cache-order-daemon-all-20261003-133111：46项7462.738秒、5失败，无输入/产物漂移。三项索引TIMEOUT、一项接受发布后未观察warm worker、一项旧scratch等待子进程超时；失败未覆盖掉。新版逐项记录CLI/ack重新验证中。 |
 | 完整 JVM | spring-final-full-jvm-20261003-142329：51条命令通过，bindings第52条被1800秒harness保护终止，4462.705秒，all_ok=false，无漂移；不是非预期安全软件杀进程。旧缓存版完整52条已通过，但不能替代新版完整门禁。 |
+
+## 发布确认期限冲突（2026-10-03）
+
+| 项目 | 证据 / 修复 |
+|---|---|
+| 最新复测 | validation-field-access/daemon-failure-recheck-20261003-154028：4项55.128秒，XML/superbuilder/scratch均通过；模型预算/复用仍失败，输入/产物无漂移。不是把旧完整失败删除或据此算完整通过。 |
+| 根因 | cli.jsonl接受发布明确ack_warning="deadline has elapsed"；worker仅在native ack/finish、Rust缓存commit后回复Acked。daemon原等待2秒，而缓存锁本身可等5秒；超时丢弃已正确发布的warm worker。实际证据支持这一冲突，不把全部超时都归到它。 |
+| 修复 | Java确认等待30秒，保留attempt/revision/消息类型严格检查和故障期限；mock退出2秒不变。缓存仍在发布后同步原子提交，scratch生命周期不变，没有将未完成缓存放到后台或提前确认。产品用例保留并新增ack_warning=None断言；延迟回复、错误身份/类型、挂起反例验证。真实产品修复回执仍需冻结新Rust组合后执行。 |

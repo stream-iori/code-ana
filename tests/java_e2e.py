@@ -1758,10 +1758,12 @@ enabled=true
         config.write_text(original_config+'\n[resources.index]\njava_model_archive_bytes=8388608\n'
                           'java_compiler_timeout_seconds=120\njava_native_heap_bytes=536870912\n'
                           'java_result_bytes=8589934592\njava_fact_limit=5000000\njava_scratch_bytes=34359738368\n')
-        _, accepted = self.cli('index', '--full', timeout=150)
+        records, accepted = self.cli('index', '--full', timeout=150)
         self.assertEqual(accepted['publication'], 'published')
+        self.assertTrue(records)
+        self.assertTrue(all(record.get('ack_warning') is None for record in records), records)
         worker = self.java_worker_pid()
-        self.assertIsNotNone(worker)
+        self.assertIsNotNone(worker, records)
         _, unchanged = self.cli('index', timeout=150)
         self.assertEqual(self.java_worker_pid(), worker)
         self.assertEqual(self.facts(accepted['revision']), self.facts(unchanged['revision']))
