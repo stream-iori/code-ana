@@ -507,3 +507,9 @@ S3配置成员粗投影42/44不能作为缺2结论：核对原参考metadata发�
 冻结infer在无当前方法形参时转入assignable/contained。原实现却继续把`? super String`解包成String，错误要求CharSequence转换为String，导致合法Collectors.joining链缺collect。现复用现有类型参数包含校验；普通可写参数转换、捕获身份及预算不变。独立最小样本从4/5补齐到5/5，StringBuilder正例5/5、Integer负例4/4均与冻结参考一致；原37组冻结对照全部通过，原Collector21项通过（121.575秒）。14MAIN隔离2065/2081，16独立缺失、0独立额外、4状态对；不作为正式新版本发布差分。新增两种表示、字段类型变更/Getter移除的full/delta回归已接入。
 
 356587f正式native默认141项通过（733.017秒）、消费者92项通过（508.225秒）、冻结参考37组全部通过，均无输入/产物漂移；图绑定完整组与1ea710c的40模块真实验收仍运行。1ea710c已进入此前失败的app/test@TEST并通过compiler_model阶段，尚无最终发布回执。
+
+## 回调代码块的三态完成证明
+
+按冻结abruptCompletion适配简单顺序块、IF双分支、TRY/catch/finally，保留YES/NO/UNKNOWN。已证明无返回值的Supplier代码块为NO，不再以UNKNOWN阻断合法Runnable重载；循环等复杂路径仍UNKNOWN，不增加推断权限。最小Runnable/Supplier重载旧3/4、新4/4，try/catch返回4/4；原37组冻结调用投影全部相等。新增两种表示的SAM切换、try/finally、缺失catch返回与循环负例以及cache/full/delta两项通过（26.156秒）；joining、重载、try/catch三个新独立样本5/5、4/4、4/4相等。14残余MAIN隔离2067/2081：14独立缺失、0独立额外、4状态对。不是正式新版本发布差分。
+
+356587f图绑定完整207项通过（955.942秒），无输入/产物漂移。该版本默认141、消费者92、参考37组已全部终态，不能再描述为运行中。1ea710c的40模块已越过app/test@TEST旧ClassCastException并完成事实/扩展阶段，仍须最终发布和独立差分。

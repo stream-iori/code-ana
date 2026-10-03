@@ -3,8 +3,49 @@ import pathlib,sys,unittest
 ROOT=pathlib.Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'tests'))
 import java_model_tests as models,java_lombok_alignment as lombok,java_binding_alignment as bindings
 
+VOID_OVERLOAD_SOURCE = '@lombok.Getter class Holder{String id;} class Utility{static void run(String key,Runnable work){} static <T> T run(String key,java.util.function.Supplier<T> work){return null;}} class Use{static void execute(String key){} void read(Holder h){Utility.run("prefix"+h.getId(),() -> {execute(h.getId());});}}'
+TRY_OUTPUT_SOURCE = '@lombok.Getter class Holder{Api api;} class Api{void run(){}} class Factory{static <T> T create(java.util.function.Supplier<T> work){return null;}} class Use{void read(Holder h){Factory.create(() -> {try{return h.getApi();}catch(RuntimeException e){return h.getApi();}}).run();}}'
+
 class FunctionalOutputs(unittest.TestCase):
  setUp=models.Models.setUp;context=models.Models.context;analyze=models.Models.analyze;merged=models.Models.merged;recovered=bindings.Bindings.recovered
+ def test_void_block_excludes_supplier_overload_and_delta_changes_selected_sam(self):
+  for graph in (False,True):
+   with self.subTest(graph=graph):
+    def context(source):
+     result=self.context('app',lombok.Lombok.files(self,source),lombok='model')
+     if graph:result['type_graph']=True
+     return result
+    initial=self.analyze([context(VOID_OVERLOAD_SOURCE)],cache=True)
+    signatures=[f['signature'] for f in initial['facts'] if f['id'] in {t['target'] for t in initial['facts'] if t['kind']=='call_target'}]
+    self.assertIn('Utility#run(java.lang.String,java.lang.Runnable)',signatures)
+    self.assertNotIn('Utility#run(java.lang.String,java.util.function.Supplier)',signatures)
+    changed=context(VOID_OVERLOAD_SOURCE.replace('execute(h.getId());','return h.getId();'))
+    delta=self.analyze([changed],initial['facts'],cache=True);full=self.analyze([changed],cache=True)
+    self.assertEqual(self.merged(initial['facts'],delta),sorted(full['facts'],key=lambda f:f['id']))
+    signatures=[f['signature'] for f in full['facts'] if f['id'] in {t['target'] for t in full['facts'] if t['kind']=='call_target'}]
+    self.assertIn('Utility#run(java.lang.String,java.util.function.Supplier)',signatures)
+    self.assertNotIn('Utility#run(java.lang.String,java.lang.Runnable)',signatures)
+ def test_try_catch_finally_completion_and_incomplete_return_delta(self):
+  for graph in (False,True):
+   with self.subTest(graph=graph):
+    def context(source):
+     result=self.context('app',lombok.Lombok.files(self,source),lombok='model')
+     if graph:result['type_graph']=True
+     return result
+    initial=self.analyze([context(TRY_OUTPUT_SOURCE)],cache=True)
+    self.assertIn('Factory#create(java.util.function.Supplier)',self.signatures(initial))
+    self.assertIn('Api#run()',self.signatures(initial))
+    changed=context(TRY_OUTPUT_SOURCE.replace('catch(RuntimeException e){return h.getApi();}','finally{int count=1;}'))
+    delta=self.analyze([changed],initial['facts'],cache=True);full=self.analyze([changed],cache=True)
+    self.assertEqual(self.merged(initial['facts'],delta),sorted(full['facts'],key=lambda f:f['id']))
+    self.assertIn('Api#run()',self.signatures(full))
+    for body in ('try{return h.getApi();}catch(RuntimeException e){h.getApi();}',
+                 'while(System.nanoTime()>0){return h.getApi();}'):
+     source=TRY_OUTPUT_SOURCE.replace('try{return h.getApi();}catch(RuntimeException e){return h.getApi();}',body)
+     changed=context(source);delta=self.analyze([changed],initial['facts'],cache=True);full=self.analyze([changed],cache=True)
+     self.assertEqual(self.merged(initial['facts'],delta),sorted(full['facts'],key=lambda f:f['id']))
+     self.assertNotIn('Factory#create(java.util.function.Supplier)',self.signatures(full))
+     self.assertNotIn('Api#run()',self.signatures(full))
  def fixture(self,body,extra='',declarations=''):
   source='''class Holder {@lombok.Getter Api api; @lombok.Getter Factory factory;}
     class Api {@lombok.Getter String value; void run(){} }

@@ -1709,7 +1709,9 @@ final class CallRecovery {
                     if (!child(site, "expression").isEmpty()) return Match.NO;
                 return Match.YES;
             }
-            if (!abrupt(body, depth + 1) || returns.isEmpty()) return Match.UNKNOWN;
+            Match completion = abruptCompletion(body, 0);
+            if (completion != Match.YES) return completion;
+            if (returns.isEmpty()) return Match.UNKNOWN;
             for (Map<String, Object> site : returns) {
                 Map<String, Object> returned = child(site, "expression");
                 if (returned.isEmpty()) return Match.NO;
@@ -1833,7 +1835,10 @@ final class CallRecovery {
             }
             List<Map<String, Object>> returns = new ArrayList<>();
             collectReturns(body, returns, depth + 1);
-            if (!voidReturn && !abrupt(body, depth + 1)) return new PolyMatch(Match.UNKNOWN, false);
+            if (!voidReturn) {
+                Match completion = abruptCompletion(body, 0);
+                if (completion != Match.YES) return new PolyMatch(completion, false);
+            }
             Match result = Match.YES;
             for (Map<String, Object> statement : returns) {
                 Map<String, Object> value = child(statement, "expression");
@@ -1876,17 +1881,40 @@ final class CallRecovery {
         }
     }
 
-    private boolean abrupt(Map<String, Object> tree, int depth) {
+    /** Frozen simple completion proof; complex control flow stays UNKNOWN. */
+    private Match abruptCompletion(Map<String, Object> tree, int depth) {
+        if (tree.isEmpty()) return Match.NO;
         step(depth);
         return switch (text(tree.get("kind"))) {
-            case "RETURN", "THROW" -> true;
+            case "RETURN", "THROW" -> Match.YES;
             case "BLOCK" -> {
-                List<Object> statements = list(map(tree.get("roles")).get("statements"));
-                yield !statements.isEmpty() && abrupt(node(id(statements.getLast())), depth + 1);
+                Match completion = Match.NO;
+                for (Object statement : list(map(tree.get("roles")).get("statements"))) {
+                    Match next = abruptCompletion(node(id(statement)), depth + 1);
+                    if (next == Match.YES) { completion = Match.YES; break; }
+                    if (next == Match.UNKNOWN) completion = Match.UNKNOWN;
+                }
+                yield completion;
             }
-            case "IF" -> !child(tree,"else").isEmpty()
-                    && abrupt(child(tree,"then"), depth + 1) && abrupt(child(tree,"else"), depth + 1);
-            default -> false;
+            case "IF" -> {
+                Match thenPart = abruptCompletion(child(tree, "then"), depth + 1);
+                Match elsePart = abruptCompletion(child(tree, "else"), depth + 1);
+                yield thenPart == Match.YES && elsePart == Match.YES ? Match.YES
+                        : thenPart == Match.UNKNOWN || elsePart == Match.UNKNOWN ? Match.UNKNOWN : Match.NO;
+            }
+            case "TRY" -> {
+                Match cleanup = abruptCompletion(child(tree, "finally"), depth + 1);
+                if (cleanup != Match.NO) yield cleanup;
+                Match body = abruptCompletion(child(tree, "body"), depth + 1);
+                for (Object handler : list(map(tree.get("roles")).get("catches"))) {
+                    Match branch = abruptCompletion(child(node(id(handler)), "body"), depth + 1);
+                    if (branch == Match.NO) { body = Match.NO; break; }
+                    if (branch == Match.UNKNOWN && body != Match.NO) body = Match.UNKNOWN;
+                }
+                yield body;
+            }
+            case "VARIABLE", "EXPRESSION_STATEMENT", "EMPTY_STATEMENT", "ASSERT" -> Match.NO;
+            default -> Match.UNKNOWN;
         };
     }
 
