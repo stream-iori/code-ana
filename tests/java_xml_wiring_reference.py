@@ -32,11 +32,7 @@ XML = '''<beans xmlns="http://www.springframework.org/schema/beans">
 </beans>'''
 
 
-def projection(facts, directory, source=SOURCE, xml=XML):
-    directory = pathlib.Path(directory)
-    directory.mkdir()
-    db = index_reference(directory, source, xml)
-    before = reference.digest(db)
+def product_projection(facts, include_file=False):
     by = {f['id']: f for f in facts}
     product = []
     for f in facts:
@@ -53,13 +49,30 @@ def projection(facts, directory, source=SOURCE, xml=XML):
         product.append(dict(source=by[f['parent']]['signature'], target=target['signature'],
                             external=target['kind'] == 'external_symbol',
                             line=f['attributes']['position']['line']))
+        if include_file:
+            product[-1]['file'] = f['source']
+    return product
+
+
+def reference_projection(conn):
+    return [dict(source=e['source_symbol'], target=e['target_symbol'] or e['external_target_fqn'],
+                 external=bool(e['is_external']), line=e['begin_line'], file=e['source_file'])
+            for e in conn.execute("SELECT e.*,s.symbol_id source_symbol,t.symbol_id target_symbol "
+                "FROM edges e JOIN nodes s ON s.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id "
+                "WHERE e.relation='WIRES' AND e.producer_id='spring-xml'")]
+
+
+def projection(facts, directory, source=SOURCE, xml=XML):
+    directory = pathlib.Path(directory)
+    directory.mkdir()
+    db = index_reference(directory, source, xml)
+    before = reference.digest(db)
+    product = product_projection(facts)
+    # This fixture has one XML resource. Full-project audit retains its path.
     with sqlite3.connect(db.resolve().as_uri()+'?mode=ro', uri=True) as conn:
         conn.row_factory = sqlite3.Row
-        nodes = {row['id']: dict(row) for row in conn.execute('SELECT * FROM nodes')}
-        expected = [dict(source=nodes[e['source_id']]['symbol_id'],
-                         target=nodes[e['target_id']]['symbol_id'] if e['target_id'] else e['external_target_fqn'],
-                         external=bool(e['is_external']), line=e['begin_line'])
-                    for e in conn.execute("SELECT * FROM edges WHERE relation='WIRES'")]
+        expected = [{key:value for key,value in row.items() if key!='file'}
+                    for row in reference_projection(conn)]
     order = lambda row: json.dumps(row, sort_keys=True)
     product, expected = sorted(product, key=order), sorted(expected, key=order)
     receipt = dict(reference_sha=reference.REFERENCE_SHA, reference_db_sha256=before,

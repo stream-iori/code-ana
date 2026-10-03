@@ -873,7 +873,8 @@
         "tests/java_e2e.py",
         "tests/java_graph_consumer_alignment.py",
         "tests/java_xml_reference_alignment.py",
-        "tests/java_xml_wiring_reference.py"
+        "tests/java_xml_wiring_reference.py",
+        "tests/java_xml_wiring_inventory_diff.py"
       ],
       "evidence": [
         "docs/implementation/java-validation.md"

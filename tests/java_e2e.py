@@ -17,8 +17,7 @@ class JavaProduct(unittest.TestCase):
         from java_xml_wiring_reference import SOURCE, XML, projection
         config = self.project/'.code-ana/config.toml'
         config.write_text(config.read_text().replace('[languages.java.extensions.spring]\nenabled = false',
-                         '[languages.java.extensions.spring]\nenabled = true\nxml = true')
-                         + '\n[[modules.resource_roots]]\npath="src/main/resources"\nscope="MAIN"\n')
+                         '[languages.java.extensions.spring]\nenabled = true\nxml = true'))
         source = self.project/'src/p/Wiring.java'
         source.parent.mkdir(parents=True, exist_ok=True)
         source.write_text(SOURCE)
