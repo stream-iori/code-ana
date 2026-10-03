@@ -91,7 +91,17 @@ final class ModelGraphs {
         return counts;
     }
     void seal() throws IOException {
-        for(int i=0;i<nodes.size();i++)if(!nodes.get(i).isEmpty())view(Arrays.asList(i,0));
+        for(int i=0;i<nodes.size();i++)if(!nodes.get(i).isEmpty()) {
+            view(Arrays.asList(i,0));
+            final TypeGraph graph=decoded.get(i);
+            // The decoder has validated and frozen these rows. Keeping the packed mutable
+            // maps as well doubles the entire graph dictionary while supplemental javac
+            // reads a second model. Retain a view of the same immutable nodes instead.
+            nodes.set(i,new AbstractList<Map<String,Object>>() {
+                public int size() { return graph.size(); }
+                public Map<String,Object> get(int index) { return graph.node(index); }
+            });
+        }
         identities.clear();
     }
     void close() {identities.clear();nodes.clear();decoded.clear();}

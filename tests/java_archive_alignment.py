@@ -10,6 +10,9 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 JDK = pathlib.Path(os.environ.get('JAVA_HOME', pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'))
 dependencies = (ROOT/'lang-adaptor/target/native-classpath.txt').read_text().strip()
 subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
+                str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
+                'dev.codeana.common.ModelGraphSharingProbe'], check=True, timeout=60)
+subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes'), dependencies]),
                 'dev.codeana.analysis.extension.OverlaySharingProbe'], check=True, timeout=60)
 

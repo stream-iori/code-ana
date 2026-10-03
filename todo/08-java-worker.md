@@ -1034,3 +1034,22 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | 参考缺陷 | xml-reference-20261003-154023-47248：最小构造器lambda复现参考1 CONSTRUCTOR+1 LAMBDA、产品仅正确构造器。raw_fact_equivalence=false，单独缺陷回执不当作图相等。真实25候选的取证证据保持。 |
 | 完整 daemon | rust-cache-order-daemon-all-20261003-133111：46项7462.738秒、5失败，无输入/产物漂移。三项索引TIMEOUT、一项接受发布后未观察warm worker、一项旧scratch等待子进程超时；失败未覆盖掉。新版逐项记录CLI/ack重新验证中。 |
 | 完整 JVM | spring-final-full-jvm-20261003-142329：51条命令通过，bindings第52条被1800秒harness保护终止，4462.705秒，all_ok=false，无漂移；不是非预期安全软件杀进程。旧缓存版完整52条已通过，但不能替代新版完整门禁。 |
+
+## 发布确认期限冲突（2026-10-03）
+
+| 项目 | 证据 / 修复 |
+|---|---|
+| 最新复测 | validation-field-access/daemon-failure-recheck-20261003-154028：4项55.128秒，XML/superbuilder/scratch均通过；模型预算/复用仍失败，输入/产物无漂移。不是把旧完整失败删除或据此算完整通过。 |
+| 根因 | cli.jsonl接受发布明确ack_warning="deadline has elapsed"；worker仅在native ack/finish、Rust缓存commit后回复Acked。daemon原等待2秒，而缓存锁本身可等5秒；超时丢弃已正确发布的warm worker。实际证据支持这一冲突，不把全部超时都归到它。 |
+| 修复 | Java确认等待30秒，保留attempt/revision/消息类型严格检查和故障期限；mock退出2秒不变。缓存仍在发布后同步原子提交，scratch生命周期不变，没有将未完成缓存放到后台或提前确认。产品用例保留并新增ack_warning=None断言；延迟回复、错误身份/类型、挂起反例验证。真实产品修复回执仍需冻结新Rust组合后执行。 |
+
+## 双模型字典内存与新门禁（2026-10-03）
+
+| 项目 | 证据 / 边界 |
+|---|---|
+| 真实失败 | iopengw-full-rust-cache-model7-final-20261003/receipt.json：7395.657秒，在app/core/service@MAIN的第二次compiler_model返回NATIVE_HEAP_EXHAUSTED；未发布，1GiB native/2GiB worker，无输入/产物漂移、无异常signal，配置已恢复。失败没有改成性能通过。 |
+| 字典修复 | ModelGraphs.seal在每个图通过全部验证和冻结后，原字典改为同一不可变节点的视图，去掉packed原Map与decoded副本的同时驻留。所有counts/roots、cycle/forward引用与失效校验保持，模型/协议版本不变，bridge/native SHA自然改变。没有增加资源上限或丢类型事实。 |
+| 独立反例 | ModelGraphSharingProbe在64MiB同时读两份24000节点字典；原855冻结class明确在TypeGraph/ModelGraphs.seal OOM，新class成功且两份循环图严格相等、节点不可改、重复seal不改变counts。model-dictionary-sharing-red.log/green.log均保留。 |
+| JVM | model-dictionary-sharing-archive-final.log全部归档正反例通过（含60k/217MB扩展、反射、共享/释放）；SDK8桥单独构建成功；注解14项44.989秒、补充类型12项62.740秒通过。仍须重建native并验证真实项目。 |
+| native harness | 5033组合177项仅composed-meta缓存失败及缺Rust校验example；前者855已修，新完整注解14项确认。native fixture入口现在显式构建并冻结Rust validator，检验前后SHA，避免干净checkout把缺测试工具当成产品能力失败；新组合门禁待执行。 |
+| Ack产品证明 | validation-java-publication-ack/publication-ack-product-proof-final.log：修复后的真实release/native1项33.139秒通过，明确ack_warning=None、预算失败保持head、复用同worker、增量/全量事实一致。Rust workspace及Clippy通过。新native XML正常三组五类绑定相等、参考lambda缺陷模式复现，无输入/产物漂移。 |

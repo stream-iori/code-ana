@@ -3,6 +3,8 @@
 import hashlib
 import json
 import pathlib
+import shutil
+import subprocess
 import time
 import unittest
 import java_alignment as alignment
@@ -35,6 +37,15 @@ from java_annotation_alignment import Annotations
 def main():
     evidence = alignment.ROOT / 'target/java-alignment/evidence' / ('native-fixtures-' + time.strftime('%Y%m%d-%H%M%S'))
     evidence.mkdir(exist_ok=False)
+    # CastBindings calls the public Rust graph validator without running its script's
+    # main. A clean native checkout must build and freeze that executable as well.
+    with (evidence / 'rust-validator-build.log').open('wb') as stream:
+        subprocess.run(['cargo', 'build', '-p', 'codeana-model', '--example',
+                        'validate_java_graph_facts', '--locked'], cwd=alignment.ROOT,
+                       stdout=stream, stderr=subprocess.STDOUT, check=True, timeout=240)
+    validator = evidence / 'validate_java_graph_facts'
+    shutil.copy2(alignment.ROOT / 'target/debug/examples/validate_java_graph_facts', validator)
+    validator_sha = reference.digest(validator)
     frozen = alignment.input_files()
     artifacts = reference.probe_artifacts(True)
     classes = (Bindings, GraphCalls, ConcreteGraphCalls, TargetReturns, FunctionalOutputs, SourceParameters,
@@ -42,6 +53,7 @@ def main():
     suite = unittest.TestSuite()
     for case in classes:
         case.analyze = reference.native_analyze
+        case.rust_validator = validator
         suite.addTests(unittest.defaultTestLoader.loadTestsFromTestCase(case))
     started = time.monotonic()
     log = evidence / 'regressions.log'
@@ -56,6 +68,9 @@ def main():
                    log=str(log.relative_to(alignment.ROOT)), log_sha256=hashlib.sha256(log.read_bytes()).hexdigest(),
                    inputs=frozen, full_semantic_diff_accepted=False)
     receipt['all_ok'] = result.wasSuccessful() and not drift and not artifact_drift
+    receipt['rust_validator_sha256'] = validator_sha
+    receipt['rust_validator_changed'] = validator_sha != reference.digest(validator)
+    receipt['all_ok'] = receipt['all_ok'] and not receipt['rust_validator_changed']
     (evidence/'receipt.json').write_text(json.dumps(receipt, ensure_ascii=False, indent=2)+'\n')
     print(str(evidence/'receipt.json'), flush=True)
     if not receipt['all_ok']:
