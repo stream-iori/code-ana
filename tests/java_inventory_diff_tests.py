@@ -24,6 +24,19 @@ class IdentityNormalization(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'CAPTURED_JAVA_SOURCE_DRIFT'):
                 verify_source_inputs(db,root)
 
+    def test_constructor_normalization_preserves_methods_named_after_the_class(self):
+        with tempfile.TemporaryDirectory() as temp:
+            product=sqlite3.connect(':memory:');reference=sqlite3.connect(':memory:')
+            self.addCleanup(product.close);self.addCleanup(reference.close)
+            product.row_factory=reference.row_factory=sqlite3.Row
+            product.execute('CREATE TABLE facts(kind,source,body)')
+            reference.execute('CREATE TABLE nodes(kind,symbol_id,source_file,begin_line,begin_column,end_line,end_column)')
+            canonical=Canonical(product,reference,pathlib.Path(temp))
+            self.assertEqual(canonical('p.Example#Example()', 'METHOD'),'p.Example#Example()')
+            self.assertEqual(canonical('p.Example#Example()', 'CONSTRUCTOR'),'p.Example#<init>()')
+            self.assertEqual(canonical('p.Example#<init>()', 'CONSTRUCTOR'),'p.Example#<init>()')
+            self.assertNotEqual(canonical('p.Example#Example()', 'METHOD'),canonical('p.Example#Example()', 'CONSTRUCTOR'))
+
     def test_unicode_span_alias_requires_uniqueness_on_both_sides(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

@@ -704,3 +704,10 @@ WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回�
 | SDK8 | rust-cache-sdk-pin-budget.log：pin预算与共享缓存6项通过，合法/非法范围明确验证；Java默认保持独立fixture的256MiB。 |
 | 实际 daemon | rust-cache-daemon-targeted.log：4项276.940秒通过，复杂模块NoCode/损坏/并行/full-delta、真实调解classpath及provided Lombok前置。对应独立冻结运行时，不含随后项目扩展顺序修复；新版本完整回归待执行。 |
 | 剩余 | 缓存全生命周期与Maven完整扫描的同版本最终验收、全40模块语义、扩展、独占容量和发行门禁仍需完成；不据此关闭S4或52项。 |
+
+
+## 独立比较中的同名方法与构造器（2026-10-03）
+
+冻结真实参考中 IOpengwManagerServiceImplTest#IOpengwManagerServiceImplTest() 是 METHOD（第383行，void），并无该类 CONSTRUCTOR 行。冻结 JavaIdentities 把构造器也编码为类名，不含返回类型，因此与同参数同名普通方法身份碰撞；code-ana 以 <init> 区分，保留两者。比较器此前还把已知 METHOD 的类名同名方法误规范化为 <init>，现改为只规范化明确 CONSTRUCTOR（无kind的外部线索仍兼容旧表示）；三个身份/原字节/唯一匿名跨度反例通过。此为参考身份边界，不删除有效产品构造器来凑计数；完整模型对照仍须逐项披露并验证。
+
+新版 Rust Maven MAIN/TEST 导出已完成：40模块全部 resolved_classpath，单Maven会话，inputs SHA a7e8aeb9ffbf1b45b5ebc55b8e00078b7509d93552267c82409dc7a5059969bd；extension SHA 86f604bf69a43b4a5b331ffbcb31508978ae2fcd174b9657361edaa3e5160238。新默认图/缓存全量真实项目在独立冻结工作树启动；保护 deadline14400秒仅用于故障回收，不是整体任务或性能预算。首次误传共享快照路径被验收脚本立即拒绝，未启动daemon/未改配置；现为该工作树复制的冻结快照，先核对全部已提交文件再索引。

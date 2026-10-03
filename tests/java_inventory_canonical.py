@@ -52,5 +52,5 @@ class Canonical:
   value=value.replace('$','.').replace('...','[]')
   if '#' in value and '(' in value:
    owner,member=value.rsplit('#',1)
-   if kind=='CONSTRUCTOR' or member.split('(',1)[0]==owner.rsplit('.',1)[-1]:value=owner+'#<init>'+member[member.index('('):]
+   if kind=='CONSTRUCTOR' or (not kind and member.split('(',1)[0]==owner.rsplit('.',1)[-1]):value=owner+'#<init>'+member[member.index('('):]
   return value
