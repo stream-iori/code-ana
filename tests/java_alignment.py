@@ -9,6 +9,7 @@ import signal
 import subprocess
 import sys
 import time
+from java_product_runtime import inventory
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
@@ -83,7 +84,7 @@ def main():
         gates += [
             ('rust-build', ['cargo', 'build', '--workspace', '--locked'], 240),
             ('native-build', ['./scripts/build-java-native.sh'], 600),
-            ('native-fixtures', [sys.executable, 'tests/java_native_fixture_alignment.py'], 600),
+            ('native-fixtures', [sys.executable, 'tests/java_native_fixture_alignment.py'], 1800),
             ('type-graph-native', [sys.executable, 'tests/java_graph_fact_alignment.py', '--native'], 600),
             ('type-graph-consumers-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--native'], 900),
             ('type-graph-bindings-native', [sys.executable, 'tests/java_graph_consumer_alignment.py', '--bindings', '--native'], 1800),
@@ -96,6 +97,8 @@ def main():
         ]
     if args.level == 'full':
         gates += [
+            ('java-product-runtime', [sys.executable, 'tests/java_product_runtime.py',
+                                      '--destination', str(evidence / 'product-runtime')], 60),
             ('rust-daemon', [sys.executable, 'tests/rust_e2e.py'], 600),
             ('java-daemon', [sys.executable, 'tests/java_e2e.py'], 2400),
             ('native-daemon-crash', [sys.executable, 'tests/java_native_crash_e2e.py'], 300),
@@ -108,11 +111,15 @@ def main():
                   parity_pending=[c['id'] for c in matrix['capabilities']],
                   alignment_complete=False)
     receipt = evidence / 'receipt.json'
+    product_artifacts = None
     for name, command, timeout in gates:
         started = time.monotonic()
         log = evidence / (name + '.log')
         with log.open('wb') as output:
-            process = subprocess.Popen(command, cwd=ROOT, stdout=output, stderr=subprocess.STDOUT,
+            env = os.environ.copy()
+            if name in ('java-daemon', 'native-daemon-crash'):
+                env['CODEANA_TEST_BIN'] = str(evidence / 'product-runtime/target/debug')
+            process = subprocess.Popen(command, cwd=ROOT, env=env, stdout=output, stderr=subprocess.STDOUT,
                                        start_new_session=True)
             try:
                 code = process.wait(timeout=timeout)
@@ -122,16 +129,27 @@ def main():
                 code = 124
         current = input_files()
         drifted = sorted(p for p in frozen.keys() | current.keys() if frozen.get(p) != current.get(p))
-        status = 'passed' if code == 0 and not drifted else 'failed'
+        runtime = evidence / 'product-runtime'
+        if name == 'java-product-runtime' and code == 0:
+            product_artifacts = inventory(runtime)
+            report['product_runtime'] = json.loads((evidence / 'product-runtime.json').read_text())
+        artifact_drift = []
+        if product_artifacts is not None:
+            actual = inventory(runtime)
+            artifact_drift = sorted(p for p in product_artifacts.keys() | actual.keys()
+                                    if product_artifacts.get(p) != actual.get(p))
+        status = 'passed' if code == 0 and not drifted and not artifact_drift else 'failed'
         report['gates'].append(dict(name=name, command=command, status=status, exit_code=code,
                                    elapsed_seconds=round(time.monotonic() - started, 3),
                                    log=str(log.relative_to(ROOT)),
                                    log_sha256=hashlib.sha256(log.read_bytes()).hexdigest(),
-                                   changed_inputs=drifted))
+                                   changed_inputs=drifted, changed_runtime_artifacts=artifact_drift))
         receipt.write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
         print(f'{name}: {status}', flush=True)
-        if drifted:
+        if drifted or artifact_drift:
             print('Input changed during verification: ' + ', '.join(drifted), flush=True)
+            if artifact_drift:
+                print('Frozen runtime changed during verification: ' + ', '.join(artifact_drift), flush=True)
             break
     report['capability_results'] = capability_results(matrix, report['gates'])
     report['parity_pending'] = [c['id'] for c in report['capability_results'] if c['status'] != 'passed']

@@ -1288,6 +1288,7 @@
     "include_uncommitted": false
   },
   "required_final_gates": [
+    "java-product-runtime",
     "java-capacity",
     "java-real-semantic-diff",
     "java-release"

@@ -3,6 +3,9 @@
 import copy
 import json
 import unittest
+import pathlib
+import tempfile
+from java_product_runtime import prepare, inventory, sha
 from java_alignment import ROOT, capability_results
 
 class AcceptanceAccounting(unittest.TestCase):
@@ -46,6 +49,35 @@ class AcceptanceAccounting(unittest.TestCase):
         matrix['capabilities'] = matrix['capabilities'][:-2]
         with self.assertRaisesRegex(ValueError, 'EXPECTED_52_CAPABILITIES'):
             capability_results(matrix, self.gates)
+
+    def test_product_gate_freezes_new_build_and_detects_runtime_drift(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = pathlib.Path(temp)
+            source = root / 'lang-adaptor/target'
+            (source / 'native').mkdir(parents=True)
+            (root / 'target/debug').mkdir(parents=True)
+            for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
+                (root / 'target/debug' / name).write_bytes(b'fresh binary')
+            import sys
+            library = 'native/libcodeana_java.' + ('dylib' if sys.platform == 'darwin' else 'so')
+            for relative in (library, 'compiler-bridge.jar', 'maven-input-worker.jar'):
+                (source / relative).write_bytes(b'fresh build')
+            (source / 'native/manifest.json').write_text(json.dumps(dict(files={
+                relative: sha(source / relative) for relative in (library, 'compiler-bridge.jar')})))
+            stale = root / 'target/lib/java/native'
+            stale.mkdir(parents=True)
+            (stale / pathlib.Path(library).name).write_bytes(b'stale installed build')
+            destination = root / 'evidence/runtime'
+            result = prepare(root, destination)
+            self.assertEqual(result['files'], inventory(destination))
+            copied = destination / 'target/lib/java' / library
+            self.assertEqual(copied.read_bytes(), b'fresh build')
+            self.assertEqual((stale / copied.name).read_bytes(), b'stale installed build')
+            copied.write_bytes(b'changed during acceptance')
+            self.assertNotEqual(result['files'], inventory(destination))
+            (source / 'compiler-bridge.jar').write_bytes(b'bad build checksum')
+            with self.assertRaisesRegex(ValueError, 'JAVA_RUNTIME_BUILD_CHECKSUM'):
+                prepare(root, root / 'evidence/rejected')
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

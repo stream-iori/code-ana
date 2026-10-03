@@ -837,3 +837,14 @@ MAIN 022345：36 模块由 1723.505 秒降至 1096.603 秒、core/service Java �
 | Rust 正反例 | 4 项派生测试及全部 workspace 通过。hash/world/module/scope/path 各自失配、仅 auxiliary 未发布均不能生成候选；直接/间接实现、歧义、删除、坏证据和旧 head 回归保留。clippy 全 targets -D warnings、fmt/diff check 通过。 |
 | 实际产品对照 | derived-wiring-v2-product-e2e.log：2 项、29.942 秒通过。独立复制新版 Rust release 与 4a native 成套产物，artifact SHA 另存；三 Maven 模块 MAIN/TEST，跨 world 4 个歧义候选与冻结 jar 的实际 WiringResolver 相等。热缓存事实相等；实现移除后 2 个唯一候选、全量/增量完整事实相等，旧 revision 保持。同模块候选修改/删除回归也通过。 |
 | 未关闭 | 4a 全 40 模块正式运行使用旧 Rust，不包含本轮 WIRES；完整扩展差分与最终 52 项仍未通过。Java 上下文重入试验虽通过 40 组冻结 fixture，对 14 个真实残余文件没有改善，未合入。 |
+
+## 统一门禁的运行产物冻结（2026-10-03）
+
+| 修正 | 验证 / 边界 |
+|---|---|
+| 加载路径 | 旧执行器构建新 native 后仍让 daemon 优先使用 target/lib/java 旧安装包。新增 java-product-runtime 门禁，校验本次 build manifest，再复制 3 个 Rust binary、native/bridge/Maven worker/manifest 到验收私有目录；Java daemon/crash 门禁明确使用该目录。旧安装包和活动正式运行不变。 |
+| 防漂移 | 成套 SHA 进入 product-runtime.json，每个后续 gate 检查私有产物；漂移失败并停止。拒绝校验和失配及覆盖已有运行目录。此门禁加入 required_final_gates；不关闭其他缺失最终门禁。 |
+| 验证 | frozen-product-runtime-gate-tests.log：5 项通过，包含旧安装包不影响新运行、SHA 失配拒绝和后续变更发现。frozen-product-runtime-e2e.log：新 Rust debug + 冻结 4a native 经新增复制函数后，实际跨 Maven MAIN/TEST 候选与原版及 full-delta 对照 1 项通过，74.511 秒；并行耗时不作性能证据。 |
+| 超时 | 最新默认 native 全回归已有 753.507 秒终态通过，旧 runner 的 600 秒上限不足。仅将该门禁的防挂保护设为 1800 秒，不设置整体工作时间预算或提高产品超时/资源配额。 |
+
+WIRES v2 的 NoCode 缓存损坏重建与非法 UTF-8/strict 旧 head 产品回归另有 derived-wiring-v2-cache-encoding-e2e.log，两项 19.511 秒通过。完整 40 模块仍运行，全部语义对齐未通过。
