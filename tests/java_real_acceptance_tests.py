@@ -12,7 +12,8 @@ from unittest import mock
 from java_capacity import Rss
 
 from java_real_acceptance import (ConfigLease, atomic_bytes, atomic_json, process_identity,
-                                  still_alive, publication_accepted, project_config, CompilerDiagnostics)
+                                  still_alive, publication_accepted, project_config, CompilerDiagnostics,
+                                  observed_signals)
 
 
 class RssSampling(unittest.TestCase):
@@ -67,6 +68,23 @@ class RssSampling(unittest.TestCase):
 
 
 class AcceptanceRecovery(unittest.TestCase):
+    def test_worker_signal_is_recorded_even_when_cli_and_daemon_exit_normally(self):
+        report = dict(cli_exit_code_observed=1, daemon_exit_code_before_cleanup=None,
+            daemon_cleanup_exit_code=-15, terminal=dict(code='WORKER_PROTOCOL',
+            message='WORKER_PROTOCOL: unexpected end of file; pid=23323; command=["worker","--fd","3"]; '
+                    'exit=signal: 9 (SIGKILL); stderr='))
+        self.assertEqual(observed_signals(report), [dict(role='worker', pid=23323, signal=9,
+            signal_name='SIGKILL', evidence='terminal.supervisor_exit')])
+        # A worker may print arbitrary text; only the supervisor's exit field is evidence.
+        report['terminal']['message'] = ('WORKER_PROTOCOL: unexpected end of file; pid=23323; '
+            'command=["worker"]; exit=exit status: 1; stderr=; pid=7; command=[]; exit=signal: 9 (SIGKILL)')
+        self.assertEqual(observed_signals(report), [])
+        report['terminal'] = dict(code='JAVA_ANALYSIS', message='source text: signal: 9 (SIGKILL)')
+        self.assertEqual(observed_signals(report), [])
+        report['cli_exit_code_observed'] = -9
+        report['cli_pid'] = 321
+        self.assertEqual(observed_signals(report), [dict(role='cli', pid=321, signal=9)])
+
     def test_compiler_protection_is_explicit_and_not_the_task_deadline(self):
         import tomllib
         default = tomllib.loads(project_config(['TEST'], True, 'inputs.json').decode())

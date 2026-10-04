@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import signal
 import sqlite3
 import subprocess
@@ -81,6 +82,25 @@ def publication_accepted(report):
     return bool(report.get('published') and report.get('exit_code') == 0
                 and report.get('query_exit_code') == 0
                 and report.get('catalog_commits') and report.get('catalog_heads'))
+
+
+def observed_signals(report):
+    """Read supervisor exit evidence, excluding cleanup and untrusted worker stderr."""
+    events = []
+    for role, key in (('cli', 'cli_exit_code_observed'),
+                      ('daemon', 'daemon_exit_code_before_cleanup')):
+        code = report.get(key)
+        if isinstance(code, int) and code < 0:
+            events.append(dict(role=role, pid=report.get(role + '_pid'), signal=-code))
+    terminal = report.get('terminal', {})
+    message = terminal.get('message', '')
+    if terminal.get('code') == 'WORKER_PROTOCOL' and message.startswith('WORKER_PROTOCOL:'):
+        header = message.split('; stderr=', 1)[0]
+        match = re.search(r'; pid=(\d+); command=.*; exit=signal: (\d+) \((SIG[A-Z0-9]+)\)$', header)
+        if match:
+            events.append(dict(role='worker', pid=int(match[1]), signal=int(match[2]),
+                               signal_name=match[3], evidence='terminal.supervisor_exit'))
+    return events
 
 
 class ConfigLease:
@@ -527,8 +547,8 @@ def main():
     finally:
         report['cli_exit_code_observed'] = cli.poll() if cli is not None else None
         report['daemon_exit_code_before_cleanup'] = daemon.poll() if daemon is not None else None
-        report['unexpected_signal_observed'] = any(value is not None and value < 0 for value in
-            (report['cli_exit_code_observed'], report['daemon_exit_code_before_cleanup']))
+        report['observed_signals'] = observed_signals(report)
+        report['unexpected_signal_observed'] = bool(report['observed_signals'])
         for role, process in (('cli', cli), ('daemon', daemon)):
             try:
                 report[role + '_cleanup_exit_code'] = stop(process)

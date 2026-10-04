@@ -1028,3 +1028,9 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 | 继续运行 | validation-java-lease-gates-091d736完整JVM/native/daemon门禁；validation-java-lease-091d736完整80上下文模型目录。独立验证继续，完整发布、14域、容量和发行包尚未通过。 |
 
 最新运行定位保存在 target/java-alignment/evidence/latest-java-correctness-run.json。前版091d736之前的失败/主动SIGTERM/superseded记录保留；不把旧目录的running字样当作当前任务仍活跃。
+
+### Worker 信号验收记账补齐
+
+真实项目回执原来只观察 CLI/daemon 的退出信号，worker 被杀且 CLI 正常返回错误码时会漏报。验收工具现从结构化 WORKER_PROTOCOL terminal 的 supervisor exit 字段记录 worker PID/信号；不从业务源码、worker stderr 或清理退出码推测。23 项恢复/采样保护检查通过。实际重放上述预检日志，三个 SIGKILL 均被记录，原日志 SHA 和补充观察保存在 `target/java-alignment/evidence/worker-signal-accounting-20261005.json`；没有改写旧回执，也不据此判断杀进程来源。
+
+完整 JVM 门禁和 80 上下文仍继续运行；daemon 重试等待用户处理本机进程拦截。正确性、完整语义尚未通过，容量执行与最终发行暂未开始，不能据当前专项关闭剩余能力。
