@@ -27,7 +27,7 @@ class NativeHeap(unittest.TestCase):
         self.assertEqual(receipt['error'],'NATIVE_HEAP_EXHAUSTED')
         if 'context' in receipt:
             self.assertEqual(receipt['context'],'heap@MAIN')
-            self.assertIn(receipt['phase'],('compiler_model','module_prepare','binary_enrich','model_extensions','call_recovery','reflection','fact_extract','java_extensions','file_cache','module_cache','task_accumulate','project_stage_prepare','project_extensions','result_finalize'))
+            self.assertIn(receipt['phase'],('compiler_model','compiler_model_decode','module_prepare','binary_enrich','model_extensions','call_recovery','reflection','fact_extract','java_extensions','file_cache','module_cache','task_accumulate','project_stage_prepare','project_extensions','result_finalize'))
         self.assertFalse(list(self.root.glob('compiler-*')))
         self.assertFalse(list(self.root.rglob('*.class')))
 

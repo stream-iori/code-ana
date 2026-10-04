@@ -997,3 +997,10 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 | 实项目模型 | bounded-read-iopengw-test-api-20261005：app/test@TEST、526510405 字节归档、1GiB JVM堆，四份完整清单与既有冻结参考相等；输入/输出 SHA 保留。是实际归档读取证明，不代表新 native 发布、重新编译或全项目语义通过。 |
 | 回归 | 完整 archive gate、11 项 signature、17 组独立 model API reference 通过；默认64MiB超限拒绝、循环/前向引用、未读坏图、缓存驱逐、关闭及完整物化读取均保留。日志 bounded-read-archive-regression-final-20261005.log、bounded-read-signature-20261005.log，参考回执 model-api-reference-20261005-000558-27535。 |
 | 仍待 | 同版本完整 JVM/native/daemon、40 模块 MAIN/TEST/XML 发布、80 上下文、14 域、独占容量、最终发行包；52 项不因该专项自动关闭。 |
+
+
+## 2026-10-05：新 native 预检与堆故障断言
+
+78a033f 私有成套共享库构建通过；17 组 native model API 全部通过（model-api-reference-20261005-001535-69731），实际 daemon core 与 Maven XML-only MAIN/TEST/full/delta 两项 56.456 秒通过。新全项目发布和80上下文清单已启动，尚未关闭。
+
+同版本完整回归的 java-fixtures 在6MiB故障测试失败：已正确返回 NATIVE_HEAP_EXHAUSTED、context 和 compiler_model_decode，但该测试仍只允许旧阶段列表。补入实际解码阶段，错误类型、终态、子进程/字节码清理断言不放宽；独立重验8.177秒通过（bounded-read-heap-phase-regression-20261005.log）。原完整门禁失败保留，需要新冻结测试版本完整重验，不能由单项成功覆盖。
