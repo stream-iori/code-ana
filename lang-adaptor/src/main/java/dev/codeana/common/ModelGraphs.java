@@ -54,22 +54,24 @@ final class ModelGraphs {
         }
         public int size() { return count; }
         public Map<String,Object> get(int index) {
-            if(archive.isClosed())throw new IllegalStateException("RECORD_ARCHIVE_CLOSED");
-            if(index<0 || index>=count)throw new IndexOutOfBoundsException();
-            int position=positions[index];
-            CachedNode cached=nodeCache.get(position);
-            if(cached!=null)return cached.value;
-            Map<String,Object> raw=Json.map(Json.map(archive.get(position)).get("value"));
-            Map<String,Object> value=TypeGraph.archivedNode(raw,count);
-            long weight=256L+4L*Json.write(value).length();
-            if(weight<=NODE_CACHE_BYTES) {
-                while(cachedBytes+weight>NODE_CACHE_BYTES) {
-                    Iterator<CachedNode> oldest=nodeCache.values().iterator();
-                    cachedBytes-=oldest.next().bytes;oldest.remove();
+            synchronized(ModelGraphs.this) {
+                if(archive.isClosed())throw new IllegalStateException("RECORD_ARCHIVE_CLOSED");
+                if(index<0 || index>=count)throw new IndexOutOfBoundsException();
+                int position=positions[index];
+                CachedNode cached=nodeCache.get(position);
+                if(cached!=null)return cached.value;
+                Map<String,Object> raw=Json.map(Json.map(archive.get(position)).get("value"));
+                Map<String,Object> value=TypeGraph.archivedNode(raw,count);
+                long weight=256L+4L*Json.write(value).length();
+                if(weight<=NODE_CACHE_BYTES) {
+                    while(cachedBytes+weight>NODE_CACHE_BYTES) {
+                        Iterator<CachedNode> oldest=nodeCache.values().iterator();
+                        cachedBytes-=oldest.next().bytes;oldest.remove();
+                    }
+                    nodeCache.put(position,new CachedNode(value,weight));cachedBytes+=weight;
                 }
-                nodeCache.put(position,new CachedNode(value,weight));cachedBytes+=weight;
+                return value;
             }
-            return value;
         }
     }
 
@@ -141,7 +143,7 @@ final class ModelGraphs {
     }
 
     void validate(Object raw) throws IOException { reference(raw); }
-    Map<String,Object> view(Object raw) throws IOException {
+    synchronized Map<String,Object> view(Object raw) throws IOException {
         int[] pair=reference(raw);
         TypeGraph graph=decoded.get(pair[0]);
         if(archive!=null) {
@@ -178,5 +180,6 @@ final class ModelGraphs {
         }
         identities.clear();
     }
-    void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();nodeCache.clear();cachedBytes=0;}
+    synchronized void releaseNodeCache() {nodeCache.clear();cachedBytes=0;}
+    synchronized void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();releaseNodeCache();}
 }

@@ -1004,3 +1004,14 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 78a033f 私有成套共享库构建通过；17 组 native model API 全部通过（model-api-reference-20261005-001535-69731），实际 daemon core 与 Maven XML-only MAIN/TEST/full/delta 两项 56.456 秒通过。新全项目发布和80上下文清单已启动，尚未关闭。
 
 同版本完整回归的 java-fixtures 在6MiB故障测试失败：已正确返回 NATIVE_HEAP_EXHAUSTED、context 和 compiler_model_decode，但该测试仍只允许旧阶段列表。补入实际解码阶段，错误类型、终态、子进程/字节码清理断言不放宽；独立重验8.177秒通过（bounded-read-heap-phase-regression-20261005.log）。原完整门禁失败保留，需要新冻结测试版本完整重验，不能由单项成功覆盖。
+
+
+## 2026-10-05：输入模型租期修正
+
+| 项目 | 结果 |
+|---|---|
+| 正式失败 | 78a033f 全项目 542.2 秒在 app/common/service/integration@MAIN 失败，JAVA_ANALYSIS / RECORD_ARCHIVE_CLOSED；没有异常信号、RSS采样错误及源码/工件漂移。938f5bd 完整 JVM 回归也在 supplemental/signature/module-ABI 的实际调用恢复复现同错。 |
+| 原因与修复 | 辅助编译产生的类型根被调用恢复保留，而 releaseModel 在消费前已关闭归档。改为任务级归档租期，context完成清4MiB节点缓存；session结束统一关闭/删除。事实 spool 仍及时释放。缓存及弱视图入口同步，保留并发读稳定身份。 |
+| 正反例 | 新 CompilerModelLeaseProbe 实际 SDK8 连续编译两次，类型根跨context release仍相等；task关闭明确失效且scratch清理。model-lease-old-new-20261005 同请求/64MiB旧78a033f抛closed，新版通过；不是容量证明。 |
+| 已验 | session完整10项20.611秒、supplemental完整12项57.397秒、module-ABI独立参考两组4/4及1/1严格一致、archive完整回归通过。 |
+| 执行状态 | 旧80上下文及938f5bd门禁由已核验身份的任务进程主动SIGTERM终止，superseded回执保留；无外部安全杀进程结论。需要租期修复的新冻结native/daemon及全范围重验，全部语义/容量仍未关闭。 |

@@ -309,17 +309,11 @@ public final class CompilerSession implements AutoCloseable {
     }
 
     /**
-     * Release the input syntax archive after extraction/staging, including reduced-plan fallback.
+     * Rows may be dropped by callers, but type roots can escape into later context recovery.
+     * Keep the bounded archive lease until this task closes, including reduced-plan fallback.
      */
     public void releaseModel(Map<String, Object> model) throws Exception {
-        if (model.get("syntax") instanceof ModelArchive.SyntaxRows rows) {
-            AutoCloseable lifetime = rows.lifetime();
-            lifetime.close();
-            synchronized (this) {
-                models.removeIf(value -> value == lifetime);
-            }
-            Files.deleteIfExists(rows.path());
-        }
+        if(model.get("syntax") instanceof ModelArchive.SyntaxRows rows) rows.releaseNodeCache();
     }
 
     public record StagedModel(Path path, String checksum, String context, long maxBytes) {

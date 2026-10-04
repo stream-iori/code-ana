@@ -13,6 +13,18 @@ class Sessions(unittest.TestCase):
     context = model_tests.Models.context
     analyze = model_tests.Models.analyze
 
+    def test_type_graph_roots_survive_context_release_until_task_close(self):
+        context=self.context('lease',{'A.java':'class A<T extends Comparable<T>> { T read(T value){return value;} A<T> next; }'})
+        (self.root/'compiler-task').mkdir()
+        request=dict(java_home=str(model_tests.JDK8),bridge=str(model_tests.ROOT/'lang-adaptor/target/compiler-bridge.jar'),
+                     scratch=str(self.root/'compiler-task'),compiler_heap_bytes=128*1024**2,contexts=[context])
+        path=self.root/'request.json';path.write_text(json.dumps(request))
+        dependencies=(model_tests.ROOT/'lang-adaptor/target/native-classpath.txt').read_text().strip()
+        cp=os.pathsep.join([str(model_tests.ROOT/'lang-adaptor/target'/p) for p in ('classes','test-classes')]+[dependencies])
+        subprocess.run([str(model_tests.JDK25/'bin/java'),'-Xmx64m','-cp',cp,
+                        'dev.codeana.analysis.CompilerModelLeaseProbe',str(path)],check=True,timeout=60)
+        self.assertFalse(list((self.root/'compiler-task').iterdir()))
+
     def contexts(self, count=8):
         # Same binary name with incompatible members detects javac context leakage.
         return [self.context('module' + str(i), {'Same.java':

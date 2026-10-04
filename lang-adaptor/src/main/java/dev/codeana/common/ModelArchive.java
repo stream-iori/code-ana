@@ -265,6 +265,7 @@ public final class ModelArchive {
         public int size() { return positions.length; }
         public AutoCloseable lifetime() { return records; }
         public Path path() { return records.path(); }
+        public void releaseNodeCache() { ((ModelGraphs.Types)types).graphs().releaseNodeCache(); }
         public Object get(int index) {
             if (index<0 || index>=positions.length) throw new IndexOutOfBoundsException();
             try { return immutable(unpack(Json.map(records.get(positions[index])).get("value"),types,0),0); }
