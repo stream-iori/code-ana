@@ -976,3 +976,13 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 2026-10-03 后续：新增完整词法控制独立清单（全部owner/call/reads/writes/type/reflection，含空上下文与重复次数），真实汇总执行域从12扩至13。SDK8/JVM三组独立冻结参考严格相等，控制字符串单独篡改会失败；历史4a owner2431、call151342、writes3341相等，reads缺9/额外1402、type缺10、reflection缺20/额外20，仍保留失败。新增实际编译请求/NoCode pin捕获及SDK8单上下文诊断；2852份源码、228份TEST发布源、778个classpath，84.252秒编译完成，源/依赖/桥/manifest无漂移。这不证明产品TEST已修复，需要取得产品实际请求。新共享库组合daemon四项103.444秒通过，DI/跨模块/XML/仅资源MAIN-TEST完整delta验证无漂移；正式新版完整回归仍在运行，最终真实全40模块/完整语义/容量未关闭。
 
 2026-10-03 完整XML图专项：新增8类关系审计（CONFIGURES/XML_CONTAINS/XML_REFERS_TO/DEFINED_BY/PARENT_BEAN/FACTORY_BEAN/BINDS_TO/WIRES），实际emit的config候选是引用来源，不按同名模型猜候选；未知关系/缺模型/计数不一致明确失败。普通配置、CRLF与行数增长、缺失ref三组新native/daemon严格相等，49.273秒，无源/产物漂移，保留factory→METHOD定义与产物CLASS的区别。原八域第一次factory差异和一次脚本变量遮蔽失败保留。真实汇总扩至14域，仍不能以fixture关闭真实全图。旧4a实际执行8类全部记录（有模型缺口260）；参考494个原始BINDS_TO边及按请求463份投影分别保留。控制native三组15.964秒通过。旧正式门禁native-probe因为按旧树格式取explicit_type_argument_models.element失败；改用现有只读类型图视图后，新组合完整probe303.678秒通过，保留全部原始full/delta事实，不改产品类型编码。旧门禁仍保留失败，不导入新成功回执。
+
+
+## 2026-10-05：采样结果与语义结果分离
+
+| 项目 | 结果 |
+|---|---|
+| 原失败 | 391f0cf 全上下文 8 项因 ps/RSS 采样超时失败；其中实际 compiler_successful=true。daemon 回归另有实际 SIGKILL；全项目发布是 NATIVE_HEAP_EXHAUSTED，三类失败分别保留。 |
+| 修复 | RSS 查询超时最多连续重试 3 次，记录缺口和失败；权限失败不重试。编译诊断保留功能成功，另报采样不完整。容量仍拒绝缺测、无样本、超预算，不将恢复采样冒充容量通过。 |
+| 验证 | java_real_acceptance_tests 22 项、compiler diagnostic inputs 1 项、project model inventory guards 2 项通过。391f0cf 成套私有 runtime 的 JavaProduct.test_core 实际 daemon/native 索引、查询和增量 11.888 秒通过。 |
+| 边界 | 本次不关闭任何新增能力，不代表 80 上下文、完整发布、14 域差分或容量通过；大模型解码修复继续实施。 |

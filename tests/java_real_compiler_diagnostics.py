@@ -105,11 +105,11 @@ def main():
                     atomic_json(output,report);time.sleep(1)
             report['compiler_receipt']=json.loads(result.read_text())
             report['compiler_successful']='error' not in report['compiler_receipt']
-            if usage.failure or usage.thread.is_alive():raise ValueError('COMPILER_RSS_SAMPLER_FAILED')
             # The measured parent is a compiler JVM, not a daemon. Do not apply
             # the daemon's 512 MiB capacity assertion to this diagnostic run.
-            report['rss']=dict(compiler_peak_bytes=usage.daemon_peak,process_tree_peak_bytes=usage.peak,
-                samples=usage.samples,largest_sample_gap_ms=round(usage.gap*1000,3))
+            report['rss']=dict(usage.summary(),compiler_peak_bytes=usage.daemon_peak)
+            if not report['rss']['sampling_complete']:
+                report['rss_failure']='COMPILER_RSS_SAMPLER_INCOMPLETE'
             if report['compiler_successful']:
                 if report['compiler_receipt']['sha256']!=digest(model):raise ValueError('COMPILER_MODEL_DRIFT')
                 report['model_sha256']=digest(model)

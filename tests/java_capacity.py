@@ -48,18 +48,34 @@ class Rss:
         self.peak = self.daemon_peak = self.samples = self.max_workers = self.max_javac = 0
         self.gap = 0
         self.failure = None
+        self.sampling_errors = []
+        self.sampling_error_count = 0
         self.thread = threading.Thread(target=self.sample, daemon=True)
 
     def sample(self):
         previous = None
         tick = time.monotonic()
+        consecutive_failures = 0
         try:
             while not self.done.is_set():
                 now = time.monotonic()
                 if previous is not None:
                     self.gap = max(self.gap, now - previous)
                 previous = now
-                table = processes()
+                try:
+                    table = processes()
+                except subprocess.TimeoutExpired as error:
+                    consecutive_failures += 1
+                    self.sampling_error_count += 1
+                    if len(self.sampling_errors) < 16:
+                        self.sampling_errors.append(str(error))
+                    if consecutive_failures >= 3:
+                        raise RuntimeError('RSS_QUERY_TIMEOUT_AFTER_3_ATTEMPTS') from error
+                    # Avoid catching up every missed tick after a slow query.
+                    tick = time.monotonic()
+                    self.done.wait(.1)
+                    continue
+                consecutive_failures = 0
                 owned = {self.daemon}
                 while True:
                     old = len(owned)
@@ -72,7 +88,7 @@ class Rss:
                 self.max_workers = max(self.max_workers, sum('codeana-java-worker' in row[3] for row in tree))
                 self.max_javac = max(self.max_javac, sum(row[3].endswith('/java') for row in tree))
                 self.samples += 1
-                tick += .1
+                tick = max(tick + .1, time.monotonic())
                 self.done.wait(max(0, tick - time.monotonic()))
         except Exception as error:
             self.failure = str(error)
@@ -88,11 +104,21 @@ class Rss:
     def receipt(self):
         if self.failure or self.thread.is_alive():
             raise AssertionError('RSS sampler failed: ' + str(self.failure))
+        if not self.samples or self.sampling_error_count:
+            raise AssertionError('RSS sampling incomplete: ' + str(self.summary()))
         if self.peak > 2 * GIB or self.daemon_peak > 512 * MIB or self.max_workers > 1 or self.max_javac > 1:
             raise AssertionError('Capacity RSS/parallelism profile exceeded: ' + str(vars(self)))
+        return self.summary()
+
+    def summary(self):
+        """Observation only; never certifies capacity or rejects semantic results."""
         return dict(process_tree_peak_bytes=self.peak, daemon_peak_bytes=self.daemon_peak,
                     max_workers=self.max_workers, max_javac=self.max_javac,
-                    samples=self.samples, scheduled_interval_ms=100, largest_sample_gap_ms=round(self.gap * 1000, 3))
+                    samples=self.samples, scheduled_interval_ms=100, largest_sample_gap_ms=round(self.gap * 1000, 3),
+                    sampling_complete=bool(self.samples and not self.failure and not self.sampling_error_count
+                                           and not self.thread.is_alive()),
+                    sampling_failure=self.failure, sampling_error_count=self.sampling_error_count,
+                    sampling_errors=list(self.sampling_errors))
 
 
 def graph(case, revision):

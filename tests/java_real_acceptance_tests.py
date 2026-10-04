@@ -9,9 +9,61 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+from java_capacity import Rss
 
 from java_real_acceptance import (ConfigLease, atomic_bytes, atomic_json, process_identity,
                                   still_alive, publication_accepted, project_config, CompilerDiagnostics)
+
+
+class RssSampling(unittest.TestCase):
+    def run_sampler(self, replies):
+        usage = Rss(123)
+        def read():
+            item = next(replies)
+            if isinstance(item, Exception):
+                raise item
+            usage.done.set()
+            return item
+        with mock.patch('java_capacity.processes', side_effect=read):
+            usage.sample()
+        return usage
+
+    def test_timeout_recovers_measurements_but_cannot_certify_capacity(self):
+        timeout = subprocess.TimeoutExpired(['ps'], 2)
+        usage = self.run_sampler(iter([timeout, [(123, 1, 1024, 'daemon'),
+                                                (124, 123, 2048, 'codeana-java-worker')]]))
+        self.assertEqual(usage.peak, 3072)
+        self.assertEqual(usage.samples, 1)
+        self.assertIsNone(usage.failure)
+        self.assertFalse(usage.summary()['sampling_complete'])
+        with self.assertRaisesRegex(AssertionError, 'sampling incomplete'):
+            usage.receipt()
+
+    def test_repeated_timeout_stops_after_three_attempts(self):
+        usage = self.run_sampler(iter([subprocess.TimeoutExpired(['ps'], 2)] * 3))
+        self.assertEqual(usage.sampling_error_count, 3)
+        self.assertIn('AFTER_3_ATTEMPTS', usage.failure)
+
+    def test_permission_denied_is_not_retried_or_hidden(self):
+        usage = self.run_sampler(iter([PermissionError('Operation not permitted')]))
+        self.assertIn('Operation not permitted', usage.failure)
+        self.assertFalse(usage.summary()['sampling_complete'])
+
+    def test_empty_sampler_cannot_certify_capacity(self):
+        with self.assertRaisesRegex(AssertionError, 'sampling incomplete'):
+            Rss(123).receipt()
+
+    def test_healthy_tree_measures_only_descendants_and_checks_limits(self):
+        usage = self.run_sampler(iter([[(123, 1, 1024, 'daemon'),
+                                       (124, 123, 2048, 'codeana-java-worker'),
+                                       (125, 124, 4096, '/sdk/bin/java'),
+                                       (999, 1, 10**12, 'unrelated')]]))
+        self.assertTrue(usage.receipt()['sampling_complete'])
+        self.assertEqual(usage.peak, 7168)
+        self.assertEqual(usage.max_javac, 1)
+        usage.peak = 3 * 1024**3
+        with self.assertRaisesRegex(AssertionError, 'profile exceeded'):
+            usage.receipt()
 
 
 class AcceptanceRecovery(unittest.TestCase):

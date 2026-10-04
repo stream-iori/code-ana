@@ -489,6 +489,7 @@ def main():
             try:
                 report['rss'] = usage.receipt()
             except Exception as error:
+                report['rss'] = usage.summary()
                 report['rss_failure'] = str(error)
             for line in (evidence / 'index.stdout').read_text().splitlines():
                 if line.startswith('terminal '):
@@ -543,6 +544,7 @@ def main():
             try:
                 report['rss'] = usage.receipt()
             except Exception as error:
+                report['rss'] = usage.summary()
                 report['rss_failure'] = str(error)
         if 'artifacts' in report:
             try:
