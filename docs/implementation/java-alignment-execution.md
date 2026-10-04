@@ -1015,3 +1015,16 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 | 正反例 | 新 CompilerModelLeaseProbe 实际 SDK8 连续编译两次，类型根跨context release仍相等；task关闭明确失效且scratch清理。model-lease-old-new-20261005 同请求/64MiB旧78a033f抛closed，新版通过；不是容量证明。 |
 | 已验 | session完整10项20.611秒、supplemental完整12项57.397秒、module-ABI独立参考两组4/4及1/1严格一致、archive完整回归通过。 |
 | 执行状态 | 旧80上下文及938f5bd门禁由已核验身份的任务进程主动SIGTERM终止，superseded回执保留；无外部安全杀进程结论。需要租期修复的新冻结native/daemon及全范围重验，全部语义/容量仍未关闭。 |
+
+
+## 2026-10-05：091d736 成套产物与进程阻断
+
+| 项目 | 最新结果 |
+|---|---|
+| Native构建 | validation-java-lease-091d736 成套 SDKMAN Graal25共享库构建41.1秒通过；SDK8桥及worker manifest校验通过。Rust复用release前核验46份Rust/Cargo/protobuf输入一致，复制证明存于独立工作树。 |
+| 独立native | model-api-reference-20261005-005341-23640：17组全部通过；supplemental-reference-20261005-005338-23416：4组完整目标/来源/位置/status严格对照通过。 |
+| daemon预检 | core、辅助primitive证明、模块NoCode三项均因worker SIGKILL失败；PID23323/23467/23558、stderr为空、WORKER_PROTOCOL EOF。new-native-daemon-preflight.log保存现场，已通知用户处理本机拦截；新版本全项目发布尚未启动。 |
+| 签名取证 | Unified log出现对应路径AMFI/CoreTrust检查消息；root及私有worker的 codesign --verify --strict均通过。仅凭这些消息不能断定具体杀进程来源，不改签名、不绕过本机策略。 |
+| 继续运行 | validation-java-lease-gates-091d736完整JVM/native/daemon门禁；validation-java-lease-091d736完整80上下文模型目录。独立验证继续，完整发布、14域、容量和发行包尚未通过。 |
+
+最新运行定位保存在 target/java-alignment/evidence/latest-java-correctness-run.json。前版091d736之前的失败/主动SIGTERM/superseded记录保留；不把旧目录的running字样当作当前任务仍活跃。
