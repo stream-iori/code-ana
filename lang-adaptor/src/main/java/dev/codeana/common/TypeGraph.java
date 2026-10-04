@@ -61,6 +61,42 @@ public final class TypeGraph {
         nodes = Collections.unmodifiableList(frozen);
     }
 
+    /** Rows belong to a validated, immutable archive; retain its bounded view, not a graph copy. */
+    static TypeGraph archived(List<Map<String,Object>> input, Object storageIdentity) {
+        if(input.size()>MAX_NODES)throw new IllegalArgumentException("TYPE_GRAPH_NODE_BUDGET");
+        boolean[] complete=new boolean[input.size()];
+        for(int i=0;i<input.size();i++)complete[i]=Boolean.TRUE.equals(input.get(i).get("complete"));
+        for(int i=0;i<input.size();i++)if(complete[i]) {
+            Map<String,Object> row=input.get(i);
+            for(String key:SINGLE)if(row.containsKey(key)) {
+                int child=((Number)row.get(key)).intValue();
+                if(child>=0 && !complete[child])throw new IllegalArgumentException("TYPE_GRAPH_COMPLETENESS_MISMATCH");
+            }
+            for(String key:MANY)if(row.containsKey(key))for(Object value:Json.list(row.get(key)))
+                if(!complete[((Number)value).intValue()])throw new IllegalArgumentException("TYPE_GRAPH_COMPLETENESS_MISMATCH");
+        }
+        return new TypeGraph(input,storageIdentity,true);
+    }
+
+    private TypeGraph(List<Map<String,Object>> input,Object storageIdentity,boolean archived) {
+        this.nodes=Collections.unmodifiableList(input);this.storageIdentity=storageIdentity;
+    }
+
+    /** Freeze a single archive row after validating all numeric edges and metadata. */
+    static Map<String,Object> archivedNode(Map<String,Object> raw,int size) {
+        if(!(raw.get("kind") instanceof String) || !(raw.get("complete") instanceof Boolean))
+            throw new IllegalArgumentException("TYPE_GRAPH_NODE_SHAPE");
+        Map<String,Object> row=new LinkedHashMap<String,Object>(raw);row.put("version",VERSION);
+        for(String key:SINGLE)if(row.containsKey(key))check(row.get(key),size,true);
+        for(String key:MANY)if(row.containsKey(key)) {
+            Object value=row.get(key);
+            if(!(value instanceof List))throw new IllegalArgumentException("TYPE_GRAPH_REFERENCE_LIST");
+            for(Object reference:(List<?>)value)check(reference,size,false);
+        }
+        validateShape(row);
+        return Json.map(freeze(row,0));
+    }
+
     private TypeGraph(List<Map<String,Object>> input, boolean live) {
         nodes=Collections.unmodifiableList(input);storageIdentity=null;sealed=false;
     }

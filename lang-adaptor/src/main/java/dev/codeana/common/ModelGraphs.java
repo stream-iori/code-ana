@@ -16,6 +16,7 @@ final class ModelGraphs {
     }
     ModelGraphs(RecordArchive archive) {
         this.encodingOnly=false;this.archive=archive;this.maxBytes=Math.min(archive.byteLimit(),ModelArchive.MAX_BYTES);
+        archive.own(()->close());
     }
     void retireEncoderIdentities() {identities.clear();}
     private final List<List<Map<String,Object>>> nodes = new ArrayList<List<Map<String,Object>>>();
@@ -24,11 +25,22 @@ final class ModelGraphs {
     private final IdentityHashMap<Object,Integer> identities = new IdentityHashMap<Object,Integer>();
     private final List<Object> storageIdentities = new ArrayList<Object>();
     private long bytes;
+    // One cache for the whole model, rather than one retained graph per dictionary entry.
+    private static final long NODE_CACHE_BYTES=4L<<20;
+    private long cachedBytes;
+    private static final class CachedNode {
+        final Map<String,Object> value;final long bytes;
+        CachedNode(Map<String,Object> value,long bytes){this.value=value;this.bytes=bytes;}
+    }
+    private final LinkedHashMap<Integer,CachedNode> nodeCache=new LinkedHashMap<Integer,CachedNode>(64,.75f,true);
 
     interface Types { ModelGraphs graphs(); }
     static final class Table extends ArrayList<Object> implements Types {
         private final ModelGraphs graphs;
         Table(RecordArchive archive) {graphs=new ModelGraphs(archive);}
+        Table(RecordArchive archive,boolean paged) {
+            graphs=paged ? new ModelGraphs(archive) : new ModelGraphs(false,archive.byteLimit());
+        }
         public ModelGraphs graphs() { return graphs; }
     }
 
@@ -42,8 +54,22 @@ final class ModelGraphs {
         }
         public int size() { return count; }
         public Map<String,Object> get(int index) {
+            if(archive.isClosed())throw new IllegalStateException("RECORD_ARCHIVE_CLOSED");
             if(index<0 || index>=count)throw new IndexOutOfBoundsException();
-            return Json.map(Json.map(archive.get(positions[index])).get("value"));
+            int position=positions[index];
+            CachedNode cached=nodeCache.get(position);
+            if(cached!=null)return cached.value;
+            Map<String,Object> raw=Json.map(Json.map(archive.get(position)).get("value"));
+            Map<String,Object> value=TypeGraph.archivedNode(raw,count);
+            long weight=256L+4L*Json.write(value).length();
+            if(weight<=NODE_CACHE_BYTES) {
+                while(cachedBytes+weight>NODE_CACHE_BYTES) {
+                    Iterator<CachedNode> oldest=nodeCache.values().iterator();
+                    cachedBytes-=oldest.next().bytes;oldest.remove();
+                }
+                nodeCache.put(position,new CachedNode(value,weight));cachedBytes+=weight;
+            }
+            return value;
         }
     }
 
@@ -123,7 +149,8 @@ final class ModelGraphs {
             graph=reference==null ? null : reference.get();
         }
         if(graph==null) {
-            try {graph=new TypeGraph(nodes.get(pair[0]),archive==null ? null : storageIdentities.get(pair[0]));}
+            try {graph=archive==null ? new TypeGraph(nodes.get(pair[0]))
+                    : TypeGraph.archived(nodes.get(pair[0]),storageIdentities.get(pair[0]));}
             catch(IllegalArgumentException failure){throw new IOException("MODEL_GRAPH_INVALID",failure);}
             if(archive==null)decoded.set(pair[0],graph);
             else borrowed.put(pair[0],new WeakReference<TypeGraph>(graph));
@@ -151,5 +178,5 @@ final class ModelGraphs {
         }
         identities.clear();
     }
-    void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();}
+    void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();nodeCache.clear();cachedBytes=0;}
 }

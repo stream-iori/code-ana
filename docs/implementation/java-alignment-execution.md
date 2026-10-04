@@ -986,3 +986,14 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 | 修复 | RSS 查询超时最多连续重试 3 次，记录缺口和失败；权限失败不重试。编译诊断保留功能成功，另报采样不完整。容量仍拒绝缺测、无样本、超预算，不将恢复采样冒充容量通过。 |
 | 验证 | java_real_acceptance_tests 22 项、compiler diagnostic inputs 1 项、project model inventory guards 2 项通过。391f0cf 成套私有 runtime 的 JavaProduct.test_core 实际 daemon/native 索引、查询和增量 11.888 秒通过。 |
 | 边界 | 本次不关闭任何新增能力，不代表 80 上下文、完整发布、14 域差分或容量通过；大模型解码修复继续实施。 |
+
+
+## 2026-10-05：归档类型图有界读取
+
+| 项目 | 结果 |
+|---|---|
+| 代码证据 | ModelGraphs 的归档字典此前会通过 TypeGraph 构造器完整复制每个图；保留根会 pin 整图。新归档图使用位置视图与模型级 4MiB 加权缓存，形状/边/完整性校验仍覆盖全部节点。关闭视图明确失效；完整物化 read 的脱离文件契约保留。 |
+| 可重复旧/新反例 | bounded-read-proof-20261005：同 77692772 字节归档、65536 个保留循环根、32MiB 堆；391f0cf 旧桥 OOM，新实现 2.583 秒通过。原失败栈及归档 SHA 保留。 |
+| 实项目模型 | bounded-read-iopengw-test-api-20261005：app/test@TEST、526510405 字节归档、1GiB JVM堆，四份完整清单与既有冻结参考相等；输入/输出 SHA 保留。是实际归档读取证明，不代表新 native 发布、重新编译或全项目语义通过。 |
+| 回归 | 完整 archive gate、11 项 signature、17 组独立 model API reference 通过；默认64MiB超限拒绝、循环/前向引用、未读坏图、缓存驱逐、关闭及完整物化读取均保留。日志 bounded-read-archive-regression-final-20261005.log、bounded-read-signature-20261005.log，参考回执 model-api-reference-20261005-000558-27535。 |
+| 仍待 | 同版本完整 JVM/native/daemon、40 模块 MAIN/TEST/XML 发布、80 上下文、14 域、独占容量、最终发行包；52 项不因该专项自动关闭。 |

@@ -461,3 +461,8 @@ Java 元注解闭包使用 `java.annotation.meta` 1：Java 从独立 SOURCE/bina
 Spring 7 的 XML Bean facet 另存 `xml_configuration_model` v1：构造属性与带整数索引的配置森林。真实元素保留原始字节跨度，属性生成节点以 `synthetic=true` 指向原包含元素；SAX 位置与字节跨度分别保存。Rust 仅校验格式、唯一父节点、完整可达性和捕获源码范围，不解释 XML 或 Java 类型。
 
 Model 7 归档的类型图在打开时逐图完整验证；任务内按原归档位置加载，存活视图固定同一不可变图，未访问的图不常驻堆。归档 SHA、字节/节点预算、取消和关闭边界不变；SDK8 与 native 使用同一格式。
+
+
+### 模型归档类型视图生命周期（2026-10-05）
+
+`ModelArchive.open` 的类型图与声明/语法行同属归档生命周期。图节点按位置读取，模型共享 4MiB 加权节点缓存；形状、数字边、完整性传播和全部未访问节点在入场时校验，保留循环与稳定字典身份。关闭归档释放缓存和位置表，之后访问图视图明确报 RECORD_ARCHIVE_CLOSED；需跨生命周期的数据应在关闭前输出/捕获。`ModelArchive.read` 保持独立完整物化语义，返回图不依赖已关闭文件。compiler8/model7、ABI2/Fact IR1及现有节点/字节限额不变；compiler bridge SHA使旧派生条目失效。

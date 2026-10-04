@@ -32,12 +32,13 @@ public final class ModelGraphPagingProbe {
         Path root=Files.createTempDirectory("model-paging-");
         try {
             Path a=create(root,"original",false),b=create(root,"supplemental",false);
-            Map<String,Object> held;
+            Map<String,Object> held;String detachedElement;
             try(ModelArchive.OpenModel original=ModelArchive.open(a,Json.sha(a),64L<<20,"app@MAIN");
                 ModelArchive.OpenModel supplemental=ModelArchive.open(b,Json.sha(b),64L<<20,"app@MAIN")) {
                 List<Object> left=Json.list(original.model().get("declarations")),right=Json.list(supplemental.model().get("declarations"));
                 if(left.size()!=500 || right.size()!=500)throw new AssertionError("row count drift");
                 held=type(left,0);TypeGraph pinned=TypeGraph.owner(held);
+                detachedElement=(String)held.get("element");
                 for(int i=0;i<500;i++) {
                     Map<String,Object> l=type(left,i),r=type(right,i);
                     if(!TypeGraph.owner(l).canonical(Arrays.asList(0)).equals(TypeGraph.owner(r).canonical(Arrays.asList(0))))
@@ -47,7 +48,11 @@ public final class ModelGraphPagingProbe {
                 if(TypeGraph.owner(type(left,0))!=pinned)throw new AssertionError("live graph identity changed");
                 try{held.put("element","changed");throw new AssertionError("mutable graph");}catch(UnsupportedOperationException expected){}
             }
-            if(!"p.Box".equals(held.get("element")))throw new AssertionError("escaped immutable view changed on close");
+            if(!"p.Box".equals(detachedElement))throw new AssertionError("detached metadata changed on close");
+            try{held.get("element");throw new AssertionError("closed archive view remained readable");}
+            catch(IllegalStateException expected) {
+                if(!"RECORD_ARCHIVE_CLOSED".equals(expected.getMessage()))throw expected;
+            }
             Path invalid=create(root,"invalid-unread",true);
             try(ModelArchive.OpenModel ignored=ModelArchive.open(invalid,Json.sha(invalid),64L<<20,"app@MAIN")) {
                 throw new AssertionError("unread final graph was not validated");
