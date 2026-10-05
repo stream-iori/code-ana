@@ -1045,3 +1045,15 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 | Maven扫描 | 新增32个宽模块与12层嵌套，45个物理模块全部且唯一，无关POM不入场，单Maven会话、无生命周期/业务CLASS；专项2.485秒、完整18项49.280秒通过。并非真实项目容量证明。 |
 | 磁盘 | 原target206GiB、可用34GiB。删旧验证工作树96个可重建Rust缓存目录，保留当前两棵验证树；旧391模型76份及清单134份gzip逐字节SHA验证后释放9.84/8.12GiB。可用空间约65GiB（随正在运行的索引变化）；原路径/摘要与解压恢复说明存于build-cache-cleanup、obsolete-model-compression、obsolete-inventory-compression三份20261005回执。未清理当前80上下文证据或冻结参考数据库。 |
 | 后续链路 | 091d736全40模块MAIN/TEST/XML正式发布已启动；follow-publication-semantic等待其终态，只在发布成功后执行全部14域并带完整80上下文回执。失败原样保存；当前仍不关闭容量、release或剩余能力。 |
+
+## 2026-10-05：历史证据清理与可运行发行包交付
+
+用户明确允许删除历史验收证据，并将当前交付条件限定为发行包启动、native加载、索引和查询可正常使用，容量暂不作为该步骤的条件。
+
+| 项目 | 实际结果 |
+|---|---|
+| 清理 | 根debug可重建缓存清理；扫描当前两棵验证树回执/manifest依赖后，删除root evidence内346个早于20261005的历史目录，保留当前验收及冻结独立参考DB anatomist-main-test-xml-valid-20261002-163141。清理路径与旧顶层回执SHA存于historical-evidence-cleanup-20261005.json。旧文档提及的已删历史目录不再可直接读取；当前有效证据未删除。磁盘可用约125GiB。 |
+| 发行验证 | release-package-delivery-final-20261005：4项全部通过、package/input/artifact drift均为空。实际包内core索引/查询、Maven XML-only MAIN/TEST/full-delta、错误JDK拒绝、随包fixture自动启动/index/calls/source/stop均通过。runtime-root绑定实际被冻结的native/bridge/Rust产物，不重新编译业务项目。 |
+| 示例修正 | 将发行包放本仓库dist后，其内示例受本仓库ignore规则影响，原README直接索引返回0事实、查询SYMBOL_NOT_FOUND。修改README为复制随包源码和配置到独立临时工作区；新增发行保护必须索引非空、published/semantic=true且查询有记录，拒绝空发布冒充成功。未改变Rust扫描忽略规则。 |
+| 最终位置 | dist/codeana-java-Darwin-arm64。从此最终路径自动启动、非空索引、calls返回4条、source返回1条、stop正常；final-package-delivery-corrected-20261005保留结果。README更新后重算并核对全部20个文件校验清单，二进制/native/bridge与通过的发行包逐文件相等；交付清单存于final-package-delivery-verified-20261005.json。 |
+| 结论范围 | 可运行发行包验收已通过。完整真实项目发布/14域差分仍是独立进行中的工作；不将该结果提升为52项完全对齐或容量通过。 |

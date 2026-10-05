@@ -9,6 +9,8 @@ import json
 import os
 import pathlib
 import subprocess
+import shutil
+import tempfile
 import time
 
 import java_alignment as alignment
@@ -16,8 +18,45 @@ import java_functional_reference_alignment as reference
 from java_product_runtime import inventory
 
 
+def packaged_fixture_smoke(package, evidence):
+    """Exercise shipped source/config and automatic daemon start, not a generated fixture."""
+    with tempfile.TemporaryDirectory(prefix='codeana-release-demo-') as folder:
+        workspace=pathlib.Path(folder);project=workspace/'project';home=workspace/'home'
+        shutil.copytree(package/'fixtures/base',project);home.mkdir(mode=0o700)
+        jdk=pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'
+        (home/'config.toml').write_text('schema_version=1\nkind="user"\n[limits]\nmax_workers=1\n'
+            'max_worker_memory_bytes=536870912\n[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(str(jdk))+'\n')
+        command=[str(package/'bin/codeana-cli'),'--home',str(home),'--project',str(project)]
+        steps=[]
+        try:
+            for name in ('index','calls','source'):
+                result=subprocess.run(command+[name]+([] if name=='index' else ['main']),
+                    capture_output=True,text=True,timeout=180)
+                (evidence/(name+'.stdout')).write_text(result.stdout)
+                (evidence/(name+'.stderr')).write_text(result.stderr)
+                records=[json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith('record ')]
+                terminals=[json.loads(line[9:]) for line in result.stdout.splitlines() if line.startswith('terminal ')]
+                if result.returncode or len(terminals)!=1 or terminals[0]['execution']!='completed' or not records:
+                    raise ValueError('PACKAGED_FIXTURE_QUERY_FAILED: '+name+' '+result.stdout[-2000:])
+                if name=='index' and (terminals[0]['publication']!='published'
+                    or terminals[0]['evidence'].get('semantic') is not True or records[0].get('facts',0)<=0):
+                    raise ValueError('PACKAGED_FIXTURE_EMPTY_OR_INCOMPLETE_INDEX')
+                steps.append(dict(name=name,records=len(records),exit_code=result.returncode))
+        finally:
+            stopped=subprocess.run(command+['daemon','stop'],capture_output=True,text=True,timeout=30)
+            (evidence/'stop.stdout').write_text(stopped.stdout)
+            (evidence/'stop.stderr').write_text(stopped.stderr)
+            if stopped.returncode:raise ValueError('PACKAGED_FIXTURE_DAEMON_STOP_FAILED')
+        return steps
+
+
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--evidence',type=pathlib.Path);args=parser.parse_args()
+    parser=argparse.ArgumentParser();parser.add_argument('--evidence',type=pathlib.Path)
+    parser.add_argument('--runtime-root',type=pathlib.Path)
+    args=parser.parse_args()
+    if args.runtime_root:
+        alignment.ROOT=args.runtime_root.resolve()
+        reference.ROOT=alignment.ROOT
     base=(args.evidence or alignment.ROOT/'target/java-alignment/evidence'/
           ('release-package-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))).resolve()
     base.mkdir(parents=True,exist_ok=False)
@@ -49,6 +88,9 @@ def main():
                 result=subprocess.run(command,cwd=alignment.ROOT,env=environment,stdout=stream,
                                       stderr=subprocess.STDOUT,timeout=900)
             report['gates'].append(dict(name=name,exit_code=result.returncode,log_sha256=reference.digest(log)))
+        demo=base/'shipped-fixture';demo.mkdir()
+        report['shipped_fixture_steps']=packaged_fixture_smoke(package,demo)
+        report['gates'].append(dict(name='shipped_fixture_automatic_daemon_index_calls_source',exit_code=0))
         current_package=inventory(package)
         current_inputs=alignment.input_files();current_artifacts=reference.probe_artifacts(True)
         report.update(package_files=before,changed_package=sorted(key for key in before.keys()|current_package.keys()
@@ -57,7 +99,7 @@ def main():
             if frozen.get(key)!=current_inputs.get(key))
         report['changed_artifacts']=sorted(key for key in artifacts.keys()|current_artifacts.keys()
             if artifacts.get(key)!=current_artifacts.get(key))
-        report['all_ok']=len(report['gates'])==3 and all(g['exit_code']==0 for g in report['gates']) and not any(
+        report['all_ok']=len(report['gates'])==4 and all(g['exit_code']==0 for g in report['gates']) and not any(
             report[key] for key in ('changed_package','changed_inputs','changed_artifacts'))
     except Exception as failure:
         report.update(failure=str(failure),failure_type=type(failure).__name__)

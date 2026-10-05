@@ -6,12 +6,14 @@
 
 ## 验证并运行 fixture
 
-在解压目录执行；以下 `demo-home` 应为新建目录：
+在解压目录执行；示例复制到独立临时工作区：
 
 ```sh
 shasum -a 256 -c SHA256SUMS
-mkdir -m 700 demo-home
-cat > demo-home/config.toml <<CONFIG
+demo_workspace=$(mktemp -d "${TMPDIR:-/tmp}/codeana-demo.XXXXXX")
+cp -R fixtures/base "$demo_workspace/project"
+mkdir -m 700 "$demo_workspace/home"
+cat > "$demo_workspace/home/config.toml" <<CONFIG
 schema_version = 1
 kind = "user"
 [limits]
@@ -21,10 +23,10 @@ max_worker_memory_bytes = 536870912
 language = "java"
 home = "$HOME/.sdkman/candidates/java/8.0.492-zulu"
 CONFIG
-./bin/codeana-cli --home "$PWD/demo-home" --project "$PWD/fixtures/base" index
-./bin/codeana-cli --home "$PWD/demo-home" --project "$PWD/fixtures/base" calls main
-./bin/codeana-cli --home "$PWD/demo-home" --project "$PWD/fixtures/base" source main
-./bin/codeana-cli --home "$PWD/demo-home" daemon stop
+./bin/codeana-cli --home "$demo_workspace/home" --project "$demo_workspace/project" index
+./bin/codeana-cli --home "$demo_workspace/home" --project "$demo_workspace/project" calls main
+./bin/codeana-cli --home "$demo_workspace/home" --project "$demo_workspace/project" source main
+./bin/codeana-cli --home "$demo_workspace/home" daemon stop
 ```
 
 若已安装其他 SDKMAN Java 8，请将 `home` 改为对应绝对路径。默认 CLI 自动启动同目录 daemon。Java 17/25 目标、Linux、Gradle、完整框架推断与大型项目容量不在当前验收范围。
