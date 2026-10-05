@@ -447,3 +447,5 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 累积缓存 | 归档租约继续保留到任务结束；上下文释放同时清理所有已租用归档及其 snapshot spool 的解码缓存。避免只清理当前源码图而保留历史 snapshot 缓存。 |
 | 缓存保护 | 80 个 snapshot 的循环类型根在 32MiB 堆下通过，释放缓存后可重读，任务关闭后明确失效；同样 fixture 禁用缓存释放出现 Java heap space。证据：`target/java-alignment/evidence/lombok-stall-replay-20261005/`。 |
 | 专项回归 | Lombok 16、Builder 14、SuperBuilder 8、session 10、extension 19 项通过；SDK8 桥重新编译成功。归档、新版 native 独立参考、完整 iopengw 发布 / 80 上下文 / 14 语义域和新版发行验收仍需继续，不能标为全部对齐。 |
+
+AST 共享图的落盘保护：metadata overlay 在内存共享基础图，归档只增量写入请求根可达的闭包，多个根共享已分配节点；未改的编译器图仍用原路径。5005 节点基础图的两根只落盘 5 节点，循环、NULL 下界及不同 owner 保留。Builder 14、SuperBuilder 8、归档全组、Java 8 类型图 11 和 JVM 独立模型 API 17 组通过。前一完整回归因新测试误用 Java 8 不支持的 Map.of 失败，已修正为 singletonMap 并明确终止旧回归；不得把旧收据视为新版完整通过。早一版 native 独立 17 组也通过，最终成套版本仍须重新验收。

@@ -26,6 +26,10 @@ public final class TypeGraph {
     // The token owns neither rows nor compiler objects.
     private final Object storageIdentity;
     private boolean sealed=true;
+    private boolean metadataOverlay;
+    boolean isMetadataOverlay() { return metadataOverlay; }
+    static boolean singleEdge(String key) { return SINGLE.contains(key); }
+    static boolean manyEdges(String key) { return MANY.contains(key); }
 
     public TypeGraph(List<Map<String,Object>> input) {
         this(input,null);
@@ -139,7 +143,9 @@ public final class TypeGraph {
                 return rewritten != null ? rewritten : nodes.get(index);
             }
         };
-        return new TypeGraph(shared, null, true);
+        TypeGraph result = new TypeGraph(shared, null, true);
+        result.metadataOverlay = true;
+        return result;
     }
 
     public static boolean isView(Object value) { return value instanceof TypeGraph.View; }

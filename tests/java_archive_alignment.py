@@ -18,6 +18,9 @@ with tempfile.TemporaryDirectory(prefix='codeana-bounded-graph-') as directory:
 with tempfile.TemporaryDirectory(prefix='codeana-snapshot-lease-') as directory:
     subprocess.run([str(JDK/'bin/java'), '-Xmx32m', '-cp', classpath,
                     'dev.codeana.common.ModelGraphCacheLeaseProbe', directory], check=True, timeout=180)
+with tempfile.TemporaryDirectory(prefix='codeana-overlay-projection-') as directory:
+    subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', classpath,
+                    'dev.codeana.common.ModelGraphOverlayProjectionProbe', directory], check=True, timeout=60)
 subprocess.run([str(JDK/'bin/java'), '-Xmx256m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes')]),
                 'dev.codeana.common.ModelGraphBudgetProbe'], check=True, timeout=180)

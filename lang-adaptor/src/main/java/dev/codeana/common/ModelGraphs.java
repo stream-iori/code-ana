@@ -18,11 +18,12 @@ final class ModelGraphs implements RecordArchive.CacheOwner {
         this.encodingOnly=false;this.archive=archive;this.maxBytes=Math.min(archive.byteLimit(),ModelArchive.MAX_BYTES);
         archive.own(this);
     }
-    void retireEncoderIdentities() {identities.clear();}
+    void retireEncoderIdentities() {identities.clear();projected.clear();}
     private final List<List<Map<String,Object>>> nodes = new ArrayList<List<Map<String,Object>>>();
     private final List<TypeGraph> decoded = new ArrayList<TypeGraph>();
     private final Map<Integer,WeakReference<TypeGraph>> borrowed = new HashMap<Integer,WeakReference<TypeGraph>>();
     private final IdentityHashMap<Object,Integer> identities = new IdentityHashMap<Object,Integer>();
+    private final Map<Integer,Map<Integer,Integer>> projected=new HashMap<Integer,Map<Integer,Integer>>();
     private final List<Object> storageIdentities = new ArrayList<Object>();
     private long bytes;
     // One cache for the whole model, rather than one retained graph per dictionary entry.
@@ -86,6 +87,7 @@ final class ModelGraphs implements RecordArchive.CacheOwner {
             storageIdentities.add(new Object());
         }
         List<Map<String,Object>> values=nodes.get(id);
+        if(graph.isMetadataOverlay()) return packOverlay(graph,view,records,id,values);
         while(values.size()<graph.size()) {
             int index=values.size();
             Map<String,Object> node=new LinkedHashMap<String,Object>(graph.node(index));
@@ -99,6 +101,46 @@ final class ModelGraphs implements RecordArchive.CacheOwner {
             decoded.set(id,null);borrowed.remove(id);
         }
         return Json.object("$graph",Arrays.asList(id,TypeGraph.reference(view)));
+    }
+
+    /** Metadata overlays share the whole base in memory, but export only requested closures. */
+    private Object packOverlay(TypeGraph graph,Map<String,Object> view,RecordArchive records,
+            int id,List<Map<String,Object>> values) {
+        Map<Integer,Integer> references=projected.get(id);
+        if(references==null) {references=new LinkedHashMap<Integer,Integer>();projected.put(id,references);}
+        List<Integer> pending=new ArrayList<Integer>();
+        int root=project(TypeGraph.reference(view),references,pending);
+        for(int cursor=0;cursor<pending.size();cursor++) {
+            if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException("CANCELLED");
+            int reference=pending.get(cursor);
+            Map<String,Object> node=new LinkedHashMap<String,Object>(graph.node(reference));
+            for(Map.Entry<String,Object> entry:node.entrySet()) {
+                String key=entry.getKey();Object value=entry.getValue();
+                if(TypeGraph.singleEdge(key))entry.setValue(project(((Number)value).intValue(),references,pending));
+                else if(TypeGraph.manyEdges(key)) {
+                    List<Integer> children=new ArrayList<Integer>();
+                    for(Object child:Json.list(value))children.add(project(((Number)child).intValue(),references,pending));
+                    entry.setValue(children);
+                }
+            }
+            account(node);
+            int index=references.get(reference);
+            if(index!=values.size())throw new IllegalStateException("MODEL_GRAPH_PROJECTION_SEQUENCE");
+            records.add(Json.object("kind","graph_node","graph",id,"id",index,"value",node));
+            if(archive==null)values.add(encodingOnly?null:node);
+            else {
+                if(records!=archive)throw new IllegalArgumentException("MODEL_GRAPH_ARCHIVE_OWNER");
+                ((ArchivedNodes)values).append(records.size()-1);
+            }
+            decoded.set(id,null);borrowed.remove(id);
+        }
+        return Json.object("$graph",Arrays.asList(id,root));
+    }
+    private static int project(int reference,Map<Integer,Integer> references,List<Integer> pending) {
+        if(reference<0)return reference;
+        Integer existing=references.get(reference);
+        if(existing!=null)return existing;
+        int next=references.size();references.put(reference,next);pending.add(reference);return next;
     }
 
     void add(Map<String,Object> record) throws IOException {
@@ -178,8 +220,8 @@ final class ModelGraphs implements RecordArchive.CacheOwner {
                 public Map<String,Object> get(int index) { return graph.node(index); }
             });
         }
-        identities.clear();
+        identities.clear();projected.clear();
     }
     public synchronized void releaseNodeCache() {nodeCache.clear();cachedBytes=0;}
-    public synchronized void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();releaseNodeCache();}
+    public synchronized void close() {identities.clear();projected.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();releaseNodeCache();}
 }

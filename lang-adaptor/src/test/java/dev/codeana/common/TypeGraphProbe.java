@@ -10,11 +10,11 @@ public final class TypeGraphProbe {
   input.add(node("NULL"));
   TypeGraph graph=new TypeGraph(input);input.clear();
   if(graph.size()!=3 || !Boolean.TRUE.equals(Json.map(Json.list(Json.map(graph.view(0).get("upper")).get("arguments")).get(0)).get("recursive")))throw new AssertionError("recursive graph");
-  TypeGraph rebased=graph.rebaseOwners(Map.of(new TypeGraph.VariableIdentity("Box","T"),"BoxBuilder"));
+  TypeGraph rebased=graph.rebaseOwners(Collections.singletonMap(new TypeGraph.VariableIdentity("Box","T"),"BoxBuilder"));
   if(!"BoxBuilder".equals(rebased.node(0).get("owner")) || !"Box".equals(graph.node(0).get("owner")))throw new AssertionError("owner rebase aliases input");
   if(rebased.node(1)!=graph.node(1) || !Objects.equals(rebased.node(0).get("lower"),2))throw new AssertionError("edges or unchanged nodes copied");
   if(!Boolean.TRUE.equals(Json.map(Json.list(Json.map(rebased.view(0).get("upper")).get("arguments")).get(0)).get("recursive")))throw new AssertionError("rebased cycle lost");
-  if(graph.rebaseOwners(Map.of(new TypeGraph.VariableIdentity("Other","T"),"Builder"))!=graph)throw new AssertionError("same-name variable captured");
+  if(graph.rebaseOwners(Collections.singletonMap(new TypeGraph.VariableIdentity("Other","T"),"Builder"))!=graph)throw new AssertionError("same-name variable captured");
   try {rebased.node(0).put("owner","Changed");throw new AssertionError("mutable rebase");}catch(UnsupportedOperationException expected){}
   graph.validateReference(-1);rejected(()->graph.view(-1));rejected(()->graph.validateReference(-2));
   rejected(()->new TypeGraph(Arrays.asList(node("ARRAY","component",1))));
