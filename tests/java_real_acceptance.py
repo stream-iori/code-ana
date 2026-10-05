@@ -239,6 +239,7 @@ class PhaseCapture:
     def __init__(self, daemon, evidence, thread_dumps=False):
         self.daemon, self.evidence = daemon, evidence
         self.paths, self.last = set(), {}
+        self.journal_last = {}
         self.failure = None
         self.diagnostics = CompilerDiagnostics(evidence) if thread_dumps else None
 
@@ -276,16 +277,34 @@ class PhaseCapture:
                 with path.open('rb') as stream:
                     body = stream.read(1024 * 1024 + 1)
             except FileNotFoundError:
-                continue
+                body = b''
             if len(body) > 1024 * 1024:
                 raise ValueError('PHASE_JOURNAL_BYTE_BUDGET')
             body = body[:body.rfind(b'\n') + 1]
             rows = [json.loads(line) for line in body.splitlines()]
             if len(rows) > 4096:
                 raise ValueError('PHASE_JOURNAL_RECORD_BUDGET')
-            if rows and self.last != rows[-1]:
+            if rows and self.journal_last.get(path) != rows[-1]:
                 atomic_bytes(self.evidence / 'compiler-phases.ndjson', body)
-                self.last = rows[-1]
+                self.journal_last[path] = rows[-1]
+            current = rows[-1] if rows else {}
+            latest = path.with_name('phase-latest.json')
+            try:
+                with latest.open('rb') as stream:
+                    marker = stream.read(16385)
+            except FileNotFoundError:
+                marker = b''
+            if len(marker) > 16384:
+                raise ValueError('PHASE_LATEST_BYTE_BUDGET')
+            if marker:
+                value = json.loads(marker)
+                if (not isinstance(value, dict) or not isinstance(value.get('elapsed_nanos'), int)
+                    or not isinstance(value.get('context'), str) or not isinstance(value.get('phase'), str)):
+                    raise ValueError('PHASE_LATEST_SHAPE')
+                current = value
+                atomic_bytes(self.evidence / 'compiler-phase-latest.json', marker)
+            if current and self.last != current:
+                self.last = current
                 print('Phase: ' + json.dumps(self.last), flush=True)
         if self.diagnostics:
             self.diagnostics.sample(self.last, compilers)

@@ -82,6 +82,17 @@ public final class CompilerSession implements AutoCloseable {
                 }
             }
         }
+        // The bounded history may be full. Always retain the current location separately.
+        Path latest=scratch.resolve("phase-latest.json"), temporary=scratch.resolve("phase-latest.tmp");
+        try {
+            byte[] current=Json.write(Json.object("elapsed_nanos",System.nanoTime()-startedNanos,
+                    "context",bounded,"phase",boundedPhase)).getBytes(StandardCharsets.UTF_8);
+            Files.write(temporary,current);
+            try {Files.move(temporary,latest,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}
+            catch(AtomicMoveNotSupportedException unsupported) {Files.move(temporary,latest,StandardCopyOption.REPLACE_EXISTING);}
+        } catch(IOException unavailable) {
+            // Diagnostics never change semantic success or the reserved failure receipt.
+        }
     }
 
     public byte[] heapFailure() {

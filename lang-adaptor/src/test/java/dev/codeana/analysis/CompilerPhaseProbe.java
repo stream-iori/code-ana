@@ -35,6 +35,10 @@ public final class CompilerPhaseProbe {
                 previous = elapsed;
             }
             session.mark("x".repeat(5000), "y".repeat(5000));
+            Map<String,Object> latest=Json.map(Json.parse(Json.read(scratch.resolve("phase-latest.json"))));
+            if(Json.string(latest,"context").length()!=1024 || Json.string(latest,"phase").length()!=512
+                    || Json.number(latest,"elapsed_nanos")<=previous || Files.size(scratch.resolve("phase-latest.json"))>16384)
+                throw new AssertionError("current phase lost after history cap");
             Map<String, Object> failure = Json.map(Json.parse(session.heapFailure()));
             if (Json.string(failure, "context").length() != 1024 || Json.string(failure, "phase").length() != 512)
                 throw new AssertionError("bounded failure receipt");

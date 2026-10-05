@@ -13,7 +13,39 @@ from java_capacity import Rss
 
 from java_real_acceptance import (ConfigLease, atomic_bytes, atomic_json, process_identity,
                                   still_alive, publication_accepted, project_config, CompilerDiagnostics,
-                                  observed_signals)
+                                  observed_signals, PhaseCapture)
+
+
+class PhaseCaptureTests(unittest.TestCase):
+    def test_current_marker_survives_exhausted_history(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=pathlib.Path(directory);evidence=root/'evidence';evidence.mkdir()
+            journal=root/'phases.ndjson'
+            history=[dict(elapsed_nanos=i,context='old',phase='history') for i in range(4096)]
+            journal.write_text(''.join(json.dumps(row)+'\n' for row in history))
+            latest=root/'phase-latest.json'
+            current=dict(elapsed_nanos=5000,context='module@TEST',phase='model.lombok.commit')
+            atomic_json(latest,current)
+            capture=PhaseCapture(1,evidence);capture.paths.add(journal)
+            with mock.patch('java_real_acceptance.subprocess.check_output',return_value=''):
+                capture.sample()
+                self.assertEqual(capture.last,current)
+                self.assertEqual(json.loads((evidence/'compiler-phase-latest.json').read_text()),current)
+                current=dict(elapsed_nanos=6000,context='next@MAIN',phase='compiler_model')
+                atomic_json(latest,current);capture.sample()
+                self.assertEqual(capture.last,current)
+                latest.unlink();capture.sample()
+                self.assertEqual(capture.last,history[-1])
+            self.assertEqual(len((evidence/'compiler-phases.ndjson').read_text().splitlines()),4096)
+
+    def test_current_marker_budget_is_bounded(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=pathlib.Path(directory);evidence=root/'evidence';evidence.mkdir()
+            (root/'phase-latest.json').write_bytes(b'x'*16385)
+            capture=PhaseCapture(1,evidence);capture.paths.add(root/'phases.ndjson')
+            with mock.patch('java_real_acceptance.subprocess.check_output',return_value=''):
+                with self.assertRaisesRegex(ValueError,'PHASE_LATEST_BYTE_BUDGET'):
+                    capture.sample()
 
 
 class RssSampling(unittest.TestCase):

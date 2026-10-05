@@ -449,3 +449,5 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 专项回归 | Lombok 16、Builder 14、SuperBuilder 8、session 10、extension 19 项通过；SDK8 桥重新编译成功。归档、新版 native 独立参考、完整 iopengw 发布 / 80 上下文 / 14 语义域和新版发行验收仍需继续，不能标为全部对齐。 |
 
 AST 共享图的落盘保护：metadata overlay 在内存共享基础图，归档只增量写入请求根可达的闭包，多个根共享已分配节点；未改的编译器图仍用原路径。5005 节点基础图的两根只落盘 5 节点，循环、NULL 下界及不同 owner 保留。Builder 14、SuperBuilder 8、归档全组、Java 8 类型图 11 和 JVM 独立模型 API 17 组通过。前一完整回归因新测试误用 Java 8 不支持的 Map.of 失败，已修正为 singletonMap 并明确终止旧回归；不得把旧收据视为新版完整通过。早一版 native 独立 17 组也通过，最终成套版本仍须重新验收。
+
+长任务阶段日志保护：保留原 4096 条 / 1MiB 历史上限，额外原子更新 `phase-latest.json`；采集器以当前标记为准并单独保存，最大 16KiB。历史耗尽后仍能定位后续模块/声明，不把过时历史误判为停滞。当前标记及历史不可写不改变语义执行；并发、Unicode、截断、上限和任务清理由真实 CompilerSession 回归覆盖。采集 / 恢复 25 项、session 10 项通过。因本次诊断源码更新，c1c37f4 的在途全项目、80 上下文及完整回归已主动取消并保留 superseded 记录；这是主动更新版本，不是新的安全软件 SIGKILL。
