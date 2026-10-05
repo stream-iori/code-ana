@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Adversarial build-time extensions against real detached Java 8 model execution."""
 import hashlib
+import os
+import subprocess
 import unittest
 import java_model_tests as model_tests
 
@@ -11,6 +13,12 @@ class Extensions(unittest.TestCase):
     context = model_tests.Models.context
     analyze = model_tests.Models.analyze
     merged = model_tests.Models.merged
+
+    def test_lombok_ast_initializer_metadata_and_idempotence(self):
+        cp=os.pathsep.join(str(model_tests.ROOT/'lang-adaptor/target'/p)
+                           for p in ('classes','test-classes'))
+        subprocess.run([str(model_tests.JDK25/'bin/java'), '-Xmx64m', '-cp', cp,
+                        'dev.codeana.analysis.LombokAstSharingProbe'], check=True, timeout=30)
 
     def fixture(self, **options):
         context = self.context('app', {'Use.java': 'class Use { void run(){System.out.println("value");} }'}, **options)

@@ -101,6 +101,47 @@ public final class TypeGraph {
         nodes=Collections.unmodifiableList(input);storageIdentity=null;sealed=false;
     }
     Object storageIdentity() { return storageIdentity==null ? this : storageIdentity; }
+    /** Variable metadata identity includes the declaring owner; same-name variables differ. */
+    public static final class VariableIdentity {
+        private final String owner, name;
+        public VariableIdentity(String owner, String name) { this.owner=owner; this.name=name; }
+        public boolean equals(Object value) {
+            if (!(value instanceof VariableIdentity)) return false;
+            VariableIdentity other=(VariableIdentity)value;
+            return Objects.equals(owner,other.owner) && Objects.equals(name,other.name);
+        }
+        public int hashCode() { return Objects.hash(owner,name); }
+    }
+
+    /** Share every numeric edge and unchanged node; only variable owner metadata is rewritten. */
+    public TypeGraph rebaseOwners(Map<VariableIdentity, String> replacements) {
+        requireSealed();
+        if (replacements.isEmpty()) return this;
+        Map<Integer, Map<String, Object>> changed = new HashMap<>();
+        for (int i = 0; i < nodes.size(); i++) {
+            if (Thread.currentThread().isInterrupted())
+                throw new java.util.concurrent.CancellationException("CANCELLED");
+            Map<String, Object> node = nodes.get(i);
+            if (!"TYPEVAR".equals(node.get("kind"))) continue;
+            String owner = replacements.get(new VariableIdentity(
+                    Json.string(node, "owner"), Json.string(node, "name")));
+            if (owner == null || owner.equals(node.get("owner"))) continue;
+            Map<String, Object> copy = new LinkedHashMap<>(node);
+            copy.put("owner", owner);
+            changed.put(i, Collections.unmodifiableMap(copy));
+        }
+        if (changed.isEmpty()) return this;
+        List<Map<String, Object>> shared = new AbstractList<Map<String, Object>>() {
+            public int size() { return nodes.size(); }
+            public Map<String, Object> get(int index) {
+                if (index < 0 || index >= size()) throw new IndexOutOfBoundsException();
+                Map<String, Object> rewritten = changed.get(index);
+                return rewritten != null ? rewritten : nodes.get(index);
+            }
+        };
+        return new TypeGraph(shared, null, true);
+    }
+
     public static boolean isView(Object value) { return value instanceof TypeGraph.View; }
     public static TypeGraph owner(Map<String,Object> value) {
         if (!(value instanceof TypeGraph.View)) throw new IllegalArgumentException("TYPE_GRAPH_VIEW");

@@ -11,8 +11,32 @@ public final class LombokModel {
     private LombokModel() {}
 
     public static void augment(Map<String, Object> model, Map<String, Object> context) {
+        augment(model, context, ignored -> {});
+    }
+
+    public static void augment(Map<String, Object> model, Map<String, Object> context,
+            java.util.function.Consumer<String> progress) {
         if (!"model".equals(context.get("lombok"))) return;
-        new LombokDeclarations(model, context).apply();
+        progress.accept("inventory");
+        new LombokDeclarations(model, context, progress).apply();
+    }
+
+    /** Anatomist AST eligibility is per source unit, including auxiliary binding sources. */
+    public static Set<String> pendingSources(Map<String, Object> model) {
+        Set<String> seen = new HashSet<>(), pending = new HashSet<>();
+        for (Object raw : Json.list(model.get("declarations"))) {
+            Map<String, Object> declaration = Json.map(raw);
+            Map<String, Object> attributes = Json.map(declaration.get("attributes"));
+            String source = Json.string(declaration, "source");
+            if (attributes.containsKey("lombok_summary") || !summary(declaration).isEmpty())
+                seen.add(source);
+            if ("lombok_model".equals(attributes.get("binding_origin"))) continue;
+            if (ModelAnnotations.declared(declaration).stream().map(Json::map)
+                    .anyMatch(a -> Json.string(a, "type").startsWith("lombok.")))
+                pending.add(source);
+        }
+        pending.removeAll(seen);
+        return Set.copyOf(pending);
     }
 
     public static void recover(Map<String, Object> model, Map<String, Object> context) {

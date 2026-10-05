@@ -64,32 +64,52 @@ final class LombokDeclarations {
     private LombokConfiguration.Effective effective;
     private Boolean generatedDefault;
     private boolean generatedChecked;
+    private final java.util.function.Consumer<String> progress;
+    private final Set<String> pendingSources;
+    private record RebaseKey(dev.codeana.common.TypeGraph graph,
+            Map<dev.codeana.common.TypeGraph.VariableIdentity, String> owners) {}
+    // Bounded and confined to this overlay. Original archive leases belong to the task.
+    private final Map<RebaseKey, dev.codeana.common.TypeGraph> rebasedGraphs =
+            new LinkedHashMap<>(8, .75f, true);
 
-    LombokDeclarations(Map<String, Object> model, Map<String, Object> context) {
+    LombokDeclarations(Map<String, Object> model, Map<String, Object> context,
+            java.util.function.Consumer<String> progress) {
+        this.progress = progress;
         this.model = model;
         this.context = context;
         declarations = Json.list(model.get("declarations"));
+        pendingSources = LombokModel.pendingSources(model);
         configuration = new LombokConfiguration(context);
+        Set<String> missingInitializers = new HashSet<>();
         for (Object raw : declarations) {
             Map<String, Object> d = Json.map(raw);
             known.put(Json.string(d, "signature"), d);
             if (Boolean.TRUE.equals(attrs(d).get("has_initializer"))) initialized.add(Json.string(d, "signature"));
+            if ("FIELD".equals(attrs(d).get("element_kind"))
+                    && pendingSources.contains(Json.string(d, "source"))
+                    && !attrs(d).containsKey("has_initializer"))
+                missingInitializers.add(Json.string(d, "signature"));
             members.computeIfAbsent(Json.string(d, "parent"), ignored -> new ArrayList<>()).add(d);
         }
-        for (Object raw : Json.list(model.get("syntax"))) {
+        progress.accept("initializers");
+        // Current compiler rows carry explicit true/false metadata. Older detached inputs
+        // need syntax only for fields whose initializer state is absent.
+        if (!missingInitializers.isEmpty()) for (Object raw : Json.list(model.get("syntax"))) {
             Map<String, Object> n = Json.map(raw);
             if ("VARIABLE".equals(n.get("kind"))
                     && map(n.get("roles")).get("initializer") instanceof Number
-                    && n.get("symbol") instanceof String symbol && !symbol.isEmpty())
+                    && n.get("symbol") instanceof String symbol && missingInitializers.contains(symbol))
                 initialized.add(symbol);
         }
     }
 
     void apply() {
+        progress.accept("rules");
         for (Object raw : List.copyOf(declarations)) {
             if (Thread.currentThread().isInterrupted())
                 throw new java.util.concurrent.CancellationException();
             Map<String, Object> owner = Json.map(raw);
+            if (!pendingSources.contains(Json.string(owner, "source"))) continue;
             if (!Set.of("CLASS", "ENUM", "INTERFACE", "ANNOTATION_TYPE")
                     .contains(attrs(owner).get("element_kind"))) continue;
             Map<String, Map<String, Object>> annotations = annotations(owner);
@@ -102,6 +122,7 @@ final class LombokDeclarations {
                     && fields.stream().allMatch(f -> annotations(f).isEmpty())
                     && members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
                             .noneMatch(m -> annotations(m).containsKey("Builder"))) continue;
+            progress.accept("owner:" + Json.string(owner, "signature"));
             effective = configuration.forSource(Json.string(owner, "source"));
             configure(summary);
             if (!Set.of("CLASS", "ENUM").contains(attrs(owner).get("element_kind"))) {
@@ -1036,7 +1057,7 @@ final class LombokDeclarations {
         return type;
     }
 
-    private static List<Object> builderRebaseFormals(List<Object> formals, String owner) {
+    private List<Object> builderRebaseFormals(List<Object> formals, String owner) {
         List<Object> result = new ArrayList<>();
         for (Object raw : formals) {
             Map<String, Object> formal = dev.codeana.common.TypeGraph.copyRoot(Json.map(raw));
@@ -1048,7 +1069,7 @@ final class LombokDeclarations {
         return rebased;
     }
 
-    private static Object builderRebase(
+    private Object builderRebase(
             Object raw, List<Object> old, List<Object> replacements, int depth) {
         if (depth > 64) throw new IllegalArgumentException("BUILDER_TYPE_DEPTH");
         if (dev.codeana.common.TypeGraph.isView(raw)) {
@@ -1057,19 +1078,23 @@ final class LombokDeclarations {
             // recursive references into absent edges in newly generated declarations.
             Map<String,Object> type = Json.map(raw);
             dev.codeana.common.TypeGraph graph = dev.codeana.common.TypeGraph.owner(type);
-            Map<String,Object> closure = graph.canonical(List.of(dev.codeana.common.TypeGraph.reference(type)));
-            for (Object value : Json.list(closure.get("nodes"))) {
-                if (Thread.currentThread().isInterrupted())
-                    throw new java.util.concurrent.CancellationException("CANCELLED");
-                Map<String,Object> node = Json.map(value);
-                if (!"TYPEVAR".equals(node.get("kind"))) continue;
-                for (int i = 0; i < old.size(); i++)
-                    if (Objects.equals(node.get("owner"), Json.map(old.get(i)).get("owner"))
-                            && Objects.equals(node.get("name"), Json.map(old.get(i)).get("name")))
-                        node.put("owner", Json.map(replacements.get(i)).get("owner"));
+            Map<dev.codeana.common.TypeGraph.VariableIdentity, String> owners = new LinkedHashMap<>();
+            for (int i = 0; i < old.size(); i++) {
+                Map<String, Object> formal = Json.map(old.get(i));
+                owners.put(new dev.codeana.common.TypeGraph.VariableIdentity(
+                        Json.string(formal, "owner"), Json.string(formal, "name")),
+                        Json.string(Json.map(replacements.get(i)), "owner"));
             }
-            return dev.codeana.common.TypeGraph.decode(closure).view(
-                    ((Number)Json.list(closure.get("roots")).getFirst()).intValue());
+            RebaseKey key = new RebaseKey(graph, Map.copyOf(owners));
+            dev.codeana.common.TypeGraph rewritten = rebasedGraphs.get(key);
+            if (rewritten == null) {
+                rewritten = graph.rebaseOwners(key.owners());
+                if (rebasedGraphs.size() >= 8)
+                    rebasedGraphs.remove(rebasedGraphs.keySet().iterator().next());
+                rebasedGraphs.put(key, rewritten);
+            }
+            return rewritten == graph ? raw
+                    : rewritten.view(dev.codeana.common.TypeGraph.reference(type));
         }
         if (raw instanceof Map) {
             Map<String, Object> input = Json.map(raw);
@@ -1107,7 +1132,7 @@ final class LombokDeclarations {
         return value;
     }
 
-    private static void builderGenericMethod(Map<String, Object> method, List<Object> formals) {
+    private void builderGenericMethod(Map<String, Object> method, List<Object> formals) {
         if (method == null || formals.isEmpty()) return;
         List<Object> bound = builderRebaseFormals(formals, Json.string(method, "signature"));
         Map<String, Object> a = attrs(method);
@@ -1865,19 +1890,35 @@ final class LombokDeclarations {
     }
 
     private static Map<String, Object> writtenType(Map<String, Object> type, Set<String> excluded, int depth) {
-        if (depth > 64) throw new IllegalArgumentException("LOMBOK_WRITTEN_TYPE_BUDGET");
-        Map<String, Object> result = dev.codeana.common.TypeGraph.copyRoot(type);
-        if ("ARRAY".equals(type.get("kind")))
-            result.put("component", writtenType(map(type.get("component")), excluded, depth + 1));
-        else {
-            if (type.containsKey("annotations"))
-                result.put("annotations", items(type.get("annotations")).stream().filter(a -> !excluded.contains(a)).toList());
-            if (type.containsKey("annotation_models"))
-                result.put("annotation_models", items(type.get("annotation_models")).stream()
-                        .filter(a -> !excluded.contains(map(a).get("type"))).toList());
-            if ("DECLARED".equals(type.get("kind")) && type.get("enclosing") instanceof Map)
-                result.put("enclosing", writtenType(map(type.get("enclosing")), excluded, depth + 1));
+        if (Thread.currentThread().isInterrupted())
+            throw new java.util.concurrent.CancellationException("CANCELLED");
+        if (depth > 128) throw new IllegalArgumentException("LOMBOK_WRITTEN_TYPE_BUDGET");
+        Map<String, Object> changes = new LinkedHashMap<>();
+        if ("ARRAY".equals(type.get("kind"))) {
+            Map<String, Object> component = map(type.get("component"));
+            Map<String, Object> rewritten = writtenType(component, excluded, depth + 1);
+            if (rewritten != component) changes.put("component", rewritten);
+        } else {
+            if (type.containsKey("annotations")) {
+                List<Object> annotations = items(type.get("annotations"));
+                List<Object> filtered = annotations.stream().filter(a -> !excluded.contains(a)).toList();
+                if (filtered.size() != annotations.size()) changes.put("annotations", filtered);
+            }
+            if (type.containsKey("annotation_models")) {
+                List<Object> annotations = items(type.get("annotation_models"));
+                List<Object> filtered = annotations.stream()
+                        .filter(a -> !excluded.contains(map(a).get("type"))).toList();
+                if (filtered.size() != annotations.size()) changes.put("annotation_models", filtered);
+            }
+            if ("DECLARED".equals(type.get("kind")) && type.get("enclosing") instanceof Map) {
+                Map<String, Object> enclosing = map(type.get("enclosing"));
+                Map<String, Object> rewritten = writtenType(enclosing, excluded, depth + 1);
+                if (rewritten != enclosing) changes.put("enclosing", rewritten);
+            }
         }
+        if (changes.isEmpty()) return type;
+        Map<String, Object> result = dev.codeana.common.TypeGraph.copyRoot(type);
+        result.putAll(changes);
         return result;
     }
 
@@ -1892,7 +1933,7 @@ final class LombokDeclarations {
                 .anyMatch(a -> annotationCopyNeedsModel(map(a)))) return true;
         Set<Object> modifiers = new HashSet<>(items(attrs(declaration).get("modifier_annotation_types")));
         Map<String, Object> type = map(attrs(declaration).get("type_model"));
-        for (int depth = 0; "ARRAY".equals(type.get("kind")) && depth < 64; depth++)
+        for (int depth = 0; "ARRAY".equals(type.get("kind")) && depth < 128; depth++)
             type = map(type.get("component"));
         return items(type.get("annotation_models")).stream()
                 .anyMatch(a -> modifiers.contains(map(a).get("type")) && annotationCopyNeedsModel(map(a)));

@@ -49,8 +49,10 @@ public final class ExtensionRunner {
         for (ExtensionPoint e : enabled)
             if (e instanceof JavaModelExtension extension) {
                 progress.accept("model." + e.id());
+                progress.accept("model." + e.id() + ".freeze");
                 ExtensionContext context =
-                        new ExtensionContext(configuration, model, List.of(), List.of());
+                        new ExtensionContext(configuration, model, List.of(), List.of(),
+                                stage -> progress.accept("model." + e.id() + "." + stage));
                 if (extension instanceof JavaDeclarationModelExtension perDeclaration) {
                     for (Object raw : Json.list(context.model().get("declarations"))) {
                         Map<String, Object> declaration = Json.map(raw);
@@ -87,7 +89,9 @@ public final class ExtensionRunner {
                         "",
                         () -> {
                             ModelOverlay overlay = new ModelOverlay();
+                            context.progress("augment");
                             extension.augment(context, overlay);
+                            context.progress("commit");
                             overlay.commit(
                                     model,
                                     e.producer(),

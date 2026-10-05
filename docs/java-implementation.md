@@ -435,3 +435,15 @@ inputs_manifest = ".code-ana/java-inputs.json"
 | 原生模型 | `model-api-reference-20261003-233150-7960/receipt.json`：新桥/新图表代码的 17 组 native 模型 API 专项通过。app/test@TEST 全源原生 API 清单正在对照，最新共享库/Rust/daemon 全量门禁仍待完成。 |
 
 大上下文原生终态：`iopengw-test-test-graph-budget-native-api/receipt.json` 678.220 秒完成，全部3319源、51969声明、651055 AST、3553类型查询的四投影严格相等，无输入/工具源码漂移。新成套共享库的17组原生专项也通过（`validation-java-correctness-391f0cf/.../model-api-reference-20261003-233750-57761`），已启动该固定提交的全项目发布、80上下文及完整回归；旧de090ea清单主动SIGTERM并保存superseded回执，旧发布仍继续作为独立诊断证据。最终全语义和容量尚未通过。
+
+## Lombok AST 对齐与任务缓存释放（2026-10-05）
+
+| 项目 | 实现 / 验证 |
+|---|---|
+| 范围 | `off/model` 配置保持；`model` 对齐冻结 Anatomist `mode=ast` 的声明覆盖，包括 Builder/SuperBuilder。无处理器、编译模式、生成方法体或业务字节码；Rust 产品边界保持。 |
+| 单元选择 | 按源码单元识别 Lombok，包含辅助绑定源；已有 overlay 的单元不重复生成。字段初始化优先使用 javac 的显式标记，只有缺失标记的待处理字段才读语法。 |
+| 类型改写 | 泛型按 owner + name 替换；共享原图的数值边、循环、NULL 下界和未改节点，任务局部缓存最多 8 个映射。written type 无变化时返回原类型，深度边界对齐参考 128。Lombok 11 / registry v11 使旧语义缓存失效。 |
+| 长任务 | 原运行在 message-protocol-component MAIN / model.lombok 停滞；原始模型 233671404 字节、请求和 2413 个输入已保留。单模块 JVM（含 binary enrich）约 12 秒、native 约 29 秒成功，不能据此断言完整任务根因已经排除。原任务通过 CLI cancel 结束，旧 head 保留。 |
+| 累积缓存 | 归档租约继续保留到任务结束；上下文释放同时清理所有已租用归档及其 snapshot spool 的解码缓存。避免只清理当前源码图而保留历史 snapshot 缓存。 |
+| 缓存保护 | 80 个 snapshot 的循环类型根在 32MiB 堆下通过，释放缓存后可重读，任务关闭后明确失效；同样 fixture 禁用缓存释放出现 Java heap space。证据：`target/java-alignment/evidence/lombok-stall-replay-20261005/`。 |
+| 专项回归 | Lombok 16、Builder 14、SuperBuilder 8、session 10、extension 19 项通过；SDK8 桥重新编译成功。归档、新版 native 独立参考、完整 iopengw 发布 / 80 上下文 / 14 语义域和新版发行验收仍需继续，不能标为全部对齐。 |

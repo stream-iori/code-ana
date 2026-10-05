@@ -314,6 +314,13 @@ public final class CompilerSession implements AutoCloseable {
      */
     public void releaseModel(Map<String, Object> model) throws Exception {
         if(model.get("syntax") instanceof ModelArchive.SyntaxRows rows) rows.releaseNodeCache();
+        // Later contexts may rewarm earlier archives through escaped roots. Snapshot
+        // spools share those leases, so release their caches as well, never their rows.
+        synchronized (this) {
+            for (AutoCloseable archive : models)
+                if (archive instanceof RecordArchive)
+                    ((RecordArchive) archive).releaseNodeCaches();
+        }
     }
 
     public record StagedModel(Path path, String checksum, String context, long maxBytes) {

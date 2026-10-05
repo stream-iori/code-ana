@@ -16,6 +16,17 @@ public final class ExtensionContext {
     private final List<ProjectResource> resources;
     private dev.codeana.common.IndexedRecords declarations;
     private DetachedJavaModel javaModel;
+    private java.util.function.Consumer<String> progress = ignored -> {};
+
+    public ExtensionContext(Map<String, Object> configuration, Map<String, Object> model,
+            List<Object> facts, List<ProjectResource> resources,
+            java.util.function.Consumer<String> progress) {
+        this(configuration, model, facts, resources, false);
+        this.progress = Objects.requireNonNull(progress);
+    }
+
+    /** Developer phase journal; never added to semantic facts. */
+    public void progress(String stage) { progress.accept(stage); }
 
     public ExtensionContext(
             Map<String, Object> configuration,

@@ -5,7 +5,7 @@ import java.lang.ref.WeakReference;
 import java.util.*;
 
 /** Model-local flat graph dictionaries. Roots never recursively serialize their shared children. */
-final class ModelGraphs {
+final class ModelGraphs implements RecordArchive.CacheOwner {
     private final boolean encodingOnly;
     private final RecordArchive archive;
     private final long maxBytes;
@@ -16,7 +16,7 @@ final class ModelGraphs {
     }
     ModelGraphs(RecordArchive archive) {
         this.encodingOnly=false;this.archive=archive;this.maxBytes=Math.min(archive.byteLimit(),ModelArchive.MAX_BYTES);
-        archive.own(()->close());
+        archive.own(this);
     }
     void retireEncoderIdentities() {identities.clear();}
     private final List<List<Map<String,Object>>> nodes = new ArrayList<List<Map<String,Object>>>();
@@ -180,6 +180,6 @@ final class ModelGraphs {
         }
         identities.clear();
     }
-    synchronized void releaseNodeCache() {nodeCache.clear();cachedBytes=0;}
-    synchronized void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();releaseNodeCache();}
+    public synchronized void releaseNodeCache() {nodeCache.clear();cachedBytes=0;}
+    public synchronized void close() {identities.clear();nodes.clear();decoded.clear();borrowed.clear();storageIdentities.clear();releaseNodeCache();}
 }

@@ -421,6 +421,17 @@ public final class RecordArchive extends AbstractList<Object>
 
     long byteLimit() { return maxBytes; }
 
+    /** Drop decoded caches without ending the task lease or invalidating escaped type roots. */
+    public interface CacheOwner extends AutoCloseable {
+        void releaseNodeCache();
+    }
+
+    public synchronized void releaseNodeCaches() {
+        if (closed) return;
+        for (AutoCloseable resource : owned)
+            if (resource instanceof CacheOwner) ((CacheOwner) resource).releaseNodeCache();
+    }
+
     /** Model snapshots share this archive's task lifetime and cannot outlive its cleanup. */
     void own(AutoCloseable resource) {
         if (closed) throw new IllegalStateException("RECORD_ARCHIVE_CLOSED");

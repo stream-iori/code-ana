@@ -31,7 +31,7 @@ public final class BuiltinExtensions {
         }
 
         public String version() {
-            return "10";
+            return "11";
         }
 
         public String producer() {
@@ -52,6 +52,9 @@ public final class BuiltinExtensions {
         }
 
         public void augment(ExtensionContext context, ModelOverlay overlay) {
+            Set<String> pendingSources = LombokModel.pendingSources(context.model());
+            if (pendingSources.isEmpty()) return;
+            context.progress("candidate");
             Map<String, Object> candidate = new LinkedHashMap<>(context.model());
             List<Object> declarations = new ArrayList<>();
             Map<String, Map<String, Object>> original = new HashMap<>();
@@ -60,18 +63,24 @@ public final class BuiltinExtensions {
                 original.put(Json.string(declaration, "signature"), declaration);
                 // Only declaration/attribute containers are written; compiler type trees remain
                 // immutable.
+                if (!pendingSources.contains(Json.string(declaration, "source"))) {
+                    declarations.add(declaration);
+                    continue;
+                }
                 Map<String, Object> editable = new LinkedHashMap<>(declaration);
                 editable.put(
                         "attributes", new LinkedHashMap<>(Json.map(declaration.get("attributes"))));
                 declarations.add(editable);
             }
             candidate.put("declarations", declarations);
-            LombokModel.augment(candidate, context.configuration());
+            LombokModel.augment(candidate, context.configuration(), context::progress);
+            context.progress("overlay");
             Set<String> retained = new HashSet<>();
             for (Object raw : declarations) {
                 Map<String, Object> d = Json.map(raw), a = Json.map(d.get("attributes"));
                 String signature = Json.string(d, "signature");
                 retained.add(signature);
+                if (!pendingSources.contains(Json.string(d, "source"))) continue;
                 if ("lombok_model".equals(a.get("binding_origin"))) {
                     if (original.containsKey(signature))
                         overlay.removeCompilerConstructor(signature);

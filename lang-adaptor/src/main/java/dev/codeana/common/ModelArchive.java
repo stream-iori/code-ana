@@ -73,7 +73,7 @@ public final class ModelArchive {
         }
     }
     /** Task-owned compiler row spool; type trees are interned before hitting disk. */
-    public static final class RowSpool extends AbstractList<Object> implements AutoCloseable {
+    public static final class RowSpool extends AbstractList<Object> implements RecordArchive.CacheOwner {
         private static final int PAGE = 4096;
         private final RecordArchive records;
         private final Encoder encoder;
@@ -142,6 +142,10 @@ public final class ModelArchive {
             if(index==count) return pending;
             try { return unpack(Json.map(records.get(positions.get(index/PAGE)[index%PAGE])).get("value"),types,0); }
             catch(IOException failure) { throw new UncheckedIOException(failure); }
+        }
+        public void releaseNodeCache() {
+            cache.clear();
+            records.releaseNodeCaches();
         }
         public void close() throws IOException {
             if(!closed) {
@@ -265,7 +269,7 @@ public final class ModelArchive {
         public int size() { return positions.length; }
         public AutoCloseable lifetime() { return records; }
         public Path path() { return records.path(); }
-        public void releaseNodeCache() { ((ModelGraphs.Types)types).graphs().releaseNodeCache(); }
+        public void releaseNodeCache() { records.releaseNodeCaches(); }
         public Object get(int index) {
             if (index<0 || index>=positions.length) throw new IndexOutOfBoundsException();
             try { return immutable(unpack(Json.map(records.get(positions[index])).get("value"),types,0),0); }
