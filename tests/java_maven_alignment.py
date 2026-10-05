@@ -243,6 +243,37 @@ class MavenAlignment(unittest.TestCase):
         self.assertEqual(lib['coordinate'], 'fixture.reactor:lib:1')
         self.assertEqual(lib['physical_id'], 'physical/shared')
 
+    def test_wide_deep_reactor_preserves_physical_inventory_without_lifecycle(self):
+        width, depth = 32, 12
+        root = self.project / 'pom.xml'
+        root.write_text(root.read_text().replace('<module>lib</module><module>app</module>',
+            ''.join(f'<module>physical/w{i}</module>' for i in range(width)) + '<module>deep</module>'))
+        expected = {'.'}
+        for i in range(width):
+            path = f'physical/w{i}'
+            self.write(path + '/pom.xml', self.module(f'artifact-{i}', '').replace(
+                '</parent>', '<relativePath>../../pom.xml</relativePath></parent>'))
+            self.write(path + '/src/main/java/A.java', f'package p{i}; class A {{}}')
+            expected.add(path)
+        path, parent = 'deep', 'parent'
+        for level in range(depth):
+            child = '<modules><module>child</module></modules>' if level + 1 < depth else ''
+            self.write(path + '/pom.xml', f'''<project {NS}><modelVersion>4.0.0</modelVersion>
+                <parent><groupId>fixture.reactor</groupId><artifactId>{parent}</artifactId>
+                <version>1</version></parent><artifactId>level-{level}</artifactId>
+                <packaging>pom</packaging>{child}</project>''')
+            expected.add(path)
+            path, parent = path + '/child', f'level-{level}'
+        result = self.export(scopes=('MAIN',))
+        self.assertEqual({m['physical_id'] for m in result['modules']}, expected)
+        self.assertEqual(len(result['modules']), 1 + width + depth)
+        self.assertEqual(result['receipt']['maven_processes'], 1)
+        self.assertTrue(result['resolved_classpath'])
+        self.assertEqual({key for key in result['controls'] if key.endswith('/pom.xml')},
+                         {path + '/pom.xml' for path in expected if path != '.'})
+        self.assertNotIn('detached/pom.xml', result['controls'])
+        self.assertFalse(list(self.project.rglob('*.class')))
+
     def test_profile_settings_and_parent_controls_are_frozen(self):
         plain = self.export(scopes=('MAIN',))
         active = self.export(scopes=('MAIN',), profiles=('extra',))

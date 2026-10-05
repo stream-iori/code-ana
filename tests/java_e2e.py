@@ -958,10 +958,16 @@ java_parallelism=1
                 if fact['relation'] in ('reads', 'writes'):
                     key = (fact['relation'], by_id[fact['target']]['signature'])
                     counts[key] = counts.get(key, 0) + 1
-            self.assertEqual(counts, {('writes', 'ext.Base#value'): 3, ('reads', 'ext.Base#value'): 4,
-                                     ('writes', 'ext.Base#count'): 4, ('reads', 'ext.Base#count'): 3,
+            # Frozen Anatomist JavaFieldFacts exposes ++/-- as WRITES only;
+            # retain the independent javac read_write observation below.
+            self.assertEqual(counts, {('writes', 'ext.Base#value'): 3, ('reads', 'ext.Base#value'): 3,
+                                     ('writes', 'ext.Base#count'): 4, ('reads', 'ext.Base#count'): 1,
                                      ('reads', 'Use#array'): 1, ('reads', 'Use#length'): 1,
                                      ('reads', 'ext.Kind#ONE'): 1})
+            mutations = [f for f in facts if f['relation'] == ''
+                         and f['attributes'].get('field_mutation')]
+            self.assertEqual(len(mutations), 3)
+            self.assertTrue(all(f['attributes']['field_access'] == 'read_write' for f in mutations))
         _, first = self.cli('index', '--full', timeout=150)
         check(self.facts(first['revision']))
         use.write_text(use.read_text().replace('count=1;', 'count=7;'))

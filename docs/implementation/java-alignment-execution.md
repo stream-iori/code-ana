@@ -1034,3 +1034,14 @@ XML模型审计修正了将重复包含边误判为环的问题，逐条保留�
 真实项目回执原来只观察 CLI/daemon 的退出信号，worker 被杀且 CLI 正常返回错误码时会漏报。验收工具现从结构化 WORKER_PROTOCOL terminal 的 supervisor exit 字段记录 worker PID/信号；不从业务源码、worker stderr 或清理退出码推测。23 项恢复/采样保护检查通过。实际重放上述预检日志，三个 SIGKILL 均被记录，原日志 SHA 和补充观察保存在 `target/java-alignment/evidence/worker-signal-accounting-20261005.json`；没有改写旧回执，也不据此判断杀进程来源。
 
 完整 JVM 门禁和 80 上下文仍继续运行；daemon 重试等待用户处理本机进程拦截。正确性、完整语义尚未通过，容量执行与最终发行暂未开始，不能据当前专项关闭剩余能力。
+
+## 2026-10-05：进程放行后重试、磁盘清理与扫描补验
+
+| 项目 | 实际结果 |
+|---|---|
+| 全上下文 | 091d736 的 iopengw-all-context-model-api 已终态：80/80 accepted，complete_model_api_inventory=true，无失败；保留所有空上下文、坏编码和全源导航证明。全项目发布、14 域与容量仍须分别验收。 |
+| 完整回归 | 091d736 原始回执 66 门禁：JVM/native/Maven等通过，7 个进程链路门禁失败。用户处理 SIGKILL 后，实际 daemon core/supplemental primitive/NoCode 3 项56.297秒通过；IPC 与 Rust daemon 重跑通过，其余重跑继续。原始失败不覆盖；重跑核对冻结源码、日志 SHA 与 runtime inventory。 |
+| 字段旧断言 | binary-field-daemon-repro 重现 reads value=3/count=1，而旧测试期待4/3。冻结原 JAR 与相同实际二进制 JAR/Use.java 索引成功，READS/WRITES逐目标计数与产品一致；JavaFieldFacts 对 mutation 仅 emit WRITES。修正测试，不改产品；新增3份原始 mutation/read_write 断言，真实daemon/full-delta专项104.429秒通过。独立原DB、来源SHA及计数存于 binary-field-frozen-mutation-20261005。 |
+| Maven扫描 | 新增32个宽模块与12层嵌套，45个物理模块全部且唯一，无关POM不入场，单Maven会话、无生命周期/业务CLASS；专项2.485秒、完整18项49.280秒通过。并非真实项目容量证明。 |
+| 磁盘 | 原target206GiB、可用34GiB。删旧验证工作树96个可重建Rust缓存目录，保留当前两棵验证树；旧391模型76份及清单134份gzip逐字节SHA验证后释放9.84/8.12GiB。可用空间约65GiB（随正在运行的索引变化）；原路径/摘要与解压恢复说明存于build-cache-cleanup、obsolete-model-compression、obsolete-inventory-compression三份20261005回执。未清理当前80上下文证据或冻结参考数据库。 |
+| 后续链路 | 091d736全40模块MAIN/TEST/XML正式发布已启动；follow-publication-semantic等待其终态，只在发布成功后执行全部14域并带完整80上下文回执。失败原样保存；当前仍不关闭容量、release或剩余能力。 |
