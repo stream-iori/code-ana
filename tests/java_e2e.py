@@ -897,9 +897,11 @@ java_parallelism=1
                 self.assertIsNotNone(fact['span'])
                 key = (fact['relation'], signature)
                 counts[key] = counts.get(key, 0) + 1
-            self.assertEqual(counts, {('reads', 'p.Fields#count'): 5,
+            # Anatomist projects ++/-- as writes; raw javac occurrences retain
+            # read_write. Compound assignments still project both relations.
+            self.assertEqual(counts, {('reads', 'p.Fields#count'): 3,
                                      ('writes', 'p.Fields#count'): 4,
-                                     ('reads', 'p.Fields#value'): 3,
+                                     ('reads', 'p.Fields#value'): 1,
                                      ('writes', 'p.Fields#value'): 4,
                                      ('reads', 'p.Fields#array'): 3})
 
