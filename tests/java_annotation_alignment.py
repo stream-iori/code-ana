@@ -21,6 +21,21 @@ class Annotations(unittest.TestCase):
     analyze = model_tests.Models.analyze
     merged = model_tests.Models.merged
 
+    def test_meta_source_spans_survive_file_offset_cache_eviction(self):
+        files={}
+        for i in range(6):
+            files['Meta'+str(i)+'.java']='// 原字节😀\r\npackage p; import java.lang.annotation.*; @Deprecated @Retention(RetentionPolicy.RUNTIME) @Target(ElementType.TYPE) @interface Ann'+str(i)+' {}'
+            files['Use'+str(i)+'.java']='package p; @Ann'+str(i)+' class Use'+str(i)+' {}'
+        facts=self.analyze([self.context('app',files)])['facts']
+        origins={f['attributes']['source_origin']['path']:f['attributes']['source_origin']
+                 for f in facts if f['relation']=='java.annotation.meta'
+                 and f['attributes']['annotation_fqn'].startswith('p.Ann')}
+        for i in range(6):
+            path='app/Meta'+str(i)+'.java';origin=origins[path]
+            self.assertEqual(origin['hash'],model_tests.sha(files['Meta'+str(i)+'.java'].encode()))
+            span=origin['span'];text=files['Meta'+str(i)+'.java'].encode()[span['start']:span['end']].decode()
+            self.assertIn('@interface Ann'+str(i),text)
+
     def beans(self, facts):
         return [f for f in facts if f['relation'] == 'java.bean']
 

@@ -532,7 +532,7 @@ public final class FactExtractor {
             Map<String,Object> a=new TreeMap<>(Json.map(n.get("attributes")));
             Map<String,Object> origin=new TreeMap<>(Json.map(a.get("source_origin")));
             String originPath=Json.string(origin,"path");
-            if(positions.containsKey(originPath)) {
+            if(sources.containsKey(originPath) && !invalidEncoding.contains(originPath)) {
                 origin.put("span",span(originPath,origin));
                 origin.put("hash",sources.get(originPath).get("hash"));
             }

@@ -14,7 +14,7 @@ public final class CompilerGraphArchiveProbe {
             String source="class Leaf {} class Box<T> {} class Use<T extends Comparable<T>> {"+nested+" deep;T recursive;Missing broken;}";
             Path input=root.resolve("App.java");Files.write(input,source.getBytes(StandardCharsets.UTF_8));
             Map<String,Object> unit=Json.object("path","app/App.java","input",input.toString(),"hash",Json.sha(input),"publish",true);
-            Map<String,Object> request=Json.object("version",8,"context","app@MAIN","type_graph",true,"sources",Arrays.asList(unit),"classpath",Collections.emptyList());
+            Map<String,Object> request=Json.object("version",9,"context","app@MAIN","type_graph",true,"sources",Arrays.asList(unit),"classpath",Collections.emptyList());
             Path control=root.resolve("request.json"),model=root.resolve("model.bin");
             Files.write(control,Json.write(request).getBytes(StandardCharsets.UTF_8));
             Path javaBinary=Paths.get(System.getProperty("java.home"),"bin","java");
