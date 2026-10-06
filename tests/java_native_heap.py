@@ -13,7 +13,7 @@ class NativeHeap(unittest.TestCase):
 
     def test_real_heap_exhaustion_has_terminal_state_and_cleanup(self):
         ctx = self.context('heap', {f'C{i}.java': 'class C'+str(i)+' { '+''.join(f'int value{j}(){{return {i+j};}}' for j in range(8))+' }' for i in range(1000)})
-        request = dict(version=5, facts=True, full=True, java_home=str(models.JDK8),
+        request = dict(version=6, facts=True, full=True, java_home=str(models.JDK8),
                        bridge=str(models.ROOT/'lang-adaptor/target/compiler-bridge.jar'), scratch=str(self.root),
                        compiler_heap_bytes=256*1024*1024, contexts=[ctx], parallelism=1, signature_cache=False)
         path = self.root/'request.json'

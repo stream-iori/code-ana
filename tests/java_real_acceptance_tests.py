@@ -149,7 +149,7 @@ class AcceptanceRecovery(unittest.TestCase):
         scratch=self.root/'compiler-fixture';context=scratch/'context-one';context.mkdir(parents=True)
         pin=scratch/'signatures.jar';pin.write_bytes(b'NoCode-pin')
         request=context/'request.json'
-        request.write_text(json.dumps(dict(version=8,context='app@TEST',sources=[],classpath=[str(pin)])))
+        request.write_text(json.dumps(dict(version=9,context='app@TEST',sources=[],classpath=[str(pin)])))
         diagnostics=CompilerDiagnostics(self.evidence);diagnostics.capture_requests(scratch)
         self.assertEqual(len(diagnostics.requests),1)
         proof=diagnostics.requests[0];copy=pathlib.Path(proof['local_jars'][str(pin)]['path'])

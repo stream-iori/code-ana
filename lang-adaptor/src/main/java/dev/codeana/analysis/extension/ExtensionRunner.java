@@ -53,6 +53,14 @@ public final class ExtensionRunner {
                 ExtensionContext context =
                         new ExtensionContext(configuration, model, List.of(), List.of(),
                                 stage -> progress.accept("model." + e.id() + "." + stage));
+                if (extension instanceof JavaUnitModelExtension units) {
+                    ExtensionExecution.run(e,"model",context,report,pending,"",()-> {
+                        Map<String,Object> candidate=new LinkedHashMap<>(model);
+                        units.augmentUnits(context,candidate);
+                        model.put("declarations",candidate.get("declarations"));
+                    });
+                    continue;
+                }
                 if (extension instanceof JavaDeclarationModelExtension perDeclaration) {
                     for (Object raw : Json.list(context.model().get("declarations"))) {
                         Map<String, Object> declaration = Json.map(raw);

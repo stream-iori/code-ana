@@ -331,7 +331,7 @@ class CompilerDiagnostics:
                 if len(body)>32*1024*1024:raise ValueError('COMPILER_DIAGNOSTIC_REQUEST_BUDGET')
                 try:value=json.loads(body)
                 except (ValueError,UnicodeError):continue  # Writer may still be writing this request.
-                if value.get('version')!=8 or not isinstance(value.get('sources'),list):
+                if value.get('version')!=9 or not isinstance(value.get('sources'),list):
                     raise ValueError('COMPILER_DIAGNOSTIC_REQUEST_INVALID')
                 if len(self.requests)>=256 or self.capture_bytes+len(body)>512*1024*1024:
                     raise ValueError('COMPILER_DIAGNOSTIC_CAPTURE_BUDGET')

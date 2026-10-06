@@ -72,18 +72,30 @@ public final class DetachedModelApiReferenceProbe {
                         row.put("slice",inventory ? ModelApiInventory.slice(slice) : slice);output.row(row);
                     }
                 }
-                for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of()))) {
+                Set<String> queries=new LinkedHashSet<>();
+                for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of())))queries.add(name.toString());
+                if(Boolean.TRUE.equals(request.get("model_api_effective_types"))) {
+                    for(var unit:analysis.units())for(var ref:model.declarations(unit.path())) {
+                        var declaration=model.declaration(ref);
+                        if(!declaration.canonicalName().isBlank()) {
+                            queries.add(declaration.canonicalName());
+                            if(!declaration.binaryName().isBlank())queries.add(declaration.binaryName());
+                        }
+                    }
+                }
+                for(String name:queries) {
                     var lookup=model.type(name.toString());List<Object> candidates=new ArrayList<>();
                     if(lookup instanceof JavaModel.FoundType found)candidates.add(typeKey(model,found.declaration(),paths));
                     if(lookup instanceof JavaModel.AmbiguousType ambiguous)for(var ref:ambiguous.declarations())candidates.add(typeKey(model,ref,paths));
-                    lookupCandidates.get(name.toString()).addAll(candidates);
+                    lookupCandidates.computeIfAbsent(name.toString(),ignored->new ArrayList<>()).addAll(candidates);
                 }
                 model.close();try {model.type("p.Use");throw new AssertionError("reference closed model remained readable");}
                 catch(IllegalStateException expected){}
             } catch(Exception failure) {throw new RuntimeException(failure);}
         };
         if(Boolean.TRUE.equals(request.get("model_api_exact_context")))
-            FrozenExactModelApiContext.analyze(context,javaHome,scratch.resolve("exact-reference"),consume);
+            FrozenExactModelApiContext.analyze(context,javaHome,scratch.resolve("exact-reference"),
+                    Boolean.TRUE.equals(request.get("model_api_lombok")),consume);
         else backend.analyzeFiles(new ArrayList<>(paths.keySet()),consume);
         for(var entry:lookupCandidates.entrySet()) {
             var candidates=entry.getValue();output.type(Json.object("name",entry.getKey(),"status",

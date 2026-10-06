@@ -5,9 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
-/** Model 7: framed rows, ordered sections, and shared immutable type graphs. Java 8. */
+/** Model 8: framed rows, ordered sections, and shared immutable type graphs. Java 8. */
 public final class ModelArchive {
-    public static final int VERSION = 7;
+    public static final int VERSION = 8;
     private static final List<String> SECTIONS = Arrays.asList("sources", "declarations", "observations",
             "syntax", "external", "annotation_types", "diagnostics");
     private static final int MAX_ROWS = 2000000;
@@ -147,6 +147,13 @@ public final class ModelArchive {
             cache.clear();
             records.releaseNodeCaches();
         }
+        /** Mutable handles over sealed rows; changes remain tracked without decoding the spool. */
+        public List<Object> mutableRows() throws IOException {
+            seal();
+            int[] selected = new int[count];
+            for (int i=0;i<count;i++) selected[i]=positions.get(i/PAGE)[i%PAGE];
+            return new ArchiveRows(records,types,selected);
+        }
         public void close() throws IOException {
             if(!closed) {
                 closed=true; pending=null; cache.clear(); positions.clear(); encoder.types.clear(); encoder.typePositions.clear(); encoder.graphs.close();
@@ -269,6 +276,8 @@ public final class ModelArchive {
         public int size() { return positions.length; }
         public AutoCloseable lifetime() { return records; }
         public Path path() { return records.path(); }
+        /** Child overlays share the task's lease and cache release, never close it early. */
+        public void own(AutoCloseable child) { records.own(child); }
         public void releaseNodeCache() { records.releaseNodeCaches(); }
         public Object get(int index) {
             if (index<0 || index>=positions.length) throw new IndexOutOfBoundsException();

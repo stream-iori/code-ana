@@ -260,7 +260,7 @@ public final class CompilerSession implements AutoCloseable {
             if (Files.size(child.log) > LOG_BYTES) throw new IOException("COMPILER_DISK_BUDGET");
             if (Files.size(receipt) > 16384) throw new IOException("COMPILER_RECEIPT_BUDGET");
             Map<String, Object> record = Json.map(Json.parse(Json.read(receipt)));
-            if (Json.number(record, "version") != 8 || !nonce.equals(record.get("nonce")))
+            if (Json.number(record, "version") != 9 || !nonce.equals(record.get("nonce")))
                 throw new IOException("COMPILER_RESULT_MISMATCH");
             if (record.containsKey("error"))
                 throw new IOException("COMPILER_FAILED: " + record.get("error"));

@@ -16,12 +16,17 @@ public final class FactExtractor {
     public static final String PRODUCER = "javac-java8-v1";
     private final Map<String, Object> context;
     private final Map<String, Map<String, Object>> sources = new TreeMap<>();
-    private final Map<String, Utf8Offsets> positions = new HashMap<>();
+    private final Map<String, Utf8Offsets> positions = new LinkedHashMap<>(8,.75f,true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String,Utf8Offsets> entry) {
+            return size()>4;
+        }
+    };
     private final Map<String, String> symbols = new HashMap<>();
     private final Map<String, Integer> facts = new TreeMap<>();
     private final RecordArchive rows;
     private Map<String, Object> pending;
     private final Set<String> incomplete = new HashSet<>();
+    private final Set<String> invalidEncoding = new HashSet<>();
     private final Set<String> knownSymbols = new HashSet<>();
     private final String world;
     private final String contextDigest;
@@ -64,9 +69,10 @@ public final class FactExtractor {
                 // The compiler reports the original hash/path and omits this source.
                 // Preserve its owner for diagnostics, coverage and future replacement.
                 incomplete.add(path);
+                invalidEncoding.add(path);
                 continue;
             }
-            positions.put(path, new Utf8Offsets(text));
+            // Offset tables belong to the file currently being emitted, not the whole context.
         }
     }
 
@@ -107,6 +113,16 @@ public final class FactExtractor {
         long start = Json.number(node, "start"), end = Json.number(node, "end");
         if (start < 0 || end < 0) return null;
         Utf8Offsets map = positions.get(path);
+        if(map==null && sources.containsKey(path) && !invalidEncoding.contains(path)) {
+            try {
+                byte[] bytes=Json.read(Path.of(Json.string(sources.get(path),"input")));
+                String text=StandardCharsets.UTF_8.newDecoder()
+                        .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)
+                        .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)
+                        .decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+                map=new Utf8Offsets(text);positions.put(path,map);
+            } catch(java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        }
         if (map == null || start > end || map.offset(start) < 0 || map.offset(end) < 0)
             throw new IllegalStateException("UTF16_SPAN_INVALID");
         return Json.object("start", map.offset(start), "end", map.offset(end));

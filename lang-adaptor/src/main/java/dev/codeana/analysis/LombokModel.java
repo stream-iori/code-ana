@@ -21,6 +21,14 @@ public final class LombokModel {
         new LombokDeclarations(model, context, progress).apply();
     }
 
+    /** Unit-local rule execution; the environment supplies read-only cross-file declarations. */
+    public static void augmentUnit(Map<String,Object> model,Map<String,Object> context,
+            dev.codeana.analysis.model.JavaContextModel environment,
+            java.util.function.Consumer<String> progress) {
+        if (!"model".equals(context.get("lombok"))) return;
+        new LombokDeclarations(model,context,progress,environment).apply();
+    }
+
     /** Anatomist AST eligibility is per source unit, including auxiliary binding sources. */
     public static Set<String> pendingSources(Map<String, Object> model) {
         Set<String> seen = new HashSet<>(), pending = new HashSet<>();
@@ -41,22 +49,22 @@ public final class LombokModel {
 
     public static void recover(Map<String, Object> model, Map<String, Object> context) {
         if (!"model".equals(context.get("lombok"))) return;
-        Map<String, Map<String, Object>> known = new HashMap<>();
+        Set<String> known = new HashSet<>(), modeledDeclarations = new HashSet<>();
         Set<String> altered = new HashSet<>();
         for (Object raw : Json.list(model.get("declarations"))) {
-            Map<String, Object> d = Json.map(raw); known.put(Json.string(d, "signature"), d);
+            Map<String, Object> d = Json.map(raw); String signature=Json.string(d,"signature");known.add(signature);
+            if("lombok_model".equals(Json.map(d.get("attributes")).get("binding_origin")))modeledDeclarations.add(signature);
             if (Boolean.TRUE.equals(summary(d).get("constructor_replaced"))) altered.add(Json.string(d, "signature"));
         }
         Json.list(model.get("observations")).removeIf(raw -> {
             String parent = Json.string(Json.map(raw), "parent");
-            return parent.contains("#<init>(") && !known.containsKey(parent)
+            return parent.contains("#<init>(") && !known.contains(parent)
                     && altered.contains(parent.substring(0, parent.indexOf('#')));
         });
         for (Object raw : Json.list(model.get("observations"))) {
             Map<String, Object> n = Json.map(raw); String target = Json.string(n, "target");
-            Map<String, Object> d = known.get(target);
-            boolean modeled = d != null && "lombok_model".equals(Json.map(d.get("attributes")).get("binding_origin"));
-            boolean removed = target.contains("#<init>(") && d == null && altered.contains(target.substring(0, target.indexOf('#')));
+            boolean modeled = modeledDeclarations.contains(target);
+            boolean removed = target.contains("#<init>(") && !known.contains(target) && altered.contains(target.substring(0, target.indexOf('#')));
             if (!modeled && !removed) continue;
             n.put("resolved", false); n.put("complete", false); n.put("target", "");
             Map<String, Object> attrs = Json.map(n.get("attributes"));

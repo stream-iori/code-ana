@@ -9,7 +9,7 @@ public final class ModelGraphPagingProbe {
     private static Path create(Path root, String name, boolean invalid) throws Exception {
         Path path=root.resolve(name+".bin");
         try(RecordArchive rows=RecordArchive.create(path,64L<<20,100000)) {
-            rows.add(Json.object("kind","header","version",7,"context","app@MAIN","sections",SECTIONS));
+            rows.add(Json.object("kind","header","version",ModelArchive.VERSION,"context","app@MAIN","sections",SECTIONS));
             for(int graph=0;graph<500;graph++)for(int node=0;node<100;node++)
                 rows.add(Json.object("kind","graph_node","graph",graph,"id",node,"value",Json.object(
                     "kind","DECLARED","complete",true,"enclosing",-1,

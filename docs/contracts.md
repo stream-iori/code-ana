@@ -1,5 +1,7 @@
 # 公共契约：事实、身份与协议
 
+2026-10-06：当前重写版本compiler9/model8/worker12/native request6，ABI2和Fact IR1保持；旧索引与Java缓存不迁移，混装拒绝。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
+
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入，新增结构化类型/ASM 的范围见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
 **先冻结“一个事实属于谁、对应哪个输入、怎样证明交付完成”，再实现传输和表结构。**

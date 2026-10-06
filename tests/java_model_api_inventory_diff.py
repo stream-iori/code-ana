@@ -26,7 +26,7 @@ PROJECTIONS=('declarations','syntax','sources','type_lookup')
 
 def validate_inputs(project,manifest,request):
     expected=compiler_context(project,manifest,request['module'],request['scope'])
-    if request.get('version')!=8 or request.get('context')!=expected['context'] or request.get('world')!=expected['world']:
+    if request.get('version')!=9 or request.get('context')!=expected['context'] or request.get('world')!=expected['world']:
         raise ValueError('MODEL_API_CONTEXT_MISMATCH')
     fields=('path','hash','module','scope','world','publish')
     keys=lambda rows:[tuple(row.get(key) for key in fields) for row in rows]
@@ -114,20 +114,22 @@ def main():
     parser.add_argument('--model-receipt',type=pathlib.Path,required=True)
     parser.add_argument('--evidence',type=pathlib.Path,required=True)
     parser.add_argument('--native-executable',type=pathlib.Path)
+    parser.add_argument('--lombok-ast',action='store_true',help='Compare effective declarations after both AST overlays')
     parser.add_argument('--native-heap-bytes',type=int,default=1073741824)
     args=parser.parse_args();evidence=args.evidence.resolve();evidence.mkdir(parents=True,exist_ok=False)
     if not 8*1024*1024<=args.native_heap_bytes<=1073741824 or args.native_heap_bytes%(1024*1024):
         parser.error('native heap must be a whole MiB between 8 MiB and 1 GiB')
     started=time.monotonic();inputs={};report=dict(kind='independent_frozen_project_model_api_inventory',state='preparing',
         equal=False,projections={},publication_accepted=False,native_product_verified=False,
-        full_project_all_scopes_accepted=False,full_semantic_diff_accepted=False,capacity_accepted=False)
+        full_project_all_scopes_accepted=False,full_semantic_diff_accepted=False,capacity_accepted=False,
+        model_api_mode='lombok_ast' if args.lombok_ast else 'raw')
     output=evidence/'receipt.json';atomic_json(output,report)
     try:
         project=args.project.resolve();report['frozen_project']=verify_frozen(project)
         request=json.loads(args.compiler_request.read_text());manifest=json.loads(args.inputs_manifest.read_text())
         validate_inputs(project,manifest,request)
         receipt=json.loads(args.model_receipt.read_text());archive=args.model_archive.resolve()
-        if ('error' in receipt or receipt.get('version')!=8 or receipt.get('context')!=request['context']
+        if ('error' in receipt or receipt.get('version')!=9 or receipt.get('context')!=request['context']
             or receipt.get('sha256')!=digest(archive) or receipt.get('bytes')!=archive.stat().st_size):
             raise ValueError('MODEL_API_ACTUAL_COMPILER_ARCHIVE_REQUIRED')
         jar=ROOT.parent/'anatomist/target/anatomist.jar'
@@ -157,11 +159,15 @@ def main():
             executable=args.native_executable.resolve();inputs[str(executable)]=digest(executable)
             report['native_model_api_executable_sha256']=inputs[str(executable)]
             report['native_model_api_heap_bytes']=args.native_heap_bytes
-        adapted=dict(version=5,facts=False,java_home=str(JDK8),bridge=str(bridge),contexts=[request],
+        adapted=dict(version=6,facts=False,java_home=str(JDK8),bridge=str(bridge),contexts=[request],
             scratch=str(evidence/'scratch'),compiler_heap_bytes=536870912,compiler_timeout_seconds=3600,
             model_api_inventory=True,model_api_published_only=False,model_api_exact_context=True,model_type_queries=queries,
             model_api_excluded_sources=sorted(invalid),
             model_api_archive=str(archive),model_api_archive_sha256=digest(archive))
+        if args.lombok_ast:
+            request=dict(request,lombok='model',lombok_strict=False,resources=[])
+            adapted.update(contexts=[request],model_api_lombok=True,model_api_project=str(project),
+                           model_api_effective_types=True)
         (evidence/'scratch').mkdir();path=evidence/'request.json';atomic_json(path,adapted)
         reference_request=dict(adapted,contexts=[dict(request,sources=[s for s in request['sources'] if s['path'] not in invalid])])
         reference_path=evidence/'reference-request.json';atomic_json(reference_path,reference_request)
@@ -183,7 +189,7 @@ def main():
             with (evidence/(side+'.json')).open('wb') as stdout,(evidence/(side+'.log')).open('wb') as stderr:
                 argument=path if side=='product' else reference_path
                 command=([str(executable),'-Xmx'+str(args.native_heap_bytes//(1024*1024))+'m',str(argument)] if side=='product' and args.native_executable else
-                    [str(JDK25/'bin/java'),'-Xmx1024m','-cp',classpath,probe,str(argument)])
+                    [str(JDK25/'bin/java'),'-Xmx4096m' if side=='reference' and args.lombok_ast else '-Xmx1024m','-cp',classpath,probe,str(argument)])
                 subprocess.run(command,
                     stdout=stdout,stderr=stderr,env=env,check=True,timeout=3600)
             results[side]=json.loads((evidence/(side+'.json')).read_text())

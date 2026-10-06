@@ -1141,3 +1141,5 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 图表预算后续：按编码/RowSpool/按需解码所在归档的显式预算统一，默认64MiB保持，最大1GiB；旧嵌套类型表/单帧/节点保护保持。65536节点实际大图 JVM/native 往返及默认超限拒绝、完整归档回归通过。app/test@TEST真实 SDK8 编译成功（3319源/472发布源、526510405字节、247.967秒），无输入漂移/异常信号；全源原生API对照及最新同版全项目验收仍待。不能据此关闭容量。
 
 2026-10-05 Lombok AST 收尾：范围为冻结 Anatomist 的 `mode=ast`，产品配置仍用 `off/model`。已实现按源码单元选择及重复覆盖保护、初始化标记优先、共享图泛型 owner 改写、written type 128 层及无变化共享；Lombok 11 / registry v11。历史 snapshot 解码缓存随上下文释放，归档租约仍保留到 task close；32MiB / 80 snapshot 正向通过，保留缓存对照 OOM。原全项目停滞运行已经产品取消并保留现场，新版完整 native / 80 context / 14 域 / 发行仍待验收，旧发行包保留。详见 docs/java-implementation.md。
+
+2026-10-06：按用户授权重写lang-adaptor，文件级模型与Lombok事务已接入，新版本compiler9/model8/worker12/request6；旧产品数据不兼容。完整pass迁移、产品索引清理、新native/daemon、iopengw、raw/AST两套80上下文、14域及发行未完成，不关闭52项。见docs/implementation/java-adaptor-rewrite.md。

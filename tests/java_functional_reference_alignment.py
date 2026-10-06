@@ -100,7 +100,7 @@ def probe_artifacts(native):
 
 def native_analyze(self, contexts, baseline=None, parallelism=1, cache=False, compact=False):
     model_probe = getattr(self, 'probe', '') == 'dev.codeana.analysis.DependencyViewProbe'
-    request = dict(version=5, facts=not model_probe, full=baseline is None, baseline=baseline or [], java_home=str(models.JDK8),
+    request = dict(version=6, facts=not model_probe, full=baseline is None, baseline=baseline or [], java_home=str(models.JDK8),
                    bridge=os.environ.get('CODEANA_TEST_BRIDGE', str(ROOT / 'lang-adaptor/target/compiler-bridge.jar')),
                    scratch=str(self.root), contexts=contexts, parallelism=parallelism)
     if cache:

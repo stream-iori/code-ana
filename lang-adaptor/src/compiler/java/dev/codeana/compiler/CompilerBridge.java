@@ -138,7 +138,7 @@ public final class CompilerBridge implements AutoCloseable {
             Map<String, Object> command = Json.map(Json.parse(commandBytes));
             Path result = Paths.get(Json.string(command, "result"));
             Path receipt = Paths.get(Json.string(command, "receipt"));
-            Map<String, Object> end = Json.object("version", 8, "nonce", command.get("nonce"));
+            Map<String, Object> end = Json.object("version", 9, "nonce", command.get("nonce"));
             CompilerBridge analysis = null;
             try {
                 Map<String, Object> request = Json.map(Json.parse(Json.read(Paths.get(Json.string(command, "request")))));
@@ -174,7 +174,7 @@ public final class CompilerBridge implements AutoCloseable {
     }
 
     private Map<String, Object> analyze(Map<String, Object> request) throws Exception {
-        if (Json.number(request, "version") != 8)
+        if (Json.number(request, "version") != 9)
             throw new IOException("COMPILER_PROTOCOL_VERSION");
         context = Json.string(request,"context");
         fullAuxiliaryModel = Boolean.TRUE.equals(request.get("full_auxiliary_model"));

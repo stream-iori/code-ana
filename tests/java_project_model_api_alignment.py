@@ -41,13 +41,15 @@ def main():
     for name in ('project','inputs-manifest','native-executable','evidence'):
         parser.add_argument('--'+name,type=pathlib.Path,required=True)
     parser.add_argument('--compiler-timeout-seconds',type=int,default=3600)
+    parser.add_argument('--lombok-ast',action='store_true')
     args=parser.parse_args()
     if not 1<=args.compiler_timeout_seconds<=3600:parser.error('compiler timeout must be 1..3600')
     evidence=args.evidence.resolve();evidence.mkdir(parents=True,exist_ok=False)
     started=time.monotonic();output=evidence/'receipt.json';frozen={}
     report=dict(kind='complete_frozen_maven_model_api_inventory',state='preparing',contexts=[],
         complete_model_api_inventory=False,publication_accepted=False,full_semantic_diff_accepted=False,
-        capacity_accepted=False,time_is_performance_gate=False)
+        capacity_accepted=False,time_is_performance_gate=False,
+        model_api_mode='lombok_ast' if args.lombok_ast else 'raw')
     atomic_json(output,report)
     try:
         project=args.project.resolve();manifest_path=args.inputs_manifest.resolve()
@@ -93,6 +95,7 @@ def main():
                         '--compiler-request',str(compiler/'request.json'),'--model-archive',str(compiler/'model.bin'),
                         '--model-receipt',str(compiler/'compiler-receipt.json'),
                         '--native-executable',str(args.native_executable.resolve()),'--evidence',str(inventory)]
+                    if args.lombok_ast:command.append('--lombok-ast')
                     with (directory/'inventory.log').open('wb') as log:
                         process=subprocess.run(command,cwd=ROOT,stdout=log,stderr=subprocess.STDOUT)
                     receipt=inventory/'receipt.json';value=json.loads(receipt.read_text())

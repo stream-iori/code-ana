@@ -16,6 +16,8 @@ mkdir -p "$repo_root/lang-adaptor/target/compiler-classes"
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/RecordArchive.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ModelArchive.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ArchiveRows.java" \
+  "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ModelRows.java" \
+  "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/UnitDeclarationRows.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/TypeGraph.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/TypeGraphArchive.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ModelGraphs.java" \

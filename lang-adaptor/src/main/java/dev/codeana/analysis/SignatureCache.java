@@ -19,7 +19,7 @@ import java.util.jar.*;
 
 /** Content-verified, index-only Java 8 declarations. Unsupported shapes stay as source inputs. */
 final class SignatureCache {
-    private static final String FORMAT = "java8-source-signature-v10-model7-graphs";
+    private static final String FORMAT = "java8-source-signature-v11-model8-units";
     private static final long MAX_ENTRY = 8L * 1024 * 1024;
     private static final long MAX_TOTAL = 256L * 1024 * 1024;
     private static final long MAX_CATALOGUES = 64L * 1024 * 1024;

@@ -395,7 +395,7 @@ public final class JavaAnalysis {
             }
             return Json.object(
                     "version",
-                    5,
+                    6,
                     "mode",
                     full ? "full" : "delta",
                     "facts",

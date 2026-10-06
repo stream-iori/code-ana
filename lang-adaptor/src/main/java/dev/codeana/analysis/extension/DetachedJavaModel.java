@@ -79,11 +79,11 @@ public final class DetachedJavaModel implements AutoCloseable {
         Set<Identity> auxiliaryBodyDeclarations=new HashSet<>();
         Map<Identity,List<Identity>> auxiliaryChildren=new HashMap<>();
         Set<List<String>> parameterHeaders=new HashSet<>();
-        Map<Identity,List<Map<String,Object>>> originalHeaders=new HashMap<>();
-        for(Object raw:declarations) {
-            cancelled();var value=Json.map(raw);var attributes=Json.map(value.get("attributes"));
+        Map<Identity,List<Integer>> originalHeaders=new HashMap<>();
+        for(int headerPosition=0;headerPosition<declarations.size();headerPosition++) {
+            cancelled();var value=Json.map(declarations.get(headerPosition));var attributes=Json.map(value.get("attributes"));
             String source=Json.string(value,"source"),signature=Json.string(value,"signature");
-            originalHeaders.computeIfAbsent(new Identity(source,signature),ignored->new ArrayList<>()).add(value);
+            originalHeaders.computeIfAbsent(new Identity(source,signature),ignored->new ArrayList<>()).add(headerPosition);
             if(!fullAuxiliaryModel && Boolean.FALSE.equals(unit(source).get("publish"))) {
                 Identity identity=new Identity(source,signature);
                 auxiliaryChildren.computeIfAbsent(new Identity(source,Json.string(value,"parent")),ignored->new ArrayList<>()).add(identity);
@@ -126,7 +126,7 @@ public final class DetachedJavaModel implements AutoCloseable {
                     if(!seen.add(identity))throw new IllegalArgumentException("JAVA_MODEL_MODELED_ORIGIN_CYCLE");
                     if(seen.size()>129)throw new IllegalArgumentException("JAVA_MODEL_MODELED_ORIGIN_DEPTH_BUDGET");
                     var candidates=originalHeaders.getOrDefault(identity,List.of());
-                    if(candidates.size()!=1)break;anchor=candidates.getFirst();
+                    if(candidates.size()!=1)break;anchor=Json.map(declarations.get(candidates.getFirst()));
                 }
                 Map<String,Object> spanAnchor=anchor;
                 // Method/constructor-target builders place their generated
@@ -135,7 +135,7 @@ public final class DetachedJavaModel implements AutoCloseable {
                 if("builder".equals(attributes.get("modeled_capability"))
                         && Set.of("METHOD","CONSTRUCTOR").contains(Json.map(anchor.get("attributes")).get("element_kind"))) {
                     var owners=originalHeaders.getOrDefault(new Identity(source,Json.string(anchor,"parent")),List.of());
-                    if(owners.size()==1)spanAnchor=owners.getFirst();
+                    if(owners.size()==1)spanAnchor=Json.map(declarations.get(owners.getFirst()));
                 }
                 if(!Boolean.TRUE.equals(attributes.get("modeled_implicit"))
                         && number(spanAnchor,"start")>=0 && number(spanAnchor,"end")>=number(spanAnchor,"start")) {
@@ -233,8 +233,8 @@ public final class DetachedJavaModel implements AutoCloseable {
         return value.get(key) instanceof Number number?number.longValue():-1;
     }
     /** Default providers originate at fields; their formals belong to an enclosing source header. */
-    private static Map<String,Object> sourceFormal(Map<String,Object> anchor,String name,
-            Map<Identity,List<Map<String,Object>>> headers) {
+    private Map<String,Object> sourceFormal(Map<String,Object> anchor,String name,
+            Map<Identity,List<Integer>> headers) {
         Set<Identity> seen=new HashSet<>();
         while(anchor!=null) {
             cancelled();String source=Json.string(anchor,"source");
@@ -246,7 +246,7 @@ public final class DetachedJavaModel implements AutoCloseable {
             if(matches.size()>1)throw new IllegalArgumentException("JAVA_MODEL_MODELED_FORMAL_AMBIGUOUS");
             if(!matches.isEmpty())return matches.getFirst();
             var parents=headers.getOrDefault(new Identity(source,Json.string(anchor,"parent")),List.of());
-            anchor=parents.size()==1?parents.getFirst():null;
+            anchor=parents.size()==1?Json.map(Json.list(model.get("declarations")).get(parents.getFirst())):null;
         }
         return null;
     }

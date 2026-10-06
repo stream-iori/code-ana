@@ -66,6 +66,24 @@ final class LombokDeclarations {
     private boolean generatedChecked;
     private final java.util.function.Consumer<String> progress;
     private final Set<String> pendingSources;
+    private dev.codeana.analysis.model.JavaContextModel lookup;
+    private final Map<String,List<Map<String,Object>>> lookupMembers = new LinkedHashMap<>(16,.75f,true) {
+        @Override protected boolean removeEldestEntry(Map.Entry<String,List<Map<String,Object>>> entry) {
+            return size()>16;
+        }
+    };
+
+    private Map<String,Object> declaration(String signature) {
+        if (removed.contains(signature)) return null;
+        Map<String,Object> local=known.get(signature);
+        return local!=null || lookup==null ? local : lookup.unique(signature);
+    }
+    private boolean hasDeclaration(String signature) { return declaration(signature)!=null; }
+    private List<Map<String,Object>> membersOf(String signature) {
+        List<Map<String,Object>> local=members.get(signature);
+        if(local!=null || lookup==null) return local==null?List.of():local;
+        return lookupMembers.computeIfAbsent(signature,lookup::members);
+    }
     private record RebaseKey(dev.codeana.common.TypeGraph graph,
             Map<dev.codeana.common.TypeGraph.VariableIdentity, String> owners) {}
     // Bounded and confined to this overlay. Original archive leases belong to the task.
@@ -74,6 +92,12 @@ final class LombokDeclarations {
 
     LombokDeclarations(Map<String, Object> model, Map<String, Object> context,
             java.util.function.Consumer<String> progress) {
+        this(model, context, progress, null);
+    }
+
+    LombokDeclarations(Map<String, Object> model, Map<String, Object> context,
+            java.util.function.Consumer<String> progress,
+            dev.codeana.analysis.model.JavaContextModel environment) {
         this.progress = progress;
         this.model = model;
         this.context = context;
@@ -90,6 +114,9 @@ final class LombokDeclarations {
                     && !attrs(d).containsKey("has_initializer"))
                 missingInitializers.add(Json.string(d, "signature"));
             members.computeIfAbsent(Json.string(d, "parent"), ignored -> new ArrayList<>()).add(d);
+        }
+        if (environment != null) {
+            lookup = environment;
         }
         progress.accept("initializers");
         // Current compiler rows carry explicit true/false metadata. Older detached inputs
@@ -114,13 +141,13 @@ final class LombokDeclarations {
                     .contains(attrs(owner).get("element_kind"))) continue;
             Map<String, Map<String, Object>> annotations = annotations(owner);
             List<Map<String, Object>> fields =
-                    members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+                    membersOf(Json.string(owner, "signature")).stream()
                             .filter(d -> "FIELD".equals(attrs(d).get("element_kind")))
                             .toList();
             Summary summary = new Summary(annotations);
             if (summary.detected.isEmpty()
                     && fields.stream().allMatch(f -> annotations(f).isEmpty())
-                    && members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+                    && membersOf(Json.string(owner, "signature")).stream()
                             .noneMatch(m -> annotations(m).containsKey("Builder"))) continue;
             progress.accept("owner:" + Json.string(owner, "signature"));
             effective = configuration.forSource(Json.string(owner, "source"));
@@ -214,7 +241,7 @@ final class LombokDeclarations {
         List<Map<String, Object>> targets = new ArrayList<>();
         if (ownerAnnotations.containsKey("Builder")) targets.add(owner);
         for (Map<String, Object> member :
-                members.getOrDefault(Json.string(owner, "signature"), List.of()))
+                membersOf(Json.string(owner, "signature")))
             if (annotations(member).containsKey("Builder")) targets.add(member);
         if (targets.isEmpty()) return;
         summary.detected.add("Builder");
@@ -322,7 +349,7 @@ final class LombokDeclarations {
                                                                 || annotations(f)
                                                                         .containsKey("Default")))
                                 .toList()
-                        : members.getOrDefault(Json.string(target, "signature"), List.of()).stream()
+                        : membersOf(Json.string(target, "signature")).stream()
                                 .filter(p -> "PARAMETER".equals(attrs(p).get("element_kind")))
                                 .toList();
         List<Map<String, Object>> defaults =
@@ -355,7 +382,7 @@ final class LombokDeclarations {
         String binary = text(attrs(owner).get("binary_name"));
         if (binary.isEmpty()) binary = Json.string(owner, "signature");
         binary += "$" + builderName;
-        Map<String, Object> custom = known.get(binary);
+        Map<String, Object> custom = declaration(binary);
         List<Object> builderFormals = builderRebaseFormals(formals, binary);
         if (custom != null
                 && (!"CLASS".equals(attrs(custom).get("element_kind"))
@@ -372,7 +399,7 @@ final class LombokDeclarations {
             for (Map<String, Object> existing :
                     custom == null
                             ? List.<Map<String, Object>>of()
-                            : members.getOrDefault(binary, List.of()))
+                            : membersOf(binary))
                 if ("FIELD".equals(attrs(existing).get("element_kind"))
                         && fieldName.equals(existing.get("name"))
                         && (modifiers(existing).contains("static")
@@ -573,9 +600,9 @@ final class LombokDeclarations {
             String binary = text(attrs(owner).get("binary_name"));
             if (binary.isEmpty()) binary = signature;
             Map<String, Object> custom =
-                    known.get(binary + "$" + Json.string(owner, "name") + "Builder");
+                    declaration(binary + "$" + Json.string(owner, "name") + "Builder");
             if (custom != null && !"lombok_model".equals(attrs(custom).get("binding_origin"))
-                    || members.getOrDefault(signature, List.of()).stream()
+                    || membersOf(signature).stream()
                             .anyMatch(
                                     m ->
                                             "METHOD".equals(attrs(m).get("element_kind"))
@@ -593,7 +620,7 @@ final class LombokDeclarations {
                                 .anyMatch(t -> !builderComplete(Json.map(t), 0)))
                     return "super_builder_type_parameters";
             }
-            for (Map<String, Object> field : members.getOrDefault(signature, List.of())) {
+            for (Map<String, Object> field : membersOf(signature)) {
                 if (!"FIELD".equals(attrs(field).get("element_kind"))) continue;
                 if (!builderComplete(map(attrs(field).get("type_model")), 0)
                         || needsAnnotationCopies(field)
@@ -617,7 +644,7 @@ final class LombokDeclarations {
             Map<String, Object> parentUse = map(attrs(owner).get("superclass_type_model"));
             String parentName = text(parentUse.get("element"));
             if (Set.of("", "java.lang.Object").contains(parentName)) return "";
-            Map<String, Object> parent = known.get(parentName);
+            Map<String, Object> parent = declaration(parentName);
             if (parent == null || "lombok_model".equals(attrs(parent).get("binding_origin")))
                 return "super_builder_parent_source_unavailable";
             if (items(parentUse.get("arguments")).size()
@@ -754,7 +781,7 @@ final class LombokDeclarations {
         builderFormals.add(selfFormal);
         Map<String, Object> superclass = named("java.lang.Object");
         Map<String, Object> parentUse = map(attrs(owner).get("superclass_type_model"));
-        Map<String, Object> parent = known.get(text(parentUse.get("element")));
+        Map<String, Object> parent = declaration(text(parentUse.get("element")));
         if (parent != null && !"java.lang.Object".equals(parentUse.get("element"))) {
             String parentBinary = text(attrs(parent).get("binary_name"));
             if (parentBinary.isEmpty()) parentBinary = Json.string(parent, "signature");
@@ -930,7 +957,7 @@ final class LombokDeclarations {
     }
 
     private boolean builderHasName(Map<String, Object> owner, String name) {
-        return members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+        return membersOf(Json.string(owner, "signature")).stream()
                 .anyMatch(
                         d ->
                                 "METHOD".equals(attrs(d).get("element_kind"))
@@ -938,7 +965,7 @@ final class LombokDeclarations {
     }
 
     private boolean builderHasCompilerConstructor(Map<String, Object> owner) {
-        return members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+        return membersOf(Json.string(owner, "signature")).stream()
                 .anyMatch(
                         d ->
                                 "CONSTRUCTOR".equals(attrs(d).get("element_kind"))
@@ -947,13 +974,13 @@ final class LombokDeclarations {
     }
 
     private boolean builderHasKind(Map<String, Object> owner, String kind) {
-        return members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+        return membersOf(Json.string(owner, "signature")).stream()
                 .anyMatch(d -> kind.equals(attrs(d).get("element_kind")));
     }
 
     private void builderRemoveDefaultConstructor(Map<String, Object> owner) {
         for (Map<String, Object> member :
-                List.copyOf(members.getOrDefault(Json.string(owner, "signature"), List.of())))
+                List.copyOf(membersOf(Json.string(owner, "signature"))))
             if ("CONSTRUCTOR".equals(attrs(member).get("element_kind"))
                     && Boolean.TRUE.equals(member.get("generated"))
                     && !"lombok_model".equals(attrs(member).get("binding_origin"))) {
@@ -969,7 +996,7 @@ final class LombokDeclarations {
             String name,
             Map<String, Object> type,
             List<Object> modifiers) {
-        if (members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+        if (membersOf(Json.string(owner, "signature")).stream()
                 .anyMatch(
                         d ->
                                 "FIELD".equals(attrs(d).get("element_kind"))
@@ -1151,7 +1178,7 @@ final class LombokDeclarations {
             Map<String, Map<String, Object>> annotations,
             Summary summary) {
         List<Map<String, Object>> ownerMembers =
-                members.getOrDefault(Json.string(owner, "signature"), List.of());
+                membersOf(Json.string(owner, "signature"));
         boolean supported =
                 "CLASS".equals(attrs(owner).get("element_kind"))
                         && Json.string(owner, "parent").isEmpty()
@@ -1312,7 +1339,7 @@ final class LombokDeclarations {
             boolean value,
             Summary summary) {
         boolean explicit =
-                members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+                membersOf(Json.string(owner, "signature")).stream()
                         .anyMatch(
                                 d ->
                                         "CONSTRUCTOR".equals(attrs(d).get("element_kind"))
@@ -1396,7 +1423,7 @@ final class LombokDeclarations {
                 continue;
             }
             List<Map<String, Object>> ownerMembers =
-                    members.getOrDefault(Json.string(owner, "signature"), List.of());
+                    membersOf(Json.string(owner, "signature"));
             for (var d : List.copyOf(ownerMembers))
                 if ("CONSTRUCTOR".equals(attrs(d).get("element_kind"))
                         && Boolean.TRUE.equals(d.get("generated"))) {
@@ -1407,7 +1434,7 @@ final class LombokDeclarations {
             List<Object> parameters =
                     selected.stream().map(f -> (Object) generatedType(f)).toList();
             String signature = executableSignature(owner, "<init>", parameters);
-            if (known.containsKey(signature)) {
+            if (hasDeclaration(signature)) {
                 summary.partial(capability, "duplicate_constructor");
                 continue;
             }
@@ -1443,7 +1470,7 @@ final class LombokDeclarations {
         if (summary.blocked("logger_field")) return;
         for (var entry : new TreeMap<>(LOGGERS).entrySet())
             if (annotations.containsKey(entry.getKey())) {
-                if (members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+                if (membersOf(Json.string(owner, "signature")).stream()
                         .anyMatch(
                                 d ->
                                         "FIELD".equals(attrs(d).get("element_kind"))
@@ -1478,7 +1505,7 @@ final class LombokDeclarations {
     }
 
     private boolean available(String name) {
-        if (known.containsKey(name) || name.equals("java.util.logging.Logger")) return true;
+        if (hasDeclaration(name) || name.equals("java.util.logging.Logger")) return true;
         for (Object item : items(context.get("classpath")))
             try (FrozenArchive jar = new FrozenArchive(java.nio.file.Path.of(text(item)))) {
                 if (jar.getEntry(name.replace('.', '/') + ".class") != null) return true;
@@ -1497,7 +1524,7 @@ final class LombokDeclarations {
             List<Object> modifiers,
             String capability) {
         String signature = executableSignature(owner, name, parameters);
-        if (known.containsKey(signature)) return null;
+        if (hasDeclaration(signature)) return null;
         String display =
                 '('
                         + String.join(
@@ -1626,7 +1653,7 @@ final class LombokDeclarations {
     }
 
     private boolean has(Map<String, Object> owner, List<String> names, int arity) {
-        return members.getOrDefault(Json.string(owner, "signature"), List.of()).stream()
+        return membersOf(Json.string(owner, "signature")).stream()
                 .filter(d -> "METHOD".equals(attrs(d).get("element_kind")))
                 .anyMatch(
                         d ->
@@ -1640,7 +1667,8 @@ final class LombokDeclarations {
     }
 
     private boolean initialized(Map<String, Object> field) {
-        return initialized.contains(Json.string(field, "signature"));
+        String signature=Json.string(field, "signature");
+        return initialized.contains(signature) || lookup!=null && lookup.initialized(signature);
     }
 
     private static String executableSignature(

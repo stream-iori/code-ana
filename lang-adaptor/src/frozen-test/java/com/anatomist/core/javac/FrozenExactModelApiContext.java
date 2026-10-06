@@ -11,7 +11,7 @@ import java.util.*;
 
 /** Test-only: invoke the frozen compiler on exactly one supplied Maven context, without replanning it. */
 public final class FrozenExactModelApiContext {
-    public static void analyze(Map<String,Object> context,Path home,Path scratch,
+    public static void analyze(Map<String,Object> context,Path home,Path scratch,boolean effective,
                               java.util.function.Consumer<JavaAnalysisContext> consumer) throws Exception {
         List<Path> sources=new ArrayList<>(),classpath=new ArrayList<>();Set<Path> published=new LinkedHashSet<>();
         for(Object raw:Json.list(context.get("sources"))) {
@@ -49,6 +49,7 @@ public final class FrozenExactModelApiContext {
                 string(raw);int count=count(raw,1000000);
                 if(count!=sources.size())throw new IOException("FROZEN_EXACT_UNIT_COUNT");
                 Set<Path> seen=new HashSet<>();
+                List<JavaUnit> complete=effective?new ArrayList<>():null;
                 for(int i=0;i<count;i++) {
                     var budget=new JavacDecodeBudget(JavacDecodeBudget.DEFAULT_BYTES);
                     var in=new JavacDecodeBudget.Input(raw,budget);
@@ -78,7 +79,8 @@ public final class FrozenExactModelApiContext {
                         if(bindings.putIfAbsent(id,binding)!=null)throw new IOException("FROZEN_BINDING_IDENTITY");
                     }
                     JavaUnit unit=new JavaUnit(path,tree,processing,bindings,types,declarations,JavacDeclarations.readFrame(in),hash);
-                    consumer.accept(new JavaAnalysisContext(Json.string(context,"module"),SourceScope.valueOf(Json.string(context,"scope")),
+                    if(effective)complete.add(unit);
+                    else consumer.accept(new JavaAnalysisContext(Json.string(context,"module"),SourceScope.valueOf(Json.string(context,"scope")),
                         List.of(unit),published.contains(path)?Set.of(path):Set.of(),List.of(),""));
                 }
                 raw.readBoolean();String failure=string(raw);int diagnostics=count(raw,1000000);
@@ -86,6 +88,9 @@ public final class FrozenExactModelApiContext {
                 Set<String> phases=new HashSet<>();int timings=count(raw,32);
                 for(int i=0;i<timings;i++)if(!phases.add(string(raw))||raw.readLong()<0)throw new IOException("FROZEN_TIMING_IDENTITY");
                 if(raw.readInt()!=0x414A4544||raw.read()!=-1||!failure.isEmpty())throw new IOException("FROZEN_EXACT_CONTEXT_INCOMPLETE: "+failure);
+                // AST overlays need the actual cross-file context (not isolated units).
+                if(effective)consumer.accept(new JavaAnalysisContext(Json.string(context,"module"),SourceScope.valueOf(Json.string(context,"scope")),
+                        complete,published,List.of(),""));
                 Files.writeString(scratch.resolve("frozen-worker-receipt.json"),Json.write(Json.object(
                     "response_sha256",result.sha256(),"response_bytes",result.bytes(),"units",count,
                     "compilations",1,"processing",false,"decode_view","one_unit_at_a_time",

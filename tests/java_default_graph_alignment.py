@@ -40,7 +40,7 @@ class NativeVersions(unittest.TestCase):
     setUp = models.Models.setUp
     context = models.Models.context
     def request(self, context):
-        return dict(version=5, facts=True, full=True, baseline=[], contexts=[context],
+        return dict(version=6, facts=True, full=True, baseline=[], contexts=[context],
                     java_home=str(models.JDK8), bridge=str(models.ROOT/'lang-adaptor/target/compiler-bridge.jar'),
                     scratch=str(self.root))
 
@@ -74,7 +74,7 @@ class NativeVersions(unittest.TestCase):
             shutil.copy2(source/name, bundle/name)
         manifest = json.loads((source/'native/manifest.json').read_text())
         self.assertEqual({k: manifest[k] for k in ('analysis_request', 'compiler_protocol', 'java_model', 'type_graph_default', 'type_schema', 'binding_schema')},
-                         dict(analysis_request=5, compiler_protocol=8, java_model=7, type_graph_default=True, type_schema=3, binding_schema=4))
+                         dict(analysis_request=6, compiler_protocol=9, java_model=8, type_graph_default=True, type_schema=3, binding_schema=4))
         context = self.context('bundle', {'A.java': 'class A {}'})
         for key, value in (('analysis_request', 4), ('compiler_protocol', 7), ('java_model', 6),
                            ('type_graph_default', False), ('type_schema', 2), ('binding_schema', 3)):

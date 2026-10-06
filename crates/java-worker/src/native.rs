@@ -221,9 +221,9 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
     ensure!(
         manifest["version"] == 1
             && manifest["abi"] == 2
-            && manifest["analysis_request"] == 5
-            && manifest["compiler_protocol"] == 8
-            && manifest["java_model"] == 7
+            && manifest["analysis_request"] == 6
+            && manifest["compiler_protocol"] == 9
+            && manifest["java_model"] == 8
             && manifest["type_graph_default"] == true
             && manifest["type_schema"] == 3
             && manifest["binding_schema"] == 4,

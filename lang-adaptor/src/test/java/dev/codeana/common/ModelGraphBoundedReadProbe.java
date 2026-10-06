@@ -13,7 +13,7 @@ public final class ModelGraphBoundedReadProbe {
         if(args[0].equals("write")) {
             char[] text=new char[1024];Arrays.fill(text,'x');String display=new String(text);
             try(RecordArchive rows=RecordArchive.create(path,LIMIT,COUNT+3)) {
-                rows.add(Json.object("kind","header","version",7,"context","large@TEST","sections",SECTIONS));
+                rows.add(Json.object("kind","header","version",ModelArchive.VERSION,"context","large@TEST","sections",SECTIONS));
                 for(int i=0;i<COUNT;i++)rows.add(Json.object("kind","graph_node","graph",0,"id",i,"value",
                     Json.object("kind","DECLARED","complete",true,"enclosing",-1,"arguments",Arrays.asList((i+1)%COUNT),
                         "element","p.Type"+i,"display",display)));

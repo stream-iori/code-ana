@@ -79,7 +79,20 @@ public final class DetachedModelApiProbe {
                         catch(UnsupportedOperationException expected){}
                     }
                 }
-                for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of()))) {
+                Set<String> queries=new LinkedHashSet<>();
+                for(Object name:Json.list(request.getOrDefault("model_type_queries",List.of())))queries.add(name.toString());
+                if(Boolean.TRUE.equals(request.get("model_api_effective_types"))) {
+                    for(String path:model.unitsInContext())for(var ref:model.declarations(path)) {
+                        var attrs=Json.map(model.declaration(ref).get("attributes"));
+                        String canonical=Objects.toString(attrs.get("canonical_name"),"");
+                        if(!canonical.isBlank()) {
+                            queries.add(canonical);
+                            String binary=Objects.toString(attrs.get("binary_name"),"");
+                            if(!binary.isBlank())queries.add(binary);
+                        }
+                    }
+                }
+                for(String name:queries) {
                     var lookup=model.type(name.toString());List<Object> candidates=new ArrayList<>();
                     if(lookup instanceof DetachedJavaModel.FoundType found)candidates.add(typeKey(model,found.declaration()));
                     if(lookup instanceof DetachedJavaModel.AmbiguousType ambiguous)for(var ref:ambiguous.declarations())candidates.add(typeKey(model,ref));

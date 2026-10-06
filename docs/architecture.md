@@ -1,5 +1,7 @@
 # 总体架构
 
+2026-10-06：Java适配层正在按Anatomist文件边界重写，Rust外围保持。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
+
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入；结构化类型、ASM 外部声明与 owner 级冷增量见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
 **用语言 worker 生成事实，用 Rust 管理事实生命周期并回答查询。查询只读已发布版本。**

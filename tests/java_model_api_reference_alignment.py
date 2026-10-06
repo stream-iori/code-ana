@@ -101,7 +101,7 @@ def main():
                 if modeled:
                     context=Lombok.controls(case,context,{'lombok.config':'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n'})
                     context['lombok']='model'
-                request=dict(version=5,facts=False,java_home=str(models.JDK8),bridge=str(root/'lang-adaptor/target/compiler-bridge.jar'),
+                request=dict(version=6,facts=False,java_home=str(models.JDK8),bridge=str(root/'lang-adaptor/target/compiler-bridge.jar'),
                     scratch=str(case.root),contexts=[context],model_type_queries=['p.Outer','p.Outer.Inner','p.Outer$Inner','p.Flow','p.Dup','p.Missing'])
                 if args.inventory:request.update(model_api_inventory=True,model_api_exact_context=True)
                 if modeled:request.update(model_api_lombok=True,model_api_project=str(case.root),model_api_exact_context=True,

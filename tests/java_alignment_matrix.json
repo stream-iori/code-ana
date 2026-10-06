@@ -1422,11 +1422,11 @@
     "java-release"
   ],
   "current_transport": {
-    "worker": 11,
-    "analysis_request": 5,
+    "worker": 12,
+    "analysis_request": 6,
     "native_abi": 2,
-    "compiler": 8,
-    "model": 7,
+    "compiler": 9,
+    "model": 8,
     "fact_ir": 1
   }
 }

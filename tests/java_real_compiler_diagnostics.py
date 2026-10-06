@@ -43,7 +43,7 @@ def compiler_context(project, manifest, module_id, scope):
     jars = module['classpath'][scope]
     if any(digest(pathlib.Path(jar['path']))!=jar['sha256'] for jar in jars):
         raise ValueError('MAVEN_CLASSPATH_DRIFT')
-    return dict(version=8,context=module_id+'@'+scope,module=module_id,scope=scope,
+    return dict(version=9,context=module_id+'@'+scope,module=module_id,scope=scope,
         world=key('world',module_id,scope),sources=list(sources.values()),
         classpath=[jar['path'] for jar in jars],full_auxiliary_model=False,
         type_graph=True,model_record_limit=5000000,model_archive_bytes=1073741824)

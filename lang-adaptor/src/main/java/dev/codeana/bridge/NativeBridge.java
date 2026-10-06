@@ -52,7 +52,7 @@ public final class NativeBridge {
                 Map<String, Object> request = Json.map(Json.parse(input.toByteArray()));
                 input.reset();
                 long version = Json.number(request, "version");
-                if (version != 5)
+                if (version != 6)
                     throw new IllegalArgumentException("ABI_REQUEST_VERSION");
                 if (request.containsKey("baseline_archive") && request.containsKey("baseline"))
                     throw new IllegalArgumentException("DUPLICATE_BASELINE_INPUT");
