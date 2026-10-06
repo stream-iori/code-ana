@@ -1143,3 +1143,5 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 2026-10-05 Lombok AST 收尾：范围为冻结 Anatomist 的 `mode=ast`，产品配置仍用 `off/model`。已实现按源码单元选择及重复覆盖保护、初始化标记优先、共享图泛型 owner 改写、written type 128 层及无变化共享；Lombok 11 / registry v11。历史 snapshot 解码缓存随上下文释放，归档租约仍保留到 task close；32MiB / 80 snapshot 正向通过，保留缓存对照 OOM。原全项目停滞运行已经产品取消并保留现场，新版完整 native / 80 context / 14 域 / 发行仍待验收，旧发行包保留。详见 docs/java-implementation.md。
 
 2026-10-06：按用户授权重写lang-adaptor，文件级模型与Lombok事务已接入，新版本compiler9/model8/worker12/request6；旧产品数据不兼容。完整pass迁移、产品索引清理、新native/daemon、iopengw、raw/AST两套80上下文、14域及发行未完成，不关闭52项。见docs/implementation/java-adaptor-rewrite.md。
+
+2026-10-07：继续文件边界改造。JavaSemanticModel提供文件声明/语法/绑定视图与上下文位置目录；CallRecovery/ReflectionModel按文件执行，ModeledOverrides不物化全部方法，类型节点目录按文件切换，annotation/补充ABI/模块资格目录改用位置查询。新增JavaUnitAnalyzer文件事务入口。64MiB惰性目录/归属/跨文件查询/租约检查及独立反射14项通过；完整同版本回归仍待收口。65fe23d产品worker启动收到SIGKILL9，已通知用户，不能关闭产品验收。真实raw6/AST5上下文仅为旧提交诊断证据，不替代最终两套80上下文与14域差分。52项保持未闭合。

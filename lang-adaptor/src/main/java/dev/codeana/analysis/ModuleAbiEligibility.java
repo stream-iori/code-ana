@@ -27,9 +27,9 @@ final class ModuleAbiEligibility {
                     || "ERROR".equals(diagnostic.get("severity")) && "parse".equals(diagnostic.get("phase")))
                 eligible.remove(worlds.get(Json.string(diagnostic, "source")));
         }
-        Map<String, Map<String, Object>> bySignature = new HashMap<>();
-        for (var declaration : declarations)
-            bySignature.put(Json.string(declaration, "signature"), declaration);
+        Map<String, Integer> bySignature = new HashMap<>();
+        for (int i=0;i<declarations.size();i++)
+            bySignature.put(Json.string(declarations.get(i), "signature"), i);
         for (var declaration : declarations) {
             var attributes = Json.map(declaration.get("attributes"));
             if ("lombok_model".equals(attributes.get("binding_origin"))) continue;
@@ -46,7 +46,8 @@ final class ModuleAbiEligibility {
                     owner = null;
                     break;
                 }
-                owner = bySignature.get(Json.string(owner, "parent"));
+                Integer position = bySignature.get(Json.string(owner, "parent"));
+                owner = position == null ? null : declarations.get(position);
             }
             Map<String, Object> summary = owner == null ? Map.of() : LombokModel.summary(owner);
             if (owner != null && Json.map(owner.get("attributes")).get("lombok_summary") instanceof Map)
@@ -54,16 +55,16 @@ final class ModuleAbiEligibility {
             if (!"complete".equals(summary.get("coverage")))
                 eligible.remove(worlds.get(Json.string(declaration, "source")));
         }
-        Map<String, List<Map<String, Object>>> groups = new HashMap<>();
-        for (var declaration : declarations)
-            groups.computeIfAbsent(worlds.get(Json.string(declaration, "source")), ignored -> new ArrayList<>())
-                    .add(declaration);
+        Map<String, List<Integer>> groups = new HashMap<>();
+        for (int i=0;i<declarations.size();i++)
+            groups.computeIfAbsent(worlds.get(Json.string(declarations.get(i), "source")), ignored -> new ArrayList<>())
+                    .add(i);
         SupplementalAbi abi = new SupplementalAbi(declarations);
         for (String world : new TreeSet<>(eligible)) {
             try {
                 List<Map<String, Object>> headers = new ArrayList<>();
-                for (var declaration : groups.getOrDefault(world, List.of()))
-                    headers.add(abi.project(declaration));
+                for (int position : groups.getOrDefault(world, List.of()))
+                    headers.add(abi.project(declarations.get(position)));
                 if (SignatureProjection.project(headers).isEmpty()) eligible.remove(world);
             } catch (IllegalArgumentException incomplete) {
                 // Keep this world's sealed SOURCE; an unavailable neighbor does not poison others.

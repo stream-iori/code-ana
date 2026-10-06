@@ -2,6 +2,7 @@ package dev.codeana.analysis.extension;
 
 import dev.codeana.common.FactHeaders;
 import dev.codeana.common.Json;
+import dev.codeana.analysis.model.JavaSemanticModel;
 
 import java.util.*;
 import java.util.function.Consumer;
@@ -128,6 +129,31 @@ public final class ExtensionRunner {
                     frozenInputs = new ExtensionContext(configuration, model, List.of(), List.of());
                 ExtensionContext context =
                         frozenInputs.withFacts(output);
+                if (analyzer instanceof JavaUnitAnalyzer perUnit) {
+                    Set<String> published = new HashSet<>();
+                    for (Object raw : Json.list(configuration.get("sources"))) {
+                        var source = Json.map(raw);
+                        if (Boolean.TRUE.equals(source.get("publish"))) published.add(Json.string(source,"path"));
+                    }
+                    FactSink.ValidationIndex identities = new FactSink.ValidationIndex(output);
+                    try (JavaSemanticModel semantic = new JavaSemanticModel(context.model())) {
+                        for (JavaSemanticModel.Unit unit : semantic.units()) {
+                            if (!published.contains(unit.source())) continue;
+                            int previous = output.size();
+                            ExtensionExecution.run(e,"java",context,report,output,unit.source(),()-> {
+                                FactSink sink = new FactSink();
+                                perUnit.analyzeUnit(context,unit,sink);
+                                List<Object> verified = sink.validate(e,context,identities);
+                                for (Object raw : verified)
+                                    if (!unit.source().equals(Json.string(Json.map(raw),"source")))
+                                        throw new IllegalArgumentException("EXTENSION_UNIT_FACT_OWNERSHIP");
+                                output.addAll(verified);
+                            });
+                            identities.added(output.subList(previous,output.size()));
+                        }
+                    }
+                    continue;
+                }
                 if (analyzer instanceof JavaDeclarationAnalyzer perDeclaration) {
                     FactSink.ValidationIndex identities = new FactSink.ValidationIndex(output);
                     for (Object raw : Json.list(context.model().get("declarations"))) {

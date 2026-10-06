@@ -3,6 +3,7 @@ package dev.codeana.analysis;
 import static dev.codeana.analysis.TypeOperations.*;
 
 import dev.codeana.common.Json;
+import dev.codeana.analysis.model.JavaSemanticModel;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -13,9 +14,9 @@ import java.util.*;
  */
 final class CallRecovery {
     private final Map<String, Object> model;
-    private final Map<String, Map<String, Object>> known = new HashMap<>(),
-            sources = new HashMap<>();
-    private final Map<String, List<Map<String, Object>>> members = new HashMap<>();
+    private final Map<String, Map<String, Object>> known, sources;
+    private final Map<String, List<Map<String, Object>>> members;
+    private final JavaSemanticModel environment;
 
     private record NodeKey(String source, long id) {}
 
@@ -70,30 +71,39 @@ final class CallRecovery {
                 .noneMatch(
                         d -> "lombok_model".equals(map(d.get("attributes")).get("binding_origin"))))
             return;
-        try (BinaryIndex binary = new BinaryIndex(context, javaHome)) {
-            CallRecovery recovery = new CallRecovery(model, binary);
-            new ModeledOverrides(model, context, recovery.sources, recovery.members, recovery.known,
-                    recovery.types, binary).generate();
-            for (Map<String, Object> call : recovery.calls.values()) {
-                recovery.work = 0;
-                recovery.types.reset();
-                recovery.currentSource = text(call.get("source"));
-                try {
-                    recovery.warmBuilderReceiver(call);
-                    Result selected = recovery.resolve(call, 0);
+        try (BinaryIndex binary = new BinaryIndex(context, javaHome);
+                JavaSemanticModel environment = new JavaSemanticModel(model)) {
+            Set<String> modeledNames = new HashSet<>();
+            for (var declaration : environment.declarations().values())
+                if ("lombok_model".equals(map(declaration.get("attributes")).get("binding_origin")))
+                    modeledNames.add(text(declaration.get("name")));
+            var members = environment.members(d -> Set.of("METHOD", "CONSTRUCTOR")
+                    .contains(map(d.get("attributes")).get("element_kind")));
+            new ModeledOverrides(model, context, environment.sourceTypes(), members, environment.known(),
+                    new TypeOperations(environment.sourceTypes(), binary), binary).generate();
+            for (JavaSemanticModel.Unit unit : environment.units()) {
+                CallRecovery recovery = new CallRecovery(unit.evidence(), binary, environment, members, modeledNames);
+                for (Map<String, Object> call : recovery.calls.values()) {
                     recovery.work = 0;
                     recovery.types.reset();
-                    boolean input = recovery.modeledInputs(recovery.node(id(map(call.get("attributes")).get("tree_id"))), 0);
-                    if (Boolean.TRUE.equals(call.get("resolved")) && !call.containsKey("modeled_target") && input)
-                        map(call.get("attributes")).put(selected.blocked
-                                ? "recovery_target_blocked" : "recovery_original_selected_modeled_input", true);
-                } catch (TypeOperations.Budget exhausted) {
-                    map(call.get("attributes")).put("recovery_failure", "recovery_budget");
-                    map(call.get("attributes")).put("recovery_target_blocked", true);
+                    recovery.currentSource = text(call.get("source"));
+                    try {
+                        recovery.warmBuilderReceiver(call);
+                        Result selected = recovery.resolve(call, 0);
+                        recovery.work = 0;
+                        recovery.types.reset();
+                        boolean input = recovery.modeledInputs(recovery.node(id(map(call.get("attributes")).get("tree_id"))), 0);
+                        if (Boolean.TRUE.equals(call.get("resolved")) && !call.containsKey("modeled_target") && input)
+                            map(call.get("attributes")).put(selected.blocked
+                                    ? "recovery_target_blocked" : "recovery_original_selected_modeled_input", true);
+                    } catch (TypeOperations.Budget exhausted) {
+                        map(call.get("attributes")).put("recovery_failure", "recovery_budget");
+                        map(call.get("attributes")).put("recovery_target_blocked", true);
+                    }
                 }
+                recovery.recoverCallbacks();
+                recovery.recoverEnumLabels();
             }
-            recovery.recoverCallbacks();
-            recovery.recoverEnumLabels();
         }
     }
 
@@ -126,21 +136,13 @@ final class CallRecovery {
         }
     }
 
-    private CallRecovery(Map<String, Object> model, BinaryIndex binary) {
+    private CallRecovery(Map<String, Object> model, BinaryIndex binary, JavaSemanticModel environment,
+            Map<String,List<Map<String,Object>>> members, Set<String> modeledNames) {
         this.model = model;
         this.binary = binary;
-        for (Object raw : Json.list(model.get("declarations"))) {
-            Map<String, Object> d = Json.map(raw);
-            String signature = text(d.get("signature"));
-            known.put(signature, d);
-            String kind = text(map(d.get("attributes")).get("element_kind"));
-            if (Set.of("CLASS", "INTERFACE", "ENUM", "ANNOTATION_TYPE").contains(kind))
-                sources.put(signature, d);
-            if (Set.of("METHOD", "CONSTRUCTOR").contains(kind))
-                members.computeIfAbsent(text(d.get("parent")), unused -> new ArrayList<>()).add(d);
-            if ("lombok_model".equals(map(d.get("attributes")).get("binding_origin")))
-                modeledNames.add(text(d.get("name")));
-        }
+        this.environment = environment;
+        known = environment.known(); sources = environment.sourceTypes(); this.members = members;
+        this.modeledNames.addAll(modeledNames);
         syntax = Json.list(model.get("syntax"));
         for (int i = 0; i < syntax.size(); i++) {
             Map<String, Object> node = Json.map(syntax.get(i));
@@ -155,7 +157,7 @@ final class CallRecovery {
                 calls.put(new NodeKey(text(call.get("source")), id.longValue()), call);
         }
         types = new TypeOperations(sources, binary);
-        signatureAbi = new SupplementalAbi(new ArrayList<>(known.values()));
+        signatureAbi = new SupplementalAbi(known);
     }
 
     // Warm only a generated builder receiver chain. Poly arguments keep their
@@ -2193,7 +2195,8 @@ final class CallRecovery {
 
     private void addExternal(Map<String, Object> declaration) {
         String signature = text(declaration.get("signature"));
-        known.put(signature, declaration);
+        List<Object> external = Json.list(model.get("external"));
+        int position = external.size();
         Json.list(model.get("external"))
                 .add(
                         Json.object(
@@ -2203,5 +2206,6 @@ final class CallRecovery {
                                 declaration.get("name"),
                                 "attributes",
                                 declaration.get("attributes")));
+        environment.external(signature, position);
     }
 }

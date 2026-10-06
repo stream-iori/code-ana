@@ -1,6 +1,7 @@
 package dev.codeana.analysis;
 
 import dev.codeana.common.Json;
+import dev.codeana.analysis.model.JavaSemanticModel;
 
 import org.objectweb.asm.Opcodes;
 
@@ -55,9 +56,9 @@ final class ReflectionModel {
                     "void");
     private final Map<String, Object> model;
     private final BinaryIndex binaries;
-    private final Map<String, Map<String, Object>> declarations = new HashMap<>();
+    private final Map<String, Map<String, Object>> declarations;
     private final Map<String, String> constants = new HashMap<>();
-    private final Map<String, List<Map<String, Object>>> members = new HashMap<>();
+    private final Map<String, List<Map<String, Object>>> members;
     private final Set<String> external = new HashSet<>(), emitted = new HashSet<>();
     private final Map<String, Map<String, Object>> calls = new HashMap<>();
     private final Map<Integer, Integer> nodes = new HashMap<>();
@@ -67,25 +68,16 @@ final class ReflectionModel {
     private String source;
     private int work;
 
-    private ReflectionModel(Map<String, Object> model, BinaryIndex binaries) {
+    private ReflectionModel(Map<String, Object> model, BinaryIndex binaries, JavaSemanticModel environment) {
         this.model = model;
         this.binaries = binaries;
-        for (Object raw : Json.list(model.get("declarations"))) {
-            Map<String, Object> declaration = Json.map(raw);
-            declarations.put(Json.string(declaration, "signature"), declaration);
-            members.computeIfAbsent(
-                            Json.string(declaration, "parent"), ignored -> new ArrayList<>())
-                    .add(declaration);
-            constant(declaration);
-        }
+        declarations = environment.declarations();
+        members = environment.members(declaration -> true);
+        for (var declaration : declarations.values()) constant(declaration);
         for (Object raw : Json.list(model.get("external"))) {
             Map<String, Object> declaration = Json.map(raw);
             external.add(Json.string(declaration, "signature"));
             constant(declaration);
-        }
-        for (Object raw : Json.list(model.get("observations"))) {
-            Map<String, Object> call = Json.map(raw);
-            if ("call".equals(call.get("kind"))) calls.put(site(call), call);
         }
     }
 
@@ -98,18 +90,19 @@ final class ReflectionModel {
                                 "call".equals(call.get("kind"))
                                         && Boolean.TRUE.equals(call.get("resolved"))
                                         && lookupApi(Json.string(call, "target")))) return;
-        try (BinaryIndex binaries = new BinaryIndex(context, javaHome)) {
-            ReflectionModel analysis = new ReflectionModel(model, binaries);
-            Map<String, List<Integer>> sources = new TreeMap<>();
-            List<Object> syntax = Json.list(model.get("syntax"));
-            analysis.syntaxRows = syntax;
-            for (int position = 0; position < syntax.size(); position++) {
-                Map<String, Object> node = Json.map(syntax.get(position));
-                sources.computeIfAbsent(Json.string(node, "source"), ignored -> new ArrayList<>())
-                        .add(position);
-            }
-            for (var entry : sources.entrySet()) {
-                analysis.source(entry.getKey(), entry.getValue());
+        try (BinaryIndex binaries = new BinaryIndex(context, javaHome);
+                JavaSemanticModel environment = new JavaSemanticModel(model)) {
+            ReflectionModel analysis = new ReflectionModel(model, binaries, environment);
+            for (JavaSemanticModel.Unit unit : environment.units()) {
+                analysis.calls.clear();
+                for (JavaSemanticModel.Binding binding : unit.bindings())
+                    if (binding.call()) analysis.calls.put(site(binding.evidence()),binding.evidence());
+                analysis.syntaxRows = unit.rows("syntax");
+                List<Integer> positions = new AbstractList<>() {
+                    public int size(){return analysis.syntaxRows.size();}
+                    public Integer get(int index){Objects.checkIndex(index,size());return index;}
+                };
+                analysis.source(unit.source(),positions);
             }
         }
     }

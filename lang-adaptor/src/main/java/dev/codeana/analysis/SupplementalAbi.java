@@ -5,13 +5,21 @@ import java.util.*;
 
 /** NoCode metadata, separate from the original compiler evidence. */
 final class SupplementalAbi {
-    private final Map<String, Map<String, Object>> declarations = new HashMap<>();
+    private final Map<String, Map<String, Object>> declarations;
     private int work;
 
     SupplementalAbi(List<Map<String, Object>> declarations) {
-        for (var declaration : declarations)
-            this.declarations.put(Json.string(declaration, "signature"), declaration);
+        Map<String,Integer> positions = new HashMap<>();
+        for (int i=0;i<declarations.size();i++)positions.put(Json.string(declarations.get(i),"signature"),i);
+        this.declarations = new AbstractMap<>() {
+            public Map<String,Object> get(Object signature) {
+                Integer position=positions.get(signature);return position==null?null:declarations.get(position);
+            }
+            public Set<Entry<String,Map<String,Object>>> entrySet() { throw new UnsupportedOperationException("SUPPLEMENTAL_ABI_LOOKUP_ONLY"); }
+        };
     }
+
+    SupplementalAbi(Map<String,Map<String,Object>> declarations) { this.declarations=declarations; }
 
     private static Map<String, Object> map(Object value) {
         return value instanceof Map ? Json.map(value) : Map.of();

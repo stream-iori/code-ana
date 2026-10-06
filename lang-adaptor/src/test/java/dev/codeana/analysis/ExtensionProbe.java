@@ -24,13 +24,14 @@ public final class ExtensionProbe {
             case "reverse" -> new ExtensionRegistry(List.of(b, a));
             case "ordered" -> new ExtensionRegistry(List.of(a, b));
             case "declarations" -> new ExtensionRegistry(List.of(new DeclarationFixture()));
+            case "units" -> new ExtensionRegistry(List.of(new UnitFixture()));
             default -> new ExtensionRegistry(List.of(a));
         };
         try (CompilerSession session = new CompilerSession(request)) {
             System.out.println(Json.write(JavaAnalysis.run(request, session, registry)));
         }
     }
-    private static final class DeclarationFixture implements JavaDeclarationModelExtension, JavaDeclarationAnalyzer {
+    private static class DeclarationFixture implements JavaDeclarationModelExtension, JavaDeclarationAnalyzer {
         public String id() { return "declarations"; }
         public String producer() { return "declarations-fixture"; }
         public boolean enabled(Map<String, Object> c) { return !Boolean.FALSE.equals(c.get("extension_enabled")); }
@@ -68,6 +69,34 @@ public final class ExtensionProbe {
                     "relation", "java.lombok", "status", "modeled", "origin", producer(), "evidence_complete", false,
                     "declaration_resolved", false, "attributes", Json.object("schema_version", 1, "stage", "declaration")));
             if (signature.equals("Bad") && mode(c).equals("declaration-fail")) throw new IllegalStateException("bad declaration");
+        }
+    }
+    private static final class UnitFixture extends DeclarationFixture implements JavaUnitAnalyzer {
+        @Override public String id(){return "units";}
+        @Override public String producer(){return "units-fixture";}
+        @Override public void analyze(ExtensionContext context,FactSink sink){JavaUnitAnalyzer.super.analyze(context,sink);}
+        public void analyzeUnit(ExtensionContext context, dev.codeana.analysis.model.JavaSemanticModel.Unit unit, FactSink sink) {
+            if(context.javaModel().type("Good") instanceof DetachedJavaModel.MissingType)
+                throw new IllegalStateException("missing cross-file type");
+            for(Object raw:unit.rows("declarations")) {
+                var declaration=Json.map(raw);
+                if(!acceptsDeclaration(declaration))continue;
+                analyzeDeclaration(context,declaration,sink);
+                if("Bad".equals(declaration.get("signature"))) {
+                    String mode=(String)context.configuration().getOrDefault("test_mode","normal");
+                    if(mode.equals("unit-fail"))throw new IllegalStateException("bad unit");
+                    if(mode.equals("unit-foreign")) {
+                        var good=context.facts().stream().map(Json::map)
+                                .filter(f->"declaration".equals(f.get("kind")) && "Good".equals(f.get("signature")))
+                                .findFirst().orElseThrow();
+                        var owner=new LinkedHashMap<>(Json.map(good.get("owner")));owner.put("producer",producer());
+                        sink.add(Json.object("id","foreign-file-facet","kind","facet","source",good.get("source"),
+                                "owner",owner,"span",null,"name","foreign","signature","","parent",good.get("id"),
+                                "target","","relation","java.lombok","status","modeled","origin",producer(),
+                                "evidence_complete",false,"declaration_resolved",false,"attributes",Json.object("schema_version",1)));
+                    }
+                }
+            }
         }
     }
     private static final class Fixture implements JavaModelExtension, JavaModelAnalyzer,

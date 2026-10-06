@@ -17,6 +17,8 @@ final class SourceTypeReferences {
     private record Key(String source, long id) {}
     private record SignatureUse(String target, String context, int depth, boolean recovered) {}
     private final List<Object> syntax;
+    private final List<Object> observations;
+    private final Map<String,List<Integer>> syntaxUnits=new HashMap<>(), observationUnits=new HashMap<>();
     private final Map<Key,Integer> nodes = new HashMap<>();
     private final Map<String,Integer> declarations = new HashMap<>();
     private final Map<String,Integer> anonymousDeclarations = new HashMap<>();
@@ -33,18 +35,11 @@ final class SourceTypeReferences {
     SourceTypeReferences(Map<String,Object> model, boolean supplementalBaseline) {
         this.supplementalBaseline=supplementalBaseline;
         syntax = list(model.get("syntax")); declared = list(model.get("declarations"));
-        for (int i=0;i<syntax.size();i++) {
-            Map<String,Object> n=map(syntax.get(i));
-            nodes.put(new Key(text(n.get("source")), id(n.get("id"))),i);
-            if (Set.of("CLASS","INTERFACE","ENUM","ANNOTATION_TYPE","METHOD","VARIABLE").contains(n.get("kind")))
-                declarations.put(text(n.get("source"))+"\0"+text(n.get("symbol")),i);
-        }
-        for (Object raw:list(model.get("observations"))) {
-            Map<String,Object> observation=map(raw), attrs=map(observation.get("attributes"));
-            if ("reference".equals(observation.get("kind")) && "type".equals(attrs.get("reference_kind"))
-                    && Boolean.FALSE.equals(observation.get("resolved")))
-                unavailableTypeSyntax.add(new Key(text(observation.get("source")),id(attrs.get("tree_id"))));
-        }
+        observations=list(model.get("observations"));
+        for(int i=0;i<syntax.size();i++)
+            syntaxUnits.computeIfAbsent(text(map(syntax.get(i)).get("source")),key->new ArrayList<>()).add(i);
+        for(int i=0;i<observations.size();i++)
+            observationUnits.computeIfAbsent(text(map(observations.get(i)).get("source")),key->new ArrayList<>()).add(i);
         for (int index=0;index<declared.size();index++) {
             Map<String,Object> d=map(declared.get(index));
             if("ANONYMOUS".equals(map(d.get("attributes")).get("nesting_kind")))
@@ -53,6 +48,24 @@ final class SourceTypeReferences {
                 callbackParameters.computeIfAbsent(text(d.get("source"))+"\0"+text(d.get("parent")),ignored->new ArrayList<>()).add(index);
             if (Set.of("CLASS","INTERFACE","ENUM","ANNOTATION_TYPE").contains(map(d.get("attributes")).get("element_kind")))
                 sourceTypes.add(text(d.get("signature")));
+        }
+    }
+
+    /** Node IDs and unavailable written types belong to the currently emitted source only. */
+    private void selectSource(String selected) {
+        if(Objects.equals(source,selected))return;
+        source=selected;nodes.clear();declarations.clear();unavailableTypeSyntax.clear();
+        for(int position:syntaxUnits.getOrDefault(source,List.of())) {
+            if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException("CANCELLED");
+            var node=map(syntax.get(position));nodes.put(new Key(source,id(node.get("id"))),position);
+            if(Set.of("CLASS","INTERFACE","ENUM","ANNOTATION_TYPE","METHOD","VARIABLE").contains(node.get("kind")))
+                declarations.put(source+"\0"+text(node.get("symbol")),position);
+        }
+        for(int position:observationUnits.getOrDefault(source,List.of())) {
+            var observation=map(observations.get(position));var attributes=map(observation.get("attributes"));
+            if("reference".equals(observation.get("kind")) && "type".equals(attributes.get("reference_kind"))
+                    && Boolean.FALSE.equals(observation.get("resolved")))
+                unavailableTypeSyntax.add(new Key(source,id(attributes.get("tree_id"))));
         }
     }
 
@@ -127,7 +140,7 @@ final class SourceTypeReferences {
     Map<String,Object> hierarchyPosition(Map<String,Object> observation) {
         String relation=text(observation.get("relation"));
         if(!Set.of("extends","implements").contains(relation))return Map.of();
-        source=text(observation.get("source"));
+        selectSource(text(observation.get("source")));
         Integer anonymous=anonymousDeclarations.get(source+"\0"+text(observation.get("parent")));
         if(anonymous!=null)return map(declared.get(anonymous));
         Integer index=declarations.get(source+"\0"+text(observation.get("parent")));
@@ -148,7 +161,7 @@ final class SourceTypeReferences {
         for(Object raw:declared) {
             Map<String,Object> d=map(raw),a=map(d.get("attributes"));
             if(a.containsKey("extension_producer") || "ANONYMOUS".equals(a.get("nesting_kind")))continue;
-            source=text(d.get("source"));work=0;
+            selectSource(text(d.get("source")));work=0;
             String k=text(a.get("element_kind")),signature=text(d.get("signature"));
             Integer index=declarations.get(source+"\0"+signature);
             Map<String,Object> tree=index==null?Map.of():map(syntax.get(index));

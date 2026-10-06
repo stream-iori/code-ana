@@ -32,8 +32,11 @@ final class SupplementalTypes {
     static void derive(Map<String,Object> context, Map<String,Object> original, CompilerSession session) throws Exception {
         Set<String> auxiliary = new HashSet<>();
         List<Object> primary = new ArrayList<>(), sourceProof = new ArrayList<>();
-        List<Map<String,Object>> all=new ArrayList<>();
-        for(Object raw:Json.list(original.get("declarations"))) all.add(Json.map(raw));
+        List<Object> originalRows=Json.list(original.get("declarations"));
+        List<Map<String,Object>> all=new AbstractList<>() {
+            public int size(){return originalRows.size();}
+            public Map<String,Object> get(int index){return Json.map(originalRows.get(index));}
+        };
         Set<String> eligible=ModuleAbiEligibility.worlds(context,original,all);
         for (Object raw : Json.list(context.get("sources"))) {
             var unit=Json.map(raw);

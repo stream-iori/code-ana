@@ -78,6 +78,23 @@ class Extensions(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, 'SELECTOR_CANCELLED'):
             self.analyze([context])
 
+    def test_unit_analyzer_failure_discards_file_output_and_preserves_other_files(self):
+        for mode in ('unit-fail', 'unit-foreign'):
+            with self.subTest(mode=mode):
+                context=self.context('app', {'Good.java':'class Good {}',
+                    'Bad.java':'class Before {} class Bad {}', 'After.java':'class After {}'},
+                    assembly='units', test_mode=mode)
+                result=self.analyze([context]);facts=result['facts']
+                emitted={f['name'] for f in facts if f['owner']['producer']=='units-fixture'
+                         and f['attributes'].get('stage')=='declaration'}
+                self.assertEqual(emitted, {'Good','After'})
+                self.assertTrue(any(f['kind']=='diagnostic' and f['source']=='app/Bad.java'
+                                    and f['attributes'].get('stage')=='java' for f in facts))
+                self.assertTrue(any(f['signature']=='Bad' and f['declaration_resolved'] for f in facts))
+                self.merged([],dict(facts=facts,replacements=[]))
+                cold=self.analyze([context])['facts'];delta=self.analyze([context],facts)
+                self.assertEqual(self.merged(facts,delta),sorted(cold,key=lambda f:f['id']))
+
     def declaration_fixture(self, **options):
         return self.context('app', {'Use.java':'class Good {} class Bad { Bad(int x){} } class After {}'},
                             assembly='declarations', **options)

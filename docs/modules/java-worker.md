@@ -24,7 +24,7 @@ Rust worker host（独立进程）
 Java 25 / GraalVM 共享库（同进程）
   ├─ 独立 Java 模型、ASM 二进制分析、框架、增量、事实提取
   └─ 编译器协调器
-       │ 编译器内部协议 8 / 独立模型 7（D17，Java 8 已实现）
+       │ 编译器内部协议 9 / 独立模型 8（D17，Java 8 已实现）
        v
      目标 JDK JVM 子进程：javac parse → analyze
        └─ 禁用 annotation processor，无业务字节码生成
@@ -133,7 +133,7 @@ Lombok `mode=model` 仅补声明模型，不执行处理器、不合成可执行
 | 对象 | 生命周期 / 限制 |
 |---|---|
 | javac compiler/task/file manager/Tree/Element | 一个编译上下文；子进程可复用但上下文不跨任务泄漏 |
-| 独立 Java 模型 | 按上下文解码、同步消费后释放；类型字典验证后共享同一不可变节点，原packed副本不驻留；框架只留必要摘要，不留整树 |
+| 独立 Java 模型 | 上下文目录保存位置，按文件读取声明/语法/绑定；调用恢复与反射状态按文件释放。类型字典验证后共享不可变图，原packed副本不驻留；归档租约按上下文回收 |
 | 类型/Bean/依赖与基线 | 本轮完整逻辑视图；计入冷增量峰值和复制成本 |
 | 最终事实 | 冻结到完整交付；分块、有背压，不积累多份整图序列化副本 |
 | 编码结果/语法暂存 | D17 原型评估是否需要有界临时文件；若引入须定槽位、总字节、清理与磁盘满行为，不能默认无限 spill |
@@ -186,6 +186,8 @@ Maven `selected=false` 的模块保留捕获身份和依赖源码，但不作为
 ```
 
 接口与执行器在 `lang-adaptor/src/main/java/dev/codeana/analysis/extension/`；`BuiltinExtensions.REGISTRY` 显式装配，不扫描目标 classpath 或热加载业务 JAR。扩展版本、依赖、producer、facet 与有效配置形成指纹，记录在 context provenance，进入增量与 NoCode key。
+
+`JavaUnitModelExtension`用于文件级Lombok候选校验与最后统一提交。`JavaUnitAnalyzer`提供冻结上下文查询和文件body视图；一个文件的输出通过producer/schema/归属校验后提交，异常时丢弃该文件输出并继续其他文件；不能写入其他文件事实。规则仍输出本项目Fact IR，Rust继续负责存储与发布。最新实现与未完成的真实项目验收见[重写记录](../implementation/java-adaptor-rewrite.md)。
 
 当前 Spring MVC、生命周期/事件、SOFA 注解已使用独立 analyzer；静态注册是 possible，不能生成 confirmed 调用。NoCode 缩减会保留未变 owner 的事实供查找，并重跑变更源码的扩展以更新位置。当前视图按 compiler context；跨 context 的项目全局视图、单声明故障隔离与完整框架规则仍在实施。
 

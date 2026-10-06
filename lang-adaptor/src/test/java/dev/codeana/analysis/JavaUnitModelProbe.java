@@ -2,6 +2,7 @@ package dev.codeana.analysis;
 
 import dev.codeana.analysis.extension.*;
 import dev.codeana.analysis.model.JavaContextModel;
+import dev.codeana.analysis.model.JavaSemanticModel;
 import dev.codeana.common.*;
 import java.nio.file.*;
 import java.util.*;
@@ -42,6 +43,50 @@ public final class JavaUnitModelProbe {
             if(context.members("B").size()!=1)throw new AssertionError("members");
             try { context.declaration(new JavaContextModel.DeclarationRef(retained.source(),9,0));throw new AssertionError("foreign handle"); }
             catch(IllegalArgumentException expected) {}
+        }
+        var scoped=new LinkedHashMap<>(raw);
+        scoped.put("observations",new ArrayList<>(List.of(
+                Json.object("source","A.java","kind","call","target","B#value","attributes",Map.of()),
+                Json.object("source","B.java","kind","call","target","A#value","attributes",Map.of()))));
+        scoped.put("syntax",List.of(Json.object("source","A.java","id",1,"kind","IDENTIFIER"),
+                Json.object("source","B.java","id",1,"kind","IDENTIFIER")));
+        JavaSemanticModel.Unit escapedUnit;
+        try(var semantic=new JavaSemanticModel(scoped)) {
+            var iterator=semantic.units().iterator();escapedUnit=iterator.next();var other=iterator.next();
+            if(escapedUnit.rows("syntax").size()!=1 || other.rows("observations").size()!=1)
+                throw new AssertionError("body escaped file boundary");
+            if(!"B#value".equals(Json.map(escapedUnit.rows("observations").get(0)).get("target")))
+                throw new AssertionError("cross-file binding changed");
+            if(semantic.sourceTypes().get("B")==null || semantic.members(d->true).get("B").size()!=1)
+                throw new AssertionError("context lookup lost dependency");
+            Json.map(semantic.declarations().get("A#value").get("attributes")).put("shared_probe",true);
+            if(!Boolean.TRUE.equals(Json.map(Json.map(escapedUnit.rows("declarations").get(1)).get("attributes")).get("shared_probe")))
+                throw new AssertionError("lost shared declaration write");
+            escapedUnit.rows("observations").add(Json.object("source","A.java","kind","reference"));
+            if(Json.list(scoped.get("observations")).size()!=3 || other.rows("observations").size()!=1)
+                throw new AssertionError("file append was not routed to context");
+            try { escapedUnit.rows("observations").add(Json.object("source","B.java","kind","reference"));
+                throw new AssertionError("foreign file write accepted"); } catch(IllegalArgumentException expected) {}
+        }
+        try { escapedUnit.rows("syntax").size();throw new AssertionError("closed semantic handle readable"); }
+        catch(IllegalStateException expected) {}
+        // Each read allocates a large detached payload. Retaining decoded declarations would
+        // exceed this probe's 64 MiB heap; positional indexes must not own those payloads.
+        var lazy=new LinkedHashMap<>(raw);
+        lazy.put("declarations",new AbstractList<Object>() {
+            public int size(){return 1200;}
+            public Object get(int index){
+                Objects.checkIndex(index,size());
+                var declaration=declaration("L"+index+".java","L"+index,"","CLASS",false);
+                Json.map(declaration.get("attributes")).put("detached_payload","x".repeat(131072));
+                return declaration;
+            }
+        });
+        try(var semantic=new JavaSemanticModel(lazy)) {
+            if(semantic.units().size()!=1200 || semantic.sourceTypes().size()!=1200)
+                throw new AssertionError("lazy context lost identities");
+            if(!"L1199".equals(semantic.declarations().get("L1199").get("signature")))
+                throw new AssertionError("lazy lookup incorrect");
         }
         Path directory=Path.of(args[0]);Files.createDirectories(directory);Path archive=directory.resolve("model-"+UUID.randomUUID()+".bin");
         ModelArchive.write(archive,raw,16*1024*1024);

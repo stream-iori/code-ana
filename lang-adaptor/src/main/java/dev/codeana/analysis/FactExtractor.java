@@ -1,5 +1,6 @@
 package dev.codeana.analysis;
 
+import dev.codeana.analysis.model.JavaSemanticModel;
 import dev.codeana.common.FactHeaders;
 import dev.codeana.common.Json;
 import dev.codeana.common.ModelArchive;
@@ -247,105 +248,10 @@ public final class FactExtractor {
                             publish(path) ? Json.string(sources.get(path), "world") : world,
                             sig));
         }
-        for (Object raw : Json.list(model.get("declarations"))) {
-            Map<String, Object> d = Json.map(raw);
-            String path = Json.string(d, "source"), sig = Json.string(d, "signature");
-            if (!publish(path)) {
-                String kind = Json.string(Json.map(d.get("attributes")), "element_kind");
-                if (Set.of("PARAMETER", "LOCAL_VARIABLE", "EXCEPTION_PARAMETER",
-                                "RESOURCE_VARIABLE", "INITIALIZER", "LAMBDA", "METHOD_REF")
-                        .contains(kind) && !requiredAuxiliary.contains(sig)) continue;
-                Map<String, Object> attributes = new TreeMap<>(Json.map(d.get("attributes")));
-                if (sources.containsKey(path)) {
-                    Map<String, Object> source = sources.get(path);
-                    attributes.put(
-                            "source_origin",
-                            Json.object(
-                                    "path",
-                                    path,
-                                    "hash",
-                                    source.get("hash"),
-                                    "world",
-                                    source.get("world"),
-                                    "module",
-                                    source.get("module"),
-                                    "scope",
-                                    source.get("scope")));
-                }
-                external(sig, Json.string(d, "name"), attributes);
-                continue;
-            }
-            Map<String, Object> f = fact(symbol(sig), "declaration", path);
-            f.put("name", d.get("name"));
-            f.put("signature", sig);
-            f.put("parent", symbol(Json.string(d, "parent")));
-            f.put("span", span(path, d));
-            Map<String, Object> attrs = new TreeMap<>(Json.map(d.get("attributes")));
-            attrs.put(
-                    "logical_key",
-                    Json.key("logical", Json.string(sources.get(path), "module"), sig));
-            attrs.put("generated", d.get("generated"));
-            attrs.put("source_available", f.get("span") != null);
-            f.put("attributes", attrs);
-            f.put("declaration_resolved", !attrs.containsKey("extension_producer"));
-            if (attrs.containsKey("extension_producer")) {
-                f.put("origin", attrs.get("binding_origin"));
-                f.put("evidence_complete", false);
-            }
-            if (attrs.containsKey("type_model")) {
-                Map<String, Object> type = fact(Json.key("type", sig, world), "facet", path);
-                type.put("parent", f.get("id"));
-                type.put("relation", "java.type");
-                type.put(
-                        "attributes",
-                        Json.object(
-                                "schema_version", !Boolean.FALSE.equals(context.get("type_graph")) ? 3 : 2,
-                                "declared", attrs.get("type_model"),
-                                "return", attrs.get("return_type_model"),
-                                "parameters", attrs.get("parameter_type_models")));
-            }
-            if (attrs.containsKey("extension_producer")) {
-                int index = 0;
-                for (Object annotation :
-                        attrs.get("annotations") instanceof List
-                                ? Json.list(attrs.get("annotations"))
-                                : List.of()) {
-                    Map<String, Object> value = Json.map(annotation);
-                    Map<String, Object> generated =
-                            fact(
-                                    Json.key(
-                                            "modeled-annotation",
-                                            world,
-                                            sig,
-                                            Integer.toString(index++)),
-                                    "facet",
-                                    path);
-                    generated.put("parent", f.get("id"));
-                    generated.put("relation", "java.annotation");
-                    generated.put("origin", attrs.get("binding_origin"));
-                    generated.put("evidence_complete", false);
-                    generated.put("status", "modeled");
-                    generated.put(
-                            "attributes",
-                            Json.object(
-                                    "schema_version",
-                                    2,
-                                    "resolved_type",
-                                    value.get("type"),
-                                    "explicit",
-                                    value.get("explicit"),
-                                    "effective",
-                                    value.get("effective"),
-                                    "retention",
-                                    value.get("retention"),
-                                    "generated",
-                                    true,
-                                    "generated_from",
-                                    attrs.get("generated_from"),
-                                    "annotation_origin",
-                                    "static_declaration_overlay"));
-                }
-            }
+        try (JavaSemanticModel semantic = new JavaSemanticModel(model)) {
+            for (JavaSemanticModel.Unit unit : semantic.units())
+                for (Object raw : unit.rows("declarations"))
+                    emitDeclaration(Json.map(raw), requiredAuxiliary);
         }
         for (Object raw : Json.list(model.get("external"))) {
             Map<String, Object> e = Json.map(raw);
@@ -354,173 +260,11 @@ public final class FactExtractor {
                     Json.string(e, "name"),
                     Json.map(e.get("attributes")));
         }
-        for (Object raw : Json.list(model.get("observations"))) {
-            Map<String, Object> n = Json.map(raw);
-            String path = Json.string(n, "source");
-            if (!publish(path)) continue;
-            String kind = Json.string(n, "kind");
-            if (kind.equals("relation")) {
-                Map<String,Object> position=sourceTypes.hierarchyPosition(n);
-                if(!position.isEmpty()) {
-                    n=new TreeMap<>(n);
-                    n.put("start",position.get("start"));n.put("end",position.get("end"));
-                }
-            }
-            if (kind.equals("call")) {
-                Map<String, Object> site = occurrence("call_site", n);
-                callSites.put(
-                        path + ':' + n.get("start") + ':' + n.get("end"),
-                        Map.of("id", site.get("id")));
-                boolean resolved = Boolean.TRUE.equals(n.get("resolved"));
-                boolean complete = Boolean.TRUE.equals(n.get("complete"));
-                site.put("name", n.get("name"));
-                site.put("status", resolved ? "resolved" : "unresolved");
-                site.put("evidence_complete", complete);
-                Map<String, Object> binding =
-                        fact(Json.key("binding", (String) site.get("id")), "facet", path);
-                binding.put("parent", site.get("id"));
-                binding.put("relation", "java.binding");
-                // The call site owns the complete selected/declared/expression type evidence.
-                // Facets and confirmed targets point to that owner instead of copying its graph.
-                binding.put("attributes", Json.object("schema_version", !Boolean.FALSE.equals(context.get("type_graph")) ? 4 : 3,
-                        "evidence_owner", site.get("id"), "resolved", resolved, "complete", complete));
-                binding.put("evidence_complete", complete);
-                if (resolved && !n.containsKey("modeled_target")
-                        && !Boolean.TRUE.equals(Json.map(n.get("attributes")).get("recovery_target_blocked"))) {
-                    Map<String, Object> target =
-                            fact(Json.key("target", (String) site.get("id")), "call_target", path);
-                    target.put("parent", site.get("id"));
-                    target.put("target", symbol(Json.string(n, "target")));
-                    boolean modeledInput = Boolean.TRUE.equals(Json.map(n.get("attributes"))
-                            .get("recovery_original_selected_modeled_input"));
-                    target.put("status", modeledInput ? "possible" : "resolved");
-                    target.put("declaration_resolved", true);
-                    target.put("evidence_complete", complete && !modeledInput);
-                    target.put("attributes", modeledInput
-                            ? Json.object("binding_evidence", site.get("id"), "modeled_input", true)
-                            : Json.object("binding_evidence", site.get("id")));
-                }
-                if (n.containsKey("modeled_target")) {
-                    Map<String, Object> target =
-                            fact(Json.key("target", (String) site.get("id")), "call_target", path);
-                    target.put("parent", site.get("id"));
-                    target.put("target", symbol(Json.string(n, "modeled_target")));
-                    target.put("status", "possible");
-                    target.put(
-                            "origin",
-                            Json.map(site.get("attributes"))
-                                    .getOrDefault("binding_origin", "lombok_model"));
-                    target.put("evidence_complete", false);
-                    target.put(
-                            "declaration_resolved", !"lombok_model".equals(target.get("origin")));
-                    target.put("attributes", new TreeMap<>(Json.map(site.get("attributes"))));
-                }
-                if (!complete) incomplete.add(path);
-                Map<String, Object> dep =
-                        fact(Json.key("dependency", (String) site.get("id")), "dependency", path);
-                dep.put("parent", site.get("id"));
-                dep.put("target", resolved ? symbol(Json.string(n, "target")) : "");
-                dep.put("relation", resolved ? "binding" : "failed_lookup");
-                dep.put(
-                        "attributes",
-                        Json.object("lookup", n.get("name"), "context", context.get("context")));
-            } else if (kind.equals("reflection")) {
-                Map<String, Object> attributes = new TreeMap<>(Json.map(n.get("attributes")));
-                Map<String, Object> site =
-                        callSites.get(path + ':' + n.get("start") + ':' + n.get("end"));
-                Map<String, Object> reflected = occurrence("facet", n);
-                reflected.put("relation", "java.reflection");
-                reflected.put("origin", "reflection_model");
-                reflected.put("evidence_complete", false);
-                reflected.put("status", "possible");
-                if (site != null) reflected.put("parent", site.get("id"));
-                attributes.put("schema_version", 1);
-                reflected.put("attributes", attributes);
-                Map<String, Object> edge =
-                        occurrence(
-                                "call".equals(n.get("role")) && site != null
-                                        ? "call_target"
-                                        : "reference",
-                                n);
-                edge.put("target", symbol(Json.string(n, "target")));
-                edge.put("origin", "reflection_model");
-                edge.put("status", "possible");
-                edge.put("evidence_complete", false);
-                edge.put("attributes", attributes);
-                if ("call_target".equals(edge.get("kind"))) edge.put("parent", site.get("id"));
-                else {
-                    edge.put("relation", "reflection_lookup");
-                    String control = (String) attributes.getOrDefault("control", "");
-                    if (!control.isEmpty()) attributes.put("type_context", control);
-                }
-            } else if (kind.equals("reference") || kind.equals("relation")) {
-                Map<String, Object> f = occurrence(kind, n);
-                f.put("target", symbol(Json.string(n, "target")));
-                if ("modeled_override".equals(Json.map(n.get("attributes")).get("binding_origin"))) {
-                    f.put("origin", "modeled_override");
-                    f.put("status", "possible");
-                    f.put("evidence_complete", false);
-                } else if ("modeled_enum_label".equals(Json.map(n.get("attributes")).get("binding_origin"))) {
-                    f.put("origin", "source_recovery");
-                    f.put("status", "possible");
-                    f.put("evidence_complete", false);
-                } else if (Boolean.FALSE.equals(n.get("resolved"))) {
-                    f.put("status", "unresolved");
-                    f.put("evidence_complete", false);
-                    incomplete.add(path);
-                }
-                if (n.containsKey("relation")) f.put("relation", n.get("relation"));
-                if (n.containsKey("name")) f.put("name", n.get("name"));
-                String access = (String) Json.map(f.get("attributes")).get("field_access");
-                if (access != null) {
-                    // The raw javac observation above retains read_write for ++/--.
-                    // Public field relations follow the reference's mutation category
-                    // (WRITES), and its default external owner policy. Source owners
-                    // are exempt from that policy, including auxiliary declarations.
-                    String targetSignature = Json.string(n, "target");
-                    int member = targetSignature.indexOf('#');
-                    if (member > 0 && sourceTypes.excluded(targetSignature.substring(0, member))
-                            && !verifiedSourceDeclarations.containsKey(targetSignature.substring(0, member)))
-                        continue;
-                    boolean mutation = Boolean.TRUE.equals(Json.map(f.get("attributes")).get("field_mutation"));
-                    for (String role :
-                            access.equals("read_write") && !mutation
-                                    ? List.of("reads", "writes")
-                                    : List.of(mutation || access.equals("write") ? "writes" : "reads")) {
-                        String id = Json.key("field-access", Json.string(f, "id"), role);
-                        Map<String, Object> occurrence = fact(id, "reference", path);
-                        Map<String, Object> copy = new TreeMap<>(f);
-                        copy.put("id", id);
-                        copy.put("relation", role);
-                        occurrence.putAll(copy);
-                    }
-                } else if ("type".equals(Json.map(f.get("attributes")).get("reference_kind"))) {
-                    f.put("relation", "type_navigation");
-                }
-            } else if (kind.equals("annotation")) {
-                Map<String, Object> f = occurrence("facet", n);
-                f.put("relation", "java.annotation");
-                Map<String, Object> a = Json.map(f.get("attributes"));
-                a.put("schema_version", 2);
-                a.put("name", n.get("name"));
-                a.put("resolved_type", n.get("target"));
-                // Keep the exact written span/values while disclosing the modeled owner.
-                Map<String, Object> original = new TreeMap<>(f);
-                for (String target : annotationOrigins.getOrDefault(Json.string(n,"parent"),List.of())) {
-                    // Builder.Default controls generation on the original field. It is
-                    // not a source annotation of the generated builder storage field.
-                    if (Set.of("lombok.Builder$Default", "lombok.Builder.Default")
-                            .contains(Json.string(n, "target"))) continue;
-                    String id = Json.key("source-annotation-projection", Json.string(original,"id"), target);
-                    Map<String, Object> projected = fact(id,"facet",path);
-                    projected.putAll(original); projected.put("id",id); projected.put("parent",symbol(target));
-                    projected.put("origin","source_projection"); projected.put("status","modeled");
-                    projected.put("evidence_complete",false);
-                    Map<String,Object> attrs = new TreeMap<>(Json.map(original.get("attributes")));
-                    attrs.put("annotation_origin","source_backed_generated_declaration");
-                    attrs.put("generated",true); attrs.put("generated_from",n.get("parent"));
-                    projected.put("attributes",attrs);
-                }
+        try (JavaSemanticModel semantic = new JavaSemanticModel(model)) {
+            for (JavaSemanticModel.Unit unit : semantic.units()) {
+                callSites.clear();
+                for (JavaSemanticModel.Binding binding : unit.bindings())
+                    emitBinding(binding.evidence(), sourceTypes, callSites, annotationOrigins);
             }
         }
         generatedTypeReferences(model,sourceTypes);
@@ -686,6 +430,278 @@ public final class FactExtractor {
                 rows.copyRecord(positions.get(index), destination);
             }
         };
+    }
+
+    /** Declaration pass consumes one file's headers; auxiliary queries use compact identities. */
+    private void emitDeclaration(Map<String,Object> d, Set<String> requiredAuxiliary) {
+        String path = Json.string(d, "source"), sig = Json.string(d, "signature");
+        if (!publish(path)) {
+            String kind = Json.string(Json.map(d.get("attributes")), "element_kind");
+            if (Set.of("PARAMETER", "LOCAL_VARIABLE", "EXCEPTION_PARAMETER",
+                            "RESOURCE_VARIABLE", "INITIALIZER", "LAMBDA", "METHOD_REF")
+                    .contains(kind) && !requiredAuxiliary.contains(sig)) return;
+            Map<String, Object> attributes = new TreeMap<>(Json.map(d.get("attributes")));
+            if (sources.containsKey(path)) {
+                Map<String, Object> source = sources.get(path);
+                attributes.put(
+                        "source_origin",
+                        Json.object(
+                                "path",
+                                path,
+                                "hash",
+                                source.get("hash"),
+                                "world",
+                                source.get("world"),
+                                "module",
+                                source.get("module"),
+                                "scope",
+                                source.get("scope")));
+            }
+            external(sig, Json.string(d, "name"), attributes);
+            return;
+        }
+        Map<String, Object> f = fact(symbol(sig), "declaration", path);
+        f.put("name", d.get("name"));
+        f.put("signature", sig);
+        f.put("parent", symbol(Json.string(d, "parent")));
+        f.put("span", span(path, d));
+        Map<String, Object> attrs = new TreeMap<>(Json.map(d.get("attributes")));
+        attrs.put(
+                "logical_key",
+                Json.key("logical", Json.string(sources.get(path), "module"), sig));
+        attrs.put("generated", d.get("generated"));
+        attrs.put("source_available", f.get("span") != null);
+        f.put("attributes", attrs);
+        f.put("declaration_resolved", !attrs.containsKey("extension_producer"));
+        if (attrs.containsKey("extension_producer")) {
+            f.put("origin", attrs.get("binding_origin"));
+            f.put("evidence_complete", false);
+        }
+        if (attrs.containsKey("type_model")) {
+            Map<String, Object> type = fact(Json.key("type", sig, world), "facet", path);
+            type.put("parent", f.get("id"));
+            type.put("relation", "java.type");
+            type.put(
+                    "attributes",
+                    Json.object(
+                            "schema_version", !Boolean.FALSE.equals(context.get("type_graph")) ? 3 : 2,
+                            "declared", attrs.get("type_model"),
+                            "return", attrs.get("return_type_model"),
+                            "parameters", attrs.get("parameter_type_models")));
+        }
+        if (attrs.containsKey("extension_producer")) {
+            int index = 0;
+            for (Object annotation :
+                    attrs.get("annotations") instanceof List
+                            ? Json.list(attrs.get("annotations"))
+                            : List.of()) {
+                Map<String, Object> value = Json.map(annotation);
+                Map<String, Object> generated =
+                        fact(
+                                Json.key(
+                                        "modeled-annotation",
+                                        world,
+                                        sig,
+                                        Integer.toString(index++)),
+                                "facet",
+                                path);
+                generated.put("parent", f.get("id"));
+                generated.put("relation", "java.annotation");
+                generated.put("origin", attrs.get("binding_origin"));
+                generated.put("evidence_complete", false);
+                generated.put("status", "modeled");
+                generated.put(
+                        "attributes",
+                        Json.object(
+                                "schema_version",
+                                2,
+                                "resolved_type",
+                                value.get("type"),
+                                "explicit",
+                                value.get("explicit"),
+                                "effective",
+                                value.get("effective"),
+                                "retention",
+                                value.get("retention"),
+                                "generated",
+                                true,
+                                "generated_from",
+                                attrs.get("generated_from"),
+                                "annotation_origin",
+                                "static_declaration_overlay"));
+            }
+        }
+    }
+
+    /** Binding pass keeps the original call evidence and the file-local reflection links. */
+    private void emitBinding(Map<String,Object> n, SourceTypeReferences sourceTypes,
+            Map<String,Map<String,Object>> callSites, Map<String,List<String>> annotationOrigins) {
+        String path = Json.string(n, "source");
+        if (!publish(path)) return;
+        String kind = Json.string(n, "kind");
+        if (kind.equals("relation")) {
+            Map<String,Object> position=sourceTypes.hierarchyPosition(n);
+            if(!position.isEmpty()) {
+                n=new TreeMap<>(n);
+                n.put("start",position.get("start"));n.put("end",position.get("end"));
+            }
+        }
+        if (kind.equals("call")) {
+            Map<String, Object> site = occurrence("call_site", n);
+            callSites.put(
+                    path + ':' + n.get("start") + ':' + n.get("end"),
+                    Map.of("id", site.get("id")));
+            boolean resolved = Boolean.TRUE.equals(n.get("resolved"));
+            boolean complete = Boolean.TRUE.equals(n.get("complete"));
+            site.put("name", n.get("name"));
+            site.put("status", resolved ? "resolved" : "unresolved");
+            site.put("evidence_complete", complete);
+            Map<String, Object> binding =
+                    fact(Json.key("binding", (String) site.get("id")), "facet", path);
+            binding.put("parent", site.get("id"));
+            binding.put("relation", "java.binding");
+            // The call site owns the complete selected/declared/expression type evidence.
+            // Facets and confirmed targets point to that owner instead of copying its graph.
+            binding.put("attributes", Json.object("schema_version", !Boolean.FALSE.equals(context.get("type_graph")) ? 4 : 3,
+                    "evidence_owner", site.get("id"), "resolved", resolved, "complete", complete));
+            binding.put("evidence_complete", complete);
+            if (resolved && !n.containsKey("modeled_target")
+                    && !Boolean.TRUE.equals(Json.map(n.get("attributes")).get("recovery_target_blocked"))) {
+                Map<String, Object> target =
+                        fact(Json.key("target", (String) site.get("id")), "call_target", path);
+                target.put("parent", site.get("id"));
+                target.put("target", symbol(Json.string(n, "target")));
+                boolean modeledInput = Boolean.TRUE.equals(Json.map(n.get("attributes"))
+                        .get("recovery_original_selected_modeled_input"));
+                target.put("status", modeledInput ? "possible" : "resolved");
+                target.put("declaration_resolved", true);
+                target.put("evidence_complete", complete && !modeledInput);
+                target.put("attributes", modeledInput
+                        ? Json.object("binding_evidence", site.get("id"), "modeled_input", true)
+                        : Json.object("binding_evidence", site.get("id")));
+            }
+            if (n.containsKey("modeled_target")) {
+                Map<String, Object> target =
+                        fact(Json.key("target", (String) site.get("id")), "call_target", path);
+                target.put("parent", site.get("id"));
+                target.put("target", symbol(Json.string(n, "modeled_target")));
+                target.put("status", "possible");
+                target.put(
+                        "origin",
+                        Json.map(site.get("attributes"))
+                                .getOrDefault("binding_origin", "lombok_model"));
+                target.put("evidence_complete", false);
+                target.put(
+                        "declaration_resolved", !"lombok_model".equals(target.get("origin")));
+                target.put("attributes", new TreeMap<>(Json.map(site.get("attributes"))));
+            }
+            if (!complete) incomplete.add(path);
+            Map<String, Object> dep =
+                    fact(Json.key("dependency", (String) site.get("id")), "dependency", path);
+            dep.put("parent", site.get("id"));
+            dep.put("target", resolved ? symbol(Json.string(n, "target")) : "");
+            dep.put("relation", resolved ? "binding" : "failed_lookup");
+            dep.put(
+                    "attributes",
+                    Json.object("lookup", n.get("name"), "context", context.get("context")));
+        } else if (kind.equals("reflection")) {
+            Map<String, Object> attributes = new TreeMap<>(Json.map(n.get("attributes")));
+            Map<String, Object> site =
+                    callSites.get(path + ':' + n.get("start") + ':' + n.get("end"));
+            Map<String, Object> reflected = occurrence("facet", n);
+            reflected.put("relation", "java.reflection");
+            reflected.put("origin", "reflection_model");
+            reflected.put("evidence_complete", false);
+            reflected.put("status", "possible");
+            if (site != null) reflected.put("parent", site.get("id"));
+            attributes.put("schema_version", 1);
+            reflected.put("attributes", attributes);
+            Map<String, Object> edge =
+                    occurrence(
+                            "call".equals(n.get("role")) && site != null
+                                    ? "call_target"
+                                    : "reference",
+                            n);
+            edge.put("target", symbol(Json.string(n, "target")));
+            edge.put("origin", "reflection_model");
+            edge.put("status", "possible");
+            edge.put("evidence_complete", false);
+            edge.put("attributes", attributes);
+            if ("call_target".equals(edge.get("kind"))) edge.put("parent", site.get("id"));
+            else {
+                edge.put("relation", "reflection_lookup");
+                String control = (String) attributes.getOrDefault("control", "");
+                if (!control.isEmpty()) attributes.put("type_context", control);
+            }
+        } else if (kind.equals("reference") || kind.equals("relation")) {
+            Map<String, Object> f = occurrence(kind, n);
+            f.put("target", symbol(Json.string(n, "target")));
+            if ("modeled_override".equals(Json.map(n.get("attributes")).get("binding_origin"))) {
+                f.put("origin", "modeled_override");
+                f.put("status", "possible");
+                f.put("evidence_complete", false);
+            } else if ("modeled_enum_label".equals(Json.map(n.get("attributes")).get("binding_origin"))) {
+                f.put("origin", "source_recovery");
+                f.put("status", "possible");
+                f.put("evidence_complete", false);
+            } else if (Boolean.FALSE.equals(n.get("resolved"))) {
+                f.put("status", "unresolved");
+                f.put("evidence_complete", false);
+                incomplete.add(path);
+            }
+            if (n.containsKey("relation")) f.put("relation", n.get("relation"));
+            if (n.containsKey("name")) f.put("name", n.get("name"));
+            String access = (String) Json.map(f.get("attributes")).get("field_access");
+            if (access != null) {
+                // The raw javac observation above retains read_write for ++/--.
+                // Public field relations follow the reference's mutation category
+                // (WRITES), and its default external owner policy. Source owners
+                // are exempt from that policy, including auxiliary declarations.
+                String targetSignature = Json.string(n, "target");
+                int member = targetSignature.indexOf('#');
+                if (member > 0 && sourceTypes.excluded(targetSignature.substring(0, member))
+                        && !verifiedSourceDeclarations.containsKey(targetSignature.substring(0, member)))
+                    return;
+                boolean mutation = Boolean.TRUE.equals(Json.map(f.get("attributes")).get("field_mutation"));
+                for (String role :
+                        access.equals("read_write") && !mutation
+                                ? List.of("reads", "writes")
+                                : List.of(mutation || access.equals("write") ? "writes" : "reads")) {
+                    String id = Json.key("field-access", Json.string(f, "id"), role);
+                    Map<String, Object> occurrence = fact(id, "reference", path);
+                    Map<String, Object> copy = new TreeMap<>(f);
+                    copy.put("id", id);
+                    copy.put("relation", role);
+                    occurrence.putAll(copy);
+                }
+            } else if ("type".equals(Json.map(f.get("attributes")).get("reference_kind"))) {
+                f.put("relation", "type_navigation");
+            }
+        } else if (kind.equals("annotation")) {
+            Map<String, Object> f = occurrence("facet", n);
+            f.put("relation", "java.annotation");
+            Map<String, Object> a = Json.map(f.get("attributes"));
+            a.put("schema_version", 2);
+            a.put("name", n.get("name"));
+            a.put("resolved_type", n.get("target"));
+            // Keep the exact written span/values while disclosing the modeled owner.
+            Map<String, Object> original = new TreeMap<>(f);
+            for (String target : annotationOrigins.getOrDefault(Json.string(n,"parent"),List.of())) {
+                // Builder.Default controls generation on the original field. It is
+                // not a source annotation of the generated builder storage field.
+                if (Set.of("lombok.Builder$Default", "lombok.Builder.Default")
+                        .contains(Json.string(n, "target"))) continue;
+                String id = Json.key("source-annotation-projection", Json.string(original,"id"), target);
+                Map<String, Object> projected = fact(id,"facet",path);
+                projected.putAll(original); projected.put("id",id); projected.put("parent",symbol(target));
+                projected.put("origin","source_projection"); projected.put("status","modeled");
+                projected.put("evidence_complete",false);
+                Map<String,Object> attrs = new TreeMap<>(Json.map(original.get("attributes")));
+                attrs.put("annotation_origin","source_backed_generated_declaration");
+                attrs.put("generated",true); attrs.put("generated_from",n.get("parent"));
+                projected.put("attributes",attrs);
+            }
+        }
     }
 
     private void generatedTypeReferences(Map<String, Object> model, SourceTypeReferences sourceTypes) {

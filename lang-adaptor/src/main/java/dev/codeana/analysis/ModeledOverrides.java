@@ -54,8 +54,7 @@ final class ModeledOverrides {
     void generate() throws IOException {
         if (modeledNames.isEmpty()) return;
         // A binary target can be added to external rows later; never iterate that mutable index.
-        List<Map<String, Object>> methods = members.values().stream().flatMap(Collection::stream).toList();
-        for (var method : methods) {
+        for (var ownerMembers : members.values()) for (var method : ownerMembers) {
             if (!published.contains(text(method.get("source")))) continue;
             if (!"METHOD".equals(attrs(method).get("element_kind"))) continue;
             Set<String> own = modifiers(method);

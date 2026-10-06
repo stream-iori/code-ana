@@ -1,6 +1,7 @@
 package dev.codeana.analysis;
 
 import dev.codeana.common.Json;
+import dev.codeana.common.IndexedRecords;
 import java.util.*;
 import java.util.function.Consumer;
 
@@ -9,7 +10,7 @@ import java.util.function.Consumer;
 final class AnnotationMetaFacts {
     private static final Set<String> OWNERS=Set.of("CLASS","INTERFACE","ENUM","ANNOTATION_TYPE",
             "METHOD","CONSTRUCTOR","FIELD","ENUM_CONSTANT","PARAMETER");
-    private final Map<String,Map<String,Object>> headers=new HashMap<>(), declarations=new HashMap<>();
+    private final Map<String,Map<String,Object>> headers, declarations;
     private final Set<String> published=new HashSet<>(), emitted=new HashSet<>(), roots=new HashSet<>();
     private final Map<String,Integer> sourceWork=new HashMap<>();
     private final Map<String,Object> model;
@@ -24,17 +25,20 @@ final class AnnotationMetaFacts {
             var source=Json.map(raw);
             if(Boolean.TRUE.equals(source.get("publish"))) published.add(Json.string(source,"path"));
         }
-        for(Object raw:Json.list(model.get("annotation_types"))) {
-            var header=Json.map(raw);headers.put(Json.string(header,"name"),header);
-        }
-        for(Object raw:Json.list(model.get("declarations"))) {
-            var declaration=Json.map(raw);declarations.put(Json.string(declaration,"signature"),declaration);
-        }
-        // File NoCode removes unchanged source declarations from the compiler
-        // model. These original catalogues were checked against the published
-        // baseline before use; binary annotations must not replace them.
-        for(var entry:verifiedSources.entrySet())
-            if(entry.getValue().get("source") instanceof String) declarations.put(entry.getKey(),entry.getValue());
+        List<Object> annotationRows=Json.list(model.get("annotation_types"));
+        IndexedRecords headerIndex=new IndexedRecords(annotationRows);headers=headerIndex;
+        for(int i=0;i<annotationRows.size();i++)headerIndex.index(Json.string(Json.map(annotationRows.get(i)),"name"),i);
+        List<Object> declarationRows=Json.list(model.get("declarations"));
+        IndexedRecords declarationIndex=new IndexedRecords(declarationRows);
+        for(int i=0;i<declarationRows.size();i++)declarationIndex.index(Json.string(Json.map(declarationRows.get(i)),"signature"),i);
+        // Verified NoCode SOURCE evidence has priority over any binary annotation header.
+        declarations=new AbstractMap<>() {
+            public Map<String,Object> get(Object name) {
+                var verified=verifiedSources.get(name);
+                return verified!=null && verified.get("source") instanceof String?verified:declarationIndex.get(name);
+            }
+            public Set<Entry<String,Map<String,Object>>> entrySet(){throw new UnsupportedOperationException("ANNOTATION_META_LOOKUP_ONLY");}
+        };
     }
 
     static void emit(Map<String,Object> context,Map<String,Object> model,
