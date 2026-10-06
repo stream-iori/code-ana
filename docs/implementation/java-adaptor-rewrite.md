@@ -75,3 +75,16 @@
 | 待验证 | 以上变更晚于007d79d固定验收；不能把旧native/发行/iopengw结果登记为新版成功，需另建同版本固定运行目录 |
 
 007d79d启动重试未再次被杀，已越过Lombok提交；common@MAIN调用恢复耗时较长。系统取样显示计算与归档读取，尚无证据判定死循环或最终成功。
+
+## de8c99b 固定版本验收
+
+| 项目 | 状态 |
+|---|---|
+| native 构建 / 模型API | 新库构建成功，17项独立对照通过，无输入和产物漂移 |
+| 冻结框架参考 | native对照通过，无输入和产物漂移 |
+| 完整回归 / iopengw | 分别在rewrite-gates-de8c99b与rewrite-de8c99b固定副本运行；已越过Lombok，文件调用恢复进度可见，尚未发布 |
+| raw / AST | 各80上下文清单重新执行，不能复用旧版本通过数；完整清单和发布均通过后自动触发14域严格差分 |
+| 发行功能 | 前3项通过；包内CLI自动启动daemon收到SIGKILL9，同包路径重试仍失败，签名有效，已通知用户；iopengw独立daemon/worker运行正常 |
+| 旧007d79d | native高级绑定216项通过，546次Rust事实校验，无漂移；属于旧版本证据，不认证de8c99b。其发布/raw/AST/完整回归主动SIGTERM并保存审计，非安全软件异常 |
+
+最新版入口：target/java-alignment/evidence/latest-java-correctness-run.json。发行失败源证据在de8c99b验收目录的shipped-fixture/index.stderr；原测试finally报告DAEMON_STOP_FAILED，实际先发生DAEMON_START_FAILED/SIGKILL。失败回执保留，不改写为成功。最终dist仍未替换，容量未验收。
