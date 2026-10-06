@@ -27,6 +27,7 @@ def expected_contexts(manifest):
 
 def accepted_context(row,report):
     return (row.get('exit_code')==0 and report.get('state')=='finished' and report.get('equal') is True
+        and report.get('model_api_mode','raw')==row.get('model_api_mode','raw')
         and set(report.get('projections',{}))==set(PROJECTIONS)
         and all(value.get('equal') is True for value in report['projections'].values())
         and report.get('changed_inputs')==[] and report.get('changed_source_inputs')==[]
@@ -68,7 +69,7 @@ def main():
         atomic_json(output,report)
         for index,(module,scope) in enumerate(expected):
             begin=time.monotonic();directory=evidence/str(index);directory.mkdir()
-            row=dict(context=module+'@'+scope,accepted=False,
+            row=dict(context=module+'@'+scope,accepted=False,model_api_mode=report['model_api_mode'],
                 native_model_api_executable_sha256=report['native_model_api_executable_sha256'])
             try:
                 request=compiler_context(project,manifest,module,scope)

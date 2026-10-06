@@ -10,6 +10,10 @@ from java_declaration_inventory_diff import digest
 
 
 class SemanticAcceptance(unittest.TestCase):
+    def test_raw_inventory_cannot_certify_lombok_ast(self):
+        with self.assertRaisesRegex(ValueError,'MODE_MISMATCH'):
+            validate_model_inventory(dict(model_api_mode='raw'),{}, {},pathlib.Path('/fixture'),mode='lombok_ast')
+        self.assertIn('complete_lombok_ast_model_inventory',PENDING_DOMAINS)
     def setUp(self):
         self.product=pathlib.Path('/fixture/facts.db')
         self.receipt=dict(state='finished',published=True,exit_code=0,query_exit_code=0,

@@ -32,10 +32,12 @@ DOMAINS=(
     ('di_wiring','java_wiring_inventory_diff.py'),
 )
 # These require independent, complete proofs before this gate can certify parity.
-PENDING_DOMAINS=('complete_model_api_inventory',)
+PENDING_DOMAINS=('complete_model_api_inventory','complete_lombok_ast_model_inventory')
 
 
-def validate_model_inventory(report,publication,manifest,project):
+def validate_model_inventory(report,publication,manifest,project,mode='raw'):
+    if report.get('model_api_mode','raw')!=mode:
+        raise ValueError('SEMANTIC_MODEL_INVENTORY_MODE_MISMATCH')
     expected=[module+'@'+scope for module,scope in expected_contexts(manifest)]
     if (report.get('kind')!='complete_frozen_maven_model_api_inventory' or report.get('state')!='finished'
         or report.get('complete_model_api_inventory') is not True
@@ -64,7 +66,7 @@ def validate_model_inventory(report,publication,manifest,project):
         if not path.is_file() or digest(path)!=row.get('receipt_sha256'):
             raise ValueError('SEMANTIC_MODEL_CONTEXT_PROOF_DRIFT')
         value=json.loads(path.read_text())
-        if (not accepted_context(row,value) or value.get('source_inputs')!=report['source_inputs']
+        if (not accepted_context(row,value) or value.get('model_api_mode','raw')!=mode or value.get('source_inputs')!=report['source_inputs']
             or value.get('native_model_api_executable_sha256')!=report['native_model_api_executable_sha256']):
             raise ValueError('SEMANTIC_MODEL_CONTEXT_INVENTORY_INCOMPLETE')
     for name,expected_hash in report.get('inputs',{}).items():
@@ -125,6 +127,7 @@ def main():
     for name in ('product','reference','project','publication_receipt','runtime_root','inputs_manifest','evidence'):
         parser.add_argument('--'+name.replace('_','-'),type=pathlib.Path,required=True)
     parser.add_argument('--model-api-receipt',type=pathlib.Path)
+    parser.add_argument('--lombok-model-api-receipt',type=pathlib.Path)
     args=parser.parse_args()
     args.evidence.mkdir(parents=True,exist_ok=False)
     started=time.monotonic()
@@ -149,6 +152,11 @@ def main():
             report['input_sha256'][str(args.model_api_receipt.resolve())]=digest(args.model_api_receipt)
             report['pending_domains'].remove('complete_model_api_inventory')
             report['complete_model_api_inventory_receipt']=str(args.model_api_receipt.resolve())
+        if args.lombok_model_api_receipt:
+            validate_model_inventory(json.loads(args.lombok_model_api_receipt.read_text()),receipt,manifest,args.project.resolve(),mode='lombok_ast')
+            report['input_sha256'][str(args.lombok_model_api_receipt.resolve())]=digest(args.lombok_model_api_receipt)
+            report['pending_domains'].remove('complete_lombok_ast_model_inventory')
+            report['complete_lombok_ast_model_inventory_receipt']=str(args.lombok_model_api_receipt.resolve())
         report['auditor_sha256']={str(file.relative_to(ROOT/'tests')):digest(file)
             for file in sorted((ROOT/'tests').glob('*.py'))}
         with connection(args.product) as db:
