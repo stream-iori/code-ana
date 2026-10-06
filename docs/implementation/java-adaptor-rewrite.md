@@ -24,7 +24,7 @@
 | 调用/反射pass | 调用恢复按文件新建状态；反射只保留当前文件调用；覆盖关系不物化全部方法 |
 | 声明/绑定pass | FactExtractor分离声明与绑定投影，按文件执行；调用点与反射关联限定同一文件 |
 | 类型/注解pass | 写明类型的节点目录随文件切换；meta annotation与补充ABI使用位置查询；不保留全部解码声明 |
-| JavaUnitAnalyzer | 冻结上下文查询、文件内body、文件输出事务；失败文件隔离、拒绝外文件事实；回归待最终收口 |
+| JavaUnitAnalyzer | 冻结上下文查询、文件内body、文件输出事务；Lombok/Spring/MVC/Handlers/SOFA注解均已接入，失败文件隔离、拒绝外文件事实；完整回归待最终收口 |
 | 规则实现 | 保留本项目已移植的推断与证据规则，文件边界改造不能替代真实语义差分；wire Map仍留在规则输入边界 |
 | 产品数据清理 | 默认~/.code-ana不存在，无默认产品catalog可删；新验收采用隔离空home，保留参考库 |
 | 完整验收 | 007d79d native模型17项、发行4门禁通过；完整回归、iopengw发布、两套80上下文、14域未完成；尚未替换dist |
@@ -61,3 +61,17 @@
 | 完整验收 | 另一个007d79d固定副本运行完整回归；本副本执行完整发布及raw/AST各80上下文 | 未闭合52项，未认证容量 |
 
 产品重试与发行回执位于`target/java-alignment/rewrite-007d79d/target/java-alignment/evidence/`；旧SIGKILL回执保留，不能覆盖成成功。
+
+## 内置框架文件事务补齐（2026-10-07）
+
+| 项目 | 结果 |
+|---|---|
+| 已查证差异 | Anatomist JavaModelExtractor按文件调用全部JavaModelAnalyzer；此前本项目五个内置Java分析回调仍按上下文提交，文件接口仅fixture使用 |
+| 改造 | 五个回调采用JavaUnitAnalyzer；当前文件声明/绑定参与规则执行，共享跨文件声明位置与注解元数据查询；XML/DI项目分析保持项目边界 |
+| 输出/失败 | 文件级候选校验后提交；失败仅撤销该文件候选、健康文件继续；strict与取消仍终止任务；原有按source生成的事实ID保持 |
+| 身份 | registry v14-unit-framework；Lombok13、Spring8、MVC/Handlers/SOFA注解3；compiler/model/wire/ABI不变 |
+| 已验证 | 框架14项、扩展20项JVM回归通过；64MiB探针验证20万旧事实不解码、多文件事实与原投影相等、跨文件目标排名及5个文件回调清单 |
+| 可观察性 | 调用恢复增加override与当前源码进度；不改变事实或预算 |
+| 待验证 | 以上变更晚于007d79d固定验收；不能把旧native/发行/iopengw结果登记为新版成功，需另建同版本固定运行目录 |
+
+007d79d启动重试未再次被杀，已越过Lombok提交；common@MAIN调用恢复耗时较长。系统取样显示计算与归档读取，尚无证据判定死循环或最终成功。

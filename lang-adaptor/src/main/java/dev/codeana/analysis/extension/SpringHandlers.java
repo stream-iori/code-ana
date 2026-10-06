@@ -5,21 +5,21 @@ import dev.codeana.common.Json;
 import java.util.*;
 
 /** Source lifecycle/event registrations and bounded, nearest-member factory lifecycle lookup. */
-public final class SpringHandlers implements JavaModelAnalyzer {
+public final class SpringHandlers implements JavaUnitAnalyzer {
     private static final Map<String, String> ROLES = Map.of(
             "javax.annotation.PostConstruct", "init", "jakarta.annotation.PostConstruct", "init",
             "javax.annotation.PreDestroy", "destroy", "jakarta.annotation.PreDestroy", "destroy",
             "org.springframework.context.event.EventListener", "event",
             "org.springframework.transaction.event.TransactionalEventListener", "event");
     public String id() { return "spring-handlers"; }
-    public String version() { return "2"; }
+    public String version() { return "3"; }
     public String producer() { return "spring-handlers-v1"; }
     public Set<String> requires() { return Set.of("spring"); }
     public boolean enabled(Map<String, Object> c) { return Boolean.TRUE.equals(c.get("spring")); }
     public boolean supportsBodyOnlyReuse() { return true; }
     public Map<String, Integer> facets() { return Map.of("java.spring.handler", 1); }
-    public void analyze(ExtensionContext context, FactSink sink) {
-        FrameworkFacts facts = new FrameworkFacts(this, context, sink);
+    public void analyzeUnit(ExtensionContext context, dev.codeana.analysis.model.JavaSemanticModel.Unit unit, FactSink sink) {
+        FrameworkFacts facts = new FrameworkFacts(this, context, sink, unit.source());
         ModelAnnotations annotations = context.annotations();
         for (Map<String, Object> method : facts.published()) {
             Map<String, Object> methodAttributes = Json.map(method.get("attributes"));

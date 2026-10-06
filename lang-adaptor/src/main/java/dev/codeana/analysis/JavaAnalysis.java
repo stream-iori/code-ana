@@ -517,7 +517,8 @@ public final class JavaAnalysis {
                 }
                 SupplementalTypes.derive(ctx, model, session);
                 session.mark(Json.string(ctx, "context"), "call_recovery");
-                CallRecovery.recover(model, ctx, session.javaHome());
+                CallRecovery.recover(model, ctx, session.javaHome(),
+                        stage -> session.mark(Json.string(ctx, "context"), stage));
                 session.mark(Json.string(ctx, "context"), "reflection");
                 ReflectionModel.analyze(ctx, model, session.javaHome());
                 session.mark(Json.string(ctx, "context"), "fact_extract");

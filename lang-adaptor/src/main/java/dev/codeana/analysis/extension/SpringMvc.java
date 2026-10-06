@@ -5,19 +5,19 @@ import dev.codeana.common.Json;
 import java.util.*;
 
 /** Bounded static MVC registration; no container routing or conditions are evaluated. */
-public final class SpringMvc implements JavaModelAnalyzer {
+public final class SpringMvc implements JavaUnitAnalyzer {
     private static final String API = "org.springframework.web.bind.annotation.";
     private static final Set<String> MAPPINGS = Set.of(API + "RequestMapping", API + "GetMapping", API + "PostMapping",
             API + "PutMapping", API + "DeleteMapping", API + "PatchMapping");
     public String id() { return "spring-mvc"; }
-    public String version() { return "2"; }
+    public String version() { return "3"; }
     public String producer() { return "spring-mvc-v1"; }
     public Set<String> requires() { return Set.of("spring"); }
     public boolean enabled(Map<String, Object> c) { return Boolean.TRUE.equals(c.get("spring")); }
     public boolean supportsBodyOnlyReuse() { return true; }
     public Map<String, Integer> facets() { return Map.of("java.spring.mvc", 1); }
-    public void analyze(ExtensionContext context, FactSink sink) {
-        FrameworkFacts facts = new FrameworkFacts(this, context, sink);
+    public void analyzeUnit(ExtensionContext context, dev.codeana.analysis.model.JavaSemanticModel.Unit unit, FactSink sink) {
+        FrameworkFacts facts = new FrameworkFacts(this, context, sink, unit.source());
         ModelAnnotations annotations = context.annotations(); int emitted = 0;
         for (Map<String, Object> method : facts.published()) {
             if (!"METHOD".equals(Json.map(method.get("attributes")).get("element_kind"))) continue;

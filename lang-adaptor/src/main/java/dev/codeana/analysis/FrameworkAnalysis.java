@@ -11,6 +11,7 @@ public final class FrameworkAnalysis {
     private final Map<String, Object> context;
     private final String stage;
     private final IndexedRecords declarations;
+    private ModelAnnotations annotations;
     private final Map<String, Map<String, Object>> sources = new TreeMap<>();
     private final List<Object> facts = new ArrayList<>();
     private final Set<String> gaps = new TreeSet<>();
@@ -40,6 +41,30 @@ public final class FrameworkAnalysis {
                 }
             }
         }
+    }
+
+    /** Shared context lookup; each invocation owns only one file's rows and candidate facts. */
+    public static final class UnitSession {
+        private final FrameworkAnalysis lookup;
+        public UnitSession(Map<String,Object> context, Map<String,Object> model, List<Object> core, String stage) {
+            lookup = new FrameworkAnalysis(context, core, stage);
+            if (!stage.equals("lombok")) lookup.annotations = new ModelAnnotations(model);
+        }
+        public List<Object> extract(Map<String,Object> unit, String path) throws Exception {
+            FrameworkAnalysis file = new FrameworkAnalysis(lookup, path);
+            if (file.stage.equals("lombok")) file.lombok(unit); else file.spring(unit);
+            for (Object raw : file.facts)
+                Json.map(Json.map(raw).get("attributes")).put("context", file.context.get("context"));
+            return file.facts;
+        }
+    }
+
+    private FrameworkAnalysis(FrameworkAnalysis lookup, String path) {
+        context = lookup.context; stage = lookup.stage; declarations = lookup.declarations;
+        annotations = lookup.annotations;
+        Map<String,Object> source = lookup.sources.get(path);
+        if (source == null) throw new IllegalArgumentException("FRAMEWORK_UNIT_NOT_PUBLISHED");
+        sources.put(path, source);
     }
 
     public static List<Object> extract(
@@ -320,7 +345,7 @@ public final class FrameworkAnalysis {
 
     private void spring(Map<String, Object> model) throws Exception {
         boolean springEnabled = Boolean.TRUE.equals(context.get("spring"));
-        ModelAnnotations annotations = new ModelAnnotations(model);
+        ModelAnnotations annotations = this.annotations == null ? new ModelAnnotations(model) : this.annotations;
         Set<String> recognized =
                 Set.of(
                         "org.springframework.stereotype.Component",

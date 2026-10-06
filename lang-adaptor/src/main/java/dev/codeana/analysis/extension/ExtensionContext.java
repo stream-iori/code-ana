@@ -16,6 +16,20 @@ public final class ExtensionContext {
     private final List<ProjectResource> resources;
     private dev.codeana.common.IndexedRecords declarations;
     private DetachedJavaModel javaModel;
+    private FrameworkFacts.Index frameworkIndex;
+    private ModelAnnotations annotations;
+    private final Map<String, dev.codeana.analysis.FrameworkAnalysis.UnitSession> frameworkSessions = new HashMap<>();
+
+    FrameworkFacts.Index frameworkIndex() {
+        if (frameworkIndex == null) frameworkIndex = new FrameworkFacts.Index(this);
+        return frameworkIndex;
+    }
+
+    public List<Object> analyzeFramework(dev.codeana.analysis.model.JavaSemanticModel.Unit unit, String stage) throws Exception {
+        var session = frameworkSessions.computeIfAbsent(stage, key ->
+                new dev.codeana.analysis.FrameworkAnalysis.UnitSession(configuration, model, facts, key));
+        return session.extract(unit.evidence(), unit.source());
+    }
     private java.util.function.Consumer<String> progress = ignored -> {};
 
     public ExtensionContext(Map<String, Object> configuration, Map<String, Object> model,
@@ -136,7 +150,8 @@ public final class ExtensionContext {
     }
 
     public ModelAnnotations annotations() {
-        return new ModelAnnotations(model);
+        if (annotations == null) annotations = new ModelAnnotations(model);
+        return annotations;
     }
 
     public static Map<String, Object> freezeMap(Map<String, Object> value) {

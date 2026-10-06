@@ -10,48 +10,57 @@ final class FrameworkFacts {
     private final ExtensionPoint extension;
     private final ExtensionContext context;
     private final FactSink sink;
-    private final Set<String> publication = new HashSet<>();
     final IndexedRecords declarations;
     final IndexedRecords declarationsById;
-    private final SortedSet<String> publishedSignatures = new TreeSet<>();
+    private final SortedSet<String> publishedSignatures;
+
+    /** Header positions shared by all file callbacks of this analyzer. */
+    static final class Index {
+        final IndexedRecords declarations, declarationsById;
+        final Map<String,SortedSet<String>> published = new HashMap<>();
+        Index(ExtensionContext context) {
+            declarations = new IndexedRecords(context.facts());
+            declarationsById = new IndexedRecords(context.facts());
+            Set<String> publication = new HashSet<>();
+            for (Object raw : Json.list(context.configuration().get("sources"))) {
+                Map<String,Object> source = Json.map(raw);
+                if (Boolean.TRUE.equals(source.get("publish"))) publication.add(Json.string(source,"path"));
+            }
+            Map<String,Integer> ranks = new HashMap<>();
+            Map<String,String> selectedSources = new HashMap<>();
+            for (int i = 0; i < context.facts().size(); i++) {
+                String kind = context.factKind(i);
+                if (!"declaration".equals(kind) && !"external_symbol".equals(kind)) continue;
+                Map<String,Object> f = context.factHeader(i);
+                String signature = Json.string(f,"signature");
+                int rank = ("declaration".equals(kind) ? 2 : 0)
+                        + (Objects.equals(context.configuration().get("world"),f.get("world")) ? 1 : 0);
+                if (!ranks.containsKey(signature) || rank > ranks.get(signature)) {
+                    ranks.put(signature,rank); declarations.index(signature,i);
+                    selectedSources.remove(signature);
+                    if ("declaration".equals(kind) && publication.contains(f.get("source"))
+                            && !Boolean.TRUE.equals(f.get("generated")))
+                        selectedSources.put(signature,Json.string(f,"source"));
+                }
+                declarationsById.index(Json.string(f,"id"),i);
+            }
+            selectedSources.forEach((signature,source) ->
+                    published.computeIfAbsent(source, ignored -> new TreeSet<>()).add(signature));
+        }
+    }
 
     FrameworkFacts(ExtensionPoint extension, ExtensionContext context, FactSink sink) {
-        this.extension = extension;
-        this.context = context;
-        this.sink = sink;
-        declarations = new IndexedRecords(context.facts());
-        declarationsById = new IndexedRecords(context.facts());
-        for (Object raw : Json.list(context.configuration().get("sources"))) {
-            Map<String, Object> source = Json.map(raw);
-            if (Boolean.TRUE.equals(source.get("publish")))
-                publication.add(Json.string(source, "path"));
-        }
-        Map<String, Integer> ranks = new HashMap<>();
-        for (int i = 0; i < context.facts().size(); i++) {
-            String kind = context.factKind(i);
-            if (!"declaration".equals(kind) && !"external_symbol".equals(kind)) continue;
-            Map<String, Object> f = context.factHeader(i);
-            if (Set.of("declaration", "external_symbol").contains(f.get("kind"))) {
-                String signature = Json.string(f, "signature");
-                int rank =
-                        ("declaration".equals(f.get("kind")) ? 2 : 0)
-                                + (Objects.equals(
-                                                context.configuration().get("world"),
-                                                f.get("world"))
-                                        ? 1
-                                        : 0);
-                if (!ranks.containsKey(signature) || rank > ranks.get(signature)) {
-                    ranks.put(signature, rank);
-                    declarations.index(signature, i);
-                    if ("declaration".equals(f.get("kind"))
-                            && publication.contains(f.get("source"))
-                            && !Boolean.TRUE.equals(f.get("generated")))
-                        publishedSignatures.add(signature);
-                    else publishedSignatures.remove(signature);
-                }
-                declarationsById.index(Json.string(f, "id"), i);
-            }
-        }
+        this(extension,context,sink,null);
+    }
+
+    FrameworkFacts(ExtensionPoint extension, ExtensionContext context, FactSink sink, String source) {
+        this.extension = extension; this.context = context; this.sink = sink;
+        Index index = context.frameworkIndex();
+        declarations = index.declarations; declarationsById = index.declarationsById;
+        if (source == null) {
+            publishedSignatures = new TreeSet<>();
+            index.published.values().forEach(publishedSignatures::addAll);
+        } else publishedSignatures = index.published.getOrDefault(source, Collections.emptySortedSet());
     }
 
     Iterable<Map<String, Object>> published() {

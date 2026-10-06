@@ -64,8 +64,8 @@ final class CallRecovery {
     private record Sam(List<Map<String, Object>> parameters, Map<String, Object> returns) {}
     private record PolyMatch(Match match, boolean modeledInput) {}
 
-    static void recover(Map<String, Object> model, Map<String, Object> context, Path javaHome)
-            throws IOException {
+    static void recover(Map<String, Object> model, Map<String, Object> context, Path javaHome,
+            java.util.function.Consumer<String> progress) throws IOException {
         if (Json.list(model.get("declarations")).stream()
                 .map(Json::map)
                 .noneMatch(
@@ -79,9 +79,11 @@ final class CallRecovery {
                     modeledNames.add(text(declaration.get("name")));
             var members = environment.members(d -> Set.of("METHOD", "CONSTRUCTOR")
                     .contains(map(d.get("attributes")).get("element_kind")));
+            progress.accept("call_recovery.overrides");
             new ModeledOverrides(model, context, environment.sourceTypes(), members, environment.known(),
                     new TypeOperations(environment.sourceTypes(), binary), binary).generate();
             for (JavaSemanticModel.Unit unit : environment.units()) {
+                progress.accept("call_recovery.unit:" + unit.source());
                 CallRecovery recovery = new CallRecovery(unit.evidence(), binary, environment, members, modeledNames);
                 for (Map<String, Object> call : recovery.calls.values()) {
                     recovery.work = 0;

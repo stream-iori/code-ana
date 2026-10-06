@@ -460,7 +460,7 @@ Maven输入schema3的ExportReceipt增加可选 prerequisite_classpath_rounds（�
 
 Java 元注解闭包使用 `java.annotation.meta` 1：Java 从独立 SOURCE/binary annotation headers 生成，保存 annotation_fqn/meta_annotation_fqn/raw_name/resolution_status 和原始 source_origin（path/hash/span）。facet 的 source owner 是发现它的已发布源码，辅助源码仅作为来源证据，不冒充已发布文件。同一个文件内同一来源的元注解边唯一；不同发现文件保留独立事实，元数据图投影按参考库公开的唯一边身份（来源文件、两端、原名、状态）合并发现。循环不重复展开，16层/单根100000步/单发现文件1000000步或缺失header撤销该根全部候选，发布 ANNOTATION_META_INCOMPLETE 与partial coverage；健康文件继续。原字节定位和全部发现事实仍保留，不能据图投影合并丢弃注解使用点或生成事实的重复。
 
-Spring 7 的 XML Bean facet 另存 `xml_configuration_model` v1：构造属性与带整数索引的配置森林。真实元素保留原始字节跨度，属性生成节点以 `synthetic=true` 指向原包含元素；SAX 位置与字节跨度分别保存。Rust 仅校验格式、唯一父节点、完整可达性和捕获源码范围，不解释 XML 或 Java 类型。
+Spring 8 的 XML Bean facet 另存 `xml_configuration_model` v1：构造属性与带整数索引的配置森林。真实元素保留原始字节跨度，属性生成节点以 `synthetic=true` 指向原包含元素；SAX 位置与字节跨度分别保存。Rust 仅校验格式、唯一父节点、完整可达性和捕获源码范围，不解释 XML 或 Java 类型。
 
 Model 7 归档的类型图在打开时逐图完整验证；任务内按原归档位置加载，存活视图固定同一不可变图，未访问的图不常驻堆。归档 SHA、字节/节点预算、取消和关闭边界不变；SDK8 与 native 使用同一格式。
 

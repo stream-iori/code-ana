@@ -1,6 +1,5 @@
 package dev.codeana.analysis.extension;
 
-import dev.codeana.analysis.FrameworkAnalysis;
 import dev.codeana.analysis.LombokModel;
 import dev.codeana.analysis.SofaXmlAnalysis;
 import dev.codeana.analysis.SpringXmlAnalysis;
@@ -25,13 +24,13 @@ public final class BuiltinExtensions {
     private BuiltinExtensions() {}
 
     private static final class Lombok
-            implements JavaUnitModelExtension, JavaModelAnalyzer, JavaCallSiteEvidenceProvider {
+            implements JavaUnitModelExtension, JavaUnitAnalyzer, JavaCallSiteEvidenceProvider {
         public String id() {
             return "lombok";
         }
 
         public String version() {
-            return "12";
+            return "13";
         }
 
         public String producer() {
@@ -55,10 +54,8 @@ public final class BuiltinExtensions {
             LombokAstUnits.augment(context,candidate);
         }
 
-        public void analyze(ExtensionContext context, FactSink facts) throws Exception {
-            facts.addAll(
-                    FrameworkAnalysis.extract(
-                            context.configuration(), context.model(), context.facts(), "lombok"));
+        public void analyzeUnit(ExtensionContext context, dev.codeana.analysis.model.JavaSemanticModel.Unit unit, FactSink facts) throws Exception {
+            facts.addAll(context.analyzeFramework(unit, "lombok"));
         }
 
         public boolean acceptsCallSite(ExtensionContext context, Map<String, Object> header) {
@@ -94,7 +91,7 @@ public final class BuiltinExtensions {
         }
     }
 
-    private static final class Spring implements JavaModelAnalyzer, ProjectResourceAnalyzer {
+    private static final class Spring implements JavaUnitAnalyzer, ProjectResourceAnalyzer {
         public boolean requiresCapturedResources() { return true; }
         public boolean projectRequiresFullModel() { return false; }
         public String id() {
@@ -102,7 +99,7 @@ public final class BuiltinExtensions {
         }
 
         public String version() {
-            return "7";
+            return "8";
         }
 
         public String producer() {
@@ -137,13 +134,8 @@ public final class BuiltinExtensions {
             return c;
         }
 
-        public void analyze(ExtensionContext context, FactSink facts) throws Exception {
-            facts.addAll(
-                    FrameworkAnalysis.extract(
-                            configuration(context, List.of()),
-                            context.model(),
-                            context.facts(),
-                            "java"));
+        public void analyzeUnit(ExtensionContext context, dev.codeana.analysis.model.JavaSemanticModel.Unit unit, FactSink facts) throws Exception {
+            facts.addAll(context.analyzeFramework(unit, "java"));
         }
 
         public void analyzeResources(

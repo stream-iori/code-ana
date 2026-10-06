@@ -1147,3 +1147,5 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 2026-10-07：继续文件边界改造。JavaSemanticModel提供文件声明/语法/绑定视图与上下文位置目录；CallRecovery/ReflectionModel按文件执行，ModeledOverrides不物化全部方法，类型节点目录按文件切换，annotation/补充ABI/模块资格目录改用位置查询。新增JavaUnitAnalyzer文件事务入口。64MiB惰性目录/归属/跨文件查询/租约检查及独立反射14项通过；完整同版本回归仍待收口。65fe23d产品worker启动收到SIGKILL9，已通知用户，不能关闭产品验收。真实raw6/AST5上下文仅为旧提交诊断证据，不替代最终两套80上下文与14域差分。52项保持未闭合。
 
 007d79d阶段收口：native模型17项对照通过。用户处理进程拦截后完整iopengw发布已进入事实提取。候选发行4功能门禁通过（含自动启动、索引、calls/source、MAIN/TEST/XML、错误JDK），源码/运行时/包校验无漂移；完整回归、真实发布、raw/AST各80上下文、14域差分仍待完成，暂不替换dist。JVM高级绑定227项成功，但汇总回执因测试路径修正存在输入漂移，不用于最终总门禁。
+
+2026-10-07内置扩展补齐：核对冻结Anatomist的文件回调边界后，将Lombok/Spring/MVC/Handlers/SOFA注解5个分析器接入JavaUnitAnalyzer，XML/DI项目边界保持；共享上下文位置索引与注解元数据，文件事实事务及strict/取消语义不变。registry v14；框架14、扩展20及64MiB头/多文件一致性探针通过。007d79d重试已放行，但仍不是新版完整验收；须重建同版本native和真实项目证据，52项不自动关闭。

@@ -50,6 +50,7 @@ public final class ExtensionRegistry {
             if (e instanceof JavaDeclarationModelExtension) points.add("model-declaration");
             if (e instanceof JavaModelAnalyzer) points.add("java");
             if (e instanceof JavaDeclarationAnalyzer) points.add("java-declaration");
+            if (e instanceof JavaUnitAnalyzer) points.add("java-unit");
             if (e instanceof JavaCallSiteEvidenceProvider) points.add("call");
             if (e instanceof ProjectResourceProvider) points.add("resource");
             if (e instanceof ProjectResourceAnalyzer) points.add("project");
@@ -61,7 +62,7 @@ public final class ExtensionRegistry {
         return result;
     }
     public String fingerprint(Map<String, Object> configuration) {
-        return Json.sha(Json.write(List.of("staged-project-view-v13-unit-semantic", manifest(configuration))).getBytes(StandardCharsets.UTF_8));
+        return Json.sha(Json.write(List.of("staged-project-view-v14-unit-framework", manifest(configuration))).getBytes(StandardCharsets.UTF_8));
     }
     public boolean supportsBodyOnlyReuse(Map<String, Object> configuration) {
         return enabled(configuration).stream().allMatch(ExtensionPoint::supportsBodyOnlyReuse);
