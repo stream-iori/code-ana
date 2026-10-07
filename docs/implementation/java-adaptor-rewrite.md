@@ -170,3 +170,16 @@ Rust外围：`just test-rust`全部通过，包含workspace测试、产品端到
 单上下文串行JVM重放：integration MAIN的754源码/82发布文件、619 JAR、319待Lombok单位；v16为44.254秒，新版24.221秒（约45%减少）。Lombok阶段18.745→2.679秒，事实提取3.884→约2.713秒，框架3.802→约1.137秒。35952事实ID和语义内容相同，唯一provenance差异为registry指纹。证据`target/java-alignment/recovery-stage3-profile-v2`及`recovery-stage3-profile-v4`；后者包含策略复用修复。这是JVM上下文诊断，不是native全项目或两倍性能门禁。
 
 已完成JVM验证：归档/小堆/租约/别名、类型引用11、框架14、扩展21、XML12及新增空发布XML用例、模块覆盖9、模块签名9、缓存4；Generated策略修复后Lombok17/Builder14/SuperBuilder8/模块覆盖9、独立模型API18通过。独立模型API保留两例已复现参考缺陷，不把raw不同改写为相等。完整新版native、全项目发布、完整raw/AST、14域差分与三轮性能仍待实际回执，最终dist尚未替换。
+
+## registry v17 同版本验收进度（2026-10-07）
+
+| 验收 | 本轮证据 / 状态 |
+|---|---|
+| native fixture | `target/java-alignment/evidence/native-fixtures-20261007-123015/receipt.json`：all_ok=true，源码/产物无漂移，521.909秒 |
+| 独立模型 API | `model-api-reference-20261007-123902-83663/receipt.json`：18组通过，源码/产物无漂移；两项已复现参考缺陷继续明确记录 |
+| 独立框架 / XML | `framework-reference-20261007-123954-84568/receipt.json`、`xml-graph-reference-20261007-124008/receipt.json`通过；空发布XML的真实native用例也通过 |
+| 发行功能 | `recovery-stage3-serial/release/receipt.json`：all_ok=true，包/源码/产物无漂移，24.024秒；不代表全项目或容量通过 |
+| 完整项目正确性 | `recovery-stage3-serial/receipt.json`严格顺序：单次MAIN/TEST/XML索引→raw全部80上下文→AST全部80上下文→14域差分；当前索引运行中，后三项未验收 |
+| 磁盘清理 | 按历史证据清理授权，旧de8c99b的raw/AST归档与大清单释放48.51GiB，旧回执及日志保留；这些回执的已删除输入不能再作为有效验收证明。当前版本、参考JAR、参考事实库及项目冻结输入保留 |
+
+上述相对证据路径均位于`target/java-alignment/evidence/`。三轮性能不包含在本轮1/2/3任务内；须等完整正确性通过后另行执行。
