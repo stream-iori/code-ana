@@ -139,3 +139,16 @@
 | 对齐修复 | 字段注解/原written type完整性参与访问器和构造参数资格；Lombok14/registry16 |
 | 独立fixture | 模型API参考18例（新增缺失字段注解、健康相邻字段）、Lombok45项、小堆语法租约探针通过；补充签名12/模块overlay9在投影缓存修改后通过，完整新版native仍待 |
 | 真实针对性复测 | JVM复用冻结原javac归档，MAIN8537声明、48621AST、406源码、441类型查询严格相等；TEST8569/44797/409/444严格相等。MAIN26.074秒、TEST19.984秒，源码/输入无漂移；坏编码原字节保留并明确记录。不是新版native80/80证明 |
+
+### 72af189 固定产物验收
+
+| 项目 | 实际结果 |
+|---|---|
+| native fixture | 178项通过，645.298秒；源码和产物无漂移。回执：`target/java-alignment/recovery-stage2/target/java-alignment/evidence/native-fixtures-20261007-111436/receipt.json` |
+| 独立模型API | JVM/native各18例通过，无漂移；native回执：同证据目录下`model-api-reference-20261007-111543-86440/receipt.json` |
+| 单模块产品链路 | integration MAIN发布36244条事实，结构查询退出0；全验收流程286.077秒，不能当作纯索引耗时。回执：`recovery-selected-product/receipt.json`；存在发布后Ack超时警告，仍需诊断缓存收尾 |
+| native诊断入口 | 调用恢复3.362秒，缓存167077次命中/49860次未命中；分析完成后被测试入口64MiB结果上限拒绝。产品流式交付采用独立4GiB上限，单模块已通过；这不是SIGKILL |
+| 全项目 | 新空索引MAIN/TEST/XML运行中，保留坏编码文件；回执：`recovery-v16-full-product/receipt.json` |
+| 完整模型清单 | raw 80上下文运行中，结束后接着AST 80；回执：`recovery-v16-model-raw/receipt.json`、`recovery-v16-model-ast/receipt.json` |
+
+这些结果不认证全项目语义差分、最终发行或两倍耗时门禁。正确性验收期间有开发回归与旧版诊断进程竞争，运行时间只作诊断。

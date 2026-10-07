@@ -1155,3 +1155,5 @@ v5 native/daemon专项已终态：4项132.687秒通过；实际独立参考10/10
 2026-10-07内置扩展补齐：核对冻结Anatomist的文件回调边界后，将Lombok/Spring/MVC/Handlers/SOFA注解5个分析器接入JavaUnitAnalyzer，XML/DI项目边界保持；共享上下文位置索引与注解元数据，文件事实事务及strict/取消语义不变。registry v14；框架14、扩展20及64MiB头/多文件一致性探针通过。007d79d重试已放行，但仍不是新版完整验收；须重建同版本native和真实项目证据，52项不自动关闭。
 
 de8c99b固定验收：native模型17项与冻结框架参考通过，无源码/产物漂移；真实发布、raw/AST各80及完整回归正在运行，14域差分已设置为前置成功后自动执行。发行前3项通过，但包内CLI自动启动daemon被SIGKILL9，同包重试失败且签名有效，已通知用户；独立iopengw daemon/worker正常。007d79d过时任务主动停止并保存审计；旧native绑定216项成功不认证新版。最终dist和52项仍未关闭。
+
+2026-10-07 瓶颈修复72af189：新版native fixture178项、独立模型API JVM/native各18项通过；integration MAIN发布36244事实并成功结构查询。全项目MAIN/TEST/XML和raw→AST各80上下文已启动，14域严格差分、最终发行及三轮性能门禁仍待。发布后Ack超时需诊断，不能以单模块通过关闭剩余能力项。具体回执见docs/implementation/java-adaptor-rewrite.md。
