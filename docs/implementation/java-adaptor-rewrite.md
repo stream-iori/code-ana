@@ -7,7 +7,7 @@
 | 执行 | SDKMAN Java25/GraalVM native → Rust C ABI worker → SDKMAN Java8 javac；无JNI、处理器或业务编译 |
 | 范围 | AST静态声明与调用证据，配置off/model；不扩展compile、lombok.config、Gradle、Linux、目标JDK17/25或独立容量验收 |
 | 兼容 | 用户允许破坏性修改，删除旧产品索引和Java派生缓存；保留冻结输入、参考库和失败回执 |
-| 新版本 | compiler9/model8/worker12/request6，ABI2/Fact IR1不变，混装拒绝 |
+| 当前版本 | compiler9/model9/worker12/request6，ABI2/Fact IR1不变，混装拒绝 |
 
 ## 实施进度
 
