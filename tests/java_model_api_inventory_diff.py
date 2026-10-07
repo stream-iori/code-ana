@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import struct
 import subprocess
 import sys
@@ -41,16 +42,76 @@ def validate_inputs(project,manifest,request):
     return expected
 
 
+# Internal model9 dictionary. CAF1 remains the independent reference/public fact framing.
+MODEL_WORDS = ('kind', 'value', 'version', 'id', 'source', 'signature', 'parent', 'attributes', 'name', 'start', 'end', 'complete', 'display', 'element', 'owner', 'parameters', 'arguments', 'type_model', 'return_type_model', 'parameter_type_models', 'type', 'modifiers', 'annotations', 'source_annotations', 'source_hash', 'world', 'context', 'resolved', 'target', 'receiver', 'children', '$graph', '$type', '$object', 'graph', 'row', 'graph_node', 'header', 'counts', 'graphs', 'sections', 'types', 'diagnostics', 'sources', 'declarations', 'observations', 'syntax', 'external', 'annotation_types', 'binding_origin', 'origin', 'element_kind', 'javac', 'DECLARED', 'TYPEVAR', 'ERROR', 'UNKNOWN', 'ARRAY', 'EXECUTABLE', 'NONE', 'VOID', 'CLASS', 'METHOD', 'FIELD', 'INTERFACE', 'CONSTRUCTOR', 'BOOLEAN', 'INT', 'LONG', 'STRING_LITERAL', 'upper', 'lower', 'component', 'enclosing', 'extends', 'super', 'bounds', 'return', 'thrown', 'interfaces', 'superclass', 'binary_name', 'publish', 'scope', 'module', 'input', 'hash', 'auxiliary', 'call', 'reference', 'tree_id', 'constant', 'descriptor', 'type_parameters', 'written_type_annotations', 'sam', 'functional_type_model')
+
+
+def binary_model_row(body):
+    position=0
+    def take(count):
+        nonlocal position
+        if count<0 or count>len(body)-position:raise ValueError('MODEL_API_ARCHIVE_TRUNCATED')
+        value=body[position:position+count];position+=count;return value
+    def unsigned():
+        value=0
+        for shift in range(0,64,7):
+            byte=take(1)[0]
+            if shift==63 and byte & ~1:raise ValueError('MODEL_API_BINARY_INTEGER')
+            value|=(byte & 127)<<shift
+            if not byte & 128:return value
+        raise ValueError('MODEL_API_BINARY_INTEGER')
+    def count(minimum):
+        value=unsigned()
+        if value>(len(body)-position)//minimum:raise ValueError('MODEL_API_BINARY_COUNT')
+        return value
+    def text(tag):
+        if tag==8:
+            value=unsigned()
+            if value>=len(MODEL_WORDS):raise ValueError('MODEL_API_BINARY_DICTIONARY')
+            return MODEL_WORDS[value]
+        if tag==4:return take(count(1)).decode('utf-8',errors='strict')
+        if tag==9:return take(count(2)*2).decode('utf-16-be',errors='surrogatepass')
+        raise ValueError('MODEL_API_BINARY_STRING')
+    def read(depth):
+        if depth>256:raise ValueError('MODEL_API_BINARY_DEPTH')
+        tag=take(1)[0]
+        if tag==0:return None
+        if tag in (1,2):return tag==2
+        if tag==3:
+            value=unsigned();return (value>>1)^-(value & 1)
+        if tag in (4,8,9):return text(tag)
+        if tag==5:
+            size=count(2);value={}
+            for _ in range(size):
+                key=text(take(1)[0])
+                if key in value:raise ValueError('MODEL_API_BINARY_DUPLICATE_KEY')
+                value[key]=read(depth+1)
+            return value
+        if tag==6:return [read(depth+1) for _ in range(count(1))]
+        if tag==7:
+            value=text(take(1)[0])
+            if len(value)>1024 or not re.fullmatch(r'-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?',value):
+                raise ValueError('MODEL_API_BINARY_NUMBER')
+            number=json.loads(value)
+            if isinstance(number,bool) or not isinstance(number,(int,float)):raise ValueError('MODEL_API_BINARY_NUMBER')
+            return number
+        raise ValueError('MODEL_API_BINARY_TAG')
+    value=read(0)
+    if position!=len(body):raise ValueError('MODEL_API_BINARY_TRAILING_BYTES')
+    return value
+
+
 def archive_rows(path):
     with path.open('rb') as stream:
-        if stream.read(4)!=b'CAF1':raise ValueError('MODEL_API_ARCHIVE_VERSION')
+        magic=stream.read(4)
+        if magic not in (b'CAF1',b'CAM1'):raise ValueError('MODEL_API_ARCHIVE_VERSION')
         while prefix:=stream.read(4):
             if len(prefix)!=4:raise ValueError('MODEL_API_ARCHIVE_TRUNCATED')
             size=struct.unpack('>I',prefix)[0]
             if not 1<=size<=8*1024*1024:raise ValueError('MODEL_API_RECORD_BUDGET')
             body=stream.read(size)
             if len(body)!=size:raise ValueError('MODEL_API_ARCHIVE_TRUNCATED')
-            yield json.loads(body)
+            yield binary_model_row(body) if magic==b'CAM1' else json.loads(body)
 
 
 def invalid_sources(request):

@@ -11,6 +11,7 @@ set -u
 mvn -q test-compile
 mvn -q dependency:build-classpath -Dmdep.outputFile="$repo_root/lang-adaptor/target/native-classpath.txt"
 python3 "$repo_root/tests/java_archive_alignment.py"
+python3 "$repo_root/tests/java_model_api_inventory_diff_tests.py"
 python3 "$repo_root/tests/java_type_graph_alignment.py"
 python3 "$repo_root/tests/java_binary_type_graph_alignment.py"
 python3 "$repo_root/tests/java_binary_alignment.py"

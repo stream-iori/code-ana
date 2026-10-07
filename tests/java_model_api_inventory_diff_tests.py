@@ -2,15 +2,32 @@
 import copy
 import json
 import pathlib
+import re
 import struct
 import tempfile
 import unittest
-from java_model_api_inventory_diff import archive_inventory, invalid_sources, projections, validate_inputs
+from java_model_api_inventory_diff import archive_inventory, invalid_sources, projections, validate_inputs, binary_model_row, MODEL_WORDS
 from java_real_acceptance import digest
 from java_real_compiler_diagnostics import compiler_context
 
 
 class ModelInventoryGuards(unittest.TestCase):
+    def test_binary_dictionary_matches_versioned_bridge_contract(self):
+        source=pathlib.Path(__file__).resolve().parents[1]/'lang-adaptor/src/main/java/dev/codeana/common/BinaryModelCodec.java'
+        words=source.read_text().split('private static final String[] WORDS = {',1)[1].split('};',1)[0]
+        self.assertEqual(MODEL_WORDS,tuple(re.findall(r'"([^"]+)"',words)))
+
+    def test_binary_model9_scalars_dictionary_utf16_and_malformed_frames(self):
+        self.assertEqual(binary_model_row(bytes([8,MODEL_WORDS.index('kind')])), 'kind')
+        self.assertEqual(binary_model_row(bytes([3,3])), -2)
+        self.assertEqual(binary_model_row(bytes([6,3,0,1,2])), [None,False,True])
+        self.assertEqual(binary_model_row(bytes([9,1,0xd8,0x00])), '\ud800')
+        self.assertEqual(binary_model_row(bytes([5,1,8,0,8,MODEL_WORDS.index('CLASS')])), {'kind':'CLASS'})
+        for data in (b'',bytes([99]),bytes([0,0]),bytes([4,2,0xc0,0xaf]),bytes([8,127]),
+                     bytes([6,127]),bytes([3,128]),bytes([5,2,8,0,0,8,0,0]),bytes([7,4,3])+b'NaN'):
+            with self.subTest(data=data),self.assertRaises((ValueError,UnicodeDecodeError)):
+                binary_model_row(data)
+
     def test_bad_utf8_keeps_bytes_and_requires_exact_failure_without_semantics(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=pathlib.Path(temporary);source=root/'Broken.java';source.write_bytes(b'class Broken {\xff}')
