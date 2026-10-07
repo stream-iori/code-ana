@@ -472,7 +472,9 @@ public final class JavaAnalysis {
             if (reduced != null) return reduced;
         }
         session.mark(Json.string(ctx, "context"), "module_prepare");
-        try (ModuleSignatures.Lease input = modules.prepare(ctx)) {
+        try (BinaryCatalogue.Scope binaries=session.binaryCatalogue.bind();
+                ModuleSignatures.Lease input = modules.prepare(ctx);
+                TypeEvidence.EncodingSession typeClosures=TypeEvidence.encodingSession(64L<<20)) {
             Map<String, Object> model = session.analyze(input.compiler);
             int sourceCount = Json.list(input.compiler.get("sources")).size();
             boolean moduleReduced = input.reduced();
@@ -555,11 +557,17 @@ public final class JavaAnalysis {
                 retained = true;
                 return result;
             } finally {
+                session.metric(Json.string(ctx,"context"),typeClosures.metrics());
+                session.metric(Json.string(ctx,"context"),session.binaryCatalogue.metrics());
                 session.finishContextMetrics(Json.string(ctx,"context"));
                 try {
                     session.releaseModel(model);
                 } finally {
-                    if (!retained) session.releaseFactArchive(coreArchive);
+                    try {
+                        session.releaseContextModels(Json.string(ctx,"context"));
+                    } finally {
+                        if (!retained) session.releaseFactArchive(coreArchive);
+                    }
                 }
             }
         }
@@ -572,7 +580,8 @@ public final class JavaAnalysis {
             SignatureCache cache,
             ExtensionRegistry registry)
             throws Exception {
-        try (SignatureCache.Pins pins = cache.pin(session)) {
+        try (BinaryCatalogue.Scope binaries=session.binaryCatalogue.bind();
+                SignatureCache.Pins pins = cache.pin(session)) {
             return analyzeReduced(ctx, session, baseline, cache, registry, pins);
         }
     }
@@ -790,7 +799,11 @@ public final class JavaAnalysis {
             try {
                 session.releaseModel(model);
             } finally {
-                session.releaseFactArchive(coreArchive);
+                try {
+                    session.releaseContextModels(Json.string(compilerContext,"context"));
+                } finally {
+                    session.releaseFactArchive(coreArchive);
+                }
             }
         }
     }

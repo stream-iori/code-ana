@@ -5,9 +5,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.*;
 
-/** Model 8: framed rows, ordered sections, and shared immutable type graphs. Java 8. */
+/** Model 9: binary framed rows, ordered sections, and shared immutable type graphs. Java 8. */
 public final class ModelArchive {
-    public static final int VERSION = 8;
+    public static final int VERSION = 9;
     private static final List<String> SECTIONS = Arrays.asList("sources", "declarations", "observations",
             "syntax", "external", "annotation_types", "diagnostics");
     private static final int MAX_ROWS = 2000000;
@@ -99,7 +99,7 @@ public final class ModelArchive {
         private boolean closed, sealed;
         public RowSpool(Path work, String section) throws IOException { this(work, section, DEFAULT_BYTES); }
         public RowSpool(Path work, String section, long maxBytes) throws IOException {
-            records=RecordArchive.create(work.resolve("model-rows-"+section+"-"+UUID.randomUUID()+".bin"),
+            records=RecordArchive.createModel(work.resolve("model-rows-"+section+"-"+UUID.randomUUID()+".bin"),
                     maxBytes,MAX_ROWS);
             encoder=new Encoder(records,false,true);
         }
@@ -177,7 +177,7 @@ public final class ModelArchive {
     private static long write(Path path, Map<String,Object> model, long maxBytes,boolean releaseRows) throws IOException {
         if (Json.number(model,"version")!=VERSION) throw new IOException("MODEL_ARCHIVE_VERSION");
         if(releaseRows)for(String section:SECTIONS)if(model.get(section) instanceof RowSpool)((RowSpool)model.get(section)).prepareTransfer();
-        try (RecordArchive records=RecordArchive.create(path,maxBytes,MAX_ROWS)) {
+        try (RecordArchive records=RecordArchive.createModel(path,maxBytes,MAX_ROWS)) {
             records.add(Json.object("kind","header","version",VERSION,"context",Json.string(model,"context"),"sections",SECTIONS));
             Encoder encoder=new Encoder(records,true);
             Map<String,Object> counts=new LinkedHashMap<String,Object>();

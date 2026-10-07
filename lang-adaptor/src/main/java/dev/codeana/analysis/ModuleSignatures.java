@@ -14,7 +14,7 @@ import java.util.jar.*;
 
 /** Verified, task-pinned module NoCode inputs. All failures leave sealed SOURCE available. */
 final class ModuleSignatures implements AutoCloseable {
-    private static final String FORMAT = "java8-module-signature-v7-model8-original-units";
+    private static final String FORMAT = "java8-module-signature-v8-model9-original-units";
     private static final long MAX_PART = 64L << 20,
             MAX_DISK = 256L << 20,
             MAX_CATALOGUE_WEIGHT = 256L << 20;

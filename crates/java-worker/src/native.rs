@@ -223,7 +223,7 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
             && manifest["abi"] == 2
             && manifest["analysis_request"] == 6
             && manifest["compiler_protocol"] == 9
-            && manifest["java_model"] == 8
+            && manifest["java_model"] == 9
             && manifest["type_graph_default"] == true
             && manifest["type_schema"] == 3
             && manifest["binding_schema"] == 4,

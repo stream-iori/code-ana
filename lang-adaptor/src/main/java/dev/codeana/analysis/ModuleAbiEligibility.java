@@ -11,6 +11,12 @@ final class ModuleAbiEligibility {
 
     static Set<String> worlds(Map<String, Object> context, Map<String, Object> model,
             List<Map<String, Object>> declarations) {
+        return projections(context,model,declarations).keySet();
+    }
+
+    /** Qualification produces the exact reusable class files, not a discarded validation copy. */
+    static Map<String,Map<String,byte[]>> projections(Map<String,Object> context,Map<String,Object> model,
+            List<Map<String,Object>> declarations) {
         Map<String, String> worlds = new HashMap<>();
         Set<String> eligible = new HashSet<>();
         for (Object raw : Json.list(context.get("sources"))) {
@@ -60,17 +66,19 @@ final class ModuleAbiEligibility {
             groups.computeIfAbsent(worlds.get(Json.string(declarations.get(i), "source")), ignored -> new ArrayList<>())
                     .add(i);
         SupplementalAbi abi = new SupplementalAbi(declarations);
+        Map<String,Map<String,byte[]>> output=new TreeMap<>();
         for (String world : new TreeSet<>(eligible)) {
             try {
                 List<Map<String, Object>> headers = new ArrayList<>();
                 for (int position : groups.getOrDefault(world, List.of()))
                     headers.add(abi.project(declarations.get(position)));
-                if (SignatureProjection.project(headers).isEmpty()) eligible.remove(world);
+                Map<String,byte[]> classes=SignatureProjection.project(headers);
+                if(!classes.isEmpty())output.put(world,classes);
             } catch (IllegalArgumentException incomplete) {
                 // Keep this world's sealed SOURCE; an unavailable neighbor does not poison others.
                 eligible.remove(world);
             }
         }
-        return eligible;
+        return output;
     }
 }

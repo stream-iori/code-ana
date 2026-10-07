@@ -25,7 +25,8 @@ public final class CompilerPhaseProbe {
             for (Thread thread : threads) thread.join();
             Path journal = scratch.resolve("phases.ndjson");
             List<String> lines = Files.readAllLines(journal);
-            if (lines.size() != 4096 || Files.size(journal) > 1024 * 1024) throw new AssertionError("journal bound");
+            if (lines.isEmpty() || lines.size() >= 100 || Files.size(journal) > 1024 * 1024)
+                throw new AssertionError("repeated file progress was not throttled");
             long previous = -1;
             for (String line : lines) {
                 Map<String, Object> row = Json.map(Json.parse(line.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
@@ -34,6 +35,12 @@ public final class CompilerPhaseProbe {
                     throw new AssertionError("monotonic complete unicode record");
                 previous = elapsed;
             }
+            Thread.sleep(260);
+            session.mark(context, phase);
+            if (Files.readAllLines(journal).size() <= lines.size())
+                throw new AssertionError("periodic progress missing");
+            for (int n=0;n<5000;n++) session.mark(context,"stage"+n);
+            if (Files.readAllLines(journal).size()!=4096) throw new AssertionError("journal cap");
             session.mark("x".repeat(5000), "y".repeat(5000));
             Map<String,Object> latest=Json.map(Json.parse(Json.read(scratch.resolve("phase-latest.json"))));
             if(Json.string(latest,"context").length()!=1024 || Json.string(latest,"phase").length()!=512

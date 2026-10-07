@@ -18,6 +18,8 @@ public final class CompilerSession implements AutoCloseable {
     private final Deque<Child> idle = new ArrayDeque<>();
     private final List<RecordArchive> archives = new ArrayList<>();
     private final List<AutoCloseable> models = new ArrayList<>();
+    private final Map<String,List<AutoCloseable>> contextModels = new HashMap<>();
+    final BinaryCatalogue binaryCatalogue = new BinaryCatalogue();
     private int peakProcesses, launches, requests;
     private static final long MAX_SIGNATURE_PINS = 256L << 20;
     private final long signaturePinLimit;
@@ -50,6 +52,7 @@ public final class CompilerSession implements AutoCloseable {
     private long phaseBytes;
     private int phaseRecords;
     private long metricBytes;
+    private long summaryMetricBytes, detailMetricBytes;
     private static final long METRIC_BYTES=8L*1024*1024;
     private static final class ContextTiming {
         long start,last;
@@ -63,22 +66,34 @@ public final class CompilerSession implements AutoCloseable {
         }
     }
     private final Map<String,ContextTiming> contextTimings=new HashMap<>();
+    private String reportedContext = "", reportedGroup = "";
+    private long reportedAt, progressWrites, progressSuppressed;
+    private static final long PROGRESS_INTERVAL_NANOS = TimeUnit.MILLISECONDS.toNanos(250);
     public synchronized void finishContextMetrics(String context) {
         var timing=contextTimings.remove(context);if(timing==null)return;
         long now=System.nanoTime();timing.advance(now,null);
         metric(context,Json.object("stage","context_analysis","duration_nanos",now-timing.start,
-                "phase_durations_nanos",timing.durations,"phase_entries",timing.entries));
+                "phase_durations_nanos",timing.durations,"phase_entries",timing.entries,
+                "progress_writes",progressWrites,"progress_suppressed",progressSuppressed,
+                "retained_model_leases",models.size(),
+                "heap_used_bytes",Runtime.getRuntime().totalMemory()-Runtime.getRuntime().freeMemory()));
     }
     /** Completed intervals, separate from sampled progress and semantic output. */
     public synchronized void metric(String context, Map<String,Object> metric) {
         var row=new LinkedHashMap<String,Object>(metric);
         row.put("context",context);row.put("elapsed_nanos",System.nanoTime()-startedNanos);
         byte[] entry=(Json.write(row)+"\n").getBytes(StandardCharsets.UTF_8);
+        boolean summary=Set.of("context_analysis","compiler_request","type_closure_cache")
+                .contains(metric.get("stage"));
+        long used=summary?summaryMetricBytes:detailMetricBytes;
+        // File-level detail must not consume the completed-context evidence reservation.
+        if(entry.length>METRIC_BYTES/2-used)return;
         if(entry.length>METRIC_BYTES-metricBytes)return;
         try {
             Files.write(scratch.resolve("recovery-metrics.ndjson"),entry,
                     StandardOpenOption.CREATE,StandardOpenOption.APPEND);
             metricBytes+=entry.length;
+            if(summary)summaryMetricBytes+=entry.length;else detailMetricBytes+=entry.length;
         } catch(IOException unavailable) {metricBytes=METRIC_BYTES;}
     }
     private volatile byte[] heapFailure =
@@ -86,12 +101,18 @@ public final class CompilerSession implements AutoCloseable {
 
     /** Reserve a bounded failure receipt before entering an allocation-heavy phase. */
     public synchronized void mark(String context, String phase) {
+        long now = System.nanoTime();
+        String group=phase.startsWith("model.lombok.")?"model.lombok":
+                phase.startsWith("call_recovery")?"call_recovery":phase;
         if(!context.isEmpty() && !context.equals("global")) {
-            long now=System.nanoTime();
-            String group=phase.startsWith("model.lombok.")?"model.lombok":
-                    phase.startsWith("call_recovery")?"call_recovery":phase;
             contextTimings.computeIfAbsent(context,key->new ContextTiming(now)).advance(now,group);
         }
+        boolean changed = !context.equals(reportedContext) || !group.equals(reportedGroup);
+        if (!changed && now-reportedAt < PROGRESS_INTERVAL_NANOS) {
+            progressSuppressed++;
+            return;
+        }
+        reportedContext=context;reportedGroup=group;reportedAt=now;progressWrites++;
         String bounded = context.length() > 1024 ? context.substring(0, 1024) : context;
         String boundedPhase = phase.length() > 512 ? phase.substring(0, 512) : phase;
         heapFailure =
@@ -251,6 +272,7 @@ public final class CompilerSession implements AutoCloseable {
 
     public Map<String, Object> analyze(Map<String, Object> context) throws Exception {
         check();
+        long requestStarted=System.nanoTime();
         mark(Json.string(context, "context"), "compiler_model");
         long archiveBytes = ModelArchive.byteLimit(context);
         Path work = Files.createTempDirectory(scratch, "context-");
@@ -309,6 +331,7 @@ public final class CompilerSession implements AutoCloseable {
                 throw new IOException("COMPILER_RESULT_MISMATCH");
             Path retained = scratch.resolve("input-model-" + UUID.randomUUID() + ".bin");
             Files.move(result, retained);
+            long decodeStarted=System.nanoTime();
             mark(Json.string(context,"context"), "compiler_model_decode");
             ModelArchive.OpenModel model =
                     ModelArchive.open(
@@ -318,7 +341,17 @@ public final class CompilerSession implements AutoCloseable {
                             Json.string(context, "context"));
             synchronized (this) {
                 models.add(model.lifetime());
+                contextModels.computeIfAbsent(Json.string(context,"context"),key->new ArrayList<>())
+                        .add(model.lifetime());
             }
+            metric(Json.string(context,"context"),Json.object("stage","compiler_request",
+                    "purpose",context.getOrDefault("analysis_purpose","primary"),
+                    "sources",Json.list(context.get("sources")).size(),
+                    "published_sources",Json.list(context.get("sources")).stream().map(Json::map)
+                            .filter(source->Boolean.TRUE.equals(source.get("publish"))).count(),
+                    "request_bytes",Files.size(request),"model_bytes",Files.size(retained),
+                    "compiler_nanos",decodeStarted-requestStarted,
+                    "decode_nanos",System.nanoTime()-decodeStarted));
             healthy = true;
             return model.model();
         } finally {
@@ -370,6 +403,28 @@ public final class CompilerSession implements AutoCloseable {
                 if (archive instanceof RecordArchive)
                     ((RecordArchive) archive).releaseNodeCaches();
         }
+    }
+
+    /** Close primary and supplemental leases only after their facts and project view are detached.
+     * Supplemental type roots may escape into the primary overlay, so both share this boundary.
+     * Standalone model API callers retain the existing explicit task lifetime.
+     */
+    public void releaseContextModels(String context) throws Exception {
+        List<AutoCloseable> retired;
+        synchronized(this) {
+            retired=contextModels.remove(context);
+            if(retired==null)return;
+            models.removeAll(retired);
+        }
+        Exception failure=null;
+        for(AutoCloseable model:retired) {
+            try {
+                model.close();
+                if(model instanceof RecordArchive archive)Files.deleteIfExists(archive.path());
+            }
+            catch(Exception error) {if(failure==null)failure=error;else failure.addSuppressed(error);}
+        }
+        if(failure!=null)throw failure;
     }
 
     public record StagedModel(Path path, String checksum, String context, long maxBytes) {
@@ -461,6 +516,8 @@ public final class CompilerSession implements AutoCloseable {
             }
         }
         models.clear();
+        contextModels.clear();
+        binaryCatalogue.close();
         if (failure != null) throw new IOException("COMPILER_POOL_CLEANUP_FAILED", failure);
         deleteTree(scratch);
     }

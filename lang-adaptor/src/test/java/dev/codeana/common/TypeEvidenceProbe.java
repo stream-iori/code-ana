@@ -43,6 +43,28 @@ public final class TypeEvidenceProbe {
         Map<String,Object> separate=TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",reordered.view(3)));
         Map<String,Object> shared=TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",cycle.view(0)));
         if(!Json.write(separate).equals(Json.write(shared)))throw new AssertionError("compiler context sharing leaked into public identity");
+        try(TypeEvidence.EncodingSession session=TypeEvidence.encodingSession(1L<<20)) {
+            String expected=Json.write(shared);
+            Map<String,Object> first=TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",cycle.view(0)));
+            Json.map(Json.list(first.get(TypeEvidence.TABLE)).get(0)).put("version",999);
+            Map<String,Object> second=TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",cycle.view(0)));
+            if(!expected.equals(Json.write(second)) || Json.number(session.metrics(),"hits")!=1)
+                throw new AssertionError("cached graph drift or mutable payload alias");
+            Map<String,Object> reversed=Json.object("a",cycle.view(1),"z",cycle.view(0));
+            TypeEvidence.encode(reversed);TypeEvidence.encode(reversed);
+            if(Json.number(session.metrics(),"hits")!=2)throw new AssertionError("ordered roots not reused");
+            Map<String,Object> mutable=Json.object("kind","INT","version",3,"complete",true);
+            TypeEvidence.encode(Json.object("type",mutable));mutable.put("kind","LONG");
+            if(!"LONG".equals(Json.map(Json.list(Json.map(Json.list(TypeEvidence.encode(Json.object("type",mutable))
+                    .get(TypeEvidence.TABLE)).get(0)).get("nodes")).get(0)).get("kind")))
+                throw new AssertionError("mutable type cached");
+            try(TypeEvidence.EncodingSession disabled=TypeEvidence.encodingSession(0)) {
+                if(!expected.equals(Json.write(TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",cycle.view(0))))))
+                    throw new AssertionError("zero budget changed output");
+            }
+            TypeEvidence.encode(Json.object("declared",cycle.view(0),"selected",cycle.view(0)));
+            if(Json.number(session.metrics(),"hits")!=3)throw new AssertionError("nested scope not restored");
+        }
         TypeGraph captures=new TypeGraph(Arrays.asList(
                 Json.object("kind","TYPEVAR","complete",true,"name","T","owner","capture:a","upper",2,"lower",3),
                 Json.object("kind","TYPEVAR","complete",true,"name","T","owner","capture:b","upper",2,"lower",3),

@@ -74,7 +74,7 @@ class NativeVersions(unittest.TestCase):
             shutil.copy2(source/name, bundle/name)
         manifest = json.loads((source/'native/manifest.json').read_text())
         self.assertEqual({k: manifest[k] for k in ('analysis_request', 'compiler_protocol', 'java_model', 'type_graph_default', 'type_schema', 'binding_schema')},
-                         dict(analysis_request=6, compiler_protocol=9, java_model=8, type_graph_default=True, type_schema=3, binding_schema=4))
+                         dict(analysis_request=6, compiler_protocol=9, java_model=9, type_graph_default=True, type_schema=3, binding_schema=4))
         context = self.context('bundle', {'A.java': 'class A {}'})
         for key, value in (('analysis_request', 4), ('compiler_protocol', 7), ('java_model', 6),
                            ('type_graph_default', False), ('type_schema', 2), ('binding_schema', 3)):

@@ -47,6 +47,47 @@ public final class BinaryIndexProbe {
         try { index.readClass("p0.Api"); throw new AssertionError("use after close"); }
         catch (IOException expected) { if (!"BINARY_INDEX_CLOSED".equals(expected.getMessage())) throw expected; }
         Collections.reverse(jars);
+        // Shared immutable catalogues must never reuse a consumer's classpath positions/maps.
+        try(BinaryCatalogue catalogue=new BinaryCatalogue(); BinaryCatalogue.Scope scope=catalogue.bind()) {
+            Map<String,Object> expected;
+            try(BinaryIndex first=new BinaryIndex(context,javaHome)) {
+                expected=first.readClass("dup.Api");
+            }
+            long scans=Json.number(catalogue.metrics(),"scans"),hashes=Json.number(catalogue.metrics(),"hashes");
+            try(BinaryIndex second=new BinaryIndex(context,javaHome)) {
+                if(!Json.write(expected).equals(Json.write(second.readClass("dup.Api"))))
+                    throw new AssertionError("shared catalogue changed declarations");
+                if(Json.number(catalogue.metrics(),"scans")!=scans || Json.number(catalogue.metrics(),"hashes")!=hashes)
+                    throw new AssertionError("shared catalogue rescanned/hashed sealed inputs");
+            }
+            List<String> forward=new ArrayList<>(jars); Collections.reverse(forward);
+            try(BinaryIndex reordered=new BinaryIndex(Json.object("classpath",forward),javaHome)) {
+                Map<String,Object> duplicate=reordered.readClass("dup.Api");
+                if(!Integer.valueOf(0).equals(Json.map(Json.map(duplicate.get("members")).get("dup.Api#MARK")).get("constant")))
+                    throw new AssertionError("shared catalogue lost ordered shadowing");
+                if(!Integer.valueOf(0).equals(Json.map(duplicate.get("artifact_origin")).get("index")))
+                    throw new AssertionError("shared catalogue leaked producer position");
+            }
+            Path mutable=root.resolve("mutable.jar");
+            java.nio.file.Files.copy(root.resolve("0.jar"),mutable);
+            Map<String,Object> mutableContext=Json.object("classpath",List.of(mutable.toString()));
+            try(BinaryIndex before=new BinaryIndex(mutableContext,javaHome)) { before.readClass("dup.Api"); }
+            java.nio.file.Files.copy(root.resolve("1.jar"),mutable,java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            java.nio.file.Files.setLastModifiedTime(mutable,java.nio.file.attribute.FileTime.fromMillis(System.currentTimeMillis()+1000));
+            try(BinaryIndex after=new BinaryIndex(mutableContext,javaHome)) {
+                if(!Integer.valueOf(1).equals(Json.map(Json.map(after.readClass("dup.Api").get("members")).get("dup.Api#MARK")).get("constant")))
+                    throw new AssertionError("changed archive reused stale catalogue");
+            }
+            Thread.currentThread().interrupt();
+            try { new BinaryIndex(context,javaHome);throw new AssertionError("cancel shared catalogue"); }
+            catch(IOException expectedFailure) { if(!"CANCELLED".equals(expectedFailure.getMessage()))throw expectedFailure; }
+            finally { Thread.interrupted(); }
+        }
+        try(BinaryCatalogue catalogue=new BinaryCatalogue(0); BinaryCatalogue.Scope scope=catalogue.bind();
+                BinaryIndex uncached=new BinaryIndex(context,javaHome)) {
+            if(uncached.readClass("dup.Api")==null || Json.number(catalogue.metrics(),"bytes")!=0)
+                throw new AssertionError("zero budget lost exact lookup");
+        }
         try (BinaryIndex reversed = new BinaryIndex(context, javaHome)) {
             Map<String, Object> duplicate = reversed.readClass("dup.Api");
             if (!Integer.valueOf(1).equals(Json.map(Json.map(duplicate.get("members")).get("dup.Api#MARK")).get("constant")))

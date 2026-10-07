@@ -40,7 +40,18 @@ final class SupplementalTypes {
             List<Map<String,Object>> all) throws Exception {
         Set<String> auxiliary = new HashSet<>();
         List<Object> primary = new ArrayList<>(), sourceProof = new ArrayList<>();
-        Set<String> eligible=ModuleAbiEligibility.worlds(context,original,all);
+        boolean potential=false;
+        for(var declaration:all) {
+            var attributes=map(declaration.get("attributes"));
+            if("LAMBDA".equals(attributes.get("element_kind"))
+                    || "LOCAL_VARIABLE".equals(attributes.get("element_kind"))
+                    && Set.of("ERROR","UNKNOWN").contains(text(map(attributes.get("type_model")).get("kind")))) {
+                potential=true;break;
+            }
+        }
+        if(!potential)return;
+        var projected=ModuleAbiEligibility.projections(context,original,all);
+        Set<String> eligible=projected.keySet();
         session.mark(Json.string(context,"context"),"supplemental_projection");
         for (Object raw : Json.list(context.get("sources"))) {
             var unit=Json.map(raw);
@@ -65,12 +76,11 @@ final class SupplementalTypes {
                     && "lombok_model".equals(attributes.get("binding_origin")))generatedTypes.put(text(declaration.get("signature")),declaration);
         }
         if (!generated || wanted.isEmpty() && variables.isEmpty()) return;
-        var abi=new SupplementalAbi(all);
-        List<Map<String,Object>> declarations=new ArrayList<>();
-        Map<String,byte[]> classes;
+        Map<String,byte[]> classes=new TreeMap<>();
         try {
-            for(var declaration:all) if(auxiliary.contains(declaration.get("source"))) declarations.add(abi.project(declaration));
-            classes=SignatureProjection.project(declarations);
+            for(var world:projected.values())for(var entry:world.entrySet())
+                if(classes.putIfAbsent(entry.getKey(),entry.getValue())!=null)
+                    throw new IllegalArgumentException("SIGNATURE_TYPE_IDENTITY");
         } catch(IllegalArgumentException unsupported) {
             original.put("supplemental_signature_report",Json.object("used",false,"reason",unsupported.getMessage()));
             return;
@@ -90,6 +100,7 @@ final class SupplementalTypes {
             }
             String checksum=Json.sha(jar), inputs=Json.sha(Json.write(sourceProof).getBytes(java.nio.charset.StandardCharsets.UTF_8));
             var supplementalContext=new LinkedHashMap<>(context);
+            supplementalContext.put("analysis_purpose","supplemental");
             List<Object> classpath=new ArrayList<>();classpath.add(jar.toString());classpath.addAll(Json.list(context.get("classpath")));
             supplementalContext.put("sources",primary);supplementalContext.put("classpath",classpath);
             session.mark(Json.string(context,"context"),"supplemental_javac");

@@ -12,6 +12,11 @@ import java.util.*;
 public final class RecordArchive extends AbstractList<Object>
         implements AutoCloseable, FactHeaders, FactHeaders.Encoded {
     public static final int MAGIC = 0x43414631;
+    private static final int MODEL_MAGIC = 0x43414d31;
+    private boolean binaryModel;
+    private byte[] readPage;
+    private long readPageStart=-1;
+    private int readPageLength;
     public static final int MAX_RECORD_BYTES = 8 * 1024 * 1024;
     private static final int PAGE = 4096;
     private final Path path;
@@ -82,6 +87,15 @@ public final class RecordArchive extends AbstractList<Object>
 
     public static RecordArchive create(Path path, long maxBytes, int maxRecords)
             throws IOException {
+        return create(path,maxBytes,maxRecords,false);
+    }
+
+    static RecordArchive createModel(Path path,long maxBytes,int maxRecords) throws IOException {
+        return create(path,maxBytes,maxRecords,true);
+    }
+
+    private static RecordArchive create(Path path,long maxBytes,int maxRecords,boolean binaryModel)
+            throws IOException {
         if (maxBytes < 4 || maxRecords < 0) throw new IOException("RECORD_ARCHIVE_BUDGET");
         FileChannel channel =
                 FileChannel.open(
@@ -91,7 +105,8 @@ public final class RecordArchive extends AbstractList<Object>
                         StandardOpenOption.WRITE);
         try {
             RecordArchive result = new RecordArchive(path, channel, maxBytes, maxRecords);
-            result.write(integerBuffer(MAGIC), 0);
+            result.binaryModel=binaryModel;
+            result.write(integerBuffer(binaryModel?MODEL_MAGIC:MAGIC), 0);
             return result;
         } catch (Exception failed) {
             try {
@@ -144,13 +159,25 @@ public final class RecordArchive extends AbstractList<Object>
         FileChannel channel = FileChannel.open(path, StandardOpenOption.READ);
         RecordArchive result = new RecordArchive(path, channel, maxBytes, maxRecords);
         try {
-            if (result.integer(0) != MAGIC) throw new IOException("RECORD_ARCHIVE_VERSION");
+            int magic=result.integer(0);
+            if(magic!=MAGIC && magic!=MODEL_MAGIC)throw new IOException("RECORD_ARCHIVE_VERSION");
+            result.binaryModel=magic==MODEL_MAGIC;
             long position = 4, size = channel.size();
+            channel.position(4);
+            DataInputStream frames=new DataInputStream(new BufferedInputStream(
+                    java.nio.channels.Channels.newInputStream(channel),65536));
             while (position < size) {
-                int length = result.integer(position);
+                if(Thread.currentThread().isInterrupted())throw new IOException("CANCELLED");
+                int length=frames.readInt();
                 if (length < 1 || length > MAX_RECORD_BYTES || size - position - 4 < length)
                     throw new IOException("RECORD_ARCHIVE_TRUNCATED");
                 result.offset(position);
+                long remaining=length;
+                while(remaining>0) {
+                    long skipped=frames.skip(remaining);
+                    if(skipped==0) {if(frames.read()<0)throw new EOFException("RECORD_ARCHIVE_TRUNCATED");skipped=1;}
+                    remaining-=skipped;
+                }
                 position += 4L + length;
             }
             result.bytes = position;
@@ -179,7 +206,8 @@ public final class RecordArchive extends AbstractList<Object>
             throw new UncheckedIOException(new IOException("CANCELLED"));
         if (sealed || closed) throw new IllegalStateException("RECORD_ARCHIVE_SEALED");
         try {
-            byte[] encoded = Json.write(value).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            byte[] encoded = binaryModel?BinaryModelCodec.encode(value):
+                    Json.write(value).getBytes(java.nio.charset.StandardCharsets.UTF_8);
             byte[] metadata =
                     headers != null && headerComplete
                             ? Json.write(FactHeaders.project(value))
@@ -243,6 +271,7 @@ public final class RecordArchive extends AbstractList<Object>
     @Override
     public void copyRecord(int index, RecordArchive destination) {
         if (destination == this) throw new IllegalArgumentException("RECORD_ARCHIVE_SELF_COPY");
+        if(binaryModel!=destination.binaryModel) {destination.add(get(index));return;}
         if (Thread.currentThread().isInterrupted())
             throw new UncheckedIOException(new IOException("CANCELLED"));
         boolean needsHeader, needsRouting;
@@ -315,7 +344,9 @@ public final class RecordArchive extends AbstractList<Object>
 
     @Override
     public Object get(int index) {
-        return Json.parse(encoded(index));
+        if(!binaryModel)return Json.parse(encoded(index));
+        try {return BinaryModelCodec.decode(encoded(index));}
+        catch(IOException failed) {throw new UncheckedIOException(failed);}
     }
 
     /** Frame size from the validated positional directory; no extra file read. */
@@ -353,7 +384,7 @@ public final class RecordArchive extends AbstractList<Object>
         if (index < 0 || index >= count) throw new IndexOutOfBoundsException();
         return headers != null && index < headers.size()
                 ? Collections.unmodifiableMap(Json.map(headers.get(index)))
-                : FactHeaders.project(Json.factProjection(encoded(index)));
+                : FactHeaders.project(binaryModel?get(index):Json.factProjection(encoded(index)));
     }
 
     private void checkRoutingIndex(int index) {
@@ -399,7 +430,25 @@ public final class RecordArchive extends AbstractList<Object>
         return buffer;
     }
 
-    private void read(ByteBuffer buffer, long position) throws IOException {
+    private synchronized void read(ByteBuffer buffer, long position) throws IOException {
+        // Sealed model frames are immutable and repeatedly traversed by independent passes.
+        // Cache encoded bytes only: mutable row aliasing and graph leases stay unchanged.
+        if(binaryModel && sealed && buffer.remaining()<=65536) {
+            int length=buffer.remaining();
+            if(readPage==null)readPage=new byte[65536];
+            if(position<readPageStart || position+length>readPageStart+readPageLength) {
+                readPageStart=position;readPageLength=0;
+                int wanted=(int)Math.min(readPage.length,bytes-position);
+                ByteBuffer page=ByteBuffer.wrap(readPage,0,wanted);
+                while(page.hasRemaining()) {
+                    int n=channel.read(page,readPageStart+page.position());
+                    if(n<0)throw new EOFException("RECORD_ARCHIVE_TRUNCATED");
+                }
+                readPageLength=wanted;
+            }
+            if(length>readPageStart+readPageLength-position)throw new EOFException("RECORD_ARCHIVE_TRUNCATED");
+            buffer.put(readPage,(int)(position-readPageStart),length);return;
+        }
         while (buffer.hasRemaining()) {
             int n = channel.read(buffer, position);
             if (n < 0) throw new EOFException("RECORD_ARCHIVE_TRUNCATED");
@@ -462,6 +511,7 @@ public final class RecordArchive extends AbstractList<Object>
             failure = failed;
         } finally {
             offsets.clear();
+            readPage=null;readPageStart=-1;readPageLength=0;
             routing = null;
         }
         for (AutoCloseable resource : owned) {

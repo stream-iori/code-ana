@@ -19,7 +19,7 @@ import java.util.jar.*;
 
 /** Content-verified, index-only Java 8 declarations. Unsupported shapes stay as source inputs. */
 final class SignatureCache {
-    private static final String FORMAT = "java8-source-signature-v11-model8-units";
+    private static final String FORMAT = "java8-source-signature-v12-model9-units";
     private static final long MAX_ENTRY = 8L * 1024 * 1024;
     private static final long MAX_TOTAL = 256L * 1024 * 1024;
     private static final long MAX_CATALOGUES = 64L * 1024 * 1024;
@@ -313,17 +313,38 @@ final class SignatureCache {
 
     private void publishLocked(Map<String, Object> context, Map<String, Object> model)
             throws IOException {
+        List<Map<String,Object>> missing = new ArrayList<>();
+        Set<String> selected = new HashSet<>();
+        for(Object raw:Json.list(context.get("sources"))) {
+            var source=Json.map(raw);
+            // Dependency worlds publish their own catalogues. Consumer-specific omissions
+            // remain SOURCE rather than repeatedly emitting every upstream file's cache.
+            if(!Objects.equals(source.get("world"),context.get("world")))continue;
+            if(verified(context,source)!=null)continue;
+            missing.add(source);selected.add(Json.string(source,"path"));
+        }
         // The root is exclusively locked: scan its budget once, then charge each commit.
         // Scanning the whole cache for every source made a module write quadratic.
         Inventory inventory = inventory();
+        if(missing.isEmpty())return;
         Map<String, List<Map<String, Object>>> bySource = new TreeMap<>();
         for (Object raw : Json.list(model.get("declarations"))) {
             Map<String, Object> declaration = Json.map(raw);
+            if(!selected.contains(Json.string(declaration,"source")))continue;
             bySource.computeIfAbsent(
                             Json.string(declaration, "source"), ignored -> new ArrayList<>())
                     .add(declaration);
         }
-        for (Object raw : Json.list(context.get("sources"))) {
+        Map<String,List<Integer>> externalByOwner=new HashMap<>();
+        List<Object> externalRows=Json.list(model.get("external"));
+        for(int position=0;position<externalRows.size();position++) {
+            Object raw=externalRows.get(position);
+            String signature=Json.string(Json.map(raw),"signature");
+            int separator=signature.indexOf('#');
+            String owner=separator<0?signature:signature.substring(0,separator);
+            externalByOwner.computeIfAbsent(owner,key->new ArrayList<>()).add(position);
+        }
+        for (Object raw : missing) {
             if (Thread.currentThread().isInterrupted()) throw new IOException("CANCELLED");
             Map<String, Object> source = Json.map(raw);
             String path = Json.string(source, "path");
@@ -337,7 +358,6 @@ final class SignatureCache {
             }
             if (classes.isEmpty() || classes.size() > 2048) continue;
             String key = key(context, source);
-            if (verified(context, source) != null) continue;
             Path temporary = Files.createTempDirectory(root, ".signature-");
             try {
                 Path archive = temporary.resolve("signatures.jar");
@@ -354,12 +374,9 @@ final class SignatureCache {
                 // javac synthesizes some source members (for example enum.valueOf) without
                 // source declaration trees. Preserve those models as well as source headers.
                 List<Object> sourceExternal = new ArrayList<>();
-                for (Object external : Json.list(model.get("external"))) {
-                    String signature = Json.string(Json.map(external), "signature");
-                    int separator = signature.indexOf('#');
-                    String owner = separator < 0 ? signature : signature.substring(0, separator);
-                    if (classes.containsKey(owner)) sourceExternal.add(external);
-                }
+                Set<Integer> externalPositions=new TreeSet<>();
+                for(String owner:classes.keySet())externalPositions.addAll(externalByOwner.getOrDefault(owner,List.of()));
+                for(int position:externalPositions)sourceExternal.add(externalRows.get(position));
                 Files.writeString(
                         catalogue,
                         Json.write(

@@ -14,6 +14,7 @@ mkdir -p "$repo_root/lang-adaptor/target/compiler-classes"
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/Json.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/FactHeaders.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/RecordArchive.java" \
+  "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/BinaryModelCodec.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ModelArchive.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ArchiveRows.java" \
   "$repo_root/lang-adaptor/src/main/java/dev/codeana/common/ModelRows.java" \

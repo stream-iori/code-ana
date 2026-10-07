@@ -35,7 +35,7 @@ class TypeGraphs(unittest.TestCase):
         test = models.ROOT / 'lang-adaptor/src/test/java/dev/codeana/common'
         compiler = models.ROOT / 'lang-adaptor/src/compiler/java/dev/codeana/compiler'
         compiler_test = models.ROOT / 'lang-adaptor/src/test/compiler/dev/codeana/compiler'
-        files = [main / (n + '.java') for n in ('Json', 'FactHeaders', 'RecordArchive', 'TypeGraph', 'TypeGraphArchive', 'ModelGraphs', 'ModelArchive', 'ArchiveRows', 'TypeEvidence', 'CanonicalTypes')]
+        files = [main / (n + '.java') for n in ('Json', 'FactHeaders', 'BinaryModelCodec', 'RecordArchive', 'TypeGraph', 'TypeGraphArchive', 'ModelGraphs', 'ModelArchive', 'ArchiveRows', 'ModelRows', 'ModelRowLease', 'UnitDeclarationRows', 'TypeEvidence', 'CanonicalTypes')]
         files += [test / (n + '.java') for n in ('TypeGraphProbe', 'TypeGraphCanonicalProbe', 'TypeGraphArchiveProbe', 'ModelGraphProbe', 'TypeEvidenceProbe', 'TypeEvidenceNormalizationProbe', 'ModelTransferProbe', 'SpoolRetirementProbe')]
         files += [compiler / 'CompilerTypeGraph.java']
         files += [compiler_test / (n + '.java') for n in ('CompilerTypeGraphProbe', 'CompilerTypeGraphBudgetProbe', 'CompilerGraphArchiveProbe')]

@@ -36,6 +36,7 @@ public final class BinaryIndex implements AutoCloseable {
     private static final long MAX_CLASS_CACHE_WEIGHT = 8L << 20;
     private static final int MAX_PACKAGE_LINKS = 262144, MAX_PACKAGE_CHARACTERS = 8 * 1024 * 1024;
     private final List<Path> archives = new ArrayList<>();
+    private final BinaryCatalogue catalogue = BinaryCatalogue.current();
     private final Map<Integer, Map<String, Object>> artifactOrigins = new HashMap<>();
     private final int classpathSize;
     private final boolean typeGraph;
@@ -70,6 +71,18 @@ public final class BinaryIndex implements AutoCloseable {
         int links = 0, characters = 0;
         for (int i = 0; i < archives.size(); i++) {
             check();
+            if (catalogue != null) {
+                List<String> owners=catalogue.packages(archives.get(i));
+                if(owners==null) { packages.clear();packageIndexComplete=false;continue; }
+                if(!packageIndexComplete) continue;
+                for(String owner:owners) {
+                    if(++links>MAX_PACKAGE_LINKS || (characters+=owner.length())>MAX_PACKAGE_CHARACTERS) {
+                        packages.clear();packageIndexComplete=false;break;
+                    }
+                    packages.computeIfAbsent(owner,ignored->new ArrayList<>()).add(i);
+                }
+                continue;
+            }
             try (FrozenArchive archive = new FrozenArchive(archives.get(i))) {
                 if (!packageIndexComplete) continue;
                 Set<String> seen = new HashSet<>();
@@ -204,7 +217,7 @@ public final class BinaryIndex implements AutoCloseable {
                                 "name",
                                 path.getFileName().toString(),
                                 "sha256",
-                                Json.sha(path));
+                                catalogue==null?Json.sha(path):catalogue.hash(path));
                 if (position < classpathSize) origin.put("index", position);
                 artifactOrigins.put(position, origin);
             }

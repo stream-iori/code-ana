@@ -1,6 +1,6 @@
 # 公共契约：事实、身份与协议
 
-2026-10-06：当前重写版本compiler9/model8/worker12/native request6，ABI2和Fact IR1保持；旧索引与Java缓存不迁移，混装拒绝。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
+2026-10-06：当前重写版本compiler9/model9/worker12/native request6，ABI2和Fact IR1保持；旧索引与Java缓存不迁移，混装拒绝。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
 
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入，新增结构化类型/ASM 的范围见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
@@ -10,7 +10,7 @@
 
 ## 1. 身份
 
-Java callable 参数 key 使用擦除后的 binary name：例如 `Api#accept(Outer$Inner,Outer$Inner[][])`。SOURCE、ASM、NoCode 目录与反射查找使用同一身份；展示名仍单独保留。原始类型注解不进入 primitive 身份。当前文件签名缓存格式为 `java8-source-signature-v11-model8-units`，模块格式为 `java8-module-signature-v7-model8-original-units`。
+Java callable 参数 key 使用擦除后的 binary name：例如 `Api#accept(Outer$Inner,Outer$Inner[][])`。SOURCE、ASM、NoCode 目录与反射查找使用同一身份；展示名仍单独保留。原始类型注解不进入 primitive 身份。当前文件签名缓存格式为 `java8-source-signature-v12-model9-units`，模块格式为 `java8-module-signature-v8-model9-original-units`。
 
 生成方法参与的覆盖关系使用 `origin=modeled_override`、`status=possible`，`declaration_resolved/evidence_complete=false`；保留已有 javac 覆盖事实且不重复。恢复检查 SOURCE/JAR 类泛型代入、raw 类型擦除、参数 subsignature、协变返回和整条继承路径的访问权限；final/static、降低可见性或非法返回使该方法候选全部撤销。不完整层级/类型及 256 层级节点、100000 工作步骤预算通过 `MODELED_OVERRIDE_INCOMPLETE` 明确披露；仅发布方法产生此诊断。纯 ASM 补出的外部方法使用 `binary_metadata`，不会冒充 javac 声明。
 
@@ -39,7 +39,7 @@ Java 恢复证据保持独立：CallSite 的原始 javac 选中声明、诊断�
 | SnapshotId | 历史入口身份，指向文件捕获，ANALYSIS 另指向 revision | 多个 snapshot 可以共享图字节 |
 | StorageRecordId | 库内实现键 | 不进入公共 selector、跨版本匹配或分页契约 |
 
-Java 类型引用分为两类：`type_reference` 表示声明签名、写明的声明类型和回调类型关系，按 owner/context 保留重复泛型参数与源码位置；`type_navigation` 保留 import、局部变量、new、cast、class literal 等原始 javac 类型导航。`references` 查询保留两种带 relation 的 occurrence。源码签名按冻结参考最多投影 5 层泛型，写明的通配符边界/throws/类型参数边界独立审计；回调参数读取实际捕获的声明类型。经过检查的回调恢复另存 `recovered_callback`，原 javac 属性不覆盖，其关系为 possible/evidence-incomplete，不追加未经检查的泛型参数。 补充编译按真实 world 边界选择上游 MAIN 模块：完整 Lombok 覆盖且 NoCode 投影可验证的模块使用有效声明头；本 world、解析/编码失败、部分声明或不完整 ABI 保留 SOURCE。已验证的回调投影可参与 MAIN/TEST 的 `type_reference` 基线，原 javac 属性和诊断保留；不按 scope 单独切换证据。生成嵌套类的显式局部变量在同路径/跨度/身份的独立 javac 证明通过后，另存 `supplemental_variable` 及签名/输入 SHA，恢复调用仍为 possible、evidence-incomplete。MAIN 单 world fixture 的辅助源码必须使用相同 world，TEST fixture 使用真实 MAIN/TEST 边界。未知、歧义及原始未解析类型不产生 complete 关系。单声明遍历耗尽 100000 步或 128 层时撤销该声明的类型关系，产生 `SOURCE_TYPE_REFERENCE_BUDGET` 并标记文件 partial；健康声明继续输出，取消仍中止任务。默认使用平面类型图，贯通 SDK8、模型归档、事实与 Rust 校验；扩展读取使用惰性不可变视图，扩展输出重新编码。内部 fixture 可显式使用有界旧树（48层/4096节点），产品始终传递图模式；不作解析后端回退。原子版本为 compiler9/model8/worker12/native request6，ABI2与Fact IR1不变。类型facet3、绑定facet4；旧请求/编译器上下文和混装产物均拒绝。完整真实项目语义仍须独立验收。图同时涵盖 ASM 二进制签名与生成/标量类型根；方法 formal 与类 formal 的 owner/节点身份分开，缺失外层变量不补 Object 或 owner。内部恢复 CAPTURE 导出为保留 capture_identity 的 TYPEVAR；未知上界保持不完整。 图对实际替换值不含 TYPEVAR/CAPTURE 的泛型代入使用联合根及数值边重定向，保留元数据/不可变原图；其他替换仍使用原有保守规则。图 NoCode 以图遍历验证头和注解路径，生成前按原版二进制签名 64 层/4096 节点上限验证；超过上限保留 SOURCE，不能写入后续读取会失败的缓存。源码图的写明注解按实际类型边计层，注解包装不重复加层。旧简写声明的空参数与 wildcard 空边规范化后仍由原严格图校验器校验。深层图的泛型变量查询按节点迭代，无替换的根保持共享；调用递归及总工作预算不变。
+Java 类型引用分为两类：`type_reference` 表示声明签名、写明的声明类型和回调类型关系，按 owner/context 保留重复泛型参数与源码位置；`type_navigation` 保留 import、局部变量、new、cast、class literal 等原始 javac 类型导航。`references` 查询保留两种带 relation 的 occurrence。源码签名按冻结参考最多投影 5 层泛型，写明的通配符边界/throws/类型参数边界独立审计；回调参数读取实际捕获的声明类型。经过检查的回调恢复另存 `recovered_callback`，原 javac 属性不覆盖，其关系为 possible/evidence-incomplete，不追加未经检查的泛型参数。 补充编译按真实 world 边界选择上游 MAIN 模块：完整 Lombok 覆盖且 NoCode 投影可验证的模块使用有效声明头；本 world、解析/编码失败、部分声明或不完整 ABI 保留 SOURCE。已验证的回调投影可参与 MAIN/TEST 的 `type_reference` 基线，原 javac 属性和诊断保留；不按 scope 单独切换证据。生成嵌套类的显式局部变量在同路径/跨度/身份的独立 javac 证明通过后，另存 `supplemental_variable` 及签名/输入 SHA，恢复调用仍为 possible、evidence-incomplete。MAIN 单 world fixture 的辅助源码必须使用相同 world，TEST fixture 使用真实 MAIN/TEST 边界。未知、歧义及原始未解析类型不产生 complete 关系。单声明遍历耗尽 100000 步或 128 层时撤销该声明的类型关系，产生 `SOURCE_TYPE_REFERENCE_BUDGET` 并标记文件 partial；健康声明继续输出，取消仍中止任务。默认使用平面类型图，贯通 SDK8、模型归档、事实与 Rust 校验；扩展读取使用惰性不可变视图，扩展输出重新编码。内部 fixture 可显式使用有界旧树（48层/4096节点），产品始终传递图模式；不作解析后端回退。原子版本为 compiler9/model9/worker12/native request6，ABI2与Fact IR1不变。类型facet3、绑定facet4；旧请求/编译器上下文和混装产物均拒绝。完整真实项目语义仍须独立验收。图同时涵盖 ASM 二进制签名与生成/标量类型根；方法 formal 与类 formal 的 owner/节点身份分开，缺失外层变量不补 Object 或 owner。内部恢复 CAPTURE 导出为保留 capture_identity 的 TYPEVAR；未知上界保持不完整。 图对实际替换值不含 TYPEVAR/CAPTURE 的泛型代入使用联合根及数值边重定向，保留元数据/不可变原图；其他替换仍使用原有保守规则。图 NoCode 以图遍历验证头和注解路径，生成前按原版二进制签名 64 层/4096 节点上限验证；超过上限保留 SOURCE，不能写入后续读取会失败的缓存。源码图的写明注解按实际类型边计层，注解包装不重复加层。旧简写声明的空参数与 wildcard 空边规范化后仍由原严格图校验器校验。深层图的泛型变量查询按节点迭代，无替换的根保持共享；调用递归及总工作预算不变。
 
 Maven 声明 UTF-8、捕获字节却不合法时，Java 8 桥保留原 hash/path 并产生 `SOURCE_ENCODING_INVALID` ERROR；该文件不交给 javac，不猜编码、不替换字节、不输出伪造声明。FactExtractor 保留 source owner、诊断、partial coverage 与原始 provenance；同上下文健康文件继续解析，全部输入无效时也给出可交付 partial。strict 仍拒绝发布，修复字节或删除文件后按 owner 清理旧诊断。生成签名遵循同一默认外部类型过滤，源码写明的类型继续保留；匿名类合成类型头不产生额外声明签名引用，其显式字段/方法与类型导航保留。
 
@@ -467,7 +467,10 @@ Model 7 归档的类型图在打开时逐图完整验证；任务内按原归档
 
 ### 模型归档类型视图生命周期（2026-10-05）
 
-`ModelArchive.open` 的类型图与声明/语法行同属归档生命周期。图节点按位置读取，模型共享 4MiB 加权节点缓存；形状、数字边、完整性传播和全部未访问节点在入场时校验，保留循环与稳定字典身份。关闭归档释放缓存和位置表，之后访问图视图明确报 RECORD_ARCHIVE_CLOSED；需跨生命周期的数据应在关闭前输出/捕获。`ModelArchive.read` 保持独立完整物化语义，返回图不依赖已关闭文件。compiler9/model8、ABI2/Fact IR1及现有节点/字节限额不变；compiler bridge SHA使旧派生条目失效。
+`ModelArchive.open` 的类型图与声明/语法行同属归档生命周期。图节点按位置读取，模型共享 4MiB 加权节点缓存；形状、数字边、完整性传播和全部未访问节点在入场时校验，保留循环与稳定字典身份。关闭归档释放缓存和位置表，之后访问图视图明确报 RECORD_ARCHIVE_CLOSED；需跨生命周期的数据应在关闭前输出/捕获。`ModelArchive.read` 保持独立完整物化语义，返回图不依赖已关闭文件。compiler9/model9、ABI2/Fact IR1及现有节点/字节限额不变；compiler bridge SHA使旧派生条目失效。
 
 
 编译器上下文提取完成后，`CompilerSession.releaseModel` 只释放节点缓存，输入归档的读取租期保留到该分析任务结束。辅助 javac 的类型根会进入调用恢复及后续上下文，不能在 context 边界关闭其文件；完成/取消/失败统一由 session 关闭全部租期并清理 scratch。核心事实 spool 仍在复制后立即关闭，不保留全部已解码模型；每个已完成输入模型只保留归档索引及被实际使用的不可变视图。模型内共享缓存访问串行化，防止并发读/驱逐破坏身份及字节记账。
+
+
+2026-10-07 性能改造：model9 使用独立二进制帧（固定字符串字典、数值图边、严格 Unicode/长度/重复键/深度检查）；公共 Fact IR 保持 JSON。完成文件事实与项目快照后，产品显式释放该上下文的主/补充模型和输入归档；补充根在同一上下文内有效，独立模型 API 的任务租约仍保持。封存模型使用 64KiB 编码页缓存，声明/类型视图的别名与不可变性不变。类型闭包仅对不可变图根复用，上下文内64MiB/16384条目；缓存载荷为二进制字节，命中返回独立可变对象，零预算/淘汰不会丢事实。细粒度进度写入至多每250ms一次，阶段/上下文切换立即记录；取消检查不节流。完整 iopengw 正确性与两倍性能门禁尚未通过。

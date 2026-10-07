@@ -24,7 +24,7 @@ Rust worker host（独立进程）
 Java 25 / GraalVM 共享库（同进程）
   ├─ 独立 Java 模型、ASM 二进制分析、框架、增量、事实提取
   └─ 编译器协调器
-       │ 编译器内部协议 9 / 独立模型 8（D17，Java 8 已实现）
+       │ 编译器内部协议 9 / 独立模型 9（D17，Java 8 已实现）
        v
      目标 JDK JVM 子进程：javac parse → analyze
        └─ 禁用 annotation processor，无业务字节码生成

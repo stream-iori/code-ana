@@ -35,6 +35,28 @@ public final class CompilerModelLeaseProbe {
         catch(IllegalStateException expected) {
             if(!"RECORD_ARCHIVE_CLOSED".equals(expected.getMessage()))throw expected;
         }
+        try(CompilerSession session=new CompilerSession(request)) {
+            var first=session.analyze(context);
+            var original=type(first.get("declarations"));
+            var expected=TypeGraph.owner(original).canonical(List.of(TypeGraph.reference(original)));
+            var detached=session.stageModel(first,context);
+            var other=new LinkedHashMap<>(context);other.put("context",context.get("context")+"-other");
+            var second=session.analyze(other);
+            var surviving=type(second.get("declarations"));
+            session.releaseContextModels(Json.string(context,"context"));
+            try {TypeGraph.owner(original).node(TypeGraph.reference(original));throw new AssertionError("completed context retained");}
+            catch(IllegalStateException closed) {
+                if(!"RECORD_ARCHIVE_CLOSED".equals(closed.getMessage()))throw closed;
+            }
+            TypeGraph.owner(surviving).node(TypeGraph.reference(surviving));
+            try(var directory=detached.open()) {
+                var rootValue=type(directory.model().get("declarations"));
+                if(!expected.equals(TypeGraph.owner(rootValue).canonical(List.of(TypeGraph.reference(rootValue)))))
+                    throw new AssertionError("detached directory depends on completed model");
+            }
+            session.releaseContextModels(Json.string(other,"context"));
+            session.releaseContextModels(Json.string(other,"context"));
+        }
         System.out.println("actual javac roots survive context release and close with the compiler task");
     }
 }

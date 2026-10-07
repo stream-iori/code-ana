@@ -9,6 +9,48 @@ public final class TypeEvidence {
         "ARRAY","DECLARED","ERROR","TYPEVAR","CAPTURE","WILDCARD","INTERSECTION","UNION","EXECUTABLE",
         "BOOLEAN","BYTE","SHORT","INT","LONG","CHAR","FLOAT","DOUBLE","VOID","NONE","NULL","OTHER","UNKNOWN","POLY"));
     private TypeEvidence() {}
+    private static final ThreadLocal<EncodingSession> SESSION=new ThreadLocal<EncodingSession>();
+    /** Context-local canonical closure reuse. Cached bytes never share mutable output maps. */
+    public static final class EncodingSession implements AutoCloseable {
+        private final EncodingSession previous;
+        private final long limit;
+        private final LinkedHashMap<ClosureKey,CachedClosure> entries=new LinkedHashMap<ClosureKey,CachedClosure>(64,.75f,true);
+        private long bytes,hits,misses,evictions;
+        private boolean closed;
+        private EncodingSession(long limit) {
+            if(limit<0 || limit>(64L<<20))throw new IllegalArgumentException("TYPE_CLOSURE_CACHE_BUDGET");
+            this.limit=limit;previous=SESSION.get();SESSION.set(this);
+        }
+        public Map<String,Object> metrics() {return Json.object("stage","type_closure_cache","hits",hits,
+                "misses",misses,"evictions",evictions,"bytes",bytes,"entries",entries.size());}
+        public void close() {
+            if(closed)return;
+            if(SESSION.get()!=this)throw new IllegalStateException("TYPE_CLOSURE_CACHE_SCOPE");
+            closed=true;entries.clear();bytes=0;
+            if(previous==null)SESSION.remove();else SESSION.set(previous);
+        }
+    }
+    public static EncodingSession encodingSession(long bytes) {return new EncodingSession(bytes);}
+    private static final class ClosureKey {
+        final Object[] graphs;final int[] roots;final int hash;
+        ClosureKey(Object[] graphs,int[] roots) {
+            this.graphs=graphs;this.roots=roots;int value=1;
+            for(int i=0;i<graphs.length;i++)value=31*(31*value+System.identityHashCode(graphs[i]))+roots[i];
+            hash=value;
+        }
+        public int hashCode(){return hash;}
+        public boolean equals(Object raw) {
+            if(!(raw instanceof ClosureKey))return false;
+            ClosureKey other=(ClosureKey)raw;if(graphs.length!=other.graphs.length)return false;
+            for(int i=0;i<graphs.length;i++)if(graphs[i]!=other.graphs[i] || roots[i]!=other.roots[i])return false;
+            return true;
+        }
+        long weight(){return 128L+16L*graphs.length;}
+    }
+    private static final class CachedClosure {
+        final byte[] payload;final int[] slots;final long weight;
+        CachedClosure(byte[] payload,int[] slots,long weight){this.payload=payload;this.slots=slots;this.weight=weight;}
+    }
 
     private static final class Node {
         final TypeGraph graph;final int reference;final Map<String,Object> value;
@@ -20,6 +62,44 @@ public final class TypeEvidence {
         final List<Node> nodes=new ArrayList<Node>();
         final List<Integer> roots=new ArrayList<Integer>();
         final List<List<Integer>> references=new ArrayList<List<Integer>>();
+        private ClosureKey key() {
+            Object[] graphs=new Object[roots.size()];int[] ids=new int[roots.size()];
+            for(int i=0;i<roots.size();i++) {
+                Node node=nodes.get(roots.get(i));
+                if(node.graph==null)return null;
+                graphs[i]=node.graph.storageIdentity();ids[i]=node.reference;
+            }
+            return new ClosureKey(graphs,ids);
+        }
+        Map<String,Object> cachedPayload(EncodingSession session) {
+            ClosureKey key=key();
+            if(key==null || session.limit==0)return payload();
+            CachedClosure cached=session.entries.get(key);
+            if(cached!=null) {
+                session.hits++;
+                for(int i=0;i<references.size();i++)references.get(i).set(1,cached.slots[i]);
+                try {return Json.map(BinaryModelCodec.decode(cached.payload));}
+                catch(java.io.IOException failed){throw new java.io.UncheckedIOException(failed);}
+            }
+            session.misses++;Map<String,Object> value=payload();
+            byte[] encoded;
+            try {encoded=BinaryModelCodec.encode(value);}
+            catch(java.io.IOException failed){throw new java.io.UncheckedIOException(failed);}
+            catch(IllegalArgumentException budget) {
+                if("MODEL_FRAME_BYTES_BUDGET".equals(budget.getMessage()))return value;
+                throw budget;
+            }
+            int[] slots=new int[references.size()];for(int i=0;i<slots.length;i++)slots[i]=references.get(i).get(1);
+            long weight=key.weight()+encoded.length+64L+4L*slots.length;
+            if(weight<=session.limit) {
+                while(!session.entries.isEmpty() && (session.bytes>session.limit-weight || session.entries.size()>=16384)) {
+                    Iterator<Map.Entry<ClosureKey,CachedClosure>> oldest=session.entries.entrySet().iterator();
+                    session.bytes-=oldest.next().getValue().weight;oldest.remove();session.evictions++;
+                }
+                session.entries.put(key,new CachedClosure(encoded,slots,weight));session.bytes+=weight;
+            }
+            return value;
+        }
         private int view(TypeGraph graph,int reference) {
             if(reference<0)return -1;graph.requireSealed();
             Map<Integer,Integer> ids=identities.computeIfAbsent(graph,ignored->new HashMap<Integer,Integer>());
@@ -138,7 +218,8 @@ public final class TypeEvidence {
         if(attributes.containsKey(TABLE))throw new IllegalArgumentException("TYPE_EVIDENCE_RESERVED_TABLE");
         Encoder encoder=new Encoder();Map<String,Object> packed=Json.map(encoder.pack(attributes,0));
         if(encoder.roots.isEmpty())return attributes;
-        packed.put(TABLE,Arrays.asList(encoder.payload()));return packed;
+        EncodingSession session=SESSION.get();
+        packed.put(TABLE,Arrays.asList(session==null?encoder.payload():encoder.cachedPayload(session)));return packed;
     }
 
     public static Map<String,Object> decode(Map<String,Object> attributes) {
