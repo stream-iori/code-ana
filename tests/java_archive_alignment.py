@@ -164,3 +164,7 @@ subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
 subprocess.run([str(JDK/'bin/java'), '-Xmx128m', '-cp', os.pathsep.join([
                 str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes'), dependencies]),
                 'dev.codeana.analysis.AnnotationPathProbe'], check=True, timeout=30)
+
+subprocess.run([str(JDK/'bin/java'), '-Xmx64m', '-cp', os.pathsep.join([
+                str(ROOT/'lang-adaptor/target/test-classes'), str(ROOT/'lang-adaptor/target/classes'), dependencies]),
+                'dev.codeana.analysis.SignatureProjectionHeadersProbe'], check=True, timeout=60)

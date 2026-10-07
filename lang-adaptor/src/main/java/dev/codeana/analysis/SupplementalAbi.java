@@ -159,11 +159,14 @@ final class SupplementalAbi {
     Map<String, Object> project(Map<String, Object> declaration) {
         work = 0;
         var attributes = map(declaration.get("attributes"));
+        boolean modeled = Boolean.TRUE.equals(declaration.get("generated"))
+                && "lombok_model".equals(attributes.get("binding_origin"));
+        // An unchanged header must not enumerate every lazy type model merely to copy it.
+        if (!modeled && list(attributes.get("source_annotations")).isEmpty()) return declaration;
         Map<String, Object> projected = new LinkedHashMap<>(attributes);
         if (!list(attributes.get("source_annotations")).isEmpty())
             projected.put("annotations", ModelAnnotations.declared(declaration));
-        if (!Boolean.TRUE.equals(declaration.get("generated"))
-                || !"lombok_model".equals(attributes.get("binding_origin"))) {
+        if (!modeled) {
             if (!projected.containsKey("source_annotations")) return declaration;
             Map<String, Object> header = new LinkedHashMap<>(declaration);
             header.put("attributes", projected);

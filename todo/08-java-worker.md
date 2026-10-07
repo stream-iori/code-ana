@@ -1161,3 +1161,5 @@ de8c99b固定验收：native模型17项与冻结框架参考通过，无源码/�
 2026-10-07 registry v17重复工作修复：旧诊断/并行发布与raw清单主动停止并记录；事实提取与扩展共享位置、声明、注解和身份索引，查询预算/快照/可关闭导航隔离；辅助头保留，空发布仅头部资源路径跳过不必要恢复。Lombok Generated策略按上下文一次读取classpath，修复319单位重复扫描619 JAR。串行真实JVM上下文44.254→24.221秒，35952事实语义相同（仅指纹改变）。JVM专项和新空发布XML通过；新native及全项目串行验收仍待。见docs/implementation/java-adaptor-rewrite.md。
 
 2026-10-07 cf1c510同版本前置验收：native fixture、独立native模型API18组、框架/XML及发行功能全部通过且无漂移。当前严格串行执行完整iopengw MAIN/TEST/XML索引，随后raw/AST各80上下文和14域差分；完整正确性仍未关闭。旧de8c99b的48.51GiB历史模型/清单已按授权清理，保留日志/回执但不得再用已缺输入的回执认定验收。详见docs/implementation/java-adaptor-rewrite.md。
+
+2026-10-07 全项目1/2/3受阻处理：旧4GiB结果归档达到预算，8GiB重试越过旧失败点后在core/service MAIN补充签名投影持续超过20分钟，主动停止保留证据，无SIGKILL。NoCode嵌套类元数据按任务一次缓存，未改写辅助声明不枚举复制属性；517类classfile字节摘要一致，属性读取268840→2068，补充签名12/模块签名9/归档全部通过。实际core/service和完整MAIN/TEST/XML、raw/AST80上下文、14域仍待同版重跑，不能关闭门禁。

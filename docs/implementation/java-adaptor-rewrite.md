@@ -183,3 +183,13 @@ Rust外围：`just test-rust`全部通过，包含workspace测试、产品端到
 | 磁盘清理 | 按历史证据清理授权，旧de8c99b的raw/AST归档与大清单释放48.51GiB，旧回执及日志保留；这些回执的已删除输入不能再作为有效验收证明。当前版本、参考JAR、参考事实库及项目冻结输入保留 |
 
 上述相对证据路径均位于`target/java-alignment/evidence/`。三轮性能不包含在本轮1/2/3任务内；须等完整正确性通过后另行执行。
+
+## 全项目补充签名投影的重复解码（2026-10-07）
+
+| 取证 / 修复 | 结果 |
+|---|---|
+| 首次完整索引 | 51个上下文后，在core/spanner MAIN累计1843860事实时触及4GiB归档预算；回执`recovery-stage3-serial/single-project/receipt.json`，无异常信号、无源码/产物漂移。重试仅将显式result预算改为已支持的8GiB |
+| 8GiB重试 | 已越过旧失败点、完成57上下文；core/service MAIN的supplemental_projection超过20分钟。worker接近单核满载，模型424MiB、归档4.54GiB。采样无内部符号，只能定位阶段，不能把某个方法宣称为已确认唯一热点；随后主动SIGTERM并保留`recovery-stage3-serial-8g/intentional-stop.json` |
+| 代码中的重复工作 | NoCode为每个类再读全部类型的attributes；SupplementalAbi在判断是否需改写前先枚举复制所有属性。缓存一次MEMBER类型的标量classfile元数据，保留原词典序、自身/直接成员/祖先前缀筛选；不需改写的声明直接使用原只读头。NoCode资格、图/签名校验、处理器策略不变 |
+| 字节等价探针 | 517个类型、嵌套interface/enum/annotation及字面$前缀，旧/新版SHA256均为0b534a76bbe86477b07ac662a5c05d73fccbb3efaa1b6edbd0bb0b9e5315f900；attributes读取268840→2068。64MiB验证惰性未改头不被枚举复制 |
+| 回归 | 补充签名12项、模块签名9项及完整归档/小堆探针通过；新native、core/service实际重放和完整1/2/3仍需新同版本回执，不复用已中断全项目结果 |

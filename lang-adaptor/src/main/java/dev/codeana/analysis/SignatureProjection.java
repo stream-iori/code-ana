@@ -22,6 +22,26 @@ final class SignatureProjection {
         return Set.of("CLASS", "INTERFACE", "ENUM", "ANNOTATION_TYPE").contains(kind);
     }
 
+    private record InnerClassHeader(String binary, String enclosing, String name, int access) {}
+
+    /** Only scalar classfile metadata survives; do not retain decoded declaration rows. */
+    private static List<InnerClassHeader> innerClassHeaders(Map<String, Map<String, Object>> types) {
+        List<InnerClassHeader> result = new ArrayList<>();
+        for (var nested : types.entrySet()) {
+            var inner = attrs(nested.getValue());
+            if (!"MEMBER".equals(inner.get("nesting_kind"))) continue;
+            int access = flags(items(inner.get("modifiers")));
+            String kind = Json.string(inner, "element_kind");
+            if (kind.equals("INTERFACE")) access |= Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT;
+            if (kind.equals("ENUM")) access |= Opcodes.ACC_ENUM;
+            if (kind.equals("ANNOTATION_TYPE"))
+                access |= Opcodes.ACC_ANNOTATION | Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT;
+            result.add(new InnerClassHeader(nested.getKey(), text(inner, "enclosing_type"),
+                    Json.string(nested.getValue(), "name"), access));
+        }
+        return result;
+    }
+
     static Map<String, byte[]> project(List<Map<String, Object>> declarations) {
         Map<String, Map<String, Object>> types = new TreeMap<>();
         Map<String, List<Map<String, Object>>> members = new TreeMap<>();
@@ -49,6 +69,7 @@ final class SignatureProjection {
             return dev.codeana.common.TypeGraph.isView(model) || model instanceof Map<?,?> m
                     && m.get("version") instanceof Number version && version.intValue()==3;
         });
+        List<InnerClassHeader> innerClasses = innerClassHeaders(types);
         Map<String, byte[]> output = new TreeMap<>();
         for (Map.Entry<String, Map<String, Object>> entry : types.entrySet()) {
             String name = entry.getKey();
@@ -75,30 +96,12 @@ final class SignatureProjection {
                     text(a, "jvm_signature"),
                     parent,
                     interfaces);
-            for (Map.Entry<String, Map<String, Object>> nested : types.entrySet()) {
-                Map<String, Object> inner = attrs(nested.getValue());
-                // Unrelated entries can trigger recursive class completion in javac 8, e.g.
-                // an annotation loading the annotated class before its own type is attributed.
-                if ("MEMBER".equals(inner.get("nesting_kind"))
-                        && (nested.getKey().equals(name)
-                                || name.equals(inner.get("enclosing_type"))
-                                || name.startsWith(nested.getKey() + "$")))
-                    writer.visitInnerClass(
-                            nested.getKey().replace('.', '/'),
-                            text(inner, "enclosing_type").replace('.', '/'),
-                            Json.string(nested.getValue(), "name"),
-                            flags(items(inner.get("modifiers")))
-                                    | ("INTERFACE".equals(inner.get("element_kind"))
-                                            ? Opcodes.ACC_INTERFACE | Opcodes.ACC_ABSTRACT
-                                            : 0)
-                                    | ("ENUM".equals(inner.get("element_kind"))
-                                            ? Opcodes.ACC_ENUM
-                                            : 0)
-                                    | ("ANNOTATION_TYPE".equals(inner.get("element_kind"))
-                                            ? Opcodes.ACC_ANNOTATION
-                                                    | Opcodes.ACC_INTERFACE
-                                                    | Opcodes.ACC_ABSTRACT
-                                            : 0));
+            for (InnerClassHeader inner : innerClasses) {
+                // Preserve the original lexical order and javac completion boundary.
+                if (inner.binary().equals(name) || name.equals(inner.enclosing())
+                        || name.startsWith(inner.binary() + "$"))
+                    writer.visitInnerClass(inner.binary().replace('.', '/'),
+                            inner.enclosing().replace('.', '/'), inner.name(), inner.access());
             }
             annotations(items(a.get("annotations")), writer::visitAnnotation);
             formalAnnotations(
