@@ -90,13 +90,14 @@ def fresh_project(folder):
 
 def manifest_semantics(path):
     value=json.loads(path.read_text())
+    project_prefix=str(path.resolve().parent.parent)
     def normalized(item):
         if isinstance(item,dict):
             return {key:normalized(val) for key,val in item.items() if key!='effective_model_sha256'}
         if isinstance(item,list): return [normalized(val) for val in item]
         if isinstance(item,str) and item.startswith('/'):
-            if '/iopengw/' in item: return '$PROJECT/'+item.rsplit('/iopengw/',1)[1]
-            if item.endswith('/iopengw'): return '$PROJECT'
+            if item.startswith(project_prefix+'/'): return '$PROJECT/'+item[len(project_prefix)+1:]
+            if item==project_prefix: return '$PROJECT'
         return item
     return normalized({key:value[key] for key in ('modules','scopes','selected_profiles','resolved_classpath')})
 
