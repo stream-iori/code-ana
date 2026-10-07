@@ -479,7 +479,10 @@ public final class JavaAnalysis {
             int sourceCount = Json.list(input.compiler.get("sources")).size();
             boolean moduleReduced = input.reduced();
             if (input.reduced()
-                    && (!Json.list(model.get("diagnostics")).isEmpty() || !input.restore(model))) {
+                    && (Json.list(model.get("diagnostics")).stream().map(Json::map).anyMatch(d ->
+                                "JAVAC_PARSE_FAILED".equals(d.get("code"))
+                                || "SOURCE_ENCODING_INVALID".equals(d.get("code")))
+                            || !input.restore(model))) {
                 session.releaseModel(model);
                 model = session.analyze(ctx);
                 sourceCount = Json.list(ctx.get("sources")).size();
@@ -495,6 +498,8 @@ public final class JavaAnalysis {
                         modules.enabled()
                                 ? Json.list(ExtensionContext.freeze(model.get("declarations")))
                                 : List.of();
+                List<Object> compilerDiagnostics=modules.enabled()
+                        ? Json.list(ExtensionContext.freeze(model.get("diagnostics"))):List.of();
                 session.mark(Json.string(ctx, "context"), "binary_enrich");
                 BinaryIndex.enrich(ctx, model, session.javaHome());
                 session.check();
@@ -509,7 +514,7 @@ public final class JavaAnalysis {
                     session.mark(Json.string(ctx, "context"), "file_cache");
                     cache.publish(ctx, model);
                     session.mark(Json.string(ctx, "context"), "module_cache");
-                    modules.publish(ctx, model, compilerDeclarations);
+                    modules.publish(ctx, model, compilerDeclarations,compilerDiagnostics);
                     ContextResult result =
                             new ContextResult(List.of(), Set.of(), moduleReduced, sourceCount);
                     result.prerequisite = true;
@@ -539,7 +544,7 @@ public final class JavaAnalysis {
                 session.mark(Json.string(ctx, "context"), "file_cache");
                 cache.publish(ctx, model);
                 session.mark(Json.string(ctx, "context"), "module_cache");
-                modules.publish(ctx, model, compilerDeclarations);
+                modules.publish(ctx, model, compilerDeclarations,compilerDiagnostics);
                 Set<String> published = new HashSet<>();
                 for (Object raw : Json.list(ctx.get("sources"))) {
                     Map<String, Object> source = Json.map(raw);

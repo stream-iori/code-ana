@@ -25,9 +25,20 @@ class ModuleAnnotations(unittest.TestCase):
   self.assertTrue(proof['original_evidence_retained']);self.assertEqual(targets[0][1]['attributes']['binding_failure'],'missing_symbol')
   self.assertTrue(any(f['kind']=='diagnostic' and f['status']=='ERROR' and f['source']=='use/Use.java' for f in result['facts']))
  def test_parallel_and_cache_are_semantically_equal(self):
-  plan=self.plan();base=self.analyze(plan)['facts']
+  plan=self.plan()
+  # A full-SOURCE equality oracle uses the same compilation environment for both worlds.
+  # Different Maven environments use the producer ABI and have their own parity witness.
+  plan[0]['classpath']=list(plan[1]['classpath'])
+  base=self.analyze(plan)['facts']
   for parallelism,cache in ((2,False),(1,True),(2,True)):
    self.assertEqual(base,self.analyze(plan,parallelism=parallelism,cache=cache)['facts'])
+ def test_cached_provider_without_consumer_annotation_jar_keeps_possible_binding(self):
+  plan=self.plan();one=self.analyze(plan,cache=True)
+  self.assertEqual(one['facts'],self.analyze(plan,cache=True,parallelism=2)['facts'])
+  self.assertEqual([signature for signature,_ in self.targets(one)],['p.Api#getName()'])
+  self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] for _,f in self.targets(one)))
+  self.assertTrue([f for f in one['facts'] if f['kind']=='diagnostic' and f['source']=='use/Use.java' and f['status']=='ERROR'])
+  self.assertGreater(one['module_signature_report']['module_archives_used'],0)
  def test_consumer_delta_reanalyzes_unchanged_provider_without_publishing_it(self):
   base=self.analyze(self.plan())['facts'];changed=self.plan('return api.getName()+"x";')
   delta=self.analyze(changed,base);full=self.analyze(changed)['facts']

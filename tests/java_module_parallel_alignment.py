@@ -58,8 +58,8 @@ class ParallelModules(unittest.TestCase):
   for path in (self.root/'signature-cache-modules').glob('*/signatures.jar'):path.write_bytes(b'bad')
   delta=self.analyze(plan,first,cache=True,parallelism=2);self.assert_facts(self.merged(first,delta),self.analyze(plan)['facts'])
   self.assertEqual(delta['compiler_sources'],3);self.assertEqual(delta['module_signature_report']['module_archives_used'],0)
- def test_mediated_classpath_changes_constant_values_and_cannot_reuse_parent_abi(self):
-  import subprocess,shutil
+ def test_mediated_classpath_uses_producer_abi_like_frozen_anatomist(self):
+  import subprocess,shutil,tempfile,hashlib
   jars=[]
   for value in (1,2):
    folder=self.root/('constant'+str(value));folder.mkdir();source=folder/'Constants.java';source.write_text('package ext;public class Constants {public static final int VALUE='+str(value)+';}')
@@ -71,5 +71,19 @@ class ParallelModules(unittest.TestCase):
   cold=self.analyze(plan);cached=self.analyze(plan,cache=True,parallelism=2)
   field=next(f for f in cold['facts'] if f['signature']=='p.Use#VALUE');self.assertEqual(field['attributes']['constant_value'],2)
   print('constant proof:',json.dumps({mode:[(f['signature'],f['attributes'].get('constant_value')) for f in result['facts'] if f['signature'] in ('p.Use#VALUE','p.Lib#VALUE')] for mode,result in [('full_source',cold),('module_cache',cached)]}),flush=True)
-  self.assert_facts(cold['facts'],cached['facts']);self.assertEqual(cached['module_signature_report']['module_archives_used'],0)
+  self.assertEqual(next(f['attributes']['constant_value'] for f in cached['facts'] if f['signature']=='p.Use#VALUE'),1)
+  self.assertEqual(cached['module_signature_report']['module_archives_used'],1)
+  self.assertEqual(cached['compiler_sources'],2)
+  # The oracle runs the frozen backend's real Maven module/signature plan, not a
+  # downstream full-SOURCE recompile of the producer on a different dependency version.
+  jar=ROOT.parent/'anatomist/target/anatomist.jar'
+  self.assertEqual(hashlib.sha256(jar.read_bytes()).hexdigest(),'457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e')
+  with tempfile.TemporaryDirectory() as folder:
+   reference=pathlib.Path(folder)
+   subprocess.run([str(model.JDK25/'bin/javac'),'-cp',str(jar),'-d',str(reference),
+       str(ROOT/'lang-adaptor/src/frozen-test/java/com/anatomist/core/javac/FrozenModuleClasspathReferenceProbe.java')],check=True,capture_output=True,timeout=30)
+   result=subprocess.run([str(model.JDK25/'bin/java'),'-cp',str(reference)+os.pathsep+str(jar),
+       'com.anatomist.core.javac.FrozenModuleClasspathReferenceProbe',str(reference/'project'),str(model.JDK8),*jars],check=True,capture_output=True,text=True,timeout=60)
+   self.assertIn('seen=1',result.stdout);self.assertIn('direct=2',result.stdout)
+   self.assertIn('archivesUsed=1',result.stdout);self.assertIn('sourceAppearances=2',result.stdout)
 if __name__=='__main__':unittest.main(verbosity=2)

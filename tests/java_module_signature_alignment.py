@@ -107,7 +107,7 @@ class ModuleProof(unittest.TestCase):
   changed=self.analyze(contexts,cache=True)
   self.assert_facts(changed['facts'],self.analyze(contexts)['facts'])
   self.assertGreater(changed['module_signature_report']['module_signatures_published'],0)
- def test_incomplete_upstream_is_not_promoted(self):
+ def test_upstream_body_errors_survive_header_reuse_without_changing_facts(self):
   contexts=self.reactor();source=self.root/'lib/p/Api.java';source.write_text(source.read_text().replace('return value;','return Missing.value;'))
   for ctx in contexts:
    for row in ctx['sources']:
@@ -115,8 +115,68 @@ class ModuleProof(unittest.TestCase):
   cold=self.analyze(contexts)
   cached=self.analyze(contexts,cache=True)
   self.assert_facts(cold['facts'],cached['facts'])
-  self.assertEqual(cached['compiler_sources'],6)
-  self.assertEqual(cached['module_signature_report']['module_archives_used'],0)
+  self.assertEqual(cached['compiler_sources'],3)
+  self.assertGreater(cached['module_signature_report']['module_archives_used'],0)
+  self.assertTrue([f for f in cached['facts'] if f['kind']=='diagnostic' and f['status']=='ERROR'])
+
+ def test_consumer_classpath_keeps_producer_constants_and_own_binary_resolution(self):
+  import tempfile,subprocess,zipfile
+  with tempfile.TemporaryDirectory() as folder:
+   root=pathlib.Path(folder);jars=[]
+   for value in (1,2):
+    source=root/f'v{value}/dep/Version.java';source.parent.mkdir(parents=True)
+    source.write_text(f'package dep;public class Version {{public static final int VALUE={value};}}')
+    classes=root/f'classes{value}';classes.mkdir()
+    subprocess.run([str(models.JDK8/'bin/javac'),'-proc:none','-d',str(classes),str(source)],check=True,capture_output=True,timeout=30)
+    jar=root/f'v{value}.jar'
+    with zipfile.ZipFile(jar,'w') as out:out.write(classes/'dep/Version.class','dep/Version.class')
+    jars.append(str(jar))
+   lib=self.context('lib',{'api/Api.java':'package api;public class Api {public static final int VALUE=dep.Version.VALUE;}'},classpath=[jars[0]])
+   use=self.context('use',{'p/Use.java':'package p;public class Use {public static final int seen=api.Api.VALUE;public static final int direct=dep.Version.VALUE;}'},classpath=[jars[1]])
+   use['sources']=[dict(s,publish=False) for s in lib['sources']]+use['sources']
+   contexts=[use,lib];result=self.analyze(contexts,cache=True)
+   constants={f['name']:f['attributes']['constant_value'] for f in result['facts'] if f['kind']=='declaration' and f['source']=='use/p/Use.java' and 'constant_value' in f['attributes']}
+   self.assertEqual(constants,{'seen':1,'direct':2})
+   self.assertEqual(result['compiler_sources'],2)
+   self.assert_facts(result['facts'],self.analyze(contexts,cache=True)['facts'])
+   # Independent SDK8 module compilation, restricted to this generated fixture.
+   classes=root/'module-lib';classes.mkdir()
+   subprocess.run([str(models.JDK8/'bin/javac'),'-proc:none','-cp',jars[0],'-d',str(classes),lib['sources'][0]['input']],check=True,capture_output=True,timeout=30)
+   archive=root/'api.jar'
+   with zipfile.ZipFile(archive,'w') as out:out.write(classes/'api/Api.class','api/Api.class')
+   output=root/'module-use';output.mkdir()
+   subprocess.run([str(models.JDK8/'bin/javac'),'-proc:none','-cp',str(archive)+os.pathsep+jars[1],'-d',str(output),use['sources'][-1]['input']],check=True,capture_output=True,timeout=30)
+   text=subprocess.run([str(models.JDK8/'bin/javap'),'-constants',str(output/'p/Use.class')],check=True,capture_output=True,text=True,timeout=30).stdout
+   self.assertIn('seen = 1',text);self.assertIn('direct = 2',text)
+   # A producer classpath change invalidates the catalogue even with unchanged sources.
+   lib['classpath']=[jars[1]]
+   changed=self.analyze(contexts,cache=True)
+   self.assertEqual(next(f['attributes']['constant_value'] for f in changed['facts'] if f['signature']=='p.Use#seen'),2)
+   self.assert_facts(changed['facts'],self.analyze(contexts)['facts'])
+
+ def test_incomplete_declaration_header_keeps_source_and_diagnostics(self):
+  contexts=self.reactor();source=self.root/'lib/p/Api.java'
+  source.write_text(source.read_text().replace('public T value;','public Missing value;'))
+  for ctx in contexts:
+   for row in ctx['sources']:
+    if row['path']=='lib/p/Api.java':row['hash']=sha(source.read_bytes())
+  cold=self.analyze(contexts);cached=self.analyze(contexts,cache=True)
+  self.assert_facts(cold['facts'],cached['facts'])
+  self.assertGreater(cached['compiler_sources'],3)
+  reasons=str(cached['module_signature_report']['module_signature_fallbacks'])
+  self.assertTrue('SIGNATURE_WRITTEN_TYPE_INCOMPLETE' in reasons or 'INCOMPLETE_SIGNATURE_TYPE' in reasons,reasons)
+
+ def test_compact_catalogue_omits_leaf_body_variables_but_preserves_full_facts(self):
+  from java_model_api_inventory_diff import archive_rows
+  lib=self.context('lib',{'Api.java':'public class Api {public int read(){'+''.join(f'int local{i}={i};' for i in range(200))+'return local199;}}'})
+  use=self.context('use',{'Use.java':'class Use {int read(){return new Api().read();}}'})
+  use['sources']=[dict(s,publish=False) for s in lib['sources']]+use['sources']
+  result=self.analyze([use,lib],cache=True)
+  self.assert_facts(result['facts'],self.analyze([use,lib])['facts'])
+  rows=[row['value'] for file in (self.root/'signature-cache-modules').glob('*/catalogue.bin')
+        for row in archive_rows(file) if row.get('kind')=='row' and row.get('section')=='declarations']
+  self.assertTrue(rows)
+  self.assertFalse([d for d in rows if d['attributes']['element_kind']=='LOCAL_VARIABLE'])
  def test_catalogue_lru_inflight_lease_shared_eviction_and_cancel(self):
   import subprocess
   contexts=[self.context('lib'+str(i),{f'Api{i}.java':f'public class Api{i} {{ '+''.join(f'public int value{j}(){{return {j};}}' for j in range(50))+' }'}) for i in range(4)]

@@ -221,3 +221,11 @@ stage5 全项目于3667.177秒失败，57个上下文完成；core/service MAIN�
 新增任务内32MiB有界JAR包目录/SHA缓存：绑定补全、调用恢复、反射及减量路径共享；不共享带classpath位置的来源或可变类声明。输入身份变化撤销缓存，预算满回退原有精确顺序查找。256-JAR低描述符探针覆盖同名遮蔽/重排、替换、取消和零预算，已通过。SDK8类型图11项通过；修复探针显式源码清单漏依赖及Java8不支持var。integration35952事实逐条比较，仅82条provenance.model_version为8→9，其余完全一致；仍不是全项目语义门禁。成套model9 native与Rust release已构建，最终组合回归和独占真实重放待验收。
 
 同版本JVM回归首轮48组通过，第49组模型API因独立验收读取器只认CAF1而停在MODEL_API_ARCHIVE_VERSION；没有SIGKILL或输入/产物漂移，串行driver已停止，真实项目未启动。修复读取器以独立验证CAM1，保留CAF1参考/公开事实路径；新增5项字典契约/损坏输入/编码/作用域/重复投影门禁。模型API全部fixture重跑通过，产品native未变；完整新源回归继续串行重跑，失败回执不改为成功。
+
+## Maven模块边界纠正（perf-v3）
+
+独立SDK8夹具复现整份classpath相等策略的问题：上游Api以依赖v1计算VALUE=1，下游使用v2；旧产品拒绝NoCode并在下游重解析上游，seen=2，按模块分别编译得到seen=1/direct=2。证据perf-v2-cp-repro/receipt.json及javap.txt（仅编译新建fixture，没有编译业务项目）。参考JavacSignaturePlan.input消费上游自身fingerprint及声明目录，不要求consumer/producer CP相等。这纠正了前述“必须先证明consumer CP等价”的方向：正确证明对象是上游自己的源码/CP，而不是用下游环境重定义上游API。
+
+新模块缓存格式v9保留原始javac声明，按producer源/CP进行SHA/key校验；下游维持自身CP。保存/恢复上游自有分析诊断，完整签名允许方法体错误，parse/编码失败及不完整声明头仍SOURCE，类型/生成证据不会提升置信度。目录去掉无结构子节点的局部变量，参数/注解/结构父节点保留。首批模块10项通过（实际CP两版本+SDK8编译见证、body错误事实逐条等价、缓存变更），完整专项8组仍运行。先前第二轮JVM回归及等待driver为修正模块边界主动SIGINT/SIGTERM，保留中断回执，不当SIGKILL或成功验收；native仍需重建。
+
+冻结Anatomist JAR实际Maven模块分析已验证seen=1/direct=2，archivesUsed=1/sourceAppearances=2；新FrozenModuleClasspathReferenceProbe进入并行模块回归。更新旧CP断言及跨环境注解对照：相同CP逐条全量事实一致，不同CP按独立模块/冻结参考验证生产者API；生成调用保持possible和原始consumer错误。模块12、ABI7、overlay9、parallel8、跨模块注解11、框架14、XML和会话10专项通过，证据perf-v3-focused*/receipt.json。目录精简保留结构父节点，200个leaf变量不入依赖目录，全量事实不变。native重建及最终组合/真实项目门禁仍待。

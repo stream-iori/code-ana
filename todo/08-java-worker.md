@@ -1169,3 +1169,5 @@ de8c99b固定验收：native模型17项与冻结框架参考通过，无源码/�
 2026-10-07 两倍耗时改造：stage5完整索引61分7秒native OOM，57上下文，未发布；2/3没有启动。model9二进制归档、上下文释放、细粒度进度节流、缓存写入及闭包复用已实现，最终组合回归/native/真实项目/80+80/14域/三轮性能待验收；整classpath比较阻断846/847依赖配对，需输入证明，不能直接去掉保护。详见docs/implementation/java-adaptor-rewrite.md。
 
 - 性能实施检查点：model9成套native/Rust已构建；JAR包目录共享及SDK8探针通过；integration35952事实仅版本来源82条变化。待最终组合完整回归、core/service内存/耗时、模块有效输入证明、全项目发布/语义差分与三轮<2倍门禁。
+
+- perf-v3：已复现并纠正Maven producer CP边界（旧SOURCE重编译常量2，SDK8模块编译及新缓存结果1）；缓存v9恢复原始body诊断，坏parse/编码/声明头仍SOURCE。正在专项回归及重建native。全项目、raw/AST80、14域、三轮<2倍仍未验收；旧等待流程已主动中止。

@@ -356,7 +356,7 @@ scratch 不等于文件系统硬配额：采样写入可短暂超限；SQLite �
 
 数字传输支持精确的整数、小数与指数，整数配置必须精确落在 long 范围，不允许截断；数字 token 最长 1024 字符。NaN/Infinity 不属于 JSON 数字，SOURCE 和 ASM 常量以 `{ "non_finite": "NaN|Infinity|-Infinity" }` 形式保存。诊断按源码 URI 与位置索引，查询匹配后恢复编译器报告顺序，不改变原始诊断证据。
 
-模块 NoCode 缓存格式 `java8-module-signature-v3-model5-original`。串行按上游 MAIN 顺序分析，并行按依赖就绪批次分析；消费模块等待父模块完成，环依赖保留 SOURCE。父模块与消费模块的有序编译 classpath 内容身份不一致时保留 SOURCE，避免 Maven 版本调解改变常量或类型后复用错误的签名。归档仅投影模型扩展之前的原始 javac 声明，不含方法 Code；恢复 SOURCE 目录后重新执行当前 context 的模型扩展，生成方法仍为 possible，不会升级为 javac-confirmed。诊断、目录冲突或不完整模型回退完整 SOURCE。持久化原子提交、验证摘要后复制到任务私有 pin；共享目录解码/LRU/租约使用同一锁，保护并行解码和在途引用。文件/模块共享 256 MiB 磁盘和任务私有 pin 预算已实现，真实 JVM 的双向淘汰、跨进程写入、取消及副本消费通过；新完整生产容量仍待验收。
+模块 NoCode 缓存格式 `java8-module-signature-v9-model9-original-diagnostics`。串行按上游 MAIN 顺序分析，并行按依赖就绪批次分析；消费模块等待父模块完成，环依赖保留 SOURCE。模块声明属于上游 producer world；缓存 key/manifest 验证该 world 的有序 classpath、原字节及完整源码清单，下游仍使用自身 classpath，不要求两份 classpath 相等，也不在下游重新编译上游方法体。归档仅投影模型扩展之前的原始 javac 声明，不含方法 Code；恢复 SOURCE 目录后重新执行当前 context 的模型扩展，生成方法仍为 possible，不会升级为 javac-confirmed。上游方法体分析诊断按自有 source 保存并恢复，诊断重复数保持；leaf 局部变量可从依赖目录省略，保留结构父节点、参数和注解证据。输入解码/parse 失败、目录冲突或声明头不完整保留/回退 SOURCE，普通分析诊断不能丢弃。持久化原子提交、验证摘要后复制到任务私有 pin；共享目录解码/LRU/租约使用同一锁，保护并行解码和在途引用。文件/模块共享 256 MiB 磁盘和任务私有 pin 预算已实现，真实 JVM 的双向淘汰、跨进程写入、取消及副本消费通过；新完整生产容量仍待验收。
 
 冻结 JAR 的中央目录若被 Java25 拒绝，可使用 Anatomist 同范围的受限本地 ZIP 顺序读取；不改写原始输入/hash。每次扫描最多 50000 entries、8 MiB 名称、256 MiB 解压，保留 CRC、class 2 MiB 上限、取消和生命周期检查；无本地 ZIP 头或内容损坏仍拒绝。
 

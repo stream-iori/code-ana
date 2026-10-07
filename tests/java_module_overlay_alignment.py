@@ -40,11 +40,12 @@ class OverlayModules(unittest.TestCase):
    with self.subTest(source=source):self.prove(self.plan(source,client))
  def test_generated_calls_remain_possible_and_preserve_diagnostics(self):
   plan=self.plan('package p;@lombok.Getter class A {int n;}','package p;class Use {int read(A value){return value.getN();}}')
-  result=self.prove(plan,False)
+  result=self.prove(plan)
   getter_ids={r['id'] for r in result['facts'] if r['signature']=='p.A#getN()'}
   targets=[r for r in result['facts'] if r['kind']=='call_target' and r['target'] in getter_ids]
   self.assertTrue(targets);self.assertTrue(all(r['status']=='possible' for r in targets))
-  self.assertEqual(result['compiler_sources'],len(plan[1]['sources'])+len(plan[0]['sources']))
+  self.assertEqual(result['compiler_sources'],len(plan[1]['sources'])+1)
+  self.assertTrue([r for r in result['facts'] if r['kind']=='diagnostic' and r['status']=='ERROR'])
  def test_super_builder_original_abi_and_reapplied_hierarchy(self):
   self.prove(self.plan('package p;@lombok.experimental.SuperBuilder abstract class Parent<T> {T name;} @lombok.experimental.SuperBuilder class A<N extends Number> extends Parent<String> {int n;N value;}',super_builder=True),parallelism=2)
  def test_delta_annotation_removal_corruption_and_profile(self):

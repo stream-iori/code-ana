@@ -14,7 +14,7 @@ import java.util.jar.*;
 
 /** Verified, task-pinned module NoCode inputs. All failures leave sealed SOURCE available. */
 final class ModuleSignatures implements AutoCloseable {
-    private static final String FORMAT = "java8-module-signature-v8-model9-original-units";
+    private static final String FORMAT = "java8-module-signature-v9-model9-original-diagnostics";
     private static final long MAX_PART = 64L << 20,
             MAX_DISK = 256L << 20,
             MAX_CATALOGUE_WEIGHT = 256L << 20;
@@ -164,15 +164,6 @@ final class ModuleSignatures implements AutoCloseable {
                         .getBytes(StandardCharsets.UTF_8));
     }
 
-    private List<Object> classpathIdentity(Map<String, Object> context) throws IOException {
-        List<Object> identity = new ArrayList<>();
-        for (Object value : Json.list(context.get("classpath"))) {
-            Path file = Path.of((String) value);
-            identity.add(List.of(file.getFileName().toString(), inputHash(file)));
-        }
-        return identity;
-    }
-
     private void verifySources(Map<String, Object> ctx) throws IOException {
         for (Object raw : ownSources(ctx)) {
             Map<String, Object> source = Json.map(raw);
@@ -225,12 +216,19 @@ final class ModuleSignatures implements AutoCloseable {
         return ordered;
     }
 
-    private static boolean original(List<Object> declarations, Map<String, Object> model) {
+    private static boolean original(List<Object> declarations, List<Object> diagnostics) {
         for (Object raw : declarations) {
             Map<String, Object> a = Json.map(Json.map(raw).get("attributes"));
             if (a.containsKey("extension_producer")) return false;
         }
-        return Json.list(model.get("diagnostics")).isEmpty();
+        for(Object raw:diagnostics) {
+            Map<String,Object> diagnostic=Json.map(raw);
+            if("SOURCE_ENCODING_INVALID".equals(diagnostic.get("code"))
+                    || "JAVAC_PARSE_FAILED".equals(diagnostic.get("code"))
+                    || "parse".equals(diagnostic.get("phase")) && "ERROR".equals(diagnostic.get("severity"))
+                    || Json.string(diagnostic,"source").isEmpty()) return false;
+        }
+        return true;
     }
 
     synchronized void publish(Map<String, Object> ctx, Map<String, Object> model)
@@ -241,10 +239,15 @@ final class ModuleSignatures implements AutoCloseable {
     synchronized void publish(
             Map<String, Object> ctx, Map<String, Object> model, List<Object> compilerDeclarations)
             throws IOException {
+        publish(ctx,model,compilerDeclarations,Json.list(model.get("diagnostics")));
+    }
+
+    synchronized void publish(Map<String,Object> ctx,Map<String,Object> model,
+            List<Object> compilerDeclarations,List<Object> compilerDiagnostics) throws IOException {
         if (!enabled()
                 || sourceOnly.contains(Json.string(ctx, "world"))
                 || !"MAIN".equals(ctx.get("scope"))) return;
-        if (!original(compilerDeclarations, model)) {
+        if (!original(compilerDeclarations, compilerDiagnostics)) {
             reason(ctx, "incomplete compiler model or non-original declaration; use SOURCE");
             return;
         }
@@ -297,7 +300,14 @@ final class ModuleSignatures implements AutoCloseable {
                 catalogue.put("sources", ownSources(ctx));
                 // Snapshot predates BinaryIndex and model extensions, including constructor edits.
                 // The consumer runs its own extension configuration on restored SOURCE evidence.
-                catalogue.put("declarations", new ArrayList<>(declarations));
+                // Leaf body variables are not dependency declarations. Keep every parent
+                // needed by local/anonymous classes and all parameters/annotation evidence.
+                Set<String> parents=new HashSet<>();
+                for(var declaration:declarations)parents.add(Json.string(declaration,"parent"));
+                catalogue.put("declarations",declarations.stream().filter(d ->
+                        !Set.of("LOCAL_VARIABLE","EXCEPTION_PARAMETER","RESOURCE_VARIABLE")
+                                .contains(Json.map(d.get("attributes")).get("element_kind"))
+                        || parents.contains(d.get("signature"))).toList());
                 // External uses in omitted method bodies must remain visible as in full SOURCE
                 // extraction.
                 // Modeled override targets belong to published methods, not the original
@@ -308,7 +318,11 @@ final class ModuleSignatures implements AutoCloseable {
                                 .get("attributes")).get("extension_producer")))
                         .toList());
                 catalogue.put("annotation_types", model.get("annotation_types"));
-                for (String empty : List.of("observations", "syntax", "diagnostics"))
+                // Body errors remain visible in every consumer of these sealed source headers.
+                // Keep only this producer's diagnostics, not errors owned by its dependencies.
+                catalogue.put("diagnostics",compilerDiagnostics.stream()
+                        .filter(raw->own.contains(Json.map(raw).get("source"))).toList());
+                for (String empty : List.of("observations", "syntax"))
                     catalogue.put(empty, List.of());
                 ModelArchive.write(temp.resolve("catalogue.bin"), catalogue, MAX_PART);
                 Files.writeString(
@@ -422,10 +436,9 @@ final class ModuleSignatures implements AutoCloseable {
             if (parent == null || !"MAIN".equals(parent.get("scope"))) continue;
             Set<String> expected = new TreeSet<>();
             for (Object raw : ownSources(parent)) expected.add(Json.string(Json.map(raw), "path"));
-            if (!classpathIdentity(parent).equals(classpathIdentity(ctx))) {
-                reason(ctx, "upstream compile classpath differs; use SOURCE");
-                continue;
-            }
+            // A Maven dependency's API belongs to its producer world. The key/manifest
+            // verify that world's ordered classpath and sealed sources. Recompiling its
+            // bodies on a consumer's different classpath can change constants and bindings.
             if (!expected.equals(dependency.getValue())) {
                 reason(ctx, "partial upstream module inventory; use SOURCE");
                 continue;
@@ -642,6 +655,8 @@ final class ModuleSignatures implements AutoCloseable {
                         external.add(mutableHeader(Json.map(raw)));
                 Json.list(model.get("annotation_types"))
                         .addAll(Json.list(catalogue.model.model().get("annotation_types")));
+                for(Object diagnostic:Json.list(catalogue.model.model().get("diagnostics")))
+                    Json.list(model.get("diagnostics")).add(mutableHeader(Json.map(diagnostic)));
             }
             for (var header : headers.values())
                 Json.list(model.get("declarations")).add(mutableHeader(header));
