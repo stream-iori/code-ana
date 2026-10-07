@@ -193,3 +193,14 @@ Rust外围：`just test-rust`全部通过，包含workspace测试、产品端到
 | 代码中的重复工作 | NoCode为每个类再读全部类型的attributes；SupplementalAbi在判断是否需改写前先枚举复制所有属性。缓存一次MEMBER类型的标量classfile元数据，保留原词典序、自身/直接成员/祖先前缀筛选；不需改写的声明直接使用原只读头。NoCode资格、图/签名校验、处理器策略不变 |
 | 字节等价探针 | 517个类型、嵌套interface/enum/annotation及字面$前缀，旧/新版SHA256均为0b534a76bbe86477b07ac662a5c05d73fccbb3efaa1b6edbd0bb0b9e5315f900；attributes读取268840→2068。64MiB验证惰性未改头不被枚举复制 |
 | 回归 | 补充签名12项、模块签名9项及完整归档/小堆探针通过；新native、core/service实际重放和完整1/2/3仍需新同版本回执，不复用已中断全项目结果 |
+
+## Rust 入库预算重复扫描（2026-10-07）
+
+| 证据 / 修复 | 本轮结果 |
+|---|---|
+| 实际Java重放 | 8356dc5的core/service MAIN补充签名投影4.79秒（此前超过20分钟未完成），上下文489.84秒，事实提取212.10秒；MAIN/TEST均完成。selected core仍不是完整项目门禁 |
+| Rust热点 | `recovery-stage4-serial/core-service/daemon-finish.sample.txt`：后台100ms预算监控与候选暂存/派生的DiskBudget::directory_bytes占主要忙栈。CandidateFacts只读查询逐行调用包含全目录遍历的检查；候选DB增长到约1.52GiB后仍在收尾。随后主动取消旧runtime，保留868624538字节native结果作诊断；异常中断的配置租约通过身份核对及恢复日志清理，不能认定发布通过 |
+| 目录检查 | 任务内共享有界目录成员清单，每次仍读取活跃文件大小和类型；目录变更刷新、删除清理、缓存满回退；不缓存字节总量，不放宽symlink/overflow/总量检查，100ms监控保留 |
+| 派生读写 | 只读查询逐行保留取消检查；派生写入每256条复核磁盘，阶段前后复核最后不足256条的批次。事实验证、重复/悬空引用、原子发布均保留 |
+| 验证 | 预算4项覆盖文件追加、目录嵌套变更/删除、候选库增长、共享克隆、符号链接、缓存满回退；暂存8项覆盖逐行取消、批次预算和提交前尾批检查、失败保留旧版。`just test-rust`全部通过，日志`recovery-budget-rust-regression.log` |
+| 正式门禁 | 新Rust发行包、完整MAIN/TEST/XML、raw/AST各80上下文、14域差分仍需新回执。Java源码未再变化，沿用8356dc5成套native和模型探针；新正式流程重新冻结全部源码/产物并复核，不把旧中断的发布证据当通过 |

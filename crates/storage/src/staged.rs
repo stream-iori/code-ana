@@ -14,6 +14,8 @@ pub struct CandidateFacts<'a> {
     manifest: &'a Manifest,
     policy: &'a dyn CandidateDerivation,
     check: &'a dyn Fn() -> Result<()>,
+    cancellation: &'a dyn Fn() -> Result<()>,
+    writes: std::cell::Cell<usize>,
 }
 
 impl CandidateFacts<'_> {
@@ -22,7 +24,7 @@ impl CandidateFacts<'_> {
     }
 
     pub fn declarations(&self, source: &str, world: &str, signature: &str) -> Result<Vec<Fact>> {
-        (self.check)()?;
+        (self.cancellation)()?;
         let mut statement = self.db.prepare(
             "SELECT body FROM facts WHERE kind='declaration' AND source=? AND world=?
              AND json_extract(body,'$.signature')=? ORDER BY id",
@@ -30,7 +32,7 @@ impl CandidateFacts<'_> {
         let mut rows = statement.query(params![source, world, signature])?;
         let mut output = Vec::new();
         while let Some(row) = rows.next()? {
-            (self.check)()?;
+            (self.cancellation)()?;
             output.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
         }
         Ok(output)
@@ -43,7 +45,7 @@ impl CandidateFacts<'_> {
         let mut rows = statement.query([relation])?;
         let mut facts = Vec::new();
         while let Some(row) = rows.next()? {
-            (self.check)()?;
+            (self.cancellation)()?;
             facts.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
         }
         Ok(facts)
@@ -58,14 +60,14 @@ impl CandidateFacts<'_> {
         let mut rows = statement.query(params![relation, parent, parent])?;
         let mut facts = Vec::new();
         while let Some(row) = rows.next()? {
-            (self.check)()?;
+            (self.cancellation)()?;
             facts.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
         }
         Ok(facts)
     }
 
     pub fn fact(&self, id: &str) -> Result<Option<Fact>> {
-        (self.check)()?;
+        (self.cancellation)()?;
         self.db
             .query_row("SELECT body FROM facts WHERE id=?", [id], |r| {
                 r.get::<_, String>(0)
@@ -76,7 +78,11 @@ impl CandidateFacts<'_> {
     }
 
     pub fn insert(&self, fact: &Fact) -> Result<()> {
-        (self.check)()?;
+        (self.cancellation)()?;
+        let position = self.writes.get();
+        if position.is_multiple_of(256) {
+            (self.check)()?;
+        }
         ensure!(
             fact.owner.producer == self.policy.producer()
                 && fact.owner.kind == "aggregate"
@@ -103,6 +109,7 @@ impl CandidateFacts<'_> {
                 body
             ],
         )?;
+        self.writes.set(position + 1);
         Ok(())
     }
 }
@@ -411,12 +418,16 @@ impl Store {
         }
         drop(insert);
         if let Some(policy) = derivation {
+            check()?;
             policy.derive(&CandidateFacts {
                 db: &tx,
                 manifest: &revision.manifest,
                 policy,
                 check: &check,
+                cancellation: &cancellation,
+                writes: std::cell::Cell::new(0),
             })?;
+            check()?;
         }
         tx.execute(
             "INSERT OR REPLACE INTO identity VALUES('revision',?)",
@@ -602,6 +613,118 @@ mod tests {
         }
         writer.seal().unwrap()
     }
+    struct ReadWriteDerivation;
+    impl CandidateDerivation for ReadWriteDerivation {
+        fn producer(&self) -> &str {
+            "derived-test"
+        }
+        fn aggregate_id(&self) -> &str {
+            "links"
+        }
+        fn derive(&self, facts: &CandidateFacts<'_>) -> Result<()> {
+            for index in 0..1000 {
+                ensure!(facts.fact("a")?.is_some(), "MISSING_INPUT");
+                let mut output = fact(&format!("derived-{index}"), "a");
+                output.owner.producer = self.producer().into();
+                output.owner.id = self.aggregate_id().into();
+                facts.insert(&output)?;
+            }
+            Ok(())
+        }
+    }
+    #[test]
+    fn derived_reads_cancel_per_row_and_budget_checks_stay_batched() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let mut input = result();
+        input.facts = vec![fact("a", "")];
+        let disk = std::cell::Cell::new(0usize);
+        let cancelled = std::cell::Cell::new(0usize);
+        let staged = store
+            .stage_archive_with_derivation(
+                revision(),
+                &input.header(),
+                &spool(&input.facts),
+                "",
+                || {
+                    cancelled.set(cancelled.get() + 1);
+                    Ok(())
+                },
+                |_| {
+                    disk.set(disk.get() + 1);
+                    Ok(())
+                },
+                Some(&ReadWriteDerivation),
+            )
+            .unwrap();
+        assert_eq!(staged.summary.fact_count, 1001);
+        assert!(cancelled.get() >= 2000);
+        assert!(disk.get() < 100, "per-read disk scans: {}", disk.get());
+        drop(staged);
+        let cancelled = std::cell::Cell::new(0usize);
+        let failure = store
+            .stage_archive_with_derivation(
+                revision(),
+                &input.header(),
+                &spool(&input.facts),
+                "",
+                || {
+                    cancelled.set(cancelled.get() + 1);
+                    ensure!(cancelled.get() < 100, "CANCELLED");
+                    Ok(())
+                },
+                |_| Ok(()),
+                Some(&ReadWriteDerivation),
+            )
+            .err()
+            .unwrap();
+        assert!(failure.to_string().contains("CANCELLED"));
+        assert_eq!(store.head("t").unwrap(), "");
+    }
+
+    #[test]
+    fn partial_final_derived_batch_is_budget_checked_before_commit() {
+        struct OneWrite<'a>(&'a std::cell::Cell<bool>);
+        impl CandidateDerivation for OneWrite<'_> {
+            fn producer(&self) -> &str {
+                "derived-test"
+            }
+            fn aggregate_id(&self) -> &str {
+                "links"
+            }
+            fn derive(&self, facts: &CandidateFacts<'_>) -> Result<()> {
+                let mut output = fact("derived", "a");
+                output.owner.producer = self.producer().into();
+                output.owner.id = self.aggregate_id().into();
+                facts.insert(&output)?;
+                self.0.set(true);
+                Ok(())
+            }
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let mut input = result();
+        input.facts = vec![fact("a", "")];
+        let written = std::cell::Cell::new(false);
+        let failure = store
+            .stage_archive_with_derivation(
+                revision(),
+                &input.header(),
+                &spool(&input.facts),
+                "",
+                || Ok(()),
+                |_| {
+                    ensure!(!written.get(), "JAVA_SCRATCH_BUDGET");
+                    Ok(())
+                },
+                Some(&OneWrite(&written)),
+            )
+            .err()
+            .unwrap();
+        assert!(failure.to_string().contains("JAVA_SCRATCH_BUDGET"));
+        assert_eq!(store.head("t").unwrap(), "");
+    }
+
     #[test]
     fn staged_delta_matches_merge_and_pins_baseline_until_publication() {
         let dir = tempfile::tempdir().unwrap();
