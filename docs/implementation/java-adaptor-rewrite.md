@@ -88,3 +88,26 @@
 | 旧007d79d | native高级绑定216项通过，546次Rust事实校验，无漂移；属于旧版本证据，不认证de8c99b。其发布/raw/AST/完整回归主动SIGTERM并保存审计，非安全软件异常 |
 
 最新版入口：target/java-alignment/evidence/latest-java-correctness-run.json。发行失败源证据在de8c99b验收目录的shipped-fixture/index.stderr；原测试finally报告DAEMON_STOP_FAILED，实际先发生DAEMON_START_FAILED/SIGKILL。失败回执保留，不改写为成功。最终dist仍未替换，容量未验收。
+
+## iopengw 串行耗时重跑（2026-10-07）
+
+用户要求重新索引并对比Anatomist，原de8c99b完整验收在30248秒主动SIGTERM，配置已恢复、无异常signal。新实验复用同一固定native版本，不改Java分析规则。
+
+| 条件 | 设置 |
+|---|---|
+| 源码 | 从267c7ced4993aa88613f8f17a8099943fec98159重新git archive；5039个提交文件逐字节校验 |
+| 范围 | MAIN/TEST/XML，Lombok AST，单并发；共同排除已知1个坏UTF-8 TEST文件，原字节保持，不能作为该坏文件验收 |
+| 顺序 | Anatomist先运行并退出，再捕获code-ana新Maven输入、全量索引；无旧分析进程竞争 |
+| 缓存 | 新索引与独立产品/参考home，复用本机已有Maven依赖；不清OS缓存 |
+| 内存/JDK | 分析器1GiB、javac512MiB；SDKMAN Graal25宿主/Java8目标 |
+| Maven | 离线元数据；参考wrapper只允许扩展validate并拒绝目标编译生命周期；code-ana显式导出40模块的新输入 |
+
+| 首批结果 | 实测 |
+|---|---|
+| Anatomist | 成功提交；进程墙钟约110.211秒（5秒轮询上限误差），内部index105.037秒；4213个Java，55399 nodes、168038 edges，调用点等独立存储不包含在普通edges数里 |
+| code-ana Maven输入 | 15.033秒，40模块 |
+| code-ana全量索引 | 仍在运行，未发布；完成后自动记录索引和含Maven输入的总时间及耗时倍率 |
+
+实验入口`target/java-alignment/evidence/latest-iopengw-timing-run.json`；实际回执`rewrite-de8c99b/target/java-alignment/iopengw-timing-20261007-094626/comparison.json`，code-ana逐秒进度在其`codeana/receipt.json`。Anatomist配置覆盖单独记录并在参考结束后恢复；原提交文件再次校验。该试验不认证全范围语义对齐、坏文件处理或容量。
+
+原未完成运行的阶段日志统计：调用恢复25529.961秒（约85%）、Lombok1928.987秒（约6%）、事实提取730.966秒；不是完整索引性能成绩，也不能据此宣布根因已修复。
