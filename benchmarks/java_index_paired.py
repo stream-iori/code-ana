@@ -197,3 +197,6 @@ try:
     REPORT['capacity_accepted']=all(pair['results']['codeana']['capacity_passed'] for pair in REPORT['pairs']);save()
 except BaseException as error:
     REPORT.update(state='failed',failure=str(error),failure_type=type(error).__name__);save();raise
+
+print(json.dumps({key:REPORT[key] for key in ('state','performance_accepted','capacity_accepted','median_ratio')},indent=2))
+raise SystemExit(0 if REPORT['performance_accepted'] and REPORT['capacity_accepted'] else 1)
