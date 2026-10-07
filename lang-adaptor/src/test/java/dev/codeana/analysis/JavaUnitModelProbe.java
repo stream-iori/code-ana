@@ -32,6 +32,26 @@ public final class JavaUnitModelProbe {
     }
     public static void main(String[] args) throws Exception {
         Map<String,Object> raw=model();
+        var bodies=new LinkedHashMap<>(raw);
+        bodies.put("syntax",List.of(Json.object("source","A.java","id",1),
+                Json.object("source","B.java","id",2),Json.object("source","A.java","id",3)));
+        List<Object> retainedBody;
+        try(var session=new JavaSemanticModel(bodies,64L<<20)) {
+            var published=session.readView(Set.of("A.java"));
+            retainedBody=Json.list(published.get("syntax"));
+            if(retainedBody.size()!=2 || Json.number(Json.map(retainedBody.get(0)),"id")!=1
+                    || Json.number(Json.map(retainedBody.get(1)),"id")!=3)
+                throw new AssertionError("published body changed archive order");
+            if(session.declarations().get("B#value")==null
+                    || Json.list(published.get("declarations")).size()!=4)
+                throw new AssertionError("auxiliary headers lost");
+            if(!Json.list(session.readView(Set.of()).get("syntax")).isEmpty())
+                throw new AssertionError("empty publication retained bodies");
+            if(Json.list(bodies.get("syntax")).size()!=3)
+                throw new AssertionError("publication view changed original model");
+        }
+        try {retainedBody.size();throw new AssertionError("body escaped read session");}
+        catch(IllegalStateException expected) {}
         var duplicates=new ArrayList<>(Json.list(raw.get("declarations")));
         duplicates.add(declaration("Other.java","A","","CLASS",false));
         var duplicateModel=new LinkedHashMap<>(raw);duplicateModel.put("declarations",duplicates);
@@ -100,6 +120,26 @@ public final class JavaUnitModelProbe {
         raw.put("syntax",List.of(Json.object("source","A.java","id",1,"kind","IDENTIFIER"),
                 Json.object("source","B.java","id",1,"kind","IDENTIFIER")));
         ModelArchive.write(archive,raw,16*1024*1024);
+        try(var open=ModelArchive.open(archive,Json.sha(archive),16*1024*1024,"units");
+                var context=new JavaContextModel(open.model(),1024*1024);
+                var staged=new ModelArchive.RowSpool(directory,"context-unit",16*1024*1024)) {
+            var first=context.unique("A#value");
+            var snapshot=Json.list(ExtensionContext.freeze(open.model().get("declarations")));
+            if(first!=context.unique("A#value"))throw new AssertionError("context lease not reused");
+            Json.map(first.get("attributes")).put("context_write",true);
+            if(!Boolean.TRUE.equals(Json.map(context.unique("A#value").get("attributes")).get("context_write"))
+                    ||Json.map(Json.map(snapshot.get(1)).get("attributes")).containsKey("context_write"))
+                throw new AssertionError("context lease lost mutation or changed snapshot");
+            var old=((JavaContextModel.FoundType)context.lookup("A")).declaration();
+            staged.add(declaration("A.java","A","","CLASS",false));
+            staged.add(declaration("A.java","A#fresh","A","FIELD",false));
+            context.replaceUnit("A.java",new UnitDeclarationRows(List.of(),staged,new int[]{-1,-2}));
+            if(context.unique("A#value")!=null || context.unique("A#fresh")==null
+                    ||context.unique("A#fresh")!=context.unique("A#fresh"))
+                throw new AssertionError("replacement reused stale lease or bypassed spool lease");
+            try {context.declaration(old);throw new AssertionError("old unit handle accepted");}
+            catch(IllegalArgumentException expected) {}
+        }
         try(var open=ModelArchive.open(archive,Json.sha(archive),16*1024*1024,"units");
                 var cached=new JavaSemanticModel(open.model(),1024*1024)) {
             var first=cached.declarations().get("A#value");

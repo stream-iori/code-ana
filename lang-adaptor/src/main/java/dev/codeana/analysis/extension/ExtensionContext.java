@@ -14,20 +14,40 @@ public final class ExtensionContext {
     private final List<Object> facts;
     private final List<Object> factInputs;
     private final List<ProjectResource> resources;
-    private dev.codeana.common.IndexedRecords declarations;
+    private static final class SharedModel {
+        dev.codeana.analysis.model.JavaSemanticModel semantic;
+        ModelAnnotations annotations;
+        dev.codeana.common.IndexedRecords declarations;
+        FrameworkFacts.Index facts;
+        List<Object> factInputs;
+        int factCount;
+    }
+    private SharedModel sharedModel = new SharedModel();
+    private ModelAnnotations annotationQueries;
     private DetachedJavaModel javaModel;
-    private FrameworkFacts.Index frameworkIndex;
-    private ModelAnnotations annotations;
     private final Map<String, dev.codeana.analysis.FrameworkAnalysis.UnitSession> frameworkSessions = new HashMap<>();
 
     FrameworkFacts.Index frameworkIndex() {
-        if (frameworkIndex == null) frameworkIndex = new FrameworkFacts.Index(this);
-        return frameworkIndex;
+        if (sharedModel.factInputs != factInputs || sharedModel.factCount > facts.size()) {
+            sharedModel.facts = null;
+            sharedModel.factCount = 0;
+            sharedModel.factInputs = factInputs;
+        }
+        boolean headersChanged = sharedModel.facts == null;
+        for (int i=sharedModel.factCount; i<facts.size(); i++) {
+            String kind = factKind(i);
+            if (kind.equals("declaration") || kind.equals("external_symbol")) headersChanged = true;
+        }
+        // Old contexts keep their immutable header snapshot. New header producers get a new index.
+        if (headersChanged) sharedModel.facts = new FrameworkFacts.Index(this);
+        sharedModel.factCount = facts.size();
+        return sharedModel.facts;
     }
 
     public List<Object> analyzeFramework(dev.codeana.analysis.model.JavaSemanticModel.Unit unit, String stage) throws Exception {
         var session = frameworkSessions.computeIfAbsent(stage, key ->
-                new dev.codeana.analysis.FrameworkAnalysis.UnitSession(configuration, model, facts, key));
+                new dev.codeana.analysis.FrameworkAnalysis.UnitSession(configuration, model, facts, key,
+                        key.equals("lombok") ? null : annotations()));
         return session.extract(unit.evidence(), unit.source());
     }
     private java.util.function.Consumer<String> progress = ignored -> {};
@@ -97,7 +117,9 @@ public final class ExtensionContext {
 
     /** Java/call callbacks share a completed model; each sees facts at its own callback entry. */
     ExtensionContext withFacts(List<Object> facts) {
-        return new ExtensionContext(configuration, model, facts, resources, true);
+        ExtensionContext next = new ExtensionContext(configuration, model, facts, resources, true);
+        next.sharedModel = sharedModel;
+        return next;
     }
 
     public Map<String, Object> configuration() {
@@ -109,6 +131,15 @@ public final class ExtensionContext {
     }
 
     /** Optional detached navigation; construction never copies the archive or exposes javac. */
+    dev.codeana.analysis.model.JavaSemanticModel semanticModel() {
+        if (sharedModel.semantic == null)
+            sharedModel.semantic = new dev.codeana.analysis.model.JavaSemanticModel(model,64L << 20);
+        return sharedModel.semantic;
+    }
+    void closeModel() {
+        if (sharedModel.semantic != null) sharedModel.semantic.close();
+        sharedModel = new SharedModel();
+    }
     public DetachedJavaModel javaModel() {
         if(javaModel==null)javaModel=new DetachedJavaModel(model,Boolean.TRUE.equals(configuration.get("full_auxiliary_model")));
         return javaModel;
@@ -137,21 +168,22 @@ public final class ExtensionContext {
 
     /** Task-local SOURCE/overlay lookup, with a lazy positional index and bounded decoded rows. */
     public Optional<Map<String, Object>> declaration(String signature) {
-        if (declarations == null) {
+        if (sharedModel.declarations == null) {
             List<Object> rows = Json.list(model.get("declarations"));
-            declarations = new dev.codeana.common.IndexedRecords(rows);
+            sharedModel.declarations = new dev.codeana.common.IndexedRecords(rows);
             for (int i = 0; i < rows.size(); i++) {
                 if (Thread.currentThread().isInterrupted())
                     throw new java.util.concurrent.CancellationException("CANCELLED");
-                declarations.index(Json.string(Json.map(rows.get(i)), "signature"), i);
+                sharedModel.declarations.index(Json.string(Json.map(rows.get(i)),"signature"),i);
             }
         }
-        return Optional.ofNullable(declarations.get(signature));
+        return Optional.ofNullable(sharedModel.declarations.get(signature));
     }
 
     public ModelAnnotations annotations() {
-        if (annotations == null) annotations = new ModelAnnotations(model);
-        return annotations;
+        if (sharedModel.annotations == null) sharedModel.annotations = new ModelAnnotations(model);
+        if (annotationQueries == null) annotationQueries = sharedModel.annotations.queries();
+        return annotationQueries;
     }
 
     public static Map<String, Object> freezeMap(Map<String, Object> value) {

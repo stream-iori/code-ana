@@ -515,18 +515,23 @@ public final class JavaAnalysis {
                     result.extensionReport = extensions.report();
                     return result;
                 }
-                SupplementalTypes.derive(ctx, model, session);
-                session.mark(Json.string(ctx, "context"), "call_recovery");
-                CallRecovery.recover(model, ctx, session.javaHome(),
-                        stage -> session.mark(Json.string(ctx, "context"), stage),
-                        metric -> session.metric(Json.string(ctx,"context"),metric));
-                session.mark(Json.string(ctx, "context"), "reflection");
-                ReflectionModel.analyze(ctx, model, session.javaHome());
+                if (!extensions.headerOnlyContext()) {
+                    SupplementalTypes.derive(ctx, model, session);
+                    session.mark(Json.string(ctx, "context"), "call_recovery");
+                    CallRecovery.recover(model, ctx, session.javaHome(),
+                            stage -> session.mark(Json.string(ctx, "context"), stage),
+                            metric -> session.metric(Json.string(ctx,"context"),metric));
+                    session.mark(Json.string(ctx, "context"), "reflection");
+                    ReflectionModel.analyze(ctx, model, session.javaHome());
+                } else {
+                    session.metric(Json.string(ctx,"context"),Json.object("stage","resource_headers",
+                            "duration_nanos",0,"published_files",0,"body_recovery_skipped",true));
+                }
                 session.mark(Json.string(ctx, "context"), "fact_extract");
                 coreArchive = session.newFactArchive();
                 List<Object> core =
                         new FactExtractor(ctx, Json.string(ctx, "digest"), coreArchive)
-                                .extract(model);
+                                .extract(model, metric -> session.metric(Json.string(ctx,"context"),metric));
                 session.mark(Json.string(ctx, "context"), "java_extensions");
                 List<Object> facts = extensions.analyzeJava(model, core);
                 session.mark(Json.string(ctx, "context"), "file_cache");
@@ -543,12 +548,14 @@ public final class JavaAnalysis {
                         new ContextResult(facts, published, moduleReduced, sourceCount);
                 result.extensionReport = extensions.report();
                 result.extensions = extensions;
+                session.mark(Json.string(ctx,"context"),"project_model_archive");
                 if (extensions.hasProjectStages())
                     result.projectModel = session.stageModel(extensions.projectModel(model), ctx);
                 result.coreArchive = coreArchive;
                 retained = true;
                 return result;
             } finally {
+                session.finishContextMetrics(Json.string(ctx,"context"));
                 try {
                     session.releaseModel(model);
                 } finally {

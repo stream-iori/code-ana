@@ -157,9 +157,13 @@ final class SourceTypeReferences {
         return Map.of();
     }
 
-    void emit(Consumer<Use> output) {
+    void emit(Consumer<Use> output) { emit(ignored -> true, output); }
+
+    void emit(java.util.function.Predicate<String> published, Consumer<Use> output) {
         for(Object raw:declared) {
-            Map<String,Object> d=map(raw),a=map(d.get("attributes"));
+            Map<String,Object> d=map(raw);
+            if (!published.test(text(d.get("source")))) continue;
+            Map<String,Object> a=map(d.get("attributes"));
             if(a.containsKey("extension_producer") || "ANONYMOUS".equals(a.get("nesting_kind")))continue;
             selectSource(text(d.get("source")));work=0;
             String k=text(a.get("element_kind")),signature=text(d.get("signature"));

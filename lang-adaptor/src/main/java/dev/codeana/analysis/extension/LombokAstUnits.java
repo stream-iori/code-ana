@@ -19,7 +19,8 @@ final class LombokAstUnits {
         if(spool!=null)staged=spool;
         Map<String,int[]> ranges=new LinkedHashMap<>();
         boolean accepted=false;
-        try(JavaContextModel environment=new JavaContextModel(context.model())) {
+        var generatedPolicy=new dev.codeana.analysis.LombokGeneratedPolicy(context.configuration());
+        try(JavaContextModel environment=new JavaContextModel(context.model(),32L<<20)) {
             context.progress("unit_inventory");
             for(JavaContextModel.Unit unit:environment.units()) {
                 String path=unit.identity().path();
@@ -33,7 +34,7 @@ final class LombokAstUnits {
                 }
                 Map<String,Object> working=new LinkedHashMap<>(context.model());
                 working.put("declarations",candidate);
-                LombokModel.augmentUnit(working,context.configuration(),environment,context::progress);
+                LombokModel.augmentUnit(working,context.configuration(),environment,context::progress,generatedPolicy);
                 ModelOverlay overlay=new ModelOverlay();Set<String> retained=new HashSet<>();
                 for(Object raw:candidate) {
                     Map<String,Object> row=Json.map(raw),attributes=Json.map(row.get("attributes"));
@@ -55,11 +56,9 @@ final class LombokAstUnits {
                 for(Object row:base)staged.add(row);
                 int length=staged.size()-start;
                 ranges.put(path,new int[]{start,length});
-                final List<Object> sealedRows=staged;
-                environment.replaceUnit(path,new AbstractList<>() {
-                    public int size(){return length;}
-                    public Object get(int index){Objects.checkIndex(index,length);return sealedRows.get(start+index);}
-                });
+                int[] unitPositions=new int[length];
+                for(int index=0;index<length;index++)unitPositions[index]=-start-index-1;
+                environment.replaceUnit(path,new UnitDeclarationRows(List.of(),staged,unitPositions));
             }
             long limit=context.configuration().containsKey("model_record_limit")?Json.number(context.configuration(),"model_record_limit"):100000;
             List<Integer> selected=new ArrayList<>();Set<String> inserted=new HashSet<>();

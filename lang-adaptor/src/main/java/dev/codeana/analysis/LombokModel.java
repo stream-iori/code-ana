@@ -25,8 +25,13 @@ public final class LombokModel {
     public static void augmentUnit(Map<String,Object> model,Map<String,Object> context,
             dev.codeana.analysis.model.JavaContextModel environment,
             java.util.function.Consumer<String> progress) {
+        augmentUnit(model,context,environment,progress,new LombokGeneratedPolicy(context));
+    }
+    public static void augmentUnit(Map<String,Object> model,Map<String,Object> context,
+            dev.codeana.analysis.model.JavaContextModel environment,
+            java.util.function.Consumer<String> progress,LombokGeneratedPolicy generatedPolicy) {
         if (!"model".equals(context.get("lombok"))) return;
-        new LombokDeclarations(model,context,progress,environment).apply();
+        new LombokDeclarations(model,context,progress,environment,generatedPolicy).apply();
     }
 
     /** Anatomist AST eligibility is per source unit, including auxiliary binding sources. */

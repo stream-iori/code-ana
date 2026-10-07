@@ -62,8 +62,7 @@ final class LombokDeclarations {
     private final Set<String> removed = new HashSet<>();
     private final LombokConfiguration configuration;
     private LombokConfiguration.Effective effective;
-    private Boolean generatedDefault;
-    private boolean generatedChecked;
+    private final LombokGeneratedPolicy generatedPolicy;
     private final java.util.function.Consumer<String> progress;
     private final Set<String> pendingSources;
     private dev.codeana.analysis.model.JavaContextModel lookup;
@@ -98,6 +97,12 @@ final class LombokDeclarations {
     LombokDeclarations(Map<String, Object> model, Map<String, Object> context,
             java.util.function.Consumer<String> progress,
             dev.codeana.analysis.model.JavaContextModel environment) {
+        this(model,context,progress,environment,new LombokGeneratedPolicy(context));
+    }
+    LombokDeclarations(Map<String,Object> model,Map<String,Object> context,
+            java.util.function.Consumer<String> progress,
+            dev.codeana.analysis.model.JavaContextModel environment,LombokGeneratedPolicy generatedPolicy) {
+        this.generatedPolicy=generatedPolicy;
         this.progress = progress;
         this.model = model;
         this.context = context;
@@ -1856,43 +1861,7 @@ final class LombokDeclarations {
     }
 
     private Boolean generatedPolicy() {
-        if (effective.generated() != null) return effective.generated();
-        if (!generatedChecked) {
-            generatedChecked = true;
-            for (Object item : items(context.get("classpath")))
-                try (FrozenArchive jar = new FrozenArchive(java.nio.file.Path.of(text(item)))) {
-                    if (jar.getEntry("lombok/Getter.class") == null) continue;
-                    var entry = jar.getEntry("META-INF/MANIFEST.MF");
-                    if (entry == null) break;
-                    byte[] data;
-                    try (var input = jar.getInputStream(entry)) {
-                        data = input.readNBytes(65537);
-                    }
-                    if (data.length > 65536) break;
-                    String version =
-                            new java.util.jar.Manifest(new java.io.ByteArrayInputStream(data))
-                                    .getMainAttributes()
-                                    .getValue("Lombok-Version");
-                    if (version != null) {
-                        var matcher =
-                                java.util.regex.Pattern.compile("^(\\d+)\\.(\\d+)\\.(\\d+).*")
-                                        .matcher(version);
-                        if (matcher.matches()) {
-                            int major = Integer.parseInt(matcher.group(1)),
-                                    minor = Integer.parseInt(matcher.group(2)),
-                                    patch = Integer.parseInt(matcher.group(3));
-                            generatedDefault =
-                                    major > 1
-                                            || major == 1
-                                                    && (minor > 18 || minor == 18 && patch >= 34);
-                        }
-                    }
-                    break;
-                } catch (IOException | NumberFormatException failure) {
-                    break;
-                }
-        }
-        return generatedDefault;
+        return effective.generated() != null ? effective.generated() : generatedPolicy.value();
     }
 
     private static Map<String, Object> annotation(

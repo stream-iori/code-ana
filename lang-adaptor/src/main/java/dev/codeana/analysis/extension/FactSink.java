@@ -66,6 +66,21 @@ public final class FactSink {
         }
     }
 
+    /** One identity index for an append-only Java stage; callback views remain frozen. */
+    static final class StageIndex {
+        private final List<Object> rows;
+        private ValidationIndex index;
+        StageIndex(List<Object> rows){this.rows=rows;}
+        ValidationIndex get() {
+            if(index==null)index=new ValidationIndex(rows);
+            else {
+                if(index.count>rows.size())throw new IllegalStateException("EXTENSION_FACTS_NOT_APPEND_ONLY");
+                index.added(rows.subList(index.count,rows.size()));
+            }
+            return index;
+        }
+    }
+
     List<Object> validate(
             ExtensionPoint extension, ExtensionContext context, ValidationIndex existing) {
         long limit =

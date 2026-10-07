@@ -156,3 +156,17 @@
 发行后续：7e55fe5修复包manifest仍写旧worker11/request5/compiler8/model7的问题，Java协议字段直接取已校验的native manifest，worker为12。独立`recovery-release`副本的`release-v16/receipt.json`四项全部通过（35.618秒、源码/产物/包均无漂移）：基础产品、Maven XML MAIN/TEST及增量、错误JDK拒绝、包内CLI自动启动daemon后索引/calls/source。包位于该证据目录的`package/`。这是发行功能通过，不代表全项目语义或性能门禁通过；尚未替换最终dist。
 
 Rust外围：`just test-rust`全部通过，包含workspace测试、产品端到端、格式及clippy；日志`target/java-alignment/recovery-rust-regression.log`。没有扩张Java/Rust职责边界。
+
+## 第二轮重复工作修复（registry v17，2026-10-07）
+
+| 用户要求 | 实施边界 |
+|---|---|
+| 排除竞争 | 主动SIGTERM旧诊断、v16发布、raw/AST和差分等待器；保留原回执和停止审计`recovery-isolation-stop.json`。新链路按fixture→原生→单次全项目发布→raw→AST→差分串行，完整对照不与索引同时执行 |
+| 共享索引/缓存 | 事实提取只建一个64MiB逻辑租约会话；扩展共享模型位置索引、声明/注解索引和未变化的事实头索引；Java阶段身份校验索引增量更新。注解查询预算/诊断各扩展独立，可关闭的导航句柄保持独立，旧事实视图不看到新声明 |
+| 辅助与空发布 | 辅助声明头、类型查询和XML成员保留；绑定/源码类型投影提前限定发布文件。空发布事实阶段不读body，逐文件扩展跳过；仅逐文件Java分析器及明确声明只需头部的项目扩展允许跳过补充javac/调用/反射，旧全模型扩展不缩窄 |
+| 补充分析与缓存核查 | 每上下文保存完成阶段区间和进入次数，含初次/补充javac、解码、缓存写入；项目模型归档单列，避免误算为模块缓存。缓存资格、SHA和NoCode证明不放宽 |
+| Lombok额外根因 | 每文件新建规则对象，使Generated默认策略重复扫描同一classpath。改为上下文内一次，包括未知版本的负结果；保留classpath顺序、manifest读取预算与源级显式策略优先级。声明租约32MiB，替换单位时清旧租约；不复用其他请求的状态 |
+
+单上下文串行JVM重放：integration MAIN的754源码/82发布文件、619 JAR、319待Lombok单位；v16为44.254秒，新版24.221秒（约45%减少）。Lombok阶段18.745→2.679秒，事实提取3.884→约2.713秒，框架3.802→约1.137秒。35952事实ID和语义内容相同，唯一provenance差异为registry指纹。证据`target/java-alignment/recovery-stage3-profile-v2`及`recovery-stage3-profile-v4`；后者包含策略复用修复。这是JVM上下文诊断，不是native全项目或两倍性能门禁。
+
+已完成JVM验证：归档/小堆/租约/别名、类型引用11、框架14、扩展21、XML12及新增空发布XML用例、模块覆盖9、模块签名9、缓存4；Generated策略修复后Lombok17/Builder14/SuperBuilder8/模块覆盖9、独立模型API18通过。独立模型API保留两例已复现参考缺陷，不把raw不同改写为相等。完整新版native、全项目发布、完整raw/AST、14域差分与三轮性能仍待实际回执，最终dist尚未替换。

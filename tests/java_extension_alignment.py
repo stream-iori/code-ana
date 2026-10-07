@@ -14,6 +14,12 @@ class Extensions(unittest.TestCase):
     analyze = model_tests.Models.analyze
     merged = model_tests.Models.merged
 
+    def test_shared_read_session_preserves_snapshots_and_query_budgets(self):
+        cp=os.pathsep.join(str(model_tests.ROOT/'lang-adaptor/target'/p)
+                           for p in ('classes','test-classes'))
+        subprocess.run([str(model_tests.JDK25/'bin/java'), '-Xmx64m', '-cp', cp,
+                        'dev.codeana.analysis.extension.SharedReadSessionProbe'], check=True, timeout=30)
+
     def test_lombok_ast_initializer_metadata_and_idempotence(self):
         cp=os.pathsep.join(str(model_tests.ROOT/'lang-adaptor/target'/p)
                            for p in ('classes','test-classes'))

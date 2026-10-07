@@ -81,6 +81,34 @@ public final class JavaSemanticModel implements AutoCloseable {
         check();return (section.equals("syntax")?body:headers).get(section,position);
     }
     public void beginUnit(){check();body.clear();}
+    /** Read-only row lists over the same evidence and bounded leases; never escape this session. */
+    public Map<String,Object> readView() {
+        check();var view=new LinkedHashMap<>(model);
+        for(String section:List.of("declarations","syntax","observations","external","annotation_types")) {
+            List<Object> backing=Json.list(model.get(section));
+            view.put(section,new AbstractList<Object>() {
+                public int size(){check();return backing.size();}
+                public Object get(int index){return row(section,index);}
+            });
+        }
+        return view;
+    }
+    /** Auxiliary headers remain queryable; source-body passes only read published files. */
+    public Map<String,Object> readView(Set<String> published) {
+        var view=readView();
+        for(String section:List.of("syntax","observations")) {
+            List<Integer> positions=new ArrayList<>();
+            for(Unit unit:units.values())
+                if(published.contains(unit.source)) positions.addAll(unit.positions.getOrDefault(section,List.of()));
+            // Keep archive order, including interleaved rows from different units.
+            positions.sort(Integer::compareTo);
+            view.put(section,new AbstractList<Object>() {
+                public int size(){check();return positions.size();}
+                public Object get(int index){return row(section,positions.get(index));}
+            });
+        }
+        return view;
+    }
     public List<Map<String,Object>> declarationRows() {
         check();return new AbstractList<>() {
             public int size(){check();return Json.list(model.get("declarations")).size();}

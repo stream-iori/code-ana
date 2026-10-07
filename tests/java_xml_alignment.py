@@ -39,6 +39,24 @@ class Xml(unittest.TestCase):
         self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['attributes'].get('code')=='EXTENSION_CALLBACK_FAILED'])
         return facts
 
+    def test_resource_only_context_keeps_auxiliary_construction_and_lifecycle(self):
+        context=self.captured({'beans.xml': '<beans><bean id="api" class="Api"/>'
+            '<bean id="holder" class="Holder" init-method="start" destroy-method="stop">'
+            '<constructor-arg ref="api"/><property name="name" value="one"/></bean></beans>'},
+            source='class Api {} class Holder {public Holder(Api api){} '
+                   'public void setName(String name){} public void start(){} public void stop(){}}')
+        context['sources']=[dict(row,publish=False) for row in context['sources']]
+        context['digest']=models.sha(json.dumps(context['sources'],sort_keys=True).encode())
+        result=self.analyze([context]);facts=result['facts']
+        self.merged([],dict(facts=facts,replacements=[]))
+        by={fact['id']:fact for fact in facts}
+        members={by[fact['target']]['signature'] for fact in facts
+                 if fact['relation']=='config_member'}
+        self.assertTrue({'Holder#<init>(Api)','Holder#setName(java.lang.String)',
+                         'Holder#start()','Holder#stop()'} <= members,members)
+        self.assertFalse([fact for fact in facts if fact['kind']=='call_site'])
+        self.assertFalse([fact for fact in facts if fact['kind']=='declaration'])
+
     def test_comment_initial_greater_than_retains_original_bytes_and_all_nodes(self):
         xml = ('<beans><!-->原字节😀<--><bean id="api" class="Api"/>'
                '<!-- --><bean id="holder" class="Holder">'

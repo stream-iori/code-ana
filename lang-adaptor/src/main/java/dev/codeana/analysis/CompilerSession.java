@@ -51,6 +51,24 @@ public final class CompilerSession implements AutoCloseable {
     private int phaseRecords;
     private long metricBytes;
     private static final long METRIC_BYTES=8L*1024*1024;
+    private static final class ContextTiming {
+        long start,last;
+        String phase;
+        final Map<String,Long> durations=new LinkedHashMap<>(), entries=new LinkedHashMap<>();
+        ContextTiming(long now){start=last=now;}
+        void advance(long now,String next) {
+            if(phase!=null)durations.merge(phase,now-last,Long::sum);
+            last=now;phase=next;
+            if(next!=null)entries.merge(next,1L,Long::sum);
+        }
+    }
+    private final Map<String,ContextTiming> contextTimings=new HashMap<>();
+    public synchronized void finishContextMetrics(String context) {
+        var timing=contextTimings.remove(context);if(timing==null)return;
+        long now=System.nanoTime();timing.advance(now,null);
+        metric(context,Json.object("stage","context_analysis","duration_nanos",now-timing.start,
+                "phase_durations_nanos",timing.durations,"phase_entries",timing.entries));
+    }
     /** Completed intervals, separate from sampled progress and semantic output. */
     public synchronized void metric(String context, Map<String,Object> metric) {
         var row=new LinkedHashMap<String,Object>(metric);
@@ -68,6 +86,12 @@ public final class CompilerSession implements AutoCloseable {
 
     /** Reserve a bounded failure receipt before entering an allocation-heavy phase. */
     public synchronized void mark(String context, String phase) {
+        if(!context.isEmpty() && !context.equals("global")) {
+            long now=System.nanoTime();
+            String group=phase.startsWith("model.lombok.")?"model.lombok":
+                    phase.startsWith("call_recovery")?"call_recovery":phase;
+            contextTimings.computeIfAbsent(context,key->new ContextTiming(now)).advance(now,group);
+        }
         String bounded = context.length() > 1024 ? context.substring(0, 1024) : context;
         String boundedPhase = phase.length() > 512 ? phase.substring(0, 512) : phase;
         heapFailure =

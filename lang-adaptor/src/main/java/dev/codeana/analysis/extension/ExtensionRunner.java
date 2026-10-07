@@ -37,6 +37,14 @@ public final class ExtensionRunner {
     public boolean hasProjectStages() {
         return !projectEnabled.isEmpty();
     }
+    /** No file callbacks exist; explicitly narrowed resource stages still receive all headers. */
+    public boolean headerOnlyContext() {
+        return Json.list(configuration.get("sources")).stream()
+                .map(Json::map).noneMatch(source -> Boolean.TRUE.equals(source.get("publish")))
+                && enabled.stream().noneMatch(e -> e instanceof JavaModelAnalyzer
+                        && !(e instanceof JavaUnitAnalyzer))
+                && projectEnabled.stream().noneMatch(ExtensionPoint::projectRequiresFullModel);
+    }
 
     public Map<String, Object> projectModel(Map<String, Object> model) {
         if (projectEnabled.stream().anyMatch(ExtensionPoint::projectRequiresFullModel)) return model;
@@ -122,162 +130,170 @@ public final class ExtensionRunner {
         List<Object> output = FactHeaders.appended(core);
         output.addAll(pending);
         ExtensionContext frozenInputs = null;
-        for (ExtensionPoint e : enabled)
-            if (e instanceof JavaModelAnalyzer analyzer) {
-                progress.accept("java." + e.id());
-                if (frozenInputs == null)
-                    frozenInputs = new ExtensionContext(configuration, model, List.of(), List.of());
-                ExtensionContext context =
-                        frozenInputs.withFacts(output);
-                if (analyzer instanceof JavaUnitAnalyzer perUnit) {
-                    Set<String> published = new HashSet<>();
-                    for (Object raw : Json.list(configuration.get("sources"))) {
-                        var source = Json.map(raw);
-                        if (Boolean.TRUE.equals(source.get("publish"))) published.add(Json.string(source,"path"));
-                    }
-                    FactSink.ValidationIndex identities = new FactSink.ValidationIndex(output);
-                    try (JavaSemanticModel semantic = new JavaSemanticModel(context.model())) {
-                        for (JavaSemanticModel.Unit unit : semantic.units()) {
-                            if (!published.contains(unit.source())) continue;
-                            int previous = output.size();
-                            ExtensionExecution.run(e,"java",context,report,output,unit.source(),()-> {
-                                FactSink sink = new FactSink();
-                                perUnit.analyzeUnit(context,unit,sink);
-                                List<Object> verified = sink.validate(e,context,identities);
-                                for (Object raw : verified)
-                                    if (!unit.source().equals(Json.string(Json.map(raw),"source")))
-                                        throw new IllegalArgumentException("EXTENSION_UNIT_FACT_OWNERSHIP");
-                                output.addAll(verified);
-                            });
-                            identities.added(output.subList(previous,output.size()));
+        FactSink.StageIndex stageIdentities = new FactSink.StageIndex(output);
+        try {
+            for (ExtensionPoint e : enabled)
+                if (e instanceof JavaModelAnalyzer analyzer) {
+                    progress.accept("java." + e.id());
+                    if (frozenInputs == null)
+                        frozenInputs = new ExtensionContext(configuration, model, List.of(), List.of());
+                    ExtensionContext context =
+                            frozenInputs.withFacts(output);
+                    if (analyzer instanceof JavaUnitAnalyzer perUnit) {
+                        Set<String> published = new HashSet<>();
+                        for (Object raw : Json.list(configuration.get("sources"))) {
+                            var source = Json.map(raw);
+                            if (Boolean.TRUE.equals(source.get("publish"))) published.add(Json.string(source,"path"));
                         }
+                        if (published.isEmpty()) continue;
+                        FactSink.ValidationIndex identities = stageIdentities.get();
+                        {
+                            JavaSemanticModel semantic = context.semanticModel();
+                            for (JavaSemanticModel.Unit unit : semantic.units()) {
+                                if (!published.contains(unit.source())) continue;
+                                semantic.beginUnit();
+                                int previous = output.size();
+                                ExtensionExecution.run(e,"java",context,report,output,unit.source(),()-> {
+                                    FactSink sink = new FactSink();
+                                    perUnit.analyzeUnit(context,unit,sink);
+                                    List<Object> verified = sink.validate(e,context,identities);
+                                    for (Object raw : verified)
+                                        if (!unit.source().equals(Json.string(Json.map(raw),"source")))
+                                            throw new IllegalArgumentException("EXTENSION_UNIT_FACT_OWNERSHIP");
+                                    output.addAll(verified);
+                                });
+                                identities.added(output.subList(previous,output.size()));
+                            }
+                        }
+                        continue;
                     }
-                    continue;
+                    if (analyzer instanceof JavaDeclarationAnalyzer perDeclaration) {
+                        FactSink.ValidationIndex identities = stageIdentities.get();
+                        for (Object raw : Json.list(context.model().get("declarations"))) {
+                            Map<String, Object> declaration = Json.map(raw);
+                            int previous = output.size();
+                            ExtensionExecution.run(
+                                    e,
+                                    "java",
+                                    context,
+                                    report,
+                                    output,
+                                    Json.string(declaration, "source"),
+                                    Json.string(declaration, "signature"),
+                                    () -> {
+                                        if (!perDeclaration.acceptsDeclaration(declaration)) return;
+                                        FactSink sink = new FactSink();
+                                        perDeclaration.analyzeDeclaration(context, declaration, sink);
+                                        List<Object> verified = sink.validate(e, context, identities);
+                                        output.addAll(verified);
+                                    });
+                            identities.added(output.subList(previous, output.size()));
+                        }
+                        continue;
+                    }
+                    ExtensionExecution.run(
+                            e,
+                            "java",
+                            context,
+                            report,
+                            output,
+                            "",
+                            () -> {
+                                FactSink sink = new FactSink();
+                                analyzer.analyze(context, sink);
+                                output.addAll(sink.validate(e, context, output));
+                            });
                 }
-                if (analyzer instanceof JavaDeclarationAnalyzer perDeclaration) {
-                    FactSink.ValidationIndex identities = new FactSink.ValidationIndex(output);
-                    for (Object raw : Json.list(context.model().get("declarations"))) {
-                        Map<String, Object> declaration = Json.map(raw);
+            for (ExtensionPoint e : enabled)
+                if (e instanceof JavaCallSiteEvidenceProvider observer) {
+                    progress.accept("call." + e.id());
+                    if (frozenInputs == null)
+                        frozenInputs = new ExtensionContext(configuration, model, List.of(), List.of());
+                    ExtensionContext context =
+                            frozenInputs.withFacts(output);
+                    FactSink.ValidationIndex identities = stageIdentities.get();
+                    for (int index = 0; index < context.facts().size(); index++) {
+                        if (!"call_site".equals(context.factKind(index))) continue;
+                        Map<String, Object> header = context.factHeader(index);
+                        final int position = index;
                         int previous = output.size();
                         ExtensionExecution.run(
                                 e,
-                                "java",
+                                "call",
                                 context,
                                 report,
                                 output,
-                                Json.string(declaration, "source"),
-                                Json.string(declaration, "signature"),
+                                Json.string(header, "source"),
+                                Json.string(header, "id"),
                                 () -> {
-                                    if (!perDeclaration.acceptsDeclaration(declaration)) return;
+                                    if (!observer.acceptsCallSite(context, header)) return;
+                                    Map<String, Object> call;
+                                    try {
+                                        call = Json.map(context.facts().get(position));
+                                    } catch (java.util.concurrent.CancellationException cancelled) {
+                                        throw cancelled;
+                                    } catch (RuntimeException malformed) {
+                                        ExtensionPoint.GateFailure failure = new ExtensionPoint.GateFailure("EXTENSION_CALL_INPUT_CORRUPT");
+                                        failure.initCause(malformed);
+                                        throw failure;
+                                    }
+                                    Optional<JavaCallSiteEvidenceProvider.Evidence> evidence =
+                                            observer.observe(context, call);
+                                    if (evidence.isEmpty()) return;
+                                    var value = evidence.get();
+                                    Map<String, Object> a = new TreeMap<>(value.attributes());
+                                    a.put("schema_version", value.schemaVersion());
+                                    Map<String, Object> owner =
+                                            new TreeMap<>(Json.map(call.get("owner")));
+                                    owner.put("producer", e.producer());
+                                    Map<String, Object> fact =
+                                            Json.object(
+                                                    "id",
+                                                    Json.key(
+                                                            "extension-call",
+                                                            e.id(),
+                                                            Json.string(call, "id"),
+                                                            value.namespace()),
+                                                    "kind",
+                                                    "facet",
+                                                    "owner",
+                                                    owner,
+                                                    "source",
+                                                    call.get("source"),
+                                                    "span",
+                                                    call.get("span"),
+                                                    "name",
+                                                    "",
+                                                    "signature",
+                                                    "",
+                                                    "parent",
+                                                    call.get("id"),
+                                                    "target",
+                                                    "",
+                                                    "relation",
+                                                    value.namespace(),
+                                                    "status",
+                                                    "modeled",
+                                                    "origin",
+                                                    e.producer(),
+                                                    "evidence_complete",
+                                                    false,
+                                                    "declaration_resolved",
+                                                    false,
+                                                    "attributes",
+                                                    a);
                                     FactSink sink = new FactSink();
-                                    perDeclaration.analyzeDeclaration(context, declaration, sink);
+                                    sink.add(fact);
                                     List<Object> verified = sink.validate(e, context, identities);
                                     output.addAll(verified);
                                 });
                         identities.added(output.subList(previous, output.size()));
                     }
-                    continue;
                 }
-                ExtensionExecution.run(
-                        e,
-                        "java",
-                        context,
-                        report,
-                        output,
-                        "",
-                        () -> {
-                            FactSink sink = new FactSink();
-                            analyzer.analyze(context, sink);
-                            output.addAll(sink.validate(e, context, output));
-                        });
-            }
-        for (ExtensionPoint e : enabled)
-            if (e instanceof JavaCallSiteEvidenceProvider observer) {
-                progress.accept("call." + e.id());
-                if (frozenInputs == null)
-                    frozenInputs = new ExtensionContext(configuration, model, List.of(), List.of());
-                ExtensionContext context =
-                        frozenInputs.withFacts(output);
-                FactSink.ValidationIndex identities = new FactSink.ValidationIndex(output);
-                for (int index = 0; index < context.facts().size(); index++) {
-                    if (!"call_site".equals(context.factKind(index))) continue;
-                    Map<String, Object> header = context.factHeader(index);
-                    final int position = index;
-                    int previous = output.size();
-                    ExtensionExecution.run(
-                            e,
-                            "call",
-                            context,
-                            report,
-                            output,
-                            Json.string(header, "source"),
-                            Json.string(header, "id"),
-                            () -> {
-                                if (!observer.acceptsCallSite(context, header)) return;
-                                Map<String, Object> call;
-                                try {
-                                    call = Json.map(context.facts().get(position));
-                                } catch (java.util.concurrent.CancellationException cancelled) {
-                                    throw cancelled;
-                                } catch (RuntimeException malformed) {
-                                    ExtensionPoint.GateFailure failure = new ExtensionPoint.GateFailure("EXTENSION_CALL_INPUT_CORRUPT");
-                                    failure.initCause(malformed);
-                                    throw failure;
-                                }
-                                Optional<JavaCallSiteEvidenceProvider.Evidence> evidence =
-                                        observer.observe(context, call);
-                                if (evidence.isEmpty()) return;
-                                var value = evidence.get();
-                                Map<String, Object> a = new TreeMap<>(value.attributes());
-                                a.put("schema_version", value.schemaVersion());
-                                Map<String, Object> owner =
-                                        new TreeMap<>(Json.map(call.get("owner")));
-                                owner.put("producer", e.producer());
-                                Map<String, Object> fact =
-                                        Json.object(
-                                                "id",
-                                                Json.key(
-                                                        "extension-call",
-                                                        e.id(),
-                                                        Json.string(call, "id"),
-                                                        value.namespace()),
-                                                "kind",
-                                                "facet",
-                                                "owner",
-                                                owner,
-                                                "source",
-                                                call.get("source"),
-                                                "span",
-                                                call.get("span"),
-                                                "name",
-                                                "",
-                                                "signature",
-                                                "",
-                                                "parent",
-                                                call.get("id"),
-                                                "target",
-                                                "",
-                                                "relation",
-                                                value.namespace(),
-                                                "status",
-                                                "modeled",
-                                                "origin",
-                                                e.producer(),
-                                                "evidence_complete",
-                                                false,
-                                                "declaration_resolved",
-                                                false,
-                                                "attributes",
-                                                a);
-                                FactSink sink = new FactSink();
-                                sink.add(fact);
-                                List<Object> verified = sink.validate(e, context, identities);
-                                output.addAll(verified);
-                            });
-                    identities.added(output.subList(previous, output.size()));
-                }
-            }
-        return output;
+            return output;
+        } finally {
+            if (frozenInputs != null) frozenInputs.closeModel();
+        }
     }
 
     /** Called only after every compiler context's Java and call stages are staged. */

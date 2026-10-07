@@ -211,6 +211,30 @@ public final class FactExtractor {
     }
 
     public List<Object> extract(Map<String, Object> model) throws Exception {
+        return extract(model, ignored -> {});
+    }
+    public List<Object> extract(Map<String, Object> model,
+            java.util.function.Consumer<Map<String,Object>> metrics) throws Exception {
+        long started = System.nanoTime();
+        Set<String> published = new HashSet<>();
+        for (String path : sources.keySet()) if (publish(path)) published.add(path);
+        Map<String,Object> input = model;
+        if (published.isEmpty()) {
+            input = new LinkedHashMap<>(model);
+            input.put("syntax",List.of());input.put("observations",List.of());
+        }
+        try (JavaSemanticModel semantic = new JavaSemanticModel(input, 64L << 20)) {
+            List<Object> result = extract(semantic.readView(published), semantic);
+            var measured = new LinkedHashMap<>(semantic.cacheMetrics());
+            measured.put("stage","fact_extract");
+            measured.put("duration_nanos",System.nanoTime()-started);
+            measured.put("published_files",published.size());
+            metrics.accept(measured);
+            return result;
+        }
+    }
+
+    private List<Object> extract(Map<String, Object> model, JavaSemanticModel semantic) throws Exception {
         SourceTypeReferences sourceTypes = new SourceTypeReferences(model, true);
         Map<String, Map<String, Object>> callSites = new HashMap<>();
         Map<String, List<String>> annotationOrigins = new HashMap<>();
@@ -248,7 +272,7 @@ public final class FactExtractor {
                             publish(path) ? Json.string(sources.get(path), "world") : world,
                             sig));
         }
-        try (JavaSemanticModel semantic = new JavaSemanticModel(model)) {
+        {
             for (JavaSemanticModel.Unit unit : semantic.units())
                 for (Object raw : unit.rows("declarations"))
                     emitDeclaration(Json.map(raw), requiredAuxiliary);
@@ -260,8 +284,10 @@ public final class FactExtractor {
                     Json.string(e, "name"),
                     Json.map(e.get("attributes")));
         }
-        try (JavaSemanticModel semantic = new JavaSemanticModel(model)) {
+        {
             for (JavaSemanticModel.Unit unit : semantic.units()) {
+                if (!publish(unit.source())) continue;
+                semantic.beginUnit();
                 callSites.clear();
                 for (JavaSemanticModel.Binding binding : unit.bindings())
                     emitBinding(binding.evidence(), sourceTypes, callSites, annotationOrigins);
@@ -754,7 +780,7 @@ public final class FactExtractor {
     }
 
     private void sourceTypeReferences(SourceTypeReferences sourceTypes) {
-        sourceTypes.emit(use -> {
+        sourceTypes.emit(this::publish, use -> {
             String path = Json.string(use.owner(), "source");
             if (!publish(path)) return;
             String signature = Json.string(use.owner(), "signature");

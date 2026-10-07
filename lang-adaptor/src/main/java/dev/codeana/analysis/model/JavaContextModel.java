@@ -1,6 +1,7 @@
 package dev.codeana.analysis.model;
 
 import dev.codeana.common.Json;
+import dev.codeana.common.ModelRowLease;
 import java.util.*;
 
 /** Context-owned declaration handles. Indexes never retain decoded declaration/type objects.
@@ -41,8 +42,16 @@ public final class JavaContextModel implements AutoCloseable {
     private final Map<Owner,List<DeclarationRef>> members = new HashMap<>();
     private final Set<String> initialized = new HashSet<>();
     private final Map<String,List<Object>> replacements = new HashMap<>();
+    private final long cacheLimit;
+    private long cacheBytes;
+    private final Map<DeclarationRef,ModelRowLease> leases=new LinkedHashMap<>(64,.75f,true);
     private boolean closed;
     public JavaContextModel(Map<String,Object> model) {
+        this(model,0);
+    }
+    public JavaContextModel(Map<String,Object> model,long cacheLimit) {
+        if(cacheLimit<0)throw new IllegalArgumentException("JAVA_MODEL_CACHE_BUDGET");
+        this.cacheLimit=cacheLimit;
         rows = Json.list(model.get("declarations"));
         for (Object raw : Json.list(model.getOrDefault("sources", List.of()))) {
             Map<String,Object> source = Json.map(raw);
@@ -77,7 +86,21 @@ public final class JavaContextModel implements AutoCloseable {
         if(ref.ordinal<0 || ref.ordinal>=unit.declarations.size() || unit.declarations.get(ref.ordinal)!=ref)
             throw new IllegalArgumentException("JAVA_MODEL_DECLARATION_OUTSIDE_CONTEXT");
         List<Object> changed=replacements.get(ref.source.path);
-        return new Declaration(ref,Json.map(changed==null?rows.get(ref.row):changed.get(ref.ordinal)));
+        ModelRowLease lease=leases.get(ref);
+        if(lease==null) {
+            List<Object> backing=changed==null?rows:changed;
+            int index=changed==null?ref.row:ref.ordinal;
+            lease=cacheLimit==0?new ModelRowLease(backing.get(index),backing,Long.MAX_VALUE)
+                    :ModelRowLease.borrow(backing,index);
+            if(lease.bytes<=cacheLimit) {
+                while(cacheBytes>cacheLimit-lease.bytes && !leases.isEmpty()) {
+                    var iterator=leases.entrySet().iterator();var oldest=iterator.next();
+                    cacheBytes-=oldest.getValue().bytes;iterator.remove();
+                }
+                leases.put(ref,lease);cacheBytes+=lease.bytes;
+            }
+        }
+        return new Declaration(ref,Json.map(lease.row));
     }
     public TypeLookup lookup(String signature) {
         check(); var candidates=signatures.getOrDefault(signature,List.of());
@@ -105,6 +128,7 @@ public final class JavaContextModel implements AutoCloseable {
             String signature=declaration(ref).signature();
             var entries=signatures.get(signature);entries.remove(ref);
             if(entries.isEmpty())signatures.remove(signature);
+            var lease=leases.remove(ref);if(lease!=null)cacheBytes-=lease.bytes;
         }
         members.keySet().removeIf(owner->owner.source.equals(path));
         unit.declarations.clear();
@@ -119,5 +143,5 @@ public final class JavaContextModel implements AutoCloseable {
         }
     }
     public int declarationCount() { check(); return rows.size(); }
-    public void close() { closed=true;units.clear();signatures.clear();members.clear();initialized.clear();replacements.clear(); }
+    public void close() { closed=true;leases.clear();cacheBytes=0;units.clear();signatures.clear();members.clear();initialized.clear();replacements.clear(); }
 }

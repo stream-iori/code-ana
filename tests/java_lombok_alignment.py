@@ -4,10 +4,18 @@ import sys
 import unittest
 import json
 import hashlib
+import os
+import subprocess
 import java_model_tests
 
 
 class Lombok(java_model_tests.Models):
+    def test_generated_policy_is_shared_only_within_context(self):
+        cp=os.pathsep.join(str(java_model_tests.ROOT/'lang-adaptor/target'/part)
+                           for part in ('classes','test-classes'))
+        subprocess.run([str(java_model_tests.JDK25/'bin/java'),'-Xmx64m','-cp',cp,
+                        'dev.codeana.analysis.LombokPolicyProbe'],check=True,timeout=30)
+
     def test_generated_signature_type_references_preserve_occurrences_and_delta(self):
         source='''class Api {} class Box<T> {}
         @lombok.Getter @lombok.Setter class Holder {

@@ -47,8 +47,13 @@ public final class FrameworkAnalysis {
     public static final class UnitSession {
         private final FrameworkAnalysis lookup;
         public UnitSession(Map<String,Object> context, Map<String,Object> model, List<Object> core, String stage) {
+            this(context,model,core,stage,null);
+        }
+        public UnitSession(Map<String,Object> context, Map<String,Object> model, List<Object> core,
+                String stage, ModelAnnotations sharedAnnotations) {
             lookup = new FrameworkAnalysis(context, core, stage);
-            if (!stage.equals("lombok")) lookup.annotations = new ModelAnnotations(model);
+            if (!stage.equals("lombok")) lookup.annotations = sharedAnnotations == null
+                    ? new ModelAnnotations(model) : sharedAnnotations;
         }
         public List<Object> extract(Map<String,Object> unit, String path) throws Exception {
             FrameworkAnalysis file = new FrameworkAnalysis(lookup, path);

@@ -8,9 +8,9 @@ import java.util.*;
 public final class ModelAnnotations {
     private static final String ALIAS = "org.springframework.core.annotation.AliasFor";
     private static final int CACHE_LIMIT = 4096;
-    private final Map<String, Map<String, Object>> types = new HashMap<>();
-    private final Map<String, List<Object>> declarations = new HashMap<>();
-    private final Map<String, String> declarationSources = new HashMap<>();
+    private final Map<String, Map<String, Object>> types;
+    private final Map<String, List<Object>> declarations;
+    private final Map<String, String> declarationSources;
     private final Map<String, Integer> sourceWork = new HashMap<>();
     private final Map<PathKey, List<String>> paths = new HashMap<>();
     private final Set<String> limitedSources = new HashSet<>();
@@ -46,7 +46,14 @@ public final class ModelAnnotations {
         }
     }
 
+    /** Share only completed indexes; each analyzer retains its own cache, budgets and diagnostics. */
+    private ModelAnnotations(ModelAnnotations indexed) {
+        types=indexed.types;declarations=indexed.declarations;declarationSources=indexed.declarationSources;
+    }
+    public ModelAnnotations queries() { return new ModelAnnotations(this); }
+
     public ModelAnnotations(Map<String, Object> model) {
+        types=new HashMap<>();declarations=new HashMap<>();declarationSources=new HashMap<>();
         for (Object raw : items(model.get("annotation_types"))) {
             Map<String, Object> header = Json.map(raw);
             types.put(Json.string(header, "name"), header);
