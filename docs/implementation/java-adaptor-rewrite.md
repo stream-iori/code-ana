@@ -152,3 +152,7 @@
 | 完整模型清单 | raw 80上下文运行中，结束后接着AST 80；回执：`recovery-v16-model-raw/receipt.json`、`recovery-v16-model-ast/receipt.json` |
 
 这些结果不认证全项目语义差分、最终发行或两倍耗时门禁。正确性验收期间有开发回归与旧版诊断进程竞争，运行时间只作诊断。
+
+发行后续：7e55fe5修复包manifest仍写旧worker11/request5/compiler8/model7的问题，Java协议字段直接取已校验的native manifest，worker为12。独立`recovery-release`副本的`release-v16/receipt.json`四项全部通过（35.618秒、源码/产物/包均无漂移）：基础产品、Maven XML MAIN/TEST及增量、错误JDK拒绝、包内CLI自动启动daemon后索引/calls/source。包位于该证据目录的`package/`。这是发行功能通过，不代表全项目语义或性能门禁通过；尚未替换最终dist。
+
+Rust外围：`just test-rust`全部通过，包含workspace测试、产品端到端、格式及clippy；日志`target/java-alignment/recovery-rust-regression.log`。没有扩张Java/Rust职责边界。
