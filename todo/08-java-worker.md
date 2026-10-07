@@ -1171,3 +1171,5 @@ de8c99b固定验收：native模型17项与冻结框架参考通过，无源码/�
 - 性能实施检查点：model9成套native/Rust已构建；JAR包目录共享及SDK8探针通过；integration35952事实仅版本来源82条变化。待最终组合完整回归、core/service内存/耗时、模块有效输入证明、全项目发布/语义差分与三轮<2倍门禁。
 
 - perf-v3：已复现并纠正Maven producer CP边界（旧SOURCE重编译常量2，SDK8模块编译及新缓存结果1）；缓存v9恢复原始body诊断，坏parse/编码/声明头仍SOURCE。正在专项回归及重建native。全项目、raw/AST80、14域、三轮<2倍仍未验收；旧等待流程已主动中止。
+
+- perf-v3 同版收口：aa67fa5 model9 native/桥/Rust产物已构建；JVM61/61组通过（含图消费者145、图绑定228），1908.491秒且无漂移。native、发行和真实项目流程继续串行。新增独立三轮交替计时入口 `benchmarks/java_index_paired.py`，生产输入/产物需匹配完整语义门禁，计时含Maven至发布、排除查询；新清单和竞争进程保护、计时边界探针已验证。全项目、raw/AST80、14域、三轮<2倍及容量仍未完成。

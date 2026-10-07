@@ -229,3 +229,11 @@ stage5 全项目于3667.177秒失败，57个上下文完成；core/service MAIN�
 新模块缓存格式v9保留原始javac声明，按producer源/CP进行SHA/key校验；下游维持自身CP。保存/恢复上游自有分析诊断，完整签名允许方法体错误，parse/编码失败及不完整声明头仍SOURCE，类型/生成证据不会提升置信度。目录去掉无结构子节点的局部变量，参数/注解/结构父节点保留。首批模块10项通过（实际CP两版本+SDK8编译见证、body错误事实逐条等价、缓存变更），完整专项8组仍运行。先前第二轮JVM回归及等待driver为修正模块边界主动SIGINT/SIGTERM，保留中断回执，不当SIGKILL或成功验收；native仍需重建。
 
 冻结Anatomist JAR实际Maven模块分析已验证seen=1/direct=2，archivesUsed=1/sourceAppearances=2；新FrozenModuleClasspathReferenceProbe进入并行模块回归。更新旧CP断言及跨环境注解对照：相同CP逐条全量事实一致，不同CP按独立模块/冻结参考验证生产者API；生成调用保持possible和原始consumer错误。模块12、ABI7、overlay9、parallel8、跨模块注解11、框架14、XML和会话10专项通过，证据perf-v3-focused*/receipt.json。目录精简保留结构父节点，200个leaf变量不入依赖目录，全量事实不变。native重建及最终组合/真实项目门禁仍待。
+
+### perf-v3 同版本验证与独立计时
+
+aa67fa5 已重建 model9 native、Java8桥及 Rust 发行程序。同版本 JVM 完整回归 61/61 组通过，1908.491 秒，无输入或产物漂移；包含图模型消费者145项、图模型高级绑定228项。回执 `target/java-alignment/evidence/perf-v3-final-20261007-203622/receipt.json`。这是回归套件耗时，不是 iopengw 索引耗时。native fixture、发行包、core/service、全项目及 raw/AST/14域仍由 `perf-v3-serial/receipt.json` 串行验收，尚未据此关闭门禁。
+
+独立性能入口：[java_index_paired.py](../../benchmarks/java_index_paired.py)。要求对应完整语义门禁已通过，并按发布回执核对全部生产输入和发行产物 SHA；计时工具自身 SHA 单列，文档提交不冒充运行时变更。三轮分别 Anatomist→code-ana、code-ana→Anatomist、Anatomist→code-ana，每次解包冻结 git 内容并使用新的索引/应用缓存；保留系统页缓存。两方 MAIN/TEST/XML、Lombok AST、分析器1GiB、javac512MiB、串行；性能对照均排除同一个已知坏编码文件，完整正确性验收仍保留它。新 Maven 清单仅容许项目路径搬迁，有序 classpath、字节摘要、模块及 scope 必须和语义验收输入一致。存在其他分析进程时拒绝计时。
+
+code-ana 计时包含 Maven 导出、daemon启动、捕获、分析、传输、缓存、发布，以索引 CLI 成功退出为终点，查询与对照不计入。独立进程边界探针通过，验证模拟查询400ms被排除、Maven只计一次及环境恢复；它不代表真实性能通过。每轮倍率及两个中位耗时之比都须小于2，容量结果另按2GiB完整进程树/512MiB daemon/单worker及单javac判断。当前没有新的三轮成绩。
