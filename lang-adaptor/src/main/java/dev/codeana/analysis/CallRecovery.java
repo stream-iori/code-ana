@@ -66,13 +66,20 @@ final class CallRecovery {
 
     static void recover(Map<String, Object> model, Map<String, Object> context, Path javaHome,
             java.util.function.Consumer<String> progress) throws IOException {
+        recover(model,context,javaHome,progress,metric->{});
+    }
+
+    static void recover(Map<String, Object> model, Map<String, Object> context, Path javaHome,
+            java.util.function.Consumer<String> progress,
+            java.util.function.Consumer<Map<String,Object>> metrics) throws IOException {
+        long started=System.nanoTime();
         if (Json.list(model.get("declarations")).stream()
                 .map(Json::map)
                 .noneMatch(
                         d -> "lombok_model".equals(map(d.get("attributes")).get("binding_origin"))))
             return;
         try (BinaryIndex binary = new BinaryIndex(context, javaHome);
-                JavaSemanticModel environment = new JavaSemanticModel(model)) {
+                JavaSemanticModel environment = new JavaSemanticModel(model,64L*1024*1024)) {
             Set<String> modeledNames = new HashSet<>();
             for (var declaration : environment.declarations().values())
                 if ("lombok_model".equals(map(declaration.get("attributes")).get("binding_origin")))
@@ -80,32 +87,63 @@ final class CallRecovery {
             var members = environment.members(d -> Set.of("METHOD", "CONSTRUCTOR")
                     .contains(map(d.get("attributes")).get("element_kind")));
             progress.accept("call_recovery.overrides");
+            long overridesStarted=System.nanoTime();
             new ModeledOverrides(model, context, environment.sourceTypes(), members, environment.known(),
                     new TypeOperations(environment.sourceTypes(), binary), binary).generate();
+            metrics.accept(Json.object("stage","overrides","duration_nanos",System.nanoTime()-overridesStarted));
+            Set<String> published = new HashSet<>();
+            for (Object raw : Json.list(context.get("sources"))) {
+                Map<String,Object> source = Json.map(raw);
+                if (Boolean.TRUE.equals(source.get("publish"))) published.add(Json.string(source,"path"));
+            }
             for (JavaSemanticModel.Unit unit : environment.units()) {
+                if (!published.contains(unit.source())) continue;
+                environment.beginUnit();
+                long unitStarted=System.nanoTime();
                 progress.accept("call_recovery.unit:" + unit.source());
                 CallRecovery recovery = new CallRecovery(unit.evidence(), binary, environment, members, modeledNames);
+                long setupNanos=System.nanoTime()-unitStarted;
+                long inputNanos=0,selectionNanos=0;int exhaustedCount=0;
                 for (Map<String, Object> call : recovery.calls.values()) {
                     recovery.work = 0;
                     recovery.types.reset();
                     recovery.currentSource = text(call.get("source"));
                     try {
-                        recovery.warmBuilderReceiver(call);
-                        Result selected = recovery.resolve(call, 0);
+                        long selectionStarted=System.nanoTime();
+                        Result selected;
+                        try {
+                            recovery.warmBuilderReceiver(call);
+                            selected = recovery.resolve(call, 0);
+                        } finally {selectionNanos+=System.nanoTime()-selectionStarted;}
                         recovery.work = 0;
                         recovery.types.reset();
-                        boolean input = recovery.modeledInputs(recovery.node(id(map(call.get("attributes")).get("tree_id"))), 0);
+                        long inputStarted=System.nanoTime();
+                        boolean input;
+                        try {input = recovery.modeledInputs(recovery.node(id(map(call.get("attributes")).get("tree_id"))), 0);}
+                        finally {inputNanos+=System.nanoTime()-inputStarted;}
                         if (Boolean.TRUE.equals(call.get("resolved")) && !call.containsKey("modeled_target") && input)
                             map(call.get("attributes")).put(selected.blocked
                                     ? "recovery_target_blocked" : "recovery_original_selected_modeled_input", true);
                     } catch (TypeOperations.Budget exhausted) {
+                        exhaustedCount++;
                         map(call.get("attributes")).put("recovery_failure", "recovery_budget");
                         map(call.get("attributes")).put("recovery_target_blocked", true);
                     }
                 }
+                long callbacksStarted=System.nanoTime();
                 recovery.recoverCallbacks();
+                long callbacksNanos=System.nanoTime()-callbacksStarted;
+                long enumStarted=System.nanoTime();
                 recovery.recoverEnumLabels();
+                metrics.accept(Json.object("stage","unit","source",unit.source(),
+                        "duration_nanos",System.nanoTime()-unitStarted,"setup_nanos",setupNanos,
+                        "selection_nanos",selectionNanos,"input_nanos",inputNanos,
+                        "callbacks_nanos",callbacksNanos,"enum_nanos",System.nanoTime()-enumStarted,
+                        "calls",recovery.calls.size(),"budget_exhausted",exhaustedCount));
             }
+            var totals=Json.object("stage","total","duration_nanos",System.nanoTime()-started,
+                    "published_files",published.size(),"model_files",environment.units().size());
+            totals.putAll(environment.cacheMetrics());metrics.accept(totals);
         }
     }
 

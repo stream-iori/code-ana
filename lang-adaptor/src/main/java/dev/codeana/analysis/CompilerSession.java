@@ -49,6 +49,19 @@ public final class CompilerSession implements AutoCloseable {
     private final long startedNanos = System.nanoTime();
     private long phaseBytes;
     private int phaseRecords;
+    private long metricBytes;
+    /** Completed intervals, separate from sampled progress and semantic output. */
+    public synchronized void metric(String context, Map<String,Object> metric) {
+        var row=new LinkedHashMap<String,Object>(metric);
+        row.put("context",context);row.put("elapsed_nanos",System.nanoTime()-startedNanos);
+        byte[] entry=(Json.write(row)+"\n").getBytes(StandardCharsets.UTF_8);
+        if(entry.length>LOG_BYTES-metricBytes)return;
+        try {
+            Files.write(scratch.resolve("recovery-metrics.ndjson"),entry,
+                    StandardOpenOption.CREATE,StandardOpenOption.APPEND);
+            metricBytes+=entry.length;
+        } catch(IOException unavailable) {metricBytes=LOG_BYTES;}
+    }
     private volatile byte[] heapFailure =
             "{\"error\":\"NATIVE_HEAP_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
 

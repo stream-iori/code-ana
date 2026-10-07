@@ -111,3 +111,20 @@
 实验入口`target/java-alignment/evidence/latest-iopengw-timing-run.json`；实际回执`rewrite-de8c99b/target/java-alignment/iopengw-timing-20261007-094626/comparison.json`，code-ana逐秒进度在其`codeana/receipt.json`。Anatomist配置覆盖单独记录并在参考结束后恢复；原提交文件再次校验。该试验不认证全范围语义对齐、坏文件处理或容量。
 
 原未完成运行的阶段日志统计：调用恢复25529.961秒（约85%）、Lombok1928.987秒（约6%）、事实提取730.966秒；不是完整索引性能成绩，也不能据此宣布根因已修复。
+
+## 调用恢复瓶颈修复（2026-10-07，验收中）
+
+| 修改 | 边界 |
+|---|---|
+| 发布文件恢复 | 仅恢复 publish=true 文件的调用/callback/enum；辅助源码仍供类型、生成成员和继承查询 |
+| 成员索引 | 一次筛选，owner保留位置；查询不再重复筛选，保留顺序和修改可见性 |
+| 解码复用 | 任务内64MiB逻辑预算，声明/当前文件语法各32MiB；按归档帧字节计费，超大行绕过，文件切换清语法租约；不是实际Java堆字节 |
+| 原行租约 | 保留ArchiveRows原State和别名；snapshot仍不可变，不把全上下文AST放回内存 |
+| 计时 | recovery-metrics.ndjson记录完成区间、调用/预算失败/缓存计数；独立1MiB诊断上限，scratch清理前保存；Fact IR/ABI不变 |
+| 缓存指纹 | registry v15-published-recovery使旧扩展组合失效；Java8桥新增租约工具单独编译 |
+
+首批验证：模型归档回归、长链8项、模块overlay9项、验收保护26项通过；新增64MiB小堆缓存别名/snapshot/超大行绕过、辅助文件恢复边界探针通过。Java8桥构建通过。
+
+真实上下文诊断：common/service/integration@MAIN共754源码/82发布源码，JVM重放恢复2.401秒、完整分析与输出53.635秒；旧实现同请求89.342秒。两边35952事实ID集合相同，只有一条provenance的extension_fingerprint随registry版本变化。属于隔离诊断（开发构建与旧索引仍在运行，未认证产物冻结），不替代native、完整上下文或发布验收。证据target/java-alignment/recovery-context-profile。
+
+旧版全项目运行保留诊断；开始修复后与开发测试有资源竞争，其后耗时不作性能门禁。最终冻结新产物，先同版本语义验收，再同机同范围交替串行三轮全新索引（含Maven输入/传输/发布），中位耗时不超过Anatomist两倍。raw/AST全部80上下文、14域差分、发行及性能门禁尚未通过，不关闭剩余能力项。

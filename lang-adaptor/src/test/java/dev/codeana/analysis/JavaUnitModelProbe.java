@@ -59,6 +59,14 @@ public final class JavaUnitModelProbe {
                 throw new AssertionError("cross-file binding changed");
             if(semantic.sourceTypes().get("B")==null || semantic.members(d->true).get("B").size()!=1)
                 throw new AssertionError("context lookup lost dependency");
+            int[] scans={0};
+            var indexedMembers=semantic.members(d->{scans[0]++;return true;});
+            int indexed=scans[0];
+            for(int i=0;i<200;i++) {
+                if(indexedMembers.get("B").size()!=1)throw new AssertionError("indexed members lost dependency");
+                indexedMembers.get("B").get(0).get("signature");
+            }
+            if(scans[0]!=indexed)throw new AssertionError("member lookup rescanned declarations");
             Json.map(semantic.declarations().get("A#value").get("attributes")).put("shared_probe",true);
             if(!Boolean.TRUE.equals(Json.map(Json.map(escapedUnit.rows("declarations").get(1)).get("attributes")).get("shared_probe")))
                 throw new AssertionError("lost shared declaration write");
@@ -90,6 +98,28 @@ public final class JavaUnitModelProbe {
         }
         Path directory=Path.of(args[0]);Files.createDirectories(directory);Path archive=directory.resolve("model-"+UUID.randomUUID()+".bin");
         ModelArchive.write(archive,raw,16*1024*1024);
+        try(var open=ModelArchive.open(archive,Json.sha(archive),16*1024*1024,"units");
+                var cached=new JavaSemanticModel(open.model(),1024*1024)) {
+            var first=cached.declarations().get("A#value");
+            var frozen=Json.list(ExtensionContext.freeze(open.model().get("declarations")));
+            for(int i=0;i<200;i++)cached.declarations().get("A#value").get("signature");
+            if(Json.number(cached.cacheMetrics(),"row_cache_hits")<200)
+                throw new AssertionError("archive lease was not reused");
+            Json.map(first.get("attributes")).put("cached_write",true);
+            if(!Boolean.TRUE.equals(Json.map(Json.map(Json.list(open.model().get("declarations")).get(1)).get("attributes")).get("cached_write")))
+                throw new AssertionError("cache copied mutable state");
+            if(Json.map(Json.map(frozen.get(1)).get("attributes")).containsKey("cached_write"))
+                throw new AssertionError("cache mutation leaked into snapshot");
+            if(Json.number(cached.cacheMetrics(),"header_cache_bytes")>512*1024)
+                throw new AssertionError("cache exceeded byte budget");
+        }
+        try(var open=ModelArchive.open(archive,Json.sha(archive),16*1024*1024,"units");
+                var tiny=new JavaSemanticModel(open.model(),2)) {
+            for(int i=0;i<3;i++)tiny.declarations().get("A");
+            if(Json.number(tiny.cacheMetrics(),"row_cache_hits")!=0
+                    ||Json.number(tiny.cacheMetrics(),"header_cache_bytes")!=0)
+                throw new AssertionError("oversized row entered cache");
+        }
         Map<String,Object> config=Json.object("lombok","model","world","units","context","units","resources",List.of(),"sources",List.of(),
                 "model_record_limit",1000,"model_archive_bytes",16*1024*1024);
         Map<String,Object> escaped;

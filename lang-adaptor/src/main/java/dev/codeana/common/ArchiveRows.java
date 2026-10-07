@@ -132,6 +132,17 @@ public final class ArchiveRows extends AbstractList<Object> {
         return value.value instanceof Map ? new RootMap(position) : wrap(value.value, value);
     }
 
+    public ModelRowLease borrow(int index) {
+        index(index);int position=positions[index];
+        if(position<0) {
+            Object row=appended.get(-position-1);
+            return new ModelRowLease(row,row,Long.MAX_VALUE);
+        }
+        State value=state(position);
+        Object row=value.value instanceof Map?new RootMap(position):wrap(value.value,value);
+        return new ModelRowLease(row,value,records.recordBytes(position));
+    }
+
     public void add(int index, Object value) {
         check();
         if (index < 0 || index > count) throw new IndexOutOfBoundsException();
@@ -248,6 +259,18 @@ public final class ArchiveRows extends AbstractList<Object> {
             } catch (IOException failed) {
                 throw new UncheckedIOException(failed);
             }
+        }
+
+        public ModelRowLease borrow(int index) {
+            if(index<0 || index>=size())throw new IndexOutOfBoundsException();
+            int position=positions[index];
+            if(frozen.containsKey(position)) {
+                ModelRowLease lease=spool.borrow(frozen.get(position));
+                Object row=ModelArchive.immutable(Json.map(lease.row).get("snapshot"),0);
+                return new ModelRowLease(row,lease,lease.bytes);
+            }
+            Object row=get(index);
+            return new ModelRowLease(row,row,records.recordBytes(position));
         }
     }
 

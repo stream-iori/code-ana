@@ -19,6 +19,13 @@ public final class UnitDeclarationRows extends AbstractList<Object> implements M
         return position>=0?original.get(position):position>=-overlay.size()?overlay.get(-position-1)
                 :appended.get(-position-overlay.size()-1);
     }
+    public ModelRowLease borrow(int index) {
+        if(index<0||index>=count)throw new IndexOutOfBoundsException();
+        int position=selected[index];
+        return position>=0?ModelRowLease.borrow(original,position)
+                :position>=-overlay.size()?ModelRowLease.borrow(overlay,-position-1)
+                :ModelRowLease.borrow(appended,-position-overlay.size()-1);
+    }
     public void add(int index,Object row) {
         if(index<0||index>count)throw new IndexOutOfBoundsException();
         if(count==selected.length)selected=Arrays.copyOf(selected,Math.max(8,count*2));
@@ -61,5 +68,11 @@ public final class UnitDeclarationRows extends AbstractList<Object> implements M
                 :appended.get(-position-overlay.size()-1);
         }
         public List<Object> snapshot(){return this;}
+        public ModelRowLease borrow(int index) {
+            int position=selected[index];
+            return position>=0?ModelRowLease.borrow(original,position)
+                    :position>=-overlay.size()?ModelRowLease.borrow(overlay,-position-1)
+                    :ModelRowLease.borrow(appended,-position-overlay.size()-1);
+        }
     }
 }

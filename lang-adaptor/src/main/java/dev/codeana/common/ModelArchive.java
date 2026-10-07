@@ -147,6 +147,12 @@ public final class ModelArchive {
             cache.clear();
             records.releaseNodeCaches();
         }
+        public ModelRowLease borrow(int index) {
+            Object row=get(index);
+            if(index==count)return new ModelRowLease(row,row,Long.MAX_VALUE);
+            int position=positions.get(index/PAGE)[index%PAGE];
+            return new ModelRowLease(row,row,records.recordBytes(position));
+        }
         /** Mutable handles over sealed rows; changes remain tracked without decoding the spool. */
         public List<Object> mutableRows() throws IOException {
             seal();

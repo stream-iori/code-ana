@@ -318,6 +318,15 @@ public final class RecordArchive extends AbstractList<Object>
         return Json.parse(encoded(index));
     }
 
+    /** Frame size from the validated positional directory; no extra file read. */
+    public long recordBytes(int index) {
+        if(closed)throw new IllegalStateException("RECORD_ARCHIVE_CLOSED");
+        if(index<0 || index>=count)throw new IndexOutOfBoundsException();
+        long start=offsets.get(index/PAGE)[index%PAGE];
+        long end=index+1<count?offsets.get((index+1)/PAGE)[(index+1)%PAGE]:bytes;
+        return end-start;
+    }
+
     byte[] encoded(int index) {
         if (Thread.currentThread().isInterrupted())
             throw new UncheckedIOException(new IOException("CANCELLED"));

@@ -1,12 +1,13 @@
 package dev.codeana.analysis.model;
 
 import dev.codeana.common.Json;
+import dev.codeana.common.ModelRowLease;
 import java.util.*;
 import java.util.function.Predicate;
 
 /** File-scoped semantic passes over the leased compiler archive. Adapted from Anatomist's
- * JavaModel/JavaUnit boundaries at dff2e395. Context indexes retain positions, never decoded
- * declarations, bindings or syntax trees. Original javac evidence remains the backing store.
+ * JavaModel/JavaUnit boundaries at dff2e395. Context indexes retain positions; optional
+ * bounded row leases accelerate recovery. Original javac evidence remains the backing store.
  */
 public final class JavaSemanticModel implements AutoCloseable {
     public record SyntaxNode(Map<String,Object> evidence) {
@@ -27,7 +28,7 @@ public final class JavaSemanticModel implements AutoCloseable {
             List<Integer> selected=positions.computeIfAbsent(section,s->new ArrayList<>());
             return new AbstractList<>() {
                 public int size() { check();return selected.size(); }
-                public Object get(int index) { check();return backing.get(selected.get(index)); }
+                public Object get(int index) { check();return row(section,selected.get(index)); }
                 public void add(int index,Object raw) {
                     check();Objects.checkIndex(index,selected.size()+1);
                     if(!source.equals(Json.string(Json.map(raw),"source")))
@@ -52,6 +53,40 @@ public final class JavaSemanticModel implements AutoCloseable {
     private final RowIndex types;
     private final RowIndex known;
     private boolean closed;
+    private record RowPosition(String section,int row) {}
+    private final class RowCache {
+        final long limit;
+        final Map<RowPosition,ModelRowLease> entries=new LinkedHashMap<>(64,.75f,true);
+        long bytes,hits,misses,evictions;
+        RowCache(long limit){this.limit=limit;}
+        Object get(String section,int position) {
+            var key=new RowPosition(section,position);var lease=entries.get(key);
+            if(lease!=null){hits++;return lease.row;}
+            misses++;
+            if(limit==0)return Json.list(model.get(section)).get(position);
+            lease=ModelRowLease.borrow(Json.list(model.get(section)),position);
+            if(lease.bytes<=limit) {
+                while(bytes>limit-lease.bytes && !entries.isEmpty()) {
+                    var iterator=entries.entrySet().iterator();var oldest=iterator.next();
+                    bytes-=oldest.getValue().bytes;iterator.remove();evictions++;
+                }
+                entries.put(key,lease);bytes+=lease.bytes;
+            }
+            return lease.row;
+        }
+        void clear(){entries.clear();bytes=0;}
+    }
+    private final RowCache headers,body;
+    private Object row(String section,int position) {
+        check();return (section.equals("syntax")?body:headers).get(section,position);
+    }
+    public void beginUnit(){check();body.clear();}
+    public Map<String,Object> cacheMetrics() {
+        check();return Json.object("row_cache_hits",headers.hits+body.hits,
+                "row_cache_misses",headers.misses+body.misses,
+                "row_cache_evictions",headers.evictions+body.evictions,
+                "header_cache_bytes",headers.bytes,"body_cache_bytes",body.bytes);
+    }
 
     private final class RowIndex extends AbstractMap<String,Map<String,Object>> {
         private record Position(String section,int row) {}
@@ -59,7 +94,7 @@ public final class JavaSemanticModel implements AutoCloseable {
         void index(String name,String section,int row) { positions.put(name,new Position(section,row)); }
         public Map<String,Object> get(Object name) {
             check();Position position=positions.get(name);
-            return position==null?null:Json.map(Json.list(model.get(position.section)).get(position.row));
+            return position==null?null:Json.map(row(position.section,position.row));
         }
         public boolean containsKey(Object name) {check();return positions.containsKey(name);}
         public Set<Entry<String,Map<String,Object>>> entrySet() {
@@ -76,7 +111,12 @@ public final class JavaSemanticModel implements AutoCloseable {
         }
     }
     public JavaSemanticModel(Map<String,Object> model) {
-        this.model=model;declarations=new RowIndex();types=new RowIndex();known=new RowIndex();
+        this(model,0);
+    }
+    public JavaSemanticModel(Map<String,Object> model,long rowCacheBytes) {
+        if(rowCacheBytes<0)throw new IllegalArgumentException("JAVA_MODEL_CACHE_BUDGET");
+        this.model=model;headers=new RowCache(rowCacheBytes/2);body=new RowCache(rowCacheBytes-rowCacheBytes/2);
+        declarations=new RowIndex();types=new RowIndex();known=new RowIndex();
         for(Object raw:Json.list(model.getOrDefault("sources",List.of()))) {
             String path=Json.string(Json.map(raw),"path");
             if(units.putIfAbsent(path,new Unit(path))!=null)throw new IllegalArgumentException("JAVA_MODEL_DUPLICATE_UNIT");
@@ -101,22 +141,31 @@ public final class JavaSemanticModel implements AutoCloseable {
     public Map<String,Map<String,Object>> known(){check();return known;}
     public void external(String signature,int row){check();known.index(signature,"external",row);}
     public Map<String,List<Map<String,Object>>> members(Predicate<Map<String,Object>> accepts) {
-        check();return new AbstractMap<>() {
+        check();
+        // Filter once while the model is stable. Lookups retain only positions, so
+        // mutable archive rows still supply the current evidence through eviction.
+        Map<String,List<Integer>> filtered=new LinkedHashMap<>();
+        List<Object> declarations=Json.list(model.get("declarations"));
+        for(var entry:members.entrySet()) {
+            List<Integer> selected=new ArrayList<>();
+            for(int position:entry.getValue())
+                if(accepts.test(Json.map(declarations.get(position))))selected.add(position);
+            filtered.put(entry.getKey(),List.copyOf(selected));
+        }
+        return new AbstractMap<>() {
             public List<Map<String,Object>> get(Object owner) {
-                check();var positions=members.get(owner);if(positions==null)return null;
-                List<Integer> selected=new ArrayList<>();
+                check();var selected=filtered.get(owner);if(selected==null)return null;
                 List<Object> rows=Json.list(model.get("declarations"));
-                for(int position:positions)if(accepts.test(Json.map(rows.get(position))))selected.add(position);
                 return new AbstractList<>() {
                     public int size(){check();return selected.size();}
-                    public Map<String,Object> get(int index){check();return Json.map(rows.get(selected.get(index)));}
+                    public Map<String,Object> get(int index){check();return Json.map(row("declarations",selected.get(index)));}
                 };
             }
             public Set<Entry<String,List<Map<String,Object>>>> entrySet() {
                 check();return new AbstractSet<>() {
-                    public int size(){check();return members.size();}
+                    public int size(){check();return filtered.size();}
                     public Iterator<Entry<String,List<Map<String,Object>>>> iterator() {
-                        check();var owners=members.keySet().iterator();
+                        check();var owners=filtered.keySet().iterator();
                         return new Iterator<>() {
                             public boolean hasNext(){check();return owners.hasNext();}
                             public Entry<String,List<Map<String,Object>>> next(){String owner=owners.next();return new SimpleImmutableEntry<>(owner,get(owner));}
@@ -130,5 +179,5 @@ public final class JavaSemanticModel implements AutoCloseable {
         if(closed)throw new IllegalStateException("JAVA_MODEL_CLOSED");
         if(Thread.currentThread().isInterrupted())throw new java.util.concurrent.CancellationException("CANCELLED");
     }
-    public void close(){closed=true;units.clear();members.clear();declarations.positions.clear();types.positions.clear();known.positions.clear();}
+    public void close(){closed=true;headers.clear();body.clear();units.clear();members.clear();declarations.positions.clear();types.positions.clear();known.positions.clear();}
 }

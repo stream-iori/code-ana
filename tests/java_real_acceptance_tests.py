@@ -17,6 +17,20 @@ from java_real_acceptance import (ConfigLease, atomic_bytes, atomic_json, proces
 
 
 class PhaseCaptureTests(unittest.TestCase):
+    def test_completed_recovery_metrics_preserved_without_changing_progress(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=pathlib.Path(directory);evidence=root/'evidence';evidence.mkdir()
+            current=dict(elapsed_nanos=100,context='module@MAIN',phase='call_recovery')
+            atomic_json(root/'phase-latest.json',current)
+            metric=dict(context='module@MAIN',stage='unit',source='A.java',duration_nanos=80)
+            body=(json.dumps(metric)+'\n').encode()
+            (root/'recovery-metrics.ndjson').write_bytes(body+b'{"incomplete":')
+            capture=PhaseCapture(1,evidence);capture.paths.add(root/'phases.ndjson')
+            with mock.patch('java_real_acceptance.subprocess.check_output',return_value=''):
+                capture.sample()
+            self.assertEqual(capture.last,current)
+            self.assertEqual((evidence/'compiler-recovery-metrics.ndjson').read_bytes(),body)
+
     def test_current_marker_survives_exhausted_history(self):
         with tempfile.TemporaryDirectory() as directory:
             root=pathlib.Path(directory);evidence=root/'evidence';evidence.mkdir()

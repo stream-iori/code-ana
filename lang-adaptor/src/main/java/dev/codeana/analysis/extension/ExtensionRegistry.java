@@ -62,7 +62,7 @@ public final class ExtensionRegistry {
         return result;
     }
     public String fingerprint(Map<String, Object> configuration) {
-        return Json.sha(Json.write(List.of("staged-project-view-v14-unit-framework", manifest(configuration))).getBytes(StandardCharsets.UTF_8));
+        return Json.sha(Json.write(List.of("staged-project-view-v15-published-recovery", manifest(configuration))).getBytes(StandardCharsets.UTF_8));
     }
     public boolean supportsBodyOnlyReuse(Map<String, Object> configuration) {
         return enabled(configuration).stream().allMatch(ExtensionPoint::supportsBodyOnlyReuse);

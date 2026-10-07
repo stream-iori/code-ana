@@ -273,6 +273,25 @@ class PhaseCapture:
             if len(row) == 3 and pid in owned and row[2].endswith('/java'):
                 compilers[pid] = (row[2], identities.get(pid))
         for path in self.paths:
+            # Completed recovery timings have their own bounded journal. Keep them
+            # before task scratch cleanup; they must not replace progress markers.
+            metric_path = path.with_name('recovery-metrics.ndjson')
+            try:
+                with metric_path.open('rb') as stream:
+                    metrics = stream.read(1024 * 1024 + 1)
+            except FileNotFoundError:
+                metrics = b''
+            if len(metrics) > 1024 * 1024:
+                raise ValueError('RECOVERY_METRICS_BYTE_BUDGET')
+            metrics = metrics[:metrics.rfind(b'\n') + 1]
+            if metrics:
+                for line in metrics.splitlines():
+                    metric = json.loads(line)
+                    if (not isinstance(metric, dict) or not isinstance(metric.get('context'), str)
+                        or not isinstance(metric.get('duration_nanos'), int)
+                        or metric['duration_nanos'] < 0):
+                        raise ValueError('RECOVERY_METRICS_SHAPE')
+                atomic_bytes(self.evidence / 'compiler-recovery-metrics.ndjson', metrics)
             try:
                 with path.open('rb') as stream:
                     body = stream.read(1024 * 1024 + 1)
