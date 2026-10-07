@@ -1,5 +1,7 @@
 # Java-worker：Java 8 实施跟踪
 
+2026-10-07 第二批：首版7448877 native178项通过，无源码/产物漂移。补齐SyntaxRows语法租约、SupplementalTypes有上限的声明复用和阶段标记。定位原AST64/65差异为未解析字段注解资格，Lombok14/registry16拒绝其生成访问器/构造参数；参考模型18例、Lombok45及两个真实上下文JVM清单严格对齐，坏编码保留。首版native真实诊断恢复5.881秒，但整体固定130秒probe超时，非SIGKILL。新版native/完整80/14域/发行/三轮性能仍待，见重写记录。
+
 2026-10-07 调用恢复瓶颈修复验收中：publish边界、一次成员索引、64MiB任务内行租约缓存、完成区间计时已实现，registry v15。归档/长链8/模块overlay9/验收保护26及小堆租约/辅助恢复边界探针通过，Java8桥可构建。iopengw单上下文JVM诊断新53.635秒/旧89.342秒，35952事实ID集合相同，仅一个provenance的extension_fingerprint随版本变化；不代表native、全项目语义或性能门禁通过。完整80上下文/14域/发行与三轮≤2倍仍待同版验收，详见docs/implementation/java-adaptor-rewrite.md。
 
 参考 code-ana `d77dc70`；当前 Anatomist 基线 `dev/replace-parser@dff2e3954096853352ec91fcbfc6b995fbd4f390`，历史回执保留旧 SHA。以 SDKMAN Java 8 完整闭环为首期，原生库由 `.sdkmanrc` 的 GraalVM 25 构建。

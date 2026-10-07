@@ -278,10 +278,10 @@ class PhaseCapture:
             metric_path = path.with_name('recovery-metrics.ndjson')
             try:
                 with metric_path.open('rb') as stream:
-                    metrics = stream.read(1024 * 1024 + 1)
+                    metrics = stream.read(8 * 1024 * 1024 + 1)
             except FileNotFoundError:
                 metrics = b''
-            if len(metrics) > 1024 * 1024:
+            if len(metrics) > 8 * 1024 * 1024:
                 raise ValueError('RECOVERY_METRICS_BYTE_BUDGET')
             metrics = metrics[:metrics.rfind(b'\n') + 1]
             if metrics:

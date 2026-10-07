@@ -1268,7 +1268,7 @@ final class LombokDeclarations {
             return;
         }
         Map<String, Object> fieldType = generatedType(field);
-        if (!complete(fieldType)) {
+        if (!completeField(field)) {
             if (getter) summary.partial("getter", "incomplete_field_type");
             if (setter) summary.partial("setter", "incomplete_field_type");
         }
@@ -1403,7 +1403,7 @@ final class LombokDeclarations {
                                                                             .containsKey(
                                                                                     "NonNull")))
                             .toList();
-            if (selected.stream().anyMatch(f -> !complete(map(attrs(f).get("type_model"))))) {
+            if (selected.stream().anyMatch(f -> !completeField(f))) {
                 summary.partial(capability, "incomplete_parameter_type");
                 continue;
             }
@@ -1733,6 +1733,15 @@ final class LombokDeclarations {
 
     private static boolean complete(Map<String, Object> type) {
         return complete(type, 0);
+    }
+
+    /** Anatomist JavaDeclaration.complete includes field annotations, not just its type. */
+    private static boolean completeField(Map<String,Object> field) {
+        var attributes=attrs(field);
+        return !Boolean.FALSE.equals(attributes.get("written_type_complete"))
+                && complete(map(attributes.get("type_model")))
+                && items(attributes.get("annotations")).stream()
+                        .map(Json::map).allMatch(annotation->Boolean.TRUE.equals(annotation.get("complete")));
     }
 
     private static boolean complete(Map<String, Object> type, int depth) {

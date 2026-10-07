@@ -36,6 +36,10 @@ _AUXILIARY={'Aux.java':'''package p; class Aux {Aux(){} static Object value=new 
 CASES['auxiliary-headers']=_AUXILIARY
 CASES['auxiliary-full-model']=_AUXILIARY
 CASES['lombok-data']={'App.java':'package p; @lombok.Data class Use {String name; int count;}'}
+CASES['lombok-unresolved-field-annotation']={'App.java':'''package p;
+ @lombok.Data @lombok.AllArgsConstructor @lombok.NoArgsConstructor class Use {
+ @missing.NotBlank int broken; int healthy;
+ }'''}
 CASES['lombok-generic-builder']={'App.java':'package p; @lombok.Builder class Box<T extends Number> {T value; int count;}'}
 CASES['lombok-singular-unsupported']={'App.java':'package p; @lombok.Builder class Use {Use(){} @lombok.Singular java.util.List<String> items; @lombok.Singular java.util.Map<String,Integer> labels;}'}
 CASES['lombok-default-builder']={'App.java':'package p; @lombok.Builder class Box<T> {@lombok.Builder.Default java.util.List<T> values=new java.util.ArrayList<T>();}'}

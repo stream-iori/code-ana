@@ -97,6 +97,8 @@ public final class JavaUnitModelProbe {
                 throw new AssertionError("lazy lookup incorrect");
         }
         Path directory=Path.of(args[0]);Files.createDirectories(directory);Path archive=directory.resolve("model-"+UUID.randomUUID()+".bin");
+        raw.put("syntax",List.of(Json.object("source","A.java","id",1,"kind","IDENTIFIER"),
+                Json.object("source","B.java","id",1,"kind","IDENTIFIER")));
         ModelArchive.write(archive,raw,16*1024*1024);
         try(var open=ModelArchive.open(archive,Json.sha(archive),16*1024*1024,"units");
                 var cached=new JavaSemanticModel(open.model(),1024*1024)) {
@@ -112,6 +114,14 @@ public final class JavaUnitModelProbe {
                 throw new AssertionError("cache mutation leaked into snapshot");
             if(Json.number(cached.cacheMetrics(),"header_cache_bytes")>512*1024)
                 throw new AssertionError("cache exceeded byte budget");
+            var firstUnit=cached.units().iterator().next();
+            var firstNode=firstUnit.rows("syntax").get(0);
+            if(firstNode!=firstUnit.rows("syntax").get(0)
+                    ||Json.number(cached.cacheMetrics(),"body_cache_bytes")==0)
+                throw new AssertionError("immutable syntax was repeatedly decoded");
+            cached.beginUnit();
+            if(Json.number(cached.cacheMetrics(),"body_cache_bytes")!=0)
+                throw new AssertionError("syntax lease escaped file lifetime");
         }
         try(var open=ModelArchive.open(archive,Json.sha(archive),16*1024*1024,"units");
                 var tiny=new JavaSemanticModel(open.model(),2)) {

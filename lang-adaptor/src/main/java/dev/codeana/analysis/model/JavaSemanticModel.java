@@ -81,6 +81,12 @@ public final class JavaSemanticModel implements AutoCloseable {
         check();return (section.equals("syntax")?body:headers).get(section,position);
     }
     public void beginUnit(){check();body.clear();}
+    public List<Map<String,Object>> declarationRows() {
+        check();return new AbstractList<>() {
+            public int size(){check();return Json.list(model.get("declarations")).size();}
+            public Map<String,Object> get(int index){return Json.map(row("declarations",index));}
+        };
+    }
     public Map<String,Object> cacheMetrics() {
         check();return Json.object("row_cache_hits",headers.hits+body.hits,
                 "row_cache_misses",headers.misses+body.misses,

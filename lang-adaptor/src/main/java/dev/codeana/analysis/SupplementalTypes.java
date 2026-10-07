@@ -30,14 +30,18 @@ final class SupplementalTypes {
     }
 
     static void derive(Map<String,Object> context, Map<String,Object> original, CompilerSession session) throws Exception {
+        session.mark(Json.string(context,"context"),"supplemental_eligibility");
+        try(var environment=new dev.codeana.analysis.model.JavaSemanticModel(original,64L*1024*1024)) {
+            derive(context,original,session,environment.declarationRows());
+        }
+    }
+
+    private static void derive(Map<String,Object> context, Map<String,Object> original, CompilerSession session,
+            List<Map<String,Object>> all) throws Exception {
         Set<String> auxiliary = new HashSet<>();
         List<Object> primary = new ArrayList<>(), sourceProof = new ArrayList<>();
-        List<Object> originalRows=Json.list(original.get("declarations"));
-        List<Map<String,Object>> all=new AbstractList<>() {
-            public int size(){return originalRows.size();}
-            public Map<String,Object> get(int index){return Json.map(originalRows.get(index));}
-        };
         Set<String> eligible=ModuleAbiEligibility.worlds(context,original,all);
+        session.mark(Json.string(context,"context"),"supplemental_projection");
         for (Object raw : Json.list(context.get("sources"))) {
             var unit=Json.map(raw);
             if (eligible.contains(unit.get("world"))) {

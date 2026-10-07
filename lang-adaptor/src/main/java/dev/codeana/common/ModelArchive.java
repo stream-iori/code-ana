@@ -290,6 +290,10 @@ public final class ModelArchive {
             try { return immutable(unpack(Json.map(records.get(positions[index])).get("value"),types,0),0); }
             catch (IOException failed) { throw new UncheckedIOException(failed); }
         }
+        public ModelRowLease borrow(int index) {
+            Object row=get(index);
+            return new ModelRowLease(row,row,records.recordBytes(positions[index]));
+        }
     }
     static Object immutable(Object raw, int depth) {
         if (depth>Json.MAX_DEPTH) throw new IllegalArgumentException("MODEL_DEPTH_BUDGET");

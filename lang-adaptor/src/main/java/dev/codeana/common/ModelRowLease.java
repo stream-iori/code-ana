@@ -17,6 +17,7 @@ public final class ModelRowLease {
         if(rows instanceof UnitDeclarationRows)return ((UnitDeclarationRows)rows).borrow(index);
         if(rows instanceof UnitDeclarationRows.Snapshot)return ((UnitDeclarationRows.Snapshot)rows).borrow(index);
         if(rows instanceof ModelArchive.RowSpool)return ((ModelArchive.RowSpool)rows).borrow(index);
+        if(rows instanceof ModelArchive.SyntaxRows)return ((ModelArchive.SyntaxRows)rows).borrow(index);
         Object row=rows.get(index);
         // Ordinary resident lists need no additional decoded-row cache.
         return new ModelRowLease(row,row,Long.MAX_VALUE);

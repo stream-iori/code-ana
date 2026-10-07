@@ -128,3 +128,14 @@
 真实上下文诊断：common/service/integration@MAIN共754源码/82发布源码，JVM重放恢复2.401秒、完整分析与输出53.635秒；旧实现同请求89.342秒。两边35952事实ID集合相同，只有一条provenance的extension_fingerprint随registry版本变化。属于隔离诊断（开发构建与旧索引仍在运行，未认证产物冻结），不替代native、完整上下文或发布验收。证据target/java-alignment/recovery-context-profile。
 
 旧版全项目运行保留诊断；开始修复后与开发测试有资源竞争，其后耗时不作性能门禁。最终冻结新产物，先同版本语义验收，再同机同范围交替串行三轮全新索引（含Maven输入/传输/发布），中位耗时不超过Anatomist两倍。raw/AST全部80上下文、14域差分、发行及性能门禁尚未通过，不关闭剩余能力项。
+
+第二批修复：SyntaxRows加入原行租约，当前文件语法缓存实际生效；SupplementalTypes的ABI资格/投影复用有上限的声明租约并单独标记阶段。计时诊断上限改8MiB，覆盖4213发布文件，原phase日志仍1MiB。
+
+| 新证据 | 结果与边界 |
+|---|---|
+| 7448877 native fixture | 178项全部通过，600.558秒；源码、产物、Rust校验器无漂移 |
+| 首版真实native诊断 | integration MAIN调用恢复5.881秒；整体在worker测试入口固定130秒NATIVE_TIMEOUT，未观察SIGKILL，不算完整成功 |
+| AST剩余差异 | 原64/65上下文都是声明差异；字段NotBlank等注解未解析，参考拒绝生成其访问器/构造参数，产品原仅检查字段类型完整性 |
+| 对齐修复 | 字段注解/原written type完整性参与访问器和构造参数资格；Lombok14/registry16 |
+| 独立fixture | 模型API参考18例（新增缺失字段注解、健康相邻字段）、Lombok45项、小堆语法租约探针通过；补充签名12/模块overlay9在投影缓存修改后通过，完整新版native仍待 |
+| 真实针对性复测 | JVM复用冻结原javac归档，MAIN8537声明、48621AST、406源码、441类型查询严格相等；TEST8569/44797/409/444严格相等。MAIN26.074秒、TEST19.984秒，源码/输入无漂移；坏编码原字节保留并明确记录。不是新版native80/80证明 |
