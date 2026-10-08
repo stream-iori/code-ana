@@ -89,3 +89,14 @@ Rust 捕获文件和上下文
 2026-10-08 v4 产品续验：同一产物放行后局部变量/Lambda、增量/重新全量通过（42.710 秒），XML wiring 与冻结参考对照通过。新发现 XML 嵌套 bean 的公共关系和 SOFA 子元素查询投影缺失；只从原始模型已有字段补投影，不补 Java 推断算法。开发 daemon 优先使用同目录安装的 bundle，避免冻结运行目录实际加载工程中的可变开发库；无安装 bundle 时 debug 才使用开发库。新产物的对应回归待重跑。
 
 最终源码 JVM 回归 77 项通过（target/lang-java-adapotr-continue-final-jvm.log），源码清单校验仍为 204/8。新增无自身 Java 源码的 scope 不生成重复 javac 任务：MAIN 前置仍编译，TEST XML 保留辅助 MAIN 类型查询。XML 字节跨度把 SAX 的开始标签末尾坐标转换成真实开始标签起点，原始 SAX position 单独保留；新增中文/emoji 前缀验证。
+
+2026-10-08 v4 同产物放行后续验：
+
+| 门禁 | 本轮结果 |
+|---|---|
+| 最终冻结 native / daemon fixture | native 10 项通过（26.139 秒）；daemon 3 项通过（196.503 秒），含 capture 全量/增量、XML wiring、嵌套 bean/SOFA 与字节跨度 |
+| release 包启动与查询 | 同一包放行后 4 门禁通过（34.260 秒），包含核心全量/增量、MAIN/TEST XML-only、错误 JDK 拒绝和包内 fixture 自动 daemon 的 index/calls/source；包、源码和打包输入摘要无变化。回执 `target/java-migration-continue/release-verified-v4/receipt.json` |
+| iopengw MAIN/TEST/XML，native 堆 512 MiB | 221.284 秒后 `NATIVE_HEAP_EXHAUSTED`，未发布；回执 `target/java-migration-continue/iopengw-v4-verified/receipt.json` |
+| 同代码/输入，native 堆 1 GiB、worker 2 GiB | 518.999 秒后同样堆耗尽，进程树峰值 1,971,961,856 字节；无 SIGKILL，源码与运行产物摘要无变化，配置已恢复。回执 `target/java-migration-continue/iopengw-v4-1g/receipt.json` |
+
+发行包基本可用门禁已通过，但完整项目发布、raw/AST 模型对照、14 域语义差分和三轮性能仍未通过。下一步须定位 native 堆的实际保留对象，再对任务级去重表、符号表、项目资源视图等候选增长点做有界化；现有证据仅证明堆耗尽，不足以断言某一个表是根因。发行验证器的输入摘要已改为 `lang-java-adapotr/` 和实际 release 二进制，不再记录历史 adapter 的产物。

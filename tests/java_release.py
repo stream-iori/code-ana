@@ -18,6 +18,17 @@ import java_functional_reference_alignment as reference
 from java_product_runtime import inventory
 
 
+def release_artifacts():
+    """Freeze the actual packaging inputs, including the migrated adapter bundle."""
+    root = alignment.ROOT
+    files = [root / 'target/release' / name for name in
+             ('codeana-cli', 'codeana-daemon', 'codeana-java-worker')]
+    files += [root / 'lang-java-adapotr/target' / name for name in
+              ('compiler-bridge.jar', 'maven-input-worker.jar',
+               'native/libcodeana_java.dylib', 'native/manifest.json')]
+    return {str(path.relative_to(root)): reference.digest(path) for path in files}
+
+
 def packaged_fixture_smoke(package, evidence):
     """Exercise shipped source/config and automatic daemon start, not a generated fixture."""
     with tempfile.TemporaryDirectory(prefix='codeana-release-demo-') as folder:
@@ -60,7 +71,7 @@ def main():
     base=(args.evidence or alignment.ROOT/'target/java-alignment/evidence'/
           ('release-package-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))).resolve()
     base.mkdir(parents=True,exist_ok=False)
-    frozen=alignment.input_files();artifacts=reference.probe_artifacts(True)
+    frozen=alignment.input_files();artifacts=release_artifacts()
     package=base/'package';started=time.monotonic()
     report=dict(kind='release_package_real_runtime',all_ok=False,full_semantic_diff_accepted=False,
                 final_capacity_accepted=False,inputs=frozen,artifacts=artifacts,gates=[])
@@ -92,7 +103,7 @@ def main():
         report['shipped_fixture_steps']=packaged_fixture_smoke(package,demo)
         report['gates'].append(dict(name='shipped_fixture_automatic_daemon_index_calls_source',exit_code=0))
         current_package=inventory(package)
-        current_inputs=alignment.input_files();current_artifacts=reference.probe_artifacts(True)
+        current_inputs=alignment.input_files();current_artifacts=release_artifacts()
         report.update(package_files=before,changed_package=sorted(key for key in before.keys()|current_package.keys()
             if before.get(key)!=current_package.get(key)))
         report['changed_inputs']=sorted(key for key in frozen.keys()|current_inputs.keys()
