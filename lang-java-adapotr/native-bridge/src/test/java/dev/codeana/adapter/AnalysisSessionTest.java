@@ -186,4 +186,37 @@ class AnalysisSessionTest {
                         .getMessage()
                         .contains("CAPTURE_HASH_MISMATCH"));
     }
+
+    @Test
+    void emptyTestScopeKeepsMainTypesForXmlWithoutAnotherCompilerTask() throws Exception {
+        var req = request("class A {public void start(){}}");
+        var main = Json.map(Json.list(req.get("contexts")).getFirst());
+        var test = new LinkedHashMap<String, Object>(main);
+        test.put("context", ".@TEST");test.put("scope", "TEST");test.put("world", "test");
+        test.put("digest", "test-xml");test.put("spring", true);test.put("spring_xml", true);
+        var auxiliary = new LinkedHashMap<>(Json.map(Json.list(main.get("sources")).getFirst()));
+        auxiliary.put("publish", false);test.put("sources", List.of(auxiliary));
+        Path xml = temporary.resolve("test-beans.xml");
+        Files.writeString(xml, "<beans><bean id=\"a\" class=\"A\" init-method=\"start\"/></beans>");
+        test.put("resources", List.of(Json.object("input", xml.toString(), "unit",
+                Json.object("path", "test-resources/beans.xml", "hash", Json.sha(xml),
+                        "module", ".", "world", "test", "scope", "RESOURCE"))));
+        req.put("contexts", List.of(main, test));
+        List<String> analyzed = new ArrayList<>();
+        List<Map<String,Object>> facts = new ArrayList<>();
+        try (var session = new AnalysisSession(req, new AnalysisObserver() {
+            public void model(com.anatomist.core.java.JavaAnalysisContext c) {
+                analyzed.add(c.scope().name());
+            }
+        })) {
+            for (Object row : (Iterable<?>) session.analyze().get("facts")) facts.add(Json.map(row));
+        }
+        assertEquals(List.of("MAIN"), analyzed);
+        var method = facts.stream().filter(f -> "A#start()".equals(f.get("signature")))
+                .findFirst().orElseThrow();
+        assertTrue(facts.stream().anyMatch(f -> "config_member".equals(f.get("relation"))
+                && method.get("id").equals(f.get("target"))));
+        assertTrue(facts.stream().anyMatch(f -> "java.bean".equals(f.get("relation"))
+                && "test-resources/beans.xml".equals(f.get("source"))));
+    }
 }

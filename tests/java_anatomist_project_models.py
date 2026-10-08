@@ -65,8 +65,12 @@ def main():
     evidence=args.evidence.resolve();evidence.mkdir(parents=True,exist_ok=False)
     probe=ROOT/'target/java-migration-probe'
     jar=ROOT/'lang-java-adapotr/native-bridge/target/native-bridge-0.1.0.jar'
+    provenance=json.loads((probe/'build-provenance.json').read_text())
+    required={str(p.resolve()) for p in [jar,probe/'native-model-witness',*sorted((ROOT/'tests/java-migration').glob('*.java'))]}
+    assert set(provenance)==required,'MODEL_WITNESS_BUILD_PROVENANCE_INCOMPLETE'
+    assert all(digest(pathlib.Path(p))==sha for p,sha in provenance.items()),'MODEL_WITNESS_STALE: rebuild scripts/build-java-migration-probe.sh'
     inputs={p.resolve():digest(p) for p in [REFERENCE,jar,probe/'native-model-witness',manifest_path,
-        ROOT/'tests/java-migration/ParityWitness.java',ROOT/'tests/java-migration/NativeModelWitness.java']}
+        probe/'build-provenance.json',ROOT/'tests/java-migration/ParityWitness.java',ROOT/'tests/java-migration/NativeModelWitness.java']}
     report=dict(kind='anatomist_frozen_project_preprojection_models',state='running',frozen_project=frozen,
         reference_sha256=REFERENCE_SHA,inputs={str(p):sha for p,sha in inputs.items()},
         expected_contexts=[m+'@'+s for m,s in expected],contexts=[],full_semantic_diff_accepted=False,

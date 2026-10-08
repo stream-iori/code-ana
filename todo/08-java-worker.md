@@ -1173,3 +1173,20 @@ de8c99b固定验收：native模型17项与冻结框架参考通过，无源码/�
 - perf-v3：已复现并纠正Maven producer CP边界（旧SOURCE重编译常量2，SDK8模块编译及新缓存结果1）；缓存v9恢复原始body诊断，坏parse/编码/声明头仍SOURCE。正在专项回归及重建native。全项目、raw/AST80、14域、三轮<2倍仍未验收；旧等待流程已主动中止。
 
 - perf-v3 同版收口：aa67fa5 model9 native/桥/Rust产物已构建；JVM61/61组通过（含图消费者145、图绑定228），1908.491秒且无漂移。native、发行和真实项目流程继续串行。新增独立三轮交替计时入口 `benchmarks/java_index_paired.py`，生产输入/产物需匹配完整语义门禁，计时含Maven至发布、排除查询；新清单和竞争进程保护、计时边界探针已验证。全项目、raw/AST80、14域、三轮<2倍及容量仍未完成。
+
+
+### 2026-10-08：Anatomist 核心迁入后的继续验收
+
+| 工作 | 已有证据 / 剩余门禁 |
+|---|---|
+| Java 核心迁入、Rust 产品架构 | 本地提交 3255add；冻结来源 204 文件、8 项边界适配；worker 13 / request 7 / ABI 2 |
+| capture 显示编号稳定性 | 类型拼写按图稳定，注解值与引号内文本不改；独立对照新增字面量用例 |
+| JVM / Rust | 最新 JVM 77 项、Rust 104 项通过；不能据此改写完整真实项目能力矩阵为 passed |
+| HTTP 产品 | v4 放行后局部变量/Lambda、full/delta、XML wiring 通过；XML 嵌套 bean/SOFA 子元素投影及 SAX→UTF-8 元素跨度已修正，最终产物回归待登记 |
+| 空发布上下文 | 不再为无自身源码的 TEST scope 重复编译 MAIN；XML 继续使用 MAIN 类型可见性。专门测试验证只出现 MAIN 编译回调且 TEST XML 成员正常解析。冻结项目有 10 个空 TEST scope |
+| 参考 NPE | 原 witness 用单个文件作源码根，参考目录扫描丢失辅助源码；修正 source plan 后 core/service@MAIN raw/AST 参考均成功，单上下文耗时 134.824/65.886 秒，不是全项目性能结果 |
+| binary-only XML | 冻结参考实际也保留 unresolved / candidateCount=0，不推断外部工厂产物、继承方法。迁入核心以参考能力为准；资源占位符发布为 possible，不能伪造 complete |
+| 原始模型全范围 | 修正模块自有 classpath、完整辅助源码清单、空 scope 和 native witness 构建摘要防混用；仍需完成 raw/AST 各 80 上下文对照 |
+| 后续顺序 | 最终同版本 fixture/产品 → iopengw MAIN/TEST/XML 发布及查询 → 完整模型及 14 发布语义域差分 → 3 轮独占交替性能与容量 → 最终发行。每轮和中位数均须 <2× Anatomist |
+
+旧适配器的验收回执不替代迁入核心回执。当前不能宣称全部正确性或性能门禁已通过，后续继续按 `docs/java-anatomist-migration.md` 登记实际证据。

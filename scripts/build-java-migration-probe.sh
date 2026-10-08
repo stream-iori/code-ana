@@ -23,3 +23,10 @@ export TMPDIR="$probe_temp"
   -H:IncludeResources='META-INF/anatomist/javac-worker.jar' \
   -cp "$probe_classpath" -o "$probe_temp/native-model-witness" NativeModelWitness
 mv "$probe_temp/native-model-witness" "$probe_root/native-model-witness"
+python3 - "$repo_root" "$probe_root" <<'PY'
+import hashlib,json,pathlib,sys
+root,probe=map(pathlib.Path,sys.argv[1:])
+paths=[root/'lang-java-adapotr/native-bridge/target/native-bridge-0.1.0.jar',
+       probe/'native-model-witness',*sorted((root/'tests/java-migration').glob('*.java'))]
+(probe/'build-provenance.json').write_text(json.dumps({str(p.resolve()):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths},indent=2)+'\n')
+PY

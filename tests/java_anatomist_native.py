@@ -115,13 +115,15 @@ class Native(unittest.TestCase):
 
     def test_nested_bean_and_sofa_children_are_queryable(self):
         resource=self.root/'beans.xml'
-        resource.write_text('<beans xmlns:sofa="http://schema.alipay.com/sofa/schema/service"><bean id="outer" class="A"><property name="value"><bean id="inner" class="A"/></property></bean><sofa:consumer id="consumer"><sofa:channel value="topic"><sofa:event value="message"/></sofa:channel></sofa:consumer></beans>')
+        resource.write_text('<beans xmlns:sofa="http://schema.alipay.com/sofa/schema/service"><!--中文😀--><bean id="outer" class="A"><property name="value"><bean id="inner" class="A"/></property></bean><sofa:consumer id="consumer"><sofa:channel value="topic"><sofa:event value="message"/></sofa:channel></sofa:consumer></beans>')
         self.context.update(spring=True,spring_xml=True,sofa=True,resources=[dict(input=str(resource),unit=dict(path='resources/beans.xml',hash=hashlib.sha256(resource.read_bytes()).hexdigest(),module='.',world='resources',scope='RESOURCE'))])
         facts=self.probe()['facts'];by={f['id']:f for f in facts}
         links=[f for f in facts if f['relation']=='config_nested_bean']
         self.assertEqual(len(links),1)
         self.assertEqual(by[links[0]['target']]['name'],'inner')
         self.assertEqual(by[links[0]['parent']]['attributes']['xmlKind'],'bean')
+        prop=next(f for f in facts if f['relation']=='java.spring.xml' and f['attributes'].get('xmlKind')=='property')
+        self.assertTrue(resource.read_bytes()[prop['span']['start']:prop['span']['end']].startswith(b'<property'))
         event=next(f for f in facts if f['relation']=='java.sofa' and f['attributes'].get('element')=='event')
         self.assertEqual(event['attributes']['channel'],'topic')
         self.assertEqual(event['attributes']['attributes']['value'],'message')

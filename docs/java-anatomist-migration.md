@@ -43,7 +43,7 @@ Rust 捕获文件和上下文
 
 | 门禁 | 状态 |
 |---|---|
-| 迁入 JVM 单元与集成测试 | 76 项通过；覆盖 Java、Lombok、Spring、类型/注解、签名、并行上下文和 capture 显示编号稳定性 |
+| 迁入 JVM 单元与集成测试 | 77 项通过；覆盖 Java、Lombok、Spring、类型/注解、签名、并行上下文和 capture 显示编号稳定性 |
 | Rust workspace 单元测试、clippy 和 Rust 端到端测试 | 104 项单元测试、clippy、15 项端到端测试通过 |
 | 冻结参考独立进程对照 | 9 组 fixture × 14 类原始模型/提取数据，零差异；包含 Spring/SOFA/XML |
 | 新共享库编译、Java 8 major 校验 | 已通过 |
@@ -87,3 +87,5 @@ Rust 捕获文件和上下文
 本轮最终 native、产品回归、完整 iopengw、发行包及三轮性能仍须以对应最终产物回执登记；先前 v2/v3 回执不自动证明 v4 通过。
 
 2026-10-08 v4 产品续验：同一产物放行后局部变量/Lambda、增量/重新全量通过（42.710 秒），XML wiring 与冻结参考对照通过。新发现 XML 嵌套 bean 的公共关系和 SOFA 子元素查询投影缺失；只从原始模型已有字段补投影，不补 Java 推断算法。开发 daemon 优先使用同目录安装的 bundle，避免冻结运行目录实际加载工程中的可变开发库；无安装 bundle 时 debug 才使用开发库。新产物的对应回归待重跑。
+
+最终源码 JVM 回归 77 项通过（target/lang-java-adapotr-continue-final-jvm.log），源码清单校验仍为 204/8。新增无自身 Java 源码的 scope 不生成重复 javac 任务：MAIN 前置仍编译，TEST XML 保留辅助 MAIN 类型查询。XML 字节跨度把 SAX 的开始标签末尾坐标转换成真实开始标签起点，原始 SAX position 单独保留；新增中文/emoji 前缀验证。

@@ -176,7 +176,11 @@ public final class CapturedProject {
 
     public List<JavacBackend.CapturedContext> compilerContexts(Set<String> dirty) {
         return contexts.stream()
-                .filter(c -> !c.sources().isEmpty())
+                // An empty TEST scope can still see MAIN sources for XML/type
+                // queries. That visibility does not require another javac task.
+                // MAIN prerequisites with their own declarations remain tasks.
+                .filter(c -> c.sources().stream().anyMatch(s -> s.validEncoding()
+                        && s.module().equals(c.module()) && s.scope().equals(c.scope().name())))
                 .map(
                         c ->
                                 new JavacBackend.CapturedContext(

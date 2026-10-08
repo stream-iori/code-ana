@@ -148,6 +148,10 @@ public final class ParityWitness {
                     if(!identities.containsKey(file))continue;visible.add(file);
                     if(!Boolean.TRUE.equals(c.get("prerequisite"))&&Boolean.TRUE.equals(input.get("publish")))selected.add(file);
                 }
+                if(visible.stream().noneMatch(file-> {
+                    var identity=identities.get(file);
+                    return identity.module().equals(c.get("module"))&&identity.scope().name().equals(c.get("scope"));
+                }))continue;
                 Set<String> deps=new LinkedHashSet<>((List<String>)c.getOrDefault("dependency_modules",List.of()));
                 contexts.add(type.getConstructor(String.class,SourceScope.class,List.class,Set.class,Set.class).newInstance(c.get("module"),SourceScope.valueOf((String)c.get("scope")),visible,selected,deps));
             }

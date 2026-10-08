@@ -1206,6 +1206,13 @@ public final class FactProjection {
                 ec == Integer.MAX_VALUE
                         ? (el < p.starts.length ? p.starts[el] : p.text.length())
                         : p.starts[el - 1] + ec - (project.sources.get(source).resource() ? 1 : 0);
+        if (project.sources.get(source).resource() && begin > 0) {
+            // SAX startElement locators point just after the opening tag. Keep
+            // those original coordinates in metadata; public spans start at '<'.
+            int opening = p.text.lastIndexOf('<', begin - 1);
+            if (opening < 0 || p.text.startsWith("</", opening)) return null;
+            begin = opening;
+        }
         if (begin < 0 || end < begin || end > p.text.length())
             throw new IllegalArgumentException("SOURCE_SPAN_RANGE");
         if (end < p.text.length()
