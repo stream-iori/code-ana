@@ -212,9 +212,9 @@ def project_config(scopes, xml, manifest, native_heap_bytes=536870912, worker_me
                    result_bytes=4294967296, scratch_bytes=17179869184, compiler_timeout_seconds=600):
     if not isinstance(compiler_timeout_seconds, int) or isinstance(compiler_timeout_seconds, bool) or not 1 <= compiler_timeout_seconds <= 3600:
         raise ValueError('JAVA_COMPILER_TIMEOUT_RANGE')
-    if not 8 * 1024 * 1024 <= native_heap_bytes <= 1024 * 1024 * 1024 or native_heap_bytes % (1024 * 1024):
+    if not 8 * 1024 * 1024 <= native_heap_bytes <= 2 * 1024 * 1024 * 1024 or native_heap_bytes % (1024 * 1024):
         raise ValueError('JAVA_NATIVE_HEAP_RANGE')
-    if not native_heap_bytes + (512 + 256 + 64) * 1024 * 1024 <= worker_memory_bytes <= 2147483648:
+    if not native_heap_bytes + (512 + 256 + 64) * 1024 * 1024 <= worker_memory_bytes <= 4294967296:
         raise ValueError('JAVA_PARALLELISM_MEMORY_BUDGET')
     if not 65536 <= result_bytes <= 8589934592:
         raise ValueError('JAVA_RESULT_BYTES_RANGE')
@@ -443,7 +443,7 @@ def main():
     parser.add_argument('--native-heap-bytes', type=int, default=536870912,
                         help='Explicit correctness-run native heap; this does not certify capacity')
     parser.add_argument('--worker-memory-bytes', type=int, default=1610612736,
-                        help='Total worker reservation, including javac and non-heap space; at most 2 GiB')
+                        help='Total worker reservation, including javac and non-heap space; at most 4 GiB')
     parser.add_argument('--result-bytes', type=int, default=4294967296,
                         help='Explicit disk archive/output limit; at most 8 GiB')
     parser.add_argument('--scratch-bytes', type=int, default=17179869184,

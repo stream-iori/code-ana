@@ -285,7 +285,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     }
     if let Some(heap) = c.resources.index.java_native_heap_bytes {
         ensure!(
-            (8 * 1024 * 1024..=1024 * 1024 * 1024).contains(&heap) && heap % (1024 * 1024) == 0,
+            (8 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&heap) && heap % (1024 * 1024) == 0,
             "JAVA_NATIVE_HEAP_RANGE"
         );
     }
@@ -1558,8 +1558,8 @@ source_roots=[{path="src",scope="MAIN",label="api"},{path="bridge",scope="MAIN",
             ),
             (
                 "java_native_heap_bytes",
-                vec![8388608, 268435456, 1073741824],
-                vec![0, 8388609, 1073741825],
+                vec![8388608, 268435456, 1073741824, 2147483648],
+                vec![0, 8388609, 2147483649],
                 "JAVA_NATIVE_HEAP_RANGE",
             ),
             (

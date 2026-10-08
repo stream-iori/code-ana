@@ -145,7 +145,7 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
     );
     ensure!(
         config.native_heap_bytes == 0
-            || ((8 * 1024 * 1024..=1024 * 1024 * 1024).contains(&config.native_heap_bytes)
+            || ((8 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&config.native_heap_bytes)
                 && config.native_heap_bytes.is_multiple_of(1024 * 1024)),
         "JAVA_NATIVE_HEAP_RANGE"
     );
@@ -372,6 +372,11 @@ mod tests {
         assert!(validate(&invalid).is_err());
         invalid = config.clone();
         invalid.native_heap_bytes = 8388609;
+        assert!(validate(&invalid).is_err());
+        invalid = config.clone();
+        invalid.native_heap_bytes = 2 * 1024 * 1024 * 1024;
+        assert!(validate(&invalid).is_ok());
+        invalid.native_heap_bytes += 1024 * 1024;
         assert!(validate(&invalid).is_err());
         let mut conflicting = fixture();
         conflicting.contexts[1].sources[0].input = "/unsealed/changed.java".into();

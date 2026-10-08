@@ -100,3 +100,5 @@ Rust 捕获文件和上下文
 | 同代码/输入，native 堆 1 GiB、worker 2 GiB | 518.999 秒后同样堆耗尽，进程树峰值 1,971,961,856 字节；无 SIGKILL，源码与运行产物摘要无变化，配置已恢复。回执 `target/java-migration-continue/iopengw-v4-1g/receipt.json` |
 
 发行包基本可用门禁已通过，但完整项目发布、raw/AST 模型对照、14 域语义差分和三轮性能仍未通过。下一步须定位 native 堆的实际保留对象，再对任务级去重表、符号表、项目资源视图等候选增长点做有界化；现有证据仅证明堆耗尽，不足以断言某一个表是根因。发行验证器的输入摘要已改为 `lang-java-adapotr/` 和实际 release 二进制，不再记录历史 adapter 的产物。
+
+用户要求 2 GiB 重试后，显式 native 堆上限放宽至 2 GiB，单 worker 总预算上限至 4 GiB；默认值与 Java 语义算法不变。Rust workspace lib 回归和更新后的 contracts 边界测试通过，release 构建通过，实际 isolate 堆探针返回 2147483648。冻结 iopengw MAIN/TEST/XML 的同一 Java 库重试运行 1086.611 秒（18 分 6.611 秒），未出现 SIGKILL 或堆耗尽；进程树峰值 2,594,799,616 字节。随后 `CONFLICTING_FACT_ID: symbol_c3aed7b2f276f66e41a1df95fa5f3fcce61968315953cbf62f0334247ea2815e` 使任务失败，未发布、未执行发布后查询。源码/产物摘要无变化，配置已恢复。证据：`target/java-migration-continue/iopengw-v4-2g/receipt.json`、`target/java-2g-heap-probe.log`、`target/java-2g-rust-tests.log`、`target/java-2g-contract-tests.log`。下一步应保存该 ID 的两个候选事实并定位身份/内容差异；不能仅跳过冲突，也不能把本轮登记为完整项目或性能通过。

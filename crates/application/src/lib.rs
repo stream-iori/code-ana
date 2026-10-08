@@ -106,7 +106,7 @@ impl Engine {
             .max_worker_memory_bytes
             .unwrap_or(256 * 1024 * 1024);
         ensure!(
-            (16 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&memory),
+            (16 * 1024 * 1024..=4 * 1024 * 1024 * 1024).contains(&memory),
             "WORKER_MEMORY_LIMIT_RANGE"
         );
         ensure!(

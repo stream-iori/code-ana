@@ -345,7 +345,7 @@ Native ABI 签名仍为 2；当前分析 JSON 使用 analysis request 4，支持
 | 资源 | 默认 / 显式范围 | 执行边界 |
 |---|---|---|
 | 模型归档 | 64 MiB / 64 KiB–1 GiB，每 context | compiler 声明/观察/语法 spool、最终模型、native 读取与项目暂存使用同一限额；控制 JSON 仍 64 MiB |
-| 原生堆 | 256 MiB / 8–1024 MiB | Graal v5 isolate params 传入 -Xmx；codeana_java_heap_bytes 返回实际堆并校验，warm reuse 必须一致；C ABI 仍 2 |
+| 原生堆 | 256 MiB / 8–2048 MiB | Graal v5 isolate params 传入 -Xmx；codeana_java_heap_bytes 返回实际堆并校验，warm reuse 必须一致；C ABI 仍 2。单 worker 总预算显式上限 4 GiB，仍检查 javac/非堆预留及 RSS |
 | javac | 默认 128 MiB、120 秒 | heap 8–512 MiB，context deadline 1–3600 秒；超时杀掉独占子进程并清理 |
 | 事实/结果 | 100000 条、64 MiB / 最多 5000000 条、8 GiB | native 汇总/基线/结果 JSON、Rust 基线/解码/daemon 接收与存储基线导出；owner 逐个解码，先限制数量；单行/IPC 仍 8 MiB |
 | 任务 scratch | 2 GiB / 64 KiB–32 GiB | 捕获原件、prepared 输入副本、compiler 模型/私有签名 pin、native JSON、Rust 基线/结果均计入；候选 SQLite 逐批和备份逐步校验；100ms 采样超限杀 worker 进程组；失败不发布 |

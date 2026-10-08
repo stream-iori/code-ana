@@ -38,7 +38,7 @@ impl Native {
     }
     pub fn load_with_heap(path: &Path, heap: u64) -> Result<Self> {
         ensure!(
-            (8 * 1024 * 1024..=1024 * 1024 * 1024).contains(&heap)
+            (8 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&heap)
                 && heap.is_multiple_of(1024 * 1024),
             "JAVA_NATIVE_HEAP_RANGE"
         );
