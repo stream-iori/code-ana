@@ -14,7 +14,7 @@ from java_project_model_api_alignment import accepted_context, expected_contexts
 from java_real_compiler_diagnostics import compiler_context as acceptance_context
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-REFERENCE_SHA='d822716b8349b2f94814500454cb1a515268b63b73f93e8e99467e54a872dba3'
+REFERENCE_SHA='457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e'
 DOMAINS=(
     ('calls','java_call_inventory_diff.py'),
     ('declaration_attributes','java_declaration_inventory_diff.py'),

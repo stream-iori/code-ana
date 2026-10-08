@@ -217,7 +217,7 @@ pub fn installed_library() -> Result<PathBuf> {
     }
     if cfg!(debug_assertions) {
         let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../lang-adaptor/target/native")
+            .join("../../lang-java-adapotr/target/native")
             .join(name);
         if dev.is_file() {
             return Ok(dev.canonicalize()?);
@@ -582,6 +582,11 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 lombok: module.lombok.mode.clone().unwrap_or_else(|| "off".into()),
                 lombok_strict: module.lombok.strict.unwrap_or(false),
                 prerequisite,
+                dependency_modules: dependencies
+                    .iter()
+                    .filter(|id| *id != &module.id)
+                    .cloned()
+                    .collect(),
                 spring: !prerequisite && module.extensions.spring.enabled.unwrap_or(false),
                 spring_xml: !prerequisite && module.extensions.spring.xml.unwrap_or(false),
                 sofa: !prerequisite && module.extensions.sofa.enabled.unwrap_or(false),

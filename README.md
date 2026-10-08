@@ -26,9 +26,9 @@ just demo-rust   # 独立临时 home，演示索引、查询、增量和历史
 ```sh
 cargo build --workspace --locked
 cargo run -p codeana-cli -- hello
-cd lang-adaptor && sdk env && cd ..
+cd lang-java-adapotr && sdk env && cd ..
 ./scripts/build-java-native.sh
-cargo run -p codeana-java-worker -- lang-adaptor/target/native/libcodeana_java.dylib
+cargo run -p codeana-java-worker -- lang-java-adapotr/target/native/libcodeana_java.dylib
 ```
 
 `just smoke` 验证 gRPC Hello 和 Java FFI Hello；需 GraalVM JDK 25。它不能代替真实 javac 分析验收。

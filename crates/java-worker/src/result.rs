@@ -99,7 +99,7 @@ impl<'de> Visitor<'de> for ResultSeed<'_> {
                 }
             }
         }
-        if version != Some(6) {
+        if version != Some(7) {
             return Err(de::Error::custom("JAVA_MODEL_VERSION_MISMATCH"));
         }
         if !seen.contains("facts") {
@@ -148,7 +148,7 @@ mod tests {
     use super::*;
     #[test]
     fn owner_deserialization_stops_at_configured_budget() {
-        let body = br#"{"version":6,"mode":"delta","facts":[],"replacements":[{"world":"w","producer":"p","kind":"file","id":"a"},{"world":"w","producer":"p","kind":"file","id":"b"}]}"#;
+        let body = br#"{"version":7,"mode":"delta","facts":[],"replacements":[{"world":"w","producer":"p","kind":"file","id":"a"},{"world":"w","producer":"p","kind":"file","id":"b"}]}"#;
         let limits = OutputLimits {
             bytes: 65536,
             facts: 1,
@@ -169,15 +169,15 @@ mod tests {
     fn streaming_reader_checks_schema_duplicates_and_required_arrays() {
         let m = Manifest::default();
         let r = read(
-            br#"{"facts":[],"version":6,"mode":"full","replacements":[],"compiler_sources":1}"#
+            br#"{"facts":[],"version":7,"mode":"full","replacements":[],"compiler_sources":1}"#
                 .as_slice(),
             &m,
         )
         .unwrap();
         assert_eq!(r.records.count, 0);
         for bad in [
-            r#"{"facts":[],"facts":[],"version":6,"mode":"full","replacements":[]}"#,
-            r#"{"version":6,"mode":"full","replacements":[]}"#,
+            r#"{"facts":[],"facts":[],"version":7,"mode":"full","replacements":[]}"#,
+            r#"{"version":7,"mode":"full","replacements":[]}"#,
             r#"{"facts":[],"version":3,"mode":"full","replacements":[]}"#,
         ] {
             assert!(read(bad.as_bytes(), &m).is_err());

@@ -484,7 +484,7 @@ fn extension(options: &ExportOptions) -> Result<PathBuf> {
         base.join("lib/java/maven-input-worker.jar"),
         base.join("../lib/java/maven-input-worker.jar"),
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../lang-adaptor/target/maven-input-worker.jar"),
+            .join("../../lang-java-adapotr/target/maven-input-worker.jar"),
     ] {
         if p.is_file() {
             return Ok(p.canonicalize()?);

@@ -1,0 +1,11 @@
+package dev.codeana.adapter;
+
+import com.anatomist.core.java.JavaAnalysisContext;
+import com.anatomist.model.ExtractionResult;
+
+/** In-process test observation, before Fact IR projection. No wire or C ABI exposure. */
+public interface AnalysisObserver {
+    AnalysisObserver NONE = new AnalysisObserver() {};
+    default void model(JavaAnalysisContext context) {}
+    default void extraction(ExtractionResult result) {}
+}

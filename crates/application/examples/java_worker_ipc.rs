@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
         .join("../..")
         .canonicalize()?;
     let binary = root.join("target/debug/codeana-java-worker");
-    let library = root.join("lang-adaptor/target/native/libcodeana_java.dylib");
+    let library = root.join("lang-java-adapotr/target/native/libcodeana_java.dylib");
     let jdk = std::env::var("CODEANA_JAVA8_HOME").unwrap_or_else(|_| {
         format!(
             "{}/.sdkman/candidates/java/8.0.492-zulu",
@@ -54,6 +54,7 @@ async fn main() -> Result<()> {
         .arg(library)
         .args(["--fd", "3"])
         .kill_on_drop(true)
+        .process_group(0)
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null());
     // The descriptor is a test-owned socket pair, identical to the product supervisor boundary.
@@ -88,7 +89,7 @@ async fn main() -> Result<()> {
         matches!(read_frame(&mut ipc).await?.body, Some(Body::Hello(h)) if h.protocol == WORKER_PROTOCOL_VERSION),
         "HELLO"
     );
-    for round in 0..2 {
+    for round in 0..3 {
         std::fs::write(
             &source,
             format!(
@@ -131,7 +132,7 @@ async fn main() -> Result<()> {
         let mut config = w::JavaConfig {
             java_home: jdk.clone(),
             bridge: root
-                .join("lang-adaptor/target/compiler-bridge.jar")
+                .join("lang-java-adapotr/target/compiler-bridge.jar")
                 .to_string_lossy()
                 .into(),
             scratch: scratch.path().to_string_lossy().into(),
@@ -315,10 +316,12 @@ async fn main() -> Result<()> {
             "MODEL_HYPOTHESIS_MISSING"
         );
         ensure!(
-            prior
-                .iter()
-                .any(|f| f.relation == "java.lombok" && f.attributes.contains_key("call_evidence")),
-            "CALL_EVIDENCE_MISSING"
+            prior.iter().any(|f| f.relation == "java.lombok"
+                && f.attributes
+                    .get("upstream_producer")
+                    .and_then(|v| v.as_str())
+                    == Some("lombok-model")),
+            "LOMBOK_CAPABILITY_MISSING"
         );
         ensure!(
             prior
@@ -341,8 +344,9 @@ async fn main() -> Result<()> {
             "PUBLISH_ACK"
         );
     }
-    child.start_kill()?;
-    child.wait().await?;
+    write_frame(&mut ipc, &envelope(attempt, Body::Cancel(w::Cancel {}))).await?;
+    let status = tokio::time::timeout(std::time::Duration::from_secs(5), child.wait()).await??;
+    ensure!(status.success(), "WORKER_EXIT: {status}");
     ensure!(
         !std::fs::read_dir(scratch.path())?
             .any(|entry| entry
@@ -350,7 +354,7 @@ async fn main() -> Result<()> {
         "COMPILER_LEAK"
     );
     println!(
-        "native product IPC: protocol10, shared inputs, full/delta, checksums, fact validation, Acked and hot host reuse passed"
+        "native product IPC: protocol13, shared inputs, full/delta, checksums, fact validation, Acked and hot host reuse passed"
     );
     Ok(())
 }

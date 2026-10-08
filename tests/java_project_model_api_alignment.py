@@ -58,14 +58,14 @@ def main():
         report['frozen_project']=verify_frozen(project)
         report['expected_contexts']=[module+'@'+scope for module,scope in expected]
         frozen={str(path.resolve()):digest(path) for path in
-            (manifest_path,args.native_executable,ROOT/'lang-adaptor/target/compiler-bridge.jar',
-             ROOT/'lang-adaptor/target/native/libcodeana_java.dylib',ROOT/'lang-adaptor/target/native/manifest.json')}
+            (manifest_path,args.native_executable,ROOT/'lang-java-adapotr/target/compiler-bridge.jar',
+             ROOT/'lang-java-adapotr/target/native/libcodeana_java.dylib',ROOT/'lang-java-adapotr/target/native/manifest.json')}
         for directory in ('classes','test-classes'):
-            frozen.update({str(path.resolve()):digest(path) for path in (ROOT/'lang-adaptor/target'/directory).rglob('*.class')})
+            frozen.update({str(path.resolve()):digest(path) for path in (ROOT/'lang-java-adapotr/target'/directory).rglob('*.class')})
         report.update(state='running',inputs_manifest_sha256=digest(manifest_path),source_inputs=alignment.input_files(),
             native_model_api_executable_sha256=digest(args.native_executable),
-            native_shared_library_sha256=digest(ROOT/'lang-adaptor/target/native/libcodeana_java.dylib'),
-            compiler_bridge_sha256=digest(ROOT/'lang-adaptor/target/compiler-bridge.jar'),inputs=frozen)
+            native_shared_library_sha256=digest(ROOT/'lang-java-adapotr/target/native/libcodeana_java.dylib'),
+            compiler_bridge_sha256=digest(ROOT/'lang-java-adapotr/target/compiler-bridge.jar'),inputs=frozen)
         atomic_json(output,report)
         for index,(module,scope) in enumerate(expected):
             begin=time.monotonic();directory=evidence/str(index);directory.mkdir()

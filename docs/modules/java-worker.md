@@ -1,12 +1,14 @@
 # Java 适配器与 worker
 
+> 当前实现与剩余门禁见 [Anatomist 迁移](../java-anatomist-migration.md)。以下含旧设计及历史状态。
+
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入，范围见 [Java 实现说明](../java-implementation.md)，证据见 [验收记录](../implementation/java-validation.md)。本页更广的类型、框架与规模化设计仍为目标。
 
 **Java 分析只采用 javac。编译器负责解析与绑定，独立 Java 模型承接提取和框架分析，最终交付公共 Fact IR。**
 
 | 决策 | 状态 |
 |---|---|
-| D13：`lang-adaptor/`、Java 25/GraalVM 共享库、独立 Rust host、C ABI、禁止 JNI | 用户已确认；保留该边界 |
+| D13：`lang-java-adapotr/`、Java 25/GraalVM 共享库、独立 Rust host、C ABI、禁止 JNI | 用户已确认；保留该边界 |
 | D16：javac 唯一后端，无 JavaParser/SymbolSolver、无兼容 AST 或解析器回退 | 用户已确认，2026-09-29 |
 | D17：原生库协调目标 JDK 编译器子进程 | Java 8 实现已通过实际共享库与目标 JVM fixture；更广 JDK/规模门禁仍待验证 |
 
@@ -24,7 +26,7 @@ Rust worker host（独立进程）
 Java 25 / GraalVM 共享库（同进程）
   ├─ 独立 Java 模型、ASM 二进制分析、框架、增量、事实提取
   └─ 编译器协调器
-       │ 编译器内部协议 9 / 独立模型 9（D17，Java 8 已实现）
+       │ 编译器 batch 2 / javac-model-v50（D17，Java 8 已实现）
        v
      目标 JDK JVM 子进程：javac parse → analyze
        └─ 禁用 annotation processor，无业务字节码生成
@@ -32,7 +34,7 @@ Java 25 / GraalVM 共享库（同进程）
 
 | 项目 | 要求 |
 |---|---|
-| 工程 | Java 相关代码均在 `lang-adaptor/`；建议按 `analysis-core`、`framework-*`、`native-bridge`、`compiler-bridge` 拆职责，不强制立即拆 Maven 子模块 |
+| 工程 | Java 相关代码均在 `lang-java-adapotr/`；建议按 `analysis-core`、`framework-*`、`native-bridge`、`compiler-bridge` 拆职责，不强制立即拆 Maven 子模块 |
 | 原生库 | 锁定 GraalVM JDK 25、Native Build Tools、依赖；`--shared` 产物连同 C header、ABI 与构建 manifest 分发 |
 | 编译器桥 | 与原生库分开构建、分发及版本化。候选以 Java 8 兼容字节码运行于目标 JDK 8/17/25；具体 API/字节码范围在 P0-04a 验证，不把 Java 25 字节码交给 JDK 8 |
 | 目标 JDK | 完整且与目标版本匹配；路径从冻结工具链配置取得，不猜环境变量。版本支持以本项目实际验收能力清单为准 |
@@ -185,7 +187,7 @@ Maven `selected=false` 的模块保留捕获身份和依赖源码，但不作为
 取消 / strict / Error -> 终止任务，旧发布版本不变
 ```
 
-接口与执行器在 `lang-adaptor/src/main/java/dev/codeana/analysis/extension/`；`BuiltinExtensions.REGISTRY` 显式装配，不扫描目标 classpath 或热加载业务 JAR。扩展版本、依赖、producer、facet 与有效配置形成指纹，记录在 context provenance，进入增量与 NoCode key。
+接口与执行器在 旧 `lang-adaptor/src/main/java/dev/codeana/analysis/extension/`（历史方案；新实现使用迁入的 `com.anatomist.framework`）；`BuiltinExtensions.REGISTRY` 显式装配，不扫描目标 classpath 或热加载业务 JAR。扩展版本、依赖、producer、facet 与有效配置形成指纹，记录在 context provenance，进入增量与 NoCode key。
 
 `JavaUnitModelExtension`用于文件级Lombok候选校验与最后统一提交。`JavaUnitAnalyzer`提供冻结上下文查询和文件body视图；一个文件的输出通过producer/schema/归属校验后提交，异常时丢弃该文件输出并继续其他文件；不能写入其他文件事实。规则仍输出本项目Fact IR，Rust继续负责存储与发布。最新实现与未完成的真实项目验收见[重写记录](../implementation/java-adaptor-rewrite.md)。
 

@@ -19,7 +19,7 @@ MIB = 1024 ** 2
 
 def artifacts():
     files = [java_e2e.BIN/name for name in ('codeana-daemon', 'codeana-cli', 'codeana-java-worker')]
-    files += [java_e2e.ROOT/'lang-adaptor/target'/name for name in
+    files += [java_e2e.ROOT/'lang-java-adapotr/target'/name for name in
               ('compiler-bridge.jar', 'native/libcodeana_java.dylib', 'native/manifest.json')]
     result = {}
     for path in files:

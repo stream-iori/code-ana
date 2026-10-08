@@ -78,7 +78,7 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                             let u=s.unit.as_ref().context("SOURCE_UNIT_REQUIRED")?;
                             Ok(json!({"path":u.path,"hash":u.hash,"module":u.module,"world":u.world,"scope":u.scope,"auxiliary":u.auxiliary,"input":s.input,"publish":s.publish}))
                         }).collect::<Result<Vec<_>>>()?;
-                        Ok(json!({"version":9,"type_graph":true,"context":ctx.id,"module":ctx.module,"world":ctx.world,"scope":ctx.scope,"prerequisite":ctx.prerequisite,"sources":sources,"classpath":ctx.classpath,"digest":ctx.digest,"lombok":ctx.lombok,"lombok_strict":ctx.lombok_strict,"spring":ctx.spring,"spring_xml":ctx.spring_xml,"sofa":ctx.sofa,
+                        Ok(json!({"version":9,"type_graph":true,"context":ctx.id,"module":ctx.module,"world":ctx.world,"scope":ctx.scope,"prerequisite":ctx.prerequisite,"dependency_modules":ctx.dependency_modules,"sources":sources,"classpath":ctx.classpath,"digest":ctx.digest,"lombok":ctx.lombok,"lombok_strict":ctx.lombok_strict,"spring":ctx.spring,"spring_xml":ctx.spring_xml,"sofa":ctx.sofa,
                             "model_archive_bytes":if ctx.model_archive_bytes==0 {64*1024*1024} else {ctx.model_archive_bytes},
                             "model_record_limit":if ctx.model_record_limit==0 {100000} else {ctx.model_record_limit},
                             "resources":ctx.resources.iter().map(|r|json!({"unit":r.unit,"input":r.input})).collect::<Vec<_>>(),
@@ -90,13 +90,13 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                     derived_cache = if c.signature_cache {
                         let root = Path::new(&c.cache_root).with_extension("managed-v1");
                         match DerivedCacheSession::open(&root, Path::new(&c.scratch),
-                            &["java-signatures", "java-signatures-modules"], DerivedCacheLimits::default()) {
+                            &["anatomist-signatures-v50-reloc1"], DerivedCacheLimits::default()) {
                             Ok(cache) => Some(cache),
                             Err(error) => { eprintln!("DERIVED_CACHE_UNAVAILABLE: {error}"); None }
                         }
                     } else { None };
-                    let cache_root = derived_cache.as_ref().map(|cache| cache.namespace_path("java-signatures")).transpose()?;
-                    let request=json!({"version":6,"compact_inputs":c.compact_inputs,"input_table":c.input_table,"classpath_table":c.classpath_table,"facts":true,"java_home":c.java_home,"bridge":c.bridge,"scratch":c.scratch,"contexts":contexts,"parallelism":c.parallelism,"full":a.full,"baseline_archive":{"path":baseline.path(),"sha256":baseline.file_hash()?,"count":baseline.count,"bytes":baseline.bytes},"profile":a.profile,"cache_root":cache_root,"signature_cache":derived_cache.is_some(),"signature_pin_bytes":if derived_cache.is_some() {128_u64<<20} else {256_u64<<20},"result_bytes":limits.bytes,"fact_limit":limits.facts,"compiler_heap_bytes":c.compiler_heap_bytes,"compiler_timeout_seconds":if c.compiler_timeout_seconds==0 {120} else {c.compiler_timeout_seconds}});
+                    let cache_root = derived_cache.as_ref().map(|cache| cache.namespace_path("anatomist-signatures-v50-reloc1")).transpose()?;
+                    let request=json!({"version":7,"compact_inputs":c.compact_inputs,"input_table":c.input_table,"classpath_table":c.classpath_table,"facts":true,"java_home":c.java_home,"bridge":c.bridge,"scratch":c.scratch,"contexts":contexts,"parallelism":c.parallelism,"full":a.full,"baseline_archive":{"path":baseline.path(),"sha256":baseline.file_hash()?,"count":baseline.count,"bytes":baseline.bytes},"profile":a.profile,"cache_root":cache_root,"signature_cache":derived_cache.is_some(),"signature_pin_bytes":if derived_cache.is_some() {128_u64<<20} else {256_u64<<20},"result_bytes":limits.bytes,"fact_limit":limits.facts,"compiler_heap_bytes":c.compiler_heap_bytes,"compiler_timeout_seconds":if c.compiler_timeout_seconds==0 {120} else {c.compiler_timeout_seconds}});
                     let heap=if c.native_heap_bytes==0 {256*1024*1024} else {c.native_heap_bytes};
                     if native.is_none() { native=Some(Native::load_with_heap(library,heap)?); }
                     ensure!(native.as_ref().context("NATIVE_REQUIRED")?.heap_bytes()?==heap,"WARM_NATIVE_HEAP_MISMATCH");

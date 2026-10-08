@@ -86,7 +86,7 @@ def reference_projection(database):
         return sorted(rows,key=lambda r:(r['bean'],r['role']))
 
 
-def index_reference(base, source, xml):
+def index_reference(base, source, xml, classpath=()):
     java=base/'app/Api.java';java.parent.mkdir();java.write_text(source)
     resources=base/'app/src/main/resources';resources.mkdir(parents=True)
     (resources/'beans.xml').write_text(xml)
@@ -99,6 +99,9 @@ def index_reference(base, source, xml):
     command=[str(JDK25/'bin/java'),'-Xmx512m','-jar',str(jar),'index',str(base),
              '--source-root','app@MAIN=app','--jdk-home',str(JDK8),'--java-version','8',
              '--lombok','off','--vm-classpath','true','--output',str(database),'--full','--no-classpath']
+    if classpath:
+        command.remove('--no-classpath')
+        command.extend(['--classpath',os.pathsep.join(map(str,classpath))])
     with (base/'reference.log').open('wb') as log:
         result=subprocess.run(command,stdout=log,stderr=log,timeout=180,
                               env=dict(os.environ,ANATOMIST_HOME=str(base/'reference-state')))

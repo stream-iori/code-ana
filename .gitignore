@@ -6,3 +6,6 @@
 /dist/
 
 __pycache__/
+
+/lang-java-adapotr/**/target/
+/lang-java-adapotr/target/

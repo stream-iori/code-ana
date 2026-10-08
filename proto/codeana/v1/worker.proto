@@ -23,6 +23,7 @@ message JavaContext {
  uint32 model_record_limit = 18;
  uint64 model_archive_bytes = 19;
  bool prerequisite = 20;
+ repeated string dependency_modules = 21;
 }
 message JavaConfig {
  string java_home = 1; string toolchain_digest = 2; string bridge = 3;

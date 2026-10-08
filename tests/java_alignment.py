@@ -49,9 +49,9 @@ def capability_results(matrix, gates):
 
 
 def input_files():
-    paths = [ROOT / name for name in ('Cargo.toml','Cargo.lock','lang-adaptor/pom.xml','lang-adaptor/.sdkmanrc','justfile')]
+    paths = [ROOT / name for name in ('Cargo.toml','Cargo.lock','lang-java-adapotr/pom.xml','lang-java-adapotr/.sdkmanrc','justfile')]
     extensions = {'.rs','.java','.py','.sh','.proto','.toml','.xml','.json'}
-    for directory in ('crates','lang-adaptor/src','scripts','tests','proto'):
+    for directory in ('crates','lang-java-adapotr','scripts','tests','proto'):
         paths += [p for p in (ROOT / directory).rglob('*') if p.is_file() and p.suffix in extensions
                   and not {'target','__pycache__'}.intersection(p.relative_to(ROOT).parts)]
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(set(paths))}

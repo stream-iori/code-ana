@@ -1,12 +1,12 @@
 # 总体架构
 
-2026-10-06：Java适配层正在按Anatomist文件边界重写，Rust外围保持。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
+2026-10-07：Java 核心已迁入 Anatomist，Rust 产品能力和完整验收继续补齐，见[迁移记录](java-anatomist-migration.md)。历史版本只用于追溯。
 
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入；结构化类型、ASM 外部声明与 owner 级冷增量见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
 **用语言 worker 生成事实，用 Rust 管理事实生命周期并回答查询。查询只读已发布版本。**
 
-状态：用户已确认每用户一个 daemon、HTTP/2 + protobuf 通信，以及 `lang-adaptor/` 的 Java 25/GraalVM C ABI 原生库方案；Java 分析后端仅采用 javac，不保留 JavaParser 或回退路径（D16，2026-09-29）；javac 执行位置采用 D17 目标 JDK 子进程方案（Java 8 fixture 已验证），其余模块细分和发布方式为建议，见 [决策登记](design-review.md)。
+状态：用户已确认每用户一个 daemon、HTTP/2 + protobuf 通信，以及 `lang-java-adapotr/` 的 Java 25/GraalVM C ABI 原生库方案；Java 分析后端仅采用 javac，不保留 JavaParser 或回退路径（D16，2026-09-29）；javac 执行位置采用 D17 目标 JDK 子进程方案（Java 8 fixture 已验证），其余模块细分和发布方式为建议，见 [决策登记](design-review.md)。
 
 ## 1. 系统边界
 
@@ -41,7 +41,7 @@
 daemon -- worker IPC --> [ Rust worker host -- C ABI / FFI --> Java 原生库 ]
                         |____________ 一个隔离进程 ____________________|
 
-Java 原生库 = lang-adaptor/ 中的 Java 25 + GraalVM Native Image 构建产物
+Java 原生库 = lang-java-adapotr/ 中的 Java 25 + GraalVM Native Image 构建产物
 当前内部链路（D17，Java 8）：Java 原生库 -- 编译器协议 --> 目标 JDK javac 子进程
                     <- 独立 Java 模型 -- parse/analyze（禁用处理器）
 ```
@@ -67,7 +67,7 @@ Rust worker host 是 Java 分析器的宿主，与 Rust 语言的 rust-analyzer 
 
 ## 2. 建议代码组织
 
-`lang-adaptor/` 是用户确定的 Java 适配项目根目录；以下子模块拆分为建议，目录不等于必须立即拆成同名 crate。
+`lang-java-adapotr/` 是用户确定的 Java 适配项目根目录；以下子模块拆分为建议，目录不等于必须立即拆成同名 crate。
 
 ```text
 crates/
@@ -80,7 +80,7 @@ crates/
   cli/            用户命令入口
   daemon/         装配与进程入口
   java-worker/    Rust worker host，装载 Java 原生库、执行 C ABI 调用
-lang-adaptor/     Java 适配工程；原生部分使用 Java 25 + GraalVM
+lang-java-adapotr/     Java 适配工程；原生部分使用 Java 25 + GraalVM
   pom.xml         原生部分锁定 release 25、GraalVM/插件；编译器桥单独设字节码目标
   analysis-core/  独立 Java 模型、javac 协调、ASM 二进制分析、增量与内存事实
   compiler-bridge/ 目标 JDK javac 桥与内部协议（D17 候选），与原生库分开构建

@@ -219,11 +219,13 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
     let manifest: serde_json::Value =
         serde_json::from_slice(&std::fs::read(parent.join("manifest.json"))?)?;
     ensure!(
-        manifest["version"] == 1
+        manifest["version"] == 2
             && manifest["abi"] == 2
-            && manifest["analysis_request"] == 6
-            && manifest["compiler_protocol"] == 9
-            && manifest["java_model"] == 9
+            && manifest["analysis_request"] == 7
+            && manifest["compiler_protocol"] == 2
+            && manifest["compiler_batch_protocol"] == 2
+            && manifest["adapter"] == "anatomist-dff2e395-codeana-v4"
+            && manifest["java_model"] == "javac-model-v50"
             && manifest["type_graph_default"] == true
             && manifest["type_schema"] == 3
             && manifest["binding_schema"] == 4,

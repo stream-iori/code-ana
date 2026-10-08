@@ -16,7 +16,7 @@ hello: build
   ./target/debug/codeana-cli hello
 
 worker: build java
-  ./target/debug/codeana-java-worker ./lang-adaptor/target/native/libcodeana_java.dylib
+  ./target/debug/codeana-java-worker ./lang-java-adapotr/target/native/libcodeana_java.dylib
 
 smoke:
   ./scripts/smoke.sh
@@ -44,7 +44,10 @@ package-rust:
 test-java:
   ./scripts/test-java.sh
 
-# Full parity gate records evidence and refuses to treat fixture success as 52/52 acceptance.
+test-java-migration-reference:
+  python3 tests/java_anatomist_reference.py
+
+# Legacy adapter parity gate records evidence and refuses to treat fixture success as 52/52 acceptance.
 test-java-alignment:
   python3 tests/java_alignment.py
 
@@ -62,7 +65,7 @@ test-java-maven:
 test-java-native:
   ./scripts/build-java-native.sh
   cargo build -p codeana-java-worker --locked
-  python3 tests/java_native_probe.py
+  python3 tests/java_anatomist_native.py
 
 test-java-e2e:
   cargo build --workspace --locked

@@ -1,12 +1,14 @@
 # 公共契约：事实、身份与协议
 
-2026-10-06：当前重写版本compiler9/model9/worker12/native request6，ABI2和Fact IR1保持；旧索引与Java缓存不迁移，混装拒绝。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
+> 当前 Java 迁移以 [迁移记录](java-anatomist-migration.md) 为准；以下带日期的旧模型和协议变更保留作历史记录。
+
+2026-10-06 历史重写版本：compiler9/model9/worker12/native request6，ABI2和Fact IR1保持；旧索引与Java缓存不迁移，混装拒绝。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
 
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入，新增结构化类型/ASM 的范围见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
 **先冻结“一个事实属于谁、对应哪个输入、怎样证明交付完成”，再实现传输和表结构。**
 
-状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 12，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型版本 8、编译器桥版本 9。Java 8 字节码与真实 native 链路已验证；最新变更的完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
+状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 13，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型 javac-model-v50、编译器 batch 2、analysis request/result 7、C ABI 2。Java 8 字节码与真实 native 链路已验证；最新变更的完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
 
 ## 1. 身份
 
@@ -163,7 +165,7 @@ candidate = baseline - 全部 replacement_owners 的旧事实 + delta 新事实
 
 ## 4. worker 协议
 
-本节定义 daemon 与 worker 的逻辑消息。Java 场景中的 worker 是独立 Rust host，host 再通过进程内 C ABI 调用 `lang-adaptor/` 构建的 GraalVM Java 共享库；FFI 不跨进程。ABI 的线程、内存和错误约束见 [Java 适配器](modules/java-worker.md)。
+本节定义 daemon 与 worker 的逻辑消息。Java 场景中的 worker 是独立 Rust host，host 再通过进程内 C ABI 调用 `lang-java-adapotr/` 构建的 GraalVM Java 共享库；FFI 不跨进程。ABI 的线程、内存和错误约束见 [Java 适配器](modules/java-worker.md)。
 
 建议 worker IPC 使用有长度前缀的 protobuf 消息，复用 `.proto` 的 adapter/Fact IR 定义，与 CLI 的 gRPC 服务分别版本化；Java FFI 的字节缓冲可承载同一消息编码。HTTP/2 + protobuf 的用户决策针对 CLI-daemon，是否统一 worker RPC 承载需另行验证，不自动增加 Java 内部网络服务。
 
@@ -476,3 +478,6 @@ Model 7 归档的类型图在打开时逐图完整验证；任务内按原归档
 2026-10-07 性能改造：model9 使用独立二进制帧（固定字符串字典、数值图边、严格 Unicode/长度/重复键/深度检查）；公共 Fact IR 保持 JSON。完成文件事实与项目快照后，产品显式释放该上下文的主/补充模型和输入归档；补充根在同一上下文内有效，独立模型 API 的任务租约仍保持。封存模型使用 64KiB 编码页缓存，声明/类型视图的别名与不可变性不变。类型闭包仅对不可变图根复用，上下文内64MiB/16384条目；缓存载荷为二进制字节，命中返回独立可变对象，零预算/淘汰不会丢事实。细粒度进度写入至多每250ms一次，阶段/上下文切换立即记录；取消检查不节流。完整 iopengw 正确性与两倍性能门禁尚未通过。
 
 任务内二进制依赖目录由CompilerSession持有，最多32MiB/4096归档；缓存不可变包名清单及SHA，不缓存消费者的classpath序号、可变类声明或文件描述符。上下文按自身顺序重建查询位置，元数据身份变化撤销旧条目；预算不足仍执行原有精确顺序查询。任务关闭释放目录，线程绑定按作用域恢复。此缓存不替代Rust捕获时的内容封存与原子发布校验。
+
+
+迁入 Anatomist 核心后的 XML 边界以 `docs/java-anatomist-migration.md` 为准：原始资源分析未提供的 binary-only 工厂产物和继承成员不补造声明。资源阶段的 external_symbol 使用独立身份、context owner、无 source/span、source_available=false、origin=framework_model、status=possible，declaration_resolved/evidence_complete=false；保留上游 resolutionStatus、candidateCount 和 producer。javac 已观测的外部声明保持自己的身份和证据。旧 Java 适配器的额外 ASM XML 推断记录不作为新核心的已实现能力。
