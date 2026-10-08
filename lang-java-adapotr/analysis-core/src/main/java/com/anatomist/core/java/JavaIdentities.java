@@ -43,6 +43,16 @@ public final class JavaIdentities {
                                 ? model.declaration(parent).symbol().name()
                                 : value.symbol().name();
                 if (name.isEmpty()) name = "$anon";
+                // Java permits a method with the enclosing class's name. Preserve both
+                // declarations instead of merging its identity with a constructor.
+                if (kind.equals("CONSTRUCTOR")) {
+                    String constructorName = name;
+                    boolean collision = model.members(parent).stream()
+                            .map(model::declaration)
+                            .anyMatch(member -> member.symbol().kind().equals("METHOD")
+                                    && member.symbol().name().equals(constructorName));
+                    if (collision) name = "<init>";
+                }
                 List<String> parameters = parameters(reference, value, executable);
                 if (value.symbol().variadic() && !parameters.isEmpty()) {
                     String last = parameters.getLast();

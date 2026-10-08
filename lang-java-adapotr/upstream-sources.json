@@ -342,7 +342,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaIdentities.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaIdentities.java",
       "sha256": "8b126cfaf0c599add5b0b31fcb4d004d1594fe26e27d8e4efa77e65d2a3f68e9",
-      "migrated_sha256": "8b126cfaf0c599add5b0b31fcb4d004d1594fe26e27d8e4efa77e65d2a3f68e9"
+      "migrated_sha256": "c70bdc8decd8b57364cee3df41e3fec5b00566b093283d64822908ae2449882a",
+      "adaptation": "Preserve constructors separately from legal class-named methods; use <init> when a class-named ordinary method is present. All declaration-based references share this identity."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaModel.java",

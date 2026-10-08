@@ -32,8 +32,12 @@ final class TypeGraphProjection {
                 else if (ch == quote) quote = 0;
                 else if (quote == 0 && (ch == '"' || ch == '\'')) quote = ch;
             }
-            String replacement = quote != 0 ? matcher.group() :
-                    "capture#" + captures.computeIfAbsent(matcher.group(), ignored -> captures.size());
+            String replacement =
+                    quote != 0
+                            ? matcher.group()
+                            : "capture#"
+                                    + captures.computeIfAbsent(
+                                            matcher.group(), ignored -> captures.size());
             matcher.appendReplacement(out, java.util.regex.Matcher.quoteReplacement(replacement));
             scanned = matcher.end();
         } while (matcher.find());
@@ -42,6 +46,74 @@ final class TypeGraphProjection {
 
     TypeGraphProjection(JavaTypes types) {
         this.types = types;
+        this.cache = null;
+    }
+
+    private final Cache cache;
+
+    TypeGraphProjection(JavaTypes types, Cache cache) {
+        this.types = types;
+        this.cache = cache;
+    }
+
+    /** Context-owned: numerical type references never cross JavaTypes dictionaries. */
+    static final class Cache {
+        private record Dictionary(JavaTypes types) {
+            public int hashCode() {
+                return System.identityHashCode(types);
+            }
+
+            public boolean equals(Object other) {
+                return other instanceof Dictionary d && d.types == types;
+            }
+        }
+
+        private record Key(
+                Dictionary dictionary, List<Integer> roots, Map<String, Integer> captures) {}
+
+        private record Entry(Object graph, int bytes, int nodes) {}
+
+        private final LinkedHashMap<Key, Entry> values = new LinkedHashMap<>(16, .75f, true);
+        private long bytes;
+        private int nodes;
+
+        Object get(JavaTypes types, List<Integer> roots, Map<String, Integer> captures) {
+            var entry = values.get(new Key(new Dictionary(types), roots, captures));
+            return entry == null ? null : entry.graph();
+        }
+
+        void put(
+                JavaTypes types,
+                List<Integer> roots,
+                Map<String, Integer> captures,
+                Object graph,
+                int count) {
+            if (count > 8192) return;
+            int size = Json.write(graph).getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+            if (size > 16 << 20) return;
+            var key = new Key(new Dictionary(types), List.copyOf(roots), Map.copyOf(captures));
+            var old = values.remove(key);
+            if (old != null) {
+                bytes -= old.bytes();
+                nodes -= old.nodes();
+            }
+            values.put(key, new Entry(graph, size, count));
+            bytes += size;
+            nodes += count;
+            while (values.size() > 128 || bytes > 16 << 20 || nodes > 8192) {
+                var iterator = values.entrySet().iterator();
+                var entry = iterator.next().getValue();
+                iterator.remove();
+                bytes -= entry.bytes();
+                nodes -= entry.nodes();
+            }
+        }
+
+        void clear() {
+            values.clear();
+            bytes = 0;
+            nodes = 0;
+        }
     }
 
     Object reference(int ref) {
@@ -83,6 +155,13 @@ final class TypeGraphProjection {
     }
 
     void attach(Map<String, Object> attributes) {
+        List<Integer> requestedRoots = roots.stream().map(pending::get).toList();
+        Map<String, Integer> initialCaptures = Map.copyOf(captures);
+        Object cached = cache == null ? null : cache.get(types, requestedRoots, initialCaptures);
+        if (cached != null) {
+            attributes.put("java_type_graphs", cached);
+            return;
+        }
         for (int cursor = 0; cursor < pending.size(); cursor++) {
             JavaType t = types.get(pending.get(cursor));
             List<Integer> children = new ArrayList<>();
@@ -161,9 +240,21 @@ final class TypeGraphProjection {
             for (int parent : reverse.get(queue.removeFirst()))
                 if (Boolean.TRUE.equals(nodes.get(parent).put("complete", false)))
                     queue.add(parent);
-        attributes.put(
-                "java_type_graphs",
-                List.of(Json.object("version", 3, "nodes", nodes, "roots", roots)));
+        Object graph = List.of(Json.object("version", 3, "nodes", nodes, "roots", roots));
+        if (cache != null && nodes.size() <= 8192) graph = freeze(graph);
+        attributes.put("java_type_graphs", graph);
+        if (cache != null) cache.put(types, requestedRoots, initialCaptures, graph, nodes.size());
+    }
+
+    private static Object freeze(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            map.forEach((key, item) -> copy.put((String) key, freeze(item)));
+            return Collections.unmodifiableMap(copy);
+        }
+        if (value instanceof List<?> list)
+            return list.stream().map(TypeGraphProjection::freeze).toList();
+        return value;
     }
 
     private static Map<String, Object> annotation(JavaAnnotation a) {

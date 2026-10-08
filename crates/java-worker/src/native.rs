@@ -221,10 +221,10 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
     ensure!(
         manifest["version"] == 2
             && manifest["abi"] == 2
-            && manifest["analysis_request"] == 7
+            && manifest["analysis_request"] == 8
             && manifest["compiler_protocol"] == 2
             && manifest["compiler_batch_protocol"] == 2
-            && manifest["adapter"] == "anatomist-dff2e395-codeana-v4"
+            && manifest["adapter"] == "anatomist-dff2e395-codeana-v5"
             && manifest["java_model"] == "javac-model-v50"
             && manifest["type_graph_default"] == true
             && manifest["type_schema"] == 3

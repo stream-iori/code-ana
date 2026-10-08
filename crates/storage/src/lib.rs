@@ -1,5 +1,6 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
 pub mod derived_cache;
+pub mod fact_dedup;
 mod staged;
 use anyhow::{Context, Result, ensure};
 use codeana_model::*;

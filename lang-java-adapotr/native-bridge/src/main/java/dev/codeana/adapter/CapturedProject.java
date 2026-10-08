@@ -35,13 +35,23 @@ public final class CapturedProject {
             Map<String, Object> options) {}
 
     public final Path root;
+    public final Path diagnosticRoot;
+    public final boolean deferFactDedup;
     public final Map<String, Source> sources = new LinkedHashMap<>();
+    private final Map<Path, Source> physicalSources = new HashMap<>();
     public final List<Context> contexts;
+    private final List<SourceRoot> sourceRoots;
 
     public CapturedProject(Map<String, Object> request) throws IOException {
         root =
                 Files.createDirectory(
                         Path.of(Json.string(request, "scratch")).resolve("anatomist-inputs"));
+        diagnosticRoot =
+                Path.of(
+                        Objects.toString(
+                                request.get("diagnostic_scratch"),
+                                Json.string(request, "scratch")));
+        deferFactDedup = Boolean.TRUE.equals(request.get("defer_fact_dedup"));
         ContextInputs resolver = new ContextInputs(request);
         List<Context> contexts = new ArrayList<>();
         Set<String> worlds = new HashSet<>(), ids = new HashSet<>();
@@ -93,6 +103,37 @@ public final class CapturedProject {
                             Map.copyOf(c)));
         }
         this.contexts = List.copyOf(contexts);
+        Set<SourceRoot> roots = new LinkedHashSet<>();
+        Set<String> described = new HashSet<>();
+        for (var context : contexts) {
+            List<Object> declared = list(context.options().get("source_roots"));
+            if (declared.isEmpty()) continue;
+            described.add(context.module() + "\n" + context.scope());
+            for (Object value : declared) {
+                Path relative = Path.of((String) value);
+                if (relative.isAbsolute() || relative.normalize().startsWith(".."))
+                    throw new IllegalArgumentException("CAPTURE_SOURCE_ROOT");
+                roots.add(
+                        new SourceRoot(
+                                root.resolve(relative).normalize(),
+                                context.module(),
+                                context.scope()));
+            }
+        }
+        for (var source : sources.values()) {
+            if (source.resource()) continue;
+            var scope = SourceScope.valueOf(source.scope());
+            if (!described.contains(source.module() + "\n" + scope))
+                roots.add(new SourceRoot(source.file(), source.module(), scope));
+            else if (roots.stream()
+                    .noneMatch(
+                            r ->
+                                    r.module().equals(source.module())
+                                            && r.scope() == scope
+                                            && source.file().startsWith(r.path())))
+                throw new IllegalArgumentException("CAPTURE_SOURCE_OUTSIDE_ROOT");
+        }
+        sourceRoots = List.copyOf(roots);
     }
 
     private Source capture(Map<String, Object> row, boolean resource) throws IOException {
@@ -134,20 +175,18 @@ public final class CapturedProject {
                         valid,
                         Boolean.TRUE.equals(row.get("auxiliary")));
         sources.put(name, s);
+        physicalSources.put(s.file(), s);
         return s;
     }
 
     public Source source(Path file) {
         return Objects.requireNonNull(
-                sources.get(root.relativize(file).toString().replace('\\', '/')),
+                physicalSources.get(file),
                 "uncaptured source");
     }
 
     public List<SourceRoot> roots() {
-        return sources.values().stream()
-                .filter(s -> !s.resource())
-                .map(s -> new SourceRoot(s.file(), s.module(), SourceScope.valueOf(s.scope())))
-                .toList();
+        return sourceRoots;
     }
 
     public JavaSourcePlan sourcePlan(Set<String> dirty) {
@@ -179,8 +218,15 @@ public final class CapturedProject {
                 // An empty TEST scope can still see MAIN sources for XML/type
                 // queries. That visibility does not require another javac task.
                 // MAIN prerequisites with their own declarations remain tasks.
-                .filter(c -> c.sources().stream().anyMatch(s -> s.validEncoding()
-                        && s.module().equals(c.module()) && s.scope().equals(c.scope().name())))
+                .filter(
+                        c ->
+                                c.sources().stream()
+                                        .anyMatch(
+                                                s ->
+                                                        s.validEncoding()
+                                                                && s.module().equals(c.module())
+                                                                && s.scope()
+                                                                        .equals(c.scope().name())))
                 .map(
                         c ->
                                 new JavacBackend.CapturedContext(
@@ -211,9 +257,9 @@ public final class CapturedProject {
         for (var entry : modules.entrySet()) {
             String module = entry.getKey();
             List<Path> main = new ArrayList<>(), test = new ArrayList<>();
-            sources.values().stream()
-                    .filter(s -> !s.resource() && s.module().equals(module))
-                    .forEach(s -> (s.scope().equals("TEST") ? test : main).add(s.file()));
+            roots().stream()
+                    .filter(r -> r.module().equals(module))
+                    .forEach(r -> (r.scope() == SourceScope.TEST ? test : main).add(r.path()));
             Context m =
                     entry.getValue().stream()
                             .filter(c -> c.scope() != SourceScope.TEST)

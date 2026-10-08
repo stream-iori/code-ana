@@ -1,40 +1,43 @@
-//! Decode a native result one fact at a time into an owned archive.
-use anyhow::{Result, ensure};
+//! Consume a sealed native CAF1 archive without a whole-project JSON expansion.
+use anyhow::{Context, Result, bail, ensure};
 use codeana_contracts::archive::{FactArchive, FactArchiveBuilder};
 use codeana_contracts::java::OutputLimits;
 use codeana_model::{Fact, FactValidator, Manifest, Owner};
-use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
-use std::{collections::BTreeSet, fmt, io::Read};
+use codeana_storage::fact_dedup::{FactDeduplicator, Observation};
+use serde::{
+    Deserialize,
+    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
+};
+use sha2::{Digest, Sha256};
+use std::os::unix::fs::{FileExt, OpenOptionsExt};
+use std::{
+    collections::BTreeSet,
+    fmt,
+    fs::File,
+    io::{BufReader, Read},
+    path::{Path, PathBuf},
+};
 
 pub struct NativeResult {
     pub mode: String,
     pub replacements: Vec<Owner>,
     pub records: FactArchive,
 }
-struct ResultSeed<'a>(&'a Manifest, OutputLimits, Option<&'a std::path::Path>);
-struct FactsSeed<'a> {
-    builder: &'a mut FactArchiveBuilder,
-    validator: &'a FactValidator<'a>,
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Descriptor {
+    format: String,
+    path: PathBuf,
+    count: u64,
+    bytes: u64,
+    sha256: String,
 }
-impl<'de> DeserializeSeed<'de> for FactsSeed<'_> {
-    type Value = ();
-    fn deserialize<D: de::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
-        d.deserialize_seq(self)
-    }
+struct Envelope {
+    mode: String,
+    replacements: Vec<Owner>,
+    archive: Descriptor,
 }
-impl<'de> Visitor<'de> for FactsSeed<'_> {
-    type Value = ();
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("fact array")
-    }
-    fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<(), A::Error> {
-        while let Some(fact) = seq.next_element::<Fact>()? {
-            self.validator.validate(&fact).map_err(de::Error::custom)?;
-            self.builder.push(&fact).map_err(de::Error::custom)?;
-        }
-        Ok(())
-    }
-}
+struct EnvelopeSeed(OutputLimits);
 struct OwnersSeed(u64);
 impl<'de> DeserializeSeed<'de> for OwnersSeed {
     type Value = Vec<Owner>;
@@ -58,28 +61,21 @@ impl<'de> Visitor<'de> for OwnersSeed {
         Ok(owners)
     }
 }
-impl<'de> DeserializeSeed<'de> for ResultSeed<'_> {
-    type Value = NativeResult;
-    fn deserialize<D: de::Deserializer<'de>>(self, d: D) -> Result<NativeResult, D::Error> {
+
+impl<'de> DeserializeSeed<'de> for EnvelopeSeed {
+    type Value = Envelope;
+    fn deserialize<D: de::Deserializer<'de>>(self, d: D) -> Result<Envelope, D::Error> {
         d.deserialize_map(self)
     }
 }
-impl<'de> Visitor<'de> for ResultSeed<'_> {
-    type Value = NativeResult;
+impl<'de> Visitor<'de> for EnvelopeSeed {
+    type Value = Envelope;
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("native analysis result")
+        f.write_str("native archive descriptor")
     }
-    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<NativeResult, A::Error> {
-        let mut version = None;
-        let mut mode = None;
-        let mut replacements = None;
+    fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Envelope, A::Error> {
+        let (mut version, mut mode, mut replacements, mut archive) = (None, None, None, None);
         let mut seen = BTreeSet::new();
-        let validator = FactValidator::new(self.0);
-        let mut records = match self.2 {
-            Some(root) => FactArchiveBuilder::new_in(self.1.bytes, self.1.facts, root),
-            None => FactArchiveBuilder::new(self.1.bytes, self.1.facts),
-        }
-        .map_err(de::Error::custom)?;
         while let Some(key) = map.next_key::<String>()? {
             if !seen.insert(key.clone()) {
                 return Err(de::Error::custom("DUPLICATE_RESULT_FIELD"));
@@ -88,99 +84,267 @@ impl<'de> Visitor<'de> for ResultSeed<'_> {
                 "version" => version = Some(map.next_value::<u32>()?),
                 "mode" => mode = Some(map.next_value::<String>()?),
                 "replacements" => {
-                    replacements = Some(map.next_value_seed(OwnersSeed(self.1.facts))?)
+                    replacements = Some(map.next_value_seed(OwnersSeed(self.0.facts))?)
                 }
-                "facts" => map.next_value_seed(FactsSeed {
-                    builder: &mut records,
-                    validator: &validator,
-                })?,
+                "facts_archive" => archive = Some(map.next_value::<Descriptor>()?),
                 _ => {
-                    map.next_value::<de::IgnoredAny>()?;
+                    return Err(de::Error::custom("UNKNOWN_RESULT_FIELD"));
                 }
             }
         }
-        if version != Some(7) {
+        if version != Some(8) {
             return Err(de::Error::custom("JAVA_MODEL_VERSION_MISMATCH"));
-        }
-        if !seen.contains("facts") {
-            return Err(de::Error::missing_field("facts"));
         }
         let mode = mode.ok_or_else(|| de::Error::missing_field("mode"))?;
         if !matches!(mode.as_str(), "full" | "delta") {
             return Err(de::Error::custom("INVALID_MODE"));
         }
-        Ok(NativeResult {
+        Ok(Envelope {
             mode,
             replacements: replacements.ok_or_else(|| de::Error::missing_field("replacements"))?,
-            records: records.seal().map_err(de::Error::custom)?,
+            archive: archive.ok_or_else(|| de::Error::missing_field("facts_archive"))?,
         })
     }
 }
-#[cfg(test)]
-pub fn read(input: impl Read, manifest: &Manifest) -> Result<NativeResult> {
-    read_with_limits(input, manifest, OutputLimits::default())
-}
-#[cfg(test)]
-pub fn read_with_limits(
-    input: impl Read,
-    manifest: &Manifest,
-    limits: OutputLimits,
-) -> Result<NativeResult> {
-    read_owned(input, manifest, limits, None)
-}
+
 pub fn read_owned(
     input: impl Read,
     manifest: &Manifest,
     limits: OutputLimits,
-    root: Option<&std::path::Path>,
+    root: Option<&Path>,
 ) -> Result<NativeResult> {
-    let mut decoder = serde_json::Deserializer::from_reader(input);
-    let result = ResultSeed(manifest, limits, root).deserialize(&mut decoder)?;
-    decoder.end()?;
-    ensure!(
-        result.replacements.len() as u64 <= limits.facts,
-        "OWNER_BUDGET"
-    );
-    Ok(result)
+    let root = root.context("NATIVE_ARCHIVE_ROOT_REQUIRED")?;
+    load(input, Some(manifest), limits, root)
 }
+
+fn load(
+    input: impl Read,
+    manifest: Option<&Manifest>,
+    limits: OutputLimits,
+    root: &Path,
+) -> Result<NativeResult> {
+    let mut decoder = serde_json::Deserializer::from_reader(input.take(64 << 20));
+    let envelope = EnvelopeSeed(limits).deserialize(&mut decoder)?;
+    decoder.end()?;
+    let descriptor = envelope.archive;
+    ensure!(
+        descriptor.format == "CAF1"
+            && descriptor.count <= limits.facts
+            && descriptor.bytes >= 4
+            && descriptor.bytes <= limits.bytes,
+        "NATIVE_ARCHIVE_BUDGET"
+    );
+    let root = root.canonicalize()?;
+    ensure!(
+        descriptor.path.is_absolute() && descriptor.path.canonicalize()?.starts_with(&root),
+        "NATIVE_ARCHIVE_PATH"
+    );
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW)
+        .open(&descriptor.path)?;
+    ensure!(
+        file.metadata()?.is_file() && file.metadata()?.len() == descriptor.bytes,
+        "NATIVE_ARCHIVE_SIZE"
+    );
+    let mut input = BufReader::new(&file);
+    let mut digest = Sha256::new();
+    let mut magic = [0u8; 4];
+    input.read_exact(&mut magic)?;
+    ensure!(magic == 0x43414631u32.to_be_bytes(), "FACT_ARCHIVE_VERSION");
+    digest.update(magic);
+    let mut builder = FactArchiveBuilder::new_in(limits.bytes, limits.facts, &root)?;
+    let mut identities = FactDeduplicator::new(&root)?;
+    let validator = manifest.map(FactValidator::new);
+    let mut offset = 4u64;
+    for _ in 0..descriptor.count {
+        let mut length = [0u8; 4];
+        input.read_exact(&mut length)?;
+        digest.update(length);
+        let size = u32::from_be_bytes(length) as usize;
+        ensure!(
+            size > 0 && size <= 8 << 20 && offset + 4 + size as u64 <= descriptor.bytes,
+            "FACT_FRAME_BUDGET"
+        );
+        let mut bytes = vec![0u8; size];
+        input.read_exact(&mut bytes)?;
+        digest.update(&bytes);
+        let fact: Fact = serde_json::from_slice(&bytes)?;
+        if let Some(validator) = &validator {
+            validator.validate(&fact).map_err(anyhow::Error::msg)?;
+        }
+        match identities.observe(&fact.id, &codeana_model::hash(&bytes), offset)? {
+            Observation::New => builder.push(&fact)?,
+            Observation::Same => {}
+            Observation::Conflict { first_offset } => {
+                let first = row_at(&file, first_offset)?;
+                let evidence = serde_json::json!({"id":fact.id,"first":serde_json::from_slice::<serde_json::Value>(&first)?,
+                    "second":serde_json::from_slice::<serde_json::Value>(&bytes)?});
+                std::fs::write(
+                    root.join("fact-conflict.json"),
+                    serde_json::to_vec(&evidence)?,
+                )?;
+                bail!("CONFLICTING_FACT_ID: {}", fact.id);
+            }
+        }
+        offset += 4 + size as u64;
+    }
+    let mut trailing = [0u8; 1];
+    ensure!(
+        offset == descriptor.bytes && input.read(&mut trailing)? == 0,
+        "NATIVE_ARCHIVE_EOF"
+    );
+    ensure!(
+        format!("{:x}", digest.finalize()) == descriptor.sha256,
+        "NATIVE_ARCHIVE_IDENTITY"
+    );
+    Ok(NativeResult {
+        mode: envelope.mode,
+        replacements: envelope.replacements,
+        records: builder.seal()?,
+    })
+}
+fn row_at(file: &File, offset: u64) -> Result<Vec<u8>> {
+    let mut length = [0u8; 4];
+    file.read_exact_at(&mut length, offset)?;
+    let size = u32::from_be_bytes(length) as usize;
+    ensure!(size <= 8 << 20, "FACT_FRAME_BUDGET");
+    let mut bytes = vec![0u8; size];
+    file.read_exact_at(&mut bytes, offset + 4)?;
+    Ok(bytes)
+}
+
+/// The diagnostic CLI keeps its bounded fact-array output; production consumes CAF1.
+pub fn probe(input: &[u8], root: &Path) -> Result<Vec<u8>> {
+    let limits = OutputLimits {
+        bytes: codeana_model::MAX_RESULT as u64,
+        facts: 1_000_000,
+    };
+    let result = load(input, None, limits, root)?;
+    let facts = result.records.iter()?.collect::<Result<Vec<_>>>()?;
+    let output = serde_json::to_vec(&serde_json::json!({"version":8,"mode":result.mode,
+        "replacements":result.replacements,"facts":facts}))?;
+    ensure!(
+        output.len() <= codeana_model::MAX_RESULT,
+        "NATIVE_PROBE_BUDGET"
+    );
+    Ok(output)
+}
+
+pub fn probe_archive(
+    input: &[u8],
+    root: &Path,
+    limits: OutputLimits,
+    destination: &Path,
+) -> Result<serde_json::Value> {
+    let result = load(input, None, limits, root)?;
+    let mut source = File::open(result.records.path())?;
+    let mut target = std::fs::OpenOptions::new()
+        .create_new(true)
+        .write(true)
+        .open(destination)?;
+    std::io::copy(&mut source, &mut target)?;
+    target.sync_all()?;
+    Ok(
+        serde_json::json!({"version":8,"mode":result.mode,"replacements":result.replacements,
+        "facts_archive":{"format":"CAF1","path":destination,"count":result.records.count,
+            "bytes":result.records.bytes,"sha256":result.records.file_hash()?}}),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn owner_deserialization_stops_at_configured_budget() {
-        let body = br#"{"version":7,"mode":"delta","facts":[],"replacements":[{"world":"w","producer":"p","kind":"file","id":"a"},{"world":"w","producer":"p","kind":"file","id":"b"}]}"#;
-        let limits = OutputLimits {
-            bytes: 65536,
-            facts: 1,
-        };
-        let error = read_with_limits(body.as_slice(), &Manifest::default(), limits)
-            .err()
-            .unwrap();
-        assert!(error.to_string().contains("OWNER_BUDGET"));
-        let allowed = read_with_limits(
-            body.as_slice(),
+    fn fixture(root: &Path, conflict: bool) -> Result<(serde_json::Value, FactArchive)> {
+        let first: Fact = serde_json::from_value(serde_json::json!({
+            "id":"external","kind":"external_symbol","owner":{"world":"w","producer":"p","kind":"external","id":"external"},
+            "origin":"javac","name":"A"}))?;
+        let mut builder = FactArchiveBuilder::new_in(65536, 10, root)?;
+        builder.push(&first)?;
+        let mut second = first;
+        if conflict {
+            second.name = "B".into();
+        }
+        builder.push(&second)?;
+        let archive = builder.seal()?;
+        let envelope = serde_json::json!({"version":8,"mode":"full","replacements":[],
+            "facts_archive":{"format":"CAF1","path":archive.path(),"count":archive.count,
+                "bytes":archive.bytes,"sha256":archive.file_hash()?}});
+        Ok((envelope, archive))
+    }
+    fn read_value(value: &serde_json::Value, root: &Path) -> Result<NativeResult> {
+        read_owned(
+            serde_json::to_vec(value)?.as_slice(),
             &Manifest::default(),
-            OutputLimits { facts: 2, ..limits },
+            OutputLimits {
+                bytes: 65536,
+                facts: 10,
+            },
+            Some(root),
         )
-        .unwrap();
-        assert_eq!(allowed.replacements.len(), 2);
     }
     #[test]
-    fn streaming_reader_checks_schema_duplicates_and_required_arrays() {
-        let m = Manifest::default();
-        let r = read(
-            br#"{"facts":[],"version":7,"mode":"full","replacements":[],"compiler_sources":1}"#
-                .as_slice(),
-            &m,
-        )
-        .unwrap();
-        assert_eq!(r.records.count, 0);
-        for bad in [
-            r#"{"facts":[],"facts":[],"version":7,"mode":"full","replacements":[]}"#,
-            r#"{"version":7,"mode":"full","replacements":[]}"#,
-            r#"{"facts":[],"version":3,"mode":"full","replacements":[]}"#,
+    fn archive_dedup_preserves_first_and_conflict_evidence() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let (value, _archive) = fixture(root.path(), false)?;
+        let result = read_value(&value, root.path())?;
+        assert_eq!(result.records.count, 1);
+        assert_eq!(result.records.iter()?.next().unwrap()?.name, "A");
+        let (value, _archive) = fixture(root.path(), true)?;
+        assert!(
+            read_value(&value, root.path())
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("CONFLICTING_FACT_ID")
+        );
+        let evidence: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.path().join("fact-conflict.json"))?)?;
+        assert_eq!(evidence["first"]["name"], "A");
+        assert_eq!(evidence["second"]["name"], "B");
+        Ok(())
+    }
+    #[test]
+    fn archive_rejects_identity_framing_paths_and_old_versions() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let (value, archive) = fixture(root.path(), false)?;
+        for (field, replacement) in [
+            ("sha256", serde_json::json!("bad")),
+            ("count", serde_json::json!(1)),
+            ("bytes", serde_json::json!(archive.bytes - 1)),
+            ("count", serde_json::json!(11)),
         ] {
-            assert!(read(bad.as_bytes(), &m).is_err());
+            let mut bad = value.clone();
+            bad["facts_archive"][field] = replacement;
+            assert!(read_value(&bad, root.path()).is_err(), "{field}");
         }
+        let mut bad = value.clone();
+        bad["version"] = serde_json::json!(7);
+        assert!(read_value(&bad, root.path()).is_err());
+        let outside = tempfile::tempdir()?;
+        assert!(read_value(&value, outside.path()).is_err());
+        let link = root.path().join("link.caf");
+        std::os::unix::fs::symlink(archive.path(), &link)?;
+        let mut bad = value.clone();
+        bad["facts_archive"]["path"] = serde_json::json!(link);
+        assert!(read_value(&bad, root.path()).is_err());
+        Ok(())
+    }
+    #[test]
+    fn owners_are_bounded_before_archive_access() {
+        let body = br#"{"version":8,"mode":"delta","replacements":[{"world":"w","producer":"p","kind":"file","id":"a"},{"world":"w","producer":"p","kind":"file","id":"b"}]}"#;
+        let root = tempfile::tempdir().unwrap();
+        let error = read_owned(
+            body.as_slice(),
+            &Manifest::default(),
+            OutputLimits {
+                bytes: 65536,
+                facts: 1,
+            },
+            Some(root.path()),
+        )
+        .err()
+        .unwrap();
+        assert!(error.to_string().contains("OWNER_BUDGET"));
     }
 }

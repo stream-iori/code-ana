@@ -9,13 +9,13 @@
 | `framework-sofa` | SOFA 注解及 XML 模型 |
 | `native-bridge` | Rust 捕获输入、上下文/增量生命周期、证据投影、CAF1 输出、C ABI |
 
-源代码清单固定 Anatomist `dff2e3954096853352ec91fcbfc6b995fbd4f390`。清单记录每个文件的原始 SHA256 与迁入摘要；静态 Lombok、框架和 Java 推导逻辑保留原实现。适配集中在显式输入、日志、进程超时和预算、Lombok 配置注入。参考测试随源码迁入。跨任务签名缓存的适配还包括捕获相对路径、任务内重定位和独立条目布局；204 个来源文件中 8 个有边界适配，摘要由清单校验。
+源代码清单固定 Anatomist `dff2e3954096853352ec91fcbfc6b995fbd4f390`。清单记录每个文件的原始 SHA256 与迁入摘要；静态 Lombok、框架和 Java 推导逻辑保留原实现。适配集中在显式输入、日志、进程超时和预算、Lombok 配置注入。参考测试随源码迁入。跨任务签名缓存的适配还包括捕获相对路径、任务内重定位和独立条目布局；204 个来源文件中 9 个有边界适配，摘要由清单校验。
 
 | 协议 | 新值 | 兼容处理 |
 |---|---|---|
-| worker protobuf | 13 | 新增上下文的 reactor 依赖模块列表；拒绝旧 worker |
+| worker protobuf | 14 | 上下文携带实际 source_roots；拒绝旧 worker |
 | C ABI | 2 | 调用签名、分块、取消、释放不变 |
-| analysis request/result | 7 | 原始模型不再使用旧适配器私有协议；拒绝 request 6 |
+| analysis request/result | 8 | 原生结果使用封存 CAF1 描述符；拒绝旧 facts 数组协议 |
 | bundle manifest | 2 | 校验 adapter identity、协议、图 schema 与产物摘要 |
 | javac batch / model | 2 / `javac-model-v50` | 使用迁入代码原生协议 |
 | 公共 Fact IR | 1 | UTF-8 范围、owner、图式类型和发布校验继续由 Rust 管理 |
@@ -104,3 +104,20 @@ Rust 捕获文件和上下文
 用户要求 2 GiB 重试后，显式 native 堆上限放宽至 2 GiB，单 worker 总预算上限至 4 GiB；默认值与 Java 语义算法不变。Rust workspace lib 回归和更新后的 contracts 边界测试通过，release 构建通过，实际 isolate 堆探针返回 2147483648。冻结 iopengw MAIN/TEST/XML 的同一 Java 库重试运行 1086.611 秒（18 分 6.611 秒），未出现 SIGKILL 或堆耗尽；进程树峰值 2,594,799,616 字节。随后 `CONFLICTING_FACT_ID: symbol_c3aed7b2f276f66e41a1df95fa5f3fcce61968315953cbf62f0334247ea2815e` 使任务失败，未发布、未执行发布后查询。源码/产物摘要无变化，配置已恢复。证据：`target/java-migration-continue/iopengw-v4-2g/receipt.json`、`target/java-2g-heap-probe.log`、`target/java-2g-rust-tests.log`、`target/java-2g-contract-tests.log`。下一步应保存该 ID 的两个候选事实并定位身份/内容差异；不能仅跳过冲突，也不能把本轮登记为完整项目或性能通过。
 
 2026-10-08 直接 Java 性能诊断：冻结 Anatomist CLI 成功索引耗时 186.295 秒；相同有效 Java / 66 个编译任务外部 classpath 的直接 JVM/native 分别在 150.280 / 633.943 秒复现同一事实冲突。native 的 unit_projection 已完成部分耗时 421.536 秒，GC 358.834 秒（约 57%，与阶段计时重叠）。重复 JSON 编码、文件被当作源码根逐个匹配、辅助声明库存反复累加已取得代码和采样证据。新增任务内诊断钩子与直接请求/探针，Java 77 项回归和 204/8 来源校验通过，协议、C ABI、适配器身份不变。原 daemon 多出的 452.668 秒尚未全部归因；完整项目发布和性能门禁仍未通过。测量边界、原版实现对照和修复顺序见 [性能诊断](java-performance-diagnosis.md)。
+
+
+2026-10-08 v5 性能修复与同版本回归：
+
+| 改动 | 边界与验证 |
+|---|---|
+| 构造器身份冲突 | 合法的同类名普通方法与构造器分开；所有声明引用沿用同一身份。真实冲突证据包含隐式构造器与 `void IOpengwManagerServiceImplTest()`，不能跳过冲突。冻结上游也存在该身份缺陷 |
+| 源码根与编码 | Rust 传真实源码根，显式源码清单仍固定；单条事实编码一次，用相同字节计算摘要及写 CAF1 |
+| 声明和类型图 | 任务内声明目录有界复用，类型图缓存按上下文释放；ProjectView 提前去重，保留辅助类型可见性和 XML-only 输入 |
+| native 输出 | Java 写封存 CAF1，不构建全项目事实 JSON/去重表；Rust 逐条校验并用临时 SQLite 做全局去重，校验完整归档摘要后才允许交付。冲突保留两个事实，失败不发布 |
+| 协议与缓存 | worker 14 / request 8 / ABI 2 / Fact IR 1，adapter v5；旧 bundle 和派生缓存拒绝或 miss |
+| JVM / Rust / native | JVM 82 项、Rust workspace 105 项、原生 10 项通过；本轮未重新登记 clippy 或所有 Rust E2E |
+| 参考 fixture | 冻结 JAR 独立对照：10 组 × 14 类，零差异 |
+| daemon 重试 | 用户确认 SIGKILL 已处理后，同一产物核心、深层类型图、MAIN/TEST XML-only 3 项通过，207.723 秒 |
+| 真实项目 | iopengw MAIN/TEST/XML 正在独占重跑；raw/AST 各 80 上下文、14 发布语义域、3 轮性能及最终发行仍未通过 |
+
+当前回归日志位于 `target/java-migration-continue/perf-fix-*`。诊断显式设置 `CODEANA_JAVA_DIAGNOSTICS_DIR`，保存原始请求、初始输入/缓存快照、冻结运行产物及阶段计时；默认关闭。重放各运行必须复制初始快照，不能复用另一运行写过的缓存。大项目诊断使用 worker `--probe-archive <新文件路径>`，避免展开完整 JSON；`--probe-timeout-seconds` 仅调整诊断保护时限，不改变正式任务期限。原始历史 452.668 秒差额尚无完整证据，不按新回归倒推归因。

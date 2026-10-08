@@ -13,19 +13,22 @@ INVALID = 'app/component/message-protocol-apistandardview/src/test/java/com/alip
 JDK25 = pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'
 JDK8 = pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'
 MAVEN = pathlib.Path.home()/'.sdkman/candidates/maven/current/bin/mvn'
-JAR = ROOT.parent/'anatomist/target/anatomist.jar'
 FROZEN = json.loads((ROOT/'target/java-alignment/recovery-stage2/target/java-alignment/iopengw-freeze.json').read_text())
 ORIGINAL_POPEN = subprocess.Popen
 parser = argparse.ArgumentParser()
 parser.add_argument('--gate', type=pathlib.Path, required=True)
 parser.add_argument('--evidence', type=pathlib.Path, required=True)
+parser.add_argument('--reference-jar', type=pathlib.Path, required=True)
+parser.add_argument('--native-heap-bytes', type=int, default=2147483648)
+parser.add_argument('--worker-memory-bytes', type=int, default=4294967296)
 args = parser.parse_args()
+JAR = args.reference_jar.resolve()
 BASE = args.evidence.resolve()
 BASE.relative_to((ROOT/'target/java-alignment').resolve())
 BASE.mkdir(parents=True, exist_ok=False)
 REPORT = dict(kind='three_alternating_frozen_project_index_pairs', state='preflight', owner_pid=os.getpid(),
     performance_accepted=False, capacity_accepted=False, pairs=[], excluded_source=INVALID,
-    scopes=['MAIN','TEST'], xml=True, lombok='ast', native_heap_bytes=1073741824,
+    scopes=['MAIN','TEST'], xml=True, lombok='ast', native_heap_bytes=args.native_heap_bytes, worker_memory_bytes=args.worker_memory_bytes,
     compiler_heap_bytes=536870912, parallelism=1, fresh_application_caches=True,
     os_caches_flushed=False, timing_boundary='Maven export plus daemon startup through successful index process exit; queries and comparisons excluded')
 def save(): acceptance.atomic_json(BASE/'receipt.json', REPORT)
@@ -44,8 +47,8 @@ def no_competing_analysis():
         if len(fields)!=3: continue
         pid,comm,argv=fields
         is_java=pathlib.Path(comm).name=='java'
-        codeana_java=is_java and any(name in argv for name in ('dev.codeana.compiler.CompilerBridge','dev.codeana.analysis.AnalysisProbe','dev.codeana.analysis.ModelApi'))
-        if pathlib.Path(comm).name in ('codeana-daemon','codeana-java-worker','model-api-native') or codeana_java or ('-jar '+str(JAR)+' index ') in argv:
+        codeana_java=is_java and any(name in argv for name in ('dev.codeana.compiler.CompilerBridge','dev.codeana.analysis.AnalysisProbe','dev.codeana.analysis.ModelApi','DirectIndexProbe','NativeModelWitness','com.anatomist.worker.JavacWorker'))
+        if pathlib.Path(comm).name.startswith('direct-native') or pathlib.Path(comm).name in ('codeana-daemon','codeana-java-worker','model-api-native') or codeana_java or ('-jar '+str(JAR)+' index ') in argv:
             competing.append(dict(pid=int(pid),executable=comm))
     if competing: raise RuntimeError('COMPETING_ANALYSIS_PROCESS: '+json.dumps(competing))
 
@@ -116,7 +119,7 @@ def reference(folder, project):
     env=environment();env.update(ANATOMIST_HOME=str(folder/'home'),PATH=str(binpath)+os.pathsep+env['PATH'])
     output=folder/'index'
     try:
-        result=command([JDK25/'bin/java','-Xmx1024m','-jar',JAR,'index',project,'--jdk-home',JDK8,
+        result=command([JDK25/'bin/java','-Xmx'+str(args.native_heap_bytes//1048576)+'m','-jar',JAR,'index',project,'--jdk-home',JDK8,
             '--java-version','8','--scan-scope','MAIN','--scan-scope','TEST','--scan-exclude',INVALID,
             '--lombok','ast','--vm-classpath','true','--output',output/'index.db',
             '--report-file',output/'report.txt','--timings','--full'],project,output,env,True)
@@ -150,7 +153,7 @@ def product(folder, project):
     subprocess.Popen=TimedPopen;acceptance.project_config=config
     evidence=folder/'index'
     sys.argv=['java_real_acceptance.py','--project',str(project),'--inputs-manifest','.code-ana/fresh-inputs.json','--scopes','MAIN,TEST','--xml',
-        '--deadline-seconds','86400','--native-heap-bytes','1073741824','--worker-memory-bytes','2147483648',
+        '--deadline-seconds','86400','--native-heap-bytes',str(args.native_heap_bytes),'--worker-memory-bytes',str(args.worker_memory_bytes),
         '--result-bytes','8589934592','--scratch-bytes','34359738368','--compiler-timeout-seconds','3600','--evidence',str(evidence)]
     try:
         with (folder/'driver.log').open('w') as log:

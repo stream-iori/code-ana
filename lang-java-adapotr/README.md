@@ -4,7 +4,7 @@
 
 ```text
 Rust daemon / worker（捕获输入、隔离、发布、查询）
-                   │ C ABI 2 / request 7
+                   │ C ABI 2 / request 8
                    ▼
 native-bridge（GraalVM 25 共享库、Fact IR 投影）
       ├── analysis-core（Anatomist Java 模型、ASM、提取、静态 Lombok）
@@ -19,7 +19,7 @@ Java 8 javac 子进程：parse / analyze，禁用处理器
 |---|---|
 | JVM 回归与源码追溯检查 | `./scripts/test-java.sh`（仓库根目录） |
 | 原生共享库 | `./scripts/build-java-native.sh` |
-| 冻结参考独立对照（需相邻参考 JAR） | `python3 tests/java_anatomist_reference.py` |
+| 冻结参考独立对照（显式指定冻结 JAR） | `ANATOMIST_REFERENCE_JAR=/path/to/frozen.jar python3 tests/java_anatomist_reference.py` |
 | 原生边界回归 | `python3 tests/java_anatomist_native.py` |
 | 产品链路回归 | `python3 tests/java_e2e.py JavaProduct.test_core` |
 | 分发 | `./scripts/package-java.sh` |
@@ -53,3 +53,5 @@ python3 tests/java_direct_index_request.py \
 `native-bridge/src/maven-worker` 是从旧适配器保留的显式输入导出边界，仅由 `java-inputs export` 调用。分析任务不执行 Maven、业务构建或注解处理器。
 
 迁移范围、协议变更及未完成的验收见 [迁移记录](../docs/java-anatomist-migration.md)。旧实现的验收记录不作为新实现的通过证据。
+
+原生生产结果使用 CAF1 描述符；Rust worker 14 流式校验、去重，再交付发布。诊断可显式设置 `CODEANA_JAVA_DIAGNOSTICS_DIR` 保存任务请求/输入/初始缓存及运行产物；worker 大项目探针使用 `--probe-archive <新文件路径>`。这些探针不替代 daemon 发布验收。

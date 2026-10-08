@@ -24,6 +24,7 @@ message JavaContext {
  uint64 model_archive_bytes = 19;
  bool prerequisite = 20;
  repeated string dependency_modules = 21;
+ repeated string source_roots = 22;
 }
 message JavaConfig {
  string java_home = 1; string toolchain_digest = 2; string bridge = 3;

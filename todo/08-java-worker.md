@@ -1190,3 +1190,6 @@ de8c99b固定验收：native模型17项与冻结框架参考通过，无源码/�
 | 后续顺序 | 最终同版本 fixture/产品 → iopengw MAIN/TEST/XML 发布及查询 → 完整模型及 14 发布语义域差分 → 3 轮独占交替性能与容量 → 最终发行。每轮和中位数均须 <2× Anatomist |
 
 旧适配器的验收回执不替代迁入核心回执。当前不能宣称全部正确性或性能门禁已通过，后续继续按 `docs/java-anatomist-migration.md` 登记实际证据。
+
+
+2026-10-08 v5：构造器/同类名普通方法身份冲突修复、实际源码根、一次编码、任务内有界声明/类型图缓存、ProjectView 提前去重、CAF1 描述符与 Rust 临时 SQLite 去重已实现。worker14/request8/ABI2，204 来源文件中9项适配。JVM82/Rust105/native10、参考10组×14类零差异、同产物 daemon3项（207.723秒）通过。用户处理 SIGKILL 后重试成功；真实 iopengw MAIN/TEST/XML 独占索引已启动，完整模型/14域/3轮性能/最终发行仍待验收，不关闭全量能力矩阵。

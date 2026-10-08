@@ -17,7 +17,7 @@ import java.util.*;
 
 /** Task lifetime at the native boundary. All semantics belong to the migrated core. */
 public final class AnalysisSession implements AutoCloseable {
-    public static final String IDENTITY = "anatomist-dff2e395-codeana-v4";
+    public static final String IDENTITY = "anatomist-dff2e395-codeana-v5";
     private final Map<String, Object> request;
     private final AnalysisLimits limits;
     private final Path taskRoot;
@@ -30,10 +30,12 @@ public final class AnalysisSession implements AutoCloseable {
         this(request, AnalysisObserver.NONE);
     }
 
-    public AnalysisSession(Map<String, Object> request, AnalysisObserver observer) throws IOException {
+    public AnalysisSession(Map<String, Object> request, AnalysisObserver observer)
+            throws IOException {
         this.observer = Objects.requireNonNull(observer);
         limits = new AnalysisLimits(request);
         this.request = new LinkedHashMap<>(request);
+        this.request.put("diagnostic_scratch", Json.string(request, "scratch"));
         taskRoot =
                 Files.createTempDirectory(
                         Path.of(Json.string(request, "scratch")), "anatomist-task-");
@@ -54,7 +56,7 @@ public final class AnalysisSession implements AutoCloseable {
     public Map<String, Object> analyze() throws Exception {
         executing = Thread.currentThread();
         check();
-        if (Json.number(request, "version") != 7)
+        if (Json.number(request, "version") != 8)
             throw new IllegalArgumentException("ABI_REQUEST_VERSION");
         observer.phase("capture", "", true);
         CapturedProject project = new CapturedProject(request);
@@ -101,7 +103,8 @@ public final class AnalysisSession implements AutoCloseable {
                 new FactArchive(
                         Path.of(Json.string(request, "scratch")).resolve("anatomist-facts.caf"),
                         limits.bytes,
-                        limits.facts);
+                        limits.facts,
+                        !project.deferFactDedup);
         FactProjection projection = new FactProjection(project, output);
         ProjectView view = new ProjectView();
         if (!full && baseline != null)
@@ -110,12 +113,15 @@ public final class AnalysisSession implements AutoCloseable {
                 String world = Json.string(owner, "world");
                 if (replaced.contains(world) || !active.contains(world))
                     projection.retainOwner(owner);
-                else { view.retain(f); projection.retain(f); }
+                else {
+                    view.retain(f);
+                    projection.retain(f);
+                }
             }
         if (dirty.isEmpty())
             return Json.object(
                     "version",
-                    7,
+                    8,
                     "mode",
                     full ? "full" : "delta",
                     "replacements",
@@ -129,7 +135,8 @@ public final class AnalysisSession implements AutoCloseable {
                         : Files.createDirectory(
                                 Path.of(Json.string(request, "scratch"))
                                         .resolve("anatomist-cache"));
-        // Rust owns this task copy; only complete signature entries are committed after publish Ack.
+        // Rust owns this task copy; only complete signature entries are committed after publish
+        // Ack.
         cache = Files.createDirectories(cache);
         int threads =
                 request.get("parallelism") instanceof Number n ? Math.max(1, n.intValue()) : 1;
@@ -210,42 +217,55 @@ public final class AnalysisSession implements AutoCloseable {
                 });
         Set<String> partial = new HashSet<>();
         observer.phase("backend_total", "", true);
-        backend.analyzeFiles(
-                project.sourcePlan(dirty).indexedFiles(),
-                analysis -> {
-                    check();
-                    observer.model(analysis);
-                    String key = analysis.module() + "@" + analysis.scope();
-                    var c = contexts.get(key);
-                    observer.phase("inventory", key, true);
-                    projection.context(c);
-                    view.symbols.addAll(projection.inventory(analysis));
-                    observer.phase("inventory", key, false);
-                    for (var diagnostic : analysis.diagnostics())
-                        if (diagnostic.path() != null && diagnostic.kind().equals("ERROR"))
-                            partial.add(project.source(diagnostic.path()).path());
-                    observer.phase("extraction_total", key, true);
-                    try (var binaries = backend.openBinaryRepository(analysis)) {
-                        new JavaModelExtractor(
-                                        frameworks.get(key), binaries, registries.get(key), timings)
-                                .extract(
-                                        analysis,
-                                        unit -> {
-                                            observer.extraction(unit.facts());
-                                            observer.phase("unit_projection", key, true);
-                                            view.add(unit.facts());
-                                            projection.unit(unit);
-                                            observer.phase("unit_projection", key, false);
-                                            for (var diagnostic : unit.diagnostics())
-                                                if (diagnostic.sourceFile() != null)
-                                                    partial.add(diagnostic.sourceFile());
-                                        });
-                    } finally {
-                        projection.closeContext();
-                        observer.phase("extraction_total", key, false);
-                    }
-                });
-        observer.phase("backend_total", "", false);
+        try {
+            backend.analyzeFiles(
+                    project.sourcePlan(dirty).indexedFiles(),
+                    analysis -> {
+                        check();
+                        observer.model(analysis);
+                        String key = analysis.module() + "@" + analysis.scope();
+                        var c = contexts.get(key);
+                        observer.phase("inventory", key, true);
+                        projection.context(c);
+                        projection.inventory(analysis).forEach(view::symbol);
+                        observer.phase("inventory", key, false);
+                        for (var diagnostic : analysis.diagnostics())
+                            if (diagnostic.path() != null && diagnostic.kind().equals("ERROR"))
+                                partial.add(project.source(diagnostic.path()).path());
+                        observer.phase("extraction_total", key, true);
+                        try (var binaries = backend.openBinaryRepository(analysis)) {
+                            new JavaModelExtractor(
+                                            frameworks.get(key),
+                                            binaries,
+                                            registries.get(key),
+                                            timings)
+                                    .extract(
+                                            analysis,
+                                            unit -> {
+                                                observer.extraction(unit.facts());
+                                                observer.phase("unit_projection", key, true);
+                                                view.add(unit.facts());
+                                                projection.unit(unit);
+                                                observer.phase("unit_projection", key, false);
+                                                for (var diagnostic : unit.diagnostics())
+                                                    if (diagnostic.sourceFile() != null)
+                                                        partial.add(diagnostic.sourceFile());
+                                            });
+                        } finally {
+                            projection.closeContext();
+                            observer.phase("extraction_total", key, false);
+                        }
+                    });
+        } finally {
+            observer.projectionStatistics(projection.statistics());
+            observer.compilerStatistics(
+                    Json.object(
+                            "analysis",
+                            backend.analysisStats().metadata(),
+                            "batches",
+                            backend.batchEvidence().stream().map(b -> b.toMap()).toList()));
+            observer.phase("backend_total", "", false);
+        }
         for (var c : project.contexts)
             if (dirty.contains(c.world())) {
                 check();
@@ -303,10 +323,11 @@ public final class AnalysisSession implements AutoCloseable {
                 projection.provenance(IDENTITY);
             }
         project.verify();
+        observer.projectionStatistics(projection.statistics());
         check();
         return Json.object(
                 "version",
-                7,
+                8,
                 "mode",
                 full ? "full" : "delta",
                 "replacements",
@@ -357,32 +378,58 @@ public final class AnalysisSession implements AutoCloseable {
     }
 
     private static final class ProjectView {
-        final List<SymbolFact> symbols = new ArrayList<>();
-        final List<TypeRelationFact> relations = new ArrayList<>();
+        final Map<String, SymbolFact> symbols = new LinkedHashMap<>();
+        final Set<TypeRelationFact> relations = new LinkedHashSet<>();
         final Map<String, BeanRefTarget> beans = new LinkedHashMap<>();
         final Set<String> ambiguousBeans = new HashSet<>();
         final Map<String, String> rawIds = new HashMap<>();
         final List<Map<String, Object>> retainedRelations = new ArrayList<>();
 
+        void symbol(SymbolFact symbol) {
+            String key =
+                    symbol.module()
+                            + "\n"
+                            + symbol.scope()
+                            + "\n"
+                            + symbol.sourceFile()
+                            + "\n"
+                            + symbol.symbolId();
+            // Keep the same last-observation order as the previous snapshot catalogue.
+            symbols.remove(key);
+            symbols.put(key, symbol);
+        }
+
         void bean(String name, String id, Map<String, Object> metadata) {
-            String type = Objects.toString(metadata.get("productClass"), Objects.toString(metadata.get("className"), Objects.toString(metadata.get("returnType"), "")));
+            String type =
+                    Objects.toString(
+                            metadata.get("productClass"),
+                            Objects.toString(
+                                    metadata.get("className"),
+                                    Objects.toString(metadata.get("returnType"), "")));
             String key = "bean:" + name;
             if (ambiguousBeans.contains(key)) return;
             BeanRefTarget target = new BeanRefTarget(id, type.isEmpty() ? null : type);
             BeanRefTarget previous = beans.putIfAbsent(key, target);
-            if (previous != null && !previous.equals(target)) { beans.remove(key); ambiguousBeans.add(key); }
+            if (previous != null && !previous.equals(target)) {
+                beans.remove(key);
+                ambiguousBeans.add(key);
+            }
             for (Object alias : CapturedProject.list(metadata.get("aliases"))) {
                 String aliasKey = "bean:" + alias;
                 if (ambiguousBeans.contains(aliasKey)) continue;
                 previous = beans.putIfAbsent(aliasKey, target);
-                if (previous != null && !previous.equals(target)) { beans.remove(aliasKey); ambiguousBeans.add(aliasKey); }
+                if (previous != null && !previous.equals(target)) {
+                    beans.remove(aliasKey);
+                    ambiguousBeans.add(aliasKey);
+                }
             }
         }
 
         void add(ExtractionResult result) {
             for (Node n : result.nodes) {
-                symbols.add(new SymbolFact(n.id, n.id, n.kind, n.module, n.scope, n.sourceFile, n.metadata));
-
+                symbol(
+                        new SymbolFact(
+                                n.id, n.id, n.kind, n.module, n.scope, n.sourceFile, n.metadata));
             }
             for (Edge e : result.edges)
                 if (Set.of("INHERITS", "IMPLEMENTS").contains(e.relation))
@@ -395,19 +442,26 @@ public final class AnalysisSession implements AutoCloseable {
 
         void retain(Map<String, Object> fact) {
             Map<String, Object> a = Json.map(fact.get("attributes"));
-            if (Set.of("extends", "implements").contains(Objects.toString(fact.get("relation"), ""))) {
-                retainedRelations.add(fact); return;
+            if (Set.of("extends", "implements")
+                    .contains(Objects.toString(fact.get("relation"), ""))) {
+                retainedRelations.add(fact);
+                return;
             }
-            if (!"declaration".equals(fact.get("kind")) && !"java.bean".equals(fact.get("relation"))) return;
+            if (!"declaration".equals(fact.get("kind"))
+                    && !"java.bean".equals(fact.get("relation"))) return;
             String id = Objects.toString(a.get("upstream_id"), Json.string(fact, "signature"));
             rawIds.put(Json.string(fact, "id"), id);
             if ("java.bean".equals(fact.get("relation"))) a = new TreeMap<>(a);
-            if ("java.bean".equals(fact.get("relation"))) { a.put("bean_name", Json.string(fact, "name")); a.put("upstream_kind", "BEAN"); }
-            symbols.add(
+            if ("java.bean".equals(fact.get("relation"))) {
+                a.put("bean_name", Json.string(fact, "name"));
+                a.put("upstream_kind", "BEAN");
+            }
+            symbol(
                     new SymbolFact(
                             id,
                             id,
-                            Objects.toString(a.get("upstream_kind"), Objects.toString(a.get("kind"), "")),
+                            Objects.toString(
+                                    a.get("upstream_kind"), Objects.toString(a.get("kind"), "")),
                             Objects.toString(a.get("module"), ""),
                             Objects.toString(a.get("scope"), ""),
                             Json.string(fact, "source"),
@@ -416,13 +470,22 @@ public final class AnalysisSession implements AutoCloseable {
 
         ProjectFactView snapshot(CapturedProject.Context context) {
             Set<String> visible = new HashSet<>();
-            for (var source : context.sources()) visible.add(source.module() + "\n" + source.scope() + "\n" + source.path());
-            for (var source : context.resources()) visible.add(source.module() + "\n" + source.scope() + "\n" + source.path());
-            beans.clear(); ambiguousBeans.clear();
+            for (var source : context.sources())
+                visible.add(source.module() + "\n" + source.scope() + "\n" + source.path());
+            for (var source : context.resources())
+                visible.add(source.module() + "\n" + source.scope() + "\n" + source.path());
+            beans.clear();
+            ambiguousBeans.clear();
             Map<String, SymbolFact> catalogue = new LinkedHashMap<>();
-            for (var symbol : symbols) {
-                if (symbol.module() == null || symbol.scope() == null
-                        || !visible.contains(symbol.module() + "\n" + symbol.scope() + "\n" + symbol.sourceFile())) continue;
+            for (var symbol : symbols.values()) {
+                if (symbol.module() == null
+                        || symbol.scope() == null
+                        || !visible.contains(
+                                symbol.module()
+                                        + "\n"
+                                        + symbol.scope()
+                                        + "\n"
+                                        + symbol.sourceFile())) continue;
                 String key =
                         NodeKeyFactory.key(
                                 new SourceIdentity(
@@ -441,20 +504,36 @@ public final class AnalysisSession implements AutoCloseable {
             }
             for (var symbol : catalogue.values()) {
                 if (!"BEAN".equals(symbol.kind())) continue;
-                Map<String, Object> metadata = Json.map(Json.parse(symbol.metadata().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
-                String name = Objects.toString(metadata.get("bean_name"), Objects.toString(metadata.get("beanName"), ""));
-                if (name.isEmpty() && symbol.symbolId().startsWith("bean:")) name = symbol.symbolId().substring(5);
+                Map<String, Object> metadata =
+                        Json.map(
+                                Json.parse(
+                                        symbol.metadata()
+                                                .getBytes(
+                                                        java.nio.charset.StandardCharsets.UTF_8)));
+                String name =
+                        Objects.toString(
+                                metadata.get("bean_name"),
+                                Objects.toString(metadata.get("beanName"), ""));
+                if (name.isEmpty() && symbol.symbolId().startsWith("bean:"))
+                    name = symbol.symbolId().substring(5);
                 if (!name.isEmpty()) bean(name, symbol.id(), metadata);
             }
             Set<String> known = new HashSet<>(catalogue.keySet());
             catalogue.values().forEach(s -> known.add(s.symbolId()));
             List<TypeRelationFact> hierarchy = new ArrayList<>();
-            for (var relation : relations) if (known.contains(relation.sourceType())) hierarchy.add(relation);
+            for (var relation : relations)
+                if (known.contains(relation.sourceType())) hierarchy.add(relation);
             for (var fact : retainedRelations) {
                 String source = rawIds.get(Json.string(fact, "parent"));
                 String target = rawIds.get(Json.string(fact, "target"));
-                if (source != null && target != null && known.contains(source)) hierarchy.add(new TypeRelationFact(source, target,
-                        "extends".equals(fact.get("relation")) ? "INHERITS" : "IMPLEMENTS"));
+                if (source != null && target != null && known.contains(source))
+                    hierarchy.add(
+                            new TypeRelationFact(
+                                    source,
+                                    target,
+                                    "extends".equals(fact.get("relation"))
+                                            ? "INHERITS"
+                                            : "IMPLEMENTS"));
             }
             return new DefaultProjectFactView(
                     known, beans, List.copyOf(catalogue.values()), List.copyOf(hierarchy));

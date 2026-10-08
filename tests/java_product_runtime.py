@@ -37,8 +37,8 @@ def prepare(root, destination):
     if probe.returncode:
         raise ValueError('JAVA_RUNTIME_WORKER_NOT_CURRENT: rebuild Rust binaries; ' + probe.stderr.strip())
     versions = json.loads(probe.stdout)
-    expected_versions = dict(worker_protocol=13, fact_ir=1,
-                             adapter=manifest['adapter'], analysis_request=7, abi=2)
+    expected_versions = dict(worker_protocol=14, fact_ir=1,
+                             adapter=manifest['adapter'], analysis_request=8, abi=2)
     if versions != expected_versions:
         raise ValueError('JAVA_RUNTIME_PROTOCOL_MISMATCH: ' + json.dumps(versions))
     # A new task-owned directory is required; never overwrite an active runtime.

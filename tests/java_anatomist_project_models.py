@@ -93,7 +93,7 @@ def main():
             for label in ['reference','migrated_jvm','migrated_native']:
                 scratch=directory/(label+'-scratch');scratch.mkdir()
                 if label=='migrated_native':
-                    native_request=dict(version=7,full=True,facts=True,java_home=str(JDK),scratch=str(scratch),contexts=contexts,
+                    native_request=dict(version=8,full=True,facts=True,java_home=str(JDK),scratch=str(scratch),contexts=contexts,
                         signature_cache=True,cache_root=str(scratch/"signature-cache"),compiler_timeout_seconds=600,compiler_heap_bytes=512<<20,result_bytes=4<<30,fact_limit=5000000)
                     path=directory/'native-request.json';atomic_json(path,native_request)
                     command=[str(probe/'native-model-witness'),str(path)]

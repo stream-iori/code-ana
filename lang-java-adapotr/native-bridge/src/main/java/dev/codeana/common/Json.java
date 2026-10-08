@@ -50,13 +50,20 @@ public final class Json {
         }
     }
 
+    private static final ThreadLocal<MessageDigest> SHA256 =
+            ThreadLocal.withInitial(
+                    () -> {
+                        try {
+                            return MessageDigest.getInstance("SHA-256");
+                        } catch (java.security.NoSuchAlgorithmException e) {
+                            throw new IllegalStateException(e);
+                        }
+                    });
+
     public static String sha(byte[] bytes) {
-        try {
-            byte[] hash = MessageDigest.getInstance("SHA-256").digest(bytes);
-            return hex(hash);
-        } catch (java.security.NoSuchAlgorithmException e) {
-            throw new IllegalStateException(e);
-        }
+        MessageDigest digest = SHA256.get();
+        digest.reset();
+        return hex(digest.digest(bytes));
     }
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();

@@ -13,7 +13,10 @@ public final class FactProjection {
     public static final String PRODUCER = "javac-java8-v1";
     private final CapturedProject project;
     private final FactArchive output;
-    private final Map<String, String> emitted = new HashMap<>();
+
+    private record Emitted(String digest, int record) {}
+
+    private final Map<String, Emitted> emitted = new HashMap<>();
     private final Map<String, Object> owners = new TreeMap<>();
     private final Map<String, Symbol> symbols = new HashMap<>();
     private final Set<String> published = new HashSet<>();
@@ -29,6 +32,7 @@ public final class FactProjection {
     private final Map<String, String> externalSignatures = new HashMap<>();
     private final Map<String, String> injectionParameters = new HashMap<>();
     private final Map<String, JavaModel.DeclarationRef> pointDeclarations = new HashMap<>();
+    private final TypeGraphProjection.Cache typeGraphs = new TypeGraphProjection.Cache();
 
     public void closeContext() {
         if (model != null) model.close();
@@ -40,6 +44,7 @@ public final class FactProjection {
         externalSignatures.clear();
         externalMetadata.clear();
         pointDeclarations.clear();
+        typeGraphs.clear();
     }
 
     private final LinkedHashMap<String, Positions> positions =
@@ -73,10 +78,34 @@ public final class FactProjection {
         var source = project.sources.get(Json.string(fact, "source"));
         if (source == null || !(attrs.get("upstream_id") instanceof String raw)) return;
         if (!Set.of("declaration", "facet").contains(Json.string(fact, "kind"))) return;
-        Symbol symbol = new Symbol(raw, Json.string(fact, "signature"), source.world(), source.path(), Json.string(fact, "id"));
+        Symbol symbol =
+                new Symbol(
+                        raw,
+                        Json.string(fact, "signature"),
+                        source.world(),
+                        source.path(),
+                        Json.string(fact, "id"));
         symbols.putIfAbsent(source.world() + "\n" + raw, symbol);
         symbols.putIfAbsent(source.world() + "\n" + source.path() + "\n" + raw, symbol);
         rawSymbols.computeIfAbsent(raw, ignored -> new ArrayList<>()).add(symbol);
+    }
+
+    private record UnitKey(String path, String sourceHash, String contract) {}
+
+    private record CatalogueKey(UnitKey unit, String raw) {}
+
+    private record CatalogueValue(String signature, SymbolFact fact, long weight) {}
+
+    private final LinkedHashMap<CatalogueKey, CatalogueValue> catalogueCache =
+            new LinkedHashMap<>(128, .75f, true);
+    private long catalogueBytes;
+    private long catalogueHits, catalogueMisses, encodings, encodedBytes;
+
+    public Map<String, Object> statistics() {
+        return Json.object("fact_encodings", encodings, "encoded_fact_bytes", encodedBytes,
+                "archive_records", output.size(), "archive_bytes", output.bytes(),
+                "catalogue_hits", catalogueHits, "catalogue_misses", catalogueMisses,
+                "catalogue_entries", catalogueCache.size(), "catalogue_weight_bytes", catalogueBytes);
     }
 
     public List<SymbolFact> inventory(JavaAnalysisContext analysis) {
@@ -87,23 +116,39 @@ public final class FactProjection {
             for (var binding : unit.bindings().values()) rememberBinding(binding, unit.types());
         model = new JavaModel(analysis);
         identities = new JavaIdentities(model);
-        {
-            for (var unit : analysis.units())
-                for (var ref : model.declarations(unit.path())) {
-                    var d = model.declaration(ref);
-                    if (!Set.of(
-                                    "CLASS",
-                                    "INTERFACE",
-                                    "ENUM",
-                                    "ANNOTATION_TYPE",
-                                    "RECORD",
-                                    "METHOD",
-                                    "CONSTRUCTOR",
-                                    "FIELD",
-                                    "ENUM_CONSTANT",
-                                    "RECORD_COMPONENT")
-                            .contains(d.symbol().kind())) continue;
-                    String raw = identities.declaration(ref), signature = raw.replace("...", "[]");
+        for (var unit : analysis.units()) {
+            String contract;
+            boolean cacheable = true;
+            try { contract = JavaContract.fingerprint(unit); }
+            catch (IllegalArgumentException failure) {
+                if (!Objects.toString(failure.getMessage(), "").startsWith("contract exceeds")) throw failure;
+                contract = ""; cacheable = false;
+            }
+            UnitKey unitKey =
+                    new UnitKey(
+                            unit.path().toString(),
+                            unit.sourceHash(),
+                            contract);
+            for (var ref : model.declarations(unit.path())) {
+                var d = model.declaration(ref);
+                if (!Set.of(
+                                "CLASS",
+                                "INTERFACE",
+                                "ENUM",
+                                "ANNOTATION_TYPE",
+                                "RECORD",
+                                "METHOD",
+                                "CONSTRUCTOR",
+                                "FIELD",
+                                "ENUM_CONSTANT",
+                                "RECORD_COMPONENT")
+                        .contains(d.symbol().kind())) continue;
+                String raw = identities.declaration(ref);
+                var key = new CatalogueKey(unitKey, raw);
+                CatalogueValue value = cacheable ? catalogueCache.get(key) : null;
+                if (value == null) catalogueMisses++; else catalogueHits++;
+                if (value == null) {
+                    String signature = raw.replace("...", "[]");
                     if (!d.binaryName().isEmpty()) signature = d.binaryName();
                     else if (Set.of("METHOD", "CONSTRUCTOR").contains(d.symbol().kind())
                             && d.symbol().declaredType() >= 0) {
@@ -136,7 +181,7 @@ public final class FactProjection {
                                     "returnType",
                                     JavaTypeNames.erased(unit.types(), type.returns()));
                     }
-                    catalogue.add(
+                    var fact =
                             new SymbolFact(
                                     NodeKeyFactory.key(
                                             new SourceIdentity(
@@ -148,10 +193,31 @@ public final class FactProjection {
                                     captured.module(),
                                     captured.scope(),
                                     captured.path(),
-                                    Json.write(metadata)));
-                    register(raw, signature, project.source(unit.path()));
-                    declarationRefs.put(project.source(unit.path()).world() + "\n" + raw, ref);
+                                    Json.write(metadata));
+                    long weight =
+                            256L
+                                    + 2L
+                                            * (unitKey.path().length()
+                                                    + raw.length()
+                                                    + signature.length()
+                                                    + fact.metadata().length());
+                    value = new CatalogueValue(signature, fact, weight);
+                    if (cacheable && weight <= 32L << 20) {
+                        catalogueCache.put(key, value);
+                        catalogueBytes += weight;
+                        while (catalogueCache.size() > 32768 || catalogueBytes > 32L << 20) {
+                            var iterator = catalogueCache.entrySet().iterator();
+                            var expired = iterator.next().getValue();
+                            iterator.remove();
+                            catalogueBytes -= expired.weight();
+                        }
+                    }
                 }
+                catalogue.add(value.fact());
+                var captured = project.source(unit.path());
+                register(raw, value.signature(), captured);
+                declarationRefs.put(captured.world() + "\n" + raw, ref);
+            }
         }
         return catalogue;
     }
@@ -208,12 +274,16 @@ public final class FactProjection {
                                 NodeKeyFactory.symbolId(raw),
                                 NodeKeyFactory.symbolId(raw).replace("...", "[]"))
                         : s.signature();
-        boolean resourceEvidence = source != null && project.sources.containsKey(source)
-                && project.sources.get(source).resource();
+        boolean resourceEvidence =
+                source != null
+                        && project.sources.containsKey(source)
+                        && project.sources.get(source).resource();
         // Resource requests are model candidates, including unresolved placeholders.
         // Keep their identity separate from compiler-observed binary declarations.
-        String id = resourceEvidence ? Json.key("framework_external", context.world(), signature)
-                : Json.key("external", context.world(), signature);
+        String id =
+                resourceEvidence
+                        ? Json.key("framework_external", context.world(), signature)
+                        : Json.key("external", context.world(), signature);
         Map<String, Object> f = fact(id, "external_symbol", "");
         f.put("signature", signature);
         f.put("name", signature);
@@ -295,14 +365,39 @@ public final class FactProjection {
     }
 
     public void emit(Map<String, Object> fact) {
-        String digest =
-                Json.sha(Json.write(fact).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-        String previous = emitted.putIfAbsent(Json.string(fact, "id"), digest);
-        if (previous != null && !previous.equals(digest))
+        byte[] encoded = Json.write(fact).getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        encodings++; encodedBytes += encoded.length;
+        if (project.deferFactDedup) {
+            owners.put(Json.write(fact.get("owner")), fact.get("owner"));
+            output.addEncoded(encoded);
+            return;
+        }
+        String digest = Json.sha(encoded);
+        Emitted previous =
+                emitted.putIfAbsent(Json.string(fact, "id"), new Emitted(digest, output.size()));
+        if (previous != null && !previous.digest().equals(digest)) {
+            try {
+                Path evidence = project.diagnosticRoot.resolve("fact-conflict.json");
+                Json.writeTo(
+                        evidence,
+                        Json.object(
+                                "context",
+                                context == null ? "" : context.id(),
+                                "first",
+                                output.get(previous.record()),
+                                "second",
+                                fact),
+                        32L << 20);
+            } catch (Exception failure) {
+                var conflict = new IllegalStateException("CONFLICTING_FACT_ID: " + fact.get("id"));
+                conflict.addSuppressed(failure);
+                throw conflict;
+            }
             throw new IllegalStateException("CONFLICTING_FACT_ID: " + fact.get("id"));
+        }
         if (previous == null) {
             owners.put(Json.write(fact.get("owner")), fact.get("owner"));
-            output.add(fact);
+            output.addEncoded(encoded);
         }
     }
 
@@ -335,8 +430,10 @@ public final class FactProjection {
         Map<String, List<Edge>> outgoing = new HashMap<>();
         for (Edge edge : result.edges) {
             outgoing.computeIfAbsent(edge.sourceId, ignored -> new ArrayList<>()).add(edge);
-            if (Set.of("CONFIGURES", "XML_CONTAINS", "CONTAINS").contains(edge.relation)) parents.put(edge.targetId, edge.sourceId);
-            if ("DEFINED_BY".equals(edge.relation) && !edge.isExternal) parents.putIfAbsent(edge.sourceId, edge.targetId);
+            if (Set.of("CONFIGURES", "XML_CONTAINS", "CONTAINS").contains(edge.relation))
+                parents.put(edge.targetId, edge.sourceId);
+            if ("DEFINED_BY".equals(edge.relation) && !edge.isExternal)
+                parents.putIfAbsent(edge.sourceId, edge.targetId);
         }
         Map<String, Map<String, Map<String, Object>>> xml = new HashMap<>();
         for (Node node : result.nodes) {
@@ -410,33 +507,72 @@ public final class FactProjection {
                                     && original.origin() != JavaDeclaration.Origin.MODEL);
                 }
             }
-            attrs.put("element_kind", "SOURCE_REGION".equals(node.kind) ? "INITIALIZER" : node.kind);
+            attrs.put(
+                    "element_kind", "SOURCE_REGION".equals(node.kind) ? "INITIALIZER" : node.kind);
             attrs.put("context", context.id());
             if (configuration) {
                 attrs.put("schema_version", 1);
-                String relation = captured.resource() && attrs.containsKey("xmlKind") ? "java.spring.xml" : configurationFacet(node.kind, attrs);
+                String relation =
+                        captured.resource() && attrs.containsKey("xmlKind")
+                                ? "java.spring.xml"
+                                : configurationFacet(node.kind, attrs);
                 f.put("relation", relation);
                 f.put("origin", "framework_model");
                 f.put("status", "possible");
                 f.put("evidence_complete", false);
                 attrs.put("runtime_confirmed", false);
-                attrs.put("position", XmlConfigurationProjection.position(node.beginLine, node.beginColumn, node.endLine, node.endColumn));
+                attrs.put(
+                        "position",
+                        XmlConfigurationProjection.position(
+                                node.beginLine, node.beginColumn, node.endLine, node.endColumn));
                 if ("BEAN".equals(node.kind) && !attrs.containsKey("xmlKind")) {
-                    String type = Objects.toString(attrs.get("productClass"), Objects.toString(attrs.get("className"), Objects.toString(attrs.get("returnType"), "")));
+                    String type =
+                            Objects.toString(
+                                    attrs.get("productClass"),
+                                    Objects.toString(
+                                            attrs.get("className"),
+                                            Objects.toString(attrs.get("returnType"), "")));
                     attrs.put("type", type);
                     attrs.putIfAbsent("aliases", List.of(node.label));
-                    attrs.put("priority_selection_unknown", Boolean.TRUE.equals(attrs.get("prioritySelectionUnknown")));
-                    attrs.put("configuration_constraints", attrs.getOrDefault("configurationConstraints", List.of()));
-                    if ("annotation".equals(attrs.get("source"))) attrs.put("annotation_evidence", Json.object(
-                            "direct", attrs.get("annotationFqn"), "root", attrs.get("frameworkAnnotationRoot"), "meta_path", attrs.get("metaPath"),
-                            "resolution", attrs.get("annotationResolutionStatus"), "attributes", attrs.get("annotationAttributeStatus")));
+                    attrs.put(
+                            "priority_selection_unknown",
+                            Boolean.TRUE.equals(attrs.get("prioritySelectionUnknown")));
+                    attrs.put(
+                            "configuration_constraints",
+                            attrs.getOrDefault("configurationConstraints", List.of()));
+                    if ("annotation".equals(attrs.get("source")))
+                        attrs.put(
+                                "annotation_evidence",
+                                Json.object(
+                                        "direct",
+                                        attrs.get("annotationFqn"),
+                                        "root",
+                                        attrs.get("frameworkAnnotationRoot"),
+                                        "meta_path",
+                                        attrs.get("metaPath"),
+                                        "resolution",
+                                        attrs.get("annotationResolutionStatus"),
+                                        "attributes",
+                                        attrs.get("annotationAttributeStatus")));
                     if (captured.resource()) {
                         attrs.put("kind", "xml_bean");
-                        attrs.put("xml_configuration_model", xml.computeIfAbsent(source, ignored -> XmlConfigurationProjection.describe(captured,
-                                (bl, bc, el, ec) -> span(source, bl, bc, el, ec))).get(node.id));
+                        attrs.put(
+                                "xml_configuration_model",
+                                xml.computeIfAbsent(
+                                                source,
+                                                ignored ->
+                                                        XmlConfigurationProjection.describe(
+                                                                captured,
+                                                                (bl, bc, el, ec) ->
+                                                                        span(
+                                                                                source, bl, bc, el,
+                                                                                ec)))
+                                        .get(node.id));
                     }
                 } else if (captured.resource()) {
-                    String kind = Objects.toString(attrs.get("xmlKind"), node.kind.toLowerCase(Locale.ROOT));
+                    String kind =
+                            Objects.toString(
+                                    attrs.get("xmlKind"), node.kind.toLowerCase(Locale.ROOT));
                     if ("ref".equals(kind)) kind = "bean_ref";
                     if ("XML_CALLABLE_REF".equals(node.kind)) {
                         String role = Objects.toString(attrs.get("role"), "");
@@ -446,7 +582,13 @@ public final class FactProjection {
                         attrs.put("owner", ref.get("owner"));
                     }
                     attrs.put("kind", kind);
-                    long count = outgoing.getOrDefault(node.id, List.of()).stream().filter(e -> "XML_REFERS_TO".equals(e.relation) && !e.isExternal).count();
+                    long count =
+                            outgoing.getOrDefault(node.id, List.of()).stream()
+                                    .filter(
+                                            e ->
+                                                    "XML_REFERS_TO".equals(e.relation)
+                                                            && !e.isExternal)
+                                    .count();
                     attrs.put("candidate_count", attrs.getOrDefault("candidateCount", count));
                 }
             }
@@ -459,20 +601,32 @@ public final class FactProjection {
                 String type = Objects.toString(attrs.get("type"), "");
                 if (!type.isEmpty()) {
                     reference(source, symbol.id(), target(type, source), "config_type", Map.of());
-                    if (captured.resource() && attrs.get("className") instanceof String ownerType) reference(source, symbol.id(), target(ownerType, source), "config_owner", Map.of());
+                    if (captured.resource() && attrs.get("className") instanceof String ownerType)
+                        reference(
+                                source,
+                                symbol.id(),
+                                target(ownerType, source),
+                                "config_owner",
+                                Map.of());
                 }
             }
             if (configuration && "BEAN".equals(node.kind) && !captured.resource()) {
                 for (Object name : CapturedProject.list(attrs.get("aliases"))) {
-                    if (!(name instanceof String alias) || alias.equals(node.label) || alias.isEmpty()) continue;
+                    if (!(name instanceof String alias)
+                            || alias.equals(node.label)
+                            || alias.isEmpty()) continue;
                     Map<String, Object> aliasFact = new LinkedHashMap<>(f);
-                    aliasFact.put("id", Json.key("bean_alias", context.world(), source, node.id, alias));
-                    aliasFact.put("name", alias); aliasFact.put("signature", "bean:" + alias); emit(aliasFact);
+                    aliasFact.put(
+                            "id", Json.key("bean_alias", context.world(), source, node.id, alias));
+                    aliasFact.put("name", alias);
+                    aliasFact.put("signature", "bean:" + alias);
+                    emit(aliasFact);
                 }
             }
             if (attrs.get("lombok") instanceof Map<?, ?> summary) {
                 Map<String, Object> capability = new LinkedHashMap<>(Json.map(summary));
-                capability.put("mode", "model"); capability.put("schema_version", 1);
+                capability.put("mode", "model");
+                capability.put("schema_version", 1);
                 capability.put("upstream_producer", "lombok-model");
                 facet(source, f.get("span"), symbol.id(), "java.lombok", capability);
             }
@@ -503,19 +657,29 @@ public final class FactProjection {
         }
         Set<String> files = new LinkedHashSet<>();
         result.nodes.forEach(n -> files.add(n.sourceFile));
-        for (String file : files) { parameters(file); rawEvidence(file); }
+        for (String file : files) {
+            parameters(file);
+            rawEvidence(file);
+        }
         for (Edge edge : result.edges) edge(edge);
         for (Node node : result.nodes) {
             String source = node.sourceFile;
             if (!project.sources.get(source).resource()) continue;
             Map<String, Object> attrs = metadata(node.metadata);
             if ("bean".equals(attrs.get("xmlKind")) && attrs.get("bean") instanceof String name) {
-                String bean = com.anatomist.framework.spring.XmlBeanGraphExtractor.beanNodeId(name, source);
+                String bean =
+                        com.anatomist.framework.spring.XmlBeanGraphExtractor.beanNodeId(
+                                name, source);
                 if (lookup(bean, source) != null)
-                    reference(source, target(node.id, source), target(bean, source),
-                            "config_nested_bean", Json.object("upstream_producer", node.producerId));
+                    reference(
+                            source,
+                            target(node.id, source),
+                            target(bean, source),
+                            "config_nested_bean",
+                            Json.object("upstream_producer", node.producerId));
             }
-            if (com.anatomist.framework.sofa.SofaXmlAnalyzer.NAMESPACE.equals(attrs.get("namespace"))) {
+            if (com.anatomist.framework.sofa.SofaXmlAnalyzer.NAMESPACE.equals(
+                    attrs.get("namespace"))) {
                 List<Object> children = CapturedProject.list(attrs.get("configuration"));
                 for (int ordinal = 0; ordinal < children.size(); ordinal++) {
                     Map<String, Object> child = new TreeMap<>(Json.map(children.get(ordinal)));
@@ -523,8 +687,16 @@ public final class FactProjection {
                     child.put("configuration_ordinal", ordinal);
                     child.put("upstream_producer", node.producerId);
                     child.put("runtime_confirmed", false);
-                    Map<String, Object> f = fact(Json.key("framework_configuration", context.world(),
-                            source, node.id, Integer.toString(ordinal)), "facet", source);
+                    Map<String, Object> f =
+                            fact(
+                                    Json.key(
+                                            "framework_configuration",
+                                            context.world(),
+                                            source,
+                                            node.id,
+                                            Integer.toString(ordinal)),
+                                    "facet",
+                                    source);
                     f.put("parent", target(node.id, source));
                     f.put("relation", "java.sofa");
                     f.put("origin", "framework_model");
@@ -631,7 +803,8 @@ public final class FactProjection {
     }
 
     private void parameters(String source) {
-        if (model == null || project.sources.get(source).resource() || !published.contains(source)) return;
+        if (model == null || project.sources.get(source).resource() || !published.contains(source))
+            return;
         var file = project.sources.get(source).file();
         for (var ref : model.declarations(file)) {
             var declaration = model.declaration(ref);
@@ -641,20 +814,56 @@ public final class FactProjection {
             String owner = identities.declaration(parent);
             String name = declaration.symbol().name();
             String raw = owner + "/parameter:" + name;
-            Symbol symbol = register(raw, lookup(owner, source).signature() + "/parameter:" + name, project.sources.get(source));
+            Symbol symbol =
+                    register(
+                            raw,
+                            lookup(owner, source).signature() + "/parameter:" + name,
+                            project.sources.get(source));
             Map<String, Object> fact = fact(symbol.id(), "declaration", source);
-            fact.put("name", name); fact.put("signature", symbol.signature()); fact.put("parent", target(owner, source));
-            fact.put("span", utf16Span(source, declaration.span().start(), declaration.span().end()));
-            fact.put("origin", declaration.origin() == JavaDeclaration.Origin.MODEL ? "lombok_model" : "javac");
-            fact.put("declaration_resolved", declaration.complete()); fact.put("evidence_complete", declaration.complete() && declaration.origin() != JavaDeclaration.Origin.MODEL);
-            Map<String, Object> attrs = Json.object("upstream_id", raw, "kind", "PARAMETER", "element_kind", "PARAMETER",
-                    "module", context.module(), "scope", context.scope().name(), "modifiers", declaration.symbol().modifiers(),
-                    "declaration_origin", declaration.origin().name(), "source_available", declaration.span().present(), "context", context.id());
-            var graph = new TypeGraphProjection(model.unit(file).types());
-            attrs.put("type_model", graph.reference(declaration.symbol().declaredType())); graph.attach(attrs);
-            fact.put("attributes", attrs); emit(fact);
+            fact.put("name", name);
+            fact.put("signature", symbol.signature());
+            fact.put("parent", target(owner, source));
+            fact.put(
+                    "span",
+                    utf16Span(source, declaration.span().start(), declaration.span().end()));
+            fact.put(
+                    "origin",
+                    declaration.origin() == JavaDeclaration.Origin.MODEL
+                            ? "lombok_model"
+                            : "javac");
+            fact.put("declaration_resolved", declaration.complete());
+            fact.put(
+                    "evidence_complete",
+                    declaration.complete() && declaration.origin() != JavaDeclaration.Origin.MODEL);
+            Map<String, Object> attrs =
+                    Json.object(
+                            "upstream_id",
+                            raw,
+                            "kind",
+                            "PARAMETER",
+                            "element_kind",
+                            "PARAMETER",
+                            "module",
+                            context.module(),
+                            "scope",
+                            context.scope().name(),
+                            "modifiers",
+                            declaration.symbol().modifiers(),
+                            "declaration_origin",
+                            declaration.origin().name(),
+                            "source_available",
+                            declaration.span().present(),
+                            "context",
+                            context.id());
+            var graph = new TypeGraphProjection(model.unit(file).types(), typeGraphs);
+            attrs.put("type_model", graph.reference(declaration.symbol().declaredType()));
+            graph.attach(attrs);
+            fact.put("attributes", attrs);
+            emit(fact);
             pointDeclarations.put(symbol.id(), ref);
-            injectionParameters.put(context.world() + "\n" + source + "\n" + owner.replace('#', '.') + ":" + name, symbol.id());
+            injectionParameters.put(
+                    context.world() + "\n" + source + "\n" + owner.replace('#', '.') + ":" + name,
+                    symbol.id());
         }
     }
 
@@ -674,7 +883,12 @@ public final class FactProjection {
                     case "HANDLES" -> "handles_possible";
                     case "XML_REFERS_TO" -> edge.isExternal ? "unresolved_config" : "config";
                     case "REFERENCES" -> {
-                        String selected = edge.isExternal ? Objects.toString(edge.externalTargetSymbol, Objects.toString(edge.externalTargetFqn, "")) : Objects.toString(edge.targetId, "");
+                        String selected =
+                                edge.isExternal
+                                        ? Objects.toString(
+                                                edge.externalTargetSymbol,
+                                                Objects.toString(edge.externalTargetFqn, ""))
+                                        : Objects.toString(edge.targetId, "");
                         yield selected.contains("#") ? "reflection_lookup" : "type_reference";
                     }
                     case "BINDS_TO" ->
@@ -701,11 +915,22 @@ public final class FactProjection {
                 Symbol field = lookup(edge.sourceId + "#" + site.substring(6), source);
                 if (field != null) point = field.id();
             }
-            if (site.startsWith("method:")) point = injectionParameters.getOrDefault(
-                    context.world() + "\n" + source + "\n" + site.substring(7), point);
-            if (site.startsWith("constructor:")) point = injectionParameters.getOrDefault(
-                    context.world() + "\n" + source + "\n" + site.substring(12), point);
-            String registration = Json.key("injection", context.world(), source, parent, site, Objects.toString(edge.beginLine, ""));
+            if (site.startsWith("method:"))
+                point =
+                        injectionParameters.getOrDefault(
+                                context.world() + "\n" + source + "\n" + site.substring(7), point);
+            if (site.startsWith("constructor:"))
+                point =
+                        injectionParameters.getOrDefault(
+                                context.world() + "\n" + source + "\n" + site.substring(12), point);
+            String registration =
+                    Json.key(
+                            "injection",
+                            context.world(),
+                            source,
+                            parent,
+                            site,
+                            Objects.toString(edge.beginLine, ""));
             Map<String, Object> f = fact(registration, "facet", source);
             f.put("parent", point);
             f.put("relation", "java.spring.injection");
@@ -716,17 +941,36 @@ public final class FactProjection {
             evidence.put("schema_version", 1);
             evidence.put("role", site.contains(":") ? site.substring(0, site.indexOf(':')) : site);
             evidence.put("injection_point", attrs.get("injectionPointName"));
-            evidence.put("implicit_single_constructor", Boolean.TRUE.equals(attrs.get("implicitSingleConstructor")));
+            evidence.put(
+                    "implicit_single_constructor",
+                    Boolean.TRUE.equals(attrs.get("implicitSingleConstructor")));
             evidence.put("shape", attrs.get("injectionShape"));
-            evidence.put("collection_type", attrs.get("collectionType")); evidence.put("element_type", attrs.get("elementType"));
-            evidence.put("resource_default_name", attrs.get("resourceDefaultName")); evidence.put("resource_name", attrs.get("resourceName"));
-            evidence.put("resource_written_attributes", attrs.getOrDefault("resourceAttributes", Map.of()));
-            evidence.put("matching_unsupported", Boolean.TRUE.equals(attrs.get("matchingUnsupported")));
+            evidence.put("collection_type", attrs.get("collectionType"));
+            evidence.put("element_type", attrs.get("elementType"));
+            evidence.put("resource_default_name", attrs.get("resourceDefaultName"));
+            evidence.put("resource_name", attrs.get("resourceName"));
+            evidence.put(
+                    "resource_written_attributes",
+                    attrs.getOrDefault("resourceAttributes", Map.of()));
+            evidence.put(
+                    "matching_unsupported", Boolean.TRUE.equals(attrs.get("matchingUnsupported")));
             var declaration = pointDeclarations.get(point);
-            if (declaration == null && site.startsWith("field:")) declaration = declarationRefs.get(project.sources.get(source).world() + "\n" + edge.sourceId + "#" + site.substring(6));
+            if (declaration == null && site.startsWith("field:"))
+                declaration =
+                        declarationRefs.get(
+                                project.sources.get(source).world()
+                                        + "\n"
+                                        + edge.sourceId
+                                        + "#"
+                                        + site.substring(6));
             if (declaration != null && model != null) {
-                var graph = new TypeGraphProjection(model.unit(declaration.source()).types());
-                evidence.put("injected_type", graph.reference(model.declaration(declaration).symbol().declaredType())); graph.attach(evidence);
+                var graph =
+                        new TypeGraphProjection(
+                                model.unit(declaration.source()).types(), typeGraphs);
+                evidence.put(
+                        "injected_type",
+                        graph.reference(model.declaration(declaration).symbol().declaredType()));
+                graph.attach(evidence);
 
             } else evidence.put("injected_type", Json.object("display", attrs.get("injectedType")));
             evidence.put("declaring_type", parent);
@@ -778,7 +1022,10 @@ public final class FactProjection {
                                     relation,
                                     Json.write(span),
                                     Json.write(attrs)),
-                            Set.of("config", "type_reference", "reflection_lookup").contains(relation) ? "reference" : "relation",
+                            Set.of("config", "type_reference", "reflection_lookup")
+                                            .contains(relation)
+                                    ? "reference"
+                                    : "relation",
                             source);
             f.put("span", span);
             f.put("parent", parent);
@@ -792,11 +1039,31 @@ public final class FactProjection {
         }
     }
 
-    private void reference(String source, String parent, String target, String relation, Map<String, Object> attrs) {
-        Map<String, Object> fact = fact(Json.key("framework_reference", context.world(), source, parent, target, relation), "reference", source);
-        fact.put("parent", parent); fact.put("target", target); fact.put("relation", relation);
-        fact.put("origin", "framework_model"); fact.put("status", "possible"); fact.put("evidence_complete", false);
-        fact.put("attributes", attrs); emit(fact);
+    private void reference(
+            String source,
+            String parent,
+            String target,
+            String relation,
+            Map<String, Object> attrs) {
+        Map<String, Object> fact =
+                fact(
+                        Json.key(
+                                "framework_reference",
+                                context.world(),
+                                source,
+                                parent,
+                                target,
+                                relation),
+                        "reference",
+                        source);
+        fact.put("parent", parent);
+        fact.put("target", target);
+        fact.put("relation", relation);
+        fact.put("origin", "framework_model");
+        fact.put("status", "possible");
+        fact.put("evidence_complete", false);
+        fact.put("attributes", attrs);
+        emit(fact);
     }
 
     private String site(
@@ -916,7 +1183,7 @@ public final class FactProjection {
         if (ref == null) return;
         var d = model.declaration(ref);
         var unit = model.unit(ref.source());
-        var graph = new TypeGraphProjection(unit.types());
+        var graph = new TypeGraphProjection(unit.types(), typeGraphs);
         attributes.put("type_model", graph.reference(d.symbol().declaredType()));
         if (d.symbol().declaredType() >= 0) {
             var type = unit.types().get(d.symbol().declaredType());
@@ -931,20 +1198,30 @@ public final class FactProjection {
     }
 
     private void rememberBinding(JavaBinding binding, JavaTypes types) {
-        if (!binding.declarationResolved() || binding.declaredType() < 0
+        if (!binding.declarationResolved()
+                || binding.declaredType() < 0
                 || !Set.of("METHOD", "CONSTRUCTOR").contains(binding.kind())) return;
         String raw = JavaTypeNames.binaryCallableId(types, binding.symbol(), binding.binaryOwner());
         String signature = raw;
         if ("CONSTRUCTOR".equals(binding.kind())) {
-            signature = raw.substring(0, raw.indexOf('#')) + "#<init>" + raw.substring(raw.indexOf('('));
+            signature =
+                    raw.substring(0, raw.indexOf('#'))
+                            + "#<init>"
+                            + raw.substring(raw.indexOf('('));
             externalSignatures.putIfAbsent(raw, signature);
         }
-        externalMetadata.putIfAbsent(signature,
+        externalMetadata.putIfAbsent(
+                signature,
                 Json.object("modifiers", binding.flags(), "element_kind", binding.kind()));
     }
 
     private static String localBindingKey(JavaBinding binding) {
-        return Json.key(binding.kind(), binding.owner(), binding.binaryOwner(), binding.name(), binding.descriptor());
+        return Json.key(
+                binding.kind(),
+                binding.owner(),
+                binding.binaryOwner(),
+                binding.name(),
+                binding.descriptor());
     }
 
     private void rawEvidence(String source) {
@@ -955,9 +1232,18 @@ public final class FactProjection {
         Map<String, List<JavaNode>> locals = new HashMap<>();
         for (var node : syntax.nodes()) {
             var binding = unit.bindings().get(node.id());
-            if (node.span().present() && "VARIABLE".equals(node.kind()) && binding != null
-                    && Set.of("LOCAL_VARIABLE", "RESOURCE_VARIABLE", "EXCEPTION_PARAMETER", "PARAMETER", "BINDING_VARIABLE").contains(binding.kind()))
-                locals.computeIfAbsent(localBindingKey(binding), ignored -> new ArrayList<>()).add(node);
+            if (node.span().present()
+                    && "VARIABLE".equals(node.kind())
+                    && binding != null
+                    && Set.of(
+                                    "LOCAL_VARIABLE",
+                                    "RESOURCE_VARIABLE",
+                                    "EXCEPTION_PARAMETER",
+                                    "PARAMETER",
+                                    "BINDING_VARIABLE")
+                            .contains(binding.kind()))
+                locals.computeIfAbsent(localBindingKey(binding), ignored -> new ArrayList<>())
+                        .add(node);
         }
         List<Object> treeRows = new ArrayList<>();
         for (var node : syntax.nodes()) {
@@ -984,37 +1270,108 @@ public final class FactProjection {
             if (binding == null && !call) continue;
             String owner = identities.owner(file, node).orElse("");
             Object span = utf16Span(source, node.start(), node.end());
-            if (binding != null && "VARIABLE".equals(node.kind())
-                    && Set.of("LOCAL_VARIABLE", "RESOURCE_VARIABLE", "EXCEPTION_PARAMETER", "PARAMETER", "BINDING_VARIABLE").contains(binding.kind())) {
+            if (binding != null
+                    && "VARIABLE".equals(node.kind())
+                    && Set.of(
+                                    "LOCAL_VARIABLE",
+                                    "RESOURCE_VARIABLE",
+                                    "EXCEPTION_PARAMETER",
+                                    "PARAMETER",
+                                    "BINDING_VARIABLE")
+                            .contains(binding.kind())) {
                 // Local/lambda declarations are available in the raw compiler binding table.
                 String parent = target(owner, source);
                 String signature = owner + "#local:" + binding.name() + "@" + node.start();
                 String id = Json.key("lexical_declaration", context.world(), source, signature);
                 Map<String, Object> variable = fact(id, "declaration", source);
-                variable.put("name", binding.name()); variable.put("signature", signature); variable.put("parent", parent); variable.put("span", span);
-                variable.put("declaration_resolved", binding.declarationResolved()); variable.put("evidence_complete", binding.evidenceComplete());
-                Map<String, Object> metadata = Json.object("kind", binding.kind(), "element_kind", binding.kind(), "modifiers", binding.flags(),
-                        "context", context.id(), "module", context.module(), "scope", context.scope().name(), "tree_id", node.id(), "source_available", true);
-                var graph = new TypeGraphProjection(unit.types()); metadata.put("type_model", graph.reference(binding.declaredType())); graph.attach(metadata);
+                variable.put("name", binding.name());
+                variable.put("signature", signature);
+                variable.put("parent", parent);
+                variable.put("span", span);
+                variable.put("declaration_resolved", binding.declarationResolved());
+                variable.put("evidence_complete", binding.evidenceComplete());
+                Map<String, Object> metadata =
+                        Json.object(
+                                "kind",
+                                binding.kind(),
+                                "element_kind",
+                                binding.kind(),
+                                "modifiers",
+                                binding.flags(),
+                                "context",
+                                context.id(),
+                                "module",
+                                context.module(),
+                                "scope",
+                                context.scope().name(),
+                                "tree_id",
+                                node.id(),
+                                "source_available",
+                                true);
+                var graph = new TypeGraphProjection(unit.types(), typeGraphs);
+                metadata.put("type_model", graph.reference(binding.declaredType()));
+                graph.attach(metadata);
                 variable.put("attributes", metadata);
-                boolean formal = "PARAMETER".equals(binding.kind()) && injectionParameters.containsKey(context.world() + "\n" + source + "\n" + owner.replace('#', '.') + ":" + binding.name());
+                boolean formal =
+                        "PARAMETER".equals(binding.kind())
+                                && injectionParameters.containsKey(
+                                        context.world()
+                                                + "\n"
+                                                + source
+                                                + "\n"
+                                                + owner.replace('#', '.')
+                                                + ":"
+                                                + binding.name());
                 if (!formal) emit(variable);
             }
-            if (binding != null && binding.declarationResolved() && "IDENTIFIER".equals(node.kind())
+            if (binding != null
+                    && binding.declarationResolved()
+                    && "IDENTIFIER".equals(node.kind())
                     && !owner.isEmpty()) {
                 var matches = locals.getOrDefault(localBindingKey(binding), List.of());
                 if (matches.size() == 1) {
                     var declaration = matches.getFirst();
                     String declarationOwner = identities.owner(file, declaration).orElse("");
-                    String parameter = injectionParameters.get(context.world() + "\n" + source + "\n"
-                            + declarationOwner.replace('#', '.') + ":" + binding.name());
-                    String destination = parameter != null ? parameter : Json.key("lexical_declaration", context.world(), source,
-                            declarationOwner + "#local:" + binding.name() + "@" + declaration.start());
-                    var reference = fact(Json.key("local_reference", context.world(), source, Integer.toString(node.id())), "reference", source);
-                    reference.put("parent", target(owner, source)); reference.put("target", destination);
-                    reference.put("span", span); reference.put("relation", "local_reference"); reference.put("status", "complete");
-                    reference.put("declaration_resolved", true); reference.put("evidence_complete", binding.evidenceComplete());
-                    reference.put("attributes", Json.object("tree_id", node.id(), "raw_javac_binding", true));
+                    String parameter =
+                            injectionParameters.get(
+                                    context.world()
+                                            + "\n"
+                                            + source
+                                            + "\n"
+                                            + declarationOwner.replace('#', '.')
+                                            + ":"
+                                            + binding.name());
+                    String destination =
+                            parameter != null
+                                    ? parameter
+                                    : Json.key(
+                                            "lexical_declaration",
+                                            context.world(),
+                                            source,
+                                            declarationOwner
+                                                    + "#local:"
+                                                    + binding.name()
+                                                    + "@"
+                                                    + declaration.start());
+                    var reference =
+                            fact(
+                                    Json.key(
+                                            "local_reference",
+                                            context.world(),
+                                            source,
+                                            Integer.toString(node.id())),
+                                    "reference",
+                                    source);
+                    reference.put("parent", target(owner, source));
+                    reference.put("target", destination);
+                    reference.put("span", span);
+                    reference.put("relation", "local_reference");
+                    reference.put("status", "complete");
+                    reference.put("declaration_resolved", true);
+                    reference.put("evidence_complete", binding.evidenceComplete());
+                    reference.put(
+                            "attributes",
+                            Json.object("tree_id", node.id(), "raw_javac_binding", true));
                     emit(reference);
                 }
             }
@@ -1041,12 +1398,14 @@ public final class FactProjection {
                 attrs.put("parameter_types", binding.parameters());
                 attrs.put("return_type", binding.returns());
                 attrs.put("modifiers", binding.flags());
-                var graph = new TypeGraphProjection(unit.types());
+                var graph = new TypeGraphProjection(unit.types(), typeGraphs);
                 attrs.put("expression_type_model", graph.reference(binding.expressionType()));
                 attrs.put("declared_type_model", graph.reference(binding.declaredType()));
                 attrs.put("selected_type_model", graph.reference(binding.selectedType()));
                 graph.attach(attrs);
-                attrs.put("parameter_types", binding.parameters().stream().map(graph::spelling).toList());
+                attrs.put(
+                        "parameter_types",
+                        binding.parameters().stream().map(graph::spelling).toList());
                 attrs.put("return_type", graph.spelling(binding.returns()));
                 if (binding.kind().equals("CONSTRUCTOR") && binding.declaredType() >= 0) {
                     String raw =

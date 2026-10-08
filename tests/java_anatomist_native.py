@@ -23,7 +23,7 @@ class Native(unittest.TestCase):
         self.source.write_text('class A { String text="😀"; void call(){ target(1); } void target(int x){} }')
         unit = dict(path='src/A.java', input=str(self.source), hash=hashlib.sha256(self.source.read_bytes()).hexdigest(), module='.', world='main', scope='MAIN', publish=True)
         self.context = dict(context='.@MAIN', module='.', world='main', scope='MAIN', digest=unit['hash'], sources=[unit], classpath=[], resources=[], dependency_modules=[], lombok='off')
-        self.request = dict(version=7, full=True, facts=True, java_home=str(JDK), scratch=str(self.root), contexts=[self.context], compiler_timeout_seconds=30)
+        self.request = dict(version=8, full=True, facts=True, java_home=str(JDK), scratch=str(self.root), contexts=[self.context], compiler_timeout_seconds=30)
     def probe(self, *args, success=True):
         path = self.root / 'request.json'
         path.write_text(json.dumps(self.request))
@@ -35,7 +35,7 @@ class Native(unittest.TestCase):
         return result.stderr
     def test_native_projection_and_task_cleanup(self):
         first = self.probe()
-        self.assertEqual(first['version'], 7)
+        self.assertEqual(first['version'], 8)
         facts = first['facts']
         target = next(f for f in facts if f['signature']=='A#target(int)')
         self.assertTrue(any(f['kind']=='call_target' and f['target']==target['id'] and f['status']=='resolved' for f in facts))
@@ -50,7 +50,7 @@ class Native(unittest.TestCase):
                 if name.endswith('.class'):
                     self.assertEqual(struct.unpack('>H',jar.read(name)[6:8])[0],52,name)
         manifest=json.loads((TARGET/'native/manifest.json').read_text())
-        self.assertEqual(manifest['analysis_request'],7)
+        self.assertEqual(manifest['analysis_request'],8)
         for name,digest in manifest['files'].items():
             self.assertEqual(hashlib.sha256((TARGET/name).read_bytes()).hexdigest(),digest,name)
     def test_rejects_hash_and_old_request(self):

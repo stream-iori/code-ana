@@ -567,6 +567,17 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             contexts.push(w::JavaContext {
                 id: format!("{}@{}", module.id, scope),
                 module: module.id.clone(),
+                source_roots: module
+                    .source_roots
+                    .iter()
+                    .filter(|r| r.scope == scope)
+                    .map(|r| {
+                        Path::new(&module.root)
+                            .join(&r.path)
+                            .to_string_lossy()
+                            .into_owned()
+                    })
+                    .collect(),
                 world,
                 scope,
                 digest: digest(&(
@@ -575,6 +586,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                     resource_identity,
                     &module.lombok,
                     &module.extensions,
+                    &module.source_roots,
                 )),
                 sources,
                 classpath,

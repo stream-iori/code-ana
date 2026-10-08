@@ -8,7 +8,7 @@
 
 **先冻结“一个事实属于谁、对应哪个输入、怎样证明交付完成”，再实现传输和表结构。**
 
-状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 13，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型 javac-model-v50、编译器 batch 2、analysis request/result 7、C ABI 2。Java 8 字节码与真实 native 链路已验证；最新变更的完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
+状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 14，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型 javac-model-v50、编译器 batch 2、analysis request/result 8、C ABI 2。Java 8 字节码与真实 native 链路已验证；最新变更的完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
 
 ## 1. 身份
 

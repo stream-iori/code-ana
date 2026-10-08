@@ -34,8 +34,8 @@ for name in ('native/libcodeana_java.dylib','compiler-bridge.jar'):
 worker=root.parent.parent/'target/release/codeana-java-worker'
 versions=json.loads(subprocess.check_output([str(worker),str(root/'native/libcodeana_java.dylib'),
                                             '--runtime-info'],text=True,timeout=15))
-assert versions==dict(worker_protocol=13,fact_ir=1,adapter=manifest['adapter'],
-                      analysis_request=7,abi=2), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
+assert versions==dict(worker_protocol=14,fact_ir=1,adapter=manifest['adapter'],
+                      analysis_request=8,abi=2), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
 VERIFY
 if [[ "$custom_output" == true && -e "$package_dir" ]]; then
   echo "Package output already exists: $package_dir" >&2; exit 2
@@ -67,7 +67,7 @@ root=pathlib.Path(sys.argv[1])
 native=json.loads((root/'lib/java/native/manifest.json').read_text())
 metadata={key:native[key] for key in ('abi','analysis_request','compiler_protocol','java_model',
     'type_graph_default','type_schema','binding_schema','target_java')}
-metadata.update(package='codeana-java8',worker_protocol=13,fact_ir=1,
+metadata.update(package='codeana-java8',worker_protocol=14,fact_ir=1,
     toolchain='externally registered SDKMAN Java 8')
 (root/'manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
 files=sorted(p for p in root.rglob('*') if p.is_file() and p.name!='SHA256SUMS')

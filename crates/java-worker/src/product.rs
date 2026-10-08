@@ -78,7 +78,7 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                             let u=s.unit.as_ref().context("SOURCE_UNIT_REQUIRED")?;
                             Ok(json!({"path":u.path,"hash":u.hash,"module":u.module,"world":u.world,"scope":u.scope,"auxiliary":u.auxiliary,"input":s.input,"publish":s.publish}))
                         }).collect::<Result<Vec<_>>>()?;
-                        Ok(json!({"version":9,"type_graph":true,"context":ctx.id,"module":ctx.module,"world":ctx.world,"scope":ctx.scope,"prerequisite":ctx.prerequisite,"dependency_modules":ctx.dependency_modules,"sources":sources,"classpath":ctx.classpath,"digest":ctx.digest,"lombok":ctx.lombok,"lombok_strict":ctx.lombok_strict,"spring":ctx.spring,"spring_xml":ctx.spring_xml,"sofa":ctx.sofa,
+                        Ok(json!({"version":9,"type_graph":true,"context":ctx.id,"module":ctx.module,"world":ctx.world,"scope":ctx.scope,"prerequisite":ctx.prerequisite,"dependency_modules":ctx.dependency_modules,"source_roots":ctx.source_roots,"sources":sources,"classpath":ctx.classpath,"digest":ctx.digest,"lombok":ctx.lombok,"lombok_strict":ctx.lombok_strict,"spring":ctx.spring,"spring_xml":ctx.spring_xml,"sofa":ctx.sofa,
                             "model_archive_bytes":if ctx.model_archive_bytes==0 {64*1024*1024} else {ctx.model_archive_bytes},
                             "model_record_limit":if ctx.model_record_limit==0 {100000} else {ctx.model_record_limit},
                             "resources":ctx.resources.iter().map(|r|json!({"unit":r.unit,"input":r.input})).collect::<Vec<_>>(),
@@ -90,18 +90,20 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                     derived_cache = if c.signature_cache {
                         let root = Path::new(&c.cache_root).with_extension("managed-v1");
                         match DerivedCacheSession::open(&root, Path::new(&c.scratch),
-                            &["anatomist-signatures-v50-reloc1"], DerivedCacheLimits::default()) {
+                            &["anatomist-signatures-v50-reloc2"], DerivedCacheLimits::default()) {
                             Ok(cache) => Some(cache),
                             Err(error) => { eprintln!("DERIVED_CACHE_UNAVAILABLE: {error}"); None }
                         }
                     } else { None };
-                    let cache_root = derived_cache.as_ref().map(|cache| cache.namespace_path("anatomist-signatures-v50-reloc1")).transpose()?;
-                    let request=json!({"version":7,"compact_inputs":c.compact_inputs,"input_table":c.input_table,"classpath_table":c.classpath_table,"facts":true,"java_home":c.java_home,"bridge":c.bridge,"scratch":c.scratch,"contexts":contexts,"parallelism":c.parallelism,"full":a.full,"baseline_archive":{"path":baseline.path(),"sha256":baseline.file_hash()?,"count":baseline.count,"bytes":baseline.bytes},"profile":a.profile,"cache_root":cache_root,"signature_cache":derived_cache.is_some(),"signature_pin_bytes":if derived_cache.is_some() {128_u64<<20} else {256_u64<<20},"result_bytes":limits.bytes,"fact_limit":limits.facts,"compiler_heap_bytes":c.compiler_heap_bytes,"compiler_timeout_seconds":if c.compiler_timeout_seconds==0 {120} else {c.compiler_timeout_seconds}});
+                    let cache_root = derived_cache.as_ref().map(|cache| cache.namespace_path("anatomist-signatures-v50-reloc2")).transpose()?;
+                    let request=json!({"version":8,"compact_inputs":c.compact_inputs,"input_table":c.input_table,"classpath_table":c.classpath_table,"facts":true,"java_home":c.java_home,"bridge":c.bridge,"scratch":c.scratch,"contexts":contexts,"parallelism":c.parallelism,"full":a.full,"baseline_archive":{"path":baseline.path(),"sha256":baseline.file_hash()?,"count":baseline.count,"bytes":baseline.bytes},"profile":a.profile,"cache_root":cache_root,"signature_cache":derived_cache.is_some(),"signature_pin_bytes":if derived_cache.is_some() {128_u64<<20} else {256_u64<<20},"result_bytes":limits.bytes,"fact_limit":limits.facts,"compiler_heap_bytes":c.compiler_heap_bytes,"compiler_timeout_seconds":if c.compiler_timeout_seconds==0 {120} else {c.compiler_timeout_seconds}});
                     let heap=if c.native_heap_bytes==0 {256*1024*1024} else {c.native_heap_bytes};
+                    let mut evidence=crate::diagnostics::ReplayEvidence::start(&request,Path::new(&c.scratch),library)?;
                     if native.is_none() { native=Some(Native::load_with_heap(library,heap)?); }
                     ensure!(native.as_ref().context("NATIVE_REQUIRED")?.heap_bytes()?==heap,"WARM_NATIVE_HEAP_MISMATCH");
                     let lib=native.as_mut().context("NATIVE_REQUIRED")?;
                     lib.start(&serde_json::to_vec(&request)?)?;
+                    if let Some(e)=evidence.as_mut() {e.phase("native_started");}
                     {
                         let control=read_frame(&mut ipc);tokio::pin!(control);
                         while lib.poll()?==0 {
@@ -111,13 +113,15 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                             }
                         }
                     }
-                    let output=lib.result_file_with_limit(limits.bytes,Some(Path::new(&c.scratch)))?;
+                    let output=lib.result_file_with_limit(limits.bytes.min(64<<20),Some(Path::new(&c.scratch)))?;
+                    if let Some(e)=evidence.as_mut() {e.phase("native_finished");}
                     if lib.poll()?!=1 {
                         ensure!(output.as_file().metadata()?.len()<=64*1024,"NATIVE_FAILURE_BUDGET");
                         let error=std::fs::read(output.path())?;
                         bail!("JAVA_ANALYSIS: {}",String::from_utf8_lossy(&error));
                     }
                     let result=crate::result::read_owned(std::io::BufReader::new(output.reopen()?),&manifest,limits,Some(Path::new(&c.scratch)))?;
+                    if let Some(e)=evidence.as_mut() {e.phase("archive_validated_and_deduplicated");}
                     let r=AnalysisHeader{mode:result.mode,baseline:a.baseline,manifest:manifest.id(),profile:a.profile,producer:"javac-java8-v1".into(),replacements:result.replacements};
                     r.validate(&manifest).map_err(anyhow::Error::msg)?;
                     write_frame(&mut ipc,&envelope(&attempt,Body::Begin(w::Begin{mode:r.mode,baseline:r.baseline,manifest:r.manifest,profile:r.profile,producer:r.producer,replacements:r.replacements.iter().map(convert).collect::<Result<_>>()?}))).await?;
@@ -128,6 +132,7 @@ pub async fn serve(library: &Path, fd: i32) -> Result<()> {
                     }
                     write_frame(&mut ipc,&envelope(&attempt,Body::End(w::End{chunks:seq,count:result.records.count,checksum:result.records.checksum}))).await?;
                     awaiting_ack=true;
+                    if let Some(e)=evidence.as_mut() {e.phase("result_end_sent");}
                 }
                 Body::Ack(ack)=> {
                     ensure!(awaiting_ack && !ack.revision.is_empty(),"PUBLISH_ACK_STATE");

@@ -63,6 +63,8 @@ Rust worker host 是 Java 分析器的宿主，与 Rust 语言的 rust-analyzer 
 
 通用派生缓存由 Rust storage 管理持久目录、跨进程锁、内容回执、共享配额和 LRU。Java worker host 为每个任务复制经过 SHA 校验的独立缓存，发布 Ack 后提交已封存条目；取消/失败不提交，任务副本随任务释放。Java 只决定语言签名 key、NoCode 可复用性与任务内编译器 pin，不直接管理产品持久缓存。独立 JVM/native fixture 的本地缓存仍用于语言行为验证。
 
+Java 原生库交付封存 CAF1 描述符；Rust worker 流式校验归档并在任务临时 SQLite 中执行全局事实去重。Java 不保留全项目结果 JSON 和事实去重表。完整校验后才交付 daemon，失败不发布。语言声明与类型图缓存有界、随任务或上下文释放。
+
 跨 producer 的静态图派生由 Rust indexing policy 完成，经存储的定向候选读写接口参与原子发布；例如注入点到直接实现的 `wires_possible`。Java 只生成注入/继承的语言事实，Rust 不解析 AST、不替代 Java 类型推断。
 
 ## 2. 建议代码组织

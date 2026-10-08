@@ -17,6 +17,14 @@ public final class DirectIndexProbe implements AnalysisObserver {
     private final int maximumContexts;
     private final long began = System.nanoTime();
     private String active = "";
+    private Map<String, Object> compilerStatistics = Map.of();
+    private Map<String, Object> projectionStatistics = Map.of();
+    public void projectionStatistics(Map<String, Object> statistics) { projectionStatistics = statistics; }
+
+    @Override
+    public void compilerStatistics(Map<String, Object> statistics) {
+        compilerStatistics = statistics;
+    }
     DirectIndexProbe(Path output, int maximumContexts) {
         this.output = output;
         this.maximumContexts = maximumContexts;
@@ -65,6 +73,8 @@ public final class DirectIndexProbe implements AnalysisObserver {
                         "core_ms", core.millis(),
                         "contexts", contexts,
                         "failure", failure);
+        receipt.put("compiler_statistics", compilerStatistics);
+        receipt.put("projection_statistics", projectionStatistics);
         if (result != null && result.get("facts") instanceof FactArchive archive) {
             receipt.put("facts", archive.size());
             receipt.put("archive_bytes", archive.bytes());

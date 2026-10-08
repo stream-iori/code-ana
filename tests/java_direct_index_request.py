@@ -69,6 +69,8 @@ def main():
                     jars.append(jar)
                 classpath.append(jar_slots[jar])
             context.update(digest=manifest_hash, dependency_modules=module['dependencies'][scope],
+                           source_roots=[str(pathlib.Path(module['root']) / root['path'])
+                                         for root in module['source_roots'] if root['scope'] == scope],
                            lombok='model', spring=True, sofa=True, spring_xml=True,
                            source_indices=selected, publish_indices=published,
                            resource_indices=resources, classpath_indices=classpath)
@@ -76,7 +78,7 @@ def main():
     args.scratch.mkdir(parents=True, exist_ok=False)
     if args.cache.exists():
         raise ValueError('FRESH_DIAGNOSTIC_CACHE_REQUIRED')
-    request = dict(version=7, full=True, compact_inputs=True, input_table=inputs,
+    request = dict(version=8, full=True, compact_inputs=True, input_table=inputs,
                    classpath_table=jars, contexts=contexts, parallelism=1,
                    java_home=str(pathlib.Path.home() / '.sdkman/candidates/java/8.0.492-zulu'),
                    scratch=str(args.scratch.resolve()), cache_root=str(args.cache.resolve()),

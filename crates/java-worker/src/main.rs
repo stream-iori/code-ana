@@ -1,3 +1,4 @@
+mod diagnostics;
 mod native;
 mod product;
 mod result;
@@ -11,6 +12,11 @@ struct Args {
     fd: Option<i32>,
     #[arg(long)]
     probe: Option<PathBuf>,
+    /// Preserve a validated diagnostic archive instead of printing a fact array.
+    #[arg(long, requires = "probe")]
+    probe_archive: Option<PathBuf>,
+    #[arg(long, requires = "probe", value_parser = clap::value_parser!(u64).range(1..=86400))]
+    probe_timeout_seconds: Option<u64>,
     #[arg(long, requires = "probe")]
     cancel_after_ms: Option<u64>,
     #[arg(long)]
@@ -57,9 +63,17 @@ async fn main() -> Result<()> {
         return Ok(());
     }
     if let Some(request) = args.probe {
-        library.start(&std::fs::read(request)?)?;
+        let request_bytes = std::fs::read(request)?;
+        let request_value: serde_json::Value = serde_json::from_slice(&request_bytes)?;
+        let scratch = std::path::Path::new(
+            request_value["scratch"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("PROBE_SCRATCH"))?,
+        );
+        library.start(&request_bytes)?;
         let started = std::time::Instant::now();
-        let deadline = started + std::time::Duration::from_secs(130);
+        let deadline =
+            started + std::time::Duration::from_secs(args.probe_timeout_seconds.unwrap_or(130));
         let mut cancelled = false;
         while library.poll()? == 0 {
             if !cancelled
@@ -82,7 +96,22 @@ async fn main() -> Result<()> {
             "NATIVE_ANALYSIS: {}",
             String::from_utf8_lossy(&result)
         );
-        println!("{}", String::from_utf8(result)?);
+        if let Some(destination) = args.probe_archive {
+            let limits = codeana_contracts::java::OutputLimits {
+                bytes: request_value["result_bytes"]
+                    .as_u64()
+                    .unwrap_or(codeana_model::MAX_RESULT as u64),
+                facts: request_value["fact_limit"]
+                    .as_u64()
+                    .unwrap_or(codeana_model::MAX_FACTS as u64),
+            };
+            println!(
+                "{}",
+                result::probe_archive(&result, scratch, limits, &destination)?
+            );
+        } else {
+            println!("{}", String::from_utf8(result::probe(&result, scratch)?)?);
+        }
         library.ack()?;
     } else {
         println!("Hello from Java 25 via FFI: {}", library.hello()?);

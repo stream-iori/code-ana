@@ -2,7 +2,7 @@
 """Independent frozen-jar comparison for the migrated core and captured-input boundary."""
 import hashlib,json,os,pathlib,subprocess,tempfile,time
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-REFERENCE=ROOT.parent/'anatomist/target/anatomist.jar'
+REFERENCE=pathlib.Path(os.environ.get('ANATOMIST_REFERENCE_JAR', ROOT.parent/'anatomist/target/anatomist.jar')).resolve()
 REFERENCE_SHA='457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e'
 TARGET=ROOT/'lang-java-adapotr/native-bridge/target'
 JDK=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME',pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'))

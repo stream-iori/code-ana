@@ -11,14 +11,17 @@ import java.util.*;
 public final class FactArchive extends AbstractList<Object> implements AutoCloseable {
     private static final int MAGIC = 0x43414631, RECORD_LIMIT = 8 << 20;
     private final FileChannel channel;
+    private final Path path;
     private final long maximumBytes;
     private final int maximumRecords;
     private long[] offsets = new long[1024];
     private int count;
     private long bytes = 4;
     private boolean readOnly;
+    private boolean indexed = true;
 
     public FactArchive(Path path, long maximumBytes, int maximumRecords) throws IOException {
+        this.path = path;
         this.maximumBytes = maximumBytes;
         this.maximumRecords = maximumRecords;
         channel =
@@ -30,8 +33,15 @@ public final class FactArchive extends AbstractList<Object> implements AutoClose
         write(ByteBuffer.allocate(4).putInt(MAGIC).flip(), 0);
     }
 
+    public FactArchive(Path path, long maximumBytes, int maximumRecords, boolean indexed)
+            throws IOException {
+        this(path, maximumBytes, maximumRecords);
+        this.indexed = indexed;
+    }
+
     private FactArchive(Path path, long maximumBytes, int maximumRecords, String sha)
             throws IOException {
+        this.path = path;
         this.maximumBytes = maximumBytes;
         this.maximumRecords = maximumRecords;
         if (Files.size(path) > maximumBytes || !Json.sha(path).equals(sha))
@@ -62,22 +72,27 @@ public final class FactArchive extends AbstractList<Object> implements AutoClose
 
     private void reserve() {
         if (count >= maximumRecords) throw new IllegalStateException("FACT_LIMIT");
-        if (count == offsets.length)
+        if (indexed && count == offsets.length)
             offsets = Arrays.copyOf(offsets, Math.min(maximumRecords, offsets.length * 2));
     }
 
     public boolean add(Object value) {
+        return addEncoded(Json.write(value).getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** The caller supplies the same canonical UTF-8 bytes used for fact identity checks. */
+    public boolean addEncoded(byte[] encoded) {
         if (readOnly) throw new IllegalStateException("SEALED_FACT_ARCHIVE");
         if (Thread.currentThread().isInterrupted())
             throw new java.util.concurrent.CancellationException();
-        byte[] encoded = Json.write(value).getBytes(StandardCharsets.UTF_8);
         if (encoded.length > RECORD_LIMIT || bytes + 4 + encoded.length > maximumBytes)
             throw new IllegalStateException("FACT_BYTE_LIMIT");
         reserve();
         try {
             write(ByteBuffer.allocate(4).putInt(encoded.length).flip(), bytes);
             write(ByteBuffer.wrap(encoded), bytes + 4);
-            offsets[count++] = bytes;
+            if (indexed) offsets[count] = bytes;
+            count++;
             bytes += 4 + encoded.length;
             return true;
         } catch (IOException e) {
@@ -86,6 +101,7 @@ public final class FactArchive extends AbstractList<Object> implements AutoClose
     }
 
     public byte[] encoded(int index) {
+        if (!indexed) throw new IllegalStateException("WRITE_ONLY_FACT_ARCHIVE");
         Objects.checkIndex(index, count);
         try {
             return read(offsets[index] + 4, read(offsets[index], 4).getInt()).array();
@@ -104,6 +120,24 @@ public final class FactArchive extends AbstractList<Object> implements AutoClose
 
     public long bytes() {
         return bytes;
+    }
+
+    /** Move a sealed archive out of the compiler session's disposable directory. */
+    public Map<String, Object> export(Path destination) throws IOException {
+        channel.force(true);
+        readOnly = true;
+        Files.move(path, destination, StandardCopyOption.ATOMIC_MOVE);
+        return Json.object(
+                "format",
+                "CAF1",
+                "path",
+                destination.toString(),
+                "count",
+                count,
+                "bytes",
+                bytes,
+                "sha256",
+                Json.sha(destination));
     }
 
     private ByteBuffer read(long at, int size) throws IOException {

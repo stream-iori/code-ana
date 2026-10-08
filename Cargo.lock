@@ -326,9 +326,11 @@ dependencies = [
  "codeana-contracts",
  "codeana-model",
  "codeana-storage",
+ "libc",
  "libloading",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "tokio",
 ]

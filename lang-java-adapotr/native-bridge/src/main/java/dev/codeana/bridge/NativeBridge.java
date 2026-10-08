@@ -1,7 +1,9 @@
 package dev.codeana.bridge;
 
 import dev.codeana.adapter.AnalysisSession;
+import dev.codeana.adapter.AnalysisTelemetry;
 import dev.codeana.common.AnalysisLimits;
+import dev.codeana.common.FactArchive;
 import dev.codeana.common.Json;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -33,7 +35,7 @@ public final class NativeBridge {
         volatile byte[] errorOutput = new byte[0];
         volatile byte[] heapFailure = HEAP_FAILURE;
         volatile FileChannel output;
-        Path outputPath, outputDirectory;
+        Path outputPath, outputDirectory, archivePath;
         volatile long outputLength;
         volatile int state;
         volatile AnalysisSession compiler;
@@ -42,33 +44,44 @@ public final class NativeBridge {
         boolean sealed;
 
         void run() {
+            AnalysisTelemetry telemetry = null;
+            Path telemetryPath = null;
+            int terminalState = -1;
             try {
+                telemetry = new AnalysisTelemetry();
                 Map<String, Object> request = Json.map(Json.parse(input.toByteArray()));
                 input.reset();
                 long version = Json.number(request, "version");
-                if (version != 7) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+                if (version != 8) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+                request.put("defer_fact_dedup", true);
                 AnalysisLimits limits = new AnalysisLimits(request);
-                try (AnalysisSession session = new AnalysisSession(request)) {
+                telemetryPath =
+                        Path.of(Json.string(request, "scratch")).resolve("native-timings.json");
+                try (AnalysisSession session = new AnalysisSession(request, telemetry)) {
                     compiler = session;
                     if (cancelled) session.cancel();
-                    Object result = session.analyze();
+                    Map<String, Object> result = session.analyze();
                     outputDirectory =
                             Files.createTempDirectory(
                                     Path.of(Json.string(request, "scratch")), "native-result-");
                     outputPath = outputDirectory.resolve("result.json");
+                    var archive = (FactArchive) result.remove("facts");
+                    telemetry.phase("archive_seal", "", true);
+                    archivePath = outputDirectory.resolve("facts.caf");
+                    result.put("facts_archive", archive.export(archivePath));
+                    telemetry.phase("archive_seal", "", false);
                     outputLength = Json.writeTo(outputPath, result, limits.bytes);
                     output = FileChannel.open(outputPath, StandardOpenOption.READ);
                 } finally {
                     compiler = null;
                 }
-                state = 1;
+                terminalState = 1;
             } catch (Exception e) {
                 String error = cancelled ? "CANCELLED" : e.toString();
                 if (error.length() > 8192) error = error.substring(0, 8192);
                 errorOutput =
                         Json.write(Json.object("error", error)).getBytes(StandardCharsets.UTF_8);
                 outputLength = errorOutput.length;
-                state = -1;
             } catch (Error fatal) {
                 errorOutput =
                         fatal instanceof OutOfMemoryError
@@ -77,7 +90,20 @@ public final class NativeBridge {
                                         ? STACK_FAILURE
                                         : FATAL_FAILURE;
                 outputLength = errorOutput.length;
-                state = -1;
+            } finally {
+                try {
+                    if (telemetryPath != null && telemetry != null)
+                        telemetry.save(
+                                telemetryPath,
+                                terminalState,
+                                terminalState == -1
+                                        ? new String(errorOutput, StandardCharsets.UTF_8)
+                                        : null);
+                } catch (Throwable ignoredTelemetryFailure) {
+                    // Even an exhausted heap must expose the preallocated terminal response.
+                } finally {
+                    state = terminalState;
+                }
             }
         }
 
@@ -233,6 +259,7 @@ public final class NativeBridge {
             }
             if (t.output != null) t.output.close();
             if (t.outputPath != null) Files.deleteIfExists(t.outputPath);
+            if (t.archivePath != null) Files.deleteIfExists(t.archivePath);
             if (t.outputDirectory != null) Files.deleteIfExists(t.outputDirectory);
             TASKS.remove(id);
             return 0;
