@@ -56,7 +56,9 @@ public final class AnalysisSession implements AutoCloseable {
         check();
         if (Json.number(request, "version") != 7)
             throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        observer.phase("capture", "", true);
         CapturedProject project = new CapturedProject(request);
+        observer.phase("capture", "", false);
         Map<String, Object> archive =
                 request.get("baseline_archive") instanceof Map<?, ?>
                         ? Json.map(request.get("baseline_archive"))
@@ -140,6 +142,8 @@ public final class AnalysisSession implements AutoCloseable {
         var toolchain = JavacToolchain.resolve(options, 8, null);
         var backend =
                 new JavacBackend(project.root, toolchain, List.of(), project.roots(), options);
+        var timings = observer.timings();
+        backend.setTimings(timings);
         Map<String, JavacBackend.ModelBudget> modelBudgets = new HashMap<>();
         for (var c : project.contexts)
             modelBudgets.put(
@@ -205,6 +209,7 @@ public final class AnalysisSession implements AutoCloseable {
                     }
                 });
         Set<String> partial = new HashSet<>();
+        observer.phase("backend_total", "", true);
         backend.analyzeFiles(
                 project.sourcePlan(dirty).indexedFiles(),
                 analysis -> {
@@ -212,27 +217,35 @@ public final class AnalysisSession implements AutoCloseable {
                     observer.model(analysis);
                     String key = analysis.module() + "@" + analysis.scope();
                     var c = contexts.get(key);
+                    observer.phase("inventory", key, true);
                     projection.context(c);
                     view.symbols.addAll(projection.inventory(analysis));
+                    observer.phase("inventory", key, false);
                     for (var diagnostic : analysis.diagnostics())
                         if (diagnostic.path() != null && diagnostic.kind().equals("ERROR"))
                             partial.add(project.source(diagnostic.path()).path());
+                    observer.phase("extraction_total", key, true);
                     try (var binaries = backend.openBinaryRepository(analysis)) {
-                        new JavaModelExtractor(frameworks.get(key), binaries, registries.get(key))
+                        new JavaModelExtractor(
+                                        frameworks.get(key), binaries, registries.get(key), timings)
                                 .extract(
                                         analysis,
                                         unit -> {
                                             observer.extraction(unit.facts());
+                                            observer.phase("unit_projection", key, true);
                                             view.add(unit.facts());
                                             projection.unit(unit);
+                                            observer.phase("unit_projection", key, false);
                                             for (var diagnostic : unit.diagnostics())
                                                 if (diagnostic.sourceFile() != null)
                                                     partial.add(diagnostic.sourceFile());
                                         });
                     } finally {
                         projection.closeContext();
+                        observer.phase("extraction_total", key, false);
                     }
                 });
+        observer.phase("backend_total", "", false);
         for (var c : project.contexts)
             if (dirty.contains(c.world())) {
                 check();
@@ -257,6 +270,7 @@ public final class AnalysisSession implements AutoCloseable {
                     }
                 if (!c.resources().isEmpty()) {
                     String key = c.module() + "@" + c.scope();
+                    observer.phase("resources", key, true);
                     var report = new ExtensionReport();
                     var result = new ExtractionResult();
                     List<ProjectResource> inventory =
@@ -284,6 +298,7 @@ public final class AnalysisSession implements AutoCloseable {
                                 source,
                                 report.diagnostics().stream()
                                         .anyMatch(d -> source.path().equals(d.sourceFile())));
+                    observer.phase("resources", key, false);
                 }
                 projection.provenance(IDENTITY);
             }

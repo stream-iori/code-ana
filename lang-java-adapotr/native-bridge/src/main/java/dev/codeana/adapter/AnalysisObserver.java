@@ -8,4 +8,8 @@ public interface AnalysisObserver {
     AnalysisObserver NONE = new AnalysisObserver() {};
     default void model(JavaAnalysisContext context) {}
     default void extraction(ExtractionResult result) {}
+    default com.anatomist.core.IndexTimings timings() {
+        return null;
+    }
+    default void phase(String phase, String context, boolean starting) {}
 }
