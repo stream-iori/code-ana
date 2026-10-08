@@ -1193,3 +1193,5 @@ de8c99b固定验收：native模型17项与冻结框架参考通过，无源码/�
 
 
 2026-10-08 v5：构造器/同类名普通方法身份冲突修复、实际源码根、一次编码、任务内有界声明/类型图缓存、ProjectView 提前去重、CAF1 描述符与 Rust 临时 SQLite 去重已实现。worker14/request8/ABI2，204 来源文件中9项适配。JVM82/Rust105/native10、参考10组×14类零差异、同产物 daemon3项（207.723秒）通过。用户处理 SIGKILL 后重试成功；真实 iopengw MAIN/TEST/XML 独占索引已启动，完整模型/14域/3轮性能/最终发行仍待验收，不关闭全量能力矩阵。
+
+- v5真实重试：513.089秒FACT_BYTE_LIMIT，4GiB CAF1，未发布，无SIGKILL/输入漂移。下一步对齐Anatomist交付思路：外部目标目录复用、原始模型共享表示、Rust批量持久化/冲突检查；先修旧验收入口再逐项验证，不以扩大预算关闭门禁。详见docs/java-performance-diagnosis.md。

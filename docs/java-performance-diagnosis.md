@@ -86,3 +86,27 @@ native 30 上下文控制实验中，构建默认堆 2 GiB 与默认 256 MiB、�
 ## 证据位置
 
 均位于 `target/java-migration-continue/timing-2g/`：`reference-frozen-receipt.json`、`reference-report.txt`、`reference.db`、`classpath-comparison.json`、`aligned-jvm/`、`aligned-native/`、`jvm-sample-summary.json`、`full-native/`、`prefix-jvm/`、`prefix-native/`、`prefix30-native/`、`prefix30-default256/`、`facade-library/`、`facade-executable/`、`profiling-jvm-tests.log`。原产品失败见 `../iopengw-v4-2g/receipt.json`。大型运行证据不提交 Git；本文记录测量值、边界和摘要用于追溯。
+
+
+## 2026-10-08 v5 实际请求与交付层复核
+
+同一产物在用户处理 SIGKILL 后，daemon 核心/深层类型图/XML-only 3 项通过（207.723 秒）。新 iopengw MAIN/TEST/XML 独占运行 513.089 秒失败，无异常信号、无源码或产物漂移；第 65 个 javac batch 后 CAF1 到达 4 GiB，`FACT_BYTE_LIMIT`，未发布。不能用本轮作为性能门禁通过证据。原生阶段：声明目录 79.312 秒，事实投影 210.860 秒，javac worker 等待 80.935 秒；后者与整个 backend 计时嵌套，不能直接相加。目录缓存 849952 次命中、353977 次未命中；编码 2958214 次，归档 2958213 条。这些是去重前的物理输出统计，不能称为独立语义事实数。
+
+证据：`target/java-migration-continue/iopengw-v5-verified-final/receipt.json`；实际请求、初始缓存/输入及冻结运行产物在 `target/java-migration-continue/iopengw-v5-replay-final/java-replay-0wgt9c/`。此前因来源清单说明变更主动中止的一轮不计入验收。
+
+复核相邻 Anatomist HEAD 确认为冻结 `dff2e3954096853352ec91fcbfc6b995fbd4f390`：
+
+| 位置 | 实际行为 / 与 code-ana 的差异 |
+|---|---|
+| `anatomist-core/.../extract/JavaModelExtractor.java` | 只遍历 context.publish 提取；迁入版本也如此，不能将问题归因成辅助源码全部重复提取 |
+| `anatomist-core/.../extract/JavaCallFacts.java` | 外部调用边保存 isExternal / externalTargetFqn，不为每次目标解析再生成外部节点 |
+| `anatomist-app/.../application/JavaIndexPass.java` | 按文件数或事实数成批 writeRawBatch，写完 clearFacts；没有我们的逐节点公共 Fact IR 投影链路 |
+| `anatomist-core/.../store/StagingSchema.java` | 节点 ON CONFLICT(id) 更新、声明 INSERT OR REPLACE；不能宣称上游从不遇到重复，也不能照抄覆盖策略掩盖本产品身份冲突 |
+| `native-bridge/.../FactProjection.target()` | 每次目标解析都会构造并编码 external_symbol；延后到 Rust 全局去重后，完全相同的候选也先写入物理归档 |
+| `native-bridge/.../FactProjection` 原始模型投影 | java.type/java.binding 等额外事实需要保存查询证据；共享内存类型图仍会在多个事实 JSON 内反复编码，并未消除磁盘载荷重复 |
+
+独立小例子：同一文件调用 System.out.println 100 次。冻结参考提取为 3 个节点、102 条边；新产品 CAF1 写 1018 条，Rust 去重后 820 条，仅 2 个唯一 external_symbol，却发生 198 条完全重复写入。去重后还包括 406 条 java.type、100 条 java.binding、100 个调用点、100 个调用目标，计数模型不同，不能把 820/105 直接当成性能倍数。证据：`target/java-migration-continue/repeated-target-diagnosis/`，包含原生事实、阶段统计及冻结参考逐域数据。全项目按种类的重复比例尚未取得，不能将全部 4 GiB 都归因于这 198 条样例重复。
+
+后续改造需优先处理投影路径：按 context 的稳定外部声明目录复用目标，避免重复构造/编码，内容变化仍保留并交由 Rust 冲突检查；原始类型/绑定证据采用共享、分片的不可变模型表示，Rust 管持久化、事实去重与发布。必须先验证所有查询证据仍可读、冲突不被覆盖，再独占重跑，不通过扩大预算或隐藏事实绕过门禁。单纯在编码后加一个 LRU 只能减少重复写入，不能消除重复构造与类型图编码，尚未采纳为最终修复。
+
+用户已删除旧 lang-adaptor。当前产品与构建主入口使用 lang-java-adapotr；旧模型验收和若干脚本仍调用旧类/协议，需要明确替换成迁入核心的验收入口，不能只改目录名。完整正确性/性能门禁继续保持未通过。

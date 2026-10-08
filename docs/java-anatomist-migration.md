@@ -121,3 +121,5 @@ Rust 捕获文件和上下文
 | 真实项目 | iopengw MAIN/TEST/XML 正在独占重跑；raw/AST 各 80 上下文、14 发布语义域、3 轮性能及最终发行仍未通过 |
 
 当前回归日志位于 `target/java-migration-continue/perf-fix-*`。诊断显式设置 `CODEANA_JAVA_DIAGNOSTICS_DIR`，保存原始请求、初始输入/缓存快照、冻结运行产物及阶段计时；默认关闭。重放各运行必须复制初始快照，不能复用另一运行写过的缓存。大项目诊断使用 worker `--probe-archive <新文件路径>`，避免展开完整 JSON；`--probe-timeout-seconds` 仅调整诊断保护时限，不改变正式任务期限。原始历史 452.668 秒差额尚无完整证据，不按新回归倒推归因。
+
+2026-10-08 v5 真实重试终态：iopengw MAIN/TEST/XML 513.089 秒在 CAF1 的 4 GiB 上限失败（FACT_BYTE_LIMIT），无 SIGKILL、无源码/产物漂移，未发布。声明目录79.312秒、事实投影210.860秒、javac等待80.935秒；65个batch、2958213条物理归档记录。小例子证明外部符号重复生成及原始类型/绑定投影放大；详见性能诊断的交付层复核。旧lang-adaptor已由用户删除，部分历史验收入口仍待迁移，不能关闭全量/性能门禁。
