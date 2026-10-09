@@ -145,7 +145,8 @@ def reference_index(base, source):
     config.parent.mkdir()
     config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\n'
                       'javac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=false\n')
-    jar = alignment.ROOT.parent / 'anatomist/target/anatomist.jar'
+    from java_anatomist_reference import REFERENCE
+    jar = REFERENCE
     if reference.digest(jar) != reference.REFERENCE_SHA:
         raise ValueError('FROZEN_REFERENCE_JAR_CHANGED')
     command = [str(JDK25/'bin/java'), '-Xmx512m', '-jar', str(jar), 'index', str(base),

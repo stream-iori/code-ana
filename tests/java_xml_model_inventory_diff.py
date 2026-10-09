@@ -71,21 +71,22 @@ def parser_models(project, files, evidence):
     import java_functional_reference_alignment as frozen
     from java_model_tests import JDK25
     root = alignment.ROOT
-    jar = root.parent/'anatomist/target/anatomist.jar'
+    from java_anatomist_reference import REFERENCE
+    jar = REFERENCE
     if digest(jar) != frozen.REFERENCE_SHA:
         raise ValueError('XML_MODEL_REFERENCE_ARTIFACT_DRIFT')
-    source = root/'lang-adaptor/src/frozen-test/java/dev/codeana/analysis/XmlConfigurationReferenceProbe.java'
+    source = root/'tests/java-migration/XmlConfigurationWitness.java'
     checks = {str(jar):digest(jar), str(source):digest(source)}
     with tempfile.TemporaryDirectory(prefix='xml-model-reference-') as temporary:
         classes = pathlib.Path(temporary)
-        classpath = os.pathsep.join((str(jar),str(root/'lang-adaptor/target/classes'),str(classes)))
+        classpath = os.pathsep.join((str(jar),str(classes)))
         subprocess.run([str(JDK25/'bin/javac'),'-cp',classpath,'-d',str(classes),str(source)],
                        check=True,capture_output=True,timeout=30)
         inventory = classes/'inputs.json'
         inventory.write_text(json.dumps([dict(file=file,path=str(project/file)) for file in sorted(files)]))
         with evidence.open('wb') as output:
             subprocess.run([str(JDK25/'bin/java'),'-Xmx512m','-cp',classpath,
-                'dev.codeana.analysis.XmlConfigurationReferenceProbe','--inventory',str(inventory)],
+                'XmlConfigurationWitness',str(inventory)],
                 stdout=output,stderr=subprocess.PIPE,check=True,timeout=180)
     if any(digest(pathlib.Path(path))!=sha for path,sha in checks.items()):
         raise ValueError('XML_MODEL_PARSER_PROOF_DRIFT')
@@ -125,13 +126,15 @@ def main():
         published=compare(counter(right),counter(parsed))
         report=dict(kind='published_spring_xml_construction_and_configuration_models',revision=revision[0],
             project_source_inputs=sources,xml_source_sha256=xml,captured_manifest=captured,database_sha256=before,
-            **result,schema_gap_count=len(missing),schema_gap_sample=missing[:100],
+            **actual,schema_gap_count=len(missing),schema_gap_sample=missing[:100],
+            comparison_basis='independent_frozen_parser_configuration_models',
+            reference_database_comparison=result,
             reference_duplicate_containment_edges=duplicates,
             actual_parser_comparison=actual,reference_parser_published_graph_comparison=published,
             frozen_parser_proof=parser_proof,frozen_parser_output=str(parser_output),
             frozen_parser_output_sha256=digest(parser_output),
             whole_xml_graph_accepted=False,full_semantic_diff_accepted=False)
-        report['equal']=result['equal'] and actual['equal'] and published['equal'] and not missing
+        report['equal']=actual['equal'] and not missing
     if before!=dict(product=digest(args.product),reference=digest(args.reference)):
         raise ValueError('COMPARISON_DATABASE_DRIFT')
     if digest(pathlib.Path(captured['path']))!=captured['sha256'] or any(

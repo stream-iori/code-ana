@@ -55,10 +55,28 @@ def product_projection(facts):
     for f in facts:
         if f['relation'] not in ('java.spring.mvc','java.spring.handler','java.sofa'):
             continue
-        owner = by[f['parent']]
+        if f['source'].endswith('.xml'): continue
+        owner = by.get(f['parent'])
         a = type_attributes(f)
+        if 'upstream_producer' in a:
+            raw = a
+            a = dict(raw)
+            for target,original in {'http_method':'httpMethod','direct_annotation':'annotationFqn',
+                    'root_annotation':'frameworkAnnotationRoot','meta_path':'metaPath',
+                    'written_attributes':'attributes','source_parameter_types':'parameterTypes',
+                    'unique_id':'uniqueId','api_members':'apiMembers','contract_supported':'contractSupported',
+                    'contract_baseline':'contractBaseline'}.items():
+                if original in raw:a[target]=raw[original]
+            if f['relation']=='java.spring.mvc':
+                for optional in ('consumes','produces','params'):a.setdefault(optional,[])
+                a['parameters']=[dict(p,**({'binding_evidence':{'meta_path':p['bindingMetaPath']},
+                    'attributes':{'value':p.get('value')}} if 'binding' in p else {})) for p in a['parameters']]
+            if 'transactionPhase' in raw:a['transaction_phase']={'name':raw['transactionPhase']}
         kind = f['relation']
-        common = dict(owner=reference.canonical(owner['signature']),handles=sorted(handles[f['id']]))
+        owner_signature=(f['name'] if a.get('upstream_kind')=='FRAMEWORK_REGISTRATION'
+            else a.get('handler') or (owner['signature'] if owner else f.get('name')))
+        if not owner_signature:raise ValueError('REGISTRATION_OWNER_EVIDENCE_REQUIRED')
+        common = dict(owner=reference.canonical(owner_signature),handles=sorted(handles[f['id']]))
         if kind=='java.spring.mvc':
             parameters=[]
             for p in a['parameters']:

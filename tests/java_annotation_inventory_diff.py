@@ -21,9 +21,9 @@ def meta_projection(facts, reference):
     discoveries = 0
     for f in facts:
         if f['relation']!='java.annotation.meta': continue
-        a=f['attributes'];origin=a['source_origin'];discoveries+=1
-        left.add((origin['path'],a['annotation_fqn'].replace('$','.'),
-                  a['meta_annotation_fqn'].replace('$','.'),a['raw_name'].replace('$','.'),a['resolution_status']))
+        a=f['attributes'];origin=a.get('source_origin',{'path':f['source']});discoveries+=1
+        left.add((origin['path'],a.get('annotation_fqn',a.get('annotation')).replace('$','.'),
+                  a.get('meta_annotation_fqn',a.get('meta_annotation')).replace('$','.'),a['raw_name'].replace('$','.'),a.get('resolution_status',a.get('resolution'))))
     for r in reference.execute('SELECT * FROM annotation_meta_relations'):
         key=(r['source_file'],r['annotation_fqn'].replace('$','.'),
              (r['meta_annotation_fqn'] or '').replace('$','.'),r['raw_name'].replace('$','.'),r['resolution_status'])
@@ -48,11 +48,11 @@ def projection(facts, declarations, product, reference, project):
             raise ValueError('ANNOTATION_OWNER_MISSING: '+f['id'])
         kind = owner['attributes'].get('element_kind')
         target_path = None
-        values = a.get('written_values')
-        if values is None or a.get('written_values_complete') is not True:
+        values = a.get('values',a.get('written_values'))
+        if values is None or ('values' not in a and a.get('written_values_complete') is not True):
             incomplete.append(f['id'])
         values = dict(values or {})
-        if kind == 'PARAMETER':
+        if kind == 'PARAMETER' and 'target_kind' not in a:
             parent = declarations[owner['parent']]
             names = parent['attributes'].get('parameter_names', [])
             if names.count(owner['name']) != 1:
@@ -65,9 +65,11 @@ def projection(facts, declarations, product, reference, project):
             target_kind = 'callable'
         else:
             target_kind = 'type' if kind in ('CLASS','INTERFACE','ENUM','ANNOTATION_TYPE') else 'callable' if kind in ('METHOD','CONSTRUCTOR') else 'value'
+        if 'target_kind' in a:
+            target_kind=a['target_kind'];target_path=a['target_path']
         span = f.get('span') or {}
         key = (f['source'], canonical(owner['signature'],kind,f['source'],'product'),target_kind,target_path,
-               a.get('resolved_type','').replace('$','.'),a.get('written_name',a.get('source_name')),
+               a.get('name',a.get('resolved_type','')).replace('$','.'),a.get('raw_name',a.get('written_name',a.get('source_name'))),
                span.get('start'),span.get('end'),json.dumps(values,sort_keys=True,ensure_ascii=False))
         left[key] += 1
 

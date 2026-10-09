@@ -503,8 +503,13 @@ java_parallelism=1
             wires = [f for f in facts if f['relation'] == 'wires_possible']
             self.assertEqual(len({f['owner']['world'] for f in wires}), 2)
             self.assertTrue(any(ids[f['target']]['owner']['world'] != f['owner']['world'] for f in wires))
-            self.assertTrue(any(f['kind'] == 'external_symbol' and f['signature'] == 'p.Api'
-                                and f['attributes'].get('source_origin') for f in facts))
+            api = [f for f in facts if f['kind'] == 'declaration' and f['signature'] == 'p.Api']
+            self.assertEqual(len(api), 1)
+            self.assertEqual(api[0]['source'], 'api/src/p/Api.java')
+            self.assertEqual(next(f['attributes']['input_hash'] for f in facts
+                if f['kind'] == 'coverage' and f['source'] == api[0]['source']),
+                sha((self.project / api[0]['source']).read_bytes()))
+            self.assertTrue(all(ids[f['attributes']['source']]['signature'] == 'p.Api' for f in wires))
 
         _, initial = self.cli('index', '--full', timeout=180)
         self.assertEqual(initial['publication'], 'published')

@@ -21,7 +21,9 @@ impl FactDeduplicator {
             .prefix("fact-identities-")
             .tempdir_in(root)?;
         let connection = Connection::open(directory.path().join("identities.db"))?;
-        connection.execute_batch("PRAGMA cache_size=-8192; PRAGMA synchronous=OFF;
+        // This task-private index is discarded on every error or restart. It never
+        // publishes data and needs no crash recovery or rollback journal.
+        connection.execute_batch("PRAGMA journal_mode=OFF; PRAGMA cache_size=-65536; PRAGMA synchronous=OFF;
             CREATE TABLE identities(id TEXT PRIMARY KEY,digest TEXT NOT NULL,offset INTEGER NOT NULL) WITHOUT ROWID;
             BEGIN;")?;
         Ok(Self {

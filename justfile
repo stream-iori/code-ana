@@ -45,7 +45,7 @@ test-java:
   ./scripts/test-java.sh
 
 test-java-migration-reference:
-  python3 tests/java_anatomist_reference.py
+  ./scripts/test-java-reference.sh
 
 # Legacy adapter parity gate records evidence and refuses to treat fixture success as 52/52 acceptance.
 test-java-alignment:

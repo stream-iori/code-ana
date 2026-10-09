@@ -34,8 +34,8 @@ def projection(facts, directory, source=SOURCE, path='src/p/Use.java'):
     source_sha = hashlib.sha256(source.encode()).hexdigest()
     if hashlib.sha256(reference_source.read_bytes()).hexdigest() != source_sha:
         raise ValueError('DI_REFERENCE_SOURCE_DRIFT')
-    provenance = [f for f in facts if f['kind']=='provenance' and f['source']==path]
-    if not provenance or any(f['attributes']['source_hash']!=source_sha for f in provenance):
+    coverage = [f for f in facts if f['kind']=='coverage' and f['source']==path]
+    if not coverage or any(f['attributes']['input_hash']!=source_sha for f in coverage):
         raise ValueError('DI_PRODUCT_CAPTURE_DRIFT')
     canonical = lambda signature, kind=None, source='', origin='reference': functional.canonical(signature)
     left = product_projection(facts, canonical)

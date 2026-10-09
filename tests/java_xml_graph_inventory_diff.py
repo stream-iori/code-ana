@@ -87,7 +87,7 @@ def product_graph(facts,normalize):
     def targets(site):
         found=links[(site['id'],'config')]
         expected=site['attributes'].get('candidate_count',0)
-        if len(found)!=expected:raise ValueError('PRODUCT_XML_GRAPH_REFERENCE_COUNT_MISMATCH')
+        if len(found)!=expected:raise ValueError('PRODUCT_XML_GRAPH_REFERENCE_COUNT_MISMATCH: '+json.dumps(dict(site=site['id'],source=site['source'],attrs=site['attributes'],expected=expected,actual=len(found),links=[dict(id=f['id'],target=f['target'],attrs=f['attributes']) for f in found]),ensure_ascii=False))
         if not found:return [['external_bean',site['attributes']['bean']]]
         result=[]
         for link in found:
@@ -95,6 +95,11 @@ def product_graph(facts,normalize):
             if target['id'] in beans:result.append(beans[target['id']])
             elif target['source'].endswith('.java'):result.append(['java_bean',target['source'],target['name'],
                 normalize(target['attributes']['type'],source=target['source'],origin='product')])
+            elif target['attributes'].get('configuration_candidates'):
+                candidates=target['attributes']['configuration_candidates']
+                if len(candidates)<2 or len(candidates)!=len(set(candidates)) or any(c not in beans for c in candidates):
+                    raise ValueError('PRODUCT_XML_GRAPH_INVALID_AMBIGUOUS_BEAN_CANDIDATES')
+                result.append(['ambiguous_beans',sorted((beans[c] for c in candidates),key=encoded)])
             else:schema.append(target['id']+':missing_reference_endpoint_model')
         return result
     for identity,endpoint in beans.items():

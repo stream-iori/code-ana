@@ -25,6 +25,15 @@ def select_facts(db):
     selected = {row['id']:json.loads(row['body']) for row in db.execute(
         "SELECT id,body FROM facts WHERE relation='java.spring.xml' "
         "AND json_type(body,'$.attributes.member')='text'")}
+    for row in db.execute("SELECT id,body FROM facts WHERE relation='config_member'"):
+        link = json.loads(row['body'])
+        parent = db.execute('SELECT body FROM facts WHERE id=?', (link['parent'],)).fetchone()
+        if parent is None:
+            raise ValueError('XML_BINDING_ENDPOINT_MISSING: ' + link['parent'])
+        facet = json.loads(parent['body'])
+        if facet['relation'] != 'java.spring.xml':
+            raise ValueError('XML_BINDING_CONFIGURATION_SITE_MISSING: ' + link['parent'])
+        selected[facet['id']] = facet
     details = list(selected)
     pending = {f['parent'] for f in selected.values() if f['parent']}
     for identity in details:
@@ -47,28 +56,38 @@ def product_projection(facts, normalize=None):
     norm=normalize or (lambda text,kind=None,source='',origin='product':symbol_identity(text,kind))
     for f in facts:
         a=f['attributes']
-        if f['relation']!='java.spring.xml' or 'member' not in a:continue
+        if f['relation']!='java.spring.xml' or ('member' not in a and not links[f['id']]):continue
         owner=by.get(f['parent']);visited=set()
         while owner and owner['relation']!='java.bean':
             if owner['id'] in visited:raise ValueError('XML_BINDING_PARENT_CYCLE')
             visited.add(owner['id']);owner=by.get(owner['parent'])
         if owner is None:raise ValueError('XML_BINDING_BEAN_OWNER_MISSING')
-        role=ROLES[a['kind']];kind='CONSTRUCTOR' if role=='constructor' else 'METHOD'
+        binding_metadata = links[f['id']][0]['attributes'] if links[f['id']] else a
+        symbol_ref=a.get('symbolRef',binding_metadata.get('symbolRef',{}))
+        role=binding_metadata.get('role') or ROLES[a['kind']]
+        kind='CONSTRUCTOR' if role=='constructor' else 'METHOD'
         candidates=[]
         for link in links[f['id']]:
-            target=by[link['target']];target_kind=target['attributes']['element_kind']
+            target=by[link['target']];target_kind=target['attributes'].get('element_kind')
+            detail=link['attributes']
+            if any(detail.get(key) != binding_metadata.get(key) for key in
+                   ('symbolRef', 'candidateCount', 'resolutionStatus', 'role', 'mechanism')):
+                raise ValueError('PRODUCT_XML_BINDING_METADATA_DRIFT')
+            if detail.get('candidateCount')==0 and detail.get('resolutionStatus')=='unresolved':continue
+            if not target_kind:raise ValueError('XML_BINDING_CANDIDATE_KIND_REQUIRED')
             candidates.append((norm(target['signature'],target_kind,f['source'],'product'),target_kind))
-        if len(candidates)!=a['candidate_count']:raise ValueError('XML_BINDING_CANDIDATE_COUNT_MISMATCH')
+        expected_count = binding_metadata.get('candidateCount', a['candidate_count'])
+        if len(candidates)!=expected_count:raise ValueError('XML_BINDING_CANDIDATE_COUNT_MISMATCH')
         construction=owner['attributes'].get('xml_configuration_model',{}).get('construction',{})
         model_name=construction.get('name',owner['name'])
         # The original configuration remains explicit; no static/runtime choice is inferred from target names.
-        static=None if role=='constructor' else not bool(owner['attributes']['factory_bean']) if role=='factory' else False
+        static=None if role=='constructor' else not bool(construction.get('factoryBean',owner['attributes'].get('factory_bean',''))) if role=='factory' else False
         result.append(dict(file=f['source'],bean=model_name,position={k:a['position'][k] for k in
             ('line','column','end_line','end_column')},role=role,mechanism=MECHANISMS[role],
             runtime='jvm',language='java',symbol_kind=kind,
-            owner=norm(a['type'],None,f['source'],'product'),
-            member='<init>' if kind=='CONSTRUCTOR' else a['member'],arity=a['arity'],
-            hints=[norm(hint,None,f['source'],'product') for hint in a['parameter_type_hints']],
+            owner=norm(a.get('type',symbol_ref.get('owner')),None,f['source'],'product'),
+            member='<init>' if kind=='CONSTRUCTOR' else a.get('member',symbol_ref.get('memberName')),arity=a.get('arity',symbol_ref.get('arity')),
+            hints=[norm(hint,None,f['source'],'product') for hint in a.get('parameter_type_hints',symbol_ref.get('parameterTypeHints',[]))],
             static_requirement=static,resolution='unresolved' if not candidates else 'exact' if len(candidates)==1 else 'ambiguous',
             candidates=sorted(candidates),candidate_count=len(candidates),metadata_consistent=True))
     return sorted(result,key=lambda row:json.dumps(row,sort_keys=True))
@@ -102,7 +121,7 @@ def reference_projection(db, normalize=None):
                 target=db.execute('SELECT symbol_id,kind FROM nodes WHERE id=?',(edge['target_id'],)).fetchone()
                 if target is None:raise ValueError('REFERENCE_XML_BINDING_TARGET_MISSING')
                 candidates.append((norm(target['symbol_id'],target['kind'],node['source_file'],'reference'),target['kind']))
-        source=owner if node['kind']=='XML_CALLABLE_REF' else node
+        source=node
         result.append(dict(file=node['source_file'],bean=owner['label'],position=dict(
             line=source['begin_line'],column=source['begin_column'],end_line=source['end_line'],end_column=source['end_column']),
             role=metadata['role'],mechanism=metadata['mechanism'],runtime=symbol['runtime'],language=symbol['languageHint'],

@@ -18,6 +18,8 @@ def facts_for_registrations(db):
     for row in db.execute("SELECT id,body FROM facts WHERE relation IN "
             "('java.spring.mvc','java.spring.handler','java.sofa','handles_possible')"):
         fact = json.loads(row['body'])
+        if fact['source'].endswith('.xml'):continue
+        if fact['relation']=='java.spring.handler' and fact['attributes'].get('upstream_producer') and fact['attributes'].get('element_kind')!='FRAMEWORK_REGISTRATION':continue
         selected[row['id']] = fact
     # Retain every selected facet/link and its actual owner/target; never synthesize a declaration.
     wanted = {f[key] for f in selected.values() for key in ('parent','target') if f[key]}
@@ -38,7 +40,12 @@ def schema_gaps(facts):
     }
     gaps = []
     for fact in facts:
-        missing = [key for key in required.get(fact['relation'], ()) if key not in fact['attributes']]
+        attributes=fact['attributes']
+        aliases={'http_method':'httpMethod','written_attributes':'attributes','source_parameter_types':'parameterTypes',
+            'unique_id':'uniqueId','api_members':'apiMembers','contract_supported':'contractSupported','contract_baseline':'contractBaseline'}
+        missing = [key for key in required.get(fact['relation'], ()) if key not in attributes
+            and ('upstream_producer' not in attributes or aliases.get(key) not in attributes)
+            and not ('upstream_producer' in attributes and fact['relation']=='java.spring.mvc' and key in ('consumes','produces','params'))]
         if missing:
             gaps.append(dict(id=fact['id'],relation=fact['relation'],missing_attributes=missing))
     return gaps

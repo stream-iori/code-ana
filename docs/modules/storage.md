@@ -22,7 +22,7 @@
   reports/                 内部报告及诊断附件
 ```
 
-这是本项目独立目录草案，不提供 Anatomist 存储读取或迁移。catalog/graph/annotations/report 分别版本化；跨文件没有天然事务，必须遵守下述持久化顺序。
+存储设计和实现逻辑参考 Anatomist Java，再由 Rust 实现；数据库文件兼容和历史数据导入不属于当前迁移。catalog/graph/annotations/report 分别版本化；跨文件没有天然事务，必须遵守下述持久化顺序。
 
 | 逻辑表组 | 建议索引 / 用途 |
 |---|---|
@@ -111,3 +111,26 @@ GC 与 open_read 必须共享引用协调机制，避免“先查到路径、尚
 公共事实和 Java facets 按 revision 保存绑定来源、证据完整性与诊断；不能只落“resolved”一个布尔值。javac 上下文对象不进入数据库。
 
 NoCode 模块签名与声明目录属于可重建分析缓存，不是已发布事实库或目标构建产物。缓存损坏/缺失只能触发源码重算或明确失败，不得降低事实要求；在途签名 lease 必须参与缓存回收协调。存储不承担 Java 模型恢复或名称解析。
+
+
+## Anatomist 存储逻辑迁入 Rust（2026-10-08）
+
+用户明确要求将 Java 存储设计和逻辑一并参考迁入 Rust。以
+[存储对照与验证](../storage-anatomist-migration.md) 为实施清单。
+
+```text
+Anatomist Java                         code-ana Rust
+StagedGraphStore / StagingSchema  -->  CAF1 + 私有候选 facts.db
+schema.sql / DataReader          -->  storage SQL + FactReader 定向读取
+CallSitePersistence              -->  call_site / call_target 独立事实与索引
+SourceBlobStore                  -->  SHA-256 blobs
+AffectedScope / fact_hash        -->  Owner replacement + 稳定事实 ID
+IndexFileSwap / IndexRevision    -->  不可变 revision + catalog CAS
+```
+
+采用其批量入库、定向索引、调用点与目标分离、出现次数保留、内容寻址和发布前校验逻辑。
+Rust 仍使用版本化 Fact IR 保存完整事实；专用查询字段使用 SQLite 索引。
+DDL 来源为 `crates/storage/src/schema.sql` 与 `query-indexes.sql`；旧索引仅在私有候选升级。
+全量先流式入库，再建立查询索引并派生；增量复制现有索引，重复准备不重建。
+发布目录、历史读者和失败保旧版继续使用本项目已有的不可变 revision 契约。
+冻结参考 JAR 的模型解码上限与存储设计迁移分开记录，不能据此跳过存储验证。

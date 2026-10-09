@@ -30,7 +30,7 @@ def product_kind(fact):
     a = fact['attributes']
     # javac calls an enum constant's anonymous subclass ENUM. The reference
     # graph calls it ANONYMOUS_CLASS; retain javac's original kind in the facts.
-    return 'CLASS' if a.get('nesting_kind') == 'ANONYMOUS' else a.get('element_kind')
+    return 'CLASS' if a.get('nesting_kind') == 'ANONYMOUS' or a.get('element_kind') == 'ANONYMOUS_CLASS' else {'ANNOTATION':'ANNOTATION_TYPE'}.get(a.get('element_kind'),a.get('element_kind'))
 
 
 def connection(path):
@@ -54,7 +54,7 @@ def descriptor_name(value):
 def product_attributes(fact, canonical):
     a = type_attributes(fact)
     kind = a['element_kind']
-    generated = 'lombok' if fact['origin'] == 'lombok_model' else 'java' if a.get('generated') else None
+    generated = 'lombok' if fact['origin'] == 'lombok_model' else a.get('generator', 'java' if a.get('synthetic', a.get('generated')) else None)
     overlay = a.get('model_extensions', {}).get('lombok-model-v1', {})
     effective = overlay.get('effective_modifiers')
     # The product deliberately stores static modeling beside compiler flags.
@@ -66,13 +66,15 @@ def product_attributes(fact, canonical):
     if kind in ('FIELD', 'ENUM_CONSTANT'):
         model = a.get('type_model', {})
         erased = descriptor_name(a.get('jvm_descriptor') or model.get('descriptor'))
-        result['type'] = norm(erased if erased is not None else a.get('declared_type', model.get('display')))
+        result['type'] = norm(a['type'] if 'upstream_id' in a and 'type' in a else erased if erased is not None else a.get('declared_type', model.get('display')))
     elif kind in ('METHOD', 'CONSTRUCTOR'):
         types = a.get('parameter_type_models', [])
-        names = a.get('parameter_names', [])
+        names = a.get('parameter_names', [p['name'] for p in a.get('parameters', [])])
         result['parameters'] = [dict(name=names[i] if i < len(names) else 'arg'+str(i),
                                      type=norm(t.get('display', ''))) for i, t in enumerate(types)]
-        result['return'] = None if kind == 'CONSTRUCTOR' else norm(a.get('return_type_model', {}).get('display', a.get('return_type')))
+        if 'upstream_id' in a and 'parameters' in a:
+            result['parameters']=[dict(name=p['name'],type=norm(p['type'])) for p in a['parameters']]
+        result['return'] = None if kind == 'CONSTRUCTOR' else norm(a['returnType'] if 'upstream_id' in a and 'returnType' in a else a.get('return_type_model', {}).get('display', a.get('return_type')))
     return result
 
 

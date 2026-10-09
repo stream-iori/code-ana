@@ -54,11 +54,11 @@ def connection(path):
 
 def compare(left, right):
     def rows(counter):
-        return [dict(key=list(k), count=v) for k, v in sorted(counter.items(), key=lambda kv: str(kv[0]))[:10000]]
+        return [dict(key=list(k), count=v) for k, v in sorted(counter.items(), key=lambda kv: str(kv[0]))]
     missing, extra = right-left, left-right
     return dict(product=sum(left.values()), reference=sum(right.values()),
                 missing_count=sum(missing.values()), extra_count=sum(extra.values()),
-                missing_sample=rows(missing), extra_sample=rows(extra), accepted=left == right)
+                missing_sample=rows(missing)[:100], extra_sample=rows(extra)[:100], missing_rows=rows(missing), extra_rows=rows(extra), differences_complete=True, accepted=left == right)
 
 before = dict(product=sha(a.product), reference=sha(a.reference))
 with connection(a.product) as db, connection(a.reference) as ref:
@@ -72,7 +72,8 @@ with connection(a.product) as db, connection(a.reference) as ref:
     product_signatures, product_nodes = {}, {}
     for row in db.execute("SELECT id,body FROM facts WHERE kind IN ('declaration','external_symbol')"):
         fact = json.loads(row['body']); kind = fact['attributes'].get('element_kind')
-        if fact['attributes'].get('nesting_kind')=='ANONYMOUS':kind='CLASS'
+        if fact['attributes'].get('nesting_kind')=='ANONYMOUS' or kind=='ANONYMOUS_CLASS':kind='CLASS'
+        if kind=='ANNOTATION':kind='ANNOTATION_TYPE'
         product_signatures[row['id']] = canonical(fact['signature'], kind, fact['source'] or fact['attributes'].get('source_origin',{}).get('path',''), 'product')
         product_nodes[row['id']] = dict(kind=kind,parent=fact['parent'],span=fact.get('span'),source=fact['source'])
         if a.module and not fact['source'].startswith(a.module+'/'):
@@ -150,6 +151,7 @@ if before != dict(product=sha(a.product), reference=sha(a.reference)):
     raise ValueError('COMPARISON_DATABASE_DRIFT')
 report['changed_databases'] = []
 a.output.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
-print(json.dumps({k:v for k,v in report.items() if k in ('kind','declarations','sites','targets','owners')},ensure_ascii=False))
+print(json.dumps({k:{name:value for name,value in report[k].items() if name in ('product','reference','missing_count','extra_count','accepted')}
+    for k in ('declarations','sites','targets','owners')},ensure_ascii=False))
 
 raise SystemExit(0 if all(report[k]["accepted"] for k in ("declarations","sites","targets","owners")) else 1)

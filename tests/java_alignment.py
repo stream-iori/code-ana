@@ -50,7 +50,7 @@ def capability_results(matrix, gates):
 
 def input_files():
     paths = [ROOT / name for name in ('Cargo.toml','Cargo.lock','lang-java-adapotr/pom.xml','lang-java-adapotr/.sdkmanrc','justfile')]
-    extensions = {'.rs','.java','.py','.sh','.proto','.toml','.xml','.json'}
+    extensions = {'.rs','.java','.py','.sh','.proto','.toml','.xml','.json','.sql'}
     for directory in ('crates','lang-java-adapotr','scripts','tests','proto'):
         paths += [p for p in (ROOT / directory).rglob('*') if p.is_file() and p.suffix in extensions
                   and not {'target','__pycache__'}.intersection(p.relative_to(ROOT).parts)]
@@ -60,14 +60,14 @@ def input_files():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--level', choices=('fixtures', 'native', 'full'), default='full')
-    for name in ('real-publication-receipt','real-reference','real-project','real-runtime-root','real-inputs-manifest'):
+    for name in ('real-publication-receipt','real-reference','real-project','real-runtime-root','real-inputs-manifest','real-reference-jar','real-reference-receipt'):
         parser.add_argument('--'+name,type=pathlib.Path)
     parser.add_argument('--real-model-api-receipt',type=pathlib.Path)
     parser.add_argument('--real-lombok-model-api-receipt',type=pathlib.Path)
     args = parser.parse_args()
-    real_inputs=[args.real_publication_receipt,args.real_reference,args.real_project,args.real_runtime_root,args.real_inputs_manifest]
+    real_inputs=[args.real_publication_receipt,args.real_reference,args.real_project,args.real_runtime_root,args.real_inputs_manifest,args.real_reference_jar,args.real_reference_receipt]
     if (any(real_inputs) or args.real_model_api_receipt or args.real_lombok_model_api_receipt) and (not all(real_inputs) or args.level!='full'):
-        parser.error('真实语义门禁需 --level full 和全部五个 --real-* 输入')
+        parser.error('真实语义门禁需 --level full 和全部七个 --real-* 输入')
     evidence = ROOT / 'target/java-alignment/evidence' / (time.strftime('%Y%m%d-%H%M%S') + '-' + str(os.getpid()))
     evidence.mkdir(parents=True)
     frozen = input_files()
@@ -79,6 +79,8 @@ def main():
         ('xml-graph-diff-harness', [sys.executable, 'tests/java_xml_graph_inventory_diff_tests.py'], 30),
         ('model-api-inventory-harness', [sys.executable, 'tests/java_model_api_inventory_diff_tests.py'], 30),
         ('project-model-api-harness', [sys.executable, 'tests/java_project_model_api_alignment_tests.py'], 30),
+        ('reference-proof-harness',[sys.executable,'tests/java_reference_proof_tests.py'],30),
+        ('model-resume-harness',[sys.executable,'tests/java_anatomist_project_models_tests.py'],30),
         ('real-semantic-diff-harness', [sys.executable, 'tests/java_real_semantic_diff_tests.py'], 30),
         ('acceptance-recovery', [sys.executable, 'tests/java_real_acceptance_tests.py'], 30),
         ('compiler-diagnostic-inputs', [sys.executable, 'tests/java_real_compiler_diagnostics_tests.py'], 30),
@@ -160,6 +162,7 @@ def main():
         gates.append(('java-real-semantic-diff',[sys.executable,'tests/java_real_semantic_diff.py',
             '--product',json.loads(args.real_publication_receipt.read_text())['published_facts'],
             '--publication-receipt',str(args.real_publication_receipt),'--reference',str(args.real_reference),
+            '--reference-jar',str(args.real_reference_jar),'--reference-receipt',str(args.real_reference_receipt),
             '--project',str(args.real_project),'--runtime-root',str(args.real_runtime_root),
             '--inputs-manifest',str(args.real_inputs_manifest),'--evidence',str(evidence/'real-semantic-diff')],None))
         if args.real_model_api_receipt:

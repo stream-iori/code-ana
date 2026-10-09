@@ -10,16 +10,15 @@ REFERENCE_SHA = '457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749
 
 
 def projection(facts, directory):
-    reference = ROOT.parent / 'anatomist/target/anatomist.jar'
-    if not reference.exists():
-        reference = ROOT / 'target/java-alignment/anatomist/target/anatomist.jar'
+    from java_anatomist_reference import REFERENCE
+    reference = REFERENCE
     if hashlib.sha256(reference.read_bytes()).hexdigest() != REFERENCE_SHA:
         raise ValueError('WIRING_REFERENCE_ARTIFACT_DRIFT')
     java = pathlib.Path(os.environ.get('JAVA_HOME', pathlib.Path.home() / '.sdkman/candidates/java/25.3.4+1.r25-graalce'))
     directory = pathlib.Path(directory)
     classes = directory / 'wiring-reference-classes'
     classes.mkdir(exist_ok=True)
-    source = ROOT / 'lang-adaptor/src/frozen-test/java/dev/codeana/analysis/WiringReferenceProbe.java'
+    source = ROOT / 'tests/java-reference/WiringReferenceProbe.java'
     subprocess.run([str(java / 'bin/javac'), '-cp', str(reference), '-d', str(classes), str(source)], check=True, capture_output=True)
     by = {f['id']: f for f in facts}
     # Normalize compiler-world aliases before handing the raw graph to the
@@ -30,8 +29,8 @@ def projection(facts, directory):
     for f in facts:
         if f['kind'] == 'declaration':
             published.setdefault((f['source'], f['owner']['world'], f['signature']), []).append(f)
-        elif f['kind'] == 'provenance':
-            hashes[(f['source'], f['owner']['world'])] = f['attributes'].get('source_hash')
+        elif f['kind'] == 'coverage':
+            hashes[(f['source'], f['owner']['world'])] = f['attributes'].get('input_hash')
 
     def canonical(f):
         origin = f['attributes'].get('source_origin')

@@ -725,6 +725,18 @@ pub struct FactFilter {
     pub world: Option<String>,
 }
 pub trait FactReader {
+    /// Literal, case-sensitive substring search. Storage may use an index, but
+    /// must preserve the same name/signature semantics and stable ID order.
+    fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
+        Ok(self
+            .select(&FactFilter {
+                kinds: vec![FactKind::Declaration, FactKind::ExternalSymbol],
+                ..Default::default()
+            })?
+            .into_iter()
+            .filter(|f| f.name.contains(text) || f.signature.contains(text))
+            .collect())
+    }
     fn select(&self, filter: &FactFilter) -> Result<Vec<Fact>, String>;
     fn manifest(&self) -> &Manifest;
     fn revision(&self) -> &Revision;

@@ -1,7 +1,9 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
 pub mod derived_cache;
 pub mod fact_dedup;
+mod schema;
 mod staged;
+mod symbol_search;
 use anyhow::{Context, Result, ensure};
 use codeana_model::*;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -802,6 +804,9 @@ impl Store {
     }
 }
 impl FactReader for ReadContext {
+    fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
+        symbol_search::select(&self.connection, text).map_err(|e| e.to_string())
+    }
     fn manifest(&self) -> &Manifest {
         &self.revision.manifest
     }

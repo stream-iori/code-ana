@@ -2,6 +2,7 @@
 """Execute every available published-graph audit; keep missing domains explicit."""
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -36,6 +37,9 @@ PENDING_DOMAINS=('complete_model_api_inventory','complete_lombok_ast_model_inven
 
 
 def validate_model_inventory(report,publication,manifest,project,mode='raw'):
+    if report.get('kind')=='anatomist_frozen_project_preprojection_models':
+        validate_anatomist_inventory(report,publication,manifest,project,mode)
+        return
     if report.get('model_api_mode','raw')!=mode:
         raise ValueError('SEMANTIC_MODEL_INVENTORY_MODE_MISMATCH')
     expected=[module+'@'+scope for module,scope in expected_contexts(manifest)]
@@ -72,6 +76,53 @@ def validate_model_inventory(report,publication,manifest,project,mode='raw'):
     for name,expected_hash in report.get('inputs',{}).items():
         if not pathlib.Path(name).is_file() or digest(name)!=expected_hash:
             raise ValueError('SEMANTIC_MODEL_INVENTORY_PROOF_DRIFT')
+
+
+def validate_anatomist_inventory(report,publication,manifest,project,mode):
+    if mode not in ('raw','lombok_ast'):raise ValueError('SEMANTIC_MODEL_INVENTORY_MODE_MISMATCH')
+    expected=[module+'@'+scope for module,scope in expected_contexts(manifest)]
+    contexts=report.get('contexts',[])
+    if (report.get('state')!='finished' or report.get('complete_model_api_inventory') is not True
+        or report.get('changed_inputs')!=[] or report.get('changed_source_inputs')!=[]
+        or report.get('source_inputs')!=publication.get('source_inputs')
+        or report.get('inputs_manifest_sha256')!=publication.get('inputs_manifest_sha256')
+        or report.get('reference_sha256')!=REFERENCE_SHA or report.get('expected_contexts')!=expected
+        or [(row.get('mode'),row.get('context')) for row in contexts]!=[(m,c) for m in ('raw','ast') for c in expected]):
+        raise ValueError('SEMANTIC_COMPLETE_MODEL_INVENTORY_REQUIRED')
+    artifacts=publication.get('artifacts',{})
+    if (not report.get('native_shared_library_sha256') or not report.get('compiler_bridge_sha256')
+        or report.get('native_shared_library_sha256')!=artifacts.get('target/lib/java/native/libcodeana_java.dylib')
+        or report.get('compiler_bridge_sha256')!=artifacts.get('target/lib/java/compiler-bridge.jar')):
+        raise ValueError('SEMANTIC_MODEL_INVENTORY_RUNTIME_MISMATCH')
+    inputs=report.get('inputs',{})
+    if not any(pathlib.Path(p).name=='native-model-witness' for p in inputs) or not any(pathlib.Path(p).name=='build-provenance.json' for p in inputs):
+        raise ValueError('SEMANTIC_MODEL_INVENTORY_PROOF_MISSING')
+    for path,checksum in inputs.items():
+        if not pathlib.Path(path).is_file() or digest(pathlib.Path(path))!=checksum:
+            raise ValueError('SEMANTIC_MODEL_INVENTORY_PROOF_DRIFT')
+    categories={'raw.syntax','raw.bindings','raw.types','raw.declarations','raw.extensions','raw.source_hash','raw.diagnostics',
+        'facts.nodes','facts.edges','facts.annotations','facts.annotationMetaRelations','facts.semanticAnnotations','facts.declarations','facts.unresolvedCallSites'}
+    selected='ast' if mode=='lombok_ast' else 'raw'
+    for row in contexts:
+        if row['mode']!=selected:continue
+        if row.get('accepted') is not True or row.get('differences')!={'migrated_jvm':[],'migrated_native':[]}:
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_FAILED')
+        module,scope=row['context'].rsplit('@',1)
+        request=acceptance_context(project,manifest,module,scope)
+        if row.get('source_count')!=len(request['sources']) or row.get('published_source_count')!=sum(s['publish'] for s in request['sources']):
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_SOURCE_COUNT')
+        proofs=row.get('proofs',{})
+        if not {'context.json','native-request.json','reference.json','migrated_jvm.json','migrated_native.json'}.issubset({pathlib.Path(p).name for p in proofs}):
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_PROOF_MISSING')
+        for path,checksum in proofs.items():
+            if not pathlib.Path(path).is_file() or digest(pathlib.Path(path))!=checksum:
+                raise ValueError('SEMANTIC_MODEL_CONTEXT_PROOF_DRIFT')
+        values=[json.loads(pathlib.Path(p).read_text()) for p in proofs if pathlib.Path(p).name in {'reference.json','migrated_jvm.json','migrated_native.json'}]
+        if len(values)!=3 or any(set(value)!=categories for value in values) or not values[0]==values[1]==values[2]:
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_INVENTORY_INCOMPLETE')
+        if any(v.get('encoding')!='sorted-row-sha256-v2-graph-captures' or not isinstance(v.get('rows'),int) or v['rows']<0
+            or not isinstance(v.get('sha256'),str) or len(v['sha256'])!=64 for v in values[0].values()):
+            raise ValueError('SEMANTIC_MODEL_CONTEXT_INVENTORY_INCOMPLETE')
 
 
 def domain_accepted(name,report):
@@ -126,6 +177,8 @@ def main():
     parser=argparse.ArgumentParser()
     for name in ('product','reference','project','publication_receipt','runtime_root','inputs_manifest','evidence'):
         parser.add_argument('--'+name.replace('_','-'),type=pathlib.Path,required=True)
+    parser.add_argument('--reference-jar',type=pathlib.Path,required=True)
+    parser.add_argument('--reference-receipt',type=pathlib.Path,required=True)
     parser.add_argument('--model-api-receipt',type=pathlib.Path)
     parser.add_argument('--lombok-model-api-receipt',type=pathlib.Path)
     args=parser.parse_args()
@@ -141,12 +194,13 @@ def main():
         manifest=json.loads(args.inputs_manifest.read_text())
         validate_publication(receipt,args.product,manifest)
         if digest(args.inputs_manifest)!=receipt['inputs_manifest_sha256']:raise ValueError('SEMANTIC_MAVEN_MANIFEST_DRIFT')
-        if digest(args.reference)!=REFERENCE_SHA:raise ValueError('SEMANTIC_FROZEN_REFERENCE_REQUIRED')
+        from java_reference_proof import validate_reference
+        report['reference_proof']=validate_reference(args.reference_jar,args.reference,args.reference_receipt,args.inputs_manifest,args.project)
         acceptance.ROOT=args.runtime_root.resolve()
         report['frozen_project']=acceptance.verify_frozen(args.project.resolve())
         report['runtime_proof']=proof_files(args.runtime_root,receipt)
         report['input_sha256']={str(p.resolve()):digest(p) for p in
-            (args.product,args.reference,args.publication_receipt,args.inputs_manifest)}
+            (args.product,args.reference,args.reference_jar,args.reference_receipt,args.publication_receipt,args.inputs_manifest)}
         if args.model_api_receipt:
             validate_model_inventory(json.loads(args.model_api_receipt.read_text()),receipt,manifest,args.project.resolve())
             report['input_sha256'][str(args.model_api_receipt.resolve())]=digest(args.model_api_receipt)
@@ -169,7 +223,8 @@ def main():
                      '--reference',str(args.reference),'--project',str(args.project),'--output',str(domain_output)]
             tick=time.monotonic()
             with log.open('wb') as stream:
-                process=subprocess.run(command,cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT)
+                process=subprocess.run(command,cwd=ROOT,stdout=stream,stderr=subprocess.STDOUT,
+                    env=dict(os.environ,ANATOMIST_REFERENCE_JAR=str(args.reference_jar.resolve())))
             value=json.loads(domain_output.read_text()) if domain_output.exists() else {}
             ok=process.returncode==0 and domain_accepted(name,value)
             report['domains'].append(dict(name=name,accepted=ok,exit_code=process.returncode,

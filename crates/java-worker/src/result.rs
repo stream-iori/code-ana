@@ -114,7 +114,7 @@ pub fn read_owned(
     root: Option<&Path>,
 ) -> Result<NativeResult> {
     let root = root.context("NATIVE_ARCHIVE_ROOT_REQUIRED")?;
-    load(input, Some(manifest), limits, root)
+    load(input, Some(manifest), limits, root, true)
 }
 
 fn load(
@@ -122,6 +122,7 @@ fn load(
     manifest: Option<&Manifest>,
     limits: OutputLimits,
     root: &Path,
+    consume: bool,
 ) -> Result<NativeResult> {
     let mut decoder = serde_json::Deserializer::from_reader(input.take(64 << 20));
     let envelope = EnvelopeSeed(limits).deserialize(&mut decoder)?;
@@ -170,8 +171,16 @@ fn load(
         input.read_exact(&mut bytes)?;
         digest.update(&bytes);
         let fact: Fact = serde_json::from_slice(&bytes)?;
-        if let Some(validator) = &validator {
-            validator.validate(&fact).map_err(anyhow::Error::msg)?;
+        if let Some(validator) = &validator
+            && let Err(error) = validator.validate(&fact)
+        {
+            let evidence = serde_json::json!({"error":error,"offset":offset,"fact":fact});
+            std::fs::write(
+                root.join("invalid-fact.json"),
+                serde_json::to_vec(&evidence)?,
+            )
+            .with_context(|| format!("{error}: {} (save rejected fact)", fact.id))?;
+            bail!("{error}: {}", fact.id);
         }
         match identities.observe(&fact.id, &codeana_model::hash(&bytes), offset)? {
             Observation::New => builder.push(&fact)?,
@@ -198,10 +207,19 @@ fn load(
         format!("{:x}", digest.finalize()) == descriptor.sha256,
         "NATIVE_ARCHIVE_IDENTITY"
     );
+    let records = builder.seal()?;
+    if consume {
+        // The native session has closed its exported CAF1. Its validated Rust
+        // replacement owns delivery now; retaining both through staging doubles
+        // task disk usage. Failed validation keeps the original for diagnosis.
+        drop(input);
+        drop(file);
+        std::fs::remove_file(&descriptor.path).context("NATIVE_ARCHIVE_RELEASE")?;
+    }
     Ok(NativeResult {
         mode: envelope.mode,
         replacements: envelope.replacements,
-        records: builder.seal()?,
+        records,
     })
 }
 fn row_at(file: &File, offset: u64) -> Result<Vec<u8>> {
@@ -220,7 +238,7 @@ pub fn probe(input: &[u8], root: &Path) -> Result<Vec<u8>> {
         bytes: codeana_model::MAX_RESULT as u64,
         facts: 1_000_000,
     };
-    let result = load(input, None, limits, root)?;
+    let result = load(input, None, limits, root, false)?;
     let facts = result.records.iter()?.collect::<Result<Vec<_>>>()?;
     let output = serde_json::to_vec(&serde_json::json!({"version":8,"mode":result.mode,
         "replacements":result.replacements,"facts":facts}))?;
@@ -237,7 +255,7 @@ pub fn probe_archive(
     limits: OutputLimits,
     destination: &Path,
 ) -> Result<serde_json::Value> {
-    let result = load(input, None, limits, root)?;
+    let result = load(input, None, limits, root, false)?;
     let mut source = File::open(result.records.path())?;
     let mut target = std::fs::OpenOptions::new()
         .create_new(true)
@@ -305,6 +323,32 @@ mod tests {
         Ok(())
     }
     #[test]
+    fn owned_archive_releases_only_after_validation_and_sealing() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let (value, archive) = fixture(root.path(), false)?;
+        let mut invalid = value.clone();
+        invalid["facts_archive"]["sha256"] = serde_json::json!("invalid");
+        assert!(read_value(&invalid, root.path()).is_err());
+        assert!(archive.path().is_file());
+        // Diagnostic reads borrow the native export.
+        let borrowed = load(
+            serde_json::to_vec(&value)?.as_slice(),
+            None,
+            OutputLimits {
+                bytes: 65536,
+                facts: 10,
+            },
+            root.path(),
+            false,
+        )?;
+        assert!(archive.path().is_file());
+        drop(borrowed);
+        let result = read_value(&value, root.path())?;
+        assert!(!archive.path().exists());
+        assert_eq!(result.records.iter()?.collect::<Result<Vec<_>>>()?.len(), 1);
+        Ok(())
+    }
+    #[test]
     fn archive_rejects_identity_framing_paths_and_old_versions() -> Result<()> {
         let root = tempfile::tempdir()?;
         let (value, archive) = fixture(root.path(), false)?;
@@ -346,5 +390,30 @@ mod tests {
         .err()
         .unwrap();
         assert!(error.to_string().contains("OWNER_BUDGET"));
+    }
+    #[test]
+    fn rejected_fact_keeps_its_identity_and_raw_evidence() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let fact: Fact = serde_json::from_value(serde_json::json!({
+            "id":"invalid-bean","kind":"facet","owner":{"world":"w","producer":"p","kind":"context","id":"ctx"},
+            "origin":"framework_model","relation":"java.bean","attributes":{"xml_configuration_model":{"version":2}}
+        }))?;
+        let mut builder = FactArchiveBuilder::new_in(65536, 10, root.path())?;
+        builder.push(&fact)?;
+        let archive = builder.seal()?;
+        let envelope = serde_json::json!({"version":8,"mode":"full","replacements":[],
+            "facts_archive":{"format":"CAF1","path":archive.path(),"count":archive.count,
+                "bytes":archive.bytes,"sha256":archive.file_hash()?}});
+        let error = read_value(&envelope, root.path()).err().unwrap();
+        assert!(
+            error
+                .to_string()
+                .contains("INVALID_JAVA_XML_CONFIGURATION: invalid-bean")
+        );
+        let evidence: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(root.path().join("invalid-fact.json"))?)?;
+        assert_eq!(evidence["fact"]["id"], fact.id);
+        assert_eq!(evidence["offset"], 4);
+        Ok(())
     }
 }

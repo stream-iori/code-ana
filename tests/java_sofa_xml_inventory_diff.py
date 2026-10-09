@@ -23,8 +23,17 @@ def product_projection(facts):
     result = collections.Counter()
     for fact in facts:
         a = fact['attributes']
-        if (fact['relation'] != 'java.sofa' or not fact['source'].endswith('.xml')
-                or a.get('kind') not in ('service','reference','publisher','consumer')):
+        if (fact['relation'] not in ('java.sofa','java.spring.handler') or not fact['source'].endswith('.xml')
+                or (a.get('kind') not in ('service','reference','publisher','consumer') and not a.get('mechanism','').startswith(('sofa.xml.','msgbroker.xml.')))):
+            continue
+        if 'upstream_producer' in a and a.get('element_kind') == 'FRAMEWORK_REGISTRATION':
+            fields=dict(framework=a['framework'],role=a['role'],mechanism=a['mechanism'],
+                attributes=a['attributes'],configuration=a['configuration'],namespace=a['namespace'],
+                baseline=a['contractBaseline'],contract=a['contract'],unique=a['uniqueId'],
+                group=a['group'],bindings=a['bindings'],transport=a['transport'],
+                supported=a['contractSupported'],target=a.get('targetBean',''))
+            position=a['position']
+            result[row(fact['source'],fact['name'],position['line'],position['end_line'],fields)]+=1
             continue
         children = []
         for child in a['configuration']:
@@ -60,8 +69,8 @@ def reference_projection(db):
 
 def select_facts(db):
     return [json.loads(row['body']) for row in db.execute(
-        "SELECT body FROM facts WHERE relation='java.sofa' AND json_extract(body,'$.source') LIKE '%.xml' "
-        "AND json_extract(body,'$.attributes.kind') IN ('service','reference','publisher','consumer')")]
+        "SELECT body FROM facts WHERE relation IN ('java.sofa','java.spring.handler') AND json_extract(body,'$.source') LIKE '%.xml' "
+        "AND json_extract(body,'$.attributes.kind') IN ('service','reference','publisher','consumer','framework_registration')")]
 
 
 def verify_xml_inputs(database, project, revision, facts):

@@ -51,13 +51,13 @@ def compare(product, reference, project):
                 offset(r['source_file'],r['end_line'],r['end_column'],True),owner(parents[identity],side))
         return canonical(r['symbol_id'],r['kind'])
     left,right=collections.Counter(),collections.Counter()
-    for r in product.execute("SELECT body FROM facts WHERE kind='reference' AND relation IN ('reads','writes')"):
+    for r in product.execute("SELECT body FROM facts WHERE kind IN ('reference','relation') AND relation IN ('reads','writes')"):
         f=json.loads(r['body']);target=declarations[f['target']]
         if target['kind'] not in ('FIELD','ENUM_CONSTANT'): continue
         span=f.get('span') or {}
         left[(f['source'],f['relation'],owner(f['parent'],'product'),
             canonical(target['signature'],target['kind'],f['source'],'product'),
-            span.get('start'),span.get('end'),f['attributes'].get('control') or None,f['status'])]+=1
+            span.get('start'),span.get('end'),f['attributes'].get('control_context', f['attributes'].get('control')) or None,f['status'])]+=1
     for r in reference.execute("SELECT * FROM edges WHERE relation IN ('READS','WRITES')"):
         target=nodes.get(r['target_id'],{})
         signature=target.get('symbol_id') or r['external_target_symbol'] or r['external_target_fqn']

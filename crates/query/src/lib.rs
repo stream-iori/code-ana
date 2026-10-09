@@ -359,19 +359,10 @@ pub fn run(
             }
             "search-code" => {
                 records = values(
-                    select(
-                        r,
-                        FactFilter {
-                            kinds: vec![FactKind::Declaration, FactKind::ExternalSymbol],
-                            ..Default::default()
-                        },
-                    )?
-                    .into_iter()
-                    .filter(|f| {
-                        allowed(r, req, f)
-                            && (f.name.contains(&req.selector)
-                                || f.signature.contains(&req.selector))
-                    }),
+                    r.search_symbols(&req.selector)
+                        .map_err(anyhow::Error::msg)?
+                        .into_iter()
+                        .filter(|f| allowed(r, req, f)),
                 );
             }
             "overview" => {

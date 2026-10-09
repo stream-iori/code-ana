@@ -37,7 +37,7 @@ def inventory(product, reference, project):
         if side=='product':
             row=declarations.get(identity)
             if row is None:raise ValueError('PRODUCT_LEXICAL_OWNER_MISSING: '+identity)
-            kind=row['attributes']['element_kind'];span=row.get('span') or {}
+            kind=row['attributes'].get('element_kind');span=row.get('span') or {}
             if kind in ('LAMBDA','METHOD_REF','INITIALIZER'):
                 return (kind,row['source'],span.get('start'),span.get('end'),owner(row['parent'],side,active+(identity,)))
             return normalize(row['signature'],kind,row['source'],side)
@@ -64,7 +64,7 @@ def inventory(product, reference, project):
         fact=json.loads(row['body']);span=fact.get('span') or {};attrs=fact['attributes']
         relation='calls' if fact['kind']=='call_site' else fact['relation']
         target='' if relation=='calls' else owner(fact['target'],'product')
-        context=attrs.get('type_context') if relation in ('type_reference','reflection_lookup') else attrs.get('control')
+        context=attrs.get('type_context') if relation in ('type_reference','reflection_lookup') else attrs.get('control_context',attrs.get('control'))
         left[relation][(fact['source'],span.get('start'),span.get('end'),owner(fact['parent'],'product'),target,context or None)]+=1
     for row in reference.execute('SELECT s.*,o.source_file,o.caller_id FROM call_sites s JOIN call_site_owners o ON s.owner_pk=o.owner_pk'):
         path=row['source_file']

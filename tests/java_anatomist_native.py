@@ -44,6 +44,57 @@ class Native(unittest.TestCase):
         self.assertEqual(facts, self.probe()['facts'])
         self.assertFalse(list(self.root.glob('anatomist-task-*')))
         self.assertFalse(list(self.root.rglob('*.class')))
+    def test_dependency_xml_catalogue_is_available_before_producer_context(self):
+        self.source.write_text('class A {void setApi(A value){}}')
+        self.context['sources'][0]['hash']=hashlib.sha256(self.source.read_bytes()).hexdigest()
+        self.context.update(spring=True,spring_xml=True,dependency_modules=['lib'])
+        def resource(label,module,world,xml):
+            path=self.root/(label+'.xml');path.write_text(xml)
+            return dict(input=str(path),unit=dict(path=label+'.xml',hash=hashlib.sha256(path.read_bytes()).hexdigest(),module=module,world=world,scope='RESOURCE'))
+        self.context['resources']=[resource('use','.','main','<beans><bean id="holder" class="A"><property name="api" ref="api"/></bean></beans>')]
+        library=dict(context='lib@MAIN',module='lib',world='lib',scope='MAIN',digest='library',sources=[],classpath=[],dependency_modules=[],spring=True,spring_xml=True,lombok='off',resources=[resource('lib-main','lib','lib-resource','<beans><bean id="api" class="A"/></beans>')])
+        test=dict(library,context='lib@TEST',world='lib-test',scope='TEST',resources=[resource('lib-test','lib','lib-test-resource','<beans><bean id="api" class="A"/></beans>')])
+        self.request['contexts']=[self.context,library,test]
+        facts=self.probe()['facts'];by={f['id']:f for f in facts}
+        links=[f for f in facts if f['relation']=='config' and f['source']=='use.xml']
+        self.assertEqual(len(links),1)
+        target=by[links[0]['target']]
+        self.assertEqual((target['relation'],target['source'],target['owner']['world']),('java.bean','lib-main.xml','lib-resource'))
+
+    def replace_source(self, text):
+        self.source.write_text(text)
+        self.context['sources'][0]['hash'] = hashlib.sha256(self.source.read_bytes()).hexdigest()
+
+    def test_constructor_statements_have_one_site_and_keep_original_binding_ranges(self):
+        text = 'class B { B(int n){} } class A extends B { A(){ this(1); } A(int n){ super(n); } }'
+        self.replace_source(text)
+        facts = self.probe()['facts']
+        sites = [f for f in facts if f['kind']=='call_site']
+        self.assertEqual(len(sites), 2)
+        for site in sites:
+            self.assertTrue(text[site['span']['start']:site['span']['end']].endswith(';'))
+            self.assertEqual(sum(f['kind']=='call_target' and f['parent']==site['id'] for f in facts), 1)
+            bindings = [f for f in facts if f['relation']=='java.binding' and f['parent']==site['id']]
+            self.assertEqual(len(bindings), 1)
+            self.assertEqual(bindings[0]['span']['end'], site['span']['end']-1)
+
+    def test_unresolved_constructor_has_one_site(self):
+        self.replace_source('class A extends Missing { A(){ super(1); } }')
+        facts = self.probe()['facts']
+        sites = [f for f in facts if f['kind']=='call_site']
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0]['status'], 'unresolved')
+        self.assertFalse(any(f['kind']=='call_target' for f in facts))
+
+    def test_enum_initializers_and_array_references_preserve_evidence_without_call_sites(self):
+        self.replace_source('enum E { FIRST(1), SECOND(2); E(int n){} } class A { java.util.function.IntFunction<String[]> array = String[]::new; java.util.function.Supplier<Object> object = Object::new; Object value = new Object(); }')
+        facts = self.probe()['facts']
+        self.assertEqual(sum(f['kind']=='call_site' for f in facts), 2)
+        self.assertEqual(sum(f['kind']=='call_target' for f in facts), 2)
+        self.assertTrue(any(f['relation']=='java.type' and f['attributes'].get('kind')=='NEW_CLASS' for f in facts))
+        self.assertTrue(any(f['relation']=='java.type' and f['attributes'].get('kind')=='MEMBER_REFERENCE' for f in facts))
+        self.assertTrue(any(f['relation']=='java.syntax' for f in facts))
+
     def test_java8_bytecode_and_manifest(self):
         with zipfile.ZipFile(TARGET/'compiler-bridge.jar') as jar:
             for name in jar.namelist():
@@ -112,6 +163,24 @@ class Native(unittest.TestCase):
             self.assertEqual(symbol['source'],'')
             self.assertIsNone(symbol['span'])
         self.assertTrue(any(f['attributes'].get('resolutionStatus')=='unresolved' for f in facts if f['relation']=='config_member'))
+
+    def test_conditional_duplicate_beans_keep_both_occurrences(self):
+        resource=self.root/'beans.xml'
+        resource.write_text('<beans>#if ($app == "first")\n<bean id="a" class="A"><property name="size" value="32"/></bean>\n#end\n#if ($app == "second")\n<bean id="a" class="A"><property name="size" value="512"/></bean>\n#end\n<bean id="holder" class="A"><property name="other" ref="a"/></bean></beans>')
+        self.context.update(spring=True,spring_xml=True,resources=[dict(input=str(resource),unit=dict(path='resources/beans.xml',hash=hashlib.sha256(resource.read_bytes()).hexdigest(),module='.',world='resources',scope='RESOURCE'))])
+        facts=self.probe()['facts']
+        beans=[f for f in facts if f['relation']=='java.bean' and f['name']=='a']
+        self.assertEqual(len(beans),2)
+        self.assertEqual(len({f['id'] for f in beans}),2)
+        self.assertEqual({n['metadata']['value'] for f in beans for n in f['attributes']['xml_configuration_model']['nodes'] if n['metadata']['xmlKind']=='value'},{'32','512'})
+        for f in beans:
+            for n in f['attributes']['xml_configuration_model']['nodes']:
+                self.assertLessEqual(f['span']['start'],n['source_element_span']['start'])
+                self.assertGreaterEqual(f['span']['end'],n['source_element_span']['end'])
+        candidate=next(f for f in facts if f['kind']=='external_symbol' and len(f['attributes'].get('configuration_candidates',[]))==2)
+        self.assertEqual(set(candidate['attributes']['configuration_candidates']),{f['id'] for f in beans})
+        self.assertFalse(candidate['evidence_complete'])
+        self.assertEqual(candidate['status'],'possible')
 
     def test_nested_bean_and_sofa_children_are_queryable(self):
         resource=self.root/'beans.xml'

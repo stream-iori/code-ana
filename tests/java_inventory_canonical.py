@@ -7,11 +7,11 @@ def compiler_lines(text):
 
 def verify_source_inputs(product,project):
  expected={}
- for row in product.execute("select source,body from facts where kind in ('provenance','external_symbol')"):
+ for row in product.execute("select source,body from facts where kind in ('provenance','external_symbol','coverage')"):
   fact=json.loads(row['body']);attributes=fact.get('attributes',{})
   origin=attributes.get('source_origin',{})
   path=origin.get('path') if fact['kind']=='external_symbol' else fact['source']
-  checksum=origin.get('hash') if fact['kind']=='external_symbol' else attributes.get('source_hash')
+  checksum=origin.get('hash') if fact['kind']=='external_symbol' else attributes.get('input_hash') if fact['kind']=='coverage' else attributes.get('source_hash')
   if not path or not path.endswith('.java') or not checksum:continue
   if path in expected and expected[path]!=checksum:raise ValueError('AMBIGUOUS_CAPTURE_HASH: '+path)
   expected[path]=checksum
@@ -34,13 +34,24 @@ class Canonical:
    key=(row['source_file'],offset(row['source_file'],row['begin_line'],row['begin_column']),offset(row['source_file'],row['end_line'],row['end_column'],True))
    wanted[key].append(row['symbol_id'])
   found=set()
-  rows=list(product.execute("select source,json_extract(body,'$.attributes.nesting_kind') as nesting_kind,json_extract(body,'$.signature') as signature,json_extract(body,'$.span.start') as start,json_extract(body,'$.span.end') as end from facts where kind='declaration' and json_extract(body,'$.attributes.nesting_kind') in ('ANONYMOUS','LOCAL')"))
+  rows=list(product.execute("select source,json_extract(body,'$.attributes.nesting_kind') as nesting_kind,json_extract(body,'$.attributes.element_kind') as element_kind,json_extract(body,'$.attributes.upstream_id') as upstream_id,json_extract(body,'$.attributes.scope') as scope,json_extract(body,'$.signature') as signature,json_extract(body,'$.span.start') as start,json_extract(body,'$.span.end') as end from facts where kind='declaration' and (json_extract(body,'$.attributes.nesting_kind') in ('ANONYMOUS','LOCAL') or json_extract(body,'$.attributes.element_kind')='ANONYMOUS_CLASS' or (json_extract(body,'$.attributes.element_kind')='CLASS' and json_extract(body,'$.attributes.upstream_id') like '%$local@%'))"))
   counts=collections.Counter((row['source'],row['start'],row['end']) for row in rows)
   for row in rows:
    key=(row['source'],row['start'],row['end'])
-   if counts[key]!=1 or len(wanted.get(key,[]))!=1:self.receipt['unmatched_product'].append([*key,row['signature']]);continue
-   self.aliases[(row['source'],row['signature'])]=wanted[key][0];found.add(key)
-   self.receipt['matched_local_classes' if row['nesting_kind']=='LOCAL' else 'matched_anonymous_classes']+=1
+   if row['start'] is None or row['end'] is None:
+    self.receipt['unmatched_product'].append([*key,row['signature']]);continue
+   matches=[(key,v) for v in wanted.get(key,[])]
+   if not matches and row['upstream_id']:
+    # The reference includes the new-expression prefix; the class body ends at
+    # the same captured byte. Require original identity plus containment, never name alone.
+    original=row['upstream_id'].replace('$','.')
+    matches=[(candidate,v) for candidate,values in wanted.items()
+             if candidate[0]==row['source'] and candidate[1]<=row['start'] and candidate[2]==row['end']
+             for v in values if v.replace('$','.')==original]
+   if counts[key]!=1 or len(matches)!=1:self.receipt['unmatched_product'].append([*key,row['signature']]);continue
+   matched,value=matches[0]
+   self.aliases[(row['source'],row['signature'])]=value;found.add(matched)
+   self.receipt['matched_local_classes' if row['nesting_kind']=='LOCAL' or '$local@' in (row['upstream_id'] or '') else 'matched_anonymous_classes']+=1
   for key,values in wanted.items():
    if key not in found:self.receipt['unmatched_reference'].append([*key,*values])
   self.receipt['matched_source_classes']=len(self.aliases)

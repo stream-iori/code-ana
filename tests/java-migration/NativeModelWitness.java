@@ -9,9 +9,15 @@ public final class NativeModelWitness {
     public static void main(String[] args) throws Exception {
         ParityWitness.verifyCaptureNormalization();
         var request=Json.map(Json.parse(Files.readAllBytes(Path.of(args[0]))));
+        var consumer=((java.util.List<?>)request.get("contexts")).stream().map(Json::map)
+            .filter(c->!Boolean.TRUE.equals(c.get("prerequisite"))).findFirst().orElseThrow();
+        ParityWitness.observedModule=Json.string(consumer,"module");
+        ParityWitness.observedScope=Json.string(consumer,"scope");
         try(var session=new AnalysisSession(request,new AnalysisObserver() {
             public void model(JavaAnalysisContext context) {
+                if(!ParityWitness.observe(context))return;
                 for(var unit:context.units()) {
+                    ParityWitness.observeUnit(unit);
                     Path path=unit.path();
                     while(path!=null && !path.getFileName().toString().equals("anatomist-inputs")) path=path.getParent();
                     if(path==null) throw new IllegalArgumentException("MODEL_CAPTURE_ROOT");
@@ -19,8 +25,9 @@ public final class NativeModelWitness {
                     ParityWitness.add("raw.syntax",unit.tree()); ParityWitness.add("raw.bindings",unit.bindings());
                     ParityWitness.add("raw.types",unit.types()); ParityWitness.add("raw.declarations",unit.declarationInventory());
                     ParityWitness.add("raw.extensions",unit.extensions()); ParityWitness.add("raw.source_hash",unit.sourceHash());
+                    ParityWitness.unitEvidence(unit);
                 }
-                context.diagnostics().forEach(d->ParityWitness.add("raw.diagnostics",d));
+                context.diagnostics().forEach(d->{ParityWitness.add("raw.diagnostics",d);if(System.getenv("CODEANA_MODEL_ROW_EVIDENCE")!=null)ParityWitness.diagnosticEvidence.add(ParityWitness.detach(d));});
             }
             public void extraction(ExtractionResult facts) {
                 facts.nodes.forEach(v->ParityWitness.add("facts.nodes",v)); facts.edges.forEach(v->ParityWitness.add("facts.edges",v));

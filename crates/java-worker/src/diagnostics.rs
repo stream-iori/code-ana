@@ -95,7 +95,11 @@ impl ReplayEvidence {
 }
 impl Drop for ReplayEvidence {
     fn drop(&mut self) {
-        for name in ["native-timings.json", "fact-conflict.json"] {
+        for name in [
+            "native-timings.json",
+            "fact-conflict.json",
+            "invalid-fact.json",
+        ] {
             let source = self.scratch.join(name);
             if source.is_file() {
                 let _ = std::fs::copy(source, self.directory.join(name));
@@ -124,7 +128,18 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
 fn rebase(value: &mut Value, source: &Path, destination: &Path) {
     match value {
         Value::String(text) => {
-            if let Ok(relative) = Path::new(text).strip_prefix(source) {
+            let path = Path::new(text);
+            // macOS /var is an alias of /private/var. The captured scratch is
+            // canonical, while request paths can still use the lexical alias.
+            let canonical = if path.is_absolute() {
+                path.canonicalize().ok()
+            } else {
+                None
+            };
+            if let Ok(relative) = path
+                .strip_prefix(source)
+                .or_else(|_| canonical.as_deref().unwrap_or(path).strip_prefix(source))
+            {
                 *text = destination.join(relative).to_string_lossy().into_owned();
             }
         }
@@ -135,5 +150,31 @@ fn rebase(value: &mut Value, source: &Path, destination: &Path) {
             .values_mut()
             .for_each(|v| rebase(v, source, destination)),
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn replay_rebases_aliases_and_keeps_external_inputs() {
+        let temporary = tempfile::tempdir().unwrap();
+        let source = temporary.path().join("source");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::write(source.join("A.java"), "class A {}").unwrap();
+        let alias = temporary.path().join("alias");
+        std::os::unix::fs::symlink(&source, &alias).unwrap();
+        let destination = temporary.path().join("snapshot");
+        let external = temporary.path().join("external.jar");
+        std::fs::write(&external, "external").unwrap();
+        let mut value = serde_json::json!({"inputs":[alias.join("A.java"), source.join("A.java"), external],"hash":"unchanged"});
+        rebase(&mut value, &source.canonicalize().unwrap(), &destination);
+        assert_eq!(
+            value["inputs"][0],
+            destination.join("A.java").to_string_lossy().as_ref()
+        );
+        assert_eq!(value["inputs"][1], value["inputs"][0]);
+        assert_eq!(value["inputs"][2], external.to_string_lossy().as_ref());
+        assert_eq!(value["hash"], "unchanged");
     }
 }

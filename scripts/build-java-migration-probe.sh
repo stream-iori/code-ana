@@ -16,7 +16,7 @@ probe_classpath="$probe_root/classes:$PWD/native-bridge/target/test-classes:$pro
 probe_temp="$(mktemp -d "$probe_root/.build-XXXXXX")"
 trap 'rm -rf "$probe_temp"' EXIT
 export TMPDIR="$probe_temp"
-"$JAVA_HOME/bin/native-image" --no-fallback -R:MaxHeapSize=1024m \
+"$JAVA_HOME/bin/native-image" --no-fallback -R:MaxHeapSize=2048m \
   "-J-Djava.io.tmpdir=$probe_temp" "-H:TempDirectory=$probe_temp" \
   --native-compiler-options=-save-temps=obj \
   -H:ReflectionConfigurationFiles="$probe_root/reflection.json" \

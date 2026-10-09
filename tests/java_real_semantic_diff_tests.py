@@ -1,15 +1,47 @@
 #!/usr/bin/env python3
 """Acceptance guards for executed full-project semantic comparisons."""
 import copy
+import json
 import pathlib
 import tempfile
 import unittest
 
-from java_real_semantic_diff import domain_accepted,validate_publication,validate_model_inventory,proof_files,PENDING_DOMAINS
+from java_real_semantic_diff import domain_accepted,validate_publication,validate_model_inventory,proof_files,PENDING_DOMAINS,REFERENCE_SHA
 from java_declaration_inventory_diff import digest
 
 
 class SemanticAcceptance(unittest.TestCase):
+    def test_migrated_model_proof_rejects_subsets_missing_native_and_drift(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            project=pathlib.Path(temporary)
+            manifest=dict(scopes=['MAIN','TEST'],modules=[dict(id=str(i),root=str(i),selected=True,resolved_classpath=True,
+                source_roots=[],dependencies=dict(MAIN=[],TEST=[]),classpath=dict(MAIN=[],TEST=[])) for i in range(40)])
+            expected=[str(i)+'@'+scope for i in range(40) for scope in ('MAIN','TEST')]
+            publication=dict(source_inputs={'source':'sha'},inputs_manifest_sha256='manifest',artifacts={
+                'target/lib/java/native/libcodeana_java.dylib':'library','target/lib/java/compiler-bridge.jar':'bridge'})
+            inputs={}
+            for name in ['native-model-witness','build-provenance.json']:
+                path=project/name;path.write_text(name);inputs[str(path)]=digest(path)
+            categories=['raw.syntax','raw.bindings','raw.types','raw.declarations','raw.extensions','raw.source_hash','raw.diagnostics',
+                'facts.nodes','facts.edges','facts.annotations','facts.annotationMetaRelations','facts.semanticAnnotations','facts.declarations','facts.unresolvedCallSites']
+            values={k:dict(rows=0,sha256='0'*64,encoding='sorted-row-sha256-v2-graph-captures') for k in categories}
+            proofs={}
+            for name in ['context.json','native-request.json','reference.json','migrated_jvm.json','migrated_native.json']:
+                path=project/name;path.write_text(json.dumps(values));proofs[str(path)]=digest(path)
+            report=dict(kind='anatomist_frozen_project_preprojection_models',state='finished',complete_model_api_inventory=True,
+                changed_inputs=[],changed_source_inputs=[],reference_sha256=REFERENCE_SHA,source_inputs=publication['source_inputs'],
+                inputs_manifest_sha256='manifest',native_shared_library_sha256='library',compiler_bridge_sha256='bridge',
+                expected_contexts=expected,inputs=inputs,contexts=[dict(mode=m,context=c,accepted=True,source_count=0,published_source_count=0,
+                    differences=dict(migrated_jvm=[],migrated_native=[]),proofs=proofs) for m in ['raw','ast'] for c in expected])
+            validate_model_inventory(report,publication,manifest,project)
+            validate_model_inventory(report,publication,manifest,project,mode='lombok_ast')
+            for changed,reason in [(dict(contexts=report['contexts'][:80]),'INVENTORY_REQUIRED'),
+                (dict(inputs={str(project/'build-provenance.json'):inputs[str(project/'build-provenance.json')]}),'PROOF_MISSING'),
+                (dict(native_shared_library_sha256='old'),'RUNTIME_MISMATCH')]:
+                with self.subTest(changed=changed),self.assertRaisesRegex(ValueError,reason):
+                    validate_model_inventory(report|changed,publication,manifest,project)
+            path=project/'migrated_native.json';path.write_text('{}')
+            with self.assertRaisesRegex(ValueError,'PROOF_DRIFT'):validate_model_inventory(report,publication,manifest,project)
     def test_raw_inventory_cannot_certify_lombok_ast(self):
         with self.assertRaisesRegex(ValueError,'MODE_MISMATCH'):
             validate_model_inventory(dict(model_api_mode='raw'),{}, {},pathlib.Path('/fixture'),mode='lombok_ast')

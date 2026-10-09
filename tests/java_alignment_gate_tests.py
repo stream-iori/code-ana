@@ -53,7 +53,7 @@ class AcceptanceAccounting(unittest.TestCase):
     def test_product_gate_freezes_new_build_and_detects_runtime_drift(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
-            source = root / 'lang-adaptor/target'
+            source = root / 'lang-java-adapotr/target'
             (source / 'native').mkdir(parents=True)
             (root / 'target/debug').mkdir(parents=True)
             for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
@@ -62,13 +62,17 @@ class AcceptanceAccounting(unittest.TestCase):
             library = 'native/libcodeana_java.' + ('dylib' if sys.platform == 'darwin' else 'so')
             for relative in (library, 'compiler-bridge.jar', 'maven-input-worker.jar'):
                 (source / relative).write_bytes(b'fresh build')
-            (source / 'native/manifest.json').write_text(json.dumps(dict(files={
+            (source / 'native/manifest.json').write_text(json.dumps(dict(adapter='fixture-adapter',files={
                 relative: sha(source / relative) for relative in (library, 'compiler-bridge.jar')})))
             stale = root / 'target/lib/java/native'
             stale.mkdir(parents=True)
             (stale / pathlib.Path(library).name).write_bytes(b'stale installed build')
             destination = root / 'evidence/runtime'
-            result = prepare(root, destination)
+            from unittest.mock import patch
+            import subprocess
+            runtime=json.dumps(dict(worker_protocol=14,fact_ir=1,adapter='fixture-adapter',analysis_request=8,abi=2))
+            with patch('java_product_runtime.subprocess.run',return_value=subprocess.CompletedProcess([],0,stdout=runtime,stderr='')):
+                result = prepare(root, destination)
             self.assertEqual(result['files'], inventory(destination))
             copied = destination / 'target/lib/java' / library
             self.assertEqual(copied.read_bytes(), b'fresh build')

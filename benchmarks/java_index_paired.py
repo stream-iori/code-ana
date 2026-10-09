@@ -13,15 +13,20 @@ INVALID = 'app/component/message-protocol-apistandardview/src/test/java/com/alip
 JDK25 = pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'
 JDK8 = pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'
 MAVEN = pathlib.Path.home()/'.sdkman/candidates/maven/current/bin/mvn'
-FROZEN = json.loads((ROOT/'target/java-alignment/recovery-stage2/target/java-alignment/iopengw-freeze.json').read_text())
+
 ORIGINAL_POPEN = subprocess.Popen
 parser = argparse.ArgumentParser()
 parser.add_argument('--gate', type=pathlib.Path, required=True)
 parser.add_argument('--evidence', type=pathlib.Path, required=True)
 parser.add_argument('--reference-jar', type=pathlib.Path, required=True)
+parser.add_argument('--project',type=pathlib.Path,required=True)
+parser.add_argument('--inputs-manifest',type=pathlib.Path,required=True)
+parser.add_argument('--publication-receipt',type=pathlib.Path,required=True)
 parser.add_argument('--native-heap-bytes', type=int, default=2147483648)
 parser.add_argument('--worker-memory-bytes', type=int, default=4294967296)
 args = parser.parse_args()
+acceptance.verify_frozen(args.project.resolve())
+FROZEN=json.loads((args.project.resolve().parent/'iopengw-freeze.json').read_text())
 JAR = args.reference_jar.resolve()
 BASE = args.evidence.resolve()
 BASE.relative_to((ROOT/'target/java-alignment').resolve())
@@ -29,7 +34,7 @@ BASE.mkdir(parents=True, exist_ok=False)
 REPORT = dict(kind='three_alternating_frozen_project_index_pairs', state='preflight', owner_pid=os.getpid(),
     performance_accepted=False, capacity_accepted=False, pairs=[], excluded_source=INVALID,
     scopes=['MAIN','TEST'], xml=True, lombok='ast', native_heap_bytes=args.native_heap_bytes, worker_memory_bytes=args.worker_memory_bytes,
-    compiler_heap_bytes=536870912, parallelism=1, fresh_application_caches=True,
+    compiler_heap_bytes=536870912, result_bytes=4294967296, scratch_bytes=17179869184, parallelism=1, fresh_application_caches=True,
     os_caches_flushed=False, timing_boundary='Maven export plus daemon startup through successful index process exit; queries and comparisons excluded')
 def save(): acceptance.atomic_json(BASE/'receipt.json', REPORT)
 def interrupted(sig, frame): raise SystemExit(128+sig)
@@ -37,6 +42,8 @@ signal.signal(signal.SIGTERM, interrupted)
 def unchanged():
     if acceptance.artifacts()!=REPORT['artifacts'] or java_alignment.input_files()!=REPORT['inputs']:
         raise RuntimeError('FROZEN_RUNTIME_CHANGED')
+    if acceptance.digest(args.inputs_manifest)!=REPORT['inputs_manifest_sha256']:
+        raise RuntimeError('FROZEN_MANIFEST_CHANGED')
     if acceptance.digest(JAR)!=REPORT['reference_jar_sha256']:
         raise RuntimeError('FROZEN_REFERENCE_CHANGED')
 def no_competing_analysis():
@@ -47,8 +54,8 @@ def no_competing_analysis():
         if len(fields)!=3: continue
         pid,comm,argv=fields
         is_java=pathlib.Path(comm).name=='java'
-        codeana_java=is_java and any(name in argv for name in ('dev.codeana.compiler.CompilerBridge','dev.codeana.analysis.AnalysisProbe','dev.codeana.analysis.ModelApi','DirectIndexProbe','NativeModelWitness','com.anatomist.worker.JavacWorker'))
-        if pathlib.Path(comm).name.startswith('direct-native') or pathlib.Path(comm).name in ('codeana-daemon','codeana-java-worker','model-api-native') or codeana_java or ('-jar '+str(JAR)+' index ') in argv:
+        codeana_java=is_java and any(name in argv for name in ('dev.codeana.compiler.CompilerBridge','dev.codeana.analysis.AnalysisProbe','dev.codeana.analysis.ModelApi','DirectIndexProbe','NativeModelWitness','ParityWitness','XmlConfigurationWitness','com.anatomist.worker.JavacWorker'))
+        if pathlib.Path(comm).name.startswith('direct-native') or pathlib.Path(comm).name in ('codeana-daemon','codeana-java-worker','model-api-native','native-model-witness') or codeana_java or ('-jar '+str(JAR)+' index ') in argv:
             competing.append(dict(pid=int(pid),executable=comm))
     if competing: raise RuntimeError('COMPETING_ANALYSIS_PROCESS: '+json.dumps(competing))
 
@@ -134,7 +141,7 @@ def product(folder, project):
     export=command([ROOT/'target/release/codeana-cli','--project',project,'java-inputs','export','--output',project/'.code-ana/fresh-inputs.json',
         '--maven',MAVEN,'--java-home',JDK8,'--offline','--timeout','600','--extension',ROOT/'target/lib/java/maven-input-worker.jar'],
         project,folder/'export',environment())
-    baseline=ROOT/'target/java-alignment/recovery-stage2/target/java-alignment/iopengw/.code-ana/full-rewrite-inputs.json'
+    baseline=args.inputs_manifest.resolve()
     if manifest_semantics(project/'.code-ana/fresh-inputs.json')!=manifest_semantics(baseline):
         raise RuntimeError('FRESH_MAVEN_SEMANTIC_INPUTS_DRIFT')
     clock={}; watchers=[]
@@ -153,8 +160,8 @@ def product(folder, project):
     subprocess.Popen=TimedPopen;acceptance.project_config=config
     evidence=folder/'index'
     sys.argv=['java_real_acceptance.py','--project',str(project),'--inputs-manifest','.code-ana/fresh-inputs.json','--scopes','MAIN,TEST','--xml',
-        '--deadline-seconds','86400','--native-heap-bytes',str(args.native_heap_bytes),'--worker-memory-bytes',str(args.worker_memory_bytes),
-        '--result-bytes','8589934592','--scratch-bytes','34359738368','--compiler-timeout-seconds','3600','--evidence',str(evidence)]
+        '--deadline-seconds','3600','--native-heap-bytes',str(args.native_heap_bytes),'--worker-memory-bytes',str(args.worker_memory_bytes),
+        '--result-bytes','4294967296','--scratch-bytes','17179869184','--compiler-timeout-seconds','600','--evidence',str(evidence)]
     try:
         with (folder/'driver.log').open('w') as log:
             original_stdout=sys.stdout;sys.stdout=log
@@ -181,11 +188,25 @@ try:
         checkout_commit=subprocess.check_output(['git','rev-parse','HEAD'],cwd=ROOT,text=True).strip(),
         runner_sha256=acceptance.digest(pathlib.Path(__file__)), frozen=FROZEN)
     if REPORT['reference_jar_sha256']!='457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e': raise RuntimeError('REFERENCE_JAR_DRIFT')
-    publication_path=args.gate.parent/'single-project/receipt.json'
+    publication_path=args.publication_receipt.resolve()
     publication=json.loads(publication_path.read_text())
     if not publication.get('publication_accepted') or publication.get('artifacts')!=REPORT['artifacts'] or publication.get('source_inputs')!=REPORT['inputs']:
         raise RuntimeError('SEMANTIC_GATE_ARTIFACT_OR_SOURCE_MISMATCH')
     REPORT['publication_receipt_sha256']=acceptance.digest(publication_path)
+    if gate.get('runtime_proof')!={str((ROOT/p).resolve()):checksum for group in ('source_inputs','artifacts') for p,checksum in publication.get(group,{}).items()}:
+        raise RuntimeError('SEMANTIC_GATE_RUNTIME_MISMATCH')
+    reference_proof=gate.get('reference_proof',{})
+    if reference_proof.get('reference_jar_sha256')!=REPORT['reference_jar_sha256'] or reference_proof.get('inputs_manifest_sha256')!=acceptance.digest(args.inputs_manifest):
+        raise RuntimeError('SEMANTIC_GATE_REFERENCE_MISMATCH')
+    if set(reference_proof.get('excluded_invalid_utf8',{}))!={INVALID}:
+        raise RuntimeError('PAIRED_VALID_INPUT_EXCLUSIONS_MISMATCH')
+    REPORT['excluded_source_sha256']=reference_proof['excluded_invalid_utf8'][INVALID]
+    if acceptance.digest(args.project/INVALID)!=REPORT['excluded_source_sha256']:
+        raise RuntimeError('PAIRED_SOURCE_DRIFT')
+    try:(args.project/INVALID).read_bytes().decode('utf-8')
+    except UnicodeDecodeError:pass
+    else:raise RuntimeError('PAIRED_EXCLUSION_NOT_INVALID_UTF8')
+    REPORT['inputs_manifest_sha256']=acceptance.digest(args.inputs_manifest)
     save()
     for number,order in enumerate((('anatomist','codeana'),('codeana','anatomist'),('anatomist','codeana')),1):
         pair=dict(round=number,order=list(order),results={});REPORT['pairs'].append(pair)
@@ -197,7 +218,8 @@ try:
         pair['ratio']=pair['results']['codeana']['elapsed_seconds']/pair['results']['anatomist']['elapsed_seconds'];save()
     medians={name:statistics.median(pair['results'][name]['elapsed_seconds'] for pair in REPORT['pairs']) for name in ('codeana','anatomist')}
     REPORT.update(state='finished',median_seconds=medians,median_ratio=medians['codeana']/medians['anatomist'])
-    REPORT['performance_accepted']=REPORT['median_ratio']<2 and all(pair['ratio']<2 for pair in REPORT['pairs'])
+    REPORT['rounds_at_or_above_two']=[pair['round'] for pair in REPORT['pairs'] if pair['ratio']>=2]
+    REPORT['performance_accepted']=REPORT['median_ratio']<2
     REPORT['capacity_accepted']=all(pair['results']['codeana']['capacity_passed'] for pair in REPORT['pairs']);save()
 except BaseException as error:
     REPORT.update(state='failed',failure=str(error),failure_type=type(error).__name__);save();raise

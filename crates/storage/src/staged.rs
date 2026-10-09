@@ -53,11 +53,18 @@ impl CandidateFacts<'_> {
 
     /// Directed adapter references, distinct from relation records.
     pub fn references(&self, relation: &str, parent: Option<&str>) -> Result<Vec<Fact>> {
-        let mut statement = self.db.prepare(
-            "SELECT body FROM facts WHERE kind='reference' AND relation=?
-             AND (? IS NULL OR parent=?) ORDER BY id",
-        )?;
-        let mut rows = statement.query(params![relation, parent, parent])?;
+        // Keep directed reads indexable. An optional-parent OR makes SQLite
+        // scan every reference even when the caller supplies one exact owner.
+        let sql = if parent.is_some() {
+            "SELECT body FROM facts WHERE kind='reference' AND relation=? AND parent=? ORDER BY id"
+        } else {
+            "SELECT body FROM facts WHERE kind='reference' AND relation=? ORDER BY id"
+        };
+        let mut statement = self.db.prepare(sql)?;
+        let mut rows = match parent {
+            Some(parent) => statement.query(params![relation, parent])?,
+            None => statement.query([relation])?,
+        };
         let mut facts = Vec::new();
         while let Some(row) = rows.next()? {
             (self.cancellation)()?;
@@ -332,12 +339,8 @@ impl Store {
             }
         }
         check()?;
-        db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA cache_size=-8192; PRAGMA temp_store=FILE;
-            CREATE TABLE IF NOT EXISTS identity(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS facts(id TEXT PRIMARY KEY,kind TEXT NOT NULL,owner TEXT NOT NULL,parent TEXT NOT NULL,target TEXT NOT NULL,relation TEXT NOT NULL,name TEXT NOT NULL,source TEXT NOT NULL,world TEXT NOT NULL,body TEXT NOT NULL);
-            CREATE INDEX IF NOT EXISTS fact_kind ON facts(kind); CREATE INDEX IF NOT EXISTS fact_owner ON facts(owner);
-            CREATE INDEX IF NOT EXISTS fact_parent ON facts(parent); CREATE INDEX IF NOT EXISTS fact_target ON facts(target);
-            CREATE INDEX IF NOT EXISTS fact_name ON facts(name); CREATE INDEX IF NOT EXISTS fact_source ON facts(source,world);")?;
+        db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA cache_size=-65536; PRAGMA temp_store=FILE;")?;
+        schema::initialize(&db)?;
         if let Some(policy) = derivation {
             let worlds: BTreeSet<_> = revision
                 .manifest
@@ -417,6 +420,11 @@ impl Store {
                 .with_context(|| format!("DUPLICATE_OR_INVALID_FACT: {}", f.id))?;
         }
         drop(insert);
+        // Anatomist also separates ingestion from query-index preparation.
+        // Build directed graph indexes after the archive load, before derivation.
+        check()?;
+        schema::prepare_queries(&tx)?;
+        check()?;
         if let Some(policy) = derivation {
             check()?;
             policy.derive(&CandidateFacts {
@@ -439,7 +447,8 @@ impl Store {
         )?;
         tx.commit()?;
         for (column, code) in [("parent", "DANGLING_PARENT"), ("target", "DANGLING_TARGET")] {
-            let missing: Option<String> = db.query_row(&format!("SELECT f.id FROM facts f LEFT JOIN facts t ON f.{column}=t.id WHERE f.{column}<>'' AND t.id IS NULL LIMIT 1"), [], |r| r.get(0)).optional()?;
+            cancellation()?;
+            let missing = dangling_fact(&db, column)?;
             ensure!(missing.is_none(), "{code}: {}", missing.unwrap_or_default());
         }
         let invalid_binding: Option<String> = db.query_row(
@@ -596,10 +605,131 @@ impl Store {
     }
 }
 
+// The DISTINCT subquery is deliberately not flattened: validate each endpoint
+// once using covering indexes, rather than probing the same ID for every facet.
+fn dangling_fact(db: &Connection, column: &str) -> Result<Option<String>> {
+    ensure!(
+        matches!(column, "parent" | "target"),
+        "INVALID_ENDPOINT_COLUMN"
+    );
+    let endpoint: Option<String> = db.query_row(
+        &format!("SELECT endpoint FROM (SELECT DISTINCT {column} AS endpoint FROM facts WHERE {column}<>'' ) refs
+                  WHERE NOT EXISTS(SELECT 1 FROM facts t WHERE t.id=refs.endpoint) LIMIT 1"),
+        [], |row| row.get(0)).optional()?;
+    match endpoint {
+        None => Ok(None),
+        Some(value) => Ok(Some(db.query_row(
+            &format!("SELECT id FROM facts WHERE {column}=? ORDER BY id LIMIT 1"),
+            [value],
+            |row| row.get(0),
+        )?)),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::tests::{result, revision};
+    #[test]
+    fn directed_references_preserve_global_empty_and_missing_parent_reads() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch(
+            "CREATE TABLE facts(id TEXT PRIMARY KEY,kind TEXT,relation TEXT,parent TEXT,body TEXT);
+            CREATE INDEX fact_kind ON facts(kind); CREATE INDEX fact_parent ON facts(parent);",
+        )
+        .unwrap();
+        for (id, parent, relation, kind) in [
+            ("z", "owner", "wanted", FactKind::Reference),
+            ("a", "owner", "wanted", FactKind::Reference),
+            ("m", "other", "wanted", FactKind::Reference),
+            ("b", "", "wanted", FactKind::Reference),
+            ("wrong-relation", "owner", "other", FactKind::Reference),
+            ("wrong-kind", "owner", "wanted", FactKind::Relation),
+        ] {
+            let mut value = fact(id, "target");
+            value.kind = kind;
+            value.parent = parent.into();
+            value.relation = relation.into();
+            db.execute(
+                "INSERT INTO facts VALUES(?1,?2,?3,?4,?5)",
+                params![
+                    id,
+                    value.kind.name(),
+                    relation,
+                    parent,
+                    serde_json::to_string(&value).unwrap()
+                ],
+            )
+            .unwrap();
+        }
+        let manifest = Manifest::default();
+        let visits = std::cell::Cell::new(0usize);
+        let cancel = || {
+            visits.set(visits.get() + 1);
+            Ok(())
+        };
+        let check = || Ok(());
+        let facts = CandidateFacts {
+            db: &db,
+            manifest: &manifest,
+            policy: &ReadWriteDerivation,
+            check: &check,
+            cancellation: &cancel,
+            writes: std::cell::Cell::new(0),
+        };
+        let ids = |parent| {
+            facts
+                .references("wanted", parent)
+                .unwrap()
+                .into_iter()
+                .map(|f| f.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ids(None), vec!["a", "b", "m", "z"]);
+        assert_eq!(ids(Some("owner")), vec!["a", "z"]);
+        assert_eq!(ids(Some("")), vec!["b"]);
+        assert!(ids(Some("missing")).is_empty());
+        assert_eq!(
+            visits.get(),
+            7,
+            "cancellation remains checked for every returned row"
+        );
+    }
+
+    #[test]
+    fn endpoint_checks_preserve_dangling_errors_with_repeated_references() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE facts(id TEXT PRIMARY KEY,parent TEXT,target TEXT);
+            CREATE INDEX fact_parent ON facts(parent); CREATE INDEX fact_target ON facts(target);
+            INSERT INTO facts VALUES('owner','',''),('one','owner','owner'),('two','owner','owner');").unwrap();
+        assert_eq!(dangling_fact(&db, "parent").unwrap(), None);
+        assert_eq!(dangling_fact(&db, "target").unwrap(), None);
+        db.execute(
+            "INSERT INTO facts VALUES('bad-parent','missing','owner')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            dangling_fact(&db, "parent").unwrap().as_deref(),
+            Some("bad-parent")
+        );
+        assert_eq!(dangling_fact(&db, "target").unwrap(), None);
+        db.execute(
+            "INSERT INTO facts VALUES('bad-target','owner','missing')",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            dangling_fact(&db, "target").unwrap().as_deref(),
+            Some("bad-target")
+        );
+        db.execute("INSERT INTO facts VALUES('missing','','')", [])
+            .unwrap();
+        assert_eq!(dangling_fact(&db, "parent").unwrap(), None);
+        assert_eq!(dangling_fact(&db, "target").unwrap(), None);
+        assert!(dangling_fact(&db, "body").is_err());
+    }
+
     fn fact(id: &str, target: &str) -> Fact {
         serde_json::from_value(serde_json::json!({"id":id,"kind":"declaration",
             "owner":{"world":"w","producer":"mock","kind":"aggregate","id":id},

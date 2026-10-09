@@ -1,6 +1,0 @@
-<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion><parent><groupId>dev.codeana</groupId><artifactId>lang-java-adapotr</artifactId><version>0.1.0</version></parent><artifactId>analysis-core</artifactId><dependencies><dependency><groupId>org.ow2.asm</groupId><artifactId>asm</artifactId></dependency></dependencies><build><plugins><plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-antrun-plugin</artifactId><version>3.1.0</version><executions><execution><id>compiler-worker</id><phase>generate-resources</phase><goals><goal>run</goal></goals><configuration><target>
-  <mkdir dir="${project.build.directory}/worker-classes"/>
-  <javac fork="true" executable="${java8.home}/bin/javac" srcdir="${project.basedir}/src/worker/java" destdir="${project.build.directory}/worker-classes" source="8" target="8" encoding="UTF-8" includeantruntime="false"><classpath><pathelement location="${java8.home}/lib/tools.jar"/></classpath><compilerarg value="-Xlint:-options"/></javac>
-  <mkdir dir="${project.build.outputDirectory}/META-INF/anatomist"/>
-  <jar destfile="${project.build.outputDirectory}/META-INF/anatomist/javac-worker.jar" basedir="${project.build.directory}/worker-classes"/>
-  </target></configuration></execution></executions></plugin></plugins></build></project>

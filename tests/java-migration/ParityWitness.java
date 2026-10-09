@@ -14,34 +14,159 @@ import java.util.*;
 public final class ParityWitness {
     static final Map<String,List<String>> domains=new TreeMap<>();
     static final IdentityHashMap<Object,String> typeRows=new IdentityHashMap<>();
+    static final Map<String,List<String>> dumpRows=new TreeMap<>();
+    static boolean dumping;
     static Path sourceRoot;
+    static String observedModule, observedScope;
+    static JavaTypes observedTypes;
+    static int observedSyntaxBase;
+    static void observeUnit(JavaUnit unit) {
+        observedTypes=unit.types();
+        observedSyntaxBase=minimumSyntaxId(unit.tree());
+        if(observedSyntaxBase==Integer.MAX_VALUE)observedSyntaxBase=0;
+    }
+    static int minimumSyntaxId(Object value) {
+        int result=Integer.MAX_VALUE;
+        if(value instanceof JavaNode node)result=Math.min(node.id(),minimumSyntaxId(node.fields()));
+        else if(value instanceof Map<?,?> map)for(Object v:map.values())result=Math.min(result,minimumSyntaxId(v));
+        else if(value instanceof Iterable<?> list)for(Object v:list)result=Math.min(result,minimumSyntaxId(v));
+        return result;
+    }
+    static Object localSyntax(Object value) {
+        if(value instanceof JavaNode node) {
+            var row=new TreeMap<String,Object>();row.put("id",node.id()-observedSyntaxBase);
+            row.put("kind",node.kind());row.put("start",node.start());row.put("end",node.end());row.put("fields",localSyntax(node.fields()));return row;
+        }
+        if(value instanceof Map<?,?> map) {
+            var row=new TreeMap<String,Object>();map.forEach((k,v)->row.put(k.toString(),localSyntax(v)));return row;
+        }
+        if(value instanceof Iterable<?> list) {
+            var rows=new ArrayList<Object>();list.forEach(v->rows.add(localSyntax(v)));return rows;
+        }
+        return detach(value);
+    }
+    static final List<Map<String,Object>> unitEvidence=new ArrayList<>();
+    static final List<Object> diagnosticEvidence=new ArrayList<>();
+    static boolean observe(JavaAnalysisContext context) {
+        typeRows.clear();
+        return observedModule==null || observedModule.equals(context.module()) && observedScope.equals(context.scope().name());
+    }
+    static void unitEvidence(JavaUnit unit) {
+        if(System.getenv("CODEANA_MODEL_ROW_EVIDENCE")==null)return;
+        Map<String,Object> row=new TreeMap<>();
+        row.put("source",detach(unit.path()));
+        for(String domain:CATEGORIES)if(domain.startsWith("raw.") && !domain.equals("raw.diagnostics")) {
+            var values=domains.get(domain);row.put(domain,values.get(values.size()-1));
+        }
+        unitEvidence.add(row);
+        String selected=System.getenv("CODEANA_MODEL_DUMP_SOURCE");
+        if(selected!=null && selected.equals(row.get("source"))) {
+            Path directory=Path.of(System.getenv("CODEANA_MODEL_ROW_EVIDENCE"));
+            try {
+                Files.createDirectories(directory);
+                Files.writeString(directory.resolve("selected-types.json"),Json.writeCompact(canonical("raw.types",unit.types())));
+                Files.writeString(directory.resolve("selected-bindings.json"),Json.writeCompact(canonical("raw.bindings",unit.bindings())));
+            }catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
+        }
+    }
     static final List<String> CATEGORIES=List.of("raw.syntax","raw.bindings","raw.types","raw.declarations","raw.extensions","raw.source_hash","raw.diagnostics","facts.nodes","facts.edges","facts.annotations","facts.annotationMetaRelations","facts.semanticAnnotations","facts.declarations","facts.unresolvedCallSites");
     static void add(String domain,Object value) {
-        String row = value instanceof JavaTypes ? typeRows.computeIfAbsent(value, k -> Json.writeCompact(canonical(domain,k))) : Json.writeCompact(canonical(domain,value));
-        domains.computeIfAbsent(domain,k->new ArrayList<>()).add(row);
+        String hash = value instanceof JavaTypes ? typeRows.get(value) : null;
+        if(hash==null || dumping) {
+            String row=Json.writeCompact(canonical(domain,value));
+            hash=ContentHash.sha256(row);
+            if(value instanceof JavaTypes) typeRows.put(value,hash);
+            if(dumping) dumpRows.computeIfAbsent(domain,k->new ArrayList<>()).add(row);
+        }
+        domains.computeIfAbsent(domain,k->new ArrayList<>()).add(hash);
     }
     // Independent witness normalization operates on known type fields before JSON
-    // encoding. Annotation values, source literals and all graph indices stay exact.
+    // encoding. Syntax IDs are rebased per unit together with binding keys/IDs;
+    // annotation values, source literals and numerical type graph indices stay exact.
     @SuppressWarnings("unchecked")
     static Object canonical(String domain,Object value) {
-        Object detached=detach(value);
-        Map<String,Integer> captures=new LinkedHashMap<>();
+        Object detached=domain.equals("raw.syntax") ? localSyntax(value) : detach(value);
         if(domain.equals("raw.types")) {
-            for(Object entry:(List<?>)((Map<?,?>)detached).get("entries"))
-                canonicalFields((Map<String,Object>)entry,Set.of("name","display"),captures);
+            var types=(JavaTypes)value;
+            var entries=(List<?>)((Map<?,?>)detached).get("entries");
+            for(int i=0;i<entries.size();i++) {
+                var row=(Map<String,Object>)entries.get(i);
+                for(String key:List.of("name","display"))row.put(key,graphSpelling(types,i,(String)row.get(key)));
+            }
         } else if(domain.equals("raw.bindings")) {
-            for(Object entry:((Map<?,?>)detached).values())
-                canonicalFields((Map<String,Object>)entry,Set.of("parameters","returns","type","exceptions"),captures);
+            var local=new TreeMap<String,Object>();
+            for(var entry:((Map<?,?>)detached).entrySet()) {
+                var binding=(Map<String,Object>)entry.getValue();
+                int id=((Number)binding.get("id")).intValue();
+                if(id!=Integer.parseInt(entry.getKey().toString()))throw new IllegalArgumentException("BINDING_SYNTAX_ID_MISMATCH");
+                binding.put("id",id-observedSyntaxBase);local.put(Integer.toString(id-observedSyntaxBase),binding);
+            }
+            detached=local;
+            for(Object entry:local.values()) {
+                var row=(Map<String,Object>)entry;
+                int declared=((Number)row.get("declaredType")).intValue();
+                row.put("type",graphSpelling(observedTypes,((Number)row.get("expressionType")).intValue(),(String)row.get("type")));
+                if(declared>=0) {
+                    var type=observedTypes.get(declared);
+                    row.put("returns",graphSpelling(observedTypes,type.returns(),(String)row.get("returns")));
+                    for(String key:List.of("parameters","exceptions")) {
+                        var values=(List<?>)row.get(key);var refs=key.equals("parameters")?type.parameters():type.exceptions();
+                        var mapped=new ArrayList<String>();
+                        for(int i=0;i<values.size();i++)mapped.add(graphSpelling(observedTypes,i<refs.size()?refs.get(i):-1,(String)values.get(i)));
+                        row.put(key,mapped);
+                    }
+                }
+            }
         }
         return detached;
     }
-    static void canonicalFields(Map<String,Object> row,Set<String> fields,Map<String,Integer> captures) {
-        // Detached records are TreeMaps, so field traversal is deterministic.
-        for(var entry:row.entrySet()) if(fields.contains(entry.getKey())) {
-            Object value=entry.getValue();
-            if(value instanceof String text)entry.setValue(captureSpelling(text,captures));
-            else if(value instanceof List<?> list)entry.setValue(list.stream().map(v->captureSpelling((String)v,captures)).toList());
+    // Independent witness uses the original numerical graph, not product encoding.
+    static String graphSpelling(JavaTypes types,int root,String text) {
+        if(types==null||root<0||!text.contains("capture#"))return text;
+        var references=new ArrayList<Integer>();
+        collectCaptures(types,root,new HashSet<>(),references,new int[]{0});
+        var tokens=java.util.regex.Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|(capture#\\d+)").matcher(text);
+        var result=new StringBuilder();int at=0;
+        while(tokens.find()) {
+            if(tokens.group(1)==null)continue;
+            while(at<references.size()) {
+                int reference=references.get(at++);
+                var printed=java.util.regex.Pattern.compile("\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*'|(capture#\\d+)").matcher(types.get(reference).display());
+                String label=null;while(printed.find())if(printed.group(1)!=null){label=printed.group(1);break;}
+                if(tokens.group(1).equals(label)){tokens.appendReplacement(result,"capture#"+reference);break;}
+            }
         }
+        return tokens.appendTail(result).toString();
+    }
+    static void collectCaptures(JavaTypes types,int root,Set<Integer> active,List<Integer> result,int[] work) {
+        if(root<0)return;
+        if(++work[0]>100000)throw new IllegalArgumentException("WITNESS_TYPE_SPELLING_BUDGET");
+        var type=types.get(root);
+        boolean capture=type.kind()==JavaType.Kind.TYPEVAR&&(type.name().equals("<captured wildcard>")||type.name().startsWith("capture#"));
+        if(capture)result.add(root);
+        if(!active.add(root))return;
+        switch(type.kind()) {
+            case ARRAY -> collectCaptures(types,type.component(),active,result,work);
+            case DECLARED,ERROR -> {
+                collectCaptures(types,type.enclosing(),active,result,work);
+                for(int child:type.arguments())collectCaptures(types,child,active,result,work);
+            }
+            case EXECUTABLE -> {
+                for(int child:type.parameters())collectCaptures(types,child,active,result,work);
+                collectCaptures(types,type.returns(),active,result,work);
+            }
+            case UNION -> {for(int child:type.arguments())collectCaptures(types,child,active,result,work);}
+            case INTERSECTION -> {for(int child:type.upperBounds())collectCaptures(types,child,active,result,work);}
+            case WILDCARD,TYPEVAR -> {
+                if(type.kind()==JavaType.Kind.WILDCARD||capture) {
+                    if(type.lowerBound()>=0&&types.get(type.lowerBound()).kind()!=JavaType.Kind.NULL&&types.get(type.lowerBound()).kind()!=JavaType.Kind.NONE)
+                        collectCaptures(types,type.lowerBound(),active,result,work);
+                    else for(int child:type.upperBounds())collectCaptures(types,child,active,result,work);
+                }
+            }
+            default -> {}
+        }
+        active.remove(root);
     }
     static String captureSpelling(String text,Map<String,Integer> captures) {
         // Tokenize quoted Java spellings as whole tokens, including escaped quotes.
@@ -55,6 +180,13 @@ public final class ParityWitness {
         String actual=captureSpelling("@Tag(\"prefix \\\"capture#123\\\"\") Pair<capture#934,capture#11,capture#934>",captures);
         String expected="@Tag(\"prefix \\\"capture#123\\\"\") Pair<capture#0,capture#1,capture#0>";
         if(!actual.equals(expected)||captures.size()!=2)throw new IllegalStateException("WITNESS_CAPTURE_NORMALIZATION");
+        var types=new JavaTypes(List.of(
+            new JavaType(JavaType.Kind.DECLARED,"Pair","Pair<capture#934,capture#934,capture#934>",-1,List.of(1,2,1),List.of(),-1,-1,List.of(),-1,List.of(),List.of()),
+            new JavaType(JavaType.Kind.TYPEVAR,"<captured wildcard>","capture#934 of ?",-1,List.of(),List.of(),-1,-1,List.of(),-1,List.of(),List.of()),
+            new JavaType(JavaType.Kind.TYPEVAR,"<captured wildcard>","capture#934 of ?",-1,List.of(),List.of(),-1,-1,List.of(),-1,List.of(),List.of())));
+        String graph=graphSpelling(types,0,"@Tag(\"capture#123\") Pair<capture#934,capture#934,capture#934>");
+        if(!graph.equals("@Tag(\"capture#123\") Pair<capture#1,capture#2,capture#1>"))
+            throw new IllegalStateException("WITNESS_CAPTURE_GRAPH_IDENTITY");
     }
     static Object detach(Object value) {
         if(value==null||value instanceof String||value instanceof Number||value instanceof Boolean)return value;
@@ -75,6 +207,7 @@ public final class ParityWitness {
     }
     public static void main(String[] args) throws Exception {
         verifyCaptureNormalization();
+        dumping=args.length>5 && !args[5].equals("-");
         Path root=Path.of(args[0]), home=Path.of(args[1]), cache=Path.of(args[2]); sourceRoot=root;
         List<Path> files; List<ProjectResource> resources; List<Path> publish; List<Path> classpath;
         List<SourceRoot> roots; Map<Path,SourceIdentity> identities=new LinkedHashMap<>();
@@ -88,6 +221,7 @@ public final class ParityWitness {
                 request=capturedContexts.stream().filter(c->!Boolean.TRUE.equals(c.get("prerequisite"))).findFirst().orElseThrow();
             } else capturedContexts.add(request);
             module=(String)request.get("module"); scope=SourceScope.valueOf((String)request.get("scope"));
+            observedModule=module; observedScope=scope.name();
             files=new ArrayList<>(); publish=new ArrayList<>(); roots=new ArrayList<>();
             Map<String,List<Path>> mains=new LinkedHashMap<>(), tests=new LinkedHashMap<>();
             Set<Path> seen=new LinkedHashSet<>();
@@ -160,10 +294,13 @@ public final class ParityWitness {
         for(String domain:CATEGORIES)domains.put(domain,new ArrayList<>());
         ExtractionResult staged=new ExtractionResult();
         backend.analyzeFiles(publish,context->{
+            if(!observe(context))return;
             for(var unit:context.units()) {
+                observeUnit(unit);
                 add("raw.syntax",unit.tree());add("raw.bindings",unit.bindings());add("raw.types",unit.types());add("raw.declarations",unit.declarationInventory());add("raw.extensions",unit.extensions());add("raw.source_hash",unit.sourceHash());
+                unitEvidence(unit);
             }
-            context.diagnostics().forEach(d->add("raw.diagnostics",d));
+            context.diagnostics().forEach(d->{add("raw.diagnostics",d);if(System.getenv("CODEANA_MODEL_ROW_EVIDENCE")!=null)diagnosticEvidence.add(detach(d));});
             try(var binaries=backend.openBinaryRepository(context)) {
                 new JavaModelExtractor(framework,binaries,registry).extract(context,unit->{
                     var facts=unit.facts();staged.addFacts(facts);
@@ -188,6 +325,12 @@ public final class ParityWitness {
         return result;
     }
     static Map<String,Object> finish(Path output) {
+        String evidenceDirectory=System.getenv("CODEANA_MODEL_ROW_EVIDENCE");
+        if(evidenceDirectory!=null)try {
+            Path directory=Path.of(evidenceDirectory);Files.createDirectories(directory);
+            Files.writeString(directory.resolve("model-units.json"),Json.writeCompact(unitEvidence));
+            Files.writeString(directory.resolve("model-diagnostics.json"),Json.writeCompact(diagnosticEvidence));
+        }catch(java.io.IOException failure){throw new java.io.UncheckedIOException(failure);}
         Map<String,Object> evidence=new TreeMap<>();
         for(String domain:CATEGORIES) {
             var rows=domains.getOrDefault(domain,List.of()).stream().sorted().toList();
@@ -197,8 +340,8 @@ public final class ParityWitness {
                     if(i>0) digest.update((byte)'\n');
                     digest.update(rows.get(i).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 }
-                evidence.put(domain,Map.of("rows",rows.size(),"sha256",java.util.HexFormat.of().formatHex(digest.digest())));
-                if(output!=null) {Files.createDirectories(output);Files.writeString(output.resolve(domain+".json"),Json.writeCompact(rows));}
+                evidence.put(domain,Map.of("rows",rows.size(),"sha256",java.util.HexFormat.of().formatHex(digest.digest()),"encoding","sorted-row-sha256-v2-graph-captures"));
+                if(output!=null) {Files.createDirectories(output);Files.writeString(output.resolve(domain+".json"),Json.writeCompact(dumpRows.getOrDefault(domain,List.of()).stream().sorted().toList()));}
             } catch(java.security.NoSuchAlgorithmException|java.io.IOException e) {throw new IllegalStateException(e);}
         }
         return evidence;
