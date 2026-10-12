@@ -58,7 +58,7 @@ def proof(name, source, modeled, extra, minimum, evidence, native):
     config = base / '.anatomist/config.toml'
     config.parent.mkdir()
     config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\njavac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=false\n')
-    jar = alignment.ROOT.parent / 'anatomist/target/anatomist.jar'
+    jar = reference.REFERENCE_JAR
     command = [str(models.JDK25 / 'bin/java'), '-Xmx512m', '-jar', str(jar), 'index', str(base),
         '--source-root', 'app@MAIN=app', '--jdk-home', str(models.JDK8), '--java-version', '8',
         '--lombok', 'ast' if modeled else 'off', '--vm-classpath', 'true',
@@ -88,7 +88,7 @@ def proof(name, source, modeled, extra, minimum, evidence, native):
         parent, target = by[fact['parent']], by[fact['target']]
         span = fact['span'] or {}
         owner = ('lambda', (parent['span'] or {}).get('start')) if parent['attributes']['element_kind']=='LAMBDA' else reference.canonical(parent['signature'])
-        if name in ('anonymous-declaration-types', 'anonymous-hierarchy', 'anonymous-object-hierarchy'):owner=(parent['attributes']['element_kind'],(parent['span'] or {}).get('start'),(parent['span'] or {}).get('end'),parent['signature'].rsplit('#',1)[-1] if parent['attributes']['element_kind'] in ('METHOD','CONSTRUCTOR','FIELD','ENUM_CONSTANT') else '')
+        if name in ('anonymous-declaration-types', 'anonymous-hierarchy', 'anonymous-object-hierarchy'):owner=('CLASS' if parent['attributes']['element_kind']=='ANONYMOUS_CLASS' else parent['attributes']['element_kind'],(parent['span'] or {}).get('start'),(parent['span'] or {}).get('end'),parent['signature'].rsplit('#',1)[-1] if parent['attributes']['element_kind'] in ('METHOD','CONSTRUCTOR','FIELD','ENUM_CONSTANT') else '')
         left[(fact['source'], owner, reference.canonical(target['signature']), fact['relation'],
               span.get('start'), span.get('end'), fact['attributes'].get('type_context'), fact['status'])] += 1
     with sqlite3.connect((base/'index.db').as_uri()+'?mode=ro', uri=True) as db:
@@ -124,7 +124,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--native', action='store_true')
     args = parser.parse_args()
-    jar = alignment.ROOT.parent/'anatomist/target/anatomist.jar'
+    jar = reference.REFERENCE_JAR
     if reference.digest(jar) != reference.REFERENCE_SHA:
         raise RuntimeError('FROZEN_REFERENCE_JAR_CHANGED')
     evidence = alignment.ROOT/'target/java-alignment/evidence'/('type-reference-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))

@@ -38,11 +38,22 @@ def product_projection(facts, include_file=False):
     for f in facts:
         if f['relation'] != 'wires_possible' or f['attributes'].get('via') != 'xml_configuration':
             continue
-        site = by[f['attributes']['configuration_evidence']]
-        if site['kind'] != 'reference' or site['relation'] != 'config':
-            raise ValueError('XML_WIRING_CONFIGURATION_EVIDENCE_MISSING')
-        if not (f['source'] == site['source'] and f['span'] == site['span']):
-            raise ValueError('XML_WIRING_POSITION_DRIFT')
+        attributes=f['attributes']
+        if attributes.get('upstream_relation') == 'WIRES':
+            # The copied XML extractor publishes its own exact graph edge. Its
+            # line-only position must not be replaced by a guessed reference span.
+            if attributes.get('upstream_producer') != 'spring-xml':
+                raise ValueError('XML_WIRING_PROVIDER_DRIFT')
+            if attributes.get('position') != attributes.get('upstream_position'):
+                raise ValueError('XML_WIRING_POSITION_DRIFT')
+            if not any(row['kind']=='coverage' and row['source']==f['source'] for row in facts):
+                raise ValueError('XML_WIRING_CAPTURE_MISSING')
+        else:
+            site = by[attributes['configuration_evidence']]
+            if site['kind'] != 'reference' or site['relation'] != 'config':
+                raise ValueError('XML_WIRING_CONFIGURATION_EVIDENCE_MISSING')
+            if not (f['source'] == site['source'] and f['span'] == site['span']):
+                raise ValueError('XML_WIRING_POSITION_DRIFT')
         if f['status'] != 'possible' or f['evidence_complete'] or f['declaration_resolved']:
             raise ValueError('XML_WIRING_RUNTIME_SELECTION_FABRICATED')
         target = by[f['target']]

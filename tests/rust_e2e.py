@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Isolated CLI -> gRPC -> mock process -> SQLite acceptance scenarios."""
 import json
+import hashlib
 import contextlib
 import os
 import pathlib
@@ -18,6 +19,74 @@ EXPECTED = json.loads((FIX / 'expected.json').read_text())
 
 
 class Product(unittest.TestCase):
+    def test_historical_text_search_is_independent_of_active_workspace(self):
+        revision = self.cli('index')[1]['revision']
+        snapshot_revision = self.cli('snapshot', 'before', '--name', 'analysis')[1]['revision']
+        args = ['search-text', 'hello', '--path', 'src/App.java']
+        frozen, terminal = self.cli(*args, '--revision', revision)
+        self.assertTrue(frozen)
+        self.assertEqual(terminal['revision'], revision)
+        config = self.project / '.code-ana/config.toml'
+        original_config = config.read_bytes()
+        config.write_text('[invalid TOML\n')
+        (self.project / 'src/App.java').write_text('active workspace changed\n')
+        for selector, expected_revision in ((revision, revision), ('snapshot:before', snapshot_revision)):
+            rows, terminal = self.cli(*args, '--revision', selector)
+            self.assertEqual(rows, frozen)
+            self.assertEqual(terminal['revision'], expected_revision)
+        self.cli(*args, code=1)
+        config.write_bytes(original_config)
+        rows, _ = self.cli('search-text', 'active workspace changed', '--path', 'src/App.java')
+        self.assertEqual([row['text'] for row in rows], ['active workspace changed'])
+
+    def test_regex_case_path_context_and_frozen_pages(self):
+        source = self.project / 'src/Case.java'
+        original = 'before\r\nHello 中文😀\r\nafter\r\nHELLO second\r\nend\r\n'.encode()
+        source.write_bytes(original)
+        other = self.project / 'other/Case.java'
+        other.parent.mkdir()
+        other.write_text('Hello outside the selected path\n')
+        argv = ['search-text', r'hello\b', '--regex', '--ignore-case', '--context', '1',
+                '--path', 'src/Case.java', '--max-records', '1']
+        records, terminal = self.cli(*argv)
+        self.assertEqual(len(records), 1)
+        self.assertTrue(terminal['cursor'])
+        source.write_text('active bytes changed after the first page\n')
+        while terminal['cursor']:
+            page, terminal = self.cli(*argv, '--cursor', terminal['cursor'])
+            records.extend(page)
+        self.assertEqual([r['line'] for r in records], [2, 4])
+        self.assertEqual([r['text'] for r in records], ['Hello 中文😀', 'HELLO second'])
+        self.assertEqual({r['path'] for r in records}, {'src/Case.java'})
+        self.assertEqual({r['hash'] for r in records}, {hashlib.sha256(original).hexdigest()})
+        self.assertEqual(records[0]['context_before'], [{'line': 1, 'text': 'before'}])
+        self.assertEqual(records[0]['context_after'], [{'line': 3, 'text': 'after'}])
+        self.assertEqual(records[1]['context_before'], [{'line': 3, 'text': 'after'}])
+        self.assertEqual(records[1]['context_after'], [{'line': 5, 'text': 'end'}])
+        source.write_bytes(original)
+        literal, _ = self.cli('search-text', 'hello', '--path', 'src/Case.java')
+        self.assertEqual(literal, [])
+        folded, _ = self.cli('search-text', 'hello', '--ignore-case', '--path', 'src/Case.java')
+        self.assertEqual([r['line'] for r in folded], [2, 4])
+        _, invalid = self.cli('search-text', '[', '--regex', code=1)
+        self.assertIn('TEXT_REGEX_INVALID', invalid['message'])
+        _, rejected = self.cli('search-text', 'hello', '--context', '101', code=1)
+        self.assertIn('TEXT_CONTEXT_BUDGET', rejected['message'])
+
+
+    def test_overview_sections_match_independent_sql(self):
+        _, indexed = self.cli('index')
+        revision = indexed['revision']
+        with sqlite3.connect(self.home / 'revisions' / revision / 'facts.db') as db:
+            packages = dict(db.execute("SELECT package,COUNT(*) FROM declaration_projection p JOIN facts f USING(id) WHERE f.kind='declaration' GROUP BY package"))
+            modules = dict(db.execute("SELECT s.module,COUNT(*) FROM facts f JOIN source_units s ON s.path=f.source AND s.world=f.world WHERE s.auxiliary=0 GROUP BY s.module"))
+        rows, _ = self.cli('overview', '--section', 'packages', '--revision', revision)
+        self.assertEqual({r['package']: r['count'] for r in rows}, packages)
+        rows, _ = self.cli('overview', '--section', 'modules', '--revision', revision)
+        self.assertEqual({r['module']: r['count'] for r in rows}, modules)
+        _, rejected = self.cli('resolve', 'A', '--section', 'packages', code=1)
+        self.assertIn('OVERVIEW_SECTION_OPERATION', rejected['message'])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='codeana-e2e-')
         self.root = pathlib.Path(self.temp.name)
@@ -151,8 +220,10 @@ class Product(unittest.TestCase):
                                   ('type-relations', 'service'),
                                   ('callable-relations', 'service_method'),
                                   ('runtime-implementations', 'greeting'),
-                                  ('trace', 'main'), ('search-text', 'hello')]:
+                                  ('search-text', 'hello')]:
             self.assertTrue(self.cli(command, selector)[0], command)
+        path, _ = self.cli('trace', 'main', '--target', 'greet')
+        self.assertEqual(path[0]['nodes'], ['main', 'greet'])
         self.cli('source', 'generated', code=1)
         self.assertFalse(self.cli('overview', '--scope', 'TEST')[1]['evidence']['semantic'])
         all_rows = self.cli('search-code')[0]

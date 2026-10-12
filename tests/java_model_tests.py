@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from java_type_views import type_attributes
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 JDK8=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME',pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu')).resolve()
-JDK25=pathlib.Path(os.environ.get('JAVA_HOME',pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'))
+JDK25=pathlib.Path(os.environ.get('JAVA_HOME',pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graal'))
 sha=lambda b:hashlib.sha256(b).hexdigest()
 key=lambda n,*p:n+'_'+sha(json.dumps(p,ensure_ascii=False,separators=(',',':')).encode())
 def type_node(attributes,value):
@@ -77,19 +77,9 @@ class Models(unittest.TestCase):
   digest=sha(json.dumps([(s['path'],s['hash']) for s in sources],sort_keys=True).encode())
   return dict(version=9,context=name+'@MAIN',module=name,world=world,scope='MAIN',sources=sources,classpath=[],digest=digest,lombok='off',spring=False,spring_xml=False,sofa=False,resources=[])|options
  def analyze(self,contexts,baseline=None,parallelism=1,cache=False,compact=False):
-  request=dict(version=6,facts=True,full=baseline is None,baseline=baseline or [],java_home=str(JDK8),bridge=os.environ.get('CODEANA_TEST_BRIDGE',str(ROOT/'lang-adaptor/target/compiler-bridge.jar')),scratch=str(self.root),contexts=contexts,parallelism=parallelism)
-  if cache:request.update(signature_cache=True,cache_root=str(self.root/'signature-cache'),profile='fixture-profile')
-  if compact:request=compact_request(request)
-  if hasattr(self,'mutate_request'):self.mutate_request(request)
-  path=self.root/'request.json';path.write_text(json.dumps(request,sort_keys=True))
-  dependencies=(ROOT/'lang-adaptor/target/native-classpath.txt').read_text().strip()
-  classpath=os.pathsep.join([str(ROOT/'lang-adaptor/target'/d) for d in ['classes','test-classes']]+[dependencies])
-  if os.environ.get('CODEANA_TEST_CLASSES'):classpath=os.environ['CODEANA_TEST_CLASSES']+os.pathsep+classpath
-  process=subprocess.run([str(JDK25/'bin/java'),'-cp',classpath,getattr(self,'probe','dev.codeana.analysis.AnalysisProbe'),str(path)],capture_output=True,text=True,timeout=140)
-  self.assertEqual(process.returncode,0,process.stderr)
-  result=json.loads(process.stdout);self.assertFalse(list(self.root.glob('compiler-*')))
-  self.assertFalse(list(self.root.rglob('*.class')))
-  return result
+  from java_adapter_runtime import analyze
+  return analyze(self,contexts,baseline,parallelism,cache,compact)
+
  def merged(self,baseline,result):
   owners={json.dumps(o,sort_keys=True) for o in result['replacements']}
   result=[f for f in baseline if json.dumps(f['owner'],sort_keys=True) not in owners]+result['facts']

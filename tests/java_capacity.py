@@ -32,12 +32,12 @@ def artifacts():
 
 
 def processes():
-    rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,rss=,comm='], text=True, timeout=2)
+    rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,rss=,comm=,args='], text=True, timeout=2)
     result = []
     for line in rows.splitlines():
-        fields = line.split(None, 3)
-        if len(fields) == 4:
-            result.append((int(fields[0]), int(fields[1]), int(fields[2]) * 1024, fields[3]))
+        fields = line.split(None, 4)
+        if len(fields) == 5:
+            result.append((int(fields[0]), int(fields[1]), int(fields[2]) * 1024, fields[3], fields[4]))
     return result
 
 
@@ -45,7 +45,7 @@ class Rss:
     def __init__(self, daemon):
         self.daemon = daemon
         self.done = threading.Event()
-        self.peak = self.daemon_peak = self.samples = self.max_workers = self.max_javac = 0
+        self.peak = self.daemon_peak = self.samples = self.max_workers = self.max_javac = self.max_hosts = 0
         self.gap = 0
         self.failure = None
         self.sampling_errors = []
@@ -79,14 +79,18 @@ class Rss:
                 owned = {self.daemon}
                 while True:
                     old = len(owned)
-                    owned.update(pid for pid, parent, rss, comm in table if parent in owned)
+                    owned.update(row[0] for row in table if row[1] in owned)
                     if len(owned) == old:
                         break
                 tree = [row for row in table if row[0] in owned]
                 self.peak = max(self.peak, sum(row[2] for row in tree))
-                self.daemon_peak = max(self.daemon_peak, next((rss for pid, parent, rss, comm in tree if pid == self.daemon), 0))
+                self.daemon_peak = max(self.daemon_peak, next((row[2] for row in tree if row[0] == self.daemon), 0))
                 self.max_workers = max(self.max_workers, sum('codeana-java-worker' in row[3] for row in tree))
-                self.max_javac = max(self.max_javac, sum(row[3].endswith('/java') for row in tree))
+                self.max_javac = max(self.max_javac, sum(
+                    'com.anatomist.worker.JavacWorker' in row[4] if len(row) > 4
+                    else row[3].endswith('/java') for row in tree))
+                self.max_hosts = max(self.max_hosts, sum(
+                    len(row) > 4 and '-jar' in row[4] and 'runner.jar' in row[4] for row in tree))
                 self.samples += 1
                 tick = max(tick + .1, time.monotonic())
                 self.done.wait(max(0, tick - time.monotonic()))
@@ -113,7 +117,7 @@ class Rss:
     def summary(self):
         """Observation only; never certifies capacity or rejects semantic results."""
         return dict(process_tree_peak_bytes=self.peak, daemon_peak_bytes=self.daemon_peak,
-                    max_workers=self.max_workers, max_javac=self.max_javac,
+                    max_workers=self.max_workers, max_javac=self.max_javac, max_jvm_hosts=self.max_hosts,
                     samples=self.samples, scheduled_interval_ms=100, largest_sample_gap_ms=round(self.gap * 1000, 3),
                     sampling_complete=bool(self.samples and not self.failure and not self.sampling_error_count
                                            and not self.thread.is_alive()),

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Crash recovery and publication accounting must preserve the user's fixture config."""
 import json
+import hashlib
 import os
 import pathlib
 import signal
@@ -13,7 +14,7 @@ from java_capacity import Rss
 
 from java_real_acceptance import (ConfigLease, atomic_bytes, atomic_json, process_identity,
                                   still_alive, publication_accepted, project_config, CompilerDiagnostics,
-                                  observed_signals, PhaseCapture)
+                                  observed_signals, PhaseCapture, verify_frozen)
 
 
 class PhaseCaptureTests(unittest.TestCase):
@@ -63,6 +64,18 @@ class PhaseCaptureTests(unittest.TestCase):
 
 
 class RssSampling(unittest.TestCase):
+    def test_jvm_host_and_target_compiler_have_distinct_roles_but_shared_rss(self):
+        usage = self.run_sampler(iter([[(123, 1, 1024, 'daemon', 'daemon'),
+            (124, 123, 2048, 'codeana-java-worker', 'codeana-java-worker'),
+            (125, 124, 4096, '/jdk25/bin/java', '/jdk25/bin/java -jar /bundle/runner.jar'),
+            (126, 125, 8192, '/jdk8/bin/java', '/jdk8/bin/java com.anatomist.worker.JavacWorker 1')]]))
+        self.assertEqual(usage.receipt()['max_javac'], 1)
+        self.assertEqual(usage.max_hosts, 1)
+        self.assertEqual(usage.peak, 15360)
+        usage.max_javac = 2
+        with self.assertRaisesRegex(AssertionError, 'profile exceeded'):
+            usage.receipt()
+
     def run_sampler(self, replies):
         usage = Rss(123)
         def read():
@@ -114,6 +127,43 @@ class RssSampling(unittest.TestCase):
 
 
 class AcceptanceRecovery(unittest.TestCase):
+    def test_new_freeze_receipt_must_match_both_git_blobs_and_the_exact_file_set(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            project = root / 'target/frozen'
+            project.mkdir(parents=True)
+            (root / 'tests').mkdir()
+            commit = 'frozen-commit'
+            (root / 'tests/java_alignment_matrix.json').write_text(json.dumps(dict(
+                real_project=dict(commit=commit, path='/original/source'))))
+            body = b'class A {}\n'
+            source = project / 'A.java'
+            source.write_bytes(body)
+            git_sha = hashlib.sha1(b'blob ' + str(len(body)).encode() + b'\0' + body).hexdigest()
+            tree = b'100644 blob ' + git_sha.encode() + b'\tA.java\0'
+            receipt = root / 'freeze.json'
+            def write(files):
+                receipt.write_text(json.dumps(dict(commit=commit, files=files)))
+            correct = {'A.java': hashlib.sha256(body).hexdigest()}
+            with mock.patch('java_real_acceptance.ROOT', root), mock.patch(
+                    'java_real_acceptance.subprocess.check_output', return_value=tree):
+                write(correct)
+                self.assertEqual(verify_frozen(project, receipt)['committed_java_files'], 1)
+                for extra in (dict(include_uncommitted=True), dict(source='/another/source')):
+                    receipt.write_text(json.dumps(dict(commit=commit, files=correct) | extra))
+                    with self.assertRaisesRegex(ValueError, 'UNEXPECTED_FROZEN_PROJECT'):
+                        verify_frozen(project, receipt)
+                write({'A.java': '0' * 64})
+                with self.assertRaisesRegex(ValueError, 'FROZEN_RECEIPT_MISMATCH'):
+                    verify_frozen(project, receipt)
+                write(correct | {'extra.java': '0' * 64})
+                with self.assertRaisesRegex(ValueError, 'FROZEN_RECEIPT_FILE_SET'):
+                    verify_frozen(project, receipt)
+                write(correct)
+                source.write_bytes(b'class Changed {}')
+                with self.assertRaisesRegex(ValueError, 'COMMITTED_INPUT_CHANGED'):
+                    verify_frozen(project, receipt)
+
     def test_worker_signal_is_recorded_even_when_cli_and_daemon_exit_normally(self):
         report = dict(cli_exit_code_observed=1, daemon_exit_code_before_cleanup=None,
             daemon_cleanup_exit_code=-15, terminal=dict(code='WORKER_PROTOCOL',
@@ -235,7 +285,7 @@ class AcceptanceRecovery(unittest.TestCase):
         for heap in (0, 7 * 1024 * 1024, 1024 * 1024 * 1024 + 1, 536870913):
             with self.subTest(heap=heap), self.assertRaisesRegex(ValueError, 'JAVA_NATIVE_HEAP_RANGE'):
                 project_config(['MAIN'], False, 'inputs.json', heap)
-        for worker in (1610612736, 2147483649):
+        for worker in (1610612736, 4294967297):
             with self.subTest(worker=worker), self.assertRaisesRegex(ValueError, 'JAVA_PARALLELISM_MEMORY_BUDGET'):
                 project_config(['MAIN'], False, 'inputs.json', 1073741824, worker)
 

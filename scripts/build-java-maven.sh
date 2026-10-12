@@ -16,6 +16,6 @@ PY
 output="$repo_root/lang-java-adapotr/target/maven-worker"
 mkdir -p "$output/classes"
 "$JAVA_HOME/bin/javac" --release 8 -cp "$maven_root/lib/*" -d "$output/classes" \
-  "$repo_root/lang-java-adapotr/native-bridge/src/maven-worker/java/dev/codeana/maven/MavenInputsWorker.java"
-cp -R "$repo_root/lang-java-adapotr/native-bridge/src/maven-worker/resources/." "$output/classes/"
+  "$repo_root/lang-java-adapotr/java-bridge/src/maven-worker/java/dev/codeana/maven/MavenInputsWorker.java"
+cp -R "$repo_root/lang-java-adapotr/java-bridge/src/maven-worker/resources/." "$output/classes/"
 "$JAVA_HOME/bin/jar" --create --file "$repo_root/lang-java-adapotr/target/maven-input-worker.jar" -C "$output/classes" .

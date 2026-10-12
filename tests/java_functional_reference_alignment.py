@@ -16,7 +16,9 @@ import java_lombok_alignment as lombok
 import java_lombok_builder_alignment as builders
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-REFERENCE_SHA = '457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e'
+from java_fresh_reference import reference as verified_reference
+REFERENCE_JAR, REFERENCE_PROOF = verified_reference()
+REFERENCE_SHA = REFERENCE_PROOF['jar_sha256']
 REFERENCE_COMMIT = 'dff2e3954096853352ec91fcbfc6b995fbd4f390'
 CONTROL = 'config.stopBubbling=true\nlombok.addLombokGeneratedAnnotation=false\n'
 from java_collector_alignment import SOURCE as COLLECTOR_SOURCE, TARGET_SOURCE as COLLECTOR_TARGET_SOURCE, IDENTITY_SOURCE, CONCURRENT_IDENTITY_SOURCE, LAMBDA_MAP_SOURCE, ENTRY_CHAIN_SOURCE, STABLE_LAMBDA_CONSTRUCTOR_SOURCE, UNRELATED_GETTER_CHAIN_SOURCE, CAST_REFERENCE_CHAIN_SOURCE, MAP_CAST_CHAIN_SOURCE, INSTANCEOF_CAST_CHAIN_SOURCE, ARITHMETIC_CONCAT_SOURCE, ARITHMETIC_MISSING_SOURCE, NULL_BRANCH_SOURCE, JOINING_SOURCE
@@ -82,6 +84,19 @@ def digest(path):
 
 
 def probe_artifacts(native):
+    if not native:
+        bundle = pathlib.Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE', ROOT / 'lang-java-adapotr/target/jvm'))
+        manifest = json.loads((bundle / 'manifest.json').read_text())
+        if manifest.get('backend') != 'jvm':
+            raise ValueError('JVM_REFERENCE_BUNDLE_REQUIRED')
+        files = [bundle / name for name in [*manifest['files'], 'manifest.json']]
+        for name, expected in manifest['files'].items():
+            path = bundle / name
+            if not path.resolve().is_relative_to(bundle.resolve()) or digest(path) != expected:
+                raise ValueError('JVM_REFERENCE_BUNDLE_CHANGED: ' + name)
+        binaries = pathlib.Path(os.environ.get('CODEANA_TEST_BIN', ROOT / 'target/debug'))
+        files.append(binaries / 'codeana-java-worker')
+        return {str(path.resolve()): digest(path) for path in files}
     bridge = pathlib.Path(os.environ.get('CODEANA_TEST_BRIDGE', ROOT / 'lang-adaptor/target/compiler-bridge.jar'))
     files = [bridge]
     if native:
@@ -99,32 +114,8 @@ def probe_artifacts(native):
 
 
 def native_analyze(self, contexts, baseline=None, parallelism=1, cache=False, compact=False):
-    model_probe = getattr(self, 'probe', '') == 'dev.codeana.analysis.DependencyViewProbe'
-    request = dict(version=6, facts=not model_probe, full=baseline is None, baseline=baseline or [], java_home=str(models.JDK8),
-                   bridge=os.environ.get('CODEANA_TEST_BRIDGE', str(ROOT / 'lang-adaptor/target/compiler-bridge.jar')),
-                   scratch=str(self.root), contexts=contexts, parallelism=parallelism)
-    if cache:
-        request.update(signature_cache=True, cache_root=str(self.root/'signature-cache'), profile='fixture-profile')
-    if compact:
-        request = models.compact_request(request)
-    if hasattr(self, 'mutate_request'):
-        self.mutate_request(request)
-    path = self.root / 'native-request.json'
-    path.write_text(json.dumps(request))
-    result = subprocess.run([str(ROOT / 'target/release/codeana-java-worker'),
-        str(ROOT / 'lang-adaptor/target/native/libcodeana_java.dylib'), '--probe', str(path)],
-        capture_output=True, text=True, timeout=140)
-    self.assertEqual(result.returncode, 0, result.stderr)
-    self.assertFalse(list(self.root.rglob('*.class')))
-    self.assertFalse(list(self.root.glob('compiler-*')))
-    output = json.loads(result.stdout)
-    if model_probe:
-        self.assertIsNone(baseline)
-        self.assertEqual(len(output['models']), 1)
-        model = output['models'][0]
-        return dict(syntax=len(model['syntax']), observations=len(model['observations']),
-                    bytes=len(result.stdout.encode('utf8')), byte_representation='native_model_json')
-    return output
+    from java_adapter_runtime import analyze
+    return analyze(self, contexts, baseline, parallelism, cache, compact)
 
 
 def canonical(value, kind=''):
@@ -175,7 +166,7 @@ def proof(name, source, evidence, native):
     config = base / '.anatomist/config.toml'
     config.parent.mkdir()
     config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\njavac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=false\n')
-    jar = ROOT.parent / 'anatomist/target/anatomist.jar'
+    jar = REFERENCE_JAR
     command = [str(models.JDK25 / 'bin/java'), '-Xmx512m', '-jar', str(jar), 'index', str(base),
                '--source-root', 'app@MAIN=app', '--jdk-home', str(models.JDK8), '--java-version', '8',
                '--lombok', 'ast' if modeled else 'off', '--vm-classpath', 'true', '--output', str(base / 'index.db'),
@@ -290,7 +281,7 @@ def main():
     evidence = (args.evidence or ROOT / 'target/java-alignment/evidence' /
                 ('functional-reference-' + time.strftime('%Y%m%d-%H%M%S') + '-' + str(os.getpid()))).resolve()
     evidence.mkdir(parents=True, exist_ok=False)
-    if digest(ROOT.parent / 'anatomist/target/anatomist.jar') != REFERENCE_SHA:
+    if digest(REFERENCE_JAR) != REFERENCE_SHA:
         raise ValueError('FROZEN_REFERENCE_JAR_CHANGED')
     frozen = probe_artifacts(args.native)
     proofs = [proof(name, source, evidence, args.native) for name, source in SOURCES.items()]

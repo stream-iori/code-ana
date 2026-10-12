@@ -256,6 +256,10 @@ public final class ParityWitness {
         var config=new ProjectConfig();config.setJavaVersion(8);config.setLombokMode(args[3]);
         var options=new JavacOptions(home,true,true,false,false,cache,1,512);
         var backend=new JavacBackend(root,JavacToolchain.resolve(options,8,null),classpath,roots,options);
+        if(args[4].equals("captured")) {
+            long decodeBytes=Long.parseLong(System.getProperty("codeana.javac.decode.bytes","536870912"));
+            backend.getClass().getMethod("setDecodeBudgetBytes",long.class).invoke(backend,decodeBytes);
+        }
         var framework=new JavaFrameworkContext(root,files,config,!resources.isEmpty());
         var registry=FrameworkPlugins.builtIns().prepareDetached(framework);
         backend.setDeclarationOverlay(registry.overlays());

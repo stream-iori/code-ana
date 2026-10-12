@@ -1,4 +1,5 @@
 /target/
+/rust-build-profile.json
 /lang-adaptor/target/
 .DS_Store
 /.code-ana/

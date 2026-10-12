@@ -37,7 +37,7 @@ def proof(name, annotation, imported, evidence, native):
     config = base / '.anatomist/config.toml'
     config.parent.mkdir()
     config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\njavac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=false\n')
-    jar = alignment.ROOT.parent / 'anatomist/target/anatomist.jar'
+    jar = reference.REFERENCE_JAR
     command = [str(models.JDK25 / 'bin/java'), '-Xmx512m', '-jar', str(jar), 'index', str(base),
                '--source-root', 'app@MAIN=' + ('reflect' if name == 'reflection-control' else 'app'), '--jdk-home', str(models.JDK8), '--java-version', '8',
                '--lombok', 'ast', '--vm-classpath', 'true', '--no-classpath', '--full',
@@ -105,7 +105,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--native', action='store_true')
     args = parser.parse_args()
-    jar = alignment.ROOT.parent/'anatomist/target/anatomist.jar'
+    jar = reference.REFERENCE_JAR
     if reference.digest(jar) != reference.REFERENCE_SHA:
         raise ValueError('REFERENCE_ARTIFACT_CHANGED')
     evidence = alignment.ROOT/'target/java-alignment/evidence'/('written-annotation-reference-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))

@@ -7,11 +7,206 @@ ROOT=pathlib.Path(__file__).resolve().parents[1]
 BIN=pathlib.Path(os.environ.get('CODEANA_TEST_BIN', ROOT/'target/debug'))
 JDK=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME', pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu')).resolve()
 class JavaProduct(unittest.TestCase):
+    def test_xml_cross_file_identity_occurrence_counts_and_unresolved_control_context(self):
+        source = self.project/'src/p/XmlHolder.java'
+        source.write_text('package p;\nclass XmlHolder {\n'
+            'void missing(boolean on){if(on){missing.Factory.call();}}\n'
+            'public void setNested(XmlHolder value){}\n}\n')
+        config = self.project/'.code-ana/config.toml'
+        config.write_text(config.read_text().replace(
+            '[languages.java.extensions.spring]\nenabled = false',
+            '[languages.java.extensions.spring]\nenabled = true\nxml = true'))
+        definitions = self.project/'definitions.xml'
+        definitions.write_text('<beans><bean id="target" class="p.XmlHolder"/></beans>')
+        xml = self.project/'repeated.xml'
+        body = '<beans>\n<bean id="holder" class="p.XmlHolder"><property name="nested" ref="target"/></bean>\n' \
+            '<bean id="holder" class="p.XmlHolder"><property name="nested" ref="target"/></bean>\n</beans>'
+        xml.write_text(body)
+        _, first = self.cli('index','--full',timeout=180)
+        facts = self.facts(first['revision']); by_id = {f['id']:f for f in facts}
+        unresolved = [f for f in facts if f['kind']=='call_site' and f['source']=='src/p/XmlHolder.java'
+            and f['name']=='missing.Factory.call']
+        self.assertEqual(len(unresolved),1)
+        self.assertEqual(unresolved[0]['attributes']['control_context'],'if-then@L3')
+        sites = [f for f in facts if f['source']=='repeated.xml' and f['relation']=='java.spring.xml'
+            and f['attributes'].get('kind')=='bean_ref']
+        self.assertEqual(len(sites),2)
+        for site in sites:
+            self.assertEqual(site['attributes']['candidate_count'],1)
+            links = [f for f in facts if f['relation']=='config' and f['parent']==site['id']]
+            self.assertEqual(len(links),1)
+            self.assertEqual(by_id[links[0]['target']]['source'],'definitions.xml')
+        wires = [f for f in facts if f['relation']=='wires_possible'
+            and f['source']=='repeated.xml' and f['attributes'].get('via')=='xml_configuration']
+        self.assertEqual(len(wires),2)
+        self.assertTrue(all(not f['evidence_complete'] for f in wires))
+        xml.write_text(body.replace('ref="target"','ref="missing"',1))
+        _, delta = self.cli('index',timeout=180); changed = self.facts(delta['revision'])
+        _, full = self.cli('index','--full',timeout=180)
+        self.assertEqual(changed,self.facts(full['revision']))
+        self.assertEqual(facts,self.facts(first['revision']))
+
+    def test_dispatch_cha_defaults_reabstracted_methods_exact_and_analysis_world(self):
+        source = self.project/'src/p/DispatchTypes.java'
+        source.write_text('''package p;
+interface DispatchRoot { default String value(){return "root";} }
+interface DispatchLeft extends DispatchRoot { default String value(){return "left";} }
+interface DispatchRight extends DispatchRoot {}
+class DispatchInherited implements DispatchLeft, DispatchRight {}
+class DispatchOverride extends DispatchInherited { public String value(){return "override";} }
+abstract class DispatchAbstract extends DispatchInherited { public abstract String value(); }
+class DispatchEnd extends DispatchAbstract { public String value(){return "end";} }
+class DispatchUse { String read(DispatchRoot receiver){return receiver.value();} }
+''')
+        _, first = self.cli('index','--full',timeout=180)
+        revision = first['revision']
+        facts = self.facts(revision); by_id = {f['id']:f for f in facts}
+        site = next(f for f in facts if f['kind']=='call_site' and f['name']=='receiver.value')
+        def signatures(rows): return {by_id[row['target']]['signature'] for row in rows if row.get('target')}
+        rows, terminal = self.cli('dispatch',site['id'],'--depth','8','--revision',revision)
+        wanted = {'p.DispatchRoot#value()','p.DispatchLeft#value()',
+            'p.DispatchOverride#value()','p.DispatchEnd#value()'}
+        self.assertEqual(signatures(rows),wanted)
+        self.assertTrue(all(row['candidate']=='possible' and row['executable'] for row in rows
+            if by_id[row['target']]['signature']!='p.DispatchRoot#value()'))
+        for row in rows:
+            for identity in row.get('type_proof',[]):
+                self.assertIn(by_id[identity]['relation'],('extends','implements'))
+        self.assertFalse(terminal['evidence']['semantic'])
+        exact, _ = self.cli('dispatch',site['id'],'--algorithm','exact','--revision',revision)
+        self.assertEqual(signatures(exact),{'p.DispatchRoot#value()'})
+        self.assertTrue(all(row['algorithm']=='exact' and not row['possible'] for row in exact))
+        cha, _ = self.cli('dispatch',site['id'],'--algorithm','cha','--depth','8',
+            '--analysis-world','workspace-closed','--revision',revision)
+        self.assertEqual(signatures(cha),wanted)
+        self.assertTrue(all(row['analysis_world']=='workspace-closed' for row in cha))
+        _, closed = self.cli('runtime-implementations','p.DispatchRoot','--depth','8',
+            '--analysis-world','workspace-closed','--revision',revision)
+        self.assertNotIn('static_candidates_open_world',closed['evidence']['reasons'])
+        specification = self.root/'dispatch-pipeline.json'
+        specification.write_text(json.dumps([{'operation':'resolve','selector':'p.DispatchUse#read(p.DispatchRoot)'},
+            {'operation':'call-sites'}, {'operation':'dispatch','algorithm':'exact'}]))
+        piped, _ = self.cli('pipeline',str(specification),'--revision',revision)
+        self.assertEqual(signatures(piped),{'p.DispatchRoot#value()'})
+        self.cli('resolve','p.DispatchRoot','--algorithm','exact',code=1)
+        self.cli('type-relations','p.DispatchRoot','--analysis-world','workspace-open',code=1)
+        source.write_text(source.read_text().replace('"left"','"changed"'))
+        _, delta = self.cli('index',timeout=180)
+        changed = self.facts(delta['revision'])
+        _, full = self.cli('index','--full',timeout=180)
+        self.assertEqual(changed,self.facts(full['revision']))
+        old, _ = self.cli('dispatch',site['id'],'--depth','8','--revision',revision)
+        self.assertEqual(old,rows)
+
+    def test_runtime_implementations_transitive_hierarchy_pipeline_and_history(self):
+        source = self.project/'src/p/Hierarchy.java'
+        source.write_text('''package p;
+interface RuntimeApi { void run(); }
+abstract class RuntimeBase implements RuntimeApi { public abstract void run(); }
+class RuntimeConcrete extends RuntimeBase { public void run(){} }
+final class RuntimeFinal extends RuntimeConcrete { public void run(){} }
+interface RuntimeSubApi extends RuntimeApi {}
+''')
+        _, first = self.cli('index', '--full', timeout=180)
+        revision = first['revision']
+        facts = self.facts(revision)
+        by_id = {f['id']: f for f in facts}
+        def pages(*args):
+            result, cursor, seen = [], '', set()
+            while True:
+                rows, terminal = self.cli(*args, '--revision', revision, '--max-records', '1',
+                    *(['--cursor', cursor] if cursor else []))
+                self.assertEqual(terminal['revision'], revision)
+                result.extend(rows)
+                cursor = terminal.get('cursor','')
+                if not cursor: return result, terminal
+                self.assertNotIn(cursor, seen); seen.add(cursor)
+        rows, terminal = pages('runtime-implementations','p.RuntimeApi','--depth','8')
+        self.assertEqual({r['signature'] for r in rows},{'p.RuntimeConcrete','p.RuntimeFinal'})
+        self.assertTrue(terminal['evidence']['enumeration'])
+        self.assertFalse(terminal['evidence']['semantic'])
+        for row in rows:
+            current = next(f['id'] for f in facts if f['signature']=='p.RuntimeApi')
+            for identity in row['runtime_implementation']['proof']:
+                edge = by_id[identity]
+                self.assertIn(edge['relation'],('extends','implements'))
+                self.assertEqual(edge['target'],current)
+                current = edge['parent']
+            self.assertEqual(current,row['id'])
+        shallow, limited = pages('runtime-implementations','p.RuntimeApi','--depth','1')
+        self.assertEqual(shallow,[])
+        self.assertIn('depth', limited['evidence']['limits'])
+        all_types, _ = pages('runtime-implementations','p.RuntimeApi','--depth','8','--instantiability','all')
+        self.assertEqual({r['signature'] for r in all_types},
+            {'p.RuntimeBase','p.RuntimeConcrete','p.RuntimeFinal','p.RuntimeSubApi'})
+        self.assertEqual(pages('runtime-implementations','p.RuntimeApi','--instantiability','unknown')[0],[])
+        direct, _ = pages('type-relations','p.RuntimeApi','--direction','in')
+        transitive, _ = pages('type-relations','p.RuntimeApi','--direction','in','--transitive','--depth','8')
+        self.assertEqual(len(direct),2)
+        self.assertEqual(len(transitive),4)
+        signature = 'p.RuntimeFinal#run()'
+        callable_rows, _ = pages('callable-relations',signature,'--transitive','--depth','8')
+        self.assertTrue(any(by_id[r['target']]['signature']=='p.RuntimeApi#run()' for r in callable_rows))
+        specification = self.root/'runtime-pipeline.json'
+        specification.write_text(json.dumps([
+            {'operation':'runtime-implementations','selector':'p.RuntimeApi','depth':8},
+            {'operation':'source'}]))
+        sources, _ = pages('pipeline',str(specification))
+        self.assertEqual(len(sources),2)
+        self.assertTrue(all('Runtime' in r['text'] for r in sources))
+        self.cli('resolve','p.RuntimeApi','--instantiability','all',code=1)
+        self.cli('calls','p.RuntimeApi','--transitive',code=1)
+        source.write_text(source.read_text().replace('class RuntimeConcrete extends', 'abstract class RuntimeConcrete extends'))
+        _, delta = self.cli('index', timeout=180)
+        changed = self.facts(delta['revision'])
+        _, full = self.cli('index','--full',timeout=180)
+        self.assertEqual(changed,self.facts(full['revision']))
+        now, _ = self.cli('runtime-implementations','p.RuntimeApi','--depth','8','--revision',delta['revision'])
+        self.assertEqual([r['signature'] for r in now],['p.RuntimeFinal'])
+        self.assertEqual(pages('runtime-implementations','p.RuntimeApi','--depth','8')[0],rows)
+        self.stop()
+        self.log = open(self.root/'daemon.log','a')
+        self.daemon = subprocess.Popen([str(BIN/'codeana-daemon'),'--home',str(self.home)],
+            stdout=self.log,stderr=self.log)
+        until = time.monotonic()+10
+        while time.monotonic()<until:
+            if self.daemon.poll() is not None: self.fail(self.daemon_log())
+            if (self.home/'endpoint.json').exists():
+                ready = subprocess.run([str(BIN/'codeana-cli'),'--home',str(self.home),'daemon','status'],
+                    capture_output=True,timeout=3)
+                if ready.returncode==0: break
+            time.sleep(.03)
+        else: self.fail('daemon restart timeout')
+        self.assertEqual(pages('runtime-implementations','p.RuntimeApi','--depth','8')[0],rows)
+
+    def test_doctor_reports_the_selected_java_backend_and_bundle(self):
+        records, _ = self.cli('doctor')
+        backend = os.environ.get('CODEANA_JAVA_BACKEND', 'native')
+        self.assertEqual(records[0]['java_backend'], backend)
+        self.assertEqual(records[0]['capabilities']['java_index'], 'java8_' + backend)
+        self.assertEqual(records[0]['java_adapter'], records[0]['java_bundle']['adapter'])
+        self.assertEqual(records[0]['java_bundle']['analysis_request'], 8)
+
     facts=harness.Product.facts
     cli=harness.Product.cli
     stop=harness.Product.stop
     cleanup=harness.Product.cleanup
     daemon_log=harness.Product.daemon_log
+
+    def compiler_descendants(self):
+        worker = self.java_worker_pid()
+        if not worker:
+            return []
+        rows = [line.split(None, 2) for line in subprocess.check_output(
+            ['/bin/ps', '-axo', 'pid=,ppid=,command='], text=True).splitlines()]
+        owned = {worker}
+        while True:
+            children = {int(pid) for pid, parent, command in rows if int(parent) in owned}
+            if children <= owned:
+                break
+            owned |= children
+        return [int(pid) for pid, parent, command in rows if int(pid) in owned
+                and 'com.anatomist.worker.JavacWorker 1' in command]
 
     def test_rust_xml_wiring_matches_frozen_graph_and_delta(self):
         from java_xml_wiring_reference import SOURCE, XML, projection
@@ -84,6 +279,14 @@ class JavaProduct(unittest.TestCase):
         self.assertEqual({f['source'] for f in initial if f['relation']=='java.sofa'},expected)
         self.assertEqual({f['attributes']['context'] for f in initial if f['relation']=='java.bean'}, {'app@MAIN','app@TEST'})
         self.assertFalse([f for f in initial if f['kind']=='declaration'])
+        bean=next(f for f in initial if f['relation']=='java.bean' and f['source']=='app/resources/beans.xml')
+        for selector in (bean['name'],bean['signature'],bean['id']):
+            rows,_=self.cli('resolve',selector,'--path',bean['source'],'--unique','--revision',first['revision'])
+            self.assertEqual([row['id'] for row in rows],[bean['id']])
+        rows,_=self.cli('search-code',bean['name'],'--path',bean['source'],'--revision',first['revision'])
+        self.assertIn(bean['id'],[row['id'] for row in rows])
+        rows,_=self.cli('source',bean['signature'],'--path',bean['source'],'--revision',first['revision'])
+        self.assertTrue(rows)
         by={f['id']:f for f in initial}
         self.assertEqual({by[f['target']]['signature'] for f in initial if f['relation']=='config_member'},
                          {'p.Api#<init>()','p.Api#start()'})
@@ -111,15 +314,14 @@ class JavaProduct(unittest.TestCase):
         use.write_text('package p; @A @Deprecated class Use {int body=1;}')
         def verify(facts):
             meta=[f for f in facts if f['relation']=='java.annotation.meta']
-            source=next(f for f in meta if f['source']=='src/Use.java' and f['attributes']['annotation_fqn']=='p.A'
-                        and f['attributes']['meta_annotation_fqn']=='java.lang.annotation.Target')
-            self.assertEqual(source['attributes']['meta_annotation_fqn'], 'java.lang.annotation.Target')
-            origin=source['attributes']['source_origin']
-            self.assertEqual(origin['path'],'src/Meta.java')
-            self.assertEqual(origin['hash'],hashlib.sha256(definitions.read_bytes()).hexdigest())
-            self.assertIn('@interface A {}',definitions.read_bytes()[origin['span']['start']:origin['span']['end']].decode())
-            self.assertTrue(any(f['source']=='src/Use.java' and f['attributes']['annotation_fqn']=='java.lang.Deprecated'
-                                and f['attributes']['source_origin']['path']=='src/Use.java' for f in meta))
+            source=next(f for f in meta if f['source']=='src/Meta.java' and f['attributes']['annotation']=='p.A'
+                        and f['attributes']['meta_annotation']=='java.lang.annotation.Target')
+            self.assertEqual(source['attributes']['resolution'], 'exact')
+            self.assertTrue(source['attributes']['source_location'].startswith('L'))
+            self.assertEqual(source['attributes']['upstream_producer'], 'java-core')
+            captured=next(f for f in facts if f['kind']=='coverage' and f['source']=='src/Meta.java')
+            self.assertEqual(captured['attributes']['input_hash'],hashlib.sha256(definitions.read_bytes()).hexdigest())
+            self.assertTrue(any(f['source']=='src/Use.java' and f['attributes']['annotation']=='java.lang.Deprecated' for f in meta))
             self.assertFalse([f for f in facts if f['name']=='ANNOTATION_META_INCOMPLETE'])
             return meta
         _,first=self.cli('index','--full',timeout=180)
@@ -167,20 +369,22 @@ class JavaProduct(unittest.TestCase):
             raw = next(f for f in registrations if f['attributes']['path']=='/base/'+route)
             self.assertEqual(raw['attributes']['parameters'][0]['type'], 'List< /* 中文😀 */ String >')
             self.assertEqual(raw['attributes']['parameters'][1]['type'], 'String...')
-            self.assertEqual(raw['attributes']['parameters'][0]['resolved_type'], 'java.util.List<java.lang.String>')
+            # Frozen MVC metadata retains the written type; compiler types are on declarations.
+            self.assertEqual(raw['attributes']['parameters'][0]['value'], 'names')
             event = next(f for f in facts if f['relation']=='java.spring.handler' and f['attributes']['mechanism']=='spring.annotation.event'
                          and by[f['parent']]['name']=='event')
-            self.assertEqual(event['attributes']['source_parameter_types'], ['List< /* 原字节😀 */ String >'])
-            self.assertEqual(event['attributes']['written_attributes']['condition'], '"event.valid"')
+            self.assertEqual(event['attributes']['parameterTypes'], ['List< /* 原字节😀 */ String >'])
+            self.assertEqual(event['attributes']['attributes']['condition'], '"event.valid"')
             service = next(f for f in facts if f['relation']=='java.sofa' and f['attributes']['role']=='provider')
-            self.assertEqual(service['attributes']['unique_id'], unique)
-            self.assertEqual(service['attributes']['written_attributes']['uniqueId'], '"'+unique+'"')
+            self.assertEqual(service['attributes']['uniqueId'], unique)
+            self.assertEqual(service['attributes']['attributes']['uniqueId'], '"'+unique+'"')
             use = next(f for f in facts if f['relation']=='java.annotation' and by[f['parent']]['signature']=='p.Annotated#marked')
-            self.assertEqual(use['attributes']['written_name'], '\\u004eote')
-            self.assertEqual(use['attributes']['source_name'], 'Note')
-            self.assertEqual(use['attributes']['written_values'], dict(value=number, text='原字节😀'))
-            self.assertTrue(use['attributes']['written_values_complete'])
-            self.assertEqual(use['attributes']['written_attributes']['value'], str(number)+'F')
+            # Frozen javac name slicing truncates this Unicode escape; keep its raw evidence.
+            self.assertEqual(use['attributes']['raw_name'], 'eote')
+            written,_=self.cli('source',by[use['parent']]['id'])
+            self.assertIn('\\u004eote',''.join(row['text'] for row in written))
+            self.assertEqual(use['attributes']['annotation'], 'p.Note')
+            self.assertEqual(use['attributes']['values'], dict(value=number, text='原字节😀'))
             self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['status']=='ERROR'])
             return projection
 
@@ -323,6 +527,54 @@ class JavaProduct(unittest.TestCase):
             if (self.home/'endpoint.json').exists():return
             time.sleep(.03)
         raise RuntimeError('daemon start timeout')
+
+    def test_meta_annotations_preserve_paths_source_and_pipeline(self):
+        (self.project / 'src/Meta.java').write_text('package p;\nimport java.lang.annotation.*;\n@Retention(RetentionPolicy.RUNTIME) @Target({ElementType.TYPE,ElementType.ANNOTATION_TYPE}) @interface Root {}\n@Root @interface Left {}\n@Root @interface Right {}\n@Left @Right @interface Leaf {}\n@Leaf class MetaApp {}\n@Leaf class Other {}')
+        _, publication = self.cli('index', '--full', timeout=180)
+        revision = publication['revision']
+
+        def pages(*args):
+            records = []
+            cursor = ''
+            seen = set()
+            while True:
+                rows, terminal = self.cli(*args, '--revision', revision, '--max-records', '1', *(['--cursor', cursor] if cursor else []))
+                records.extend(rows)
+                self.assertEqual(terminal['revision'], revision)
+                cursor = terminal.get('cursor', '')
+                if not cursor:
+                    return (records, terminal)
+                self.assertNotIn(cursor, seen)
+                seen.add(cursor)
+        direct, _ = pages('annotations', 'p.MetaApp')
+        self.assertEqual([row['attributes']['annotation'] for row in direct], ['p.Leaf'])
+        expanded, terminal = pages('annotations', 'p.MetaApp', '--meta')
+        paths = [row['attributes']['via'] for row in expanded]
+        for path in ['p.Leaf', 'p.Leaf>p.Left', 'p.Leaf>p.Right', 'p.Leaf>p.Left>p.Root', 'p.Leaf>p.Right>p.Root']:
+            self.assertEqual(paths.count(path), 1)
+        self.assertEqual(sum((row['attributes']['annotation'] == 'p.Root' for row in expanded)), 2)
+        self.assertTrue(all((row['span'] == direct[0]['span'] and row['parent'] == direct[0]['parent'] and (row['source'] == direct[0]['source']) for row in expanded)))
+        self.assertTrue(all((row['attributes']['meta_depth'] <= 16 for row in expanded)))
+        self.assertEqual(len({row['id'] for row in expanded}), len(expanded))
+        specification = self.root / 'meta-pipeline.json'
+        specification.write_text(json.dumps([{'operation': 'resolve', 'selector': 'p.MetaApp'}, {'operation': 'annotations', 'meta': True}]))
+        piped, _ = pages('pipeline', str(specification))
+        self.assertEqual(piped, expanded)
+        _, error = self.cli('resolve', 'p.MetaApp', '--meta', code=1)
+        self.assertIn('META_REQUIRES_ANNOTATIONS', error['message'])
+        source=self.project/'src/Meta.java'
+        source.write_text(source.read_text().replace('@Leaf class MetaApp','@Left class MetaApp'))
+        _, delta = self.cli('index', timeout=180)
+        changed=self.facts(delta['revision'])
+        _,full=self.cli('index','--full',timeout=180)
+        self.assertEqual(changed,self.facts(full['revision']))
+        current,_=self.cli('annotations','p.MetaApp','--meta','--revision',delta['revision'])
+        self.assertNotIn('p.Leaf',[row['attributes']['annotation'] for row in current])
+        self.assertEqual(sum(row['attributes']['annotation']=='p.Root' for row in current),1)
+        self.assertTrue(all(row['attributes'].get('resolved_type')==row['attributes']['annotation']
+                            for row in current if row['attributes'].get('resolution')=='exact'))
+        old, _ = pages('annotations', 'p.MetaApp', '--meta')
+        self.assertEqual(expanded, old)
 
     def test_invalid_encoding_isolates_owner_preserves_bytes_and_strict_head(self):
         import hashlib
@@ -528,6 +780,7 @@ java_parallelism=1
         self.assertFalse(list(self.project.rglob('*.class')))
 
     def test_supplemental_primitive_proof_publishes_and_invalidates_through_daemon(self):
+        import hashlib
         from java_lombok_alignment import Lombok
         library = 'package p; @lombok.Getter class Api {Integer delay;}'
         # Stub annotations have no Lombok jar/version from which to infer this policy.
@@ -555,19 +808,19 @@ java_parallelism=1
         target = next(f for f in before if f['kind'] == 'call_target'
                       and by[f['target']]['signature'] == 'java.lang.Math#min(int,int)')
         site = by[target['parent']]
-        self.assertEqual(type_attributes(site)['expression_type_model']['kind'], 'ERROR')
+        self.assertEqual(site['status'], 'unresolved')
+        self.assertFalse(site['evidence_complete'])
         records, terminal = self.cli('dispatch', site['id'])
         self.assertFalse(terminal['evidence']['semantic'])
         self.assertTrue(any(row.get('target') == target['target'] and row.get('possible') for row in records))
-        provenance = next(f for f in before if f['kind'] == 'provenance' and f['source'] == 'test/p/Use.java')
-        proof = next(p for p in type_attributes(provenance)['supplemental_expression_evidence'] if p['node_kind'] == 'MULTIPLY')
-        self.assertEqual(proof['type_model']['kind'], 'INT')
-        self.assertTrue(proof['original_evidence_retained'])
-        self.assertEqual(len(proof['signature_sha256']), 64)
-        self.assertEqual(len(proof['auxiliary_inputs_sha256']), 64)
-        span = proof['span']
-        self.assertEqual(consumer.read_bytes()[span['start']:span['end']], b'Math.min(value,10)*1000')
-        self.assertTrue(any(f['kind'] == 'diagnostic' and f['status'] == 'ERROR' for f in before))
+        # The frozen core consumes auxiliary evidence internally; it does not emit the old proof facet.
+        captured = next(f for f in before if f['kind']=='coverage' and f['source']=='test/p/Use.java')
+        self.assertEqual(captured['attributes']['input_hash'], hashlib.sha256(consumer.read_bytes()).hexdigest())
+        self.assertTrue(any(f['relation']=='java.binding' and f['source']=='test/p/Use.java' for f in before))
+        self.assertFalse(target['evidence_complete'])
+        # Independently verified frozen auxiliary ABI: possible evidence need not produce a compiler error.
+        self.assertFalse(any(f['kind']=='diagnostic' and f['source']=='test/p/Use.java'
+                             and f['attributes'].get('severity')=='ERROR' for f in before))
         # Incomplete generated-annotation policy must invalidate the whole auxiliary ABI.
         policy = self.project / 'lombok.config'
         captured_policy = policy.read_bytes()
@@ -623,11 +876,15 @@ java_parallelism=1
         targets = [f for f in before if f['kind'] == 'call_target' and f['source'] == 'test/Use.java']
         self.assertEqual(len(targets), 8)
         self.assertNotIn('Child#builder()', {by[f['target']]['signature'] for f in targets})
-        provenance = next(f for f in before if f['kind'] == 'provenance' and f['source'] == 'test/Use.java')
-        proof = next(p for p in type_attributes(provenance)['supplemental_receiver_evidence']
-                     if p['receiver_type_model']['element'] == 'Child$ChildBuilder')
-        self.assertEqual(proof['selected_declaration'], 'Parent$ParentBuilder#values(java.util.List)')
-        self.assertTrue(proof['original_evidence_retained'])
+        self.assertTrue(any(by[f['target']]['signature']=='Parent$ParentBuilder#values(java.util.List)' for f in targets))
+        self.assertTrue(any(f['relation']=='java.binding' and f['source']=='test/Use.java' for f in before))
+        # Independent frozen witness: two javac bindings and six modeled candidates.
+        confirmed=[f for f in targets if f['evidence_complete']]
+        self.assertEqual({by[f['target']]['signature'] for f in confirmed},{'java.util.Arrays#asList(java.lang.Object[])','Leaf#<init>()'})
+        self.assertTrue(all(f['status']=='resolved' for f in confirmed))
+        candidates=[f for f in targets if f not in confirmed]
+        self.assertEqual(len(candidates),6)
+        self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] for f in candidates))
         (self.project / 'src/App.java').write_text(
             SUPER_LIBRARY.replace('@lombok.experimental.SuperBuilder class Child', 'class Child'))
         _, delta = self.cli('index', timeout=180)
@@ -702,7 +959,8 @@ java_parallelism=1
             self.assertEqual(len(inner), 2)
             self.assertTrue(all(f['status'] == 'resolved' and f['evidence_complete'] for f in inner))
             constructor = next(f for f in targets if by_id[f['target']]['signature'] == 'java.util.HashMap#<init>()')
-            self.assertEqual([a['element'] for a in type_attributes(constructor)['recovered_return_type_model']['arguments']], ['java.lang.String', 'java.lang.String'])
+            self.assertFalse(constructor['declaration_resolved'])
+            self.assertNotIn('recovered_return_type_model', constructor['attributes'])
             self.assertIn('java.lang.ThreadLocal#withInitial(java.util.function.Supplier)', {by_id[f['target']]['signature'] for f in targets})
             for signature in ('java.util.stream.Stream#collect(java.util.stream.Collector)',
                               'java.util.stream.Collectors#toMap(java.util.function.Function,java.util.function.Function,java.util.function.BinaryOperator)',
@@ -710,7 +968,8 @@ java_parallelism=1
                 self.assertIn(signature, {by_id[f['target']]['signature'] for f in targets})
             setters = [f for f in targets if by_id[f['target']]['signature'] == 'p.ItemsContext#setItems(java.util.List)']
             self.assertEqual(len(setters), 1)
-            self.assertEqual(type_attributes(setters[0])['recovered_parameter_type_models'][0]['arguments'][0]['element'], 'p.Rule')
+            self.assertFalse(setters[0]['declaration_resolved'])
+            self.assertNotIn('recovered_parameter_type_models', setters[0]['attributes'])
             method = symbols['p.Use#read(p.Holder)']
             parameter_types = [f for f in facts if f['relation'] == 'type_reference' and f['parent'] == method['id'] and (f['target'] == symbols['p.Holder']['id'])]
             self.assertEqual(len(parameter_types), 1)
@@ -839,7 +1098,10 @@ java_parallelism=1
             self.assertEqual({declarations[f['target']]['signature'] for f in labels},{'p.Choice#FIRST','p.Choice#SECOND'})
             self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] for f in labels))
             field=signatures['p.Built$BuiltBuilder#value']
-            self.assertTrue([f for f in facts if f['relation']=='java.annotation' and f['parent']==field['id'] and f['origin']=='source_projection' and f['attributes']['resolved_type']=='validation.NotBlank'])
+            # Fresh frozen declaration witness: the source field has NotBlank;
+            # this upstream model does not propagate it to the builder field.
+            self.assertIn('Lvalidation/NotBlank;', {a['descriptor'] for a in signatures['p.Built#value']['attributes']['declaration_annotations']})
+            self.assertNotIn('Lvalidation/NotBlank;', {a['descriptor'] for a in field['attributes']['declaration_annotations']})
             self.assertFalse([f for f in declarations.values() if f['signature'].endswith('#class')])
             method=signatures['p.Aligned#run(p.Api,java.util.Map)']
             sites,_=self.cli('call-sites',method['id'])
@@ -965,16 +1227,18 @@ java_parallelism=1
                 if fact['relation'] in ('reads', 'writes'):
                     key = (fact['relation'], by_id[fact['target']]['signature'])
                     counts[key] = counts.get(key, 0) + 1
-            # Frozen Anatomist JavaFieldFacts exposes ++/-- as WRITES only;
-            # retain the independent javac read_write observation below.
+            # Frozen JavaFieldFacts exposes ++/-- as WRITES. Raw Java syntax
+            # retains each update; JavaBinding has no synthetic field_access flag.
             self.assertEqual(counts, {('writes', 'ext.Base#value'): 3, ('reads', 'ext.Base#value'): 3,
                                      ('writes', 'ext.Base#count'): 4, ('reads', 'ext.Base#count'): 1,
                                      ('reads', 'Use#array'): 1, ('reads', 'Use#length'): 1,
                                      ('reads', 'ext.Kind#ONE'): 1})
-            mutations = [f for f in facts if f['relation'] == ''
-                         and f['attributes'].get('field_mutation')]
+            mutations = [node for f in facts if f['relation'] == 'java.syntax'
+                         for node in f['attributes']['nodes']
+                         if node['kind'] in ('PREFIX_INCREMENT', 'PREFIX_DECREMENT',
+                                             'POSTFIX_INCREMENT', 'POSTFIX_DECREMENT')]
             self.assertEqual(len(mutations), 3)
-            self.assertTrue(all(f['attributes']['field_access'] == 'read_write' for f in mutations))
+            self.assertTrue(all(node['start'] >= 0 and node['end'] > node['start'] for node in mutations))
         _, first = self.cli('index', '--full', timeout=150)
         check(self.facts(first['revision']))
         use.write_text(use.read_text().replace('count=1;', 'count=7;'))
@@ -1003,8 +1267,9 @@ java_parallelism=1
         self.assertEqual(getter['origin'],'lombok_model')
         self.assertFalse(getter['declaration_resolved'])
         self.assertTrue(any(f['kind']=='call_target' and f['target']==getter['id'] and f['status']=='possible' for f in old))
-        summary = next(f['attributes'] for f in old if f['relation']=='java.lombok' and 'configuration_inputs' in f['attributes'])
-        self.assertEqual([item[0] for item in summary['configuration_inputs']], ['lombok.config'])
+        summary = next(f['attributes'] for f in old if f['relation']=='java.lombok')
+        self.assertEqual(summary['semantic_level'], 'signature-only')
+        self.assertEqual(summary['inference_policy'], 'hypothesis_only')
         control.write_text(control.read_text().replace('noIsPrefix=true','noIsPrefix=false'))
         _, delta = self.cli('index',timeout=150)
         _, full = self.cli('index','--full',timeout=150)
@@ -1017,8 +1282,8 @@ java_parallelism=1
         _, full = self.cli('index','--full',timeout=150)
         actual = self.facts(delta['revision'])
         self.assertEqual(actual,self.facts(full['revision']))
-        summary = next(f['attributes'] for f in actual if f['relation']=='java.lombok' and 'configuration_inputs' in f['attributes'])
-        self.assertEqual([item[0] for item in summary['configuration_inputs']], ['.code-ana/lombok-ancestors/000001/lombok.config'])
+        self.assertTrue(any(f['signature']=='Bean#isReady()' for f in actual))
+        self.assertEqual(next(f['attributes'] for f in actual if f['relation']=='java.lombok')['semantic_level'], 'signature-only')
         self.assertFalse(list(self.project.rglob('*.class')))
 
     def test_lombok_builder_recursive_generics_defaults_and_delta(self):
@@ -1039,7 +1304,11 @@ java_parallelism=1
             self.assertEqual(declarations[signature]['origin'],'lombok_model')
             self.assertFalse(declarations[signature]['declaration_resolved'])
         setter=declarations['A$ABuilder#value(java.lang.Number)']
-        self.assertEqual(type_attributes(setter)['parameter_type_models'][0]['owner'],'A$ABuilder')
+        parameter = type_attributes(setter)['parameter_type_models'][0]
+        self.assertEqual(parameter['kind'], 'TYPEVAR')
+        self.assertEqual(parameter['name'], 'T')
+        self.assertEqual(parameter['upper']['kind'], 'INTERSECTION')
+        self.assertEqual([b['element'] for b in parameter['upper']['bounds']], ['java.lang.Number', 'java.lang.Comparable'])
         self.assertTrue(any(f['kind']=='call_target' and f['target']==setter['id'] and f['status']=='possible' for f in facts))
         path=self.project/'src/Bean.java'
         # The fixture's primary class filename is fixed by the shared annotation helper.
@@ -1076,13 +1345,15 @@ java_parallelism=1
         for signature in ('Child#builder()','Parent$ParentBuilder#name(java.lang.Object)','Child$ChildBuilder#value(java.lang.Number)','Child$ChildBuilder#count(int)','Child$ChildBuilder#build()'):
             self.assertIn(declarations[signature]['id'],targets,signature)
         call=next(f for f in facts if f['kind']=='call_site' and f['attributes'].get('lookup_name')=='value')
-        self.assertEqual(type_attributes(call)['recovered_parameter_type_models'][0]['element'],'java.lang.Integer')
+        self.assertTrue(any(f['kind']=='call_target' and f['parent']==call['id']
+                            and f['target']==declarations['Child$ChildBuilder#value(java.lang.Number)']['id'] for f in facts))
         path=next(p for p in (self.project/'src').glob('*.java') if 'class Child<' in p.read_text())
         path.write_text(path.read_text().replace('count=7','count=9').replace('value(1)','value("wrong")'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)
         actual=self.facts(full['revision']);self.assertEqual(self.facts(delta['revision']),actual)
         call=next(f for f in actual if f['kind']=='call_site' and f['attributes'].get('lookup_name')=='value')
-        self.assertEqual(call['attributes']['recovery_failure'],'no_applicable_candidate')
+        self.assertEqual(call['status'], 'unresolved')
+        self.assertFalse(any(f['kind']=='call_target' and f['parent']==call['id'] for f in actual))
         path.write_text(path.read_text().replace('@lombok.experimental.SuperBuilder','').replace('@lombok.Builder.Default',''))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)
         actual=self.facts(full['revision']);self.assertEqual(self.facts(delta['revision']),actual)
@@ -1162,10 +1433,9 @@ java_parallelism=1
         by_id = {f['id']:f for f in facts}
         recovered = [f for f in facts if f['kind']=='call_target' and f['origin']=='source_recovery']
         self.assertEqual(len(recovered),5)
-        explicit = [f for f in recovered if f['attributes'].get('explicit_type_argument_models')]
-        self.assertEqual(len(explicit),2)
-        self.assertTrue(all(type_attributes(f)['explicit_type_argument_models'][0]['element']=='java.lang.Integer' for f in explicit))
-        self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] and f['declaration_resolved'] for f in recovered))
+        echoes = [f for f in recovered if by_id[f['target']]['signature']=='Api#echo(java.lang.Number)']
+        self.assertEqual(len(echoes),3)
+        self.assertTrue(all(f['status']=='possible' and not f['evidence_complete'] and not f['declaration_resolved'] for f in recovered))
         self.assertFalse([f for f in facts if f['kind']=='call_target' and by_id[f['parent']]['name']=='h.getApi().hidden'])
         pairs = [(by_id[f['parent']]['name'],by_id[f['target']]['signature']) for f in facts if f['kind']=='call_target']
         self.assertIn(('h::getApi','Holder#getApi()'),pairs)
@@ -1175,9 +1445,9 @@ java_parallelism=1
         selected = next(f for f in recovered if by_id[f['parent']]['name']=='h.getApi().choose')
         dispatch,_ = self.cli('dispatch',selected['parent'])
         self.assertEqual(dispatch[0]['binding_origin'],'source_recovery')
-        self.assertEqual(dispatch[0]['basis'],'modeled_expression')
+        self.assertIsNone(dispatch[0]['basis'])
         self.assertTrue(dispatch[0]['possible'])
-        self.assertEqual(dispatch[0]['recovery_phase'],0)
+        self.assertIsNone(dispatch[0]['recovery_phase'])
         path.write_text(path.read_text().replace('choose(long value)','choose(double value)'))
         _, delta = self.cli('index',timeout=150)
         _, full = self.cli('index','--full',timeout=150)
@@ -1230,7 +1500,14 @@ java_parallelism=1
         self.assertEqual(initial['publication'],'published')
         old=self.facts(initial['revision'])
         self.assertTrue(any(f['kind']=='diagnostic' and f['attributes'].get('severity')=='ERROR' for f in old))
-        self.assertIn('TYPE_VARIABLE_LOWER_BOUND_UNAVAILABLE',json.dumps(old))
+        # Independent frozen reference: javac cannot resolve getValue on Object,
+        # and extraction retains binding-unavailable on the affected call sites.
+        diagnostics = [f['attributes']['compiler_diagnostic'] for f in old if f['kind']=='diagnostic'
+                       and f['attributes'].get('compiler_diagnostic')]
+        self.assertTrue(any(d['code']=='compiler.err.cant.resolve.location.args'
+                            and 'getValue' in d['message'] for d in diagnostics))
+        self.assertTrue(any(f['kind']=='call_site' and f['status']=='unresolved'
+                            and f['attributes'].get('compiler_reason')=='binding-unavailable' for f in old))
         self.assertTrue(any(f['kind']=='declaration' and f['signature']=='Inference#healthy()' for f in old))
         source.write_text(text.replace('return 1;','return 2;'))
         _,delta=self.cli('index',timeout=150)
@@ -1267,6 +1544,15 @@ java_parallelism=1
         raw = xml.read_bytes()
         property = next(f for f in facts if f['relation']=='java.spring.xml' and f['attributes'].get('kind')=='property')
         self.assertTrue(raw[property['span']['start']:property['span']['end']].startswith(b'<property'))
+        holder=next(f for f in facts if f['relation']=='java.bean' and f['name']=='holder')
+        records=[];cursor='';seen=set()
+        while True:
+            rows,terminal=self.cli('structure',holder['signature'],'--depth','16','--max-records','1','--revision',first['revision'],*(['--cursor',cursor] if cursor else []))
+            records.extend(rows);cursor=terminal.get('cursor','')
+            if not cursor:break
+            self.assertNotIn(cursor,seen);seen.add(cursor)
+        self.assertIn(property['id'],[row['id'] for row in records])
+        self.assertFalse([row for row in records if row['relation'] in ('java.syntax','java.binding')])
         xml.write_text(xml.read_text().replace('init-method="start"','init-method="stop"'))
         _, delta = self.cli('index',timeout=150)
         _, full = self.cli('index','--full',timeout=150)
@@ -1363,18 +1649,18 @@ java_parallelism=1
         (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[resources.index]\njava_parallelism=1\n[discovery]\nmode="auto"\n[scan]\nscopes=["MAIN"]\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n')
         _,first=self.cli('index','--full',timeout=150)
         self.assertEqual(first['publication'],'published')
-        cache=self.home/'cache/java-signatures.managed-v1/java-signatures-modules'
-        self.assertTrue(list(cache.glob('*/payload/catalogue.bin')))
+        cache=self.home/'cache/java-signatures.managed-v1/anatomist-signatures-v50-reloc2'
+        self.assertTrue(list(cache.glob('*/payload/declarations.bin')))
         before=self.facts(first['revision'])
         def navigate_auxiliary(facts):
-            auxiliary=next(f for f in facts if f['kind']=='external_symbol'
-                           and f['signature']=='p.Api#get()' and f['attributes'].get('source_origin'))
-            producer=next(f for f in facts if f['kind']=='declaration' and f['signature']==auxiliary['signature'])
-            self.assertNotEqual(auxiliary['owner']['world'],producer['owner']['world'])
+            producer=next(f for f in facts if f['kind']=='declaration' and f['signature']=='p.Api#get()')
+            self.assertEqual(producer['source'],'lib/p/Api.java')
+            self.assertFalse(any(f['kind']=='external_symbol' and f['signature']==producer['signature'] for f in facts))
+            auxiliary=producer
             source,terminal=self.cli('source',auxiliary['id'],'--revision',first['revision'])
             self.assertEqual(terminal['publication'],'not_requested')
             self.assertEqual({row['path'] for row in source},{producer['source']})
-            self.assertEqual({row['hash'] for row in source},{auxiliary['attributes']['source_origin']['hash']})
+            self.assertEqual({row['hash'] for row in source},{next(f['attributes']['input_hash'] for f in facts if f['kind']=='coverage' and f['source']==producer['source'])})
             self.assertIn('return value;', ''.join(row['text'] for row in source))
             self.assertEqual(source[0]['span']['start'],producer['span']['start'])
             self.assertEqual(source[-1]['span']['end'],producer['span']['end'])
@@ -1384,13 +1670,12 @@ java_parallelism=1
         try:
             captured.write_bytes(original.replace(b'return value;',b'return null;'))
             navigate_auxiliary(before) # SOURCE reads the revision blob, not the changed workspace.
-            auxiliary=next(f for f in before if f['kind']=='external_symbol'
-                           and f['signature']=='p.Api#get()' and f['attributes'].get('source_origin'))
+            auxiliary=next(f for f in before if f['kind']=='declaration' and f['signature']=='p.Api#get()')
             _,mismatch=self.cli('source',auxiliary['id'],code=1)
             self.assertIn('SOURCE_HASH_MISMATCH',mismatch['message'])
         finally:
             captured.write_bytes(original)
-        for file in cache.glob('*/payload/catalogue.bin'):file.write_bytes(b'corrupt source catalogue')
+        for file in cache.glob('*/payload/declarations.bin'):file.write_bytes(b'corrupt source catalogue')
         _,rebuilt=self.cli('index','--full',timeout=150)
         self.assertEqual(before,self.facts(rebuilt['revision']))
         use=self.project/'app/p/Use.java';use.write_text(use.read_text().replace('"before"','"after"'))
@@ -1414,13 +1699,15 @@ java_parallelism=1
             return {rows[f['target']]['signature']:f for f in facts if f['kind']=='call_target' and rows[f['parent']]['name'].startswith('h.getApi().')}
         selected=targets(self.facts(first['revision']))
         self.assertEqual(set(selected),{'Api#values()','Api#make()'})
-        self.assertEqual(type_attributes(selected['Api#values()'])['recovered_return_type_model']['arguments'][0]['element'],'java.lang.String')
-        self.assertEqual(type_attributes(selected['Api#make()'])['recovered_return_type_model']['element'],'java.lang.String')
+        self.assertTrue(all(not f['evidence_complete'] and not f['declaration_resolved'] for f in selected.values()))
+        self.assertTrue(all('recovered_return_type_model' not in f['attributes'] for f in selected.values()))
         self.assertTrue(all(f['status']=='possible' and f['origin']=='source_recovery' for f in selected.values()))
         app=self.project/'src/App.java';app.write_text(app.read_text().replace('String read(Holder h)','Number read(Holder h)'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)
         actual=self.facts(full['revision']);self.assertEqual(self.facts(delta['revision']),actual)
-        self.assertEqual(type_attributes(targets(actual)['Api#make()'])['recovered_return_type_model']['element'],'java.lang.Number')
+        self.assertEqual(set(targets(actual)), {'Api#values()', 'Api#make()'})
+        method = next(f for f in actual if f['kind']=='declaration' and f['signature']=='Use#read(Holder)')
+        self.assertEqual(type_attributes(method)['return_type_model']['element'], 'java.lang.Number')
         self.assertFalse(list(self.project.rglob('*.class')))
 
     def test_lombok_module_original_abi_configuration_and_delta(self):
@@ -1438,7 +1725,7 @@ java_parallelism=1
         (self.project/'.code-ana/inputs.json').write_text(json.dumps(metadata))
         (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[scan]\nscopes=["MAIN"]\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n[languages.java.lombok]\nmode="model"\n[resources.index]\njava_parallelism=2\n')
         _,first=self.cli('index','--full',timeout=150);self.assertEqual(first['publication'],'published')
-        before=self.facts(first['revision']);self.assertTrue(list((self.home/'cache/java-signatures.managed-v1/java-signatures-modules').glob('*/payload/catalogue.bin')))
+        before=self.facts(first['revision']);self.assertTrue(list((self.home/'cache/java-signatures.managed-v1/anatomist-signatures-v50-reloc2').glob('*/payload/declarations.bin')))
         self.assertTrue(any(f['kind']=='declaration' and f['signature']=='p.A#isN()' and f['origin']=='lombok_model' for f in before))
         control.write_text(control.read_text()+'lombok.getter.noIsPrefix=true\n')
         use=self.project/'client/p/Use.java';use.write_text(use.read_text().replace('value.n','value.getN()'))
@@ -1480,11 +1767,13 @@ java_parallelism=1
         self.assertEqual(first['publication'],'published')
         before=self.facts(first['revision'])
         values={f['signature']:f['attributes']['constant_value'] for f in before if f['signature'] in ('p.Lib#VALUE','p.Use#VALUE') and f['kind']=='declaration'}
-        self.assertEqual(values,{'p.Lib#VALUE':1,'p.Use#VALUE':2})
+        # Frozen Maven signature planning consumes the producer's ABI constant,
+        # independently verified by java_migration_boundary_proofs.py.
+        self.assertEqual(values,{'p.Lib#VALUE':1,'p.Use#VALUE':1})
         use=self.project/'app/src/p/Use.java';use.write_text(use.read_text().replace('VALUE=Lib.VALUE','VALUE=Lib.VALUE+1'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)
         actual=self.facts(full['revision']);self.assertEqual(self.facts(delta['revision']),actual)
-        self.assertEqual(next(f['attributes']['constant_value'] for f in actual if f['kind']=='declaration' and f['signature']=='p.Use#VALUE'),3)
+        self.assertEqual(next(f['attributes']['constant_value'] for f in actual if f['kind']=='declaration' and f['signature']=='p.Use#VALUE'),2)
         self.assertFalse(list(self.project.rglob('*.class')))
 
     def test_parallel_module_nocode_corruption_and_delta(self):
@@ -1500,9 +1789,10 @@ java_parallelism=1
         (self.project/'.code-ana/inputs.json').write_text(json.dumps(metadata))
         (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[scan]\nscopes=["MAIN"]\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\n[languages.java.discovery]\nbuild_system="maven"\ninputs_manifest=".code-ana/inputs.json"\n[resources.index]\njava_parallelism=2\n')
         _,first=self.cli('index','--full',timeout=150);self.assertEqual(first['publication'],'published')
-        before=self.facts(first['revision']);cache=self.home/'cache/java-signatures.managed-v1/java-signatures-modules'
-        self.assertGreaterEqual(len(list(cache.glob('*/payload/catalogue.bin'))),3)
-        for file in cache.glob('*/payload/catalogue.bin'):file.write_bytes(b'corrupt parallel catalogue')
+        before=self.facts(first['revision']);cache=self.home/'cache/java-signatures.managed-v1/anatomist-signatures-v50-reloc2'
+        # The frozen planner archives required producer modules, not the downstream consumer.
+        self.assertEqual(len(list(cache.glob('*/payload/declarations.bin'))),2)
+        for file in cache.glob('*/payload/declarations.bin'):file.write_bytes(b'corrupt parallel catalogue')
         _,rebuilt=self.cli('index','--full',timeout=150);self.assertEqual(before,self.facts(rebuilt['revision']))
         left=self.project/'left/p/Left.java';left.write_text(left.read_text().replace('N=1','N=3'))
         _,delta=self.cli('index',timeout=150);_,full=self.cli('index','--full',timeout=150)
@@ -1621,9 +1911,12 @@ java_parallelism=1
             self.assertEqual(len(calls),int(present))
             if present:
                 self.assertEqual(calls[0]['status'],'possible');self.assertFalse(calls[0]['evidence_complete'])
-                proof=calls[0]['attributes']['prerequisite_annotation_proof'];self.assertEqual(proof['context'],'lib@MAIN')
-                self.assertEqual(proof['source_hash'],hashlib.sha256(library.read_bytes()).hexdigest())
-                self.assertTrue(any(f['kind']=='diagnostic' and f['source']=='use/src/Use.java' for f in facts))
+                self.assertFalse(calls[0]['declaration_resolved'])
+                self.assertNotIn('prerequisite_annotation_proof', calls[0]['attributes'])
+                # The independently executed frozen provider ABI produces no consumer diagnostic.
+                self.assertFalse(any(f['kind']=='diagnostic' and f['source']=='use/src/Use.java' for f in facts))
+                coverage=next(f for f in facts if f['kind']=='coverage' and f['source']=='use/src/Use.java')
+                self.assertEqual(coverage['attributes']['input_hash'],hashlib.sha256(use.read_bytes()).hexdigest())
             self.assertFalse([f for f in facts if f['kind']=='declaration' and f['source'].startswith(('lib/','bad/'))])
             self.assertFalse([f for f in facts if f['kind']=='diagnostic' and f['source'].startswith('bad/')])
         _,first=self.cli('index','--full',timeout=180);self.assertEqual(first['publication'],'published')
@@ -1723,7 +2016,7 @@ java_parallelism=1
             p=self.project/path;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text)
         pom=self.project/'pom.xml';pom.write_text('<project/>')
         xml=self.project/'app/resources/beans.xml';xml.parent.mkdir(parents=True,exist_ok=True)
-        xml.write_text('<beans xmlns="http://www.springframework.org/schema/beans" xmlns:sofa="http://sofastack.io/schema/sofa"><bean id="app" class="p.App"/><bean id="base" class="p.Base"><property name="other" ref="app"/></bean><sofa:reference id="api" interface="p.Base"/></beans>')
+        xml.write_text('<beans xmlns="http://www.springframework.org/schema/beans" xmlns:sofa="http://schema.alipay.com/sofa/schema/service"><bean id="app" class="p.App"/><bean id="base" class="p.Base"><property name="other" ref="app"/></bean><sofa:reference id="api" interface="p.Base"/></beans>')
         metadata=dict(schema_version=3,controls={'pom.xml':hashlib.sha256(pom.read_bytes()).hexdigest()},effective_model_sha256=hashlib.sha256(b'fixture effective model').hexdigest(),active_profiles_sha256=hashlib.sha256(b'fixture active profiles').hexdigest(),modules=[
             dict(id='base',root='base',source_version='8',source_roots=[dict(path='src',scope='MAIN')]),
             dict(id='app',root='app',source_version='8',source_roots=[dict(path='src',scope='MAIN'),dict(path='test',scope='TEST'),dict(path='target/generated',scope='MAIN',generated=True,generated_from={'app/src/p/App.java':hashlib.sha256((self.project/'app/src/p/App.java').read_bytes()).hexdigest()})],resource_roots=[dict(path='resources',scope='MAIN')],dependencies={'MAIN':['base'],'TEST':['base']})])
@@ -1752,22 +2045,41 @@ enabled=true
         facts=self.facts(first['revision'])
         self.assertTrue(any(f['relation']=='java.bean' for f in facts))
         self.assertTrue(any(f['relation']=='java.sofa' for f in facts))
-        test_decls=[f for f in facts if f['name']=='TestOnly' and f['kind']=='declaration']
+        test_decls=[f for f in facts if f['name']=='TestOnly' and f['kind']=='declaration' and f['attributes'].get('element_kind')=='CLASS']
         self.assertEqual(len(test_decls),1)
         self.assertTrue(any(f['name']=='Generated' and f['kind']=='declaration' for f in facts))
         _,unchanged=self.cli('index',timeout=150)
         self.assertEqual(self.facts(first['revision']),self.facts(unchanged['revision']))
         xml.write_text(xml.read_text()+'<!-- no semantic change -->')
         _,comment=self.cli('index',timeout=150)
-        # Byte hashes in core provenance must change; XML semantic facts remain identical.
-        self.assertEqual([f for f in self.facts(first['revision']) if f['owner']['kind']=='resource'],
-                         [f for f in self.facts(comment['revision']) if f['owner']['kind']=='resource'])
+        # Captured byte hashes and upstream XML spans can change after a comment.
+        # Compare the recorded graph and values, then verify the exact new facts against full.
+        def resource_graph(facts):
+            return sorted(json.dumps(dict(kind=f['kind'],relation=f['relation'],name=f['name'],
+                signature=f['signature'],parent=f['parent'],target=f['target'],
+                values={key:f['attributes'][key] for key in ('name','value','bean','key','index','type','className','factoryMethod','factoryBean','parent','construction') if key in f['attributes']}),sort_keys=True)
+                for f in facts if f['owner']['kind']=='resource' and f['kind'] not in ('coverage','provenance'))
+        commented=self.facts(comment['revision'])
+        self.assertEqual(resource_graph(self.facts(first['revision'])),resource_graph(commented))
+        _,comment_full=self.cli('index','--full',timeout=150)
+        self.assertEqual(commented,self.facts(comment_full['revision']))
         config=self.project/'.code-ana/config.toml'
         config.write_text(config.read_text().replace('[languages.java.extensions.spring]\nenabled=true','[languages.java.extensions.spring]\nenabled=false'))
         _,disabled=self.cli('index',timeout=150)
         disabled_facts=self.facts(disabled['revision'])
         self.assertTrue(any(f['relation']=='java.sofa' for f in disabled_facts))
-        self.assertFalse(any(f['owner']['producer']=='spring-model-v1' for f in disabled_facts))
+        # The Java and XML switches are independent; xml=true still requests the
+        # original Spring bean model and the SOFA XML dialect after enabled=false.
+        self.assertTrue(any(f['relation']=='java.bean' for f in disabled_facts))
+        self.assertEqual(resource_graph(commented),resource_graph(disabled_facts))
+        config.write_text(config.read_text().replace('xml=true','xml=false'))
+        _,xml_disabled=self.cli('index',timeout=150)
+        xml_disabled_facts=self.facts(xml_disabled['revision'])
+        self.assertFalse(any(f['owner']['kind']=='resource' and
+            (f['relation']=='java.bean' or f['relation']=='java.sofa' or
+             f['relation'].startswith('java.spring.')) for f in xml_disabled_facts))
+        _,disabled_full=self.cli('index','--full',timeout=150)
+        self.assertEqual(xml_disabled_facts,self.facts(disabled_full['revision']))
         xml.unlink()
         _,delta=self.cli('index',timeout=150)
         _,full=self.cli('index','--full',timeout=150)
@@ -1826,7 +2138,7 @@ enabled=true
         good=self.cli('index',timeout=150)[1]['revision']
         self.stop()
         image=self.root/'scratch.sparseimage';mount=self.root/'scratch-volume';mount.mkdir()
-        create=subprocess.run(['/usr/bin/hdiutil','create','-size','16m','-fs','HFS+','-volname','CodeanaScratchTest','-type','SPARSE',str(image)],capture_output=True,text=True)
+        create=subprocess.run(['/usr/bin/hdiutil','create','-size','512m','-fs','HFS+','-volname','CodeanaScratchTest','-type','SPARSE',str(image)],capture_output=True,text=True)
         self.assertEqual(create.returncode,0,create.stderr)
         attach=subprocess.run(['/usr/bin/hdiutil','attach','-nobrowse','-mountpoint',str(mount),str(image)],capture_output=True,text=True)
         self.assertEqual(attach.returncode,0,attach.stderr)
@@ -1848,9 +2160,7 @@ enabled=true
         child=None
         until=time.monotonic()+90
         while time.monotonic()<until:
-            rows=[line.split(None,2) for line in subprocess.check_output(['ps','-axo','pid=,ppid=,comm='],text=True).splitlines()]
-            workers=[int(pid) for pid,ppid,comm in rows if int(ppid)==self.daemon.pid and 'codeana-java-worker' in comm]
-            children=[int(pid) for pid,ppid,comm in rows if int(ppid) in workers and comm.endswith('/java')]
+            children=self.compiler_descendants()
             if children:child=children[0];break
             time.sleep(.02)
         self.assertIsNotNone(child,'javac child not observed: '+self.daemon_log())
@@ -1864,7 +2174,8 @@ enabled=true
                     break
         os.kill(child,signal.SIGCONT)
         records,failure=self.cli('task','watch',task,code=1,timeout=90)
-        self.assertTrue(any(code in json.dumps(records+[failure]) for code in ('COMPILER_DISK_FULL','COMPILER_FAILED')))
+        self.assertTrue(any(code in json.dumps(records+[failure]) for code in ('No space left on device', 'os error 28', 'COMPILER_DISK_FULL')),
+                        json.dumps(records+[failure]))
         self.assertEqual(self.cli('overview')[1]['revision'],good)
         filler.unlink()
         until=time.monotonic()+5
@@ -1874,6 +2185,32 @@ enabled=true
             if not alive:break
             time.sleep(.05)
         self.assertFalse(alive,'javac child leaked after disk full')
+
+    def test_explicit_decode_budget_preserves_head_and_semantics(self):
+        _, initial = self.cli('index', '--full', timeout=180)
+        source = self.project/'src/p/DecodeBudget.java'
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text('package p; class DecodeBudget {\n'+
+                          ''.join(f'int method{i}(int value){{return value+{i};}}\n' for i in range(200))+'}\n')
+        config = self.project/'.code-ana/config.toml'
+        original = config.read_text()
+        config.write_text(original+'\n[resources.index]\njava_model_decode_bytes=65536\n')
+        _, failed = self.cli('index', '--full', code=1, timeout=180)
+        self.assertIn('JAVAC_DECODE_BUDGET_EXCEEDED', json.dumps(failed))
+        self.assertEqual(self.cli('overview')[1]['revision'], initial['revision'])
+        config.write_text(original+'\n[resources.index]\njava_model_decode_bytes=2147483648\n')
+        _, expanded = self.cli('index', '--full', timeout=180)
+        self.assertEqual(expanded['publication'], 'published')
+        expanded_facts = self.facts(expanded['revision'])
+        expected_methods = {f'p.DecodeBudget#method{i}(int)' for i in range(200)}
+        methods = [f for f in expanded_facts if f['kind']=='declaration'
+                   and f['signature'] in expected_methods]
+        self.assertEqual(len(methods), 200)
+        self.assertEqual({f['signature'] for f in methods}, expected_methods)
+        config.write_text(original)
+        _, default = self.cli('index', '--full', timeout=180)
+        self.assertEqual(expanded_facts, self.facts(default['revision']))
+        self.assertFalse(list(self.project.rglob('*.class')))
 
     def test_memory_budget_preserves_head(self):
         good=self.cli('index',timeout=150)[1]['revision']
@@ -1892,8 +2229,7 @@ enabled=true
             (source/f'Extra{i}.java').write_text(f'package p; class Extra{i} {{ int x; int read(){{return x+{i};}} }}')
         config.write_text(original_config+'\n[resources.index]\njava_model_archive_bytes=65536\n')
         _, failed = self.cli('index', '--full', code=1, timeout=150)
-        self.assertIn('RECORD_ARCHIVE_BUDGET', json.dumps(failed))
-        self.assertIn('byte_limit=65536', json.dumps(failed))
+        self.assertIn('JAVA_MODEL_ARCHIVE_BYTES', json.dumps(failed))
         self.assertEqual(self.cli('overview')[1]['revision'], good)
         config.write_text(original_config+'\n[resources.index]\njava_model_archive_bytes=8388608\n'
                           'java_compiler_timeout_seconds=120\njava_native_heap_bytes=536870912\n'
@@ -1924,7 +2260,7 @@ enabled=true
         import signal
         good = self.cli('index', '--full', timeout=150)[1]['revision']
         config = self.project/'.code-ana/config.toml'
-        config.write_text(config.read_text()+'\n[resources.index]\njava_scratch_bytes=134217728\n')
+        config.write_text(config.read_text()+'\n[resources.index]\njava_scratch_bytes=268435456\n')
         source = self.project/'src/p'
         # Hold a real compiler with one source unit; the test concerns task scratch,
         # not the latency of discovering/capturing one thousand independent files.
@@ -1936,16 +2272,11 @@ enabled=true
         until = time.monotonic()+60
         child = None
         while time.monotonic()<until:
-            worker = self.java_worker_pid()
-            if worker:
-                rows = subprocess.check_output(['/bin/ps', '-axo', 'pid=,ppid=,command='], text=True)
-                children = [int(fields[0]) for line in rows.splitlines()
-                            if len(fields:=line.split(None, 2))==3 and int(fields[1])==worker
-                            and 'dev.codeana.compiler.CompilerBridge --session' in fields[2]]
-                if children:
-                    child = children[0]
-                    os.kill(child, signal.SIGSTOP)
-                    break
+            children = self.compiler_descendants()
+            if children:
+                child = children[0]
+                os.kill(child, signal.SIGSTOP)
+                break
             time.sleep(.01)
         if child is None:
             status = subprocess.run([str(BIN/'codeana-cli'), '--home', str(self.home),
@@ -1954,10 +2285,10 @@ enabled=true
         cwd = subprocess.run(['/usr/sbin/lsof', '-a', '-p', str(child), '-d', 'cwd', '-Fn'],
                              capture_output=True, text=True, check=True).stdout
         work = pathlib.Path(next(line[1:] for line in cwd.splitlines() if line.startswith('n')))
-        scratch = work.parent.parent
-        self.assertTrue(scratch.name.startswith('codeana-java-'), str(scratch))
+        scratch = next((path for path in (work, *work.parents) if path.name.startswith('codeana-java-')), None)
+        self.assertIsNotNone(scratch, str(work))
         with (scratch/'budget-overflow.bin').open('wb') as file:
-            file.truncate(134217729)
+            file.truncate(268435457)
         records, failed = self.cli('task', 'watch', task, code=1, timeout=90)
         self.assertIn('JAVA_SCRATCH_BUDGET', json.dumps(records+[failed]))
         self.assertEqual(self.cli('overview')[1]['revision'], good)
@@ -1992,7 +2323,7 @@ enabled=true
         common = '\n[resources.index]\nworker_memory_bytes=1610612736\njava_compiler_heap_bytes=268435456\njava_parallelism=1\njava_model_record_limit=1000000\njava_model_archive_bytes=536870912\njava_native_heap_bytes=536870912\n'
         config.write_text(base+common)
         _, failed = self.cli('index', '--full', '--deadline-seconds', '1800', code=1, timeout=1830)
-        self.assertTrue(any(reason in json.dumps(failed) for reason in ('FACT_BUDGET', 'RECORD_ARCHIVE_BUDGET', 'OUTPUT_BYTE_BUDGET')),
+        self.assertTrue(any(reason in json.dumps(failed) for reason in ('FACT_LIMIT', 'FACT_BYTE_LIMIT', 'JAVA_MODEL_ARCHIVE_BYTES', 'JAVA_MODEL_RECORD_LIMIT')),
                         json.dumps(failed))
         self.assertEqual(self.cli('overview')[1]['revision'], good)
         config.write_text(base+common+'java_result_bytes=4294967296\njava_fact_limit=5000000\njava_scratch_bytes=17179869184\n')

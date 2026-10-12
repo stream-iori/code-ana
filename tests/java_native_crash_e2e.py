@@ -2,6 +2,7 @@
 """A genuine C ABI SIGSEGV must not replace a daemon's published Java revision."""
 import hashlib
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -35,9 +36,11 @@ def main():
                            check=True, capture_output=True)
         source_bundle = (previous_bin / '../lib/java').resolve()
         if not (source_bundle / 'native/manifest.json').exists():
-            source_bundle = java_e2e.ROOT / 'lang-adaptor/target'
+            source_bundle = pathlib.Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE',
+                java_e2e.ROOT / 'lang-java-adapotr/target/native')).resolve().parent
         bridge = source_bundle / 'compiler-bridge.jar'
         shutil.copy2(bridge, package / 'lib/java/compiler-bridge.jar')
+        shutil.copy2(source_bundle / 'maven-input-worker.jar', package / 'lib/java/maven-input-worker.jar')
         crash_source = case.root / 'native-crash.c'
         crash_source.write_text('''
 int graal_create_isolate(void *params, void **isolate, void **thread) { *isolate=(void*)1; *thread=(void*)1; return 0; }
@@ -56,6 +59,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         manifest['files'] = {
             'native/' + library.name: sha(library),
             'compiler-bridge.jar': sha(package / 'lib/java/compiler-bridge.jar'),
+            'maven-input-worker.jar': sha(package / 'lib/java/maven-input-worker.jar'),
         }
         (native_dir / 'manifest.json').write_text(json.dumps(manifest))
 
@@ -63,7 +67,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         case.log = open(case.root / 'daemon.log', 'a')
         case.daemon = subprocess.Popen(
             [str(binary_dir / 'codeana-daemon'), '--home', str(case.home)],
-            stdout=case.log, stderr=case.log)
+            stdout=case.log, stderr=case.log, env=dict(os.environ, CODEANA_JAVA_BACKEND='native'))
         until = time.monotonic() + 10
         while time.monotonic() < until:
             if case.daemon.poll() is not None:

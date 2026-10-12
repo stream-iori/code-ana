@@ -62,15 +62,15 @@ class AcceptanceAccounting(unittest.TestCase):
             library = 'native/libcodeana_java.' + ('dylib' if sys.platform == 'darwin' else 'so')
             for relative in (library, 'compiler-bridge.jar', 'maven-input-worker.jar'):
                 (source / relative).write_bytes(b'fresh build')
-            (source / 'native/manifest.json').write_text(json.dumps(dict(adapter='fixture-adapter',files={
-                relative: sha(source / relative) for relative in (library, 'compiler-bridge.jar')})))
+            (source / 'native/manifest.json').write_text(json.dumps(dict(adapter='fixture-adapter',worker_protocol=16,backend='native',files={
+                relative: sha(source / relative) for relative in (library, 'compiler-bridge.jar', 'maven-input-worker.jar')})))
             stale = root / 'target/lib/java/native'
             stale.mkdir(parents=True)
             (stale / pathlib.Path(library).name).write_bytes(b'stale installed build')
             destination = root / 'evidence/runtime'
             from unittest.mock import patch
             import subprocess
-            runtime=json.dumps(dict(worker_protocol=14,fact_ir=1,adapter='fixture-adapter',analysis_request=8,abi=2))
+            runtime=json.dumps(dict(worker_protocol=16,fact_ir=1,adapter='fixture-adapter',analysis_request=8,abi=2,backend='native'))
             with patch('java_product_runtime.subprocess.run',return_value=subprocess.CompletedProcess([],0,stdout=runtime,stderr='')):
                 result = prepare(root, destination)
             self.assertEqual(result['files'], inventory(destination))

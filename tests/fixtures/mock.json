@@ -146,7 +146,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -176,7 +181,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -493,7 +503,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -523,7 +538,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -804,7 +824,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -834,7 +859,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -1115,7 +1145,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -1145,7 +1180,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -1462,7 +1502,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -1492,7 +1537,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -1822,7 +1872,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -1852,7 +1907,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -2169,7 +2229,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -2199,7 +2264,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -2516,7 +2586,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -2546,7 +2621,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -2863,7 +2943,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -2893,7 +2978,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -3210,7 +3300,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -3240,7 +3335,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",
@@ -3557,7 +3657,12 @@
           "source": "src/Greeting.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Greeting"
+          "name": "Greeting",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "INTERFACE",
+            "modifiers": []
+          }
         },
         {
           "id": "greeting_method",
@@ -3587,7 +3692,12 @@
           "source": "src/Service.java",
           "origin": "mock-fixture-v1",
           "evidence_complete": true,
-          "name": "Service"
+          "name": "Service",
+          "attributes": {
+            "entity_kind": "type",
+            "element_kind": "CLASS",
+            "modifiers": []
+          }
         },
         {
           "id": "service_method",

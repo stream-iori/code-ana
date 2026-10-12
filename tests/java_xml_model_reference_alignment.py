@@ -65,11 +65,11 @@ def main():
     root=alignment.ROOT
     base=root/'target/java-alignment/evidence'/('xml-model-reference-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))
     base.mkdir(parents=True)
-    jar=root.parent/'anatomist/target/anatomist.jar'
+    jar=reference.REFERENCE_JAR
     if reference.digest(jar)!=reference.REFERENCE_SHA:raise ValueError('XML_MODEL_REFERENCE_ARTIFACT_DRIFT')
     classes=base/'classes';classes.mkdir()
-    source=root/'lang-adaptor/src/frozen-test/java/dev/codeana/analysis/XmlConfigurationReferenceProbe.java'
-    classpath=os.pathsep.join([str(jar),str(root/'lang-adaptor/target/classes'),str(classes)])
+    source=root/'tests/java-migration/XmlConfigurationWitness.java'
+    classpath=os.pathsep.join([str(jar),str(classes)])
     subprocess.run([str(JDK25/'bin/javac'),'-cp',classpath,'-d',str(classes),str(source)],check=True,timeout=30)
     rust_target=base/'rust-build'
     subprocess.run(['cargo','build','--target-dir',str(rust_target),'-p','codeana-model','--example','validate_java_graph_facts','--locked'],
@@ -100,9 +100,11 @@ def main():
             case.assertNotEqual(failure.returncode,0)
             case.assertIn('INVALID_JAVA_XML_CONFIGURATION',failure.stderr)
             actual=projection(facts)
+            witness_input=directory/'reference-inputs.json'
+            witness_input.write_text(json.dumps([dict(file='beans.xml',path=str(captured))]))
             process=subprocess.run([str(JDK25/'bin/java'),'-cp',classpath,
-                'dev.codeana.analysis.XmlConfigurationReferenceProbe',str(captured)],capture_output=True,text=True,check=True,timeout=30)
-            expected=sorted(json.loads(process.stdout),key=lambda row:row['construction']['ordinal'])
+                'XmlConfigurationWitness',str(witness_input)],capture_output=True,text=True,check=True,timeout=30)
+            expected=sorted(json.loads(process.stdout)[0]['models'],key=lambda row:row['construction']['ordinal'])
             from java_xml_reference_alignment import index_reference
             from java_xml_alignment import SOURCE
             from java_xml_model_inventory_diff import reference_models

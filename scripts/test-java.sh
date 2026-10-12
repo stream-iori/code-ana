@@ -7,5 +7,4 @@ cd "$repo_root/lang-java-adapotr"
 sdk env
 set -u
 export ANATOMIST_HOME="${ANATOMIST_HOME:-$PWD/target/reference-test-home}"
-mvn -q -Djava8.home="${CODEANA_JAVA8_HOME:-$HOME/.sdkman/candidates/java/8.0.492-zulu}" test
-python3 "$repo_root/scripts/check-java-migration.py"
+exec "$repo_root/scripts/build-java-jvm.sh"

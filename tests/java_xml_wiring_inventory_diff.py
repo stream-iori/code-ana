@@ -22,7 +22,12 @@ def select_facts(db):
                           "AND json_extract(body,'$.attributes.via')='xml_configuration'"):
         selected[row['id']] = json.loads(row['body'])
     wanted = {f[key] for f in selected.values() for key in ('parent','target')}
-    wanted.update(f['attributes']['configuration_evidence'] for f in selected.values())
+    wanted.update(f['attributes']['configuration_evidence'] for f in selected.values()
+                  if f['attributes'].get('upstream_relation') != 'WIRES')
+    sources = sorted({f['source'] for f in selected.values()})
+    for row in db.execute("SELECT id,body FROM facts WHERE kind='coverage' AND source IN "
+                          "(SELECT value FROM json_each(?))", (json.dumps(sources),)):
+        selected[row['id']] = json.loads(row['body'])
     for identity in wanted-selected.keys():
         row = db.execute('SELECT body FROM facts WHERE id=?', (identity,)).fetchone()
         if row is None:

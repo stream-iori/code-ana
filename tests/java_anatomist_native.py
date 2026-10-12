@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Native C ABI checks for the Anatomist-backed adapter, independent of legacy Java APIs."""
+"""Shared adapter contracts; select JVM explicitly until its complete gate passes."""
 import hashlib
 import json
 import os
@@ -13,6 +13,10 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / 'lang-java-adapotr/target'
 JDK = Path(os.environ.get('CODEANA_JAVA8_HOME', Path.home() / '.sdkman/candidates/java/8.0.492-zulu'))
+BACKEND = os.environ.get('CODEANA_JAVA_BACKEND', 'native')
+BUNDLE = Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE', TARGET / BACKEND))
+BIN = Path(os.environ.get('CODEANA_TEST_BIN', ROOT / 'target/debug'))
+RUNTIME = BUNDLE / ('runner.jar' if BACKEND == 'jvm' else 'libcodeana_java.dylib')
 
 class Native(unittest.TestCase):
     def setUp(self):
@@ -27,7 +31,7 @@ class Native(unittest.TestCase):
     def probe(self, *args, success=True):
         path = self.root / 'request.json'
         path.write_text(json.dumps(self.request))
-        result = subprocess.run([str(ROOT/'target/debug/codeana-java-worker'), str(TARGET/'native/libcodeana_java.dylib'), '--probe', str(path), *args], capture_output=True, text=True, timeout=60)
+        result = subprocess.run([str(BIN/'codeana-java-worker'), str(RUNTIME), '--backend', BACKEND, '--probe', str(path), *args], capture_output=True, text=True, timeout=60)
         if success:
             self.assertEqual(result.returncode, 0, result.stderr)
             return json.loads(result.stdout)
@@ -86,6 +90,17 @@ class Native(unittest.TestCase):
         self.assertEqual(sites[0]['status'], 'unresolved')
         self.assertFalse(any(f['kind']=='call_target' for f in facts))
 
+    def test_nested_call_bindings_attach_to_their_own_extracted_sites(self):
+        text = 'class A {int inner(){return 1;} void outer(int n){} void run(){outer(inner());}}'
+        self.replace_source(text)
+        facts = self.probe()['facts']
+        sites = [fact for fact in facts if fact['kind']=='call_site']
+        self.assertEqual({text[site['span']['start']:site['span']['end']] for site in sites}, {'outer(inner())', 'inner()'})
+        for site in sites:
+            bindings = [fact for fact in facts if fact['relation']=='java.binding' and fact['parent']==site['id']]
+            self.assertEqual(len(bindings), 1, site)
+            self.assertEqual(bindings[0]['span'], site['span'])
+
     def test_enum_initializers_and_array_references_preserve_evidence_without_call_sites(self):
         self.replace_source('enum E { FIRST(1), SECOND(2); E(int n){} } class A { java.util.function.IntFunction<String[]> array = String[]::new; java.util.function.Supplier<Object> object = Object::new; Object value = new Object(); }')
         facts = self.probe()['facts']
@@ -96,14 +111,28 @@ class Native(unittest.TestCase):
         self.assertTrue(any(f['relation']=='java.syntax' for f in facts))
 
     def test_java8_bytecode_and_manifest(self):
-        with zipfile.ZipFile(TARGET/'compiler-bridge.jar') as jar:
+        artifact_root = BUNDLE if BACKEND == 'jvm' else BUNDLE.parent
+        with zipfile.ZipFile(artifact_root/'compiler-bridge.jar') as jar:
             for name in jar.namelist():
                 if name.endswith('.class'):
                     self.assertEqual(struct.unpack('>H',jar.read(name)[6:8])[0],52,name)
-        manifest=json.loads((TARGET/'native/manifest.json').read_text())
+        manifest=json.loads((BUNDLE/'manifest.json').read_text())
         self.assertEqual(manifest['analysis_request'],8)
         for name,digest in manifest['files'].items():
-            self.assertEqual(hashlib.sha256((TARGET/name).read_bytes()).hexdigest(),digest,name)
+            self.assertEqual(hashlib.sha256((artifact_root/name).read_bytes()).hexdigest(),digest,name)
+    def test_external_policy_changes_observed_type_relations(self):
+        self.source.write_text('class A {java.util.List<String> values;}')
+        self.context['sources'][0]['hash']=hashlib.sha256(self.source.read_bytes()).hexdigest()
+        first=self.probe()['facts']
+        def targets(facts):
+            by={f['id']:f for f in facts}
+            return {by[f['target']]['signature'] for f in facts if f['kind']=='reference' and f['relation']=='type_reference'}
+        self.assertIn('java.util.List', targets(first))
+        self.context.update(external_policy_configured=True,external_exclude_patterns=['java.util.*'])
+        excluded=self.probe()['facts']
+        self.assertNotIn('java.util.List', targets(excluded))
+        self.context['external_exclude_patterns']=[]
+        self.assertIn('java.util.List', targets(self.probe()['facts']))
     def test_rejects_hash_and_old_request(self):
         self.source.write_text('class Changed {}')
         self.assertIn('CAPTURE_HASH_MISMATCH', self.probe(success=False))
@@ -216,6 +245,8 @@ class Native(unittest.TestCase):
         self.assertNotIn(b'anatomist-task-',catalogues[0].read_bytes())
         before={str(p):p.read_bytes() for p in cache.rglob('*') if p.is_file() and p.name in ('declarations.bin','manifest.json','manifest.sha256','signatures.jar')}
         self.assertEqual(first,self.probe()['facts'])
+        self.assertEqual(set(before), {str(p) for p in cache.rglob('*') if p.is_file()
+                         and p.name in ('declarations.bin','manifest.json','manifest.sha256','signatures.jar')})
         self.assertEqual(before,{str(p):p.read_bytes() for p in cache.rglob('*') if str(p) in before})
         catalogues[0].write_bytes(b'corrupt')
         self.assertEqual(first,self.probe()['facts'])

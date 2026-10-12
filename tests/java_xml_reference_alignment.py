@@ -94,7 +94,7 @@ def index_reference(base, source, xml, classpath=()):
     config=base/'.anatomist/config.toml';config.parent.mkdir()
     config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\n'
                       'javac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=true\n')
-    jar=pathlib.Path(os.environ.get('ANATOMIST_REFERENCE_JAR', alignment.ROOT.parent/'anatomist/target/anatomist.jar'))
+    jar=pathlib.Path(os.environ.get('ANATOMIST_REFERENCE_JAR', reference.REFERENCE_JAR))
     if reference.digest(jar)!=reference.REFERENCE_SHA:raise ValueError('FROZEN_REFERENCE_JAR_CHANGED')
     database=base/'index.db'
     command=[str(JDK25/'bin/java'),'-Xmx512m','-jar',str(jar),'index',str(base),

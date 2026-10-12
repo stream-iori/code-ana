@@ -6,15 +6,13 @@ import pathlib
 import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-REFERENCE_SHA = '457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e'
 
 
 def projection(facts, directory):
-    from java_anatomist_reference import REFERENCE
-    reference = REFERENCE
-    if hashlib.sha256(reference.read_bytes()).hexdigest() != REFERENCE_SHA:
-        raise ValueError('WIRING_REFERENCE_ARTIFACT_DRIFT')
-    java = pathlib.Path(os.environ.get('JAVA_HOME', pathlib.Path.home() / '.sdkman/candidates/java/25.3.4+1.r25-graalce'))
+    from java_fresh_reference import reference as verified_reference
+    reference, proof = verified_reference()
+    REFERENCE_SHA = proof['jar_sha256']
+    java = pathlib.Path(os.environ.get('JAVA_HOME', pathlib.Path.home() / '.sdkman/candidates/java/25.3.4+1.r25-graal'))
     directory = pathlib.Path(directory)
     classes = directory / 'wiring-reference-classes'
     classes.mkdir(exist_ok=True)

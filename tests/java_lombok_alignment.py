@@ -165,7 +165,7 @@ class Lombok(java_model_tests.Models):
             captured = self.root/'controls'/str(index)
             captured.parent.mkdir(exist_ok=True)
             captured.write_text(content)
-            resources.append(dict(unit=dict(path=path, world='files', scope='JAVA_CONFIG', hash=hashlib.sha256(captured.read_bytes()).hexdigest()), input=str(captured)))
+            resources.append(dict(unit=dict(path=path, module=context['module'], world='files', scope='JAVA_CONFIG', hash=hashlib.sha256(captured.read_bytes()).hexdigest()), input=str(captured)))
         context['resources'] = resources
         context['digest'] = hashlib.sha256((context['digest']+json.dumps(layers,sort_keys=True)).encode()).hexdigest()
         return context

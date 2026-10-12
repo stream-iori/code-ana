@@ -38,7 +38,7 @@ def proof(name, library, consumer, shape, evidence, native):
     config.parent.mkdir()
     config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\njavac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=false\n')
     command = [str(models.JDK25 / 'bin/java'), '-Xmx512m', '-jar',
-               str(alignment.ROOT.parent / 'anatomist/target/anatomist.jar'), 'index', str(base),
+               str(reference.REFERENCE_JAR), 'index', str(base),
                '--source-root', 'app@MAIN=' + ','.join(auxiliary_roots), '--source-root', 'app@TEST=use',
                '--jdk-home', str(models.JDK8), '--java-version', '8', '--lombok', 'ast',
                '--vm-classpath', 'true', '--no-classpath', '--full', '--output', str(base / 'index.db')]
@@ -105,7 +105,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--native', action='store_true')
     args = parser.parse_args()
-    jar = alignment.ROOT.parent / 'anatomist/target/anatomist.jar'
+    jar = reference.REFERENCE_JAR
     if reference.digest(jar) != reference.REFERENCE_SHA:
         raise ValueError('REFERENCE_ARTIFACT_CHANGED')
     evidence = alignment.ROOT / 'target/java-alignment/evidence' / ('supplemental-reference-' + time.strftime('%Y%m%d-%H%M%S') + '-' + str(os.getpid()))

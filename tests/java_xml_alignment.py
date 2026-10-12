@@ -28,7 +28,7 @@ class Xml(unittest.TestCase):
             captured = self.root/'xml'/str(index)
             captured.parent.mkdir(exist_ok=True)
             captured.write_text(content, encoding='utf8')
-            resources.append(dict(unit=dict(path=path,world='resources',hash=hashlib.sha256(captured.read_bytes()).hexdigest()),input=str(captured)))
+            resources.append(dict(unit=dict(path=path,module=context['module'],scope='RESOURCE',language='xml',world='resources',hash=hashlib.sha256(captured.read_bytes()).hexdigest()),input=str(captured)))
         context['resources'] = resources
         context['digest'] = hashlib.sha256((context['digest']+json.dumps(files,sort_keys=True)).encode()).hexdigest()
         return context
@@ -160,14 +160,20 @@ class Xml(unittest.TestCase):
     def assert_binary_xml(self,facts):
         ids={f['id']:f for f in facts}
         beans={f['name']:f for f in facts if f['relation']=='java.bean'}
-        for name in ('product','static','instance'):
-            self.assertEqual(beans[name]['attributes']['type'],'ext.Product')
-            self.assertEqual(ids[beans[name]['parent']]['signature'],'ext.Product')
-        self.assertEqual(beans['ambiguous']['attributes']['type'],'ext.Product')
+        # The frozen core retains configured classes and unverified textual member targets.
+        # It does not derive a binary factory product or inherited declaration.
+        for name, expected in [('product','ext.Product'), ('static','ext.Factory'), ('instance','')]:
+            self.assertEqual(beans[name]['attributes']['type'],expected)
+            self.assertEqual(ids[beans[name]['parent']]['attributes']['entity_kind'], 'artifact')
+            if expected:
+                self.assertTrue(any(f['relation']=='config_type' and f['parent']==beans[name]['id']
+                    and ids[f['target']]['signature']==expected for f in facts))
+        self.assertEqual(beans['ambiguous']['attributes']['type'],'ext.Factory')
         targets={ids[f['target']]['signature'] for f in facts if f['relation']=='config_member'}
-        self.assertTrue({'ext.Product#<init>()','ext.Base#start()','ext.Base#stop()',
-            'ext.Base#setOther(ext.Product)','ext.Factory#make()','ext.Factory#instance()'}.issubset(targets))
-        external=[f for f in facts if f['kind']=='external_symbol' and f['origin']=='spring-model-v1']
+        self.assertTrue({'ext.Product#Product()','ext.Product#start()','ext.Product#stop()',
+            'ext.Product#setOther(ext.Product)','ext.Factory#make()','ext.Factory#instance()',
+            'ext.Factory#ambiguous(?)'}.issubset(targets))
+        external=[f for f in facts if f['kind']=='external_symbol' and f['origin']=='framework_model']
         self.assertTrue(external)
         self.assertTrue(all(f['source']=='' and f['span'] is None and f['status']=='possible'
             and not f['evidence_complete'] and not f['declaration_resolved']

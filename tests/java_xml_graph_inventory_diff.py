@@ -37,7 +37,12 @@ def select_facts(db):
         "('java.bean','java.spring.xml','config','config_type','config_owner','config_member','wires_possible')")}
     pending={fact[key] for fact in facts.values() for key in ('parent','target') if fact[key]}
     pending.update(f['attributes']['configuration_evidence'] for f in facts.values()
-                   if f['relation']=='wires_possible' and f['attributes'].get('via')=='xml_configuration')
+                   if f['relation']=='wires_possible' and f['attributes'].get('via')=='xml_configuration'
+                   and f['attributes'].get('upstream_relation') != 'WIRES')
+    sources=sorted({f['source'] for f in facts.values()})
+    for row in db.execute("SELECT id,body FROM facts WHERE kind='coverage' AND source IN "
+                          "(SELECT value FROM json_each(?))",(json.dumps(sources),)):
+        facts[row['id']]=json.loads(row['body'])
     while pending:
         identity=pending.pop()
         if identity in facts:continue

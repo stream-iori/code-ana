@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Independent frozen-jar comparison for the migrated core and captured-input boundary."""
-import hashlib,json,os,pathlib,subprocess,tempfile,time
+import argparse,hashlib,json,os,pathlib,shutil,subprocess,tempfile,time
+from java_fresh_reference import reference
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-REFERENCE=pathlib.Path(os.environ.get('ANATOMIST_REFERENCE_JAR', ROOT.parent/'anatomist/target/anatomist.jar')).resolve()
-REFERENCE_SHA='457031ca061c58f7b094ce322a23a98dddea87b3eb602374c49b8e868994749e'
-TARGET=ROOT/'lang-java-adapotr/native-bridge/target'
+REFERENCE,REFERENCE_PROOF=reference()
+REFERENCE_SHA=REFERENCE_PROOF['jar_sha256']
+TARGET=ROOT/'lang-java-adapotr/java-bridge/target'
 JDK=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME',pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'))
-HOST=pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graalce'
+HOST=pathlib.Path.home()/'.sdkman/candidates/java/25.3.4+1.r25-graal'
 CASES={
  'calls':{'Use.java':'package p; interface Api {String get();} class Use implements Api { public String get(){return String.valueOf(1);} void call(){Api x=this; x.get(); java.util.function.Supplier<String> f=this::get; f.get();} }'},
  'types':{'Use.java':'package p; @interface Tag {Class<?> value();} @Tag(String.class) class Use<T extends Number & Comparable<T>> {java.util.List<? extends T[]> value; <R extends CharSequence> R choose(R x,R... y){return x;} class Inner {} }'},
@@ -41,13 +42,46 @@ CASES['xml-cross-file']={
  'api.xml':'<beans><bean id="api" class="p.Api"/></beans>',
  'use.xml':'<beans><bean id="use" class="p.Use"><property name="api" ref="api"/></bean><bean id="factory" class="p.Use" factory-method="create"/></beans>',
 }
+CASES['constructor-statements']={'Use.java':'class B { B(int n){} } class Use extends B { Use(){this(1);} Use(int n){super(n);} }'}
+CASES['failed-inference']={'Inference.java':'''import java.util.*; import java.util.stream.*; class Inference<T> {
+    int healthy(){return 1;} List<T> broken(Map<Integer,T> m){return m.entrySet().stream()
+    .sorted(Comparator.comparing(o -> o.getValue())).map(Map.Entry::getValue).collect(Collectors.toList());}
+}'''}
+CASES['field-mutations']={'Use.java':'class Use {int field; int run(){field++; ++field; field--; return field;} }'}
+CASES['lombok-modeled-overrides']={
+ 'lombok/Getter.java':'package lombok; public @interface Getter {}',
+ 'Use.java':'interface Contract<T> {T getValue();} @lombok.Getter class Bean implements Contract<String> {String value;} @lombok.Getter class Parent<T> {T value;} class Child extends Parent<String> {public String getValue(){return "yes";}}',
+}
+CASES['lombok-source-recovery']={
+ 'lombok/Getter.java':'package lombok; public @interface Getter {}',
+ 'Use.java':'class Holder {@lombok.Getter Api api;} class Api {public void choose(long value){} public void choose(Integer value){} public <T extends Number & Comparable<T>> T echo(T value){return value;}} class Use {void run(Holder holder){holder.getApi().choose(1); holder.getApi().<Integer>echo(1);}}',
+}
+CASES['enum-array-reference']={'Use.java':'enum E { FIRST(1), SECOND(2); E(int n){} } class Use {java.util.function.IntFunction<String[]> array=String[]::new; java.util.function.Supplier<Object> object=Object::new; Object value=new Object();}'}
+CASES['conditional-bean-occurrences']={
+ 'Use.java':'class Use {void setSize(int value){} void setOther(Use value){}}',
+ 'beans.xml':'<beans>#if ($app == "first")\n<bean id="a" class="Use"><property name="size" value="32"/></bean>\n#end\n#if ($app == "second")\n<bean id="a" class="Use"><property name="size" value="512"/></bean>\n#end\n<bean id="holder" class="Use"><property name="other" ref="a"/></bean></beans>',
+}
 def main():
-    assert hashlib.sha256(REFERENCE.read_bytes()).hexdigest()==REFERENCE_SHA,'FROZEN_REFERENCE_DRIFT'
-    output=ROOT/'target/lang-java-adapotr-reference.json'
-    receipt=dict(reference_sha256=REFERENCE_SHA,categories=14,cases=[],full_semantic_diff_accepted=False)
+    parser=argparse.ArgumentParser()
+    parser.add_argument('--evidence',type=pathlib.Path,
+        default=ROOT/'target/implementation-evidence'/('raw-reference-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid())))
+    evidence=parser.parse_args().evidence.resolve()
+    evidence.mkdir(parents=True,exist_ok=False)
+    REFERENCE,proof=reference()
+    REFERENCE_SHA=proof['jar_sha256']
+    output=evidence/'receipt.json'
+    receipt=dict(reference_commit=proof['commit'],reference_sha256=REFERENCE_SHA,categories=14,cases=[],full_semantic_diff_accepted=False)
     with tempfile.TemporaryDirectory(prefix='codeana-migration-reference-') as tmp:
         work=pathlib.Path(tmp);classes=work/'classes';classes.mkdir()
-        migrated=os.pathsep.join([str(TARGET/'test-classes'),str(TARGET/'native-bridge-0.1.0.jar')])
+        bundle=pathlib.Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE',ROOT/'lang-java-adapotr/target/jvm'))
+        manifest=json.loads((bundle/'manifest.json').read_text())
+        frozen=work/'migrated-runner.jar'
+        shutil.copy2(bundle/'runner.jar',frozen)
+        runner_sha=hashlib.sha256(frozen.read_bytes()).hexdigest()
+        assert runner_sha==manifest['files']['runner.jar'],'MIGRATED_BUNDLE_DRIFT'
+        receipt['migrated_runner_sha256']=runner_sha
+        receipt['migrated_manifest']=manifest
+        migrated=str(frozen)
         subprocess.run([str(HOST/'bin/javac'),'-cp',migrated,'-d',str(classes),str(ROOT/'tests/java-migration/ParityWitness.java')],check=True)
         for case,sources in CASES.items():
             root=work/case;root.mkdir()
@@ -56,11 +90,11 @@ def main():
             results={}
             for label,classpath,mode in [('reference',str(REFERENCE),'reference'),('migrated',migrated,'captured')]:
                 started=time.monotonic()
-                result=subprocess.run([str(HOST/'bin/java'),'-cp',str(classes)+os.pathsep+classpath,'ParityWitness',str(root),str(JDK),str(work/(case+'-'+label)), 'ast' if case=='lombok' else 'off',mode,str(ROOT/'target/java-anatomist-reference'/case/label)],capture_output=True,text=True,timeout=120)
+                result=subprocess.run([str(HOST/'bin/java'),'-cp',str(classes)+os.pathsep+classpath,'ParityWitness',str(root),str(JDK),str(work/(case+'-'+label)), 'ast' if case.startswith('lombok') else 'off',mode,str(evidence/case/label)],capture_output=True,text=True,timeout=120)
                 assert result.returncode==0,result.stderr
                 results[label]=json.loads(result.stdout)
                 if case=='capture-literals':
-                    rows=json.loads((ROOT/'target/java-anatomist-reference'/case/label/'raw.types.json').read_text())
+                    rows=json.loads((evidence/case/label/'raw.types.json').read_text())
                     assert any('capture#123' in row for row in rows),'ANNOTATION_LITERAL_CHANGED_BY_WITNESS'
             difference=[domain for domain in results['reference'] if results['reference'][domain]!=results['migrated'][domain]]
             receipt['cases'].append(dict(name=case,differences=difference,**results))

@@ -39,6 +39,7 @@ def packaged_fixture_smoke(package, evidence):
             'max_worker_memory_bytes=536870912\n[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(str(jdk))+'\n')
         command=[str(package/'bin/codeana-cli'),'--home',str(home),'--project',str(project)]
         steps=[]
+        primary_failure = None
         try:
             for name in ('index','calls','source'):
                 result=subprocess.run(command+[name]+([] if name=='index' else ['main']),
@@ -48,16 +49,23 @@ def packaged_fixture_smoke(package, evidence):
                 records=[json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith('record ')]
                 terminals=[json.loads(line[9:]) for line in result.stdout.splitlines() if line.startswith('terminal ')]
                 if result.returncode or len(terminals)!=1 or terminals[0]['execution']!='completed' or not records:
-                    raise ValueError('PACKAGED_FIXTURE_QUERY_FAILED: '+name+' '+result.stdout[-2000:])
+                    raise ValueError('PACKAGED_FIXTURE_QUERY_FAILED: '+name+' '+result.stdout[-2000:]+' '+result.stderr[-2000:])
                 if name=='index' and (terminals[0]['publication']!='published'
                     or terminals[0]['evidence'].get('semantic') is not True or records[0].get('facts',0)<=0):
                     raise ValueError('PACKAGED_FIXTURE_EMPTY_OR_INCOMPLETE_INDEX')
                 steps.append(dict(name=name,records=len(records),exit_code=result.returncode))
+        except BaseException as error:
+            primary_failure = error
+            raise
         finally:
+            daemon_log = home/'daemon.log'
+            if daemon_log.exists():
+                shutil.copy2(daemon_log, evidence/'daemon.log')
             stopped=subprocess.run(command+['daemon','stop'],capture_output=True,text=True,timeout=30)
             (evidence/'stop.stdout').write_text(stopped.stdout)
             (evidence/'stop.stderr').write_text(stopped.stderr)
-            if stopped.returncode:raise ValueError('PACKAGED_FIXTURE_DAEMON_STOP_FAILED')
+            if stopped.returncode and primary_failure is None:
+                raise ValueError('PACKAGED_FIXTURE_DAEMON_STOP_FAILED')
         return steps
 
 

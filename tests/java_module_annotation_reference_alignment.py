@@ -56,7 +56,7 @@ def proof(evidence, name, extra, native):
     config.write_text('[index]\nparser="javac"\njavac_execution="toolchain"\n'
                       'javac_analysis_threads=1\njavac_worker_heap_mb=128\nspring_xml=false\n')
     command = [str(models.JDK25 / 'bin/java'), '-Xmx512m', '-jar',
-               str(alignment.ROOT.parent / 'anatomist/target/anatomist.jar'), 'index', str(base),
+               str(reference.REFERENCE_JAR), 'index', str(base),
                '--jdk-home', str(models.JDK8), '--java-version', '8', '--lombok', 'ast',
                '--vm-classpath', 'true', '--full', '--output', str(base / 'index.db')]
     environment = dict(os.environ, ANATOMIST_HOME=str(base / 'reference-state'))
@@ -98,7 +98,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--native', action='store_true')
     args = parser.parse_args()
-    jar = alignment.ROOT.parent / 'anatomist/target/anatomist.jar'
+    jar = reference.REFERENCE_JAR
     if reference.digest(jar) != reference.REFERENCE_SHA:
         raise ValueError('FROZEN_REFERENCE_JAR_CHANGED')
     evidence = alignment.ROOT / 'target/java-alignment/evidence' / ('module-annotation-reference-' + time.strftime('%Y%m%d-%H%M%S'))

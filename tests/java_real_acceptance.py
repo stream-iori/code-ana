@@ -29,7 +29,10 @@ def digest(path):
     return value.hexdigest()
 
 
-def artifacts():
+def artifacts(runtime=None):
+    if runtime is not None:
+        return {str(path.relative_to(runtime)): digest(path)
+                for path in sorted(runtime.rglob('*')) if path.is_file()}
     # Match release daemon installed_library(): sibling ../lib/java, no development fallback.
     binary = ROOT / 'target/release'
     bundle = (binary / '../lib/java').resolve()
@@ -176,13 +179,19 @@ class ConfigLease:
                 self.lock = None
 
 
-def verify_frozen(project):
-    frozen = json.loads((project.parent / 'iopengw-freeze.json').read_text())
+def verify_frozen(project, receipt=None):
+    project = project.resolve()
+    project.relative_to((ROOT / 'target').resolve())
     expected = json.loads((ROOT / 'tests/java_alignment_matrix.json').read_text())['real_project']
+    if receipt is not None:
+        frozen = json.loads(pathlib.Path(receipt).read_text())
+        frozen = dict(frozen, source=frozen.get('source', expected['path']),
+                      include_uncommitted=frozen.get('include_uncommitted', False))
+    else:
+        frozen = json.loads((project.parent / 'iopengw-freeze.json').read_text())
     if frozen['commit'] != expected['commit'] or frozen['source'] != expected['path'] or frozen['include_uncommitted']:
         raise ValueError('UNEXPECTED_FROZEN_PROJECT')
     # Never write the original business checkout, including through a directory symlink.
-    project.relative_to((ROOT / 'target/java-alignment').resolve())
     entries = subprocess.check_output(['git', '-C', frozen['source'], 'ls-tree', '-rz', frozen['commit']]).split(b'\0')
     verified = java = 0
     for entry in entries:
@@ -193,7 +202,7 @@ def verify_frozen(project):
         if kind != b'blob':
             continue
         path = project / relative.decode()
-        if mode == b'120000' or path.is_symlink():
+        if mode == b'120000' or path.is_symlink() or not path.resolve().is_relative_to(project):
             raise ValueError('FROZEN_SYMLINK')
         value = hashlib.sha1() if len(expected_hash) == 40 else hashlib.sha256()
         value.update(b'blob ' + str(path.stat().st_size).encode() + b'\0')
@@ -202,8 +211,12 @@ def verify_frozen(project):
                 value.update(chunk)
         if value.hexdigest().encode() != expected_hash:
             raise ValueError('COMMITTED_INPUT_CHANGED: ' + relative.decode())
+        if receipt is not None and frozen.get('files', {}).get(relative.decode()) != digest(path):
+            raise ValueError('FROZEN_RECEIPT_MISMATCH: ' + relative.decode())
         verified += 1
         java += relative.endswith(b'.java')
+    if receipt is not None and verified != len(frozen.get('files', {})):
+        raise ValueError('FROZEN_RECEIPT_FILE_SET')
     return dict(commit=frozen['commit'], verified_committed_files=verified,
                 committed_java_files=java, include_uncommitted=False)
 
@@ -435,6 +448,8 @@ def interrupted(signum, _frame):
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--backend', choices=('jvm', 'native'), default='jvm')
+    parser.add_argument('--freeze-receipt', type=pathlib.Path)
     parser.add_argument('--project', type=pathlib.Path, default=ROOT / 'target/java-alignment/iopengw')
     parser.add_argument('--scopes', choices=('MAIN', 'TEST', 'MAIN,TEST'), default='MAIN')
     parser.add_argument('--xml', action='store_true')
@@ -470,7 +485,7 @@ def main():
     print('Evidence: ' + str(evidence), flush=True)
     receipt = evidence / 'receipt.json'
     report = dict(kind='frozen_project_correctness_publication', state='preparing',
-                  publication_accepted=False, semantic_index_accepted=False,
+                  backend=args.backend, publication_accepted=False, semantic_index_accepted=False,
                   semantic_diff_accepted=False, capacity_accepted=False,
                   full_project_all_scopes_accepted=False, time_is_performance_gate=False,
                   scopes=args.scopes.split(','), xml_resources_included=args.xml,
@@ -486,8 +501,14 @@ def main():
     started = time.monotonic()
     failure = None
     try:
-        report.update(verify_frozen(project))
-        report['artifacts'] = artifacts()
+        report.update(verify_frozen(project, args.freeze_receipt))
+        from java_product_runtime import prepare
+        os.environ['CODEANA_JAVA_BACKEND'] = args.backend
+        runtime_root = evidence / 'runtime'
+        runtime = prepare(ROOT, runtime_root, args.backend)
+        binary = pathlib.Path(runtime['binary_directory'])
+        report['runtime'] = runtime
+        report['artifacts'] = artifacts(runtime_root)
         report['source_inputs'] = java_alignment.input_files()
         manifest = (project / args.inputs_manifest).resolve()
         manifest.relative_to(project)
@@ -501,12 +522,12 @@ def main():
         lease.acquire()
         lease.apply(configured)
         with (evidence / 'daemon.log').open('wb') as log:
-            daemon = subprocess.Popen([str(ROOT / 'target/release/codeana-daemon'), '--home', str(home)],
+            daemon = subprocess.Popen([str(binary / 'codeana-daemon'), '--home', str(home)],
                                       stdout=log, stderr=log, start_new_session=True)
             lease.process('daemon', daemon.pid)
             report['daemon_pid'] = daemon.pid
             atomic_json(receipt, report)
-            command = [str(ROOT / 'target/release/codeana-cli'), '--home', str(home), '--project', str(project)]
+            command = [str(binary / 'codeana-cli'), '--home', str(home), '--project', str(project)]
             end = time.monotonic() + 15
             while True:
                 if daemon.poll() is not None:
@@ -606,7 +627,9 @@ def main():
                 report['rss_failure'] = str(error)
         if 'artifacts' in report:
             try:
-                report['changed_artifacts'] = sorted(key for key, value in report['artifacts'].items() if artifacts().get(key) != value)
+                current_artifacts = artifacts(runtime_root)
+                report['changed_artifacts'] = sorted(key for key in report['artifacts'].keys() | current_artifacts.keys()
+                    if report['artifacts'].get(key) != current_artifacts.get(key))
                 current = java_alignment.input_files()
                 report['changed_source_inputs'] = sorted(key for key in report['source_inputs'].keys() | current.keys()
                     if report['source_inputs'].get(key) != current.get(key))
