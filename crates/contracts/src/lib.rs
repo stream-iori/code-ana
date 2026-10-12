@@ -7,6 +7,7 @@ pub mod worker {
 }
 pub mod archive;
 pub mod java;
+pub mod performance;
 use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;
@@ -15,12 +16,21 @@ pub fn convert<A: serde::Serialize, B: serde::de::DeserializeOwned>(a: &A) -> Re
     Ok(serde_json::from_value(serde_json::to_value(a)?)?)
 }
 pub fn fact_to_wire(f: &m::Fact) -> Result<worker::Fact> {
+    let _timer = performance::Timer::start(performance::Metric::FactToWire, 0, true);
     Ok(worker::Fact {
         id: f.id.clone(),
         kind: f.kind.name().into(),
-        owner: Some(convert(&f.owner)?),
+        owner: Some(worker::Owner {
+            world: f.owner.world.clone(),
+            producer: f.owner.producer.clone(),
+            kind: f.owner.kind.clone(),
+            id: f.owner.id.clone(),
+        }),
         source: f.source.clone(),
-        span: f.span.as_ref().map(convert).transpose()?,
+        span: f.span.as_ref().map(|s| worker::Span {
+            start: s.start,
+            end: s.end,
+        }),
         name: f.name.clone(),
         signature: f.signature.clone(),
         parent: f.parent.clone(),
@@ -34,12 +44,26 @@ pub fn fact_to_wire(f: &m::Fact) -> Result<worker::Fact> {
     })
 }
 pub fn fact_from_wire(f: worker::Fact) -> Result<m::Fact> {
+    let _timer = performance::Timer::start(
+        performance::Metric::FactFromWire,
+        f.attributes_json.len() as u64,
+        true,
+    );
+    let owner = f.owner.ok_or_else(|| anyhow::anyhow!("missing owner"))?;
     Ok(m::Fact {
         id: f.id,
         kind: serde_json::from_value(serde_json::Value::String(f.kind))?,
-        owner: convert(&f.owner.ok_or_else(|| anyhow::anyhow!("missing owner"))?)?,
+        owner: m::Owner {
+            world: owner.world,
+            producer: owner.producer,
+            kind: owner.kind,
+            id: owner.id,
+        },
         source: f.source,
-        span: f.span.as_ref().map(convert).transpose()?,
+        span: f.span.map(|s| m::Span {
+            start: s.start,
+            end: s.end,
+        }),
         name: f.name,
         signature: f.signature,
         parent: f.parent,
@@ -72,21 +96,40 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, e: &worker::Envelope)
     if e.encoded_len() > m::MAX_FRAME {
         bail!("FRAME_BUDGET");
     }
-    let b = e.encode_to_vec();
+    let b = performance::measure(
+        performance::Metric::FrameEncode,
+        e.encoded_len() as u64,
+        false,
+        || e.encode_to_vec(),
+    );
+    let _timer = performance::Timer::start(
+        performance::Metric::FrameWriteWait,
+        b.len() as u64 + 4,
+        false,
+    );
     w.write_u32(b.len() as u32).await?;
     w.write_all(&b).await?;
     w.flush().await?;
     Ok(())
 }
 pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<worker::Envelope> {
+    let timer = performance::Timer::start(performance::Metric::FrameReadWait, 0, false);
     let n = r.read_u32().await? as usize;
     if n == 0 || n > m::MAX_FRAME {
         bail!("INVALID_FRAME_LENGTH");
     }
     let mut b = vec![0; n];
     r.read_exact(&mut b).await?;
-    validate_envelope_wire(&b)?;
-    Ok(worker::Envelope::decode(b.as_slice())?)
+    drop(timer);
+    performance::measure(performance::Metric::FrameValidate, n as u64, false, || {
+        validate_envelope_wire(&b)
+    })?;
+    Ok(performance::measure(
+        performance::Metric::FrameDecode,
+        n as u64,
+        false,
+        || worker::Envelope::decode(b.as_slice()),
+    )?)
 }
 // Count repeated messages before prost allocation; a small frame must not expand
 // into millions of empty Fact/Owner structs or hide multiple oneof deliveries.
@@ -343,5 +386,86 @@ mod java_protocol_tests {
             }),
         );
         assert!(validate_envelope_wire(&baseline.encode_to_vec()).is_err());
+    }
+}
+
+#[cfg(test)]
+mod query_option_tests {
+    use super::*;
+    #[test]
+    fn hierarchy_options_survive_task_and_stage_protobuf_transport() {
+        let request = m::Request {
+            operation: "runtime-implementations".into(),
+            instantiability: "unknown".into(),
+            transitive: true,
+            algorithm: "exact".into(),
+            analysis_world: "workspace-closed".into(),
+            stages: vec![m::Stage {
+                operation: "type-relations".into(),
+                instantiability: "all".into(),
+                transitive: true,
+                algorithm: "cha".into(),
+                analysis_world: "classpath-open".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let wire: v1::TaskRequest = convert(&request).unwrap();
+        let decoded = v1::TaskRequest::decode(wire.encode_to_vec().as_slice()).unwrap();
+        let restored: m::Request = convert(&decoded).unwrap();
+        assert_eq!(restored.instantiability, "unknown");
+        assert!(restored.transitive);
+        assert_eq!(restored.algorithm, "exact");
+        assert_eq!(restored.analysis_world, "workspace-closed");
+        assert_eq!(restored.stages[0].instantiability, "all");
+        assert!(restored.stages[0].transitive);
+        assert_eq!(restored.stages[0].algorithm, "cha");
+        assert_eq!(restored.stages[0].analysis_world, "classpath-open");
+        let legacy = v1::TaskRequest::decode(&[][..]).unwrap();
+        assert!(legacy.instantiability.is_empty());
+        assert!(!legacy.transitive);
+    }
+    #[test]
+    fn meta_annotation_options_survive_task_and_stage_protobuf_transport() {
+        let request = m::Request {
+            operation: "annotations".into(),
+            meta: true,
+            stages: vec![m::Stage {
+                operation: "annotations".into(),
+                meta: true,
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let wire: v1::TaskRequest = convert(&request).unwrap();
+        let decoded = v1::TaskRequest::decode(wire.encode_to_vec().as_slice()).unwrap();
+        let restored: m::Request = convert(&decoded).unwrap();
+        assert!(restored.meta);
+        assert!(restored.stages[0].meta);
+        let legacy = v1::TaskRequest::decode(&[][..]).unwrap();
+        assert!(!legacy.meta);
+    }
+}
+
+#[cfg(test)]
+mod fact_mapping_tests {
+    use super::*;
+    #[test]
+    fn wire_mapping_preserves_large_spans_unicode_and_validates_required_payloads() {
+        let fact: m::Fact = serde_json::from_value(serde_json::json!({
+            "id":"中文😀", "kind":"reference", "owner":{"world":"w","producer":"p","kind":"source","id":"A.java"},
+            "span":{"start":0,"end":u64::MAX},"attributes":{"nested":[1,null,{"key":"值"}]}
+        })).unwrap();
+        let wire = fact_to_wire(&fact).unwrap();
+        assert_eq!(fact_from_wire(wire.clone()).unwrap(), fact);
+        let mut missing = wire.clone();
+        missing.owner = None;
+        assert!(fact_from_wire(missing).is_err());
+        let mut invalid = wire.clone();
+        invalid.attributes_json = b"{".to_vec();
+        assert!(fact_from_wire(invalid).is_err());
+        let mut invalid = wire;
+        invalid.kind = "unknown".into();
+        assert!(fact_from_wire(invalid).is_err());
     }
 }

@@ -1,0 +1,27 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: {}
+results:
+  -: { id=source:sha256:6847167fd22c9b053265683c8a5fe84d | origin=extracted | record=source_slice | resolution_status=exact }
+    snippet: |
+      @Transactional
+          public OrderResult createOrder(CreateOrderRequest request) {
+              Objects.requireNonNull(request, "request");
+              validator.validate(request);
+              double total = calculator.calculate(request.getItems());
+    source: { declaration_range=L30:C5-L41:C5 | end_line=34 | file=service/src/main/java/com/example/shop/service/OrderService.java | limit=5 | offset=0 | start_line=30 | truncated=true }
+    subject: { kind=callable | qualified_name=com.example.shop.service.OrderService#createOrder | record=entity }
+page: { emitted=1 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=source | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+      enumeration: { complete=false | has_more=true | offset=0 | returned=5 | unit=source_lines }
+  semantic: { coverage=complete }
+    limitations: []
+next:
+  -: { kind=continue | mutates=false | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | reason=Read the next page of the selected range | replacement=append }
+    argv: $ anatomist source --index ${INDEX} --expect-revision ${REVISION} --scope MAIN --language java --provider java-core --offset 5 --limit 5 --comments --subject 'java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest)'
+    range: { offset=0 | unit=source_lines }
+end: anatomist-text/v5

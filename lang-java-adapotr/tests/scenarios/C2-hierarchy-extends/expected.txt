@@ -1,0 +1,18 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: {}
+results:
+  -: { confidence=extracted | declared=true | external_object=false | id=typerel:sha256:ca2ab27e11324a8150676b0e8362945c5880f395809402223c95791873fd0c43 | mechanism=java.extends_class | object=java-core::service::MAIN::com.example.shop.service.BaseService | object_name=com.example.shop.service.BaseService | origin=extracted | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | producer_id=java-core | record=type_relation | relationship_id=rel:sha256:9bb20318dcc5a47c5822e248a53f8423e2c8f3e8bf8011f354a3da2ea4ef6dff | resolution_status=exact | semantic=SUBTYPE_OF | subject=java-core::service::MAIN::com.example.shop.service.OrderService | subject_name=com.example.shop.service.OrderService }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService | record=entity }
+page: { emitted=1 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=type-relations | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=1 | unit=items }
+  semantic: { coverage=complete }
+    limitations: []
+next: []
+end: anatomist-text/v5

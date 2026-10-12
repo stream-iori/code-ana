@@ -1,0 +1,107 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary:
+  result_context: { language=java | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | record=call_relation }
+results:
+  -: { callee=java-core::domain::MAIN::com.example.shop.domain.dto.CreateOrderRequest#getCustomerId() | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:90983c68e254ea561e955a3eeb3b83b4684062407fd292fe24dba8cffc2ba19f | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::domain::MAIN::com.example.shop.domain.dto.CreateOrderRequest#getItems() | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:4883ba7c06c392f14e7d92bf14233ffa9304fbcfa24ab3440f93d3c8b526cbef | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::domain::MAIN::com.example.shop.domain.dto.OrderResult#OrderResult(java.lang.String,double) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:57e0b70a113dc29730b2e4b0553f7cf33a304bcf06c0220016063e5a5ba3c0c8 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: constructor
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::domain::MAIN::com.example.shop.domain.entity.Order#Order(java.lang.String,java.util.List) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:27b2bf88b5de85f19635d7bc7ada26482e8cf9e610feb36f88521e41eeeedc71 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: constructor
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::domain::MAIN::com.example.shop.domain.entity.Order#getId() | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:fb28e941e9a2096bc728014c08d83585720d4c9725dc4218f796806e58d0a62d | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::domain::MAIN::com.example.shop.domain.entity.Order#setStatus(com.example.shop.domain.entity.OrderStatus) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:a63ff429c5094b93a3c94e70e936236f549c043e2da20631768e643a8e392662 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::domain::MAIN::com.example.shop.domain.event.OrderCreatedEvent#OrderCreatedEvent(com.example.shop.domain.entity.Order) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:1def17931f7edfdb3b89bba619492e3e6c227c78f9fc95732e4745e39f73656a | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: constructor
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::service::MAIN::com.example.shop.event.OrderEventPublisher#publish(com.example.shop.domain.event.OrderCreatedEvent) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:638706e252d28de98988fa8cb798d5f8469e152454905634174d3eb61d0d074a | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::service::MAIN::com.example.shop.repository.OrderRepository#save(com.example.shop.domain.entity.Order) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:65d5606b870697b0b61636f8d41cb8b52a6a8b8acb0f2f8e0ce8058d2b9f8674 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: interface
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::service::MAIN::com.example.shop.service.OrderService#applyDiscount(double) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:2f53f32b97bbff7ce6ff75d8b28f6288e0cf3e6503284913540ea346700075eb | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::service::MAIN::com.example.shop.service.OrderValidator#validate(com.example.shop.domain.dto.CreateOrderRequest) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:60e48f86246d6c3d393c22f8ff45874b2f221abd8fe0708911604acaf1260b0e | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java-core::service::MAIN::com.example.shop.service.PriceCalculator#calculate(java.util.List) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=false | id=rel:sha256:4ae60bc1f0e68674f68acb81cdc06b48b975657f6263233305e8ab99072ea74d | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: instance
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+  -: { callee=java.util.Objects#requireNonNull(java.lang.Object,java.lang.String) | caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external=true | id=rel:sha256:915c2a8787bcae8306b1564335cbb852042b587da3b8978aaec896178a297ad4 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    dispatch_kinds:
+      -: static
+    resolution_evidence:
+      -: { confidence=EXTRACTED | producer_id=java-core | site_status=exact | target_status=exact }
+page: { emitted=13 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=calls | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=13 | unit=items }
+  semantic: { coverage=complete }
+    limitations: []
+next: []
+end: anatomist-text/v5

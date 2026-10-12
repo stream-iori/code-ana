@@ -285,6 +285,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "codeana-model",
+ "libc",
  "prost",
  "serde",
  "serde_json",
@@ -369,6 +370,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "codeana-model",
+ "globset",
+ "regex",
  "serde",
  "serde_json",
  "tempfile",

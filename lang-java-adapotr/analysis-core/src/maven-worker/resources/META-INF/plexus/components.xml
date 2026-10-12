@@ -1,0 +1,8 @@
+<component-set><components><component>
+  <role>org.apache.maven.AbstractMavenLifecycleParticipant</role>
+  <role-hint>anatomist-inputs</role-hint>
+  <implementation>com.anatomist.maven.MavenInputsWorker</implementation>
+  <requirements>
+    <requirement><role>org.apache.maven.project.ProjectDependenciesResolver</role><field-name>resolver</field-name></requirement>
+  </requirements>
+</component></components></component-set>

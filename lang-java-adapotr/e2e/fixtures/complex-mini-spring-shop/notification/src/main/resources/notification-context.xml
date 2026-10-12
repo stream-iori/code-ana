@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans https://www.springframework.org/schema/beans/spring-beans.xsd">
+  <bean id="auditChannel" class="com.example.shop.notification.AuditNotificationChannel"/>
+  <bean id="emailChannel" class="com.example.shop.notification.EmailNotificationChannel"/>
+  <bean id="smsChannel" class="com.example.shop.notification.SmsNotificationChannel"/>
+
+  <bean id="notificationRegistry" class="com.example.shop.notification.NotificationRegistry">
+    <property name="orderedChannels">
+      <list>
+        <ref bean="auditChannel"/>
+        <ref bean="emailChannel"/>
+        <ref bean="smsChannel"/>
+      </list>
+    </property>
+    <property name="aliases">
+      <map>
+        <entry key="audit" value-ref="auditChannel"/>
+        <entry key="customer" value-ref="emailChannel"/>
+      </map>
+    </property>
+  </bean>
+  <bean id="notificationDispatcher" class="com.example.shop.notification.NotificationDispatcher">
+    <constructor-arg ref="notificationRegistry"/>
+  </bean>
+  <bean id="orderEventPublisher" class="com.example.shop.notification.OrderEventPublisher">
+    <constructor-arg ref="notificationDispatcher"/>
+  </bean>
+</beans>
+

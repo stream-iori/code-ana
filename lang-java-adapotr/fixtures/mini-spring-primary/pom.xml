@@ -1,0 +1,5 @@
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>fixture</groupId><artifactId>mini-spring-primary</artifactId><version>1</version>
+  <properties><maven.compiler.release>25</maven.compiler.release></properties>
+</project>

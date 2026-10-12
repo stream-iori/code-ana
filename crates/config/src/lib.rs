@@ -24,7 +24,7 @@ schema!(Resources {
     index: IndexResources,
     query: QueryResources
 });
-schema!(IndexResources {worker_memory_bytes:Option<u64>,java_compiler_heap_bytes:Option<u64>,java_parallelism:Option<u32>,java_model_record_limit:Option<u32>,java_model_archive_bytes:Option<u64>,java_compiler_timeout_seconds:Option<u32>,java_native_heap_bytes:Option<u64>,java_result_bytes:Option<u64>,java_fact_limit:Option<u32>,java_scratch_bytes:Option<u64>});
+schema!(IndexResources {worker_memory_bytes:Option<u64>,java_compiler_heap_bytes:Option<u64>,java_parallelism:Option<u32>,java_model_record_limit:Option<u32>,java_model_archive_bytes:Option<u64>,java_model_decode_bytes:Option<u64>,java_compiler_timeout_seconds:Option<u32>,java_native_heap_bytes:Option<u64>,java_result_bytes:Option<u64>,java_fact_limit:Option<u32>,java_scratch_bytes:Option<u64>});
 schema!(QueryResources {diff_spill_bytes:Option<u64>});
 schema!(Query {scopes:Vec<String>,max_output_bytes:Option<u64>});
 schema!(Observability { mode: String });
@@ -38,7 +38,7 @@ schema!(Extensions {
 });
 schema!(Spring {enabled:Option<bool>,xml:Option<bool>});
 schema!(Sofa {enabled:Option<bool>});
-schema!(External {exclude_patterns:Vec<String>});
+schema!(External {exclude_patterns:Option<Vec<String>>});
 schema!(Module {id:String,language:String,root:String,manifest:Option<String>,source_roots:Vec<SourceRoot>,analysis:Analysis,lombok:Lombok,extensions:Extensions,external:External,scan:Scan,worlds:Vec<World>});
 schema!(SourceRoot {
     path: String,
@@ -262,6 +262,12 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             "JAVA_MODEL_RECORD_LIMIT_RANGE"
         );
     }
+    if let Some(bytes) = c.resources.index.java_model_decode_bytes {
+        ensure!(
+            (64 * 1024..=2 * 1024 * 1024 * 1024).contains(&bytes),
+            "JAVA_MODEL_DECODE_BYTES_RANGE"
+        );
+    }
     if let Some(bytes) = c.resources.index.java_model_archive_bytes {
         ensure!(
             (64 * 1024..=1024 * 1024 * 1024).contains(&bytes),
@@ -456,6 +462,24 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             inherit!(toolchain);
             inherit!(classpath);
             inherit!(vm_classpath);
+            if m.external.exclude_patterns.is_none() {
+                m.external.exclude_patterns = defaults.external.exclude_patterns.clone();
+            }
+            if let Some(patterns) = &m.external.exclude_patterns {
+                ensure!(
+                    patterns.iter().all(|p| {
+                        !p.trim().is_empty()
+                            && !p.chars().any(char::is_whitespace)
+                            && (!p.contains('*')
+                                || p.strip_suffix(".**")
+                                    .or_else(|| p.strip_suffix(".*"))
+                                    .is_some_and(|prefix| {
+                                        !prefix.is_empty() && !prefix.contains('*')
+                                    }))
+                    }),
+                    "INVALID_EXTERNAL_EXCLUDE_PATTERN"
+                );
+            }
             if m.lombok.mode.is_none() {
                 m.lombok.mode = defaults.lombok.mode.clone();
             }
@@ -1160,6 +1184,33 @@ pub fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn external_exclusions_inherit_and_explicit_empty_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir(root.join(".code-ana")).unwrap();
+        let base = include_str!("../../../tests/fixtures/java/base/.code-ana/config.toml");
+        let path = root.join(".code-ana/config.toml");
+        let text =
+            format!("{base}\n[languages.java.external]\nexclude_patterns=[\"java.util.*\"]\n");
+        std::fs::write(&path, &text).unwrap();
+        let inherited = resolve(&root, &Request::default()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&inherited.config.modules[0].external).unwrap()["exclude_patterns"],
+            serde_json::json!(["java.util.*"])
+        );
+        std::fs::write(
+            &path,
+            format!("{text}\n[modules.external]\nexclude_patterns=[]\n"),
+        )
+        .unwrap();
+        let empty = resolve(&root, &Request::default()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&empty.config.modules[0].external).unwrap()["exclude_patterns"],
+            serde_json::json!([])
+        );
+        assert_ne!(inherited.semantic_digest, empty.semantic_digest);
+    }
     use super::*;
     #[test]
     fn invalid_semantic_encoding_preserves_captured_bytes_and_publication_role() {
@@ -1550,6 +1601,12 @@ source_roots=[{path="src",scope="MAIN",label="api"},{path="bridge",scope="MAIN",
         let text = include_str!("../../../tests/fixtures/java/base/.code-ana/config.toml");
         let path = root.join(".code-ana/config.toml");
         for (field, good, bad, reason) in [
+            (
+                "java_model_decode_bytes",
+                vec![65536, 536870912, 2147483648],
+                vec![0, 65535, 2147483649],
+                "JAVA_MODEL_DECODE_BYTES_RANGE",
+            ),
             (
                 "java_model_archive_bytes",
                 vec![65536, 67108864, 1073741824],

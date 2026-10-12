@@ -37,5 +37,10 @@ libc = "0.2"
 tokio-stream = { version = "0.1", features = ["net", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }
 globset = "0.4"
+regex = "1"
 walkdir = "2"
 tempfile = "3"
+
+# SDK content verification hashes hundreds of MiB even in development gates.
+[profile.dev.package.sha2]
+opt-level = 3

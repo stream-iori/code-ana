@@ -100,6 +100,42 @@ struct JavaInputsExport {
 }
 #[derive(Args, Default)]
 struct QueryArgs {
+    #[arg(long, default_value = "", value_parser = ["", "project", "modules", "packages", "dependencies"])]
+    section: String,
+    #[arg(long, default_value_t = 0)]
+    package_depth: u32,
+    #[arg(long, default_value = "")]
+    signature: String,
+    #[arg(long, default_value = "", conflicts_with = "package_prefix")]
+    package: String,
+    #[arg(long, default_value = "", conflicts_with = "package")]
+    package_prefix: String,
+    #[arg(long = "path")]
+    paths: Vec<String>,
+    #[arg(long = "kind", default_value = "")]
+    entity_kind: String,
+    #[arg(long, default_value = "")]
+    annotation: String,
+    #[arg(long)]
+    meta: bool,
+    #[arg(long, default_value = "", value_parser = ["", "yes", "unknown", "all"])]
+    instantiability: String,
+    #[arg(long)]
+    transitive: bool,
+    #[arg(long, default_value = "", value_parser = ["", "auto", "exact", "cha"])]
+    algorithm: String,
+    #[arg(long, default_value = "", value_parser = ["", "workspace-open", "workspace-closed", "classpath-open"])]
+    analysis_world: String,
+    #[arg(long, default_value = "")]
+    visibility: String,
+    #[arg(long)]
+    synthetic: Option<bool>,
+    #[arg(long)]
+    regex: bool,
+    #[arg(long)]
+    ignore_case: bool,
+    #[arg(long, default_value_t = 0)]
+    context: u32,
     #[arg(default_value = "")]
     selector: String,
     #[arg(long, default_value = "")]
@@ -110,8 +146,8 @@ struct QueryArgs {
     world: String,
     #[arg(long, default_value = "")]
     module: String,
-    #[arg(long,default_value="out",value_parser=["in","out"])]
-    direction: String,
+    #[arg(long,value_parser=["in","out","both"])]
+    direction: Option<String>,
     #[arg(long, default_value = "")]
     relation: String,
     #[arg(long)]
@@ -170,13 +206,17 @@ async fn try_connect(home: &Path) -> Result<(TaskServiceClient<Channel>, Endpoin
     let mut client = TaskServiceClient::connect(endpoint.address.clone()).await?;
     let hello = client
         .handshake(authenticated(
-            p::HandshakeRequest { protocol: 1 },
+            p::HandshakeRequest {
+                protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
+            },
             &endpoint,
         )?)
         .await?
         .into_inner();
     ensure!(
-        hello.generation == endpoint.generation && hello.mock == endpoint.mock,
+        hello.protocol == codeana_model::DAEMON_PROTOCOL_VERSION
+            && hello.generation == endpoint.generation
+            && hello.mock == endpoint.mock,
         "STALE_ENDPOINT"
     );
     Ok((client, endpoint))
@@ -465,7 +505,23 @@ async fn run() -> Result<i32> {
     } else {
         vec![]
     };
+    let reference_options = (operation == "references"
+        && (a.direction.is_some() || !a.relation.is_empty()))
+        || stages.iter().any(|stage| stage.operation == "references");
     let req = Request {
+        overview_section: a.section,
+        overview_depth: a.package_depth,
+        signature: a.signature,
+        package: a.package,
+        package_prefix: a.package_prefix,
+        paths: a.paths,
+        entity_kind: a.entity_kind,
+        annotation: a.annotation,
+        visibility: a.visibility,
+        synthetic: a.synthetic,
+        text_regex: a.regex,
+        text_ignore_case: a.ignore_case,
+        text_context: a.context,
         request_id: a.request_id.unwrap_or_else(|| new_id("request")),
         project: codeana_application::project_path(&cli.project)?
             .to_str()
@@ -481,9 +537,21 @@ async fn run() -> Result<i32> {
         scope: a.scope,
         world: a.world,
         module: a.module,
-        direction: a.direction,
+        direction: a.direction.unwrap_or_else(|| {
+            if operation == "references" {
+                "in"
+            } else {
+                "out"
+            }
+            .into()
+        }),
         relation: a.relation,
         unique: a.unique,
+        meta: a.meta,
+        instantiability: a.instantiability,
+        transitive: a.transitive,
+        algorithm: a.algorithm,
+        analysis_world: a.analysis_world,
         full: a.full,
         strict: a.strict,
         execute: a.execute,
@@ -503,6 +571,110 @@ async fn run() -> Result<i32> {
         suggestions: a.suggestions,
         expected_revision: a.expected_revision,
     };
+    let runtime_candidates = req.operation == "runtime-implementations"
+        || req
+            .stages
+            .iter()
+            .any(|stage| stage.operation == "runtime-implementations");
+    let transitive_relations = req.transitive || req.stages.iter().any(|stage| stage.transitive);
+    let dispatch_options =
+        req.operation == "dispatch" || req.stages.iter().any(|s| s.operation == "dispatch");
+    let analysis_world =
+        !req.analysis_world.is_empty() || req.stages.iter().any(|s| !s.analysis_world.is_empty());
+    if runtime_candidates || transitive_relations || dispatch_options || analysis_world {
+        let hello = client
+            .handshake(authenticated(
+                p::HandshakeRequest {
+                    protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
+                },
+                &e,
+            )?)
+            .await?
+            .into_inner();
+        for (required, capability) in [
+            (runtime_candidates, "runtime-implementations-v1"),
+            (transitive_relations, "relation-transitive-v1"),
+            (dispatch_options, "java-dispatch-v1"),
+            (analysis_world, "java-analysis-world-v1"),
+        ] {
+            ensure!(
+                !required || hello.capabilities.iter().any(|item| item == capability),
+                "DAEMON_QUERY_CAPABILITY_UNSUPPORTED: {capability}"
+            );
+        }
+    }
+    if req.meta || req.stages.iter().any(|stage| stage.meta) {
+        let hello = client
+            .handshake(authenticated(
+                p::HandshakeRequest {
+                    protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
+                },
+                &e,
+            )?)
+            .await?
+            .into_inner();
+        ensure!(
+            hello
+                .capabilities
+                .iter()
+                .any(|capability| capability == "annotations-meta-v1"),
+            "DAEMON_ANNOTATIONS_META_UNSUPPORTED"
+        );
+    }
+    if reference_options {
+        let hello = client
+            .handshake(authenticated(
+                p::HandshakeRequest {
+                    protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
+                },
+                &e,
+            )?)
+            .await?
+            .into_inner();
+        ensure!(
+            hello
+                .capabilities
+                .iter()
+                .any(|capability| capability == "reference-options-v1"),
+            "DAEMON_REFERENCE_OPTIONS_UNSUPPORTED"
+        );
+    }
+    if !req.overview_section.is_empty() || req.overview_depth > 0 {
+        let hello = client
+            .handshake(authenticated(
+                p::HandshakeRequest {
+                    protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
+                },
+                &e,
+            )?)
+            .await?
+            .into_inner();
+        ensure!(
+            hello
+                .capabilities
+                .iter()
+                .any(|c| c == "overview-sections-v1"),
+            "DAEMON_OVERVIEW_SECTIONS_UNSUPPORTED"
+        );
+    }
+    if req.text_regex || req.text_ignore_case || req.text_context > 0 {
+        let hello = client
+            .handshake(authenticated(
+                p::HandshakeRequest {
+                    protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
+                },
+                &e,
+            )?)
+            .await?
+            .into_inner();
+        ensure!(
+            hello
+                .capabilities
+                .iter()
+                .any(|c| c == "text-search-options-v1"),
+            "DAEMON_TEXT_OPTIONS_UNSUPPORTED"
+        );
+    }
     let request: p::TaskRequest = convert(&req)?;
     let accepted = client
         .submit_task(authenticated(request, &e)?)

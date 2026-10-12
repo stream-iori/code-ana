@@ -18,6 +18,10 @@ struct Page {
     output: Output,
     options: String,
     created: u64,
+    #[serde(default)]
+    spooled: bool,
+    #[serde(default)]
+    total: Option<usize>,
 }
 fn options(req: &Request) -> String {
     let mut r = req.clone();
@@ -272,7 +276,7 @@ impl Engine {
                 for (side, reader) in [("base", &a), ("target", &b)] {
                     for symbol in &changed {
                         let r = Request {
-                            operation: "trace".into(),
+                            operation: "calls".into(),
                             selector: symbol.clone(),
                             direction: "in".into(),
                             depth: req.depth.max(1),
@@ -319,34 +323,138 @@ impl Engine {
         &self,
         req: &Request,
         project: &str,
-        output: Output,
+        mut output: Output,
         refs: Vec<String>,
     ) -> Result<TaskResult> {
+        let mut spool = self.store.page_spool()?;
+        for batch in output.records.chunks(1024) {
+            spool.append(batch)?;
+        }
+        output.records.clear();
+        self.freeze_page(req, project, output, refs, spool)
+    }
+    pub(crate) fn search_page(
+        &self,
+        req: &Request,
+        project: &str,
+        reader: &dyn FactReader,
+        refs: Vec<String>,
+        cancel: &CancellationToken,
+    ) -> Result<TaskResult> {
+        let mut spool = self.store.page_spool()?;
+        let output = codeana_query::stream_search(reader, req, &mut |batch| {
+            ensure!(!cancel.is_cancelled(), "CANCELLED");
+            spool.append(&batch)
+        })?;
+        ensure!(!cancel.is_cancelled(), "CANCELLED");
+        self.freeze_page(req, project, output, refs, spool)
+    }
+    pub(crate) fn text_page(
+        &self,
+        req: &Request,
+        reader: &dyn FactReader,
+        source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+        refs: Vec<String>,
+        cancel: &CancellationToken,
+    ) -> Result<TaskResult> {
+        codeana_query::preflight(req)?;
+        let candidates = if !req.text_regex && !req.text_ignore_case {
+            match self
+                .store
+                .text_candidates(reader.manifest(), &req.selector, source, &|| {
+                    ensure!(!cancel.is_cancelled(), "CANCELLED");
+                    Ok(())
+                }) {
+                Ok(candidates) => candidates,
+                Err(error)
+                    if error.to_string().contains("CANCELLED")
+                        || error.to_string().contains("SOURCE_HASH_MISMATCH") =>
+                {
+                    return Err(error);
+                }
+                // A derived index is optional. Historical/missing/corrupt indexes
+                // retain the authoritative captured-byte matching path.
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+        let mut spool = self.store.page_spool()?;
+        let output = codeana_query::stream_text_candidates(
+            reader,
+            req,
+            source,
+            candidates.as_ref(),
+            &mut |batch| {
+                ensure!(!cancel.is_cancelled(), "CANCELLED");
+                if batch.is_empty() {
+                    Ok(())
+                } else {
+                    spool.append(&batch)
+                }
+            },
+        )?;
+        ensure!(!cancel.is_cancelled(), "CANCELLED");
+        self.freeze_page(req, &reader.revision().project, output, refs, spool)
+    }
+    fn freeze_page(
+        &self,
+        req: &Request,
+        project: &str,
+        output: Output,
+        refs: Vec<String>,
+        spool: codeana_storage::PageSpool,
+    ) -> Result<TaskResult> {
+        ensure!(output.records.is_empty(), "PAGE_METADATA_CONTAINS_RECORDS");
         let id = new_id("page");
         let page = Page {
             output,
             options: options(req),
             created: now(),
+            spooled: true,
+            total: Some(spool.count()),
         };
-        self.store.put_object("page", &id, project, &page, &refs)?;
-        Self::slice_page(req, &id, page, 0)
+        self.store.freeze_page(&id, project, &page, &refs, spool)?;
+        self.slice_page(req, project, &id, page, 0)
     }
     pub(crate) fn continue_page(&self, req: &Request, project: &str) -> Result<TaskResult> {
         let (id, offset) = req.cursor.rsplit_once(':').context("INVALID_CURSOR")?;
         let page: Page = self.store.object("page", id, project)?;
         ensure!(page.options == options(req), "CURSOR_OPTIONS_MISMATCH");
         ensure!(now().saturating_sub(page.created) < 86400, "CURSOR_EXPIRED");
-        Self::slice_page(req, id, page, offset.parse()?)
+        self.slice_page(req, project, id, page, offset.parse()?)
     }
-    fn slice_page(req: &Request, id: &str, page: Page, offset: usize) -> Result<TaskResult> {
+    fn slice_page(
+        &self,
+        req: &Request,
+        project: &str,
+        id: &str,
+        page: Page,
+        offset: usize,
+    ) -> Result<TaskResult> {
         let mut output = page.output;
-        ensure!(offset <= output.records.len(), "INVALID_CURSOR_OFFSET");
-        let total = output.records.len();
+        let total = page.total.unwrap_or(output.records.len());
+        ensure!(offset <= total, "INVALID_CURSOR_OFFSET");
         let limit = if req.max_records == 0 {
             100
         } else {
             req.max_records as usize
         };
+        ensure!((1..=10000).contains(&limit), "RECORD_BUDGET");
+        if page.spooled {
+            output.records = self.store.page_records(id, project, offset, limit)?;
+            ensure!(
+                output.records.len() == (total - offset).min(limit),
+                "INCOMPLETE_FROZEN_PAGE"
+            );
+        } else {
+            output.records = output
+                .records
+                .into_iter()
+                .skip(offset)
+                .take(limit)
+                .collect();
+        }
         let bytes_limit = if req.max_output_bytes == 0 {
             32768
         } else {
@@ -355,7 +463,7 @@ impl Engine {
         ensure!(bytes_limit >= 2048, "OUTPUT_BUDGET_TOO_SMALL");
         let mut size = 1536;
         let mut count = 0;
-        for row in output.records.iter().skip(offset).take(limit) {
+        for row in &output.records {
             let n = serde_json::to_vec(row)?.len() + 8;
             if size + n > bytes_limit {
                 break;
@@ -368,7 +476,7 @@ impl Engine {
             "RECORD_EXCEEDS_OUTPUT_BUDGET: increase --max-output-bytes"
         );
         let end = offset + count;
-        output.records = output.records[offset..end].to_vec();
+        output.records.truncate(count);
         if end < total {
             output.cursor = format!("{id}:{end}");
             output.evidence.enumeration = false;
@@ -403,4 +511,57 @@ fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
     }
     ensure!(child.wait()?.success(), "GIT_READ_FAILED");
     Ok(bytes)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn frozen_pages_store_only_metadata_and_allow_different_page_sizes() {
+        let directory = tempfile::tempdir().unwrap();
+        let engine = Engine::new(directory.path(), None).unwrap();
+        let mut request = Request {
+            operation: "search-code".into(),
+            selector: "same".into(),
+            max_records: 7,
+            max_output_bytes: 32768,
+            ..Default::default()
+        };
+        let records: Vec<_> = (0..15003)
+            .map(|id| json!({"id":format!("id-{id:05}"),"name":"same"}))
+            .collect();
+        let first = engine
+            .page(
+                &request,
+                "project",
+                Output {
+                    records: records.clone(),
+                    evidence: Evidence::complete(),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .unwrap();
+        let id = first.output.cursor.rsplit_once(':').unwrap().0.to_owned();
+        let metadata: Value = engine.store.object("page", &id, "project").unwrap();
+        assert!(metadata["output"]["records"].as_array().unwrap().is_empty());
+        let mut actual = first.output.records;
+        request.cursor = first.output.cursor;
+        request.max_records = 83;
+        while !request.cursor.is_empty() {
+            let next = engine.continue_page(&request, "project").unwrap();
+            actual.extend(next.output.records);
+            request.cursor = next.output.cursor;
+        }
+        assert_eq!(actual, records);
+        request.cursor = format!("{id}:0");
+        request.selector = "different".into();
+        assert!(
+            engine
+                .continue_page(&request, "project")
+                .unwrap_err()
+                .to_string()
+                .contains("CURSOR_OPTIONS_MISMATCH")
+        );
+    }
 }

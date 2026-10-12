@@ -1,0 +1,24 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:s="http://schema.alipay.com/sofa/schema/service">
+    <bean id="remote" class="p.Remote"/>
+    <bean id="listener" class="p.Listener"/>
+    <s:service ref="remote" interface="p.Api" unique-id="rpc">
+        <s:binding.tr/>
+    </s:service>
+    <s:reference id="rpcClient" interface="p.Api" unique-id="rpc">
+        <s:binding.tr/>
+    </s:reference>
+    <s:publisher id="publisher" group="P_demo">
+        <s:channels><s:channel value="orders"/></s:channels>
+        <s:binding.msg_broker/>
+    </s:publisher>
+    <s:consumer id="consumer" group="S_demo">
+        <s:listener ref="listener"/>
+        <s:channels><s:channel value="orders">
+            <s:event eventType="direct" eventCode="created" persistence="true"/>
+            <s:event eventType="direct" eventCode="cancelled" persistence="false"/>
+        </s:channel></s:channels>
+        <s:binding.msg_broker/>
+    </s:consumer>
+    <!-- <s:reference id="notARegistration" interface="p.Api"/> -->
+</beans>

@@ -1,11 +1,14 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
 pub mod derived_cache;
 pub mod fact_dedup;
+mod pages;
 mod schema;
 mod staged;
 mod symbol_search;
-use anyhow::{Context, Result, ensure};
+mod text_search;
+use anyhow::{Context, Result, bail, ensure};
 use codeana_model::*;
+pub use pages::PageSpool;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
 pub use staged::{CandidateDerivation, CandidateFacts, StagedCandidate, StagedSummary};
@@ -15,6 +18,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
+pub use text_search::TextCandidates;
 #[derive(Default)]
 struct Coordination {
     readers: BTreeMap<String, usize>,
@@ -70,7 +74,12 @@ pub fn durable_write(path: &Path, bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 fn sync_dir(p: &Path) -> Result<()> {
-    std::fs::File::open(p)?.sync_all()?;
+    codeana_contracts::performance::measure(
+        codeana_contracts::performance::Metric::DirectorySync,
+        0,
+        false,
+        || std::fs::File::open(p)?.sync_all(),
+    )?;
     Ok(())
 }
 /// Debug-only fault points for the isolated mock daemon. Release builds and
@@ -104,7 +113,7 @@ pub fn test_fault(home: &Path, point: &str) -> Result<()> {
 impl Store {
     pub fn open(home: &Path) -> Result<Self> {
         std::fs::create_dir_all(home)?;
-        for p in ["revisions", "candidates", "blobs", "reports"] {
+        for p in ["revisions", "candidates", "blobs", "reports", "pages"] {
             std::fs::create_dir_all(home.join(p))?;
         }
         let s = Self {
@@ -172,6 +181,10 @@ impl Store {
                 durable_write(&p, b)?;
             }
         }
+        // Reused files may have been renamed by a failed file-backed batch.
+        if !blobs.is_empty() {
+            sync_dir(&self.home.join("blobs"))?;
+        }
         Ok(())
     }
     /// Persist captured input files without materializing dependency archives in memory.
@@ -187,8 +200,24 @@ impl Store {
             );
             let destination = self.home.join("blobs").join(hash);
             if destination.exists() {
-                ensure!(hash_file(&destination)? == *hash, "CORRUPT_BLOB");
-                ensure!(hash_file(source.as_ref())? == *hash, "BLOB_HASH_MISMATCH");
+                ensure!(
+                    codeana_contracts::performance::measure(
+                        codeana_contracts::performance::Metric::BlobHash,
+                        std::fs::metadata(&destination)?.len(),
+                        false,
+                        || hash_file(&destination)
+                    )? == *hash,
+                    "CORRUPT_BLOB"
+                );
+                ensure!(
+                    codeana_contracts::performance::measure(
+                        codeana_contracts::performance::Metric::BlobHash,
+                        std::fs::metadata(source.as_ref())?.len(),
+                        false,
+                        || hash_file(source.as_ref())
+                    )? == *hash,
+                    "BLOB_HASH_MISMATCH"
+                );
                 continue;
             }
             let temporary = destination.with_file_name(new_id("write"));
@@ -198,17 +227,35 @@ impl Store {
                     .create_new(true)
                     .write(true)
                     .open(&temporary)?;
-                std::io::copy(&mut input, &mut output)?;
-                output.sync_all()?;
-                ensure!(hash_file(&temporary)? == *hash, "BLOB_HASH_MISMATCH");
+                use codeana_contracts::performance::{Metric, measure};
+                measure(Metric::BlobCopy, input.metadata()?.len(), false, || {
+                    std::io::copy(&mut input, &mut output)
+                })?;
+                measure(
+                    Metric::BlobFileSync,
+                    output.metadata()?.len(),
+                    false,
+                    || output.sync_all(),
+                )?;
+                ensure!(
+                    measure(Metric::BlobHash, output.metadata()?.len(), false, || {
+                        hash_file(&temporary)
+                    })? == *hash,
+                    "BLOB_HASH_MISMATCH"
+                );
                 std::fs::rename(&temporary, &destination)?;
-                sync_dir(destination.parent().context("BLOB_PARENT")?)?;
                 Ok(())
             })();
             if result.is_err() {
                 let _ = std::fs::remove_file(&temporary);
             }
             result?;
+        }
+        // Every file is durable before rename; persist the batch's directory
+        // entries before a caller can publish references. Also sync on reuse:
+        // an earlier failed batch may have left renamed, unreferenced files.
+        if !blobs.is_empty() {
+            sync_dir(&self.home.join("blobs"))?;
         }
         Ok(())
     }
@@ -353,6 +400,9 @@ impl Store {
         ensure!(n == 1, "OBJECT_NOT_FOUND");
         tx.execute("DELETE FROM refs WHERE kind=? AND id=?", params![kind, id])?;
         tx.commit()?;
+        if kind == "page" {
+            self.remove_page(id)?;
+        }
         Ok(())
     }
     pub fn register_task(&self, id: &str, r: &Request) -> Result<(String, bool)> {
@@ -398,19 +448,38 @@ impl Store {
         Ok(())
     }
     pub fn event<T: Serialize>(&self, id: &str, event: &T) -> Result<u64> {
+        self.event_batch(id, std::iter::once(event))?
+            .context("EMPTY_EVENT_BATCH")
+    }
+    /// Persist one already-rendered output in a single durable transaction.
+    /// Serialization or insertion failure rolls back the complete batch.
+    pub fn event_batch<T: Serialize>(
+        &self,
+        id: &str,
+        events: impl IntoIterator<Item = T>,
+    ) -> Result<Option<u64>> {
+        let mut events = events.into_iter().peekable();
+        if events.peek().is_none() {
+            return Ok(None);
+        }
         let mut c = self.catalog()?;
         let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let seq: i64 = tx.query_row(
+        let mut seq: i64 = tx.query_row(
             "SELECT COALESCE(MAX(seq),0)+1 FROM events WHERE task=?",
             [id],
             |r| r.get(0),
         )?;
-        tx.execute(
-            "INSERT INTO events VALUES(?,?,?)",
-            params![id, seq, json(event)?],
-        )?;
+        let mut last = None;
+        {
+            let mut insert = tx.prepare("INSERT INTO events VALUES(?,?,?)")?;
+            for event in events {
+                insert.execute(params![id, seq, json(&event)?])?;
+                last = Some(u64::try_from(seq)?);
+                seq = seq.checked_add(1).context("EVENT_SEQUENCE_OVERFLOW")?;
+            }
+        }
         tx.commit()?;
-        Ok(seq as u64)
+        Ok(last)
     }
     pub fn events<T: DeserializeOwned>(&self, id: &str, after: u64) -> Result<Vec<(u64, T)>> {
         let c = self.catalog()?;
@@ -698,6 +767,12 @@ impl Store {
                 [cutoff],
             )?;
             tx.commit()?;
+            for (kind, id) in &expired {
+                if kind == "page" {
+                    self.remove_page(id)?;
+                }
+            }
+            self.remove_orphan_pages(&c)?;
         }
         let mut blob_roots: BTreeSet<String> = guard.staged_blobs.keys().cloned().collect();
         for id in &protected {
@@ -783,7 +858,7 @@ impl Store {
             for e in std::fs::read_dir(self.home.join(dir))? {
                 let e = e?;
                 let id = e.file_name().to_string_lossy().into_owned();
-                if !id.starts_with("rev_")
+                if !(id.starts_with("rev_") || dir == "candidates" && id.starts_with("page-spool-"))
                     || dir == "candidates" && _guard.staged_candidates.contains(&id)
                 {
                     continue;
@@ -795,7 +870,11 @@ impl Store {
                 if !known {
                     orphan.push(format!("{dir}/{id}"));
                     if execute {
-                        std::fs::remove_dir_all(e.path())?;
+                        if e.file_type()?.is_dir() {
+                            std::fs::remove_dir_all(e.path())?;
+                        } else {
+                            std::fs::remove_file(e.path())?;
+                        }
                     }
                 }
             }
@@ -803,7 +882,379 @@ impl Store {
         Ok(serde_json::json!({"execute":execute,"orphans":orphan,"pending":pending}))
     }
 }
+impl ReadContext {
+    fn fact_predicate(&self, f: &FactFilter) -> Result<(String, Vec<String>)> {
+        let mut sql = "1=1".to_owned();
+        let mut values = Vec::new();
+        let selectors = f.signature.is_some()
+            || f.package.is_some()
+            || f.package_prefix.is_some()
+            || f.visibility.is_some()
+            || f.synthetic.is_some()
+            || f.entity_kind.is_some();
+        let projected = selectors && f.kinds != [FactKind::Facet] && self.connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='declaration_projection' AND type='table')", [], |r| r.get::<_,bool>(0))?;
+        if projected {
+            sql.push_str(" AND f.id IN(SELECT p.id FROM declaration_projection p WHERE 1=1");
+            for (column, value) in [
+                ("p.signature", &f.signature),
+                ("p.package", &f.package),
+                ("p.visibility", &f.visibility),
+            ] {
+                if let Some(value) = value {
+                    sql.push_str(&format!(" AND {column}=?"));
+                    values.push(value.clone());
+                }
+            }
+            if let Some(prefix) = &f.package_prefix {
+                sql.push_str(" AND (p.package=? OR instr(p.package,?)=1)");
+                values.extend([prefix.clone(), format!("{prefix}.")]);
+            }
+            if let Some(synthetic) = f.synthetic {
+                sql.push_str(" AND p.synthetic=CAST(? AS INTEGER)");
+                values.push(if synthetic { "1" } else { "0" }.into());
+            }
+            if let Some(kind) = &f.entity_kind {
+                sql.push_str(
+                    if matches!(
+                        kind.as_str(),
+                        "type"
+                            | "callable"
+                            | "value"
+                            | "artifact"
+                            | "component"
+                            | "config_entity"
+                            | "entity"
+                    ) {
+                        " AND p.entity_kind=?"
+                    } else {
+                        " AND p.language_kind=?"
+                    },
+                );
+                values.push(kind.clone());
+            }
+            sql.push(')');
+        }
+        for (column, value) in [
+            ("f.parent", &f.parent),
+            ("f.target", &f.target),
+            ("f.relation", &f.relation),
+            ("f.name", &f.name),
+            ("f.source", &f.source),
+            ("f.world", &f.world),
+            ("json_extract(f.body,'$.signature')", &f.signature),
+            (
+                "COALESCE(json_extract(f.body,'$.attributes.package'),json_extract(f.body,'$.attributes.namespace'),'')",
+                &f.package,
+            ),
+            (
+                "COALESCE(json_extract(f.body,'$.attributes.visibility'),'')",
+                &f.visibility,
+            ),
+        ] {
+            if projected && (column.starts_with("json_extract") || column.starts_with("COALESCE")) {
+                continue;
+            }
+            if let Some(value) = value {
+                sql.push_str(&format!(" AND {column}=?"));
+                values.push(value.clone());
+            }
+        }
+        if let Some(prefix) = &f.package_prefix
+            && !projected
+        {
+            sql.push_str(" AND (json_extract(f.body,'$.attributes.package')=? OR instr(json_extract(f.body,'$.attributes.package'),?)=1)");
+            values.extend([prefix.clone(), format!("{prefix}.")]);
+        }
+        if let Some(synthetic) = f.synthetic
+            && !projected
+        {
+            sql.push_str(
+                " AND COALESCE(json_extract(f.body,'$.attributes.synthetic'),0)=CAST(? AS INTEGER)",
+            );
+            values.push(if synthetic { "1" } else { "0" }.into());
+        }
+        if let Some(kind) = &f.entity_kind
+            && !projected
+        {
+            if matches!(
+                kind.as_str(),
+                "type"
+                    | "callable"
+                    | "value"
+                    | "artifact"
+                    | "component"
+                    | "config_entity"
+                    | "entity"
+            ) {
+                sql.push_str(" AND COALESCE(json_extract(f.body,'$.attributes.entity_kind'),CASE json_extract(f.body,'$.attributes.element_kind') WHEN 'CLASS' THEN 'type' WHEN 'INTERFACE' THEN 'type' WHEN 'ENUM' THEN 'type' WHEN 'ANNOTATION' THEN 'type' WHEN 'RECORD' THEN 'type' WHEN 'METHOD' THEN 'callable' WHEN 'CONSTRUCTOR' THEN 'callable' WHEN 'LAMBDA' THEN 'callable' WHEN 'METHOD_REF' THEN 'callable' WHEN 'FIELD' THEN 'value' WHEN 'ENUM_CONSTANT' THEN 'value' WHEN 'BEAN' THEN 'component' WHEN 'ARTIFACT' THEN 'artifact' ELSE 'entity' END)=?");
+            } else {
+                sql.push_str(" AND (json_extract(f.body,'$.attributes.element_kind')=? OR json_extract(f.body,'$.attributes.entity_kind')=?)");
+                values.push(kind.clone());
+            }
+            values.push(kind.clone());
+        }
+        if let Some(annotation) = &f.annotation {
+            sql.push_str(" AND EXISTS(SELECT 1 FROM facts a WHERE a.kind='facet' AND a.relation='java.annotation' AND a.parent=f.id AND (a.name=? OR json_extract(a.body,'$.attributes.annotation')=?))");
+            values.extend([annotation.clone(), annotation.clone()]);
+        }
+        for (column, ids) in [
+            ("f.id", f.ids.clone()),
+            ("f.parent", f.parents.clone()),
+            ("f.target", f.targets.clone()),
+            (
+                "f.kind",
+                f.kinds.iter().map(|kind| kind.name().to_owned()).collect(),
+            ),
+        ] {
+            if !ids.is_empty() {
+                ensure!(ids.len() <= 1000, "SELECTOR_BUDGET");
+                sql.push_str(&format!(
+                    " AND {column} IN ({})",
+                    vec!["?"; ids.len()].join(",")
+                ));
+                values.extend(ids);
+            }
+        }
+        if !f.sources.is_empty() {
+            // One JSON bind supports a large captured manifest without exceeding SQLite limits.
+            sql.push_str(" AND f.source IN (SELECT value FROM json_each(?))");
+            values.push(serde_json::to_string(&f.sources)?);
+        }
+        if f.module.is_some() || f.scope.is_some() {
+            let projected: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='source_units' AND type='table')", [], |r| r.get(0))?;
+            let sources = if projected {
+                "source_units".to_owned()
+            } else {
+                values.push(serde_json::to_string(&self.revision.manifest.files)?);
+                "(SELECT json_extract(value,'$.path') AS path,json_extract(value,'$.world') AS world,json_extract(value,'$.module') AS module,json_extract(value,'$.scope') AS scope,json_extract(value,'$.auxiliary') AS auxiliary FROM json_each(?))".to_owned()
+            };
+            sql.push_str(&format!(" AND EXISTS(SELECT 1 FROM {sources} s WHERE s.auxiliary=0 AND ((s.path=f.source AND s.world=f.world) OR (f.kind='external_symbol' AND EXISTS(SELECT 1 FROM facts observation WHERE observation.target=f.id AND observation.source=s.path AND observation.world=s.world AND observation.kind IN ('call_target','reference','relation'))))"));
+            for (column, value) in [("s.module", &f.module), ("s.scope", &f.scope)] {
+                if let Some(value) = value {
+                    sql.push_str(&format!(" AND {column}=?"));
+                    values.push(value.clone());
+                }
+            }
+            sql.push(')');
+        }
+        if projected && (f.kinds.is_empty() || f.kinds.contains(&FactKind::Facet)) {
+            // Existing immutable revisions project only declarations. Apply the
+            // same selectors to public configuration facets without rebuilding
+            // their authoritative graph or widening declaration counts.
+            let mut configuration = f.clone();
+            configuration.kinds = vec![FactKind::Facet];
+            let (fallback, extra) = self.fact_predicate(&configuration)?;
+            sql = format!(
+                "({sql} OR ({fallback} AND COALESCE(json_extract(f.body,'$.signature'),'')<>'' AND f.relation IN ('java.bean','java.sofa','java.spring.xml','java.spring.mvc','java.spring.handler')))"
+            );
+            values.extend(extra);
+        }
+        Ok((sql, values))
+    }
+}
 impl FactReader for ReadContext {
+    fn annotation_meta_edges(
+        &self,
+        names: &[String],
+    ) -> std::result::Result<Vec<AnnotationMetaEdge>, String> {
+        (|| -> Result<_> {
+            ensure!(!names.is_empty() && names.len()<=500,"ANNOTATION_META_KEY_BUDGET");
+            let columns=["raw_name","language","mechanism","resolution","upstream_producer"];
+            let sql=format!("SELECT json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation'),{} FROM facts WHERE kind='facet' AND relation='java.annotation.meta' AND json_extract(body,'$.attributes.annotation') IN ({}) AND json_extract(body,'$.attributes.meta_annotation') IS NOT NULL GROUP BY json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation') LIMIT 10001",
+                columns.iter().map(|key|format!("min(json_extract(body,'$.attributes.{key}'))")).collect::<Vec<_>>().join(","),vec!["?";names.len()].join(","));
+            let mut statement=self.connection.prepare(&sql)?;
+            let mut rows=statement.query(rusqlite::params_from_iter(names))?;
+            let mut output=Vec::new();
+            while let Some(row)=rows.next()? {
+                ensure!(output.len()<10000,"QUERY_WORK_BUDGET");
+                let mut attributes=BTreeMap::new();
+                for (index,key) in columns.iter().enumerate() {
+                    if let Some(value)=row.get::<_,Option<String>>(index+2)? { attributes.insert((*key).into(),serde_json::json!(value)); }
+                }
+                output.push(AnnotationMetaEdge { annotation:row.get(0)?,meta_annotation:row.get(1)?,attributes });
+            }
+            Ok(output)
+        })().map_err(|error|error.to_string())
+    }
+    fn overview_groups(
+        &self,
+        filter: &FactFilter,
+        section: &str,
+        direction: &str,
+        relations: &[String],
+    ) -> std::result::Result<Vec<serde_json::Value>, String> {
+        (|| -> Result<_> {
+            let mut owned = filter.clone();
+            if section == "dependencies" {
+                owned.package = None;
+                owned.package_prefix = None;
+            }
+            let (mut predicate, mut values) = self.fact_predicate(&owned)?;
+            let (joins, columns, grouping) = match section {
+                "modules" => ("JOIN source_units s ON s.path=f.source AND s.world=f.world AND s.auxiliary=0", "s.module", "s.module"),
+                "packages" => ("JOIN declaration_projection p ON p.id=f.id", "p.package", "p.package"),
+                "dependencies" => (
+                    "LEFT JOIN facts site ON f.kind='call_target' AND site.id=f.parent JOIN declaration_projection p ON p.id=CASE WHEN f.kind='call_target' THEN site.parent ELSE f.parent END JOIN declaration_projection t ON t.id=f.target",
+                    "p.package,t.package,f.relation", "p.package,t.package,f.relation"),
+                _ => bail!("OVERVIEW_SECTION_INVALID"),
+            };
+            if section == "packages" {
+                predicate.push_str(" AND f.kind='declaration'");
+            } else if section == "dependencies" {
+                predicate.push_str(" AND f.kind IN ('call_target','reference','relation') AND f.relation<>'contains' AND p.package<>t.package");
+                if !relations.is_empty() {
+                    ensure!(relations.len() <= 100, "OVERVIEW_RELATION_BUDGET");
+                    predicate.push_str(&format!(" AND f.relation IN ({})", vec!["?"; relations.len()].join(",")));
+                    values.extend_from_slice(relations);
+                }
+                if filter.package.is_some() || filter.package_prefix.is_some() {
+                    let mut endpoints = Vec::new();
+                    let columns: &[&str] = match direction {
+                        "in" => &["t.package"],
+                        "out" => &["p.package"],
+                        "both" => &["p.package", "t.package"],
+                        _ => bail!("OVERVIEW_DIRECTION_INVALID"),
+                    };
+                    for column in columns {
+                        if let Some(package) = &filter.package {
+                            endpoints.push(format!("{column}=?"));
+                            values.push(package.clone());
+                        } else if let Some(prefix) = &filter.package_prefix {
+                            endpoints.push(format!("({column}=? OR instr({column},?)=1)"));
+                            values.extend([prefix.clone(), format!("{prefix}.")]);
+                        }
+                    }
+                    predicate.push_str(&format!(" AND ({})", endpoints.join(" OR ")));
+                }
+            }
+            let mut statement = self.connection.prepare(&format!(
+                "SELECT {columns},COUNT(*) FROM facts f {joins} WHERE {predicate} GROUP BY {grouping} ORDER BY {grouping} LIMIT 10001"
+            ))?;
+            let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
+                Ok(if section == "dependencies" {
+                    serde_json::json!({"package":row.get::<_,String>(0)?,"target_package":row.get::<_,String>(1)?,"relation":row.get::<_,String>(2)?,"count":row.get::<_,i64>(3)?})
+                } else {
+                    serde_json::json!({if section == "modules" { "module" } else { "package" }:row.get::<_,String>(0)?,"count":row.get::<_,i64>(1)?})
+                })
+            })?.collect::<rusqlite::Result<Vec<_>>>()?;
+            ensure!(rows.len() <= 10000, "OVERVIEW_GROUP_BUDGET");
+            Ok(rows)
+        })().map_err(|error| error.to_string())
+    }
+    fn reverse_file_dependencies(
+        &self,
+        targets: &[FileKey],
+        source_world: Option<&str>,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<FileDependency>, String> {
+        (|| -> Result<_> {
+            ensure!(targets.len() <= 500 && (1..=1024).contains(&limit), "INVALID_DEPENDENCY_BATCH");
+            if targets.is_empty() { return Ok(Vec::new()); }
+            let available: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='file_dependencies' AND type='table')", [], |r| r.get(0))?;
+            ensure!(available, "FILE_DEPENDENCIES_UNAVAILABLE");
+            let keys = serde_json::to_string(targets)?;
+            let mut statement = self.connection.prepare("SELECT id,source_world,source_file,target_world,target_file FROM file_dependencies WHERE (target_world,target_file) IN (SELECT json_extract(value,'$.world'),json_extract(value,'$.path') FROM json_each(?)) AND (? IS NULL OR source_world=?) AND id>? ORDER BY id LIMIT ?")?;
+            Ok(statement.query_map(params![keys, source_world, source_world, after, limit as i64], |r| Ok(FileDependency {
+                id:r.get(0)?, source_world:r.get(1)?, source_file:r.get(2)?, target_world:r.get(3)?, target_file:r.get(4)?
+            }))?.collect::<rusqlite::Result<Vec<_>>>()?)
+        })().map_err(|error| error.to_string())
+    }
+
+    fn unresolved_consumers(
+        &self,
+        syntax_targets: &[String],
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        (|| -> Result<_> {
+            ensure!(syntax_targets.len() <= 500 && (1..=1024).contains(&limit), "INVALID_DEPENDENCY_BATCH");
+            if syntax_targets.is_empty() {return Ok(Vec::new());}
+            let mut filter = filter.clone();
+            filter.kinds = vec![FactKind::CallSite];
+            let (predicate, mut values) = self.fact_predicate(&filter)?;
+            values.extend_from_slice(syntax_targets);
+            values.push(after.into());
+            values.push(limit.to_string());
+            let placeholders = vec!["?"; syntax_targets.len()].join(",");
+            let mut statement = self.connection.prepare(&format!(
+                "SELECT f.body FROM facts f WHERE {predicate} AND f.kind='call_site' AND json_extract(f.body,'$.status')='unresolved' AND f.name IN ({placeholders}) AND f.id>? ORDER BY f.id LIMIT ?"
+            ))?;
+            let mut result = Vec::new();
+            for row in statement.query_map(rusqlite::params_from_iter(values), |row| row.get::<_, String>(0))? {
+                result.push(serde_json::from_str(&row?)?);
+            }
+            Ok(result)
+        })().map_err(|error| error.to_string())
+    }
+
+    fn scan(
+        &self,
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        (|| -> Result<_> {
+            ensure!((1..=1024).contains(&limit), "INVALID_SCAN_BATCH");
+            let (predicate, mut values) = self.fact_predicate(filter)?;
+            values.push(after.into());
+            values.push(limit.to_string());
+            let mut statement = self.connection.prepare(&format!(
+                "SELECT f.body FROM facts f WHERE {predicate} AND f.id>? ORDER BY f.id LIMIT ?"
+            ))?;
+            let mut result = Vec::new();
+            for row in statement.query_map(rusqlite::params_from_iter(values), |row| {
+                row.get::<_, String>(0)
+            })? {
+                result.push(serde_json::from_str(&row?)?);
+            }
+            Ok(result)
+        })()
+        .map_err(|error| error.to_string())
+    }
+    fn scan_symbols(
+        &self,
+        text: &str,
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        (|| -> Result<_> {
+            ensure!((1..=1024).contains(&limit), "INVALID_SCAN_BATCH");
+            let (predicate, values) = self.fact_predicate(filter)?;
+            symbol_search::scan_scoped(&self.connection, text, &predicate, values, after, limit)
+        })()
+        .map_err(|error| error.to_string())
+    }
+    fn search_symbols_filtered(
+        &self,
+        text: &str,
+        filter: &FactFilter,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        (|| -> Result<_> {
+            let (predicate, values) = self.fact_predicate(filter)?;
+            symbol_search::select_scoped(&self.connection, text, &predicate, values)
+        })()
+        .map_err(|e| e.to_string())
+    }
+    fn count_by_kind(
+        &self,
+        filter: &FactFilter,
+    ) -> std::result::Result<BTreeMap<String, u64>, String> {
+        (|| -> Result<_> {
+            let (predicate, values) = self.fact_predicate(filter)?;
+            let mut statement = self.connection.prepare(&format!(
+                "SELECT f.kind,COUNT(*) FROM facts f WHERE {predicate} GROUP BY f.kind"
+            ))?;
+            Ok(statement
+                .query_map(rusqlite::params_from_iter(values), |row| {
+                    Ok((row.get(0)?, row.get::<_, i64>(1)? as u64))
+                })?
+                .collect::<rusqlite::Result<BTreeMap<_, _>>>()?)
+        })()
+        .map_err(|error| error.to_string())
+    }
     fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
         symbol_search::select(&self.connection, text).map_err(|e| e.to_string())
     }
@@ -815,36 +1266,9 @@ impl FactReader for ReadContext {
     }
     fn select(&self, f: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
         (|| -> Result<Vec<Fact>> {
-            let mut sql = "SELECT body FROM facts WHERE 1=1".to_owned();
-            let mut values: Vec<String> = Vec::new();
-            for (column, value) in [
-                ("parent", &f.parent),
-                ("target", &f.target),
-                ("relation", &f.relation),
-                ("name", &f.name),
-                ("source", &f.source),
-                ("world", &f.world),
-            ] {
-                if let Some(v) = value {
-                    sql.push_str(&format!(" AND {column}=?"));
-                    values.push(v.clone());
-                }
-            }
-            for (column, vs) in [
-                ("id", f.ids.clone()),
-                ("parent", f.parents.clone()),
-                ("kind", f.kinds.iter().map(|k| k.name().into()).collect()),
-            ] {
-                if !vs.is_empty() {
-                    ensure!(vs.len() <= 1000, "SELECTOR_BUDGET");
-                    sql.push_str(&format!(
-                        " AND {column} IN ({})",
-                        vec!["?"; vs.len()].join(",")
-                    ));
-                    values.extend(vs);
-                }
-            }
-            sql.push_str(" ORDER BY id LIMIT 100001");
+            let (predicate, values) = self.fact_predicate(f)?;
+            let sql =
+                format!("SELECT f.body FROM facts f WHERE {predicate} ORDER BY f.id LIMIT 100001");
             let mut q = self.connection.prepare(&sql)?;
             let mut out = Vec::new();
             for row in q.query_map(rusqlite::params_from_iter(values), |r| {
@@ -860,7 +1284,797 @@ impl FactReader for ReadContext {
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn blob_file_batches_retry_partial_failure_and_verify_reused_files() {
+        use super::*;
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path().join("home");
+        let store = Store::open(&home).unwrap();
+        let mut sources = BTreeMap::new();
+        for (name, bytes) in [("first", b"one".as_slice()), ("second", b"two".as_slice())] {
+            let source = directory.path().join(name);
+            std::fs::write(&source, bytes).unwrap();
+            sources.insert(hash(bytes), source);
+        }
+        let (first_hash, _) = sources.first_key_value().unwrap();
+        let (last_hash, last_source) = sources.last_key_value().unwrap();
+        let last_bytes = std::fs::read(last_source).unwrap();
+        std::fs::write(last_source, b"changed before copy").unwrap();
+        assert!(store.put_blob_files(&sources).is_err());
+        assert!(home.join("blobs").join(first_hash).exists());
+        assert!(!home.join("blobs").join(last_hash).exists());
+        assert_eq!(std::fs::read_dir(home.join("blobs")).unwrap().count(), 1);
+        assert_eq!(store.head("WORKTREE").unwrap(), "");
+        // Reopen after failure: a successful retry must make reused renames
+        // durable too, then permit publication to reference the whole batch.
+        drop(store);
+        std::fs::write(last_source, &last_bytes).unwrap();
+        let store = Store::open(&home).unwrap();
+        store.put_blob_files(&sources).unwrap();
+        for (digest, source) in &sources {
+            assert_eq!(store.blob(digest).unwrap(), std::fs::read(source).unwrap());
+        }
+        store.put_blob_files(&sources).unwrap();
+        std::fs::write(last_source, b"changed reused source").unwrap();
+        assert!(store.put_blob_files(&sources).is_err());
+        std::fs::write(last_source, &last_bytes).unwrap();
+        std::fs::write(home.join("blobs").join(last_hash), b"corrupt stored blob").unwrap();
+        assert!(store.put_blob_files(&sources).is_err());
+    }
+
+    #[test]
+    fn event_batches_preserve_resume_sequence_and_rollback_failed_serialization() {
+        struct Row(bool);
+        impl serde::Serialize for Row {
+            fn serialize<S: serde::Serializer>(
+                &self,
+                serializer: S,
+            ) -> std::result::Result<S::Ok, S::Error> {
+                if self.0 {
+                    Err(serde::ser::Error::custom(
+                        "injected event serialization failure",
+                    ))
+                } else {
+                    serializer.serialize_str("chunk")
+                }
+            }
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        assert_eq!(store.event("task", &"queued").unwrap(), 1);
+        assert_eq!(store.event_batch("task", ["a", "b", "c"]).unwrap(), Some(4));
+        assert!(store.event_batch("task", [Row(false), Row(true)]).is_err());
+        assert_eq!(
+            store.events::<String>("task", 1).unwrap(),
+            vec![(2, "a".into()), (3, "b".into()), (4, "c".into())]
+        );
+        assert_eq!(store.event("task", &"terminal").unwrap(), 5);
+        assert_eq!(
+            store
+                .event_batch("task", std::iter::empty::<String>())
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            store.events::<String>("task", 4).unwrap(),
+            vec![(5, "terminal".into())]
+        );
+    }
+
+    #[test]
+    fn concurrent_event_batches_are_contiguous_and_never_interleave() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = std::sync::Arc::new(Store::open(directory.path()).unwrap());
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let jobs: Vec<_> = (0..4)
+            .map(|batch| {
+                let store = store.clone();
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    barrier.wait();
+                    store
+                        .event_batch("task", (0..4).map(|row| format!("{batch}:{row}")))
+                        .unwrap();
+                })
+            })
+            .collect();
+        for job in jobs {
+            job.join().unwrap();
+        }
+        let events = store.events::<String>("task", 0).unwrap();
+        assert_eq!(events.len(), 16);
+        for (index, (seq, _)) in events.iter().enumerate() {
+            assert_eq!(*seq, index as u64 + 1);
+        }
+        for rows in events.chunks(4) {
+            let batch = rows[0].1.split(':').next().unwrap();
+            for (index, (_, value)) in rows.iter().enumerate() {
+                assert_eq!(value, &format!("{batch}:{index}"));
+            }
+        }
+    }
+
+    #[test]
+    fn published_file_dependencies_page_by_world_and_keep_the_old_revision() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let mut rev = revision();
+        let content = b"class Api {}".to_vec();
+        let content_hash = hash(&content);
+        store
+            .put_blobs(&BTreeMap::from([(content_hash.clone(), content)]))
+            .unwrap();
+        for (path, world, scope) in [
+            ("A.java", "main", "MAIN"),
+            ("B.java", "main", "MAIN"),
+            ("Test.java", "test", "TEST"),
+        ] {
+            rev.manifest.files.push(SourceUnit {
+                path: path.into(),
+                hash: content_hash.clone(),
+                size: 12,
+                module: "app".into(),
+                world: world.into(),
+                scope: scope.into(),
+                language: "java".into(),
+                auxiliary: false,
+            });
+        }
+        let make = |id: &str, kind: &str, path: &str, world: &str, target: &str| {
+            serde_json::from_value::<Fact>(serde_json::json!({
+            "id":id,"kind":kind,"source":path,"target":target,"origin":"mock","status":"complete","evidence_complete":true,
+            "owner":{"world":world,"producer":"mock","kind":"source","id":path}
+        })).unwrap()
+        };
+        let mut initial = result();
+        initial.manifest = rev.manifest.id();
+        initial.facts = vec![
+            make("a", "declaration", "A.java", "main", ""),
+            make("b", "declaration", "B.java", "main", ""),
+            make("ab", "reference", "A.java", "main", "b"),
+            make("ab-2", "reference", "A.java", "main", "b"),
+            make("tb", "reference", "Test.java", "test", "b"),
+        ];
+        for source in &rev.manifest.files {
+            initial.facts.push(make(
+                &format!("coverage-{}", source.path),
+                "coverage",
+                &source.path,
+                &source.world,
+                "",
+            ));
+        }
+        let first = store
+            .publish(rev.clone(), &initial, "", "file-dependency-initial")
+            .unwrap();
+        let baseline = store.read(&first.id).unwrap();
+        let keys = [FileKey {
+            world: "main".into(),
+            path: "B.java".into(),
+        }];
+        let main = baseline
+            .reverse_file_dependencies(&keys, Some("main"), "", 1)
+            .unwrap();
+        assert_eq!(main.len(), 1);
+        assert_eq!(main[0].source_file, "A.java");
+        let next = baseline
+            .reverse_file_dependencies(&keys, None, &main[0].id, 1)
+            .unwrap();
+        assert_eq!(next.len(), 1);
+        assert_eq!(next[0].source_world, "test");
+        assert!(
+            baseline
+                .reverse_file_dependencies(&keys, None, &next[0].id, 1)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            baseline
+                .reverse_file_dependencies(
+                    &[FileKey {
+                        world: "test".into(),
+                        path: "B.java".into()
+                    }],
+                    None,
+                    "",
+                    1024
+                )
+                .unwrap()
+                .is_empty()
+        );
+        let mut delta = result();
+        delta.mode = "delta".into();
+        delta.baseline = first.id.clone();
+        delta.manifest = rev.manifest.id();
+        delta.replacements = vec![initial.facts[0].owner.clone()];
+        delta.facts = initial
+            .facts
+            .iter()
+            .filter(|f| f.source == "A.java" && f.kind != FactKind::Reference)
+            .cloned()
+            .collect();
+        let second = store
+            .publish(rev, &delta, &first.id, "file-dependency-delete")
+            .unwrap();
+        let current = store.read(&second.id).unwrap();
+        assert!(
+            current
+                .reverse_file_dependencies(&keys, Some("main"), "", 1024)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            current
+                .reverse_file_dependencies(&keys, None, "", 1024)
+                .unwrap(),
+            next
+        );
+        assert_eq!(
+            baseline
+                .reverse_file_dependencies(&keys, None, "", 1024)
+                .unwrap()
+                .len(),
+            2
+        );
+    }
+
+    #[test]
+    fn file_dependency_batches_use_the_reverse_index_above_the_global_budget() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100003) INSERT INTO file_dependencies SELECT printf('%08d',n),'main',printf('Source%d.java',n),'main','Target.java' FROM sequence",[]).unwrap();
+        let plan:Vec<String>=db.prepare("EXPLAIN QUERY PLAN SELECT id FROM file_dependencies WHERE (target_world,target_file) IN (SELECT json_extract(value,'$.world'),json_extract(value,'$.path') FROM json_each('[{\"world\":\"main\",\"path\":\"Target.java\"}]')) AND id>'00000083' ORDER BY id LIMIT 83").unwrap().query_map([],|r|r.get(3)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert!(
+            plan.iter()
+                .any(|line| line.contains("file_dependencies_reverse")),
+            "{plan:?}"
+        );
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        let rows = reader
+            .reverse_file_dependencies(
+                &[FileKey {
+                    world: "main".into(),
+                    path: "Target.java".into(),
+                }],
+                Some("main"),
+                "00000083",
+                83,
+            )
+            .unwrap();
+        assert_eq!(rows.len(), 83);
+        assert_eq!(rows[0].id, "00000084");
+        assert_eq!(rows[82].id, "00000166");
+        assert!(
+            reader
+                .reverse_file_dependencies(&[], None, "", 1025)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn reverse_dependencies_keep_cycles_scopes_occurrences_and_atomic_owner_replacement() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let make = |id: &str, kind: &str, owner: &str, world: &str, parent: &str, target: &str| {
+            serde_json::from_value::<Fact>(serde_json::json!({"id":id,"kind":kind,
+                "owner":{"world":world,"producer":"mock","kind":"context","id":owner},
+                "parent":parent,"target":target,"origin":"mock"}))
+            .unwrap()
+        };
+        let a = make("a", "declaration", "a-owner", "main", "", "");
+        let b = make("b", "declaration", "b-owner", "main", "", "");
+        let test = make("test", "declaration", "test-owner", "test", "", "");
+        let mut initial = result();
+        initial.facts = vec![
+            a.clone(),
+            b.clone(),
+            test,
+            make("ab-1", "dependency", "a-owner", "main", "a", "b"),
+            make("ab-2", "reference", "a-owner", "main", "a", "b"),
+            make("ba", "relation", "b-owner", "main", "b", "a"),
+            make("test-b", "call_target", "test-owner", "test", "test", "b"),
+        ];
+        let first = store
+            .publish(revision(), &initial, "", "dependency-initial")
+            .unwrap();
+        let baseline = store.read(&first.id).unwrap();
+        let scoped = FactFilter {
+            world: Some("main".into()),
+            ..Default::default()
+        };
+        let incoming = baseline
+            .reverse_dependencies(&["b".into()], &scoped, "", 1024)
+            .unwrap();
+        assert_eq!(
+            incoming
+                .iter()
+                .map(|fact| fact.id.as_str())
+                .collect::<Vec<_>>(),
+            ["ab-1", "ab-2"]
+        );
+        assert_eq!(
+            baseline
+                .reverse_dependencies(&["a".into()], &scoped, "", 1024)
+                .unwrap()[0]
+                .id,
+            "ba"
+        );
+        let mut missing = make("missing", "call_site", "b-owner", "main", "b", "");
+        missing.name = "A.read".into();
+        missing.status = "unresolved".into();
+        let mut delta = result();
+        delta.mode = "delta".into();
+        delta.baseline = first.id.clone();
+        delta.replacements = vec![a.owner, b.owner.clone()];
+        delta.facts = vec![b, missing];
+        let second = store
+            .publish(revision(), &delta, &first.id, "dependency-deletion")
+            .unwrap();
+        let current = store.read(&second.id).unwrap();
+        assert!(
+            current
+                .reverse_dependencies(&["a".into(), "b".into()], &scoped, "", 1024)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            current
+                .unresolved_consumers(&["A.read".into()], &scoped, "", 1024)
+                .unwrap()[0]
+                .id,
+            "missing"
+        );
+        assert!(
+            current
+                .unresolved_consumers(
+                    &["A.read".into()],
+                    &FactFilter {
+                        world: Some("test".into()),
+                        ..Default::default()
+                    },
+                    "",
+                    1024
+                )
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            current
+                .reverse_dependencies(&["b".into()], &FactFilter::default(), "", 1024)
+                .unwrap()[0]
+                .id,
+            "test-b"
+        );
+        assert_eq!(
+            baseline
+                .reverse_dependencies(&["b".into()], &scoped, "", 1024)
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(
+            baseline
+                .unresolved_consumers(&["A.read".into()], &scoped, "", 1024)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn unresolved_consumers_read_a_bounded_batch_above_the_global_select_budget() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        let body = serde_json::json!({"id":"template","kind":"call_site","owner":{"world":"w","producer":"mock","kind":"context","id":"ctx"},"name":"missing()","status":"unresolved","origin":"mock"}).to_string();
+        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100003) INSERT INTO facts SELECT printf('%08d',n),'call_site','owner','','','','missing()','','w',json_set(?,'$.id',printf('%08d',n)) FROM sequence", [body]).unwrap();
+        schema::prepare_queries(&db).unwrap();
+        let plan: Vec<String> = db.prepare("EXPLAIN QUERY PLAN SELECT id FROM facts WHERE kind='call_site' AND json_extract(body,'$.status')='unresolved' AND name='missing()' AND id>'00000083' ORDER BY id LIMIT 83").unwrap()
+            .query_map([], |row| row.get(3)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
+        assert!(
+            plan.iter()
+                .any(|line| line.contains("fact_unresolved_consumers")),
+            "{plan:?}"
+        );
+        assert!(
+            !plan.iter().any(|line| line.contains("TEMP B-TREE")),
+            "{plan:?}"
+        );
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        let rows = reader
+            .unresolved_consumers(
+                &["missing()".into()],
+                &FactFilter::default(),
+                "00000083",
+                83,
+            )
+            .unwrap();
+        assert_eq!(rows.len(), 83);
+        assert_eq!(rows[0].id, "00000084");
+        assert_eq!(rows[82].id, "00000166");
+        assert!(
+            reader
+                .unresolved_consumers(&["absent()".into()], &FactFilter::default(), "", 83)
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn keyset_search_enumerates_more_than_one_hundred_thousand_without_duplicate_ids() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        let body = serde_json::json!({"id":"template","kind":"declaration","owner":{"world":"w","producer":"mock","kind":"source","id":"A.java"},"source":"A.java","name":"Same","signature":"Same","origin":"mock"}).to_string();
+        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100003) INSERT INTO facts SELECT printf('%08d',n),'declaration','owner','','','','Same','A.java','w',json_set(?,'$.id',printf('%08d',n)) FROM sequence", [body]).unwrap();
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        let mut after = String::new();
+        let mut total = 0;
+        loop {
+            let batch = reader
+                .scan_symbols("Same", &FactFilter::default(), &after, 1024)
+                .unwrap();
+            assert!(batch.len() <= 1024);
+            if batch.is_empty() {
+                break;
+            }
+            for fact in batch {
+                total += 1;
+                assert_eq!(fact.id, format!("{total:08}"));
+                after = fact.id;
+            }
+        }
+        assert_eq!(total, 100003);
+        assert!(
+            reader
+                .scan(&FactFilter::default(), &after, 512)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            reader
+                .scan_symbols("Same", &FactFilter::default(), "", 1025)
+                .is_err()
+        );
+    }
+    #[test]
+    fn page_spool_survives_recovery_pins_revision_and_cleans_up_on_expiry() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let first = store.publish(revision(), &result(), "", "first").unwrap();
+        let mut spool = store.page_spool().unwrap();
+        spool.append(&[serde_json::json!({"id":"saved"})]).unwrap();
+        store.recover(true).unwrap();
+        spool.append(&[serde_json::json!({"id":"second"})]).unwrap();
+        let id = "page_saved";
+        store
+            .freeze_page(
+                id,
+                "p",
+                &serde_json::json!({"created":now(),"total":2}),
+                std::slice::from_ref(&first.id),
+                spool,
+            )
+            .unwrap();
+        store
+            .publish(revision(), &result(), &first.id, "second")
+            .unwrap();
+        store.gc(true).unwrap();
+        assert!(store.read(&first.id).is_ok());
+        assert_eq!(
+            store.page_records(id, "p", 1, 1).unwrap()[0]["id"],
+            "second"
+        );
+        assert!(store.page_records(id, "different-project", 0, 1).is_err());
+        store
+            .put_object(
+                "page",
+                id,
+                "p",
+                &serde_json::json!({"created":now()-86401}),
+                std::slice::from_ref(&first.id),
+            )
+            .unwrap();
+        store.gc(true).unwrap();
+        assert!(!directory.path().join("pages/page_saved.db").exists());
+        assert!(store.read(&first.id).is_err());
+        let count = std::fs::read_dir(directory.path().join("candidates"))
+            .unwrap()
+            .count();
+        {
+            let mut abandoned = store.page_spool().unwrap();
+            abandoned
+                .append(&[serde_json::json!({"id":"cancelled"})])
+                .unwrap();
+        }
+        assert_eq!(
+            std::fs::read_dir(directory.path().join("candidates"))
+                .unwrap()
+                .count(),
+            count
+        );
+        let crashed = directory.path().join("candidates/page-spool-crashed");
+        std::fs::write(&crashed, b"unfinished").unwrap();
+        store.recover(true).unwrap();
+        assert!(!crashed.exists());
+        std::fs::write(directory.path().join("pages/page_orphan.db"), b"orphan").unwrap();
+        store.gc(true).unwrap();
+        assert!(!directory.path().join("pages/page_orphan.db").exists());
+    }
+    #[test]
+    fn meta_catalogue_groups_more_than_the_fact_budget_before_returning_edges() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        let body=serde_json::json!({"id":"template","kind":"facet","owner":{"world":"w","producer":"java","kind":"source","id":"A.java"},"source":"A.java","relation":"java.annotation.meta","attributes":{"annotation":"A","meta_annotation":"B","raw_name":"z","resolution":"exact"}}).to_string();
+        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100001) INSERT INTO facts SELECT printf('%08d',n),'facet','o','','','java.annotation.meta','','A.java','w',json_set(?,'$.id',printf('%08d',n)) FROM sequence",[body]).unwrap();
+        db.execute(
+            "UPDATE facts SET body=json_set(body,'$.attributes.raw_name','a') WHERE id='00000001'",
+            [],
+        )
+        .unwrap();
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        assert_eq!(
+            reader.annotation_meta_edges(&["A".into()]).unwrap().len(),
+            1,
+            "legacy revisions group before the fact budget without new indexes"
+        );
+        schema::prepare_queries(&reader.connection).unwrap();
+        // The dense legacy case above legitimately scans every matching row.
+        // Exercise the directed plan separately with many other annotation keys.
+        reader.connection.execute("UPDATE facts SET body=json_set(body,'$.attributes.annotation',printf('Other%04d',CAST(id AS INTEGER)%1000)) WHERE id<>'00000001'",[]).unwrap();
+        reader.connection.execute_batch("ANALYZE").unwrap();
+        let plan=reader.connection.prepare("EXPLAIN QUERY PLAN SELECT json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation'),min(json_extract(body,'$.attributes.raw_name')) FROM facts WHERE kind='facet' AND relation='java.annotation.meta' AND json_extract(body,'$.attributes.annotation')='A' GROUP BY json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation')").unwrap().query_map([],|row|row.get::<_,String>(3)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap().join(" ");
+        assert!(plan.contains("fact_annotation_meta_pair"), "{plan}");
+        // SQLite may group the already restricted rows in a temporary B-tree.
+        // That does not imply a full catalogue scan.
+        let edges = reader.annotation_meta_edges(&["A".into()]).unwrap();
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].meta_annotation, "B");
+        assert_eq!(edges[0].attributes["raw_name"], "a");
+        assert!(
+            reader
+                .annotation_meta_edges(&["Other".into()])
+                .unwrap()
+                .is_empty()
+        );
+        assert!(reader.annotation_meta_edges(&[]).is_err());
+    }
+    #[test]
+    fn configuration_selectors_use_captured_scope_without_declaration_projection_rows() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        for (id, relation, world, source) in [
+            ("main-bean", "java.bean", "main", "main.xml"),
+            ("test-bean", "java.bean", "test", "test.xml"),
+            ("helper", "java.binding", "main", "main.xml"),
+        ] {
+            let body = serde_json::json!({"id":id,"kind":"facet","owner":{"world":world,"producer":"framework","kind":"source","id":source},"name":"api","signature":"bean:api","source":source,"relation":relation,"attributes":{"entity_kind":"component","element_kind":"BEAN"}}).to_string();
+            db.execute(
+                "INSERT INTO facts VALUES(?,'facet','o','','',?,'api',?,?,?)",
+                params![id, relation, source, world, body],
+            )
+            .unwrap();
+        }
+        db.execute_batch("INSERT INTO source_units VALUES('main.xml','main','app','RESOURCE','hash',0); INSERT INTO source_units VALUES('test.xml','test','app','RESOURCE','hash',0);").unwrap();
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        let filter = FactFilter {
+            signature: Some("bean:api".into()),
+            entity_kind: Some("component".into()),
+            world: Some("main".into()),
+            module: Some("app".into()),
+            scope: Some("RESOURCE".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            reader
+                .select(&filter)
+                .unwrap()
+                .iter()
+                .map(|f| f.id.as_str())
+                .collect::<Vec<_>>(),
+            ["main-bean"]
+        );
+        assert_eq!(
+            reader.search_symbols_filtered("api", &filter).unwrap()[0].id,
+            "main-bean"
+        );
+        assert!(
+            reader
+                .select(&FactFilter {
+                    module: Some("other".into()),
+                    ..filter.clone()
+                })
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            reader
+                .select(&FactFilter {
+                    entity_kind: Some("type".into()),
+                    ..filter.clone()
+                })
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            reader
+                .select(&FactFilter {
+                    scope: Some("MAIN".into()),
+                    ..filter
+                })
+                .unwrap()
+                .is_empty()
+        );
+    }
+    #[test]
+    fn filtered_symbol_search_applies_scope_before_work_budget() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        let body=serde_json::to_string(&serde_json::from_value::<Fact>(serde_json::json!({"id":"needle","kind":"declaration","name":"Api","signature":"p.Api","source":"B.java","owner":{"world":"w","producer":"mock","kind":"source","id":"B.java"},"attributes":{"package":"p","element_kind":"CLASS","visibility":"public","synthetic":false}})).unwrap()).unwrap();
+        db.execute(
+            "INSERT INTO facts VALUES('needle','declaration','o','','','','Api','B.java','w',?)",
+            [body],
+        )
+        .unwrap();
+        db.execute_batch("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100001) INSERT INTO facts SELECT printf('%08d',n),'declaration','o','','','','Api','A.java','other','{}' FROM sequence; INSERT INTO source_units VALUES('B.java','w','selected','MAIN','hash',0); INSERT INTO source_units VALUES('A.java','other','other','MAIN','hash',0);").unwrap();
+        db.execute("INSERT INTO facts VALUES('ann','facet','o','needle','','java.annotation','','B.java','w',?)", [r#"{"id":"ann","kind":"facet","owner":{"world":"w","producer":"javac","kind":"source","id":"B.java"},"parent":"needle","relation":"java.annotation","attributes":{"annotation":"p.Mark"}}"#]).unwrap();
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        let filter = FactFilter {
+            module: Some("selected".into()),
+            package: Some("p".into()),
+            entity_kind: Some("type".into()),
+            visibility: Some("public".into()),
+            synthetic: Some(false),
+            ..Default::default()
+        };
+        let hits = reader.search_symbols_filtered("Api", &filter).unwrap();
+        assert_eq!(
+            hits.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(),
+            ["needle"]
+        );
+        assert_eq!(
+            reader
+                .search_symbols_filtered(
+                    "Api",
+                    &FactFilter {
+                        annotation: Some("p.Mark".into()),
+                        ..filter.clone()
+                    }
+                )
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(
+            reader
+                .search_symbols_filtered(
+                    "Api",
+                    &FactFilter {
+                        package: Some("wrong".into()),
+                        ..filter
+                    }
+                )
+                .unwrap()
+                .is_empty()
+        );
+    }
     use super::*;
+    #[test]
+    fn large_aggregate_counts_do_not_decode_bodies_or_inherit_select_limit() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        db.execute_batch("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100001) INSERT INTO facts SELECT printf('%08d',n),'declaration','owner','','','','Api','A.java','w','{}' FROM sequence;
+            INSERT INTO source_units VALUES('A.java','w','selected','MAIN','hash',0);").unwrap();
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        assert_eq!(
+            reader.count_by_kind(&FactFilter::default()).unwrap()["declaration"],
+            100001
+        );
+        assert_eq!(
+            reader
+                .count_by_kind(&FactFilter {
+                    module: Some("selected".into()),
+                    ..Default::default()
+                })
+                .unwrap()["declaration"],
+            100001
+        );
+        assert!(
+            reader
+                .count_by_kind(&FactFilter {
+                    module: Some("other".into()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .is_empty()
+        );
+        // Bodies deliberately cannot decode as Fact; aggregation must use projections.
+        let packages = reader
+            .overview_groups(&FactFilter::default(), "packages", "out", &[])
+            .unwrap();
+        assert_eq!(
+            packages,
+            vec![serde_json::json!({"package":"","count":100001})]
+        );
+        let modules = reader
+            .overview_groups(&FactFilter::default(), "modules", "out", &[])
+            .unwrap();
+        assert_eq!(
+            modules,
+            vec![serde_json::json!({"module":"selected","count":100001})]
+        );
+    }
+    #[test]
+    fn overview_dependency_counts_keep_occurrences_direction_and_relation() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        db.execute_batch("INSERT INTO facts VALUES('a','declaration','owner','','','','A','A.java','w','{\"attributes\":{\"package\":\"p.a\"}}'),('b','declaration','owner','','','','B','B.java','w','{\"attributes\":{\"package\":\"p.b\"}}'),('site','call_site','owner','a','','','','A.java','w','{}'),('c1','call_target','owner','site','b','calls','','A.java','w','{}'),('c2','call_target','owner','site','b','calls','','A.java','w','{}'),('r','reference','owner','b','a','reads','','B.java','w','{}');").unwrap();
+        let reader = ReadContext {
+            connection: db,
+            revision: revision(),
+            coord: Arc::default(),
+        };
+        let filter = FactFilter {
+            package: Some("p.a".into()),
+            ..Default::default()
+        };
+        let outgoing = reader
+            .overview_groups(&filter, "dependencies", "out", &[])
+            .unwrap();
+        assert_eq!(
+            outgoing,
+            vec![
+                serde_json::json!({"package":"p.a","target_package":"p.b","relation":"calls","count":2})
+            ]
+        );
+        let incoming = reader
+            .overview_groups(&filter, "dependencies", "in", &[])
+            .unwrap();
+        assert_eq!(
+            incoming,
+            vec![
+                serde_json::json!({"package":"p.b","target_package":"p.a","relation":"reads","count":1})
+            ]
+        );
+        assert_eq!(
+            reader
+                .overview_groups(&filter, "dependencies", "both", &[])
+                .unwrap()
+                .len(),
+            2
+        );
+        assert!(
+            reader
+                .overview_groups(&filter, "dependencies", "in", &["calls".into()])
+                .unwrap()
+                .is_empty()
+        );
+    }
     pub(super) fn revision() -> Revision {
         Revision {
             id: String::new(),

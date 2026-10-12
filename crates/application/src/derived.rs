@@ -6,7 +6,7 @@ use codeana_storage::{CandidateDerivation, CandidateFacts};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
-pub(crate) const PROFILE: &str = "derived-wiring-5";
+pub(crate) const PROFILE: &str = "derived-wiring-6";
 const PRODUCER: &str = "rust.derived.wiring";
 const AGGREGATE: &str = "static-injection-candidates";
 pub(crate) struct Wiring;
@@ -144,6 +144,34 @@ fn bean_type(facts: &CandidateFacts<'_>, bean: &Fact) -> Result<Option<Fact>> {
 }
 
 fn xml_wires(facts: &CandidateFacts<'_>) -> Result<()> {
+    let mut upstream = BTreeMap::new();
+    for wire in facts.relations("wires_possible")? {
+        if wire
+            .attributes
+            .get("upstream_relation")
+            .and_then(|v| v.as_str())
+            != Some("WIRES")
+            || wire.attributes.get("via").and_then(|v| v.as_str()) != Some("xml_configuration")
+        {
+            continue;
+        }
+        let Some(line) = wire
+            .attributes
+            .get("position")
+            .and_then(|v| v.get("line"))
+            .and_then(|v| v.as_u64())
+        else {
+            continue;
+        };
+        let identity = (
+            wire.owner.world,
+            wire.source,
+            wire.parent,
+            wire.target,
+            line,
+        );
+        *upstream.entry(identity).or_insert(0usize) += 1;
+    }
     for reference in facts.references("config", None)? {
         let Some(site) = facts.fact(&reference.parent)? else {
             continue;
@@ -193,6 +221,28 @@ fn xml_wires(facts: &CandidateFacts<'_>) -> Result<()> {
             continue;
         };
         let target = internal(facts, target.clone())?.unwrap_or(target);
+        // The upstream analyzer already publishes XML WIRES. Consume matching
+        // occurrences one for one; endpoint-only dedup would lose repeated refs.
+        if let Some(line) = site
+            .attributes
+            .get("position")
+            .and_then(|v| v.get("line"))
+            .and_then(|v| v.as_u64())
+        {
+            let identity = (
+                reference.owner.world.clone(),
+                reference.source.clone(),
+                source.id.clone(),
+                target.id.clone(),
+                line,
+            );
+            if let Some(remaining) = upstream.get_mut(&identity)
+                && *remaining > 0
+            {
+                *remaining -= 1;
+                continue;
+            }
+        }
         let mut wire = Fact {
             id: String::new(),
             kind: FactKind::Relation,
@@ -628,6 +678,89 @@ mod tests {
     }
 
     #[test]
+    fn upstream_database_wiring_metadata_is_independent_of_module_arrival_order() {
+        let mut expected = None;
+        for reverse in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let store = Store::open(root.path()).unwrap();
+            let (revision, mut result) = fixture();
+            if reverse {
+                result.facts.reverse();
+            }
+            let published = publish(&store, revision, &result, "");
+            let mut bindings = wires(&store, &published.id);
+            bindings.sort_by(|a, b| a.target.cmp(&b.target));
+            assert_eq!(bindings.len(), 2);
+            assert!(
+                bindings
+                    .iter()
+                    .all(|f| f.attributes["candidates"] == json!(["a", "b"]))
+            );
+            let actual = serde_json::to_value(bindings).unwrap();
+            if let Some(previous) = &expected {
+                assert_eq!(&actual, previous);
+            }
+            expected = Some(actual);
+        }
+    }
+
+    #[test]
+    fn upstream_unique_wiring_preserves_interface_call_without_manufacturing_implementation_call() {
+        let root = tempfile::tempdir().unwrap();
+        let store = Store::open(root.path()).unwrap();
+        let (revision, mut result) = fixture();
+        result.facts.retain(|f| f.id != "b-implements");
+        result.facts.extend([
+            fact("caller", FactKind::Declaration, "", "", ""),
+            fact(
+                "interface-method",
+                FactKind::Declaration,
+                "interface",
+                "",
+                "",
+            ),
+            fact("implementation-method", FactKind::Declaration, "a", "", ""),
+            fact(
+                "override",
+                FactKind::Relation,
+                "implementation-method",
+                "interface-method",
+                "overrides",
+            ),
+            fact("site", FactKind::CallSite, "caller", "", "call"),
+            fact(
+                "call",
+                FactKind::CallTarget,
+                "site",
+                "interface-method",
+                "calls",
+            ),
+        ]);
+        let original_call = result
+            .facts
+            .iter()
+            .find(|f| f.id == "call")
+            .unwrap()
+            .clone();
+        let published = publish(&store, revision, &result, "");
+        let bindings = wires(&store, &published.id);
+        assert_eq!(bindings.len(), 1);
+        assert_eq!(bindings[0].parent, "field");
+        assert_eq!(bindings[0].target, "a");
+        assert_eq!(bindings[0].attributes["confidence"], "inferred");
+        let calls = store
+            .read(&published.id)
+            .unwrap()
+            .select(&FactFilter {
+                kinds: vec![FactKind::CallTarget],
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(calls, vec![original_call]);
+        assert!(calls.iter().all(|f| f.target != "implementation-method"));
+    }
+
+    #[test]
     fn xml_configuration_preserves_occurrences_and_removes_derived_wires_atomically() {
         let root = tempfile::tempdir().unwrap();
         let store = Store::open(root.path()).unwrap();
@@ -727,16 +860,38 @@ mod tests {
             && f.status == "possible"
             && !f.evidence_complete
             && !f.declaration_resolved));
+        // Existing adapter occurrences and their configuration references are
+        // two representations of the same evidence, not four injections.
+        for (number, derived) in output.iter().enumerate() {
+            let mut upstream = derived.clone();
+            upstream.id = format!("upstream-xml-wire-{number}");
+            upstream.owner = xml_owner.clone();
+            upstream.origin = "framework_model".into();
+            upstream.span = None;
+            upstream.attributes = BTreeMap::from([
+                ("via".into(), json!("xml_configuration")),
+                ("upstream_relation".into(), json!("WIRES")),
+                ("position".into(), json!({"line":1})),
+            ]);
+            result.facts.push(upstream);
+        }
+        let with_raw = publish(&store, revision.clone(), &result, &first.id);
+        let raw_output: Vec<_> = wires(&store, &with_raw.id)
+            .into_iter()
+            .filter(|f| f.attributes["via"] == "xml_configuration")
+            .collect();
+        assert_eq!(raw_output.len(), 2);
+        assert!(raw_output.iter().all(|f| f.origin == "framework_model"));
         let delta = AnalysisResult {
             mode: "delta".into(),
-            baseline: first.id.clone(),
+            baseline: with_raw.id.clone(),
             manifest: revision.manifest.id(),
             profile: PROFILE.into(),
             producer: "adapter".into(),
             replacements: vec![xml_owner],
             facts: vec![],
         };
-        let second = publish(&store, revision, &delta, &first.id);
+        let second = publish(&store, revision, &delta, &with_raw.id);
         assert!(
             wires(&store, &second.id)
                 .iter()

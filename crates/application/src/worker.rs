@@ -81,7 +81,7 @@ impl Worker {
             cmd.arg("--fixtures").arg(fixtures);
         }
         if let Some(java) = java {
-            cmd.arg(&java.library);
+            cmd.arg(&java.library).arg("--backend").arg(java.backend);
         }
         cmd.arg("--fd")
             .arg("3")
@@ -303,104 +303,122 @@ impl Worker {
         full: bool,
         cancel: &CancellationToken,
     ) -> Result<SpooledAnalysis> {
-        let mut full = full;
-        for retry in 0..2 {
-            self.attempt = new_id("attempt");
-            let baseline_input = if full { None } else { old };
-            let mut sequence = 0;
-            if let Some(archive) = baseline_input {
-                for chunk in archive.chunks()? {
-                    self.send(Body::BaselineChunk(w::BaselineChunk {
-                        seq: sequence,
-                        facts: chunk?,
-                    }))
-                    .await?;
-                    sequence += 1;
-                }
-            }
-            self.send(Body::BaselineEnd(w::BaselineEnd {
-                count: baseline_input.map_or(0, |a| a.count),
-                checksum: baseline_input
-                    .map_or_else(|| digest(&Vec::<Fact>::new()), |a| a.checksum.clone()),
-            }))
-            .await?;
-            self.send(Body::Analyze(w::Analyze {
-                manifest: Some(convert(manifest)?),
-                profile: profile.into(),
-                baseline: baseline.into(),
-                full,
-                baseline_facts: vec![],
-            }))
-            .await?;
-            let begin = match self.receive(cancel).await? {
-                Body::Begin(b) => b,
-                Body::Replan(_) if retry == 0 && !full => {
-                    full = true;
-                    continue;
-                }
-                _ => bail!("EXPECTED_RESULT_BEGIN"),
-            };
-            ensure!(
-                begin.manifest == manifest.id()
-                    && begin.profile == profile
-                    && begin.baseline == baseline
-                    && begin.producer == self.context.producer,
-                "RESULT_IDENTITY_MISMATCH"
-            );
-            ensure!(!full || begin.mode == "full", "EXPECTED_FULL_RESULT");
-            let mut facts = match self.scratch.lock().unwrap().as_ref() {
-                Some(budget) => FactArchiveBuilder::new_in(
-                    self.output_limits.bytes,
-                    self.output_limits.facts,
-                    &budget.root,
-                )?,
-                None => {
-                    FactArchiveBuilder::new(self.output_limits.bytes, self.output_limits.facts)?
-                }
-            };
-            let mut seq = 0;
-            let archive = loop {
-                match self.receive(cancel).await? {
-                    Body::Chunk(chunk) => {
-                        ensure!(chunk.seq == seq, "CHUNK_SEQUENCE_MISMATCH");
-                        seq += 1;
-                        for f in chunk.facts {
-                            let f = fact_from_wire(f)?;
-                            facts.push(&f)?;
+        let diagnostics = codeana_contracts::performance::Report::new("transport");
+        diagnostics
+            .capture
+            .scope(async {
+                let mut full = full;
+                for retry in 0..2 {
+                    self.attempt = new_id("attempt");
+                    let baseline_input = if full { None } else { old };
+                    let mut sequence = 0;
+                    if let Some(archive) = baseline_input {
+                        for chunk in archive.chunks()? {
+                            self.send(Body::BaselineChunk(w::BaselineChunk {
+                                seq: sequence,
+                                facts: chunk?,
+                            }))
+                            .await?;
+                            sequence += 1;
                         }
                     }
-                    Body::End(end) => {
-                        ensure!(
-                            end.chunks == seq && end.count == facts.count(),
-                            "RESULT_CHECKSUM_MISMATCH"
-                        );
-                        let sealed = facts.seal()?;
-                        ensure!(end.checksum == sealed.checksum, "RESULT_CHECKSUM_MISMATCH");
-                        break sealed;
-                    }
-                    _ => bail!("UNEXPECTED_RESULT_MESSAGE"),
+                    self.send(Body::BaselineEnd(w::BaselineEnd {
+                        count: baseline_input.map_or(0, |a| a.count),
+                        checksum: baseline_input
+                            .map_or_else(|| digest(&Vec::<Fact>::new()), |a| a.checksum.clone()),
+                    }))
+                    .await?;
+                    self.send(Body::Analyze(w::Analyze {
+                        manifest: Some(convert(manifest)?),
+                        profile: profile.into(),
+                        baseline: baseline.into(),
+                        full,
+                        baseline_facts: vec![],
+                    }))
+                    .await?;
+                    let begin = match self.receive(cancel).await? {
+                        Body::Begin(b) => b,
+                        Body::Replan(_) if retry == 0 && !full => {
+                            full = true;
+                            continue;
+                        }
+                        _ => bail!("EXPECTED_RESULT_BEGIN"),
+                    };
+                    ensure!(
+                        begin.manifest == manifest.id()
+                            && begin.profile == profile
+                            && begin.baseline == baseline
+                            && begin.producer == self.context.producer,
+                        "RESULT_IDENTITY_MISMATCH"
+                    );
+                    ensure!(!full || begin.mode == "full", "EXPECTED_FULL_RESULT");
+                    let mut facts = match self.scratch.lock().unwrap().as_ref() {
+                        Some(budget) => FactArchiveBuilder::new_in(
+                            self.output_limits.bytes,
+                            self.output_limits.facts,
+                            &budget.root,
+                        )?,
+                        None => FactArchiveBuilder::new(
+                            self.output_limits.bytes,
+                            self.output_limits.facts,
+                        )?,
+                    };
+                    let mut seq = 0;
+                    let archive = loop {
+                        match self.receive(cancel).await? {
+                            Body::Chunk(chunk) => {
+                                ensure!(chunk.seq == seq, "CHUNK_SEQUENCE_MISMATCH");
+                                seq += 1;
+                                for f in chunk.facts {
+                                    let f = fact_from_wire(f)?;
+                                    facts.push(&f)?;
+                                }
+                            }
+                            Body::End(end) => {
+                                ensure!(
+                                    end.chunks == seq && end.count == facts.count(),
+                                    "RESULT_CHECKSUM_MISMATCH"
+                                );
+                                let sealed = facts.seal()?;
+                                ensure!(
+                                    end.checksum == sealed.checksum,
+                                    "RESULT_CHECKSUM_MISMATCH"
+                                );
+                                break sealed;
+                            }
+                            _ => bail!("UNEXPECTED_RESULT_MESSAGE"),
+                        }
+                    };
+                    let r = AnalysisHeader {
+                        mode: begin.mode,
+                        baseline: begin.baseline,
+                        manifest: begin.manifest,
+                        profile: begin.profile,
+                        producer: begin.producer,
+                        replacements: begin
+                            .replacements
+                            .iter()
+                            .map(convert)
+                            .collect::<Result<_>>()?,
+                    };
+                    r.validate(manifest).map_err(anyhow::Error::msg)?;
+                    return Ok(SpooledAnalysis {
+                        header: r,
+                        records: archive,
+                    });
                 }
-            };
-            let r = AnalysisHeader {
-                mode: begin.mode,
-                baseline: begin.baseline,
-                manifest: begin.manifest,
-                profile: begin.profile,
-                producer: begin.producer,
-                replacements: begin
-                    .replacements
-                    .iter()
-                    .map(convert)
-                    .collect::<Result<_>>()?,
-            };
-            r.validate(manifest).map_err(anyhow::Error::msg)?;
-            return Ok(SpooledAnalysis {
-                header: r,
-                records: archive,
-            });
-        }
-        bail!("REPLAN_BUDGET")
+                bail!("REPLAN_BUDGET")
+            })
+            .await
     }
+    /// Retire a configured Java worker without starting an analysis or publication Ack.
+    pub async fn retire_unused(&mut self) -> Result<()> {
+        self.send(Body::Cancel(w::Cancel {})).await?;
+        let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
+        ensure!(status.success(), "WORKER_EXIT_AFTER_UNUSED_CANCEL");
+        Ok(())
+    }
+
     pub async fn ack(&mut self, revision: &str) -> Result<()> {
         self.send(Body::Ack(w::Ack {
             revision: revision.into(),

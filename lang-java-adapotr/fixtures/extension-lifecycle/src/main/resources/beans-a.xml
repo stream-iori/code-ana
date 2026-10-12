@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans">
+    <bean id="holder" class="example.Holder">
+        <property name="service" ref="sharedService"/>
+        <property name="peer" ref="peer"/>
+    </bean>
+</beans>

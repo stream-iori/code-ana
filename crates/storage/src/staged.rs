@@ -152,13 +152,62 @@ impl Drop for CandidatePin {
 }
 #[derive(Clone, Default)]
 pub struct StagedSummary {
+    pub statistics: CandidateStatistics,
+    /// Task-local diagnostics; never part of Fact IR or the worker protocol.
+    pub phase_ms: BTreeMap<String, u64>,
     pub fact_count: u64,
     pub counts: BTreeMap<String, u64>,
     pub diagnostic_total: u64,
+    pub diagnostic_rows: u64,
+    pub diagnostic_sampled_occurrences: u64,
     pub diagnostic_groups: BTreeMap<String, u64>,
     pub diagnostic_groups_omitted: u64,
     pub diagnostic_samples: Vec<Fact>,
     pub evidence: Evidence,
+}
+#[derive(Clone, Default, serde::Serialize)]
+pub struct CandidateStatistics {
+    pub analyzed_indexes: u64,
+    pub elapsed_ms: u64,
+    pub warnings: Vec<String>,
+}
+fn prepare_statistics(
+    db: &Connection,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<CandidateStatistics> {
+    let started = std::time::Instant::now();
+    let mut statement = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name NOT LIKE 'sqlite_%' ORDER BY name")?;
+    let indexes = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    drop(statement);
+    let mut summary = CandidateStatistics::default();
+    for index in indexes {
+        check()?;
+        let result = db.execute_batch(&format!("ANALYZE \"{}\"", index.replace('"', "\"\"")));
+        check()?;
+        match result {
+            Ok(()) => summary.analyzed_indexes += 1,
+            Err(rusqlite::Error::SqliteFailure(error, detail))
+                if matches!(
+                    error.code,
+                    rusqlite::ErrorCode::SystemIoFailure
+                        | rusqlite::ErrorCode::DiskFull
+                        | rusqlite::ErrorCode::DatabaseCorrupt
+                        | rusqlite::ErrorCode::NotADatabase
+                        | rusqlite::ErrorCode::ReadOnly
+                        | rusqlite::ErrorCode::OperationInterrupted
+                ) =>
+            {
+                return Err(rusqlite::Error::SqliteFailure(error, detail).into());
+            }
+            Err(error) => summary
+                .warnings
+                .push(format!("STATISTICS_FAILED:{index}:{error}")),
+        }
+    }
+    summary.elapsed_ms = started.elapsed().as_millis() as u64;
+    Ok(summary)
 }
 impl ReadContext {
     pub fn export_archive(&self, max_bytes: u64, max_count: u64) -> Result<FactArchive> {
@@ -323,6 +372,8 @@ impl Store {
             check_directory(directory.path())
         };
         check()?;
+        let mut phase_ms = BTreeMap::new();
+        let mut phase_started = std::time::Instant::now();
         let mut db = Connection::open(directory.path().join("facts.db"))?;
         if let Some(source) = &baseline {
             let backup = rusqlite::backup::Backup::new(&source.connection, &mut db)?;
@@ -341,6 +392,9 @@ impl Store {
         check()?;
         db.execute_batch("PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA cache_size=-65536; PRAGMA temp_store=FILE;")?;
         schema::initialize(&db)?;
+        if baseline.is_none() {
+            schema::begin_full_load(&db)?;
+        }
         if let Some(policy) = derivation {
             let worlds: BTreeSet<_> = revision
                 .manifest
@@ -384,17 +438,40 @@ impl Store {
                 }
             }
         }
+        phase_ms.insert(
+            "candidate_setup_backup".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        phase_started = std::time::Instant::now();
         let validator = FactValidator::new(&revision.manifest);
         let tx = db.transaction()?;
+        tx.execute("DELETE FROM source_units", [])?;
+        {
+            let mut insert_source = tx.prepare("INSERT INTO source_units VALUES(?,?,?,?,?,?)")?;
+            for source in &revision.manifest.files {
+                check()?;
+                insert_source.execute(params![
+                    source.path,
+                    source.world,
+                    source.module,
+                    source.scope,
+                    source.hash,
+                    source.auxiliary
+                ])?;
+            }
+        }
+        tx.execute_batch("PRAGMA user_version=4")?;
         for owner in &header.replacements {
             tx.execute("DELETE FROM facts WHERE owner=?", [owner.key()])?;
         }
+        let mut owner_keys = BTreeMap::<Owner, String>::new();
+        let mut owner_key_bytes = 0usize;
         let mut insert = tx.prepare("INSERT INTO facts VALUES(?,?,?,?,?,?,?,?,?,?)")?;
-        for (position, fact) in archive.iter()?.enumerate() {
+        for (position, fact) in archive.records()?.enumerate() {
             if position.is_multiple_of(256) {
                 check()?;
             }
-            let f = fact?;
+            let (f, body) = fact?.into_parts();
             ensure!(
                 derivation.is_none_or(|p| f.owner.producer != p.producer()),
                 "DERIVED_PRODUCER_RESERVED"
@@ -404,27 +481,58 @@ impl Store {
                 header.mode != "delta" || owners.contains(&f.owner),
                 "OWNER_OUTSIDE_REPLACEMENT"
             );
+            // Repeated facts from one source share an owner. Bound this task-local cache.
+            let owner_size = f.owner.world.len()
+                + f.owner.producer.len()
+                + f.owner.kind.len()
+                + f.owner.id.len()
+                + 256;
+            if !owner_keys.contains_key(&f.owner) && owner_size <= (1 << 20) {
+                if owner_keys.len() >= 1024 || owner_key_bytes + owner_size > (1 << 20) {
+                    owner_keys.clear();
+                    owner_key_bytes = 0;
+                }
+                owner_keys.insert(f.owner.clone(), f.owner.key());
+                owner_key_bytes += owner_size;
+            }
+            let owner_key = owner_keys
+                .get(&f.owner)
+                .cloned()
+                .unwrap_or_else(|| f.owner.key());
             insert
                 .execute(params![
                     f.id,
                     f.kind.name(),
-                    f.owner.key(),
+                    owner_key,
                     f.parent,
                     f.target,
                     f.relation,
                     f.name,
                     f.source,
                     f.owner.world,
-                    json(&f)?
+                    body
                 ])
                 .with_context(|| format!("DUPLICATE_OR_INVALID_FACT: {}", f.id))?;
         }
         drop(insert);
+        phase_ms.insert(
+            "archive_validate_ingest".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        phase_started = std::time::Instant::now();
         // Anatomist also separates ingestion from query-index preparation.
         // Build directed graph indexes after the archive load, before derivation.
         check()?;
+        if baseline.is_none() {
+            schema::finish_full_load(&tx)?;
+        }
         schema::prepare_queries(&tx)?;
         check()?;
+        phase_ms.insert(
+            "projection_query_indexes_fts".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        phase_started = std::time::Instant::now();
         if let Some(policy) = derivation {
             check()?;
             policy.derive(&CandidateFacts {
@@ -437,6 +545,14 @@ impl Store {
             })?;
             check()?;
         }
+        check()?;
+        phase_ms.insert(
+            "wiring_derivation".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        phase_started = std::time::Instant::now();
+        schema::refresh_file_dependencies(&tx)?;
+        check()?;
         tx.execute(
             "INSERT OR REPLACE INTO identity VALUES('revision',?)",
             [&revision.id],
@@ -446,6 +562,11 @@ impl Store {
             [&revision.profile],
         )?;
         tx.commit()?;
+        phase_ms.insert(
+            "dependencies_commit".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        phase_started = std::time::Instant::now();
         for (column, code) in [("parent", "DANGLING_PARENT"), ("target", "DANGLING_TARGET")] {
             cancellation()?;
             let missing = dangling_fact(&db, column)?;
@@ -503,7 +624,16 @@ impl Store {
                     }
                 }
                 if f.kind == FactKind::Diagnostic {
-                    summary.diagnostic_total += 1;
+                    let occurrences = match f.attributes.get("count") {
+                        Some(value) => value.as_u64().context("DIAGNOSTIC_COUNT_INVALID")?,
+                        None => 1,
+                    };
+                    ensure!(occurrences > 0, "DIAGNOSTIC_COUNT_INVALID");
+                    summary.diagnostic_rows += 1;
+                    summary.diagnostic_total = summary
+                        .diagnostic_total
+                        .checked_add(occurrences)
+                        .context("DIAGNOSTIC_COUNT_OVERFLOW")?;
                     let severity = f
                         .attributes
                         .get("severity")
@@ -518,19 +648,47 @@ impl Store {
                     if summary.diagnostic_groups.len() < 1000
                         || summary.diagnostic_groups.contains_key(&group)
                     {
-                        *summary.diagnostic_groups.entry(group).or_default() += 1;
+                        let total = summary.diagnostic_groups.entry(group).or_default();
+                        *total = total
+                            .checked_add(occurrences)
+                            .context("DIAGNOSTIC_COUNT_OVERFLOW")?;
                     } else {
-                        summary.diagnostic_groups_omitted += 1;
+                        summary.diagnostic_groups_omitted = summary
+                            .diagnostic_groups_omitted
+                            .checked_add(occurrences)
+                            .context("DIAGNOSTIC_COUNT_OVERFLOW")?;
                     }
                     if summary.diagnostic_samples.len() < 100 {
+                        summary.diagnostic_sampled_occurrences = summary
+                            .diagnostic_sampled_occurrences
+                            .checked_add(occurrences)
+                            .context("DIAGNOSTIC_COUNT_OVERFLOW")?;
                         summary.diagnostic_samples.push(f);
                     }
                 }
             }
         }
         check()?;
+        phase_ms.insert(
+            "graph_validate_summary".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        phase_started = std::time::Instant::now();
         let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
         ensure!(integrity == "ok", "CORRUPT_CANDIDATE");
+        check()?;
+        phase_ms.insert(
+            "integrity_check".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        phase_started = std::time::Instant::now();
+        summary.statistics = prepare_statistics(&db, &cancellation)?;
+        check()?;
+        phase_ms.insert(
+            "statistics".into(),
+            phase_started.elapsed().as_millis() as u64,
+        );
+        summary.phase_ms = phase_ms;
         drop(db);
         Ok(StagedCandidate {
             directory,
@@ -548,20 +706,28 @@ impl Store {
             self.head(&revision.target)? == candidate.expected,
             "HEAD_CONFLICT"
         );
-        for source in &revision.manifest.files {
-            self.blob(&source.hash)?;
-        }
-        std::fs::File::open(candidate.directory.path().join("facts.db"))?.sync_all()?;
+        use codeana_contracts::performance::{Metric, measure};
+        measure(Metric::PublishBlobCheck, 0, false, || -> Result<()> {
+            for source in &revision.manifest.files {
+                self.blob(&source.hash)?;
+            }
+            Ok(())
+        })?;
+        measure(Metric::PublishFileSync, 0, false, || {
+            std::fs::File::open(candidate.directory.path().join("facts.db"))?.sync_all()
+        })?;
         durable_write(
             &candidate.directory.path().join("revision.json"),
             json(revision)?.as_bytes(),
         )?;
         sync_dir(candidate.directory.path())?;
         test_fault(&self.home, "candidate_synced")?;
-        std::fs::rename(
-            candidate.directory.path(),
-            self.home.join("revisions").join(&revision.id),
-        )?;
+        measure(Metric::PublishMove, 0, false, || {
+            std::fs::rename(
+                candidate.directory.path(),
+                self.home.join("revisions").join(&revision.id),
+            )
+        })?;
         sync_dir(&self.home.join("revisions"))?;
         test_fault(&self.home, "revision_renamed")?;
         let mut catalog = self.catalog()?;
@@ -592,7 +758,7 @@ impl Store {
             "INSERT INTO commits VALUES(?,?)",
             params![task, revision.id],
         )?;
-        tx.commit()?;
+        measure(Metric::CatalogCommit, 0, false, || tx.commit())?;
         test_fault(&self.home, "catalog_committed")?;
         for source in &revision.manifest.files {
             lock.staged_blobs.remove(&source.hash);
@@ -630,6 +796,216 @@ fn dangling_fact(db: &Connection, column: &str) -> Result<Option<String>> {
 mod tests {
     use super::*;
     use crate::tests::{result, revision};
+    // Rust replacement for frozen NavigationDiagnosticsTest:
+    // reasonTotalsSurviveRetentionAndKeepFileIdentity.
+    #[test]
+    fn diagnostic_retention_keeps_50004_occurrences_and_file_identity_after_restart()
+    -> anyhow::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let store = Store::open(directory.path())?;
+        let bytes = b"class Fixture {}".to_vec();
+        let checksum = hash(&bytes);
+        store.put_blobs(&BTreeMap::from([(checksum.clone(), bytes.clone())]))?;
+        let manifest = Manifest {
+            files: ["A.java", "B.java"]
+                .into_iter()
+                .map(|path| SourceUnit {
+                    path: path.into(),
+                    hash: checksum.clone(),
+                    size: bytes.len() as u64,
+                    module: "module".into(),
+                    world: "main".into(),
+                    scope: "MAIN".into(),
+                    language: "java".into(),
+                    auxiliary: false,
+                })
+                .collect(),
+        };
+        let revision = Revision {
+            id: String::new(),
+            target: "diagnostics".into(),
+            project: "fixture".into(),
+            checkout: "fixture".into(),
+            manifest: manifest.clone(),
+            profile: "fixture".into(),
+            producer: "fixture".into(),
+            created: 0,
+        };
+        let header = AnalysisHeader {
+            mode: "full".into(),
+            baseline: String::new(),
+            manifest: manifest.id(),
+            profile: revision.profile.clone(),
+            producer: revision.producer.clone(),
+            replacements: vec![],
+        };
+        let mut archive = FactArchiveBuilder::new(64 << 20, 100_000)?;
+        for source in &manifest.files {
+            let coverage: Fact = serde_json::from_value(serde_json::json!({
+                "id":format!("coverage_{}",source.path),"kind":"coverage","source":source.path,
+                "origin":"fixture","status":"partial","evidence_complete":false,
+                "owner":{"world":"main","producer":"fixture","kind":"source","id":source.path},
+                "attributes":{"input_hash":source.hash,"capabilities":["navigation"]}
+            }))?;
+            archive.push(&coverage)?;
+        }
+        for number in 0..50_004 {
+            let source = if number == 50_003 { "B.java" } else { "A.java" };
+            let diagnostic: Fact = serde_json::from_value(serde_json::json!({
+                "id":format!("diagnostic_{number:08}"),"kind":"diagnostic","source":source,
+                "name":"NAVIGATION_TARGET_UNRESOLVED","origin":"fixture","status":"partial",
+                "owner":{"world":"main","producer":"fixture","kind":"source","id":source},
+                "attributes":{"code":"NAVIGATION_TARGET_UNRESOLVED","severity":"warning","count":1}
+            }))?;
+            archive.push(&diagnostic)?;
+        }
+        let archive = archive.seal()?;
+        let staged = store.stage_archive(revision.clone(), &header, &archive, "")?;
+        assert_eq!(staged.summary.diagnostic_total, 50_004);
+        assert_eq!(staged.summary.diagnostic_rows, 50_004);
+        assert_eq!(staged.summary.diagnostic_samples.len(), 100);
+        assert_eq!(staged.summary.diagnostic_sampled_occurrences, 100);
+        assert_eq!(
+            staged.summary.diagnostic_groups["warning:NAVIGATION_TARGET_UNRESOLVED"],
+            50_004
+        );
+        assert_eq!(
+            staged.summary.diagnostic_total - staged.summary.diagnostic_sampled_occurrences,
+            49_904
+        );
+        // Repeating report preparation must not count retained samples as the
+        // complete input, or accumulate the same diagnostic events twice.
+        let repeated = store.stage_archive(revision, &header, &archive, "")?;
+        assert_eq!(
+            repeated.summary.diagnostic_total,
+            staged.summary.diagnostic_total
+        );
+        assert_eq!(
+            repeated.summary.diagnostic_rows,
+            staged.summary.diagnostic_rows
+        );
+        assert_eq!(
+            repeated.summary.diagnostic_groups,
+            staged.summary.diagnostic_groups
+        );
+        assert_eq!(
+            repeated.summary.diagnostic_samples,
+            staged.summary.diagnostic_samples
+        );
+        drop(repeated);
+        let published = store.publish_staged(staged, "retention-proof")?;
+        drop(store);
+        let store = Store::open(directory.path())?;
+        let reader = store.read(&published.id)?;
+        for (source, expected) in [("A.java", 50_003), ("B.java", 1)] {
+            let counts = reader
+                .count_by_kind(&FactFilter {
+                    kinds: vec![FactKind::Diagnostic],
+                    source: Some(source.into()),
+                    ..Default::default()
+                })
+                .map_err(anyhow::Error::msg)?;
+            assert_eq!(counts["diagnostic"], expected);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn statistics_cancellation_aborts_instead_of_becoming_a_warning() {
+        let db = Connection::open_in_memory().unwrap();
+        db.execute_batch("CREATE TABLE items(id INTEGER, tag TEXT); CREATE INDEX by_id ON items(id); CREATE INDEX by_tag ON items(tag); INSERT INTO items VALUES(1,'x');").unwrap();
+        let checks = std::cell::Cell::new(0);
+        let failure = prepare_statistics(&db, &|| {
+            checks.set(checks.get() + 1);
+            ensure!(checks.get() < 3, "CANCELLED");
+            Ok(())
+        })
+        .err()
+        .unwrap();
+        assert_eq!(failure.to_string(), "CANCELLED");
+        let analyzed: Vec<String> = db
+            .prepare("SELECT idx FROM sqlite_stat1")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(analyzed, ["by_id"]);
+    }
+
+    #[test]
+    fn query_statistics_are_prepared_in_the_candidate_without_rewriting_the_baseline() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let mut initial = result();
+        initial.facts = vec![fact("a", "")];
+        let first = store.publish(revision(), &initial, "", "first").unwrap();
+        let baseline_path = directory
+            .path()
+            .join("revisions")
+            .join(&first.id)
+            .join("facts.db");
+        let baseline_hash = hash(std::fs::read(&baseline_path).unwrap());
+        let mut changed = initial;
+        changed.mode = "delta".into();
+        changed.baseline = first.id.clone();
+        changed.replacements = changed
+            .facts
+            .iter()
+            .map(|fact| fact.owner.clone())
+            .collect();
+        let mut writer = FactArchiveBuilder::new(1 << 20, 1000).unwrap();
+        for fact in &changed.facts {
+            writer.push(fact).unwrap();
+        }
+        let archive = writer.seal().unwrap();
+        let candidate = store
+            .stage_archive(revision(), &changed.header(), &archive, &first.id)
+            .unwrap();
+        let db = Connection::open_with_flags(
+            candidate.directory.path().join("facts.db"),
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )
+        .unwrap();
+        let rows: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_stat1 WHERE tbl='facts' AND stat IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(rows > 0);
+        assert_eq!(hash(std::fs::read(&baseline_path).unwrap()), baseline_hash);
+        assert_eq!(store.head("t").unwrap(), first.id);
+    }
+    #[test]
+    fn diagnostic_occurrence_count_is_separate_from_rows_and_samples() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let mut input = result();
+        let mut diagnostic = fact("diagnostic", "");
+        diagnostic.kind = FactKind::Diagnostic;
+        diagnostic.attributes = serde_json::from_value(
+            serde_json::json!({"severity":"warning","code":"missing","count":7}),
+        )
+        .unwrap();
+        input.facts = vec![diagnostic];
+        let staged = store
+            .stage_archive_with_derivation(
+                revision(),
+                &input.header(),
+                &spool(&input.facts),
+                "",
+                || Ok(()),
+                |_| Ok(()),
+                None,
+            )
+            .unwrap();
+        assert_eq!(staged.summary.fact_count, 1);
+        assert_eq!(staged.summary.diagnostic_samples.len(), 1);
+        assert_eq!(staged.summary.diagnostic_total, 7);
+        assert_eq!(staged.summary.diagnostic_groups["warning:missing"], 7);
+    }
     #[test]
     fn directed_references_preserve_global_empty_and_missing_parent_reads() {
         let db = Connection::open_in_memory().unwrap();

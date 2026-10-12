@@ -1,0 +1,77 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary:
+  result_context: { record=reference_relation }
+results:
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#orderRepository | external_target=false | id=reference:b67acdc586a6afa198b1778680a53c608bff80c2ace9e9bb2b568ba74733a710 | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#orderRepository | target=java-core::service::MAIN::com.example.shop.repository.OrderRepository }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#validator | external_target=false | id=reference:e18c369087fedd6a152cf3392b297979b93792ff65ec21bb9a99075eb6834add | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#validator | target=java-core::service::MAIN::com.example.shop.service.OrderValidator }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#calculator | external_target=false | id=reference:9026a93becea97df4e7f74ae3142afd1fc408e23aa3cf23591d572ddcdc8811b | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#calculator | target=java-core::service::MAIN::com.example.shop.service.PriceCalculator }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#publisher | external_target=false | id=reference:5028068cb99b72e41d6beb57418bb64e58d3c1e17bb642b553c131dd8602f85e | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#publisher | target=java-core::service::MAIN::com.example.shop.event.OrderEventPublisher }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external_target=false | id=reference:b8a0063962f0414add1c87bfa44757cdff963dd7bb73b2d481d4276a4be70fb8 | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::domain::MAIN::com.example.shop.domain.dto.OrderResult }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external_target=false | id=reference:78e665e65c4bbff1cb654134d2226e2b1634f95cfe86ab88a3103a4ea8beab6b | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::domain::MAIN::com.example.shop.domain.dto.CreateOrderRequest }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external_target=false | id=reference:f0427397a55da7485176c4ab74868e467de143bedfa3913e36bcce6b3a81d0f0 | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=READS | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::service::MAIN::com.example.shop.service.OrderService#validator }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external_target=false | id=reference:19d84b634eaaf08623ba843e10ebee1406e0da9cd4d48da296ee98d8b8f5e3ff | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=READS | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::service::MAIN::com.example.shop.service.OrderService#calculator }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external_target=false | id=reference:b606e836ec091c44be3dd65ebc3fc4708abab416a61537a3a237822d0fb1b96e | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=READS | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::domain::MAIN::com.example.shop.domain.entity.OrderStatus#PENDING }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external_target=false | id=reference:62d3addf38ddfad3128437f537685a8871077ea1758bd29c6898b038f5a6d196 | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=READS | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::service::MAIN::com.example.shop.service.OrderService#orderRepository }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | external_target=false | id=reference:2c9412e19021e993e045287ff155400586ecd819d6a6a6d259a570e990f10ef9 | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=READS | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::service::MAIN::com.example.shop.service.OrderService#publisher }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | external_target=false | id=reference:b21449959a0caadd085238530c9f6100030e794e772c688b33aad7b1f89f49ba | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | target=java-core::domain::MAIN::com.example.shop.domain.dto.OrderResult }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | external_target=true | id=reference:f22a5ea956fa2708eccfbfd9f9df6b63c199ce49a8342e7196cb0f877a204f3f | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | target=java.lang.String }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=classpath }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | external_target=true | id=reference:856eaa7ee52517f5a1ebf8d2f3a9ea24a8c368d948f589283a8424ff752c11c9 | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | target=java.util.List }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=classpath }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | external_target=false | id=reference:d379da034a8ea104053b91de9e1d764908d1611bd0a6c9c0cd1ba9d29e9125b0 | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | resolution_status=exact | semantic=REFERENCES | site_count=1 | subject=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | target=java-core::domain::MAIN::com.example.shop.domain.entity.OrderItem }
+    evidence:
+      -: { confidence=EXTRACTED | producer=java-core | resolution=null }
+page: { emitted=15 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=true | input_not_processed=true | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#orderRepository }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=1 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#validator }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=1 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#calculator }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=1 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#publisher }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=1 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=7 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=4 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#applyDiscount(double) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=0 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=references | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#countExpensiveItems(java.util.List) }
+      enumeration: { complete=false | has_more=true | offset=0 | returned=0 | unit=items }
+  semantic: { coverage=complete }
+    limitations: []
+next:
+  -: { kind=inspect | mutates=false | reason=Narrow the selected subjects; automatic request expansion is disabled }
+    argv: $ anatomist skill output
+end: anatomist-text/v5

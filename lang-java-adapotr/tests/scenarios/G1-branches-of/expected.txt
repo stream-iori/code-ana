@@ -1,0 +1,30 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: {}
+results:
+  -: { id=source:sha256:738c27458fda2c8cabe7c2ff6bd1f1bf | origin=extracted | record=source_slice | resolution_status=exact }
+    snippet: |
+      @Override
+          public Order save(Order order) {
+              if (order.getId() == null) {
+                  order.setId("ord-" + seq.incrementAndGet());
+              }
+              store.put(order.getId(), order);
+              return order;
+          }
+    source: { declaration_range=L17:C5-L24:C5 | end_line=24 | file=service/src/main/java/com/example/shop/repository/InMemoryOrderRepository.java | limit=200 | offset=0 | start_line=17 | truncated=false }
+    subject: { kind=callable | qualified_name=com.example.shop.repository.InMemoryOrderRepository#save | record=entity }
+page: { emitted=1 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=true | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=source | subject_id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository#save(com.example.shop.domain.entity.Order) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=8 | unit=source_lines }
+  semantic: { coverage=incomplete }
+    limitations:
+      -: { code=HEURISTIC_OR_UNRESOLVED | stage_id=resolve | subject_id=request }
+        details: { resolution_status=ambiguous }
+      -: { code=UPSTREAM_INCOMPLETE | stage_id=source | subject_id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository#save(com.example.shop.domain.entity.Order) }
+next: []
+end: anatomist-text/v5

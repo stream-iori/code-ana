@@ -1,0 +1,15 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.service.OrderService#createOrder",
+      "--kind",
+      "callable"
+    ],
+    [
+      "call-sites",
+      "--direction",
+      "outgoing"
+    ]
+  ]
+}

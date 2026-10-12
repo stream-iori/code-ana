@@ -1,0 +1,30 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: { boundary=Indexed static facts only; complete aggregation does not prove complete semantics or runtime selection. | result_help=Project facts are in summary.project; empty results do not mean an empty project. | statistics_scope=Selected module/scope/package nodes and their owned facts; dependency direction/relation filters apply to the dependency list. }
+  project:
+    external_relation_counts: { CALLS=18 | REFERENCES=39 }
+    internal_relation_counts: { CALLS=29 | CONTAINS=89 | DEFINED_BY=6 | HANDLES=2 | INJECTS=5 | READS=25 | REFERENCES=35 | WIRES=1 | WRITES=19 }
+    kind_counts: { ANONYMOUS_CLASS=1 | BEAN=6 | CLASS=14 | CONSTRUCTOR=18 | ENUM=1 | ENUM_CONSTANT=6 | FIELD=20 | INTERFACE=1 | LAMBDA=1 | METHOD=42 | METHOD_REF=1 | ROUTE=2 }
+    producer_counts: { derived-wiring=1 | java-core=507 | spring-components=17 | spring-mvc=4 }
+    totals: { methods=60 | packages=8 | types=17 }
+results: []
+page: { emitted=0 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=overview | subject_id=request }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=0 | unit=items }
+  semantic: { coverage=complete }
+    limitations: []
+next:
+  -: { kind=inspect | mutates=false | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | reason=Inspect this information only when needed to answer the task | replacement=page }
+    argv: $ anatomist overview --index ${INDEX} --expect-revision ${REVISION} --scope MAIN --language java --provider java-core --section modules --depth 0 --limit 50
+    range: { offset=0 | unit=items }
+  -: { kind=inspect | mutates=false | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | reason=Inspect this information only when needed to answer the task | replacement=page }
+    argv: $ anatomist overview --index ${INDEX} --expect-revision ${REVISION} --scope MAIN --language java --provider java-core --section packages --depth 0 --limit 50
+    range: { offset=0 | unit=items }
+  -: { kind=inspect | mutates=false | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | reason=Inspect this information only when needed to answer the task | replacement=page }
+    argv: $ anatomist overview --index ${INDEX} --expect-revision ${REVISION} --scope MAIN --language java --provider java-core --section dependencies --depth 0 --limit 50
+    range: { offset=0 | unit=items }
+end: anatomist-text/v5

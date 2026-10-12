@@ -60,12 +60,27 @@ impl Native {
                 "-Xmx{}m",
                 heap.unwrap_or(256 * 1024 * 1024) / (1024 * 1024)
             ))?;
-            let mut arguments = [program.as_ptr().cast_mut(), option.as_ptr().cast_mut()];
+            // Observation is opt-in. macOS Java ignores TMPDIR for its default
+            // temp directory; configure the isolate before TempFileHelper starts.
+            let performance_temp = std::env::var_os("CODEANA_PERFORMANCE_TMPDIR")
+                .map(|value| -> Result<_> {
+                    let path = std::fs::canonicalize(value)?;
+                    ensure!(path.is_dir(), "PERFORMANCE_TMPDIR_REQUIRED");
+                    Ok(std::ffi::CString::new(format!(
+                        "-Djava.io.tmpdir={}",
+                        path.to_str().context("PERFORMANCE_TMPDIR_UTF8_REQUIRED")?
+                    ))?)
+                })
+                .transpose()?;
+            let mut arguments = vec![program.as_ptr().cast_mut(), option.as_ptr().cast_mut()];
+            if let Some(property) = &performance_temp {
+                arguments.push(property.as_ptr().cast_mut());
+            }
             let mut params: IsolateParams = std::mem::zeroed();
             params.version = 5;
             params.argc = arguments.len() as i32;
             params.argv = arguments.as_mut_ptr();
-            let address = if heap.is_some() {
+            let address = if heap.is_some() || performance_temp.is_some() {
                 (&params as *const IsolateParams).cast()
             } else {
                 std::ptr::null()
@@ -220,11 +235,14 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
         serde_json::from_slice(&std::fs::read(parent.join("manifest.json"))?)?;
     ensure!(
         manifest["version"] == 2
+            && manifest["backend"] == "native"
+            && manifest["worker_protocol"] == codeana_model::WORKER_PROTOCOL_VERSION
+            && manifest["fact_ir"] == codeana_model::VERSION
             && manifest["abi"] == 2
             && manifest["analysis_request"] == 8
             && manifest["compiler_protocol"] == 2
             && manifest["compiler_batch_protocol"] == 2
-            && manifest["adapter"] == "anatomist-dff2e395-codeana-v15"
+            && manifest["adapter"] == "anatomist-dff2e395-codeana-jvm1"
             && manifest["java_model"] == "javac-model-v50"
             && manifest["type_graph_default"] == true
             && manifest["type_schema"] == 3
@@ -251,7 +269,9 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
         path.file_name().context("LIBRARY_NAME")?.to_string_lossy()
     );
     ensure!(
-        files.contains_key(&library_key) && files.contains_key("compiler-bridge.jar"),
+        files.contains_key(&library_key)
+            && files.contains_key("compiler-bridge.jar")
+            && files.contains_key("maven-input-worker.jar"),
         "BUNDLE_FILES_REQUIRED"
     );
     for (name, expected) in files {

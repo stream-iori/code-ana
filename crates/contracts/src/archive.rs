@@ -1,4 +1,5 @@
 //! Owned record spools shared by worker transport and storage. No decoded graph is retained.
+use crate::performance::{Metric, measure};
 use anyhow::{Result, ensure};
 use codeana_model::{AnalysisHeader, Fact, MAX_FRAME};
 use prost::Message;
@@ -66,7 +67,7 @@ impl FactArchiveBuilder {
         })
     }
     pub fn push(&mut self, fact: &Fact) -> Result<()> {
-        let bytes = serde_json::to_vec(fact)?;
+        let bytes = measure(Metric::ArchiveEncode, 0, true, || serde_json::to_vec(fact))?;
         ensure!(
             !bytes.is_empty() && bytes.len() <= MAX_FRAME,
             "FACT_FRAME_BUDGET"
@@ -76,12 +77,22 @@ impl FactArchiveBuilder {
                 && bytes.len() as u64 + 4 <= self.max_bytes - self.archive.bytes,
             "FACT_ARCHIVE_BUDGET"
         );
-        self.writer.write_all(&(bytes.len() as u32).to_be_bytes())?;
-        self.writer.write_all(&bytes)?;
+        measure(
+            Metric::ArchiveWrite,
+            bytes.len() as u64 + 4,
+            true,
+            || -> Result<()> {
+                self.writer.write_all(&(bytes.len() as u32).to_be_bytes())?;
+                self.writer.write_all(&bytes)?;
+                Ok(())
+            },
+        )?;
         if self.archive.count > 0 {
             self.digest.update(b",");
         }
-        self.digest.update(&bytes);
+        measure(Metric::ArchiveDigest, bytes.len() as u64, true, || {
+            self.digest.update(&bytes)
+        });
         self.archive.count += 1;
         self.archive.bytes += bytes.len() as u64 + 4;
         Ok(())
@@ -90,8 +101,12 @@ impl FactArchiveBuilder {
         self.archive.count
     }
     pub fn seal(mut self) -> Result<FactArchive> {
-        self.writer.flush()?;
-        self.writer.get_ref().sync_all()?;
+        measure(Metric::ArchiveFlush, self.archive.bytes, false, || {
+            self.writer.flush()
+        })?;
+        measure(Metric::ArchiveSync, self.archive.bytes, false, || {
+            self.writer.get_ref().sync_all()
+        })?;
         self.digest.update(b"]");
         self.archive.checksum = format!("{:x}", self.digest.finalize());
         Ok(self.archive)
@@ -130,6 +145,28 @@ impl FactArchive {
         })
     }
 }
+/// Decoded fact and its verified, normalized CAF1 JSON. Produced only by owned archives.
+pub struct FactRecord {
+    fact: Fact,
+    body: String,
+}
+impl FactRecord {
+    pub fn into_parts(self) -> (Fact, String) {
+        (self.fact, self.body)
+    }
+}
+pub struct FactRecords(FactIterator);
+impl Iterator for FactRecords {
+    type Item = Result<FactRecord>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.0.next_record()
+    }
+}
+impl FactArchive {
+    pub fn records(&self) -> Result<FactRecords> {
+        Ok(FactRecords(self.iter()?))
+    }
+}
 pub struct FactIterator {
     input: BufReader<File>,
     remaining: u64,
@@ -137,9 +174,8 @@ pub struct FactIterator {
     checksum: String,
     first: bool,
 }
-impl Iterator for FactIterator {
-    type Item = Result<Fact>;
-    fn next(&mut self) -> Option<Self::Item> {
+impl FactIterator {
+    fn next_record(&mut self) -> Option<Result<FactRecord>> {
         if self.remaining == 0 {
             return None;
         }
@@ -149,13 +185,19 @@ impl Iterator for FactIterator {
             let length = u32::from_be_bytes(length) as usize;
             ensure!(length > 0 && length <= MAX_FRAME, "FACT_FRAME_BUDGET");
             let mut bytes = vec![0u8; length];
-            self.input.read_exact(&mut bytes)?;
-            let fact = serde_json::from_slice(&bytes)?;
+            measure(Metric::ArchiveRead, length as u64, true, || {
+                self.input.read_exact(&mut bytes)
+            })?;
+            let fact = measure(Metric::ArchiveDecode, bytes.len() as u64, true, || {
+                serde_json::from_slice(&bytes)
+            })?;
             if !self.first {
                 self.digest.update(b",");
             }
             self.first = false;
-            self.digest.update(&bytes);
+            measure(Metric::ArchiveDigest, bytes.len() as u64, true, || {
+                self.digest.update(&bytes)
+            });
             if self.remaining == 1 {
                 let mut trailing = [0u8; 1];
                 ensure!(self.input.read(&mut trailing)? == 0, "FACT_ARCHIVE_LENGTH");
@@ -165,7 +207,10 @@ impl Iterator for FactIterator {
                     "FACT_ARCHIVE_CHECKSUM"
                 );
             }
-            Ok(fact)
+            Ok(FactRecord {
+                fact,
+                body: String::from_utf8(bytes)?,
+            })
         })();
         self.remaining = if result.is_err() {
             0
@@ -173,6 +218,13 @@ impl Iterator for FactIterator {
             self.remaining - 1
         };
         Some(result)
+    }
+}
+
+impl Iterator for FactIterator {
+    type Item = Result<Fact>;
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_record().map(|r| r.map(|record| record.fact))
     }
 }
 
@@ -238,6 +290,34 @@ mod tests {
         serde_json::from_value(serde_json::json!({"id":id,"kind":FactKind::Declaration,
             "owner":Owner{world:"w".into(),producer:"p".into(),kind:"source".into(),id:"A.java".into()},
             "origin":"javac","name":"中文😀"})).unwrap()
+    }
+    #[test]
+    fn verified_records_preserve_canonical_body_and_reject_corruption() {
+        let expected = fact("canonical");
+        let mut builder = FactArchiveBuilder::new(10240, 3).unwrap();
+        builder.push(&expected).unwrap();
+        let mut archive = builder.seal().unwrap();
+        let (decoded, body) = archive
+            .records()
+            .unwrap()
+            .next()
+            .unwrap()
+            .unwrap()
+            .into_parts();
+        assert_eq!(decoded, expected);
+        assert_eq!(body, serde_json::to_string(&expected).unwrap());
+        archive.checksum = "invalid".into();
+        assert!(
+            archive
+                .records()
+                .unwrap()
+                .next()
+                .unwrap()
+                .err()
+                .unwrap()
+                .to_string()
+                .contains("FACT_ARCHIVE_CHECKSUM")
+        );
     }
     #[test]
     fn streaming_digest_preserves_order_and_pins_owned_records() {

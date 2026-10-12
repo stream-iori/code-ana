@@ -1,0 +1,19 @@
+anatomist-text/v5
+code: PIPELINE_INVALID_SPEC
+category: pipeline
+exit: 5
+message: --scope is a pipeline-level option or unsupported inside a stage
+operation: pipeline
+inspect:
+  -:
+    -: anatomist
+    -: pipeline
+    -: --help
+stage: { operation=resolve | position=1 }
+cause: { category=argument | code=INVALID_ARGUMENT | exit=2 | message=--scope is a pipeline-level option or unsupported inside a stage | operation=resolve }
+  inspect:
+    -:
+      -: anatomist
+      -: operations
+      -: resolve
+end: anatomist-text/v5

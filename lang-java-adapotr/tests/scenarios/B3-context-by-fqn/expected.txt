@@ -1,0 +1,23 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: {}
+results:
+  -: { domain=language | id=java-core::service::MAIN::com.example.shop.service.OrderService | kind=type | language=java | module=service | name=OrderService | origin=extracted | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | producer_id=java-core | provider_id=java-core | qualified_name=com.example.shop.service.OrderService | record=entity | resolution_status=exact | scope=MAIN | symbol_id=com.example.shop.service.OrderService }
+    facets: { declaration_kind=type | direct_member=false | language_kind=java.class | nesting_depth=0 | storage_kind=CLASS | synthetic=false | type_kind=class | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+    source: { end_column=1 | end_line=69 | file=service/src/main/java/com/example/shop/service/OrderService.java | ordinal=0 | start_column=1 | start_line=18 }
+page: { emitted=1 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=resolve | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=1 | unit=items }
+  semantic: { coverage=complete }
+    limitations: []
+next: []
+end: anatomist-text/v5

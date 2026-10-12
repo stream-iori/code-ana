@@ -9,6 +9,8 @@ serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
 codeana-model = { path = "../model" }
+globset.workspace = true
+regex.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

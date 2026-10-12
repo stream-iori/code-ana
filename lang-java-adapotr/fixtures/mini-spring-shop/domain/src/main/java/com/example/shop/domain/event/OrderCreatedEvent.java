@@ -1,0 +1,15 @@
+package com.example.shop.domain.event;
+
+import com.example.shop.domain.entity.Order;
+import org.springframework.context.ApplicationEvent;
+
+public class OrderCreatedEvent extends ApplicationEvent {
+    private final Order order;
+
+    public OrderCreatedEvent(Order order) {
+        super(order);
+        this.order = order;
+    }
+
+    public Order getOrder() { return order; }
+}

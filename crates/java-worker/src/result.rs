@@ -2,6 +2,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use codeana_contracts::archive::{FactArchive, FactArchiveBuilder};
 use codeana_contracts::java::OutputLimits;
+use codeana_contracts::performance::{Metric, measure};
 use codeana_model::{Fact, FactValidator, Manifest, Owner};
 use codeana_storage::fact_dedup::{FactDeduplicator, Observation};
 use serde::{
@@ -125,7 +126,9 @@ fn load(
     consume: bool,
 ) -> Result<NativeResult> {
     let mut decoder = serde_json::Deserializer::from_reader(input.take(64 << 20));
-    let envelope = EnvelopeSeed(limits).deserialize(&mut decoder)?;
+    let envelope = measure(Metric::DescriptorDecode, 0, false, || {
+        EnvelopeSeed(limits).deserialize(&mut decoder)
+    })?;
     decoder.end()?;
     let descriptor = envelope.archive;
     ensure!(
@@ -168,11 +171,17 @@ fn load(
             "FACT_FRAME_BUDGET"
         );
         let mut bytes = vec![0u8; size];
-        input.read_exact(&mut bytes)?;
-        digest.update(&bytes);
-        let fact: Fact = serde_json::from_slice(&bytes)?;
+        measure(Metric::RawRead, size as u64, true, || {
+            input.read_exact(&mut bytes)
+        })?;
+        measure(Metric::RawDigest, bytes.len() as u64, true, || {
+            digest.update(&bytes)
+        });
+        let fact: Fact = measure(Metric::RawDecode, bytes.len() as u64, true, || {
+            serde_json::from_slice(&bytes)
+        })?;
         if let Some(validator) = &validator
-            && let Err(error) = validator.validate(&fact)
+            && let Err(error) = measure(Metric::RawValidate, 0, true, || validator.validate(&fact))
         {
             let evidence = serde_json::json!({"error":error,"offset":offset,"fact":fact});
             std::fs::write(
@@ -182,9 +191,19 @@ fn load(
             .with_context(|| format!("{error}: {} (save rejected fact)", fact.id))?;
             bail!("{error}: {}", fact.id);
         }
-        match identities.observe(&fact.id, &codeana_model::hash(&bytes), offset)? {
-            Observation::New => builder.push(&fact)?,
-            Observation::Same => {}
+        let identity = measure(Metric::RawIdentityHash, bytes.len() as u64, true, || {
+            codeana_model::hash(&bytes)
+        });
+        match measure(Metric::RawDedup, bytes.len() as u64, true, || {
+            identities.observe(&fact.id, &identity, offset)
+        })? {
+            Observation::New => {
+                measure(Metric::DedupNew, 0, true, || ());
+                builder.push(&fact)?;
+            }
+            Observation::Same => {
+                measure(Metric::DedupSame, 0, true, || ());
+            }
             Observation::Conflict { first_offset } => {
                 let first = row_at(&file, first_offset)?;
                 let evidence = serde_json::json!({"id":fact.id,"first":serde_json::from_slice::<serde_json::Value>(&first)?,
@@ -207,7 +226,7 @@ fn load(
         format!("{:x}", digest.finalize()) == descriptor.sha256,
         "NATIVE_ARCHIVE_IDENTITY"
     );
-    let records = builder.seal()?;
+    let records = measure(Metric::RawSeal, descriptor.bytes, false, || builder.seal())?;
     if consume {
         // The native session has closed its exported CAF1. Its validated Rust
         // replacement owns delivery now; retaining both through staging doubles

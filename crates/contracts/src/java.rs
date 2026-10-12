@@ -3,6 +3,29 @@ use crate::worker as w;
 use anyhow::{Context, Result, ensure};
 use std::collections::{BTreeMap, BTreeSet};
 
+/// Shared selection for the explicit JVM host; target javac remains a separate SDK.
+pub fn jvm_host_home() -> Result<std::path::PathBuf> {
+    let home = std::env::var_os("CODEANA_JAVA_HOST_HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+                .join(".sdkman/candidates/java/25.3.4+1.r25-graal")
+        });
+    let home = home.canonicalize().context("JVM_HOST_HOME_REQUIRED")?;
+    let release = std::fs::read_to_string(home.join("release"))?;
+    ensure!(
+        release
+            .lines()
+            .any(|line| line.starts_with("JAVA_VERSION=\"25")),
+        "JVM_HOST_JDK25_REQUIRED"
+    );
+    ensure!(
+        home.join("bin/java").is_file(),
+        "JVM_HOST_LAUNCHER_REQUIRED"
+    );
+    Ok(home)
+}
+
 fn input(
     mut value: w::JavaSource,
     table: &mut Vec<w::JavaSource>,
@@ -142,6 +165,14 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             .all(|context| context.model_archive_bytes == 0
                 || (64 * 1024..=1024 * 1024 * 1024).contains(&context.model_archive_bytes)),
         "JAVA_MODEL_ARCHIVE_BYTES_RANGE"
+    );
+    ensure!(
+        config
+            .contexts
+            .iter()
+            .all(|context| context.model_decode_bytes == 0
+                || (64 * 1024..=2 * 1024 * 1024 * 1024).contains(&context.model_decode_bytes)),
+        "JAVA_MODEL_DECODE_BYTES_RANGE"
     );
     ensure!(
         config.native_heap_bytes == 0
@@ -304,6 +335,24 @@ mod tests {
                 },
             ],
             ..Default::default()
+        }
+    }
+    #[test]
+    fn model_decode_budget_is_validated_at_worker_boundary() {
+        for limit in [0, 65536, 536870912, 2147483648] {
+            let mut config = fixture();
+            config.contexts[0].model_decode_bytes = limit;
+            validate(&config).unwrap();
+        }
+        for limit in [1, 65535, 2147483649] {
+            let mut config = fixture();
+            config.contexts[0].model_decode_bytes = limit;
+            assert!(
+                validate(&config)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("JAVA_MODEL_DECODE_BYTES_RANGE")
+            );
         }
     }
     #[test]

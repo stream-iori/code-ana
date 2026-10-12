@@ -15,3 +15,8 @@ CREATE INDEX IF NOT EXISTS fact_call_targets_reverse ON facts(target,id)
     WHERE kind='call_target';
 CREATE INDEX IF NOT EXISTS fact_call_sites_owner ON facts(parent,id)
     WHERE kind='call_site';
+CREATE INDEX IF NOT EXISTS fact_unresolved_consumers ON facts(name,id,world,source)
+    WHERE kind='call_site' AND json_extract(body,'$.status')='unresolved';
+CREATE INDEX IF NOT EXISTS fact_annotation_meta_pair
+    ON facts(json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation'),id)
+    WHERE kind='facet' AND relation='java.annotation.meta';

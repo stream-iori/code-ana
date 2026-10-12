@@ -1,0 +1,16 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.service.OrderValidator#validate",
+      "--kind",
+      "callable",
+      "--unique"
+    ],
+    [
+      "call-sites",
+      "--direction",
+      "incoming"
+    ]
+  ]
+}

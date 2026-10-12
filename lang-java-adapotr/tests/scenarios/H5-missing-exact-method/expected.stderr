@@ -1,0 +1,19 @@
+anatomist-text/v5
+code: PIPELINE_STAGE_FAILED
+category: pipeline
+exit: 5
+message: no method matches selector 'com.example.shop.service.OrderService#missing(java.lang.String)'
+operation: pipeline
+inspect:
+  -:
+    -: anatomist
+    -: pipeline
+    -: --help
+stage: { operation=resolve | position=1 }
+cause: { category=resolution | code=SYMBOL_NOT_FOUND | exit=2 | message=no method matches selector 'com.example.shop.service.OrderService#missing(java.lang.String)' | operation=resolve }
+  inspect:
+    -:
+      -: anatomist
+      -: operations
+      -: resolve
+end: anatomist-text/v5

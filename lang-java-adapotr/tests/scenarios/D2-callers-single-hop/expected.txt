@@ -1,0 +1,42 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary:
+  result_context: { language=java | origin=extracted | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | producer_id=java-core | record=call_site }
+results:
+  -: { caller=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) | dispatch_kind=instance | id=callsite:sha256:2215dc6657075f16a897484fc112e6daafb1e38b490229cb93020b5bb77bc089 | receiver_static_type=com.example.shop.service.OrderService | relationship_id=rel:sha256:a982b72b409a2af223093c496947141b87be049010c2992d141ef60c0270e283 | resolution_status=exact | syntax_target=orderService.createOrder }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    resolved_targets:
+      -: { confidence=extracted | external=false | id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | producer_id=java-core | qualified_name=com.example.shop.service.OrderService#createOrder | resolution_status=exact }
+    source: { end_column=66 | end_line=24 | file=api/src/main/java/com/example/shop/controller/OrderController.java | ordinal=0 | start_column=34 | start_line=24 }
+  -: { caller=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) | dispatch_kind=instance | id=callsite:sha256:5e6acf7b86fb82a25ccb3edae29a71b9e056decdc8ddb4b4a1621bb66ad3e171 | receiver_static_type=com.example.shop.service.OrderService | relationship_id=rel:sha256:064ba334dece115aa95cfc1cdfdac38039ee7b55e28b0cff0898d7592eaf7aac | resolution_status=exact | syntax_target=createOrder }
+    derived_from:
+      -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    resolved_targets:
+      -: { confidence=extracted | external=false | id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | producer_id=java-core | qualified_name=com.example.shop.service.OrderService#createOrder | resolution_status=exact }
+    source: { end_column=31 | end_line=47 | file=service/src/main/java/com/example/shop/service/OrderService.java | ordinal=0 | start_column=16 | start_line=47 }
+page: { emitted=2 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=true | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=call-sites | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=2 | unit=items }
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=call-sites | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=0 | unit=items }
+  semantic: { coverage=incomplete }
+    limitations:
+      -: { code=HEURISTIC_OR_UNRESOLVED | stage_id=resolve | subject_id=request }
+        details: { resolution_status=ambiguous }
+      -: { code=UPSTREAM_INCOMPLETE | stage_id=call-sites | subject_id=seed:afe1fb0224d307b956e6a9d4 }
+      -: { code=SEMANTIC_COVERAGE_INCOMPLETE | stage_id=call-sites | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+        details: { guidance=Read source for local behavior or structure for declaration context. Inspection does not repair missing navigation or prove absence. | inspection_samples_complete=false }
+          diagnostic_counts: { NAVIGATION_TARGET_UNRESOLVED=5 }
+      -: { code=QUERY_COVERAGE_INCOMPLETE | stage_id=call-sites | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) }
+        details: { guidance=Read source for local behavior or structure for declaration context. Inspection does not repair missing navigation or prove absence. | inspection_samples_complete=false }
+          diagnostic_counts: { NAVIGATION_TARGET_UNRESOLVED=5 }
+      -: { code=QUERY_COVERAGE_INCOMPLETE | stage_id=call-sites | subject_id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) }
+next:
+  -: { kind=inspect | mutates=false | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | purpose=diagnostic_inventory | reason=Missing index facts may hide relationships. Inspect the paged diagnostics before claiming absence. | repairs_navigation=false }
+    argv: $ anatomist doctor --index ${INDEX} --view details --section diagnostics --limit 20 --expect-revision ${REVISION} --diagnostic-scope MAIN
+end: anatomist-text/v5

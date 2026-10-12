@@ -1,0 +1,141 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary:
+  result_context: { domain=language | language=java | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | producer_id=java-core | provider_id=java-core | record=entity }
+results:
+  -: { id=java-core::domain::MAIN::com.example.shop.domain.dto.CreateOrderRequest#getCustomerId() | kind=callable | module=domain | name=getCustomerId | origin=extracted | qualified_name=com.example.shop.domain.dto.CreateOrderRequest#getCustomerId | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.domain.dto.CreateOrderRequest#getCustomerId() }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.domain.dto.CreateOrderRequest | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=java.lang.String | signature=getCustomerId() | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters: []
+    source: { end_column=56 | end_line=11 | file=domain/src/main/java/com/example/shop/domain/dto/CreateOrderRequest.java | ordinal=0 | start_column=5 | start_line=11 }
+  -: { id=java-core::domain::MAIN::com.example.shop.domain.dto.CreateOrderRequest#getItems() | kind=callable | module=domain | name=getItems | origin=extracted | qualified_name=com.example.shop.domain.dto.CreateOrderRequest#getItems | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.domain.dto.CreateOrderRequest#getItems() }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.domain.dto.CreateOrderRequest | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=java.util.List<com.example.shop.domain.entity.OrderItem> | signature=getItems() | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters: []
+    source: { end_column=55 | end_line=13 | file=domain/src/main/java/com/example/shop/domain/dto/CreateOrderRequest.java | ordinal=0 | start_column=5 | start_line=13 }
+  -: { id=java-core::domain::MAIN::com.example.shop.domain.dto.OrderResult#OrderResult(java.lang.String,double) | kind=callable | module=domain | name=OrderResult | origin=extracted | qualified_name=com.example.shop.domain.dto.OrderResult#OrderResult | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.domain.dto.OrderResult#OrderResult(java.lang.String,double) }
+    facets: { declaration_kind=constructor | declaring_type=com.example.shop.domain.dto.OrderResult | direct_member=true | isStatic=false | language_kind=java.constructor | nesting_depth=1 | returnType=null | signature=OrderResult(java.lang.String orderId, double finalPrice) | storage_kind=CONSTRUCTOR | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters:
+        -: { name=orderId | type=java.lang.String }
+        -: { name=finalPrice | type=double }
+    source: { end_column=5 | end_line=10 | file=domain/src/main/java/com/example/shop/domain/dto/OrderResult.java | ordinal=0 | start_column=5 | start_line=7 }
+  -: { id=java-core::domain::MAIN::com.example.shop.domain.entity.Order#Order(java.lang.String,java.util.List) | kind=callable | module=domain | name=Order | origin=extracted | qualified_name=com.example.shop.domain.entity.Order#Order | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.domain.entity.Order#Order(java.lang.String,java.util.List) }
+    facets: { declaration_kind=constructor | declaring_type=com.example.shop.domain.entity.Order | direct_member=true | isStatic=false | language_kind=java.constructor | nesting_depth=1 | returnType=null | signature=Order(java.lang.String customerId, java.util.List<com.example.shop.domain.entity.OrderItem> items) | storage_kind=CONSTRUCTOR | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters:
+        -: { name=customerId | type=java.lang.String }
+        -: { name=items | type=java.util.List<com.example.shop.domain.entity.OrderItem> }
+    source: { end_column=5 | end_line=17 | file=domain/src/main/java/com/example/shop/domain/entity/Order.java | ordinal=0 | start_column=5 | start_line=13 }
+  -: { id=java-core::domain::MAIN::com.example.shop.domain.entity.Order#getId() | kind=callable | module=domain | name=getId | origin=extracted | qualified_name=com.example.shop.domain.entity.Order#getId | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.domain.entity.Order#getId() }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.domain.entity.Order | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=java.lang.String | signature=getId() | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters: []
+    source: { end_column=40 | end_line=19 | file=domain/src/main/java/com/example/shop/domain/entity/Order.java | ordinal=0 | start_column=5 | start_line=19 }
+  -: { id=java-core::domain::MAIN::com.example.shop.domain.entity.Order#setStatus(com.example.shop.domain.entity.OrderStatus) | kind=callable | module=domain | name=setStatus | origin=extracted | qualified_name=com.example.shop.domain.entity.Order#setStatus | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.domain.entity.Order#setStatus(com.example.shop.domain.entity.OrderStatus) }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.domain.entity.Order | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=void | signature=setStatus(com.example.shop.domain.entity.OrderStatus status) | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters:
+        -: { name=status | type=com.example.shop.domain.entity.OrderStatus }
+    source: { end_column=71 | end_line=26 | file=domain/src/main/java/com/example/shop/domain/entity/Order.java | ordinal=0 | start_column=5 | start_line=26 }
+  -: { id=java-core::domain::MAIN::com.example.shop.domain.event.OrderCreatedEvent#OrderCreatedEvent(com.example.shop.domain.entity.Order) | kind=callable | module=domain | name=OrderCreatedEvent | origin=extracted | qualified_name=com.example.shop.domain.event.OrderCreatedEvent#OrderCreatedEvent | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.domain.event.OrderCreatedEvent#OrderCreatedEvent(com.example.shop.domain.entity.Order) }
+    facets: { declaration_kind=constructor | declaring_type=com.example.shop.domain.event.OrderCreatedEvent | direct_member=true | isStatic=false | language_kind=java.constructor | nesting_depth=1 | returnType=null | signature=OrderCreatedEvent(com.example.shop.domain.entity.Order order) | storage_kind=CONSTRUCTOR | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters:
+        -: { name=order | type=com.example.shop.domain.entity.Order }
+    source: { end_column=5 | end_line=12 | file=domain/src/main/java/com/example/shop/domain/event/OrderCreatedEvent.java | ordinal=0 | start_column=5 | start_line=9 }
+  -: { id=java-core::service::MAIN::com.example.shop.event.OrderEventPublisher#publish(com.example.shop.domain.event.OrderCreatedEvent) | kind=callable | module=service | name=publish | origin=extracted | qualified_name=com.example.shop.event.OrderEventPublisher#publish | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.event.OrderEventPublisher#publish(com.example.shop.domain.event.OrderCreatedEvent) }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.event.OrderEventPublisher | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=void | signature=publish(com.example.shop.domain.event.OrderCreatedEvent event) | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters:
+        -: { name=event | type=com.example.shop.domain.event.OrderCreatedEvent }
+    source: { end_column=5 | end_line=18 | file=service/src/main/java/com/example/shop/event/OrderEventPublisher.java | ordinal=0 | start_column=5 | start_line=16 }
+  -: { id=java-core::service::MAIN::com.example.shop.repository.OrderRepository#save(com.example.shop.domain.entity.Order) | kind=callable | module=service | name=save | origin=extracted | qualified_name=com.example.shop.repository.OrderRepository#save | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.repository.OrderRepository#save(com.example.shop.domain.entity.Order) }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.repository.OrderRepository | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=com.example.shop.domain.entity.Order | signature=save(com.example.shop.domain.entity.Order order) | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers: []
+      implicit_modifiers:
+        -: public
+        -: abstract
+      modifiers:
+        -: public
+        -: abstract
+      parameters:
+        -: { name=order | type=com.example.shop.domain.entity.Order }
+    source: { end_column=28 | end_line=8 | file=service/src/main/java/com/example/shop/repository/OrderRepository.java | ordinal=0 | start_column=5 | start_line=8 }
+  -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#applyDiscount(double) | kind=callable | module=service | name=applyDiscount | origin=extracted | qualified_name=com.example.shop.service.OrderService#applyDiscount | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.service.OrderService#applyDiscount(double) }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.service.OrderService | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=double | signature=applyDiscount(double amount) | storage_kind=METHOD | synthetic=false | visibility=protected }
+      declared_modifiers:
+        -: protected
+      implicit_modifiers: []
+      modifiers:
+        -: protected
+      parameters:
+        -: { name=amount | type=double }
+    source: { end_column=5 | end_line=53 | file=service/src/main/java/com/example/shop/service/OrderService.java | ordinal=0 | start_column=5 | start_line=50 }
+  -: { id=java-core::service::MAIN::com.example.shop.service.OrderValidator#validate(com.example.shop.domain.dto.CreateOrderRequest) | kind=callable | module=service | name=validate | origin=extracted | qualified_name=com.example.shop.service.OrderValidator#validate | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.service.OrderValidator#validate(com.example.shop.domain.dto.CreateOrderRequest) }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.service.OrderValidator | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=void | signature=validate(com.example.shop.domain.dto.CreateOrderRequest request) | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters:
+        -: { name=request | type=com.example.shop.domain.dto.CreateOrderRequest }
+    source: { end_column=5 | end_line=15 | file=service/src/main/java/com/example/shop/service/OrderValidator.java | ordinal=0 | start_column=5 | start_line=8 }
+  -: { id=java-core::service::MAIN::com.example.shop.service.PriceCalculator#calculate(java.util.List) | kind=callable | module=service | name=calculate | origin=extracted | qualified_name=com.example.shop.service.PriceCalculator#calculate | resolution_status=ambiguous | scope=MAIN | symbol_id=com.example.shop.service.PriceCalculator#calculate(java.util.List) }
+    facets: { declaration_kind=method | declaring_type=com.example.shop.service.PriceCalculator | direct_member=true | isStatic=false | language_kind=java.method | nesting_depth=1 | returnType=double | signature=calculate(java.util.List<com.example.shop.domain.entity.OrderItem> items) | storage_kind=METHOD | synthetic=false | visibility=public }
+      declared_modifiers:
+        -: public
+      implicit_modifiers: []
+      modifiers:
+        -: public
+      parameters:
+        -: { name=items | type=java.util.List<com.example.shop.domain.entity.OrderItem> }
+    source: { end_column=5 | end_line=12 | file=service/src/main/java/com/example/shop/service/PriceCalculator.java | ordinal=0 | start_column=5 | start_line=10 }
+  -: { external=true | id=java.util.Objects#requireNonNull(java.lang.Object,java.lang.String) | kind=callable | module=null | name=requireNonNull | origin=derived | qualified_name=java.util.Objects#requireNonNull(java.lang.Object,java.lang.String) | resolution_status=ambiguous | scope=null | source_available=false }
+    facets: { language_kind=java.method | storage_kind=METHOD }
+page: { emitted=13 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=resolve | subject_id=seed:bf5d330efb6c323eefb9b8c0 }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=13 | unit=items }
+  semantic: { coverage=incomplete }
+    limitations:
+      -: { code=HEURISTIC_OR_UNRESOLVED | stage_id=resolve | subject_id=seed:bf5d330efb6c323eefb9b8c0 }
+        details: { resolution_status=ambiguous }
+next: []
+end: anatomist-text/v5

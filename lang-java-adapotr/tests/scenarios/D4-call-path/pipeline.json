@@ -1,0 +1,20 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.controller.OrderController#create",
+      "--kind",
+      "callable",
+      "--unique"
+    ],
+    [
+      "trace",
+      "--to",
+      "com.example.shop.service.OrderValidator#validate",
+      "--max-depth",
+      "5",
+      "--dispatch",
+      "resolved"
+    ]
+  ]
+}

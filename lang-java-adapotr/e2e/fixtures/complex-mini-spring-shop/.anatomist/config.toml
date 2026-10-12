@@ -1,0 +1,14 @@
+[index]
+java_version = 17
+spring_xml = true
+vm_classpath = true
+
+[scan]
+scopes = ["MAIN", "TEST"]
+include = ["**/src/**"]
+exclude = []
+
+[extensions.lombok]
+mode = "off"
+strict = false
+

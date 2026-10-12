@@ -13,6 +13,7 @@ use std::{
 
 pub struct PreparedJava {
     pub library: PathBuf,
+    pub backend: &'static str,
     pub config: w::JavaConfig,
     pub disk_budget: DiskBudget,
     _scratch: tempfile::TempDir,
@@ -206,6 +207,25 @@ impl PreparedJava {
 pub fn installed_library() -> Result<PathBuf> {
     let exe = std::env::current_exe()?;
     let bin = exe.parent().context("BINARY_DIRECTORY")?;
+    let backend = std::env::var("CODEANA_JAVA_BACKEND").unwrap_or_else(|_| "native".into());
+    ensure!(
+        matches!(backend.as_str(), "native" | "jvm"),
+        "JAVA_BACKEND_UNSUPPORTED"
+    );
+    if backend == "jvm" {
+        let installed = bin.join("../lib/java/jvm/runner.jar");
+        if installed.is_file() {
+            return Ok(installed.canonicalize()?);
+        }
+        if cfg!(debug_assertions) {
+            let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../lang-java-adapotr/target/jvm/runner.jar");
+            if dev.is_file() {
+                return Ok(dev.canonicalize()?);
+            }
+        }
+        anyhow::bail!("UNSUPPORTED_ADAPTER: explicit Java JVM bundle is not installed");
+    }
     let name = if cfg!(target_os = "macos") {
         "libcodeana_java.dylib"
     } else {
@@ -224,6 +244,31 @@ pub fn installed_library() -> Result<PathBuf> {
         }
     }
     anyhow::bail!("UNSUPPORTED_ADAPTER: Java native bundle is not installed")
+}
+
+fn host_toolchain_inputs(home: &Path) -> Result<(String, Vec<(PathBuf, String)>)> {
+    let mut files = Vec::new();
+    for entry in walkdir::WalkDir::new(home).follow_links(false) {
+        let entry = entry?;
+        if !entry.path().is_file() {
+            continue;
+        }
+        let relative = entry.path().strip_prefix(home)?;
+        if relative.starts_with("bin")
+            || relative.starts_with("lib")
+            || relative == Path::new("release")
+        {
+            files.push((entry.path().to_path_buf(), hash_file(entry.path())?));
+        }
+    }
+    files.sort();
+    let identity = digest(
+        &files
+            .iter()
+            .map(|(path, sha)| (path.strip_prefix(home).unwrap(), sha))
+            .collect::<Vec<_>>(),
+    );
+    Ok((identity, files))
 }
 fn compiler_parallelism(
     memory: u64,
@@ -272,10 +317,17 @@ fn context_worlds(
 
 pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<PreparedJava> {
     let library = installed_library()?;
-    let bundle = library
-        .parent()
-        .and_then(Path::parent)
-        .context("BUNDLE_ROOT")?;
+    let backend = if library.extension().is_some_and(|s| s == "jar") {
+        "jvm"
+    } else {
+        "native"
+    };
+    let parent = library.parent().context("BUNDLE_ROOT")?;
+    let bundle = if backend == "jvm" {
+        parent
+    } else {
+        parent.parent().context("BUNDLE_ROOT")?
+    };
     let scratch = tempfile::Builder::new().prefix("codeana-java-").tempdir()?;
     let captured_bytes = c
         .blobs
@@ -388,6 +440,13 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             .map(|(p, h)| (p.strip_prefix(&home).unwrap(), h))
             .collect::<Vec<_>>(),
     );
+    let host_identity = if std::env::var("CODEANA_JAVA_BACKEND").as_deref() == Ok("jvm") {
+        let (identity, inputs) = host_toolchain_inputs(&codeana_contracts::java::jvm_host_home()?)?;
+        toolchain.extend(inputs);
+        Some(identity)
+    } else {
+        None
+    };
     let mut prerequisites = std::collections::BTreeSet::new();
     if let Some(inputs) = &c.effective.java_inputs {
         let mut pending = Vec::new();
@@ -586,6 +645,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                     resource_identity,
                     &module.lombok,
                     &module.extensions,
+                    &module.external,
                     &module.source_roots,
                 )),
                 sources,
@@ -593,6 +653,12 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 resources,
                 lombok: module.lombok.mode.clone().unwrap_or_else(|| "off".into()),
                 lombok_strict: module.lombok.strict.unwrap_or(false),
+                external_policy_configured: module.external.exclude_patterns.is_some(),
+                external_exclude_patterns: module
+                    .external
+                    .exclude_patterns
+                    .clone()
+                    .unwrap_or_default(),
                 prerequisite,
                 dependency_modules: dependencies
                     .iter()
@@ -602,6 +668,13 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 spring: !prerequisite && module.extensions.spring.enabled.unwrap_or(false),
                 spring_xml: !prerequisite && module.extensions.spring.xml.unwrap_or(false),
                 sofa: !prerequisite && module.extensions.sofa.enabled.unwrap_or(false),
+                model_decode_bytes: c
+                    .effective
+                    .config
+                    .resources
+                    .index
+                    .java_model_decode_bytes
+                    .unwrap_or(512 * 1024 * 1024),
                 model_archive_bytes: c
                     .effective
                     .config
@@ -633,6 +706,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             &c.effective.config.resources.index,
             hash(std::fs::read(&library)?),
             hash(std::fs::read(bundle.join("compiler-bridge.jar"))?),
+            &host_identity,
         )),
         parallelism: compiler_parallelism(
             c.effective
@@ -705,6 +779,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
     codeana_contracts::java::compact(&mut config)?;
     Ok(PreparedJava {
         library,
+        backend,
         config,
         disk_budget,
         _scratch: scratch,
@@ -961,6 +1036,39 @@ mod tests {
                 .contains("TASK_SCRATCH_SYMLINK")
         );
     }
+    #[test]
+    fn host_toolchain_identity_follows_bytes_and_survives_relocation() {
+        let first = tempfile::tempdir().unwrap();
+        let relocated = tempfile::tempdir().unwrap();
+        for root in [first.path(), relocated.path()] {
+            std::fs::create_dir_all(root.join("bin")).unwrap();
+            std::fs::create_dir_all(root.join("lib/server")).unwrap();
+            std::fs::write(root.join("release"), "JAVA_VERSION=\"25\"").unwrap();
+            std::fs::write(root.join("bin/java"), "launcher").unwrap();
+            std::fs::write(root.join("lib/modules"), "modules").unwrap();
+            std::fs::write(root.join("lib/server/libjvm.dylib"), "vm").unwrap();
+        }
+        let (original, files) = host_toolchain_inputs(first.path()).unwrap();
+        assert_eq!(files.len(), 4);
+        assert_eq!(original, host_toolchain_inputs(relocated.path()).unwrap().0);
+        for name in [
+            "release",
+            "bin/java",
+            "lib/modules",
+            "lib/server/libjvm.dylib",
+        ] {
+            let path = relocated.path().join(name);
+            let bytes = std::fs::read(&path).unwrap();
+            std::fs::write(&path, b"changed").unwrap();
+            assert_ne!(
+                original,
+                host_toolchain_inputs(relocated.path()).unwrap().0,
+                "{name}"
+            );
+            std::fs::write(path, bytes).unwrap();
+        }
+    }
+
     #[test]
     fn explicit_pool_size_must_fit_worker_process_tree_budget() {
         let mib = 1024 * 1024;

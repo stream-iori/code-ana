@@ -1,0 +1,289 @@
+{
+  "commit": "dff2e3954096853352ec91fcbfc6b995fbd4f390",
+  "files": [
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/core/NavigationDiagnosticsTest.java",
+      "sha256": "f22cb37b274cfadeed47c0f6ebb7a06f6143f300302c5336f2402c89221a8db3",
+      "disposition": "rust",
+      "reason": "Rust retains every diagnostic fact and computes bounded report samples. Original truncation marker and 5000-row persistence policy become explicit sampled/omitted report counts; Java CLI/SQLite representation is outside compatibility scope.",
+      "test_cases": {
+        "com.anatomist.core.NavigationDiagnosticsTest#reasonTotalsSurviveRetentionAndKeepFileIdentity": {
+          "targets": [
+            {
+              "path": "crates/storage/src/staged.rs",
+              "symbol": "fn diagnostic_retention_keeps_50004_occurrences_and_file_identity_after_restart"
+            }
+          ],
+          "expectations": [
+            "50004 original events remain lossless",
+            "A.java=50003 and B.java=1 after publication and restart",
+            "bounded samples disclose all omitted occurrences",
+            "repeated report preparation does not double-count events or consume samples as input"
+          ],
+          "evidence": "target/implementation-evidence/diagnostic-retention-port-04.json"
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/query/QueryEvidenceTest.java",
+      "sha256": "132739054292b80b6e0161ba91c4d135dca3961d4c08dabedc9b430ec5faf2db",
+      "disposition": "rust",
+      "reason": "Rust Evidence separates semantic completeness from enumeration, records every budget dimension and preserves upstream diagnostics. Original Java status/code/toMap representation is replaced by these typed fields; safe negative conclusions still require complete enumeration and semantics.",
+      "test_cases": {
+        "com.anatomist.query.QueryEvidenceTest#boundedEmptyResultCannotBeReportedAsConfirmedAbsence": {
+          "targets": [
+            {
+              "path": "crates/model/src/lib.rs",
+              "symbol": "fn evidence_bounded_empty_result_keeps_every_limit_and_disallows_absence"
+            }
+          ],
+          "expectations": [
+            "complete evidence becomes enumeration=false under page/depth/record bounds",
+            "all affected dimensions remain sorted and deduplicated",
+            "a later complete stage cannot restore safe absence",
+            "serialized output retains enumeration=false and every limit"
+          ],
+          "evidence": "target/implementation-evidence/query-evidence-port-02.json"
+        },
+        "com.anatomist.query.QueryEvidenceTest#positiveAndDiagnosticEvidenceRetainTheirMeaningWhenBounded": {
+          "targets": [
+            {
+              "path": "crates/model/src/lib.rs",
+              "symbol": "fn evidence_bounded_positive_and_diagnostic_results_keep_their_meaning"
+            }
+          ],
+          "expectations": [
+            "bounded positive evidence preserves semantic completeness",
+            "unresolved diagnostics retain reason and semantic=false after bounds",
+            "a later complete stage cannot erase upstream diagnostics"
+          ],
+          "evidence": "target/implementation-evidence/query-evidence-port-02.json"
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/query/SearchSelectionTest.java",
+      "sha256": "88212dae9aacb1165f75028a1de52ee37e527fad9f33bee2a3ff579b9d19a8e1",
+      "disposition": "rust",
+      "reason": "Path selection uses typed owned Rust Request and captured manifest paths. No compatibility requirement for Java record/hashCode; original glob/invalid path/ownership behavior is retained.",
+      "test_cases": {
+        "com.anatomist.query.SearchSelectionTest#multiplePathsMatchWithExistingGlobSemantics": {
+          "targets": [
+            {
+              "path": "crates/query/src/lib.rs",
+              "symbol": "fn upstream_search_selection_matches_multiple_globs_with_literal_separators"
+            }
+          ],
+          "expectations": [
+            "zero/multiple directories accepted by **",
+            "? matches one filename character",
+            "* never crosses literal separator",
+            "absent path does not match"
+          ],
+          "evidence": "target/implementation-evidence/search-selection-port-02.json"
+        },
+        "com.anatomist.query.SearchSelectionTest#pathPatternsAreValidatedAtConstructionAndSelectionIsImmutable": {
+          "targets": [
+            {
+              "path": "crates/query/src/lib.rs",
+              "symbol": "fn upstream_search_selection_owns_paths_and_rejects_invalid_patterns"
+            }
+          ],
+          "expectations": [
+            "caller list mutation cannot change owned paths",
+            "captured source matches recursive glob",
+            "empty/absolute/traversal/doubled separators/backslashes rejected",
+            "cloned typed request preserves identical serialization"
+          ],
+          "evidence": "target/implementation-evidence/search-selection-port-02.json"
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/core/WiringResolverTest.java",
+      "sha256": "40b74c08f282610470363d497bb4bd9e26c3114c4617cda89ff7d3cc0303715c",
+      "disposition": "rust",
+      "reason": "Rust derives static DI candidates from typed injection facts after owner replacement. Original unique implementation confidence and prohibition on manufactured implementation calls are retained; owner-only Java Edge shape becomes a field-level evidence-bearing relation.",
+      "test_cases": {
+        "com.anatomist.core.WiringResolverTest#apply_addsBindingWithoutManufacturingCallWhenImplementationIsUnique": {
+          "targets": [
+            {
+              "path": "crates/application/src/derived.rs",
+              "symbol": "fn upstream_unique_wiring_preserves_interface_call_without_manufacturing_implementation_call"
+            }
+          ],
+          "expectations": [
+            "One unique direct implementation yields exactly one inferred binding",
+            "Override metadata does not manufacture a call to the implementation method",
+            "The existing call to the interface method is retained byte-for-byte"
+          ],
+          "evidence": "target/implementation-evidence/wiring-resolver-port-04.json"
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/query/TextSearchServiceTest.java",
+      "sha256": "34e85e52902586dfbbb41cf12670d699c478c61518aa89c429a0b7f4e9caf255",
+      "disposition": "rust",
+      "reason": "Original text matching and failure behavior are retained in the genuine Rust streaming scanner; paging is verified through actual CLI/daemon over captured bytes. Typed wire fields/one owning deadline replace old Java map/deadline representations.",
+      "test_cases": {
+        "com.anatomist.query.TextSearchServiceTest#literalUnicodeContextAndRepeatedMatches": {
+          "targets": [
+            {
+              "path": "crates/query/src/text.rs",
+              "symbol": "fn upstream_literal_unicode_crlf_and_repeated_matches_preserve_context"
+            }
+          ],
+          "expectations": [
+            "Unicode/colon/space paths and CRLF are preserved",
+            "Repeated literal matches produce one row per line",
+            "Context retains before/after lines and no context fields when zero; captured hash remains explicit"
+          ],
+          "evidence": "target/implementation-evidence/text-search-port-02.json"
+        },
+        "com.anatomist.query.TextSearchServiceTest#limitAndInvalidRegexEvenWithoutFiles": {
+          "targets": [
+            {
+              "path": "crates/query/src/text.rs",
+              "symbol": "fn upstream_invalid_regex_is_checked_without_files_and_missing_literal_is_empty"
+            },
+            {
+              "path": "tests/rust_upstream_text_search.py",
+              "symbol": "def test_upstream_text_limit_retains_cursor_and_invalid_regex_without_files"
+            }
+          ],
+          "expectations": [
+            "Actual Rust CLI emits one row for a one-record limit and discloses cursor/enumeration=false",
+            "Invalid regex is rejected even with no source files",
+            "A missing literal returns no results"
+          ],
+          "evidence": "target/implementation-evidence/text-search-port-02.json"
+        },
+        "com.anatomist.query.TextSearchServiceTest#closedOutputAndExpiredDeadlineFailWithoutHanging": {
+          "targets": [
+            {
+              "path": "crates/query/src/text.rs",
+              "symbol": "fn upstream_closed_output_and_expired_check_stop_without_scanning_remaining_lines"
+            },
+            {
+              "path": "tests/rust_upstream_text_search.py",
+              "symbol": "def test_upstream_closed_text_output_does_not_hang_or_stop_daemon"
+            }
+          ],
+          "expectations": [
+            "Closed output callback error propagates after the first bounded check",
+            "An expired check returns the timeout error after the first check",
+            "Remaining 10000 matching lines are not scanned/emitted after consumer failure",
+            "A genuinely closed CLI stdout exits nonzero within five seconds; daemon stays alive and serves a subsequent text query"
+          ],
+          "evidence": "target/implementation-evidence/text-search-port-02.json"
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/store/DatabaseWiringResolverTest.java",
+      "sha256": "1308822cc7641d7fa5899b8f8687525a84ac99353356e0a5eca400ecd8e7b573",
+      "disposition": "rust",
+      "reason": "SQLite candidate derivation uses the same typed Wiring implementation after all adapter owners are replaced; persisted entire binding metadata must be independent of module arrival order.",
+      "test_cases": {
+        "com.anatomist.store.DatabaseWiringResolverTest#candidateMetadataDoesNotDependOnModuleArrivalOrder": {
+          "targets": [
+            {
+              "path": "crates/application/src/derived.rs",
+              "symbol": "fn upstream_database_wiring_metadata_is_independent_of_module_arrival_order"
+            }
+          ],
+          "expectations": [
+            "Both candidates persist exactly once",
+            "Candidates are sorted independent of forward/reversed arrival order",
+            "The entire persisted Fact including metadata/identity is equal across independent candidate builds"
+          ],
+          "evidence": "target/implementation-evidence/wiring-resolver-port-04.json"
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/store/IndexStateStoreTest.java",
+      "sha256": "61032c3241dde546d9e21d58ef2cc59152177bddbfad100b1d46b007bed69360",
+      "disposition": "rust",
+      "reason": "Interrupted rebuild recovery is owned by the Rust immutable candidate/catalog publication boundary. Typed published revision identity replaces old mutable status and integer dirtyGeneration; valid old head survives and incomplete replacement state is cleaned.",
+      "test_cases": {
+        "com.anatomist.store.IndexStateStoreTest#interruptedRebuildBecomesStaleAndCleansTemporaryFiles": {
+          "targets": [
+            {
+              "path": "crates/storage/src/staged.rs",
+              "symbol": "fn recovery_skips_in_flight_candidates_and_cancellation_discards_private_state"
+            },
+            {
+              "path": "crates/storage/src/staged.rs",
+              "symbol": "fn failed_catalog_transaction_retains_old_revision_and_recovers_orphan"
+            }
+          ],
+          "expectations": [
+            "Recovery removes stale replacement directories",
+            "An interrupted failed publication keeps the prior head and its readable revision",
+            "Recovery skips live in-flight candidates and removes private state on cancellation"
+          ],
+          "evidence": "target/implementation-evidence/index-state-recovery-port-01.json"
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/store/SqliteStoreUpsertTest.java",
+      "sha256": "93f86689fab2f11a931602e540ab02ac75f4ceb57b834d597bb625c11dcfaa26",
+      "disposition": "rust",
+      "reason": "Original annotation write outcomes are retained through real Rust CLI/daemon/SQLite. Separate typed user-note identity/CAS and opaque metadata replace old Java SQL composite-key/column/batch method contracts; no loss of supplied category/source/confidence/label values is accepted.",
+      "test_cases": {
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_insertsNewRow": {
+          "targets": [
+            {
+              "path": "tests/rust_upstream_annotations.py",
+              "symbol": "def test_upstream_annotation_inserts_new_row"
+            }
+          ],
+          "expectations": [
+            "A new annotation persists one row and its business label"
+          ],
+          "evidence": "target/implementation-evidence/annotation-upsert-port-03.json"
+        },
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_replacesOnDuplicateKey": {
+          "targets": [
+            {
+              "path": "tests/rust_upstream_annotations.py",
+              "symbol": "def test_upstream_annotation_explicit_update_preserves_one_identity"
+            }
+          ],
+          "expectations": [
+            "An explicit update preserves one annotation identity and row",
+            "Latest label/confidence persist; stale version cannot overwrite them"
+          ],
+          "evidence": "target/implementation-evidence/annotation-upsert-port-03.json"
+        },
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_distinctSourceCoexists": {
+          "targets": [
+            {
+              "path": "tests/rust_upstream_annotations.py",
+              "symbol": "def test_upstream_annotation_distinct_sources_coexist"
+            }
+          ],
+          "expectations": [
+            "LLM and DOC annotations on the same symbol coexist without overwriting"
+          ],
+          "evidence": "target/implementation-evidence/annotation-upsert-port-03.json"
+        },
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotations_batchUpserts": {
+          "targets": [
+            {
+              "path": "tests/rust_upstream_annotations.py",
+              "symbol": "def test_upstream_annotation_update_and_new_write_retain_both_outcomes"
+            }
+          ],
+          "expectations": [
+            "Updating the old annotation and adding another symbol retains both requested final values"
+          ],
+          "evidence": "target/implementation-evidence/annotation-upsert-port-03.json"
+        }
+      }
+    }
+  ]
+}

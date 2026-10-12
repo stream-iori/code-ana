@@ -1,0 +1,17 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest)",
+      "--kind",
+      "callable",
+      "--exact",
+      "--unique"
+    ],
+    [
+      "source",
+      "--limit",
+      "5"
+    ]
+  ]
+}

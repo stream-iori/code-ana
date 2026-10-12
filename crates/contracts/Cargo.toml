@@ -16,6 +16,7 @@ tokio.workspace = true
 anyhow.workspace = true
 codeana-model = { path = "../model" }
 sha2.workspace = true
+libc.workspace = true
 tempfile.workspace = true
 
 [build-dependencies]

@@ -1,0 +1,35 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary:
+  result_context: { domain=language | language=java | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | producer_id=java-core | provider_id=java-core | record=entity_candidate | scope=MAIN }
+results:
+  -: { id=java-core::api::MAIN::com.example.shop.controller.OrderController#orderService | kind=value | module=api | name=orderService | origin=extracted | qualified_name=com.example.shop.controller.OrderController#orderService | resolution_status=ambiguous }
+    facets: { language_kind=java.field | storage_kind=FIELD }
+    source: { end_column=38 | end_line=20 | file=api/src/main/java/com/example/shop/controller/OrderController.java | ordinal=0 | start_column=5 | start_line=19 }
+  -: { id=java-core::service::MAIN::com.example.shop.service.OrderService | kind=type | module=service | name=OrderService | origin=extracted | qualified_name=com.example.shop.service.OrderService | resolution_status=ambiguous }
+    facets: { language_kind=java.class | storage_kind=CLASS }
+    source: { end_column=1 | end_line=69 | file=service/src/main/java/com/example/shop/service/OrderService.java | ordinal=0 | start_column=1 | start_line=18 }
+  -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#OrderService() | kind=callable | module=service | name=OrderService | origin=derived | qualified_name=com.example.shop.service.OrderService#OrderService | resolution_status=ambiguous | source_owner_id=com.example.shop.service.OrderService }
+    facets: { language_kind=java.constructor | storage_kind=CONSTRUCTOR }
+      synthetic_origin: { body_available=false | confidence=null | generated_from=com.example.shop.service.OrderService | generator=java | generator_mode=signature }
+    source: { file=service/src/main/java/com/example/shop/service/OrderService.java }
+  -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#applyDiscount(double) | kind=callable | module=service | name=applyDiscount | origin=extracted | qualified_name=com.example.shop.service.OrderService#applyDiscount | resolution_status=ambiguous }
+    facets: { language_kind=java.method | storage_kind=METHOD }
+    source: { end_column=5 | end_line=53 | file=service/src/main/java/com/example/shop/service/OrderService.java | ordinal=0 | start_column=5 | start_line=50 }
+  -: { id=java-core::service::MAIN::com.example.shop.service.OrderService#calculator | kind=value | module=service | name=calculator | origin=extracted | qualified_name=com.example.shop.service.OrderService#calculator | resolution_status=ambiguous }
+    facets: { language_kind=java.field | storage_kind=FIELD }
+    source: { end_column=39 | end_line=26 | file=service/src/main/java/com/example/shop/service/OrderService.java | ordinal=0 | start_column=5 | start_line=25 }
+page: { emitted=5 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=search-code | subject_id=request }
+      enumeration: { complete=false | has_more=true | offset=0 | returned=5 | unit=items | window_exhausted=false | window_limit=500 }
+  semantic: { coverage=complete }
+    limitations: []
+next:
+  -: { kind=continue | mutates=false | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | reason=Read the next page of the selected range | replacement=append }
+    argv: $ anatomist search-code --index ${INDEX} --expect-revision ${REVISION} --scope MAIN --language java --provider java-core --limit 5 --offset 5 OrderService
+    range: { offset=0 | unit=items }
+end: anatomist-text/v5

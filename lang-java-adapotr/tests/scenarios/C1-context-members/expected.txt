@@ -1,0 +1,24 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: { outline_help=Copy one full id to source --subject <id> for the whole declaration, or resolve <id> for metadata. Keep index/ref/snapshot and --expect-revision; large source is paged. Groups are context, not declarations. }
+  result_context: { file=service/src/main/java/com/example/shop/repository/InMemoryOrderRepository.java | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | record=entity }
+results:
+  -: { record=outline_group }
+    context: { tree_depth=0 }
+    items:
+      -: { declaration=L14–14 private final store: Map | id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository#store }
+      -: { declaration=L15–15 private final seq: AtomicLong | id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository#seq }
+      -: { declaration=L17–24 public save(Order): Order | id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository#save(com.example.shop.domain.entity.Order) }
+      -: { declaration=L26–29 public findById(String): Optional<Order> | id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository#findById(java.lang.String) }
+      -: { declaration=L31–34 public deleteAll(): void | id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository#deleteAll() }
+page: { emitted=5 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=structure | subject_id=java-core::service::MAIN::com.example.shop.repository.InMemoryOrderRepository }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=5 | unit=items }
+  semantic: { coverage=complete }
+    limitations: []
+next: []
+end: anatomist-text/v5

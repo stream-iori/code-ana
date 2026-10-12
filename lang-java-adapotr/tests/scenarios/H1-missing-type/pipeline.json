@@ -1,0 +1,11 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.missing.DoesNotExist",
+      "--kind",
+      "type",
+      "--unique"
+    ]
+  ]
+}

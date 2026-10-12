@@ -1,0 +1,12 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.service.OrderService#missing(java.lang.String)",
+      "--kind",
+      "callable",
+      "--exact",
+      "--unique"
+    ]
+  ]
+}

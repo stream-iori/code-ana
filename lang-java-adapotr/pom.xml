@@ -1,0 +1,16 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion><groupId>dev.codeana</groupId><artifactId>lang-java-adapotr</artifactId><version>0.1.0</version><packaging>pom</packaging>
+  <modules><module>analysis-core</module><module>framework-spring</module><module>framework-sofa</module><module>java-bridge</module><module>jvm-runner</module></modules>
+  <profiles><profile><id>native</id><modules><module>native-bridge</module></modules></profile></profiles>
+  <properties><maven.compiler.release>25</maven.compiler.release><java8.home>${user.home}/.sdkman/candidates/java/8.0.492-zulu</java8.home><project.build.sourceEncoding>UTF-8</project.build.sourceEncoding></properties>
+  <dependencyManagement><dependencies>
+    <dependency><groupId>org.ow2.asm</groupId><artifactId>asm</artifactId><version>9.8</version></dependency>
+    <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><version>5.10.2</version></dependency>
+  </dependencies></dependencyManagement>
+  <dependencies><dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency></dependencies>
+  <build><plugins>
+    <plugin><groupId>com.diffplug.spotless</groupId><artifactId>spotless-maven-plugin</artifactId><version>3.9.0</version><configuration><java><includes><include>src/main/java/dev/codeana/**/*.java</include><include>src/test/java/dev/codeana/**/*.java</include></includes><googleJavaFormat><version>1.30.0</version><style>AOSP</style></googleJavaFormat><removeUnusedImports/></java></configuration></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.1</version></plugin>
+    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.2.5</version><configuration><workingDirectory>${maven.multiModuleProjectDirectory}</workingDirectory><includes><include>**/*Test.java</include><include>**/*IT.java</include></includes></configuration></plugin>
+  </plugins></build>
+</project>

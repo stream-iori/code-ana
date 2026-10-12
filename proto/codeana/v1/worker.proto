@@ -25,6 +25,9 @@ message JavaContext {
  bool prerequisite = 20;
  repeated string dependency_modules = 21;
  repeated string source_roots = 22;
+ repeated string external_exclude_patterns = 23;
+ bool external_policy_configured = 24;
+ uint64 model_decode_bytes = 25;
 }
 message JavaConfig {
  string java_home = 1; string toolchain_digest = 2; string bridge = 3;

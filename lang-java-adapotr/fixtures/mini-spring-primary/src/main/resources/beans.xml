@@ -1,0 +1,7 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="xmlAnnotated" class="p.XmlAnnotated"/>
+  <bean id="xmlOther" class="p.XmlOther"/>
+  <bean id="xmlConsumer" class="p.Consumer">
+    <property name="api" ref="ordinary"/>
+  </bean>
+</beans>

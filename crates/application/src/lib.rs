@@ -4,10 +4,14 @@ mod history;
 mod java;
 pub mod maven_inputs;
 mod output;
+mod timings;
 mod worker;
 use anyhow::{Context, Result, bail, ensure};
 use codeana_config::Capture;
-use codeana_contracts::{archive::FactArchive, terminal, v1 as p};
+use codeana_contracts::{
+    archive::{FactArchive, FactArchiveBuilder, SpooledAnalysis},
+    terminal, v1 as p,
+};
 use codeana_model::*;
 use codeana_storage::{AnnotationCommand, Store};
 use serde::{Deserialize, Serialize};
@@ -217,13 +221,24 @@ impl Engine {
             return Ok(id);
         }
         // Freeze project config and source bytes before queueing indexing work.
+        let mut capture_timings = if matches!(req.operation.as_str(), "index" | "snapshot") {
+            timings::IndexTimings::capture(&id)
+        } else {
+            None
+        };
         let capture = if matches!(req.operation.as_str(), "index" | "snapshot" | "search-text")
             && (req.target.is_empty() || req.target == "WORKTREE")
+            && (req.operation != "search-text"
+                || (req.revision.is_empty() && req.cursor.is_empty()))
         {
             Some(codeana_config::capture(&root, &req))
         } else {
             None
         };
+        if let Some(timings) = &mut capture_timings {
+            timings.phase("captured");
+        }
+        drop(capture_timings);
         let job = Arc::new(Job {
             _queue_permit: queue_permit,
             cancel: CancellationToken::new(),
@@ -344,7 +359,7 @@ impl Engine {
                         .await?
                 }
                 "snapshot" => self.snapshot(id, req, capture, &job.cancel).await?,
-                "search-text" if req.revision.is_empty() => {
+                "search-text" if req.revision.is_empty() && req.cursor.is_empty() => {
                     let c = capture.context("CAPTURE_REQUIRED")?;
                     let request = req.clone();
                     let engine = self.clone();
@@ -365,15 +380,19 @@ impl Engine {
                             producer: "rust-text-v1".into(),
                             created: now(),
                         });
-                        let output = codeana_query::run(&reader, &request, &|s| {
-                            ensure!(!cancellation.is_cancelled(), "CANCELLED");
-                            c.blobs
-                                .get(&s.hash)
-                                .context("CAPTURE_BLOB_MISSING")?
-                                .read(MAX_FRAME)
-                        })?;
-                        ensure!(!cancellation.is_cancelled(), "CANCELLED");
-                        engine.page(&request, &c.project, output, vec![])
+                        engine.text_page(
+                            &request,
+                            &reader,
+                            &|s| {
+                                ensure!(!cancellation.is_cancelled(), "CANCELLED");
+                                c.blobs
+                                    .get(&s.hash)
+                                    .context("CAPTURE_BLOB_MISSING")?
+                                    .read(MAX_FRAME)
+                            },
+                            vec![],
+                            &cancellation,
+                        )
                     })
                     .await??
                 }
@@ -403,6 +422,7 @@ impl Engine {
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
         let started = Instant::now();
+        let mut timings = timings::IndexTimings::start(id);
         codeana_config::require_java(&c)?;
         let prepared = if self.mock.is_none() {
             let captured = c.clone();
@@ -415,6 +435,9 @@ impl Engine {
         } else {
             None
         };
+        if let Some(timings) = &mut timings {
+            timings.phase("prepared");
+        }
         let expected = self.store.head(&c.target)?;
         if !req.expected_revision.is_empty() {
             ensure!(expected == req.expected_revision, "HEAD_CONFLICT");
@@ -440,6 +463,13 @@ impl Engine {
                 memory,
             ))
         });
+        // A warm worker is still idle after its previous Ack. For identical captures,
+        // leave it idle instead of opening a new analysis context we will never use.
+        let identical_capture = !expected.is_empty()
+            && !req.full
+            && c.effective.config.index.mode != "full"
+            && self.store.read(&expected)?.revision().manifest.id() == c.manifest.id();
+        let mut undiscovered_warm = false;
         let mut reused = None;
         if self.mock.is_none() && self.user.daemon.java_warm_workers.unwrap_or(true) {
             let idle = self.idle_java.lock().unwrap().take();
@@ -448,12 +478,14 @@ impl Engine {
                 && idle.key == *key
                 && idle.revision == expected
                 && idle.worker.alive().unwrap_or(false)
-                && idle
-                    .worker
-                    .rediscover(prepared, &c.manifest, cancel)
-                    .await
-                    .is_ok()
+                && (identical_capture
+                    || idle
+                        .worker
+                        .rediscover(prepared, &c.manifest, cancel)
+                        .await
+                        .is_ok())
             {
+                undiscovered_warm = identical_capture;
                 reused = Some(idle.worker);
             }
         }
@@ -498,12 +530,17 @@ impl Engine {
             &worker.context,
             derived::PROFILE,
         ));
+        if let Some(timings) = &mut timings {
+            timings.phase("worker_context");
+        }
         let mut full = req.full || c.effective.config.index.mode == "full" || expected.is_empty();
         let mut old = None;
+        let mut unchanged = false;
         if !expected.is_empty() {
             let store = self.store.clone();
             let baseline_id = expected.clone();
             let desired_profile = profile.clone();
+            let desired_manifest = c.manifest.id();
             let requested_full = full;
             let baseline_cancel = cancel.clone();
             let baseline_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
@@ -512,10 +549,11 @@ impl Engine {
                 .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
                 .transpose()?
                 .unwrap_or_default();
-            let (baseline_profile, baseline) =
-                tokio::task::spawn_blocking(move || -> Result<(String, Option<FactArchive>)> {
+            let (baseline_profile, baseline, same_inputs) = tokio::task::spawn_blocking(
+                move || -> Result<(String, Option<FactArchive>, bool)> {
                     let reader = store.read(&baseline_id)?;
                     let profile = reader.revision().profile.clone();
+                    let same_inputs = reader.revision().manifest.id() == desired_manifest;
                     let facts = if requested_full || profile != desired_profile {
                         None
                     } else {
@@ -533,15 +571,34 @@ impl Engine {
                             },
                         )?)
                     };
-                    Ok((profile, facts))
-                })
-                .await??;
+                    Ok((profile, facts, same_inputs))
+                },
+            )
+            .await??;
             if baseline_profile != profile {
                 full = true;
             }
+            unchanged = prepared.is_some() && !full && same_inputs;
             if !full {
                 old = baseline;
             }
+        }
+        if undiscovered_warm && !unchanged {
+            let previous_context = digest(&worker.context);
+            worker
+                .rediscover(
+                    prepared.as_ref().context("JAVA_REQUIRED")?,
+                    &c.manifest,
+                    cancel,
+                )
+                .await?;
+            ensure!(
+                digest(&worker.context) == previous_context,
+                "WARM_CONTEXT_CHANGED"
+            );
+        }
+        if let Some(timings) = &mut timings {
+            timings.phase("baseline_exported");
         }
         self.store.event(
             id,
@@ -555,10 +612,40 @@ impl Engine {
             ),
         )?;
         let analyzing = Instant::now();
-        let result = worker
-            .analyze(&c.manifest, &profile, &expected, old.as_ref(), full, cancel)
-            .await?;
+        let result = if unchanged {
+            // The captured manifest and semantic profile include adapter/toolchain identity.
+            // Keep baseline export validation/budgets and normal candidate validation/publication,
+            // but avoid sending unchanged facts through Java just to discover zero dirty owners.
+            if !undiscovered_warm {
+                worker.retire_unused().await?;
+            }
+            let prepared = prepared.as_ref().context("JAVA_REQUIRED")?;
+            let limits = codeana_contracts::java::OutputLimits::from_config(&prepared.config)?;
+            SpooledAnalysis {
+                header: AnalysisHeader {
+                    mode: "delta".into(),
+                    baseline: expected.clone(),
+                    manifest: c.manifest.id(),
+                    profile: profile.clone(),
+                    producer: worker.context.producer.clone(),
+                    replacements: vec![],
+                },
+                records: FactArchiveBuilder::new_in(
+                    limits.bytes,
+                    limits.facts,
+                    &prepared.disk_budget.root,
+                )?
+                .seal()?,
+            }
+        } else {
+            worker
+                .analyze(&c.manifest, &profile, &expected, old.as_ref(), full, cancel)
+                .await?
+        };
         let analyze_ms = analyzing.elapsed().as_millis() as u64;
+        if let Some(timings) = &mut timings {
+            timings.phase("analyzed");
+        }
         if let Some(prepared) = &prepared {
             prepared.verify()?;
         }
@@ -578,23 +665,26 @@ impl Engine {
         let staging_cancel = cancel.clone();
         let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
         let candidate = tokio::task::spawn_blocking(move || {
-            store.stage_archive_with_derivation(
-                revision,
-                &result.header,
-                &result.records,
-                &baseline_id,
-                || {
-                    ensure!(!staging_cancel.is_cancelled(), "CANCELLED");
-                    Ok(())
-                },
-                |path| {
-                    if let Some(budget) = &candidate_disk {
-                        budget.check_candidate(Some(path))?;
-                    }
-                    Ok(())
-                },
-                Some(&derived::Wiring),
-            )
+            let diagnostics = codeana_contracts::performance::Report::new("storage-detail");
+            diagnostics.capture.sync(|| {
+                store.stage_archive_with_derivation(
+                    revision,
+                    &result.header,
+                    &result.records,
+                    &baseline_id,
+                    || {
+                        ensure!(!staging_cancel.is_cancelled(), "CANCELLED");
+                        Ok(())
+                    },
+                    |path| {
+                        if let Some(budget) = &candidate_disk {
+                            budget.check_candidate(Some(path))?;
+                        }
+                        Ok(())
+                    },
+                    Some(&derived::Wiring),
+                )
+            })
         })
         .await??;
         let limits = prepared
@@ -609,6 +699,10 @@ impl Engine {
             limits.facts
         );
         let summary = candidate.summary.clone();
+        if let Some(timings) = &mut timings {
+            timings.phase("candidate_validated");
+            timings.storage(&summary.phase_ms);
+        }
         let evidence = summary.evidence.clone();
         if req.strict && !evidence.semantic {
             let mut t = TaskResult::success(Output {
@@ -628,18 +722,32 @@ impl Engine {
         let cancellation = cancel.clone();
         let publishing = Instant::now();
         let revision = tokio::task::spawn_blocking(move || -> Result<Revision> {
-            ensure!(!cancellation.is_cancelled(), "CANCELLED");
-            codeana_storage::test_fault(&store.home, "before_publish")?;
-            store.put_blob_files(&blobs)?;
-            ensure!(!cancellation.is_cancelled(), "CANCELLED");
-            store.publish_staged(candidate, &task_id)
+            let diagnostics = codeana_contracts::performance::Report::new("publish-detail");
+            diagnostics.capture.sync(|| {
+                ensure!(!cancellation.is_cancelled(), "CANCELLED");
+                codeana_storage::test_fault(&store.home, "before_publish")?;
+                store.put_blob_files(&blobs)?;
+                ensure!(!cancellation.is_cancelled(), "CANCELLED");
+                store.publish_staged(candidate, &task_id)
+            })
         })
         .await??;
         let publish_ms = publishing.elapsed().as_millis() as u64;
+        if let Some(timings) = &mut timings {
+            timings.phase("published");
+        }
         // Publication is durable; failure to acknowledge cannot turn it into a failed publication.
-        let ack = worker.ack(&revision.id).await.err().map(|e| e.to_string());
+        let ack = if unchanged {
+            None
+        } else {
+            worker.ack(&revision.id).await.err().map(|e| e.to_string())
+        };
         let worker_context = worker.context.clone();
-        if ack.is_none()
+        if let Some(timings) = &mut timings {
+            timings.phase("ack_finished");
+        }
+        if (!unchanged || undiscovered_warm)
+            && ack.is_none()
             && self.mock.is_none()
             && self.user.daemon.java_warm_workers.unwrap_or(true)
             && let Some(key) = pool_key
@@ -667,14 +775,14 @@ impl Engine {
             producer: revision.producer.clone(),
             evidence,
             records: vec![
-                json!({"revision":revision.id,"mode":result_mode,"facts":summary.fact_count,"manifest":revision.manifest.id(),"profile":revision.profile,"producer":revision.producer,"ack_warning":ack}),
+                json!({"revision":revision.id,"mode":result_mode,"facts":summary.fact_count,"manifest":revision.manifest.id(),"profile":revision.profile,"producer":revision.producer,"ack_warning":ack,"statistics":summary.statistics}),
             ],
             cursor: String::new(),
         });
         t.publication = "published".into();
         if c.effective.config.observability.mode != "off" {
             t.report = id.into();
-            let report_summary = json!({"facts":summary.fact_count,"files":revision.manifest.files.len(),"counts":summary.counts,"evidence":t.output.evidence,"profile":revision.profile,"capture_digest":c.effective.capture_digest,"timing":{"index_elapsed_ms":started.elapsed().as_millis() as u64,"analyze_ms":analyze_ms,"publish_ms":publish_ms},"diagnostics":{"total":summary.diagnostic_total,"groups":summary.diagnostic_groups,"groups_omitted":summary.diagnostic_groups_omitted,"sampled":summary.diagnostic_samples.len(),"omitted":summary.diagnostic_total.saturating_sub(summary.diagnostic_samples.len() as u64)}});
+            let report_summary = json!({"facts":summary.fact_count,"files":revision.manifest.files.len(),"counts":summary.counts,"evidence":t.output.evidence,"profile":revision.profile,"capture_digest":c.effective.capture_digest,"statistics":summary.statistics,"timing":{"index_elapsed_ms":started.elapsed().as_millis() as u64,"analyze_ms":analyze_ms,"publish_ms":publish_ms,"storage_phase_ms":summary.phase_ms},"diagnostics":{"total":summary.diagnostic_total,"rows":summary.diagnostic_rows,"sampled_occurrences":summary.diagnostic_sampled_occurrences,"omitted_rows":summary.diagnostic_rows.saturating_sub(summary.diagnostic_samples.len() as u64),"groups":summary.diagnostic_groups,"groups_omitted":summary.diagnostic_groups_omitted,"sampled":summary.diagnostic_samples.len(),"omitted":summary.diagnostic_total.saturating_sub(summary.diagnostic_sampled_occurrences)}});
             let full = matches!(
                 c.effective.config.observability.mode.as_str(),
                 "full" | "detailed"
@@ -743,9 +851,26 @@ impl Engine {
                     .as_ref()
                     .is_some_and(|l| l.enabled == Some(true));
                 let discovery = effective.config.discovery.mode == "explicit";
+                let library = java::installed_library().ok();
+                let backend = library.as_ref().map(|path| {
+                    if path.extension().is_some_and(|s| s == "jar") {
+                        "jvm"
+                    } else {
+                        "native"
+                    }
+                });
+                let bundle = library
+                    .as_ref()
+                    .and_then(|path| path.parent())
+                    .and_then(|root| std::fs::read(root.join("manifest.json")).ok())
+                    .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok());
+                let adapter = bundle
+                    .as_ref()
+                    .and_then(|value| value["adapter"].as_str())
+                    .unwrap_or("unavailable");
                 Output {
                     records: vec![
-                        json!({"generation":self.generation,"effective":effective,"modules":effective.config.modules.iter().map(|m|json!({"id":m.id,"language":m.language,"worlds":m.worlds})).collect::<Vec<_>>(),"capabilities":{"files_snapshot":"available","search_text":"available","java_index":if java&&discovery&&self.mock.is_some(){"mock_fixture_only"}else if java&&self.java_available(){"java8_native"}else{"unavailable"},"auto_discovery":if self.mock.is_none()&&self.java_available(){"java_metadata_only"}else{"unavailable"},"rust_source_analysis":"unavailable","diff":"existing_behavior"},"java_adapter":if self.mock.is_some(){"mock-fixture-v1"}else if self.java_available(){"javac-java8-v1"}else{"unavailable"},"worker_memory_enforcement":"process_group_rss_sample_100ms"}),
+                        json!({"generation":self.generation,"effective":effective,"modules":effective.config.modules.iter().map(|m|json!({"id":m.id,"language":m.language,"worlds":m.worlds})).collect::<Vec<_>>(),"capabilities":{"files_snapshot":"available","search_text":"available","java_index":if java&&discovery&&self.mock.is_some(){"mock_fixture_only"}else if java&&backend==Some("jvm"){"java8_jvm"}else if java&&backend==Some("native"){"java8_native"}else{"unavailable"},"auto_discovery":if self.mock.is_none()&&self.java_available(){"java_metadata_only"}else{"unavailable"},"rust_source_analysis":"unavailable","diff":"existing_behavior"},"java_adapter":if self.mock.is_some(){"mock-fixture-v1"}else{adapter},"java_backend":backend,"java_bundle":bundle,"worker_memory_enforcement":"process_group_rss_sample_100ms"}),
                     ],
                     evidence: Evidence::complete(),
                     ..Default::default()
@@ -983,6 +1108,21 @@ impl Engine {
                             inner: &reader,
                             cancel,
                         };
+                        if req.operation == "search-code" {
+                            return self.search_page(req, &project, &guarded, vec![], cancel);
+                        }
+                        if req.operation == "search-text" {
+                            return self.text_page(
+                                req,
+                                &guarded,
+                                &|s| {
+                                    ensure!(!cancel.is_cancelled(), "CANCELLED");
+                                    self.store.blob(&s.hash)
+                                },
+                                vec![],
+                                cancel,
+                            );
+                        }
                         let out = codeana_query::run(&guarded, req, &|s| {
                             ensure!(!cancel.is_cancelled(), "CANCELLED");
                             self.store.blob(&s.hash)
@@ -1006,6 +1146,9 @@ impl Engine {
                     inner: &reader,
                     cancel,
                 };
+                if req.operation == "search-code" {
+                    return self.search_page(req, &project, &guarded, vec![id], cancel);
+                }
                 let source = |s: &SourceUnit| -> Result<Vec<u8>> {
                     ensure!(!cancel.is_cancelled(), "CANCELLED");
                     if req.revision.is_empty() {
@@ -1022,6 +1165,9 @@ impl Engine {
                         self.store.blob(&s.hash)
                     }
                 };
+                if req.operation == "search-text" {
+                    return self.text_page(req, &guarded, &source, vec![id], cancel);
+                }
                 let out = codeana_query::run(&guarded, req, &source)?;
                 ensure!(!cancel.is_cancelled(), "CANCELLED");
                 return self.page(req, &project, out, vec![id]);
@@ -1032,9 +1178,12 @@ impl Engine {
     }
     fn render(&self, id: &str, req: &Request, result: &mut TaskResult) -> Result<()> {
         let bytes = output::render(req, result)?;
-        for chunk in bytes.chunks(16384) {
-            self.store.event(id, &Event::Output(chunk.to_vec()))?;
-        }
+        self.store.event_batch(
+            id,
+            bytes
+                .chunks(16384)
+                .map(|chunk| Event::Output(chunk.to_vec())),
+        )?;
         Ok(())
     }
     pub fn cancel(&self, id: &str) -> Result<()> {
@@ -1078,16 +1227,112 @@ struct CancelableReader<'a> {
     inner: &'a dyn FactReader,
     cancel: &'a CancellationToken,
 }
-impl FactReader for CancelableReader<'_> {
-    fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
+impl CancelableReader<'_> {
+    fn checked<T>(
+        &self,
+        read: impl FnOnce() -> std::result::Result<T, String>,
+    ) -> std::result::Result<T, String> {
         if self.cancel.is_cancelled() {
             return Err("CANCELLED".into());
         }
-        let facts = self.inner.select(filter)?;
+        let facts = read()?;
         if self.cancel.is_cancelled() {
             return Err("CANCELLED".into());
         }
         Ok(facts)
+    }
+}
+impl FactReader for CancelableReader<'_> {
+    fn annotation_meta_edges(
+        &self,
+        names: &[String],
+    ) -> std::result::Result<Vec<AnnotationMetaEdge>, String> {
+        self.checked(|| self.inner.annotation_meta_edges(names))
+    }
+    fn overview_groups(
+        &self,
+        filter: &FactFilter,
+        section: &str,
+        direction: &str,
+        relations: &[String],
+    ) -> std::result::Result<Vec<serde_json::Value>, String> {
+        self.checked(|| {
+            self.inner
+                .overview_groups(filter, section, direction, relations)
+        })
+    }
+    fn reverse_file_dependencies(
+        &self,
+        targets: &[FileKey],
+        source_world: Option<&str>,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<FileDependency>, String> {
+        self.checked(|| {
+            self.inner
+                .reverse_file_dependencies(targets, source_world, after, limit)
+        })
+    }
+    fn reverse_dependencies(
+        &self,
+        targets: &[String],
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        self.checked(|| {
+            self.inner
+                .reverse_dependencies(targets, filter, after, limit)
+        })
+    }
+    fn unresolved_consumers(
+        &self,
+        targets: &[String],
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        self.checked(|| {
+            self.inner
+                .unresolved_consumers(targets, filter, after, limit)
+        })
+    }
+
+    fn scan(
+        &self,
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        self.checked(|| self.inner.scan(filter, after, limit))
+    }
+    fn scan_symbols(
+        &self,
+        text: &str,
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        self.checked(|| self.inner.scan_symbols(text, filter, after, limit))
+    }
+    fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
+        self.checked(|| self.inner.select(filter))
+    }
+    fn count_by_kind(
+        &self,
+        filter: &FactFilter,
+    ) -> std::result::Result<BTreeMap<String, u64>, String> {
+        self.checked(|| self.inner.count_by_kind(filter))
+    }
+    fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
+        self.checked(|| self.inner.search_symbols(text))
+    }
+    fn search_symbols_filtered(
+        &self,
+        text: &str,
+        filter: &FactFilter,
+    ) -> std::result::Result<Vec<Fact>, String> {
+        self.checked(|| self.inner.search_symbols_filtered(text, filter))
     }
     fn manifest(&self) -> &Manifest {
         self.inner.manifest()
@@ -1137,4 +1382,171 @@ pub fn project_path(path: &Path) -> Result<PathBuf> {
         resolved.push(part);
     }
     Ok(resolved)
+}
+
+#[cfg(test)]
+mod reader_tests {
+    use super::*;
+    struct IndexedReader;
+    impl FactReader for IndexedReader {
+        fn reverse_file_dependencies(
+            &self,
+            targets: &[FileKey],
+            source_world: Option<&str>,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<FileDependency>, String> {
+            if targets
+                != [FileKey {
+                    world: "main".into(),
+                    path: "Target.java".into(),
+                }]
+                || source_world != Some("test")
+                || after != "last"
+                || limit != 512
+            {
+                return Err("FILE_DEPENDENCY_ARGUMENTS_LOST".into());
+            }
+            Ok(Vec::new())
+        }
+        fn reverse_dependencies(
+            &self,
+            targets: &[String],
+            _: &FactFilter,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<Fact>, String> {
+            if targets != ["target"] || after != "last" || limit != 512 {
+                return Err("DEPENDENCY_ARGUMENTS_LOST".into());
+            }
+            Ok(Vec::new())
+        }
+        fn unresolved_consumers(
+            &self,
+            targets: &[String],
+            _: &FactFilter,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<Fact>, String> {
+            if targets != ["missing()"] || after != "last" || limit != 512 {
+                return Err("DEPENDENCY_ARGUMENTS_LOST".into());
+            }
+            Ok(Vec::new())
+        }
+        fn scan_symbols(
+            &self,
+            _: &str,
+            _: &FactFilter,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<Fact>, String> {
+            if after != "last" || limit != 512 {
+                return Err("SCAN_ARGUMENTS_LOST".into());
+            }
+            Ok(Vec::new())
+        }
+        fn select(&self, _: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
+            Err("BODY_SCAN_NOT_ALLOWED".into())
+        }
+        fn count_by_kind(
+            &self,
+            _: &FactFilter,
+        ) -> std::result::Result<BTreeMap<String, u64>, String> {
+            Ok(BTreeMap::from([("declaration".into(), 100001)]))
+        }
+        fn search_symbols_filtered(
+            &self,
+            _: &str,
+            _: &FactFilter,
+        ) -> std::result::Result<Vec<Fact>, String> {
+            Ok(Vec::new())
+        }
+        fn manifest(&self) -> &Manifest {
+            panic!("not needed for aggregate transport")
+        }
+        fn revision(&self) -> &Revision {
+            panic!("not needed for aggregate transport")
+        }
+    }
+    #[test]
+    fn cancellation_wrapper_preserves_sql_aggregate_and_filtered_search() {
+        let cancel = CancellationToken::new();
+        let reader = CancelableReader {
+            inner: &IndexedReader,
+            cancel: &cancel,
+        };
+        let files = [FileKey {
+            world: "main".into(),
+            path: "Target.java".into(),
+        }];
+        assert!(
+            reader
+                .reverse_file_dependencies(&files, Some("test"), "last", 512)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            reader
+                .reverse_dependencies(&["target".into()], &FactFilter::default(), "last", 512)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            reader
+                .unresolved_consumers(&["missing()".into()], &FactFilter::default(), "last", 512)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            reader
+                .scan_symbols("same", &FactFilter::default(), "last", 512)
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            reader.count_by_kind(&FactFilter::default()).unwrap()["declaration"],
+            100001
+        );
+        assert!(
+            reader
+                .search_symbols_filtered("Api", &FactFilter::default())
+                .unwrap()
+                .is_empty()
+        );
+        cancel.cancel();
+        assert_eq!(
+            reader
+                .reverse_file_dependencies(&files, Some("test"), "last", 512)
+                .unwrap_err(),
+            "CANCELLED"
+        );
+        assert_eq!(
+            reader
+                .reverse_dependencies(&["target".into()], &FactFilter::default(), "last", 512)
+                .unwrap_err(),
+            "CANCELLED"
+        );
+        assert_eq!(
+            reader
+                .unresolved_consumers(&["missing()".into()], &FactFilter::default(), "last", 512)
+                .unwrap_err(),
+            "CANCELLED"
+        );
+        assert_eq!(
+            reader
+                .scan_symbols("same", &FactFilter::default(), "last", 512)
+                .unwrap_err(),
+            "CANCELLED"
+        );
+        assert_eq!(
+            reader.count_by_kind(&FactFilter::default()).unwrap_err(),
+            "CANCELLED"
+        );
+        assert_eq!(
+            reader
+                .search_symbols_filtered("Api", &FactFilter::default())
+                .unwrap_err(),
+            "CANCELLED"
+        );
+    }
 }

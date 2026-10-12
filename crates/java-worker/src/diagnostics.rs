@@ -39,9 +39,19 @@ impl ReplayEvidence {
             serde_json::to_vec_pretty(&replay)?,
         )?;
         let manifest_path = library.parent().unwrap().join("manifest.json");
-        std::fs::copy(&manifest_path, directory.join("native-manifest.json"))?;
         let manifest: Value = serde_json::from_slice(&std::fs::read(&manifest_path)?)?;
-        let bundle = library.parent().unwrap().parent().unwrap();
+        let jvm = manifest["backend"] == "jvm";
+        let manifest_name = if jvm {
+            "jvm-manifest.json"
+        } else {
+            "native-manifest.json"
+        };
+        std::fs::copy(&manifest_path, directory.join(manifest_name))?;
+        let bundle = if jvm {
+            library.parent().unwrap()
+        } else {
+            library.parent().unwrap().parent().unwrap()
+        };
         let runtime = directory.join("runtime");
         std::fs::create_dir(&runtime)?;
         for (relative, expected) in manifest["files"]
@@ -65,7 +75,11 @@ impl ReplayEvidence {
             );
             std::fs::copy(bundle.join(relative), target)?;
         }
-        std::fs::copy(&manifest_path, runtime.join("native/manifest.json"))?;
+        if jvm {
+            std::fs::copy(&manifest_path, runtime.join("manifest.json"))?;
+        } else {
+            std::fs::copy(&manifest_path, runtime.join("native/manifest.json"))?;
+        }
         std::fs::copy(
             std::env::current_exe()?,
             runtime.join("codeana-java-worker"),

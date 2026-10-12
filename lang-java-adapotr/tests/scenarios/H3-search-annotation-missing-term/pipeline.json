@@ -1,0 +1,8 @@
+{
+  "stages": [
+    [
+      "search-code",
+      "--by-annotation"
+    ]
+  ]
+}

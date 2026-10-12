@@ -50,13 +50,21 @@ impl task_service_server::TaskService for Service {
         r: Request<HandshakeRequest>,
     ) -> Result<Response<HandshakeReply>, Status> {
         self.0.touch();
-        if r.into_inner().protocol != 1 {
+        if r.into_inner().protocol != codeana_model::DAEMON_PROTOCOL_VERSION {
             return Err(Status::failed_precondition("UNSUPPORTED_PROTOCOL"));
         }
         Ok(Response::new(HandshakeReply {
-            protocol: 1,
+            protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
             capabilities: vec![
-                "task-v1".into(),
+                "task-v2".into(),
+                "text-search-options-v1".into(),
+                "overview-sections-v1".into(),
+                "reference-options-v1".into(),
+                "annotations-meta-v1".into(),
+                "runtime-implementations-v1".into(),
+                "relation-transitive-v1".into(),
+                "java-dispatch-v1".into(),
+                "java-analysis-world-v1".into(),
                 "fact-ir-v1".into(),
                 "immutable-revisions".into(),
                 if self.0.mock.is_some() {

@@ -1,0 +1,19 @@
+anatomist-text/v5
+code: PIPELINE_STAGE_FAILED
+category: pipeline
+exit: 5
+message: provide a search term or --name
+operation: pipeline
+inspect:
+  -:
+    -: anatomist
+    -: pipeline
+    -: --help
+stage: { operation=search-code | position=1 }
+cause: { category=argument | code=INVALID_ARGUMENT | exit=2 | message=provide a search term or --name | operation=search-code }
+  inspect:
+    -:
+      -: anatomist
+      -: operations
+      -: search-code
+end: anatomist-text/v5

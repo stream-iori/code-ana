@@ -1,0 +1,14 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=5 | status=failed }
+  error: { code=PIPELINE_STAGE_FAILED | message=provide a search term or --name }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: {}
+results: []
+page: { emitted=0 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages: []
+  semantic: { coverage=unknown }
+    limitations: []
+next: []
+end: anatomist-text/v5

@@ -1,0 +1,10 @@
+[index]
+java_version = 17
+vm_classpath = false
+
+[scan]
+scopes = ["MAIN"]
+
+[extensions.lombok]
+mode = "off"
+strict = false

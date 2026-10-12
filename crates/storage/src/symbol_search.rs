@@ -18,6 +18,26 @@ pub(crate) fn prepare(db: &Connection) -> Result<()> {
 }
 
 pub(crate) fn select(db: &Connection, text: &str) -> Result<Vec<Fact>> {
+    select_scoped(db, text, "1=1", Vec::new())
+}
+pub(crate) fn select_scoped(
+    db: &Connection,
+    text: &str,
+    scope: &str,
+    scope_values: Vec<String>,
+) -> Result<Vec<Fact>> {
+    let output = scan_scoped(db, text, scope, scope_values, "", MAX_FACTS + 1)?;
+    ensure!(output.len() <= MAX_FACTS, "QUERY_WORK_BUDGET");
+    Ok(output)
+}
+pub(crate) fn scan_scoped(
+    db: &Connection,
+    text: &str,
+    scope: &str,
+    scope_values: Vec<String>,
+    after: &str,
+    limit: usize,
+) -> Result<Vec<Fact>> {
     let indexed: bool = db.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='symbol_names' AND type='table')",
         [],
@@ -26,26 +46,33 @@ pub(crate) fn select(db: &Connection, text: &str) -> Result<Vec<Fact>> {
     // Old read-only revisions and short/NUL selectors keep exact substring
     // behavior through SQL. FTS candidates are still checked with instr().
     let trigram = indexed && text.chars().count() >= 3 && !text.contains('\0');
-    let predicate = "kind IN ('declaration','external_symbol') AND (instr(name,?1)>0 OR instr(COALESCE(json_extract(body,'$.signature'),''),?1)>0)";
+    let entity = "(f.kind IN ('declaration','external_symbol') OR (f.kind='facet' AND COALESCE(json_extract(f.body,'$.signature'),'')<>'' AND f.relation IN ('java.bean','java.sofa','java.spring.xml','java.spring.mvc','java.spring.handler')))";
+    let predicate = format!(
+        "{entity} AND (instr(f.name,?)>0 OR instr(COALESCE(json_extract(f.body,'$.signature'),''),?)>0)"
+    );
+    let mut values = vec![text.to_owned(), text.to_owned()];
     let sql = if trigram {
         format!(
-            "SELECT body FROM facts WHERE rowid IN (SELECT rowid FROM symbol_names WHERE symbol_names MATCH ?2) AND {predicate} ORDER BY id LIMIT 100001"
+            "SELECT f.body FROM facts f WHERE {predicate} AND (f.kind='facet' OR f.rowid IN (SELECT rowid FROM symbol_names WHERE symbol_names MATCH ?)) AND ({scope}) AND f.id>? ORDER BY f.id LIMIT ?"
         )
     } else {
-        format!("SELECT body FROM facts WHERE {predicate} ORDER BY id LIMIT 100001")
+        format!(
+            "SELECT f.body FROM facts f WHERE {predicate} AND ({scope}) AND f.id>? ORDER BY f.id LIMIT ?"
+        )
     };
     let mut statement = db.prepare(&sql)?;
     let query = format!("\"{}\"", text.replace('"', "\"\""));
-    let mut rows = if trigram {
-        statement.query(params![text, query])?
-    } else {
-        statement.query([text])?
-    };
+    if trigram {
+        values.push(query);
+    }
+    values.extend(scope_values);
+    values.push(after.to_owned());
+    values.push(limit.to_string());
+    let mut rows = statement.query(rusqlite::params_from_iter(values))?;
     let mut output = Vec::new();
     while let Some(row) = rows.next()? {
         output.push(serde_json::from_str(&row.get::<_, String>(0)?)?);
     }
-    ensure!(output.len() <= MAX_FACTS, "QUERY_WORK_BUDGET");
     Ok(output)
 }
 
@@ -70,6 +97,67 @@ mod tests {
             ],
         )
         .unwrap();
+    }
+    #[test]
+    fn configuration_entities_remain_searchable_in_legacy_indexed_and_delta_revisions() {
+        let db = Connection::open_in_memory().unwrap();
+        schema::initialize(&db).unwrap();
+        for (id, relation) in [
+            ("bean", "java.bean"),
+            ("xml", "java.spring.xml"),
+            ("binding", "java.binding"),
+            ("syntax", "java.syntax"),
+        ] {
+            insert(
+                &db,
+                id,
+                FactKind::Facet,
+                "ConfiguredWidget",
+                "bean:ConfiguredWidget@beans.xml",
+            );
+            let body: String = db
+                .query_row("SELECT body FROM facts WHERE id=?", [id], |row| row.get(0))
+                .unwrap();
+            let mut fact: Fact = serde_json::from_str(&body).unwrap();
+            fact.relation = relation.into();
+            db.execute(
+                "UPDATE facts SET relation=?,body=? WHERE id=?",
+                params![relation, json(&fact).unwrap(), id],
+            )
+            .unwrap();
+        }
+        for indexed in [false, true] {
+            if indexed {
+                prepare(&db).unwrap();
+            }
+            for selector in [
+                "Widget",
+                "ConfiguredWidget",
+                "bean:ConfiguredWidget@beans.xml",
+                "Wi",
+            ] {
+                assert_eq!(
+                    select(&db, selector)
+                        .unwrap()
+                        .iter()
+                        .map(|f| f.id.as_str())
+                        .collect::<Vec<_>>(),
+                    ["bean", "xml"]
+                );
+            }
+            assert_eq!(
+                scan_scoped(&db, "Widget", "1=1", vec![], "bean", 1).unwrap()[0].id,
+                "xml"
+            );
+        }
+        db.execute("DELETE FROM facts WHERE id='bean'", []).unwrap();
+        assert_eq!(select(&db, "Widget").unwrap().len(), 1);
+        db.execute(
+            "UPDATE facts SET relation='java.binding' WHERE id='xml'",
+            [],
+        )
+        .unwrap();
+        assert!(select(&db, "Widget").unwrap().is_empty());
     }
     #[test]
     fn indexed_and_legacy_search_preserve_literal_text_and_delta_changes() {

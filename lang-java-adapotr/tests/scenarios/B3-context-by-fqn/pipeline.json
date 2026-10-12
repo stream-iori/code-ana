@@ -1,0 +1,14 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.service.OrderService",
+      "--kind",
+      "type",
+      "--unique"
+    ],
+    [
+      "resolve"
+    ]
+  ]
+}

@@ -7,7 +7,8 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const VERSION: u32 = 1;
-pub const WORKER_PROTOCOL_VERSION: u32 = 14;
+pub const WORKER_PROTOCOL_VERSION: u32 = 16;
+pub const DAEMON_PROTOCOL_VERSION: u32 = 2;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
 pub const MAX_FACTS: usize = 100_000;
@@ -138,6 +139,23 @@ pub struct Fact {
     pub declaration_resolved: bool,
     #[serde(default)]
     pub attributes: BTreeMap<String, serde_json::Value>,
+}
+impl Fact {
+    /// Public configuration nodes are entities even though their authoritative
+    /// payload is a language facet. Syntax/binding/type helper facets are not.
+    pub fn is_public_entity(&self) -> bool {
+        matches!(self.kind, FactKind::Declaration | FactKind::ExternalSymbol)
+            || (self.kind == FactKind::Facet
+                && !self.signature.is_empty()
+                && matches!(
+                    self.relation.as_str(),
+                    "java.bean"
+                        | "java.sofa"
+                        | "java.spring.xml"
+                        | "java.spring.mvc"
+                        | "java.spring.handler"
+                ))
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -606,7 +624,13 @@ pub struct Stage {
     pub direction: String,
     pub relation: String,
     pub unique: bool,
+    pub meta: bool,
+    pub instantiability: String,
+    pub transitive: bool,
+    pub algorithm: String,
+    pub analysis_world: String,
     pub depth: u32,
+    pub endpoint: String,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -622,6 +646,11 @@ pub struct Request {
     pub direction: String,
     pub relation: String,
     pub unique: bool,
+    pub meta: bool,
+    pub instantiability: String,
+    pub transitive: bool,
+    pub algorithm: String,
+    pub analysis_world: String,
     pub full: bool,
     pub strict: bool,
     pub execute: bool,
@@ -640,6 +669,19 @@ pub struct Request {
     pub toolchain: Option<String>,
     pub suggestions: Option<bool>,
     pub expected_revision: String,
+    pub signature: String,
+    pub package: String,
+    pub package_prefix: String,
+    pub paths: Vec<String>,
+    pub entity_kind: String,
+    pub annotation: String,
+    pub visibility: String,
+    pub synthetic: Option<bool>,
+    pub text_regex: bool,
+    pub text_ignore_case: bool,
+    pub text_context: u32,
+    pub overview_section: String,
+    pub overview_depth: u32,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Output {
@@ -719,12 +761,235 @@ pub struct FactFilter {
     pub parents: Vec<String>,
     pub parent: Option<String>,
     pub target: Option<String>,
+    pub targets: Vec<String>,
     pub relation: Option<String>,
     pub name: Option<String>,
     pub source: Option<String>,
     pub world: Option<String>,
+    pub module: Option<String>,
+    pub scope: Option<String>,
+    pub signature: Option<String>,
+    pub package: Option<String>,
+    pub package_prefix: Option<String>,
+    pub sources: Vec<String>,
+    pub entity_kind: Option<String>,
+    pub annotation: Option<String>,
+    pub visibility: Option<String>,
+    pub synthetic: Option<bool>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileKey {
+    pub world: String,
+    pub path: String,
+}
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FileDependency {
+    pub id: String,
+    pub source_world: String,
+    pub source_file: String,
+    pub target_world: String,
+    pub target_file: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AnnotationMetaEdge {
+    pub annotation: String,
+    pub meta_annotation: String,
+    pub attributes: BTreeMap<String, serde_json::Value>,
 }
 pub trait FactReader {
+    /// Frozen meta catalogue grouping, restricted to up to 500 annotation names.
+    /// SQL readers aggregate duplicate producer facts before applying the budget.
+    fn annotation_meta_edges(&self, names: &[String]) -> Result<Vec<AnnotationMetaEdge>, String> {
+        if names.is_empty() || names.len() > 500 {
+            return Err("ANNOTATION_META_KEY_BUDGET".into());
+        }
+        let mut pairs = BTreeMap::<(String, String), BTreeMap<String, serde_json::Value>>::new();
+        for fact in self.select(&FactFilter {
+            kinds: vec![FactKind::Facet],
+            relation: Some("java.annotation.meta".into()),
+            ..Default::default()
+        })? {
+            let annotation = fact
+                .attributes
+                .get("annotation")
+                .and_then(serde_json::Value::as_str);
+            let meta = fact
+                .attributes
+                .get("meta_annotation")
+                .and_then(serde_json::Value::as_str);
+            let (Some(annotation), Some(meta)) = (annotation, meta) else {
+                continue;
+            };
+            if !names.iter().any(|name| name == annotation) {
+                continue;
+            }
+            let attrs = pairs.entry((annotation.into(), meta.into())).or_default();
+            for key in [
+                "raw_name",
+                "language",
+                "mechanism",
+                "resolution",
+                "upstream_producer",
+            ] {
+                if let Some(value) = fact.attributes.get(key).and_then(serde_json::Value::as_str)
+                    && attrs
+                        .get(key)
+                        .and_then(serde_json::Value::as_str)
+                        .is_none_or(|old| value < old)
+                {
+                    attrs.insert(key.into(), serde_json::json!(value));
+                }
+            }
+        }
+        if pairs.len() > 10000 {
+            return Err("QUERY_WORK_BUDGET".into());
+        }
+        Ok(pairs
+            .into_iter()
+            .map(
+                |((annotation, meta_annotation), attributes)| AnnotationMetaEdge {
+                    annotation,
+                    meta_annotation,
+                    attributes,
+                },
+            )
+            .collect())
+    }
+    /// Group published projections without loading authoritative fact bodies.
+    fn overview_groups(
+        &self,
+        _filter: &FactFilter,
+        _section: &str,
+        _direction: &str,
+        _relations: &[String],
+    ) -> Result<Vec<serde_json::Value>, String> {
+        Err("OVERVIEW_PROJECTION_UNAVAILABLE".into())
+    }
+    /// Exact recorded file dependencies. Unsupported historical projections
+    /// are explicit so the adapter can choose a conservative full analysis.
+    fn reverse_file_dependencies(
+        &self,
+        _targets: &[FileKey],
+        _source_world: Option<&str>,
+        _after: &str,
+        _limit: usize,
+    ) -> Result<Vec<FileDependency>, String> {
+        Err("FILE_DEPENDENCIES_UNAVAILABLE".into())
+    }
+    /// Read only recorded dependency edges. The adapter supplies endpoint IDs;
+    /// storage neither infers dependencies nor chooses an invalidation closure.
+    fn reverse_dependencies(
+        &self,
+        targets: &[String],
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> Result<Vec<Fact>, String> {
+        if targets.len() > 500 || !(1..=1024).contains(&limit) {
+            return Err("INVALID_DEPENDENCY_BATCH".into());
+        }
+        if targets.is_empty() {
+            return Ok(Vec::new());
+        }
+        if !filter.targets.is_empty() || filter.target.is_some() {
+            return Err("DEPENDENCY_TARGETS_ALREADY_FILTERED".into());
+        }
+        let mut filter = filter.clone();
+        filter.targets = targets.to_vec();
+        if filter.kinds.is_empty() {
+            filter.kinds = vec![
+                FactKind::Dependency,
+                FactKind::Reference,
+                FactKind::Relation,
+                FactKind::CallTarget,
+            ];
+        }
+        self.scan(&filter, after, limit)
+    }
+
+    /// Exact upstream syntax targets, without deriving names from source text.
+    /// Production stores override this with an indexed, bounded read.
+    fn unresolved_consumers(
+        &self,
+        syntax_targets: &[String],
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> Result<Vec<Fact>, String> {
+        if syntax_targets.len() > 500 || !(1..=1024).contains(&limit) {
+            return Err("INVALID_DEPENDENCY_BATCH".into());
+        }
+        if syntax_targets.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut filter = filter.clone();
+        filter.kinds = vec![FactKind::CallSite];
+        let mut facts = self.select(&filter)?;
+        facts.retain(|fact| {
+            fact.id.as_str() > after
+                && fact.status == "unresolved"
+                && syntax_targets.contains(&fact.name)
+        });
+        facts.sort_by(|a, b| a.id.cmp(&b.id));
+        facts.truncate(limit);
+        Ok(facts)
+    }
+
+    /// Internal keyset cursor; unrelated to the public frozen result cursor.
+    /// Production stores override this with bounded SQL reads.
+    fn scan(&self, filter: &FactFilter, after: &str, limit: usize) -> Result<Vec<Fact>, String> {
+        if !(1..=1024).contains(&limit) {
+            return Err("INVALID_SCAN_BATCH".into());
+        }
+        let mut facts = self.select(filter)?;
+        facts.retain(|fact| fact.id.as_str() > after);
+        facts.sort_by(|a, b| a.id.cmp(&b.id));
+        facts.truncate(limit);
+        Ok(facts)
+    }
+    fn scan_symbols(
+        &self,
+        text: &str,
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> Result<Vec<Fact>, String> {
+        if !(1..=1024).contains(&limit) {
+            return Err("INVALID_SCAN_BATCH".into());
+        }
+        let mut facts = self.search_symbols_filtered(text, filter)?;
+        facts.retain(|fact| fact.id.as_str() > after);
+        facts.sort_by(|a, b| a.id.cmp(&b.id));
+        facts.truncate(limit);
+        Ok(facts)
+    }
+    fn search_symbols_filtered(
+        &self,
+        text: &str,
+        filter: &FactFilter,
+    ) -> Result<Vec<Fact>, String> {
+        let mut filter = filter.clone();
+        filter.kinds = vec![
+            FactKind::Declaration,
+            FactKind::ExternalSymbol,
+            FactKind::Facet,
+        ];
+        Ok(self
+            .select(&filter)?
+            .into_iter()
+            .filter(|f| {
+                f.is_public_entity() && (f.name.contains(text) || f.signature.contains(text))
+            })
+            .collect())
+    }
+    /// Aggregate counts without decoding authoritative fact bodies when supported.
+    fn count_by_kind(&self, filter: &FactFilter) -> Result<BTreeMap<String, u64>, String> {
+        let mut counts = BTreeMap::new();
+        for fact in self.select(filter)? {
+            *counts.entry(fact.kind.name().into()).or_default() += 1;
+        }
+        Ok(counts)
+    }
     /// Literal, case-sensitive substring search. Storage may use an index, but
     /// must preserve the same name/signature semantics and stable ID order.
     fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
@@ -995,5 +1260,53 @@ mod tests {
         a.reasons.push("missing".into());
         a.merge(&Evidence::complete());
         assert!(!a.semantic);
+    }
+    #[test]
+    fn evidence_bounded_empty_result_keeps_every_limit_and_disallows_absence() {
+        let mut result = Evidence::complete();
+        for limit in ["page", "depth", "records", "page"] {
+            result.merge(&Evidence {
+                enumeration: false,
+                semantic: true,
+                limits: vec![limit.into()],
+                ..Default::default()
+            });
+        }
+        assert!(!result.enumeration);
+        assert!(result.semantic);
+        assert_eq!(result.limits, ["depth", "page", "records"]);
+        result.merge(&Evidence::complete());
+        assert!(!result.enumeration);
+        let encoded = serde_json::to_value(&result).unwrap();
+        assert_eq!(encoded["enumeration"], false);
+        assert_eq!(
+            encoded["limits"],
+            serde_json::json!(["depth", "page", "records"])
+        );
+    }
+    #[test]
+    fn evidence_bounded_positive_and_diagnostic_results_keep_their_meaning() {
+        let bounded = Evidence {
+            enumeration: false,
+            semantic: true,
+            limits: vec!["page".into()],
+            ..Default::default()
+        };
+        let mut positive = Evidence::complete();
+        positive.merge(&bounded);
+        assert!(positive.semantic);
+        assert!(!positive.enumeration);
+        let mut diagnostic = Evidence {
+            enumeration: true,
+            semantic: false,
+            reasons: vec!["MISSING:unresolved".into()],
+            ..Default::default()
+        };
+        diagnostic.merge(&bounded);
+        diagnostic.merge(&Evidence::complete());
+        assert!(!diagnostic.semantic);
+        assert!(!diagnostic.enumeration);
+        assert_eq!(diagnostic.reasons, ["MISSING:unresolved"]);
+        assert_eq!(diagnostic.limits, ["page"]);
     }
 }

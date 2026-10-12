@@ -1,0 +1,15 @@
+{
+  "stages": [
+    [
+      "structure",
+      "--file",
+      "service/src/main/java/com/example/shop/service/OrderService.java",
+      "--visibility",
+      "public,protected",
+      "--kind",
+      "type,method,constructor",
+      "--limit",
+      "100"
+    ]
+  ]
+}

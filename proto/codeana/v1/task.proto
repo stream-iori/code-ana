@@ -10,7 +10,7 @@ service TaskService {
 }
 message HandshakeRequest { uint32 protocol = 1; }
 message HandshakeReply { uint32 protocol = 1; repeated string capabilities = 2; string generation = 3; bool mock = 4; }
-message Stage { string operation = 1; string selector = 2; string direction = 3; string relation = 4; bool unique = 5; uint32 depth = 6; }
+message Stage { string operation = 1; string selector = 2; string direction = 3; string relation = 4; bool unique = 5; uint32 depth = 6; string endpoint = 7; bool meta = 8; string instantiability = 9; bool transitive = 10; string algorithm = 11; string analysis_world = 12; }
 message TaskRequest {
  string request_id = 1; string project = 2; string operation = 3; string selector = 4; string revision = 5;
  string scope = 6; string world = 7; string module = 8; string direction = 9; string relation = 10;
@@ -19,6 +19,14 @@ message TaskRequest {
  repeated Stage stages = 21; uint32 max_records = 22; uint64 max_output_bytes = 23; uint32 depth = 24;
  uint64 deadline_seconds = 25; optional string source_version = 26; optional string toolchain = 27;
  optional bool suggestions = 28; string expected_revision = 29;
+ string signature = 30; string package = 31; string package_prefix = 32;
+ repeated string paths = 33; string entity_kind = 34; string annotation = 35;
+ string visibility = 36; optional bool synthetic = 37;
+ bool text_regex = 38; bool text_ignore_case = 39; uint32 text_context = 40;
+ string overview_section = 41; uint32 overview_depth = 42;
+ bool meta = 43;
+ string instantiability = 44; bool transitive = 45;
+ string algorithm = 46; string analysis_world = 47;
 }
 message TaskAccepted { string task_id = 1; }
 message TaskId { string task_id = 1; }

@@ -1,0 +1,21 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=5 | status=failed }
+  error: { category=pipeline | code=PIPELINE_INVALID_SPEC | exit=5 | message=--scope is a pipeline-level option or unsupported inside a stage | operation=pipeline }
+    cause: { category=argument | code=INVALID_ARGUMENT | exit=2 | message=--scope is a pipeline-level option or unsupported inside a stage | operation=resolve }
+      inspect:
+        -:
+          -: anatomist
+          -: operations
+          -: resolve
+    inspect:
+      -:
+        -: anatomist
+        -: pipeline
+        -: --help
+    stage: { operation=resolve | position=1 }
+identity: {}
+summary: {}
+results: []
+page: { negative_conclusion_safe=false | output_truncated=false | returned=0 }
+next: []
+end: anatomist-text/v5

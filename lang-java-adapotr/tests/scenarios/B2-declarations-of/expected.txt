@@ -1,0 +1,32 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: { outline_help=Copy one full id to source --subject <id> for the whole declaration, or resolve <id> for metadata. Keep index/ref/snapshot and --expect-revision; large source is paged. Groups are context, not declarations. }
+  result_context: { file=service/src/main/java/com/example/shop/service/OrderService.java | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | record=entity }
+results:
+  -: { record=outline_group }
+    context: { tree_depth=0 }
+    items:
+      -: { declaration=L18–69 public class OrderService | id=java-core::service::MAIN::com.example.shop.service.OrderService }
+  -: { record=outline_group }
+    context: { outline_parent=public class OrderService | tree_depth=1 }
+    items:
+      -: { declaration=L30–41 public createOrder(CreateOrderRequest): OrderResult | id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+      -: { declaration=L43–48 public createOrder(String, List<OrderItem>): OrderResult | id=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(java.lang.String,java.util.List) }
+      -: { declaration=L50–53 protected applyDiscount(double): double | id=java-core::service::MAIN::com.example.shop.service.OrderService#applyDiscount(double) }
+      -: { declaration=L55–59 public countExpensiveItems(List<OrderItem>): long | id=java-core::service::MAIN::com.example.shop.service.OrderService#countExpensiveItems(java.util.List) }
+      -: { declaration=L61–68 public cleanupTask(): Runnable | id=java-core::service::MAIN::com.example.shop.service.OrderService#cleanupTask() }
+  -: { record=outline_group }
+    context: { outline_parent=public class OrderService > public cleanupTask(): Runnable > final class $anon | tree_depth=3 }
+    items:
+      -: { declaration=L63–66 public run(): void | id=java-core::service::MAIN::com.example.shop.service.OrderService#cleanupTask()$anon@L62C16#run() }
+page: { emitted=7 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=false | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=structure | subject_id=service/src/main/java/com/example/shop/service/OrderService.java }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=7 | unit=items }
+  semantic: { coverage=complete }
+    limitations: []
+next: []
+end: anatomist-text/v5

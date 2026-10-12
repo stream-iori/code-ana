@@ -1,0 +1,8 @@
+<component-set><components><component>
+  <role>org.apache.maven.AbstractMavenLifecycleParticipant</role>
+  <role-hint>codeana-inputs</role-hint>
+  <implementation>dev.codeana.maven.MavenInputsWorker</implementation>
+  <requirements>
+    <requirement><role>org.apache.maven.project.ProjectDependenciesResolver</role><field-name>resolver</field-name></requirement>
+  </requirements>
+</component></components></component-set>

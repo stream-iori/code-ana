@@ -1,0 +1,30 @@
+anatomist-text/v5
+execution: { command=pipeline | exit_code=0 | status=completed }
+identity: { index_path=${INDEX} | index_revision_id=${REVISION} | semantic_profile_id=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa | source_root=${PROJECT}/fixtures/mini-spring-shop | source_snapshot_id=sha256:be96aa9f1d8b2b048b3be3288eac98be99ccb77d611f93d6d5f3964cf1d0bfc6 }
+summary: {}
+results:
+  -: { dispatch=resolved | end_selector=com.example.shop.service.OrderValidator#validate | id=trace:sha256:e60915178e393885a9b7e84da371244d6459b3f58cfd3192f4b85230a9dedf63 | origin=derived | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | record=trace | resolution_status=exact | start=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) }
+    derived_from:
+      -: { id=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) | record=entity }
+    hops:
+      -: { producer_id=java-core | relation=CALLS | source=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) }
+      -: { producer_id=java-core | relation=CALLS | source=java-core::service::MAIN::com.example.shop.service.OrderService#createOrder(com.example.shop.domain.dto.CreateOrderRequest) | target=java-core::service::MAIN::com.example.shop.service.OrderValidator#validate(com.example.shop.domain.dto.CreateOrderRequest) }
+page: { emitted=1 | negative_conclusion_safe=false | request_query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | view=details }
+  output: { byte_truncated=false | input_not_processed=true | work_limited=false }
+    computation_limits: []
+  pages:
+    -: { page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | query_id=query:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff | stage_id=trace | subject_id=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) }
+      enumeration: { complete=true | has_more=false | offset=0 | returned=1 | unit=items }
+  semantic: { coverage=incomplete }
+    limitations:
+      -: { code=HEURISTIC_OR_UNRESOLVED | stage_id=resolve | subject_id=request }
+        details: { resolution_status=ambiguous }
+      -: { code=UPSTREAM_INCOMPLETE | stage_id=trace | subject_id=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) }
+      -: { code=SEMANTIC_COVERAGE_INCOMPLETE | stage_id=trace | subject_id=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) }
+        details: { guidance=Read source for local behavior or structure for declaration context. Inspection does not repair missing navigation or prove absence. | inspection_samples_complete=false }
+          diagnostic_counts: { NAVIGATION_TARGET_UNRESOLVED=5 }
+      -: { code=DEPTH_BOUND_OR_UPSTREAM_INCOMPLETE | stage_id=trace | subject_id=java-core::api::MAIN::com.example.shop.controller.OrderController#create(com.example.shop.domain.dto.CreateOrderRequest) }
+next:
+  -: { kind=inspect | mutates=false | page_id=page:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee | purpose=diagnostic_inventory | reason=Missing index facts may hide relationships. Inspect the paged diagnostics before claiming absence. | repairs_navigation=false }
+    argv: $ anatomist doctor --index ${INDEX} --view details --section diagnostics --limit 20 --expect-revision ${REVISION} --diagnostic-scope MAIN
+end: anatomist-text/v5

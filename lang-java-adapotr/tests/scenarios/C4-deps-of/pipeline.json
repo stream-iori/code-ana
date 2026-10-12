@@ -1,0 +1,20 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.service.OrderService",
+      "--kind",
+      "type",
+      "--unique"
+    ],
+    [
+      "structure",
+      "--recursive"
+    ],
+    [
+      "references",
+      "--direction",
+      "outgoing"
+    ]
+  ]
+}

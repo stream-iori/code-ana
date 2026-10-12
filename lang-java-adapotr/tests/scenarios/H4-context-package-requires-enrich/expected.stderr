@@ -1,0 +1,19 @@
+anatomist-text/v5
+code: PIPELINE_STAGE_FAILED
+category: pipeline
+exit: 5
+message: structure requires --file, --subject or an entity pipeline
+operation: pipeline
+inspect:
+  -:
+    -: anatomist
+    -: pipeline
+    -: --help
+stage: { operation=structure | position=1 }
+cause: { category=argument | code=INVALID_ARGUMENT | exit=2 | message=structure requires --file, --subject or an entity pipeline | operation=structure }
+  inspect:
+    -:
+      -: anatomist
+      -: operations
+      -: structure
+end: anatomist-text/v5

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="literal%_bean" class="java.lang.String"/>
+  <bean id="literalXYZbean" class="java.lang.String"/>
+  <bean id="pagedBean01" class="java.lang.String"/>
+  <bean id="pagedBean02" class="java.lang.String"/>
+  <bean id="pagedBean03" class="java.lang.String"/>
+  <bean id="pagedBean04" class="java.lang.String"/>
+  <bean id="pagedBean05" class="java.lang.String"/>
+  <bean id="pagedBean06" class="java.lang.String"/>
+  <bean id="pagedBean07" class="java.lang.String"/>
+  <bean id="pagedBean08" class="java.lang.String"/>
+  <bean id="pagedBean09" class="java.lang.String"/>
+  <bean id="pagedBean10" class="java.lang.String"/>
+  <bean id="pagedBean11" class="java.lang.String"/>
+  <bean id="pagedBean12" class="java.lang.String"/>
+  <bean id="pagedBean13" class="java.lang.String"/>
+  <bean id="pagedBean14" class="java.lang.String"/>
+  <bean id="pagedBean15" class="java.lang.String"/>
+  <bean id="pagedBean16" class="java.lang.String"/>
+  <bean id="pagedBean17" class="java.lang.String"/>
+  <bean id="pagedBean18" class="java.lang.String"/>
+  <bean id="pagedBean19" class="java.lang.String"/>
+  <bean id="pagedBean20" class="java.lang.String"/>
+  <bean id="pagedBean21" class="java.lang.String"/>
+  <bean id="pagedBean22" class="java.lang.String"/>
+  <bean id="pagedBean23" class="java.lang.String"/>
+  <bean id="pagedBean24" class="java.lang.String"/>
+</beans>

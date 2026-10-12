@@ -1,0 +1,14 @@
+{
+  "stages": [
+    [
+      "resolve",
+      "com.example.shop.repository.InMemoryOrderRepository",
+      "--kind",
+      "type",
+      "--unique"
+    ],
+    [
+      "structure"
+    ]
+  ]
+}
