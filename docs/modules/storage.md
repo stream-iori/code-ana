@@ -6,6 +6,8 @@
 
 **先持久化不可变对象，再提交入口引用；只有 catalog 提交代表发布成功。**
 
+文件式源码 blob 捕获逐文件复制、sync_all、hash 校验后重命名，整批完成再同步 blobs 目录，随后才允许提交入口。成功复用已有 blob 的批次也同步目录，确保失败批次残留的重命名持久化；内存式 blob 写入保留同一复用屏障。批次失败不允许发布引用，未引用的部分文件可重试或由 GC 回收。
+
 状态：SQLite、原子发布、失败保旧版为原文要求；不可变 generation 是 D03 建议，P0 必须验证复制和磁盘成本。
 
 ## 1. 建议布局与数据表
@@ -131,6 +133,17 @@ IndexFileSwap / IndexRevision    -->  不可变 revision + catalog CAS
 采用其批量入库、定向索引、调用点与目标分离、出现次数保留、内容寻址和发布前校验逻辑。
 Rust 仍使用版本化 Fact IR 保存完整事实；专用查询字段使用 SQLite 索引。
 DDL 来源为 `crates/storage/src/schema.sql` 与 `query-indexes.sql`；旧索引仅在私有候选升级。
+候选 schema 4 保留 source_units 和 declaration_projection，并增加 file_dependencies。事实正文仍为权威；声明投影通过 INSERT/UPDATE/DELETE 触发器与 owner 替换在同一事务更新。文件依赖按记录的内部关系端点及原始 provider/注解名称重建，来源为冻结 Anatomist DataWriter 的依赖 joins；不从源码推断。候选完成派生后在同一事务刷新，保存两端 world/path，去除自文件依赖并合并重复出现；原始事实保留全部出现次数。反向读取每批最多 500 个文件键、1024 行，ID keyset 续读。历史库不原地升级，缺此投影返回 FILE_DEPENDENCIES_UNAVAILABLE，由 Java 决定保守回退。导入、派生及完整性校验后，发布前逐索引 ANALYZE；每个索引前后检查取消，I/O、磁盘满和损坏错误终止发布，普通统计错误记入警告。
+冻结查询结果放在 pages/<page-id>.db，catalog 仅保存结果头、总数、参数身份和 revision 引用。SQLite 页记录按 sequence 索引读取；私有 spool 在失败/取消时释放，崩溃遗留由 recover 清理，过期页及孤儿页库由 GC 回收。
 全量先流式入库，再建立查询索引并派生；增量复制现有索引，重复准备不重建。
 发布目录、历史读者和失败保旧版继续使用本项目已有的不可变 revision 契约。
 冻结参考 JAR 的模型解码上限与存储设计迁移分开记录，不能据此跳过存储验证。
+
+
+## 全量批量构建与性能计时（2026-10-11）
+
+全量候选是新库：事实初始写入时暂停声明投影触发器，并延后 owner/source 及声明选择索引；归档全部校验、入库后批量生成声明投影、恢复全部索引和触发器，然后准备查询/FTS，随后才允许 Wiring 派生。派生新增声明仍由触发器维护。增量备份库继续使用原触发器和 owner 替换路径。表结构与 `user_version=4` 不变。
+
+CAF1 的任务自有归档由 builder 生成规范 JSON。存储的记录迭代器仍解析 Fact、检查帧预算/尾部/摘要，并执行 FactValidator；SQL body 复用同一记录的 JSON，省去重新编码。owner 键缓存限制为 1024 项且计入字符串与保守对象开销的容量不超过 1 MiB。磁盘身份去重对新 ID 先执行 INSERT OR IGNORE，仅重复时读取首次摘要/偏移；冲突证据和批次提交语义保留。
+
+任务报告新增 `summary.timing.storage_phase_ms`：候选准备/备份、归档校验与入库、投影/查询索引/FTS、Wiring、文件依赖与提交、全图校验和摘要、完整性检查、统计。计时不是 Fact IR；已发布事实不包含性能字段。完整图与性能验收状态见 [单轮优化计划](../../todo/chains/performance.md)。

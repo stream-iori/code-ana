@@ -8,7 +8,7 @@
 
 **先冻结“一个事实属于谁、对应哪个输入、怎样证明交付完成”，再实现传输和表结构。**
 
-状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 1；worker 协议 14，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型 javac-model-v50、编译器 batch 2、analysis request/result 8、C ABI 2。Java 8 字节码与真实 native 链路已验证；最新变更的完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
+状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 2；worker 协议 16，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型 javac-model-v50、编译器 batch 2、analysis request/result 8、C ABI 2。Java 8 桥字节码与显式 JVM 最小链路已验证；本次 native 尚未构建，完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
 
 ## 1. 身份
 
@@ -481,3 +481,9 @@ Model 7 归档的类型图在打开时逐图完整验证；任务内按原归档
 
 
 迁入 Anatomist 核心后的 XML 边界以 `docs/java-anatomist-migration.md` 为准：原始资源分析未提供的 binary-only 工厂产物和继承成员不补造声明。资源阶段的 external_symbol 使用独立身份、context owner、无 source/span、source_available=false、origin=framework_model、status=possible，declaration_resolved/evidence_complete=false；保留上游 resolutionStatus、candidateCount 和 producer。javac 已观测的外部声明保持自己的身份和证据。旧 Java 适配器的额外 ASM XML 推断记录不作为新核心的已实现能力。
+
+此次桥投影以递归排序对象键的 JSON 计算事实摘要，数组顺序及重复次数保留。声明的 constant_model 保存原模型 scalar kind，浮点数保存十进制文本与原始 IEEE bits，Character 保存 UTF-16 code unit；constant_value 继续展示有限数值/普通字符，非有限值展示文本、孤立 surrogate 展示整数。观测到的外部方法/字段 binary_member v1 按原始 owner/name/JVM descriptor 精确匹配，保留泛型签名、访问标志、异常、参数、注解及 TYPE_USE/参数注解；不据此发布未观测成员。反射可能目标保留 REFLECTION 机制；同源码调用点先保存 EXTRACTED 的 javac 主绑定，再附加 INFERRED 目标，候选不能覆盖主绑定状态。
+
+### javac 解码资源准入
+
+`[resources.index].java_model_decode_bytes` 控制单个 javac 响应全部文件的保守分配累计估算，默认 512 MiB，可显式设为 64 KiB–2 GiB。它独立于编译器/宿主 heap、模型归档字节数和事实输出上限，不改变语言语义或语义指纹。Rust→worker 的 `JavaContext.model_decode_bytes` 为字段 25，worker protocol 16；0 表示使用默认值，越界在执行前拒绝。Java 同一分析会话的上下文预算须一致，禁止混装旧 worker 静默忽略该限制。

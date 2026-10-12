@@ -20,7 +20,7 @@ CLI / daemon → 捕获与调度 → Rust worker → JVM bridge
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：候选 schema 3 同事务维护 source_units / declaration_projection；owner 删除与 kind 变化回归通过 |
 | 行为 | 合法事实完整发布；冲突、截断或不完整输入不会成为可见 revision。 |
 | 调用链 | 固定 Fact IR/CAF1 → Rust worker validator/dedup → staged.rs prepared INSERT → 候选 facts/FTS/投影 → 完整校验 → catalog。 |
 | 开发前置 | 无；固定事实与 mock 可独立实施 |
@@ -36,12 +36,12 @@ CLI / daemon → 捕获与调度 → Rust worker → JVM bridge
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：真 JVM 最小 CLI 闭环通过；完整生命周期门禁未通过 |
 | 行为 | 真实 CLI 索引 Java fixture 后可查询发布声明与捕获源码。 |
 | 调用链 | CLI → daemon → Rust worker → 显式 JVM runner → bridge → CAF1 → candidate → revision → CLI structure/source。 |
 | 开发前置 | IDX-01；可先用 mock request/result 接 worker |
 | 联调前置 | JVM-03 |
-| 实施 | JVM-03 到位后接真实解析；request/result 8、protocol 14、baseline/cancel/ack 共用。JVM 独立 manifest/启动入口/摘要，不读取 native manifest；任务私有请求和描述符，日志 stderr。Java 按文件流出，框架目录/模型内存有界；JVM host+javac 合计既有进程树预算。 |
+| 实施 | JVM-03 到位后接真实解析；request/result 8、protocol 15、baseline/cancel/ack 共用。JVM 独立 manifest/启动入口/摘要，不读取 native manifest；任务私有请求和描述符，日志 stderr。Java 按文件流出，框架目录/模型内存有界；JVM host+javac 合计既有进程树预算。 |
 | RED / 基线 | 先写真 CLI Hello 索引→查询失败用例；补取消/超时/JVM 或 javac 崩溃/OOM、缺 End、错版本/旧产物、多项目同名、多会话/取消后重跑、发布前后 ack 窗口。已有测试复用，新增或变化行为才 RED。 |
 | 完成条件 | JVM 入口不触发 native-image；真实解析事实完整校验后发布，结果与 byte span 独立核对。进程组/上下文释放，消费者结束才释放归档；发布前失败 head 不变，提交后 ack 失败不倒退；未 ack 不提交会话基线。 |
 | 追溯 | A9/A10/A11；旧 01 JVM 入口；S6 归档接管；T3/P3；最小 V3 |
@@ -52,7 +52,7 @@ CLI / daemon → 捕获与调度 → Rust worker → JVM bridge
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：diagnostic count 按发生次数聚合，新增 RED/GREEN 通过 |
 | 行为 | 区分事实条数、诊断次数和样本省略，可定位 JVM 能力与失败原因。 |
 | 调用链 | IndexDiagnostic/AnalysisCoverage/Retention → bridge → 存储计数/投影 → report/doctor/发布判定。 |
 | 开发前置 | IDX-01 |
@@ -68,7 +68,7 @@ CLI / daemon → 捕获与调度 → Rust worker → JVM bridge
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：full/delta 私有候选逐索引 ANALYZE；索引数/耗时/警告进入发布报告；历史库摘要不变回归通过。查询成本与容量门禁未结束 |
 | 行为 | 发布库只读；候选查询计划和容量有可重复证据。 |
 | 调用链 | 导入 → 派生/建索引 → ANALYZE → 完整校验 → 发布；成本采样 → 单项优化。 |
 | 开发前置 | IDX-01 |
@@ -109,3 +109,5 @@ CLI / daemon → 捕获与调度 → Rust worker → JVM bridge
 | 候选耐久性调整 | 实测写成本且所有发布崩溃窗口安全后才评估；已发布数据绝不 OFF |
 
 本机节约磁盘统一见 [公共执行约定](../contracts.md#6-本机磁盘执行约定)。
+
+2026-10-10：`diagnostic-retention-formal-01` 验证 50004 诊断 occurrence、100 条有界样例、按 A.java/B.java 保留 50003/1，并在 Store 重开后计数。已纳入正式 Rust storage 测试，对应原 NavigationDiagnosticsTest 的 retention 预期。`java-doctor-cli-02` 验证显式 JVM 时显示 java8_jvm、实际 bundle adapter 和版本；不是旧 java8_native 标签。

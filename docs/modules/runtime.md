@@ -4,6 +4,8 @@
 
 当前 daemon 把提交时捕获、定向查询、Git 读取和发布存储工作放入阻塞线程；每项目一项分析、同目标写入串行，只读查询可并发。取消在查询选择器和源码读取边界生效；单条正在执行的 SQLite 语句、硬 RSS 隔离与严格项目间公平性仍需规模化验证。
 
+文本搜索仅在工作区首页捕获当前配置和源码。显式 revision/snapshot 搜索读取冻结版本的源码 blobs；续页读取冻结分页对象，不重新捕获当前工作区。当前配置损坏或源码变化不得影响历史结果。
+
 **CLI 只表达任务；daemon 管执行、版本句柄和资源。**
 
 状态：D01 已确认每用户一个 daemon；D02 已确定 HTTP/2 + protobuf 方向，建议 gRPC；升级协调、具体协议库和 D12 阈值待验证。协议见 [contracts](../contracts.md)。
@@ -28,6 +30,7 @@
 CLI 持有可复用的 gRPC channel；daemon 的连接生命周期与任务生命周期独立。RPC 定义、protobuf presence、业务状态与传输状态分离详见 contracts 第 5 节。
 
 Java 分析进程内部为 `Rust host -> C ABI/FFI -> GraalVM Java shared library`；daemon 不装载该库。host 负责 isolate/线程和缓冲生命周期，supervisor 负责进程级取消兜底与崩溃恢复。host 与库的内存共同计入一个进程 RSS。D17 候选增加目标 JDK 编译器子进程：host/原生库拥有内部协议与上下文，supervisor 登记进程启动身份、归属及退出状态；顶层 worker 退出时必须回收所属子进程。整个进程树计入该 worker 预算，不能把 -Xmx 当 RSS 上限。
+此次迁移先使用显式 JVM：`Rust host -> JVM runner -> 目标 JDK javac`。JVM runner 单独验证 bundle manifest 与各文件 SHA；任务请求、结果及取消标记放在私有目录，Java 消费同一捕获输入/bridge。JVM host 与 javac 的 RSS 均计入 worker 进程树；JVM 堆上限复用 java_native_heap_bytes。后端显式选择，无 JVM/native 自动回退。显式 JVM 的宿主 JDK 25 由 daemon 与 worker 共用路径选择，bin/lib/release 内容摘要进入语义身份，发布前重新验证；路径搬迁不改变内容身份，宿主字节变化阻止旧基线复用。
 
 用户配置管理 daemon 生命周期、worker 总资源上限和本机工具链别名；项目配置管理语言/module/world。首版用户配置经 drain/restart 切换 generation，任务固定生效值；项目无权改变单用户 daemon 的服务设置。具体字段与优先级见 [configuration](../configuration.md)。
 
@@ -99,3 +102,5 @@ Java P0/P1 先每个 worker 单个编译器子进程、串行上下文；P2 才�
 | gRPC 流断开 / deadline / 重订阅 | 事件不重复输出，提交结果不丢，写任务不自动重复执行 |
 
 指标和数值门槛由 [delivery](../delivery.md) 的 P0 基准计划冻结。
+
+JVM 回放阶段使用 `jvm_started/jvm_finished`，独立探针超时为 `JVM_TIMEOUT`；native 继续使用自己的阶段和超时代码。两者的 heap 配置仍使用现有 java_native_heap_bytes 字段。

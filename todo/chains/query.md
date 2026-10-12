@@ -18,7 +18,7 @@ CLI / pipeline 类型化参数
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：SQL 范围下推及精确组合筛选；旧 revision fallback 已接入 |
 | 行为 | search-code/resolve 支持精确 ID、FQN、签名及组合筛选，在有效范围内判定唯一性。 |
 | 调用链 | CLI/proto → 类型化 selector/filter → FactReader SQL → 内部声明/observed external → 结果。 |
 | 开发前置 | 无；手工固定事实和私有 SQLite 可独立开发 |
@@ -34,7 +34,7 @@ CLI / pipeline 类型化参数
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：复用结构/冻结源码链路，完整 fixture 门禁未通过 |
 | 行为 | structure/source 展示完整声明、调用现场、所属声明和行范围，固定 revision 读取。 |
 | 调用链 | selector → 父子/声明 projection → source/site/owner → 捕获 blob → UTF-8 范围/行/注释。 |
 | 开发前置 | QRY-01 |
@@ -50,7 +50,7 @@ CLI / pipeline 类型化参数
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：跨模块 incoming、批量多跳 calls、起点到终点 trace 已实现 |
 | 行为 | calls/call-sites/references/type-relations/callable-relations/runtime-implementations/dispatch/trace 按方向和预算给出带证据结果。 |
 | 调用链 | 主体 → 关系 projection → 操作/方向过滤 → 分层批量邻接 → 类型/调用遍历 → occurrence/candidate/path。 |
 | 开发前置 | QRY-01 |
@@ -66,7 +66,7 @@ CLI / pipeline 类型化参数
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：SQL GROUP BY overview、范围下推搜索通过；search-code 100003 条 keyset 完整枚举通过 |
 | 行为 | 大库 overview 不受 10 万条正文限制，范围内稀疏命中不被提前预算截掉。 |
 | 调用链 | CLI overview/search-text → 范围 → SQL 聚合/FTS + literal 复核 → 计数/文本窗口。 |
 | 开发前置 | 无；手工事实和私有 SQLite 可独立开发 |
@@ -82,7 +82,7 @@ CLI / pipeline 类型化参数
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：显式关系端点 pipeline、SQLite 冻结分页已接入；search-code 分批写 spool；其他操作初始计算仍有工作预算 |
 | 行为 | 关系端点可继续查询；空结果区分确认不存在和无法确认，续页固定 revision 与参数。 |
 | 调用链 | CLI/proto pipeline → 类型检查/endpoint → 查询 → coverage 合并 → 排序/游标 → 分批冻结结果。 |
 | 开发前置 | QRY-01、QRY-02、QRY-03 |
@@ -102,3 +102,28 @@ CLI / pipeline 类型化参数
 | 索引 | 只为真实查询新增；记录计划/读取/解码/批次/维护成本，统计治理归 IDX-04 |
 | 集成 | [ACC-02](../acceptance.md#acc-02) 真实 JVM fixture；[ACC-03](../acceptance.md#acc-03) 冻结 iopengw |
 | 框架 | 元注解/属性/路径、XML/config、观察到的外部实体见 [FW-03](frameworks.md#fw-03) |
+
+2026-10-10 继续盘点：既有 `jvm-product-10` 52/52 通过不覆盖所有计划查询参数。真实 CLI `java-text-options-cli-red-01.log` 复现 `--regex`（以及尚未声明的 ignore-case/context）被拒绝，QRY-04 仍未完成。冻结 SearchTextCommand 的参数范围为 context 0..100，path 仅收窄配置输入；Rust 将保留自身捕获字节/固定分页契约，并补 regex/case/context/路径联动。该缺口尚未修复，iopengw 基线发布/模型取证不作为完整 ACC-02/ACC-03 放行。
+
+### 2026-10-10：剩余计划继续实施
+
+| 能力 | 最新证据 | 尚未关闭的门禁 |
+|---|---|---|
+| 文本查询 | 正则、Unicode 忽略大小写、路径过滤、上下文（最多 100 行）；结果按 512 条/约 1 MiB 写入冻结页库。`text-cli-green-02` 与 Rust CLI 16 项通过；100003 个命中完整枚举且上下文有界。 | FTS5 trigram 加速、旧库与最终性能。 |
+| overview | `--section modules/packages/dependencies`、依赖 in/out/both 与关系过滤、`--package-depth` 折叠；SQL COUNT/GROUP BY 不加载正文。`overview-sections-green-03`、`overview-scale-green-01`、`overview-dependencies-green-01` 通过。 | 冻结项目 Q8、聚合分组上限与所有别名/范围的完整验收。 |
+| 公共握手 | `text-search-options-v1`、`overview-sections-v1`；旧 daemon 缺能力时拒绝，不静默忽略新增 protobuf 字段。 | 完整最终产物回归。 |
+
+以上回执位于 `target/implementation-evidence/`，均不是完整 QRY 或 JVM 放行。
+
+FTS 文本候选已接入：`text-trigram-green-03` 验证中文/引号、精确字面量、无效编码保留、已验证缓存避免重读、损坏重建、短词/预算扫描和取消；`text-trigram-cli-01` 17/17。缓存只是候选筛选，最终匹配/上下文仍来自固定捕获字节，正则/忽略大小写继续扫描。最终性能及超出缓存预算的大项目加速仍待验收。
+
+2026-10-10：overview dependencies 的关系组按冻结 `ReferenceRelations` 与共享 `FactProjection` 映射：type/reads/writes/config/all/calls，以及原关系名和 Fact IR 名；去重、空项与未知组显式拒绝。all 保持原定义，不含 calls/继承/contains。`overview-relation-red-01` 证明旧实现接受未知组；`overview-relation-green-01` 查询组件全套通过，`rust-workspace-15` 与 `rust-clippy-16` 通过。完整 CLI / 冻结项目独立分组差分仍待补验。
+
+`overview-relations-cli-green-01` 在固定事实经 CLI→daemon→SQLite 的实际链路验证 type/config/all、原关系名、重复 occurrence 计数、calls 独立以及每页 1 条的完整分页；未知组显式失败。fixture 在私有目录生成，不改正在跑的测试输入。该局部通过不替代冻结 iopengw 的 overview 对齐。
+
+references 参数缺口已取证：旧实现忽略 direction/relation，`references-direction-red-01` 的 outgoing 应有两条而实际为零。修复后入/出方向、type/reads/writes/config/all 及原始关系过滤下推到定向端口，保留 occurrence 次数，incoming 不套调用者 module 限制。CLI 默认保持历史 incoming，其他命令仍 out；新选项/含 references 的 pipeline 检查 `reference-options-v1`。`references-direction-green-02` 为查询组件 14/14，`reference-options-cli-green-01` 实际 CLI 验证逐页出向 type、默认入向 reads、配置引用、未知组失败和 references→resolve(target)；`rust-workspace-16`、`rust-clippy-17` 通过。修复后的最新 release 二进制已冻结在 `jvm-next-root-04`，完整 JVM CLI 复验已排队。
+
+
+2026-10-10 继续补 QRY-03：`runtime-candidates-red-01` 复现 runtime-implementations 返回继承边并被种子 module 过滤；新实现返回 entity、穿过抽象层级并保留每跳 proof，支持可实例化筛选和显式传递层级关系。`runtime-candidates-green-02` / `rust-workspace-22` 通过；`jvm-runtime-query-focused-01` 的真实 CLI 1/1 通过，覆盖全部分页、source pipeline、full/delta 和重启后的旧版本读取。
+
+`dispatch-receiver-red-01` 复现接收者已限定到子类型时仍返回抽象/其他类型的方法。派发规则按冻结 JavaDispatchService 移入 Rust 定向查询，补 exact/CHA 与独立 analysis-world 参数。`dispatch-receiver-green-04` 查询组件 22/22；其中 1200 实现宽图核对全部候选和批读上界，`rust-clippy-24` 通过。真实 JVM 8 项局部复验 `jvm-query-focused-03` 执行中；不能用组件通过代替完整 fixture / 冻结项目 / native 放行。

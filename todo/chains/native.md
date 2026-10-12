@@ -18,7 +18,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 已验证：完整JVM汇总02及native汇总01通过；共享库、实际C/Rust布局、6项生命周期与发行包04全部4项门禁通过 |
 | 行为 | 封装同一 JVM 已验证解析核心，产物可独立加载并拒绝混装。 |
 | 调用链 | java-bridge → native-bridge → GraalVM JDK 25 shared library → Rust worker C ABI。 |
 | 开发前置 | ACC-03 |
@@ -34,7 +34,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 已验证：native完整汇总01的20份回执/5339条摘要证明通过；probe17/17、product58/58、160模型、公开查询198+21+19+7、只读审计及已提交历史通过；冻结项目全部2,447,690条事实与JVM相等。发行包04通过，崩溃夹具08实际SIGSEGV及旧索引/daemon/worker隔离通过；最终覆盖与性能仍由ACC-04关闭 |
 | 行为 | 相同输入下 native/JVM 模型、事实和公开查询等价，原生生命周期通过。 |
 | 调用链 | 真 CLI → daemon → Rust worker → C ABI/.dylib → CAF1 → Rust 发布/查询 → 冻结 iopengw。 |
 | 开发前置 | NAT-01 |
@@ -45,3 +45,5 @@
 | 追溯 | 旧 P4/T4/V4；03 native 专项与全链路 |
 
 进入条件和最终回执见 [统一验收](../acceptance.md)。本链不重新设计解析语义，不绕过 JVM 未完成项。
+
+2026-10-10：native 构建入口已显式启用 Maven `-Pnative`；manifest 从共享 java-bridge 读取身份，并绑定 worker protocol、compiler bridge、Maven metadata worker 和共享库。Rust 与包装/验收脚本校验同一版本。`native-metadata-tests-01` 三项通过，仅验证元数据和混装拒绝；尚未构建/加载 native，不表示 NAT-01/02 通过。

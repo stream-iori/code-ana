@@ -16,7 +16,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：复制实际 FrameworkPlugins 并接入捕获 Lombok 配置 |
 | 行为 | 配置开关和原插件依赖生效，生成成员与调用证据符合冻结上游。 |
 | 调用链 | FrameworkPlugins → Spring→SOFA requires/ID/version → Lombok 模型与声明/调用证据注册。 |
 | 开发前置 | JVM-02 |
@@ -32,7 +32,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：依赖 XML 目录和条件重复 Bean 的 JVM 探针已通过；新增最终图 pass 后完整回归待结束 |
 | 行为 | 注解和 XML-only 工程产出完整框架事实，捕获目录变化不改变结果。 |
 | 调用链 | ProjectResourceDiscovery/OfflineXml → 原 analyzer → ProjectFactView → ExtensionExecution → 框架事实。 |
 | 开发前置 | FW-01、JVM-03 |
@@ -48,7 +48,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：复用框架查询；完整新参考差分未结束 |
 | 行为 | 可通过公开命令查询 Spring/SOFA、Bean/XML 结构、成员绑定、配置引用、注入和元注解路径。 |
 | 调用链 | 框架/annotation facts → Rust projection/derived.rs → search/structure/annotations/references/dispatch → 证据。 |
 | 开发前置 | QRY-01、QRY-03；固定事实先行 |
@@ -65,3 +65,15 @@
 - 内部目标与观察到的外部目标分别按范围查询，保留歧义和内部覆盖规则。
 
 完整上游 fixture 按 [公共测试清单](../contracts.md#4-测试来源与组织)对账。单纯存入 facet 或通过 Java 单测，不能代替 FW-03 的公开查询验收。
+
+### 2026-10-10：公开配置实体入口修复
+
+真实 CLI RED `config-entities-cli-red-01.log`：已有 `java.bean` 事实的 XML-only MAIN/TEST 工程，`resolve api --path app/resources/beans.xml` 返回 SYMBOL_NOT_FOUND。名称/签名与 structure 原先只接受 Declaration/ExternalSymbol；SQL 属性选择又仅查声明投影。
+
+修复保留配置节点原始 Facet，实体入口只接受 java.bean/java.sofa/java.spring.xml/java.spring.mvc/java.spring.handler；语法/绑定/类型辅助 facet 排除。旧只读版本走有范围约束的配置事实属性分支，不重写图，也不把配置节点计作 Java 声明。Rust 组件新增 legacy/FTS/delta、完整 keyset 分页和 module/world/scope/kind 选择回归。真实 CLI GREEN 及最终整套仍以回执为准。
+
+元注解 RED `meta-annotations-red-01.log` 暴露 Request 未支持 meta；公开 CLI `meta-annotations-jvm-green-02.log` 随后暴露 gRPC 未传 meta，返回直接注解而缺 via。补齐 protobuf TaskRequest 43/Stage 8、握手能力和 Rust 展开后，`meta-annotations-jvm-green-03.log` 验证真实 JVM 多路径、1 条/页全部续读、pipeline、来源位置、非法操作及旧 revision；不能以先前单测 GREEN 代替这项传输证据。新增 Rust 17 项查询回归验证重复 occurrence、多路径、防环、跨 producer pair 合并和 16 层耗尽披露。
+
+公开 XML structure 的正式回归 `jvm-public-query-focused-01` 2/3 通过、1 项失败；完整失败保留。独立 dump `config-structure-facts-01.json` 证明 property/constructor-arg 的 parent 指向 `framework_external` 占位对象，而非已发布 Bean，configuration edge 端点也同样失联。原因是上游资源分析器默认模块 `.` 的局部 ID 与捕获模块 app 不同。桥对同一封存 XML 文件中唯一已登记节点直接取该节点身份；多 occurrence 和跨文件目标继续保留原歧义/范围判断。新增 Java 原子投影回归；最新 JVM 组件/CLI 门禁待完成。
+
+`iopengw-representative-queries-05` 在冻结旧发布库上，以最新独立查询二进制通过 20/20（7 个预选实体的正反向调用/现场、类型、直接/元注解、XML 与字段读写，全分页）。元注解预期使用冻结上游的独立 SQLite 递归 CTE；并非 Rust 展开结果自产预期。SQL 新定向端口先按 annotation/meta 对合并 producer 重复，100001 条事实仍准确得到 1 个关系；旧全量读取的 QUERY_WORK_BUDGET RED 与新定向 GREEN 分开保存。这仍不是新发布库或完整 Q1–Q10 放行。

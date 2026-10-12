@@ -11,7 +11,7 @@
 | 核对日期 / code-ana | 2026-10-09；HEAD afbe8ed972dfa7322b0bf1d97ca60d231cb1540f |
 | Anatomist | 只取 dev/replace-parser 已提交代码 dff2e3954096853352ec91fcbfc6b995fbd4f390；不混用其他分支或工作区改动 |
 | iopengw | 267c7ced4993aa88613f8f17a8099943fec98159；基准仅用已提交内容 |
-| 当前状态依据 | Java 目录已删除；历史文档的“已迁入”不能当作当前代码或验收证据。全部任务从实际文件和回执核对 |
+| 当前状态依据 | 2026-10-10 Java 已恢复，显式 JVM 链路接通；完整迁移实施中。历史 native 回执不作为本次门禁，逐项核对实际文件与新回执 |
 | 架构依据 | [architecture](../docs/architecture.md)、[contracts](../docs/contracts.md)、[storage](../docs/modules/storage.md)；实施时发现冲突先查代码，再同步设计与实现 |
 | 三块边界 | Rust CLI/query；复制的 Java 解析；Rust storage/application。Java 放 lang-java-adapotr/ |
 | 解析 | 仅 javac；解析、类型/绑定、恢复和框架规则直接 copy Anatomist。桥只做边界适配，不重写 Java 算法 |
@@ -48,8 +48,8 @@
 
 | 接缝 | 必须保持 / 实施去向 |
 |---|---|
-| CLI → daemon | HTTP/2 + protobuf；新增 selector、方向、分析世界、预算及 pipeline 参数贯通 wire、版本和续页身份；旧端不支持时明确拒绝 |
-| daemon → worker | protocol 14 / Fact IR 1；Begin/Chunk/End、baseline、cancel、ack；[IDX-02](chains/index-publish.md#idx-02) |
+| CLI → daemon | HTTP/2 + protobuf，handshake 2；新增 selector、方向、分析世界、预算及 pipeline 参数贯通 wire、版本和续页身份；旧端不支持时明确拒绝 |
+| daemon → worker | protocol 15 / Fact IR 1；Begin/Chunk/End、baseline、cancel、ack；[IDX-02](chains/index-publish.md#idx-02) |
 | worker → Java | request/result 8，CAF1 描述符；JVM 有独立清单与任务私有输入，日志 stderr；native ABI 2 后置 |
 | Java → javac | batch 2 / javac-model-v50；目标 Java 8 真实执行，与宿主工具链分开 |
 | 输入 → Java | 捕获 manifest、logical/physical path、hash、编码、MAIN/TEST、world、有序依赖、辅助/发布输入、XML、祖先 Lombok 配置和资源 |

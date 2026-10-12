@@ -1,6 +1,6 @@
 # 总体架构
 
-2026-10-07：Java 核心已迁入 Anatomist，Rust 产品能力和完整验收继续补齐，见[迁移记录](java-anatomist-migration.md)。历史版本只用于追溯。
+2026-10-10：新核心通过显式 JVM 后端执行，共享 java-bridge/CAF1；默认 native 选择不变且无自动回退。新 native 产物须在 JVM fixture 和冻结 iopengw 完整门禁后构建；下方旧 native 验证不作为此次迁移的通过证据，见[迁移记录](java-anatomist-migration.md)。
 
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入；结构化类型、ASM 外部声明与 owner 级冷增量见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
@@ -37,6 +37,10 @@
 
 ```text
 * Java worker 的进程内部：
+
+显式 JVM：daemon -- worker IPC --> Rust host --> JVM runner --> 目标 JDK javac
+                                                   |
+                                             同一 java-bridge/CAF1
 
 daemon -- worker IPC --> [ Rust worker host -- C ABI / FFI --> Java 原生库 ]
                         |____________ 一个隔离进程 ____________________|

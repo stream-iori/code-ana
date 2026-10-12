@@ -18,7 +18,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：复制台账及独立 JVM 已构建；依赖闭包完整核对未结束 |
 | 行为 | 无需兄弟仓库产物和 .dylib，即可执行冻结上游模型用例。 |
 | 调用链 | 根 POM/插件注册 → analysis-core/framework 依赖 → JVM 包内 worker → Java 8 javac。 |
 | 开发前置 | 无；可与最小测试工具同步推进 |
@@ -34,7 +34,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：捕获输入、语言/模块 external 策略、Java 8 子进程已接通 |
 | 行为 | 解析仅使用本轮捕获内容；目录迁移不改变模块、资源或 Lombok 配置作用域。 |
 | 调用链 | Rust JavaInputs/EffectiveConfig → manifest → bridge → JavacMavenInputs 等价上下文 → JavaSource/二进制来源。 |
 | 开发前置 | JVM-01 |
@@ -50,7 +50,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：17 fixture × 14 原模型/提取域差分为零；Fact IR 产品回归仍有失败 |
 | 行为 | 完整保留上游解析结果，并产出能由真实 Rust FactValidator 接受的事实。 |
 | 调用链 | JavaUnit → JavaModelExtractor/ExtractionResult → 身份与绑定 → bridge 投影 → Fact IR。 |
 | 开发前置 | JVM-02 |
@@ -65,3 +65,26 @@
 - 源码/测试/资源复制与裁剪清单、字段映射、独立 JVM JAR/运行清单及摘要。
 - 上游 fixture 原始预期；新增 bridge 用例 RED/GREEN/REFACTOR 回执，原样通过用例登记基线。
 - raw model / ExtractionResult / Fact IR 差分；框架见 [FW 链](frameworks.md)，完整门禁见 [ACC-02](../acceptance.md#acc-02)。单个任务通过不等于完整能力迁入。
+
+2026-10-10：原始观察钩子仍在最终图 pass 之前；GraphProjectionBoundary 使用捕获的逐文件身份及当前上下文完整可见声明目录，调用原 GraphIdentityRewriter / GraphPostProcessor，并保留原声明键供 Fact IR join。provenance 带 GraphSemantics.VERSION=25。组件回执 `target/implementation-evidence/jvm-components-13/receipt.json` 为 223/223，无漂移；新增注解非有限值、语法 member 名和条件 Bean 的后续修复待完整回执。
+
+最新组件 `jvm-components-14/receipt.json` 为 225/225，无漂移；源注解的非有限值/UTF-16 与 modeled 调用的原语法 lookup_name 通过。条件 Bean 歧义修复已由探针复验，XML 父链在 `xml-parent-red-01.log` 失败后修正限定边 ID 的 join key，`xml-parent-green-01.log` 通过；新整套仍在执行。
+
+原 Annotation/AnnotationMetaRelation 的 language/provider/mechanism/sourceLocation/producer 与 SemanticAnnotation.source 已进入投影；直接构造原模型验证，不重写注解解析。相同语义边使用稳定的多重集 occurrence 身份，保留同一范围中重复泛型引用；原语义边和数组顺序不改。对应局部 RED/GREEN 见 acceptance，最终图及 full/delta 完整复验未结束。
+
+原始列投影补充：`provider-columns-red-01.log` 证明 Node.providerId 丢失；`provider-columns-green-01.log` 通过。节点补原始 domain/language/provider/entity-kind/namespace/qualified-name/module/scope/位置/序号，声明补 type-kind/declaring-type/namespace/depth/direct-member/位置/producer；关系补原始两端、外部目标各列、semantic/mechanism/provider/位置/序号/syntax-target/relation。保持原 confidence 与推断来源；完整组件复验中。这不替代所有字段和最终图的完整审计。
+
+### 2026-10-10：优先修复空目标与解码预算
+
+| 项目 | 实施与验收状态 |
+|---|---|
+| 空目标 | `JavacBackend.analyzeFiles` 在目标为空时返回完整空 inventory，不规划/编译辅助上下文；仍保留捕获输入校验。针对性 RED 为依赖模型被错误输出，GREEN 为零 worker、零批次、无缓存。 |
+| 解码预算 | 新增 `[resources.index].java_model_decode_bytes`；默认 536870912，允许 65536–2147483648。通过 protobuf、Rust worker 和 Java backend 传入，每个响应累计；语义指纹、校验和与其他模型上限不变。worker protocol 升为 16，拒绝旧 worker 混装。 |
+| 参考版 | 固定 JAR 不改写；独立编译冻结 `JavacProtocol` 的资源准入覆盖层，两版同用 2 GiB；来源、覆盖层源码/类文件、预算和 JAR SHA 单独绑定回执。此回执明确是调整资源策略后的对比。 |
+| `app/test` | 按用户要求暂缓 raw/AST × MAIN/TEST 四项；修复回归后补跑。原解码失败回执保留。`--exclude-module app/test` 不缩减完整门禁的 160 项预期，不会产生完整通过。 |
+
+真实空目标 `app/biz/shared@MAIN`：迁移版 raw 从旧回执 100.601 秒降至 6.106 秒，AST 为 7.810 秒；两版 14 域一致。见 `target/implementation-evidence/javac-empty-real-02/receipt.json`。这些是正确性采集耗时，非最终性能门禁。
+
+修复回归完成：`jvm-components-24` 241/241，`rust-workspace-11` 136 项，Clippy 与 JVM 启动校验通过；真实 CLI `java-decode-budget-cli-03` 通过（低预算拒绝并保留 HEAD、2 GiB 发布、默认预算事实等价）。非 `app/test` 的 156 项采集已启动：`iopengw-jvm-models-02`；其余 4 项明确暂缓，完整门禁仍未通过。
+
+模型采集与最新 bridge 产物分开取证：`model-producer-equivalence-02.json` 比较 fat JAR 的每项内容（嵌套编译器/Maven JAR 递归比较，忽略 ZIP 封装时间）。解析/提取核心和两条 worker JAR 内容全部相同，仅三个 witness 不使用的 bridge class 改变；同时拒绝 witness/core 对这些 bridge 的依赖。六项独立工具测试覆盖 parser/嵌套编译器/外部编译器变更与依赖误复用。该证明不接受任何模型用例，完整 160 项和已知差异仍单列；当前新共享 session 的完整 JVM 产品门禁继续运行。

@@ -13,6 +13,7 @@
 | 做 Lombok/Spring/SOFA/XML 及公开查询 | [frameworks](chains/frameworks.md) |
 | 做基线、失效、owner 替换与 full/delta | [incremental](chains/incremental.md) |
 | JVM 通过后接 C ABI/.dylib | [native](chains/native.md) |
+| 单轮 release 性能优化及最新阻塞 | [performance](chains/performance.md) |
 | 汇总 fixture、iopengw、最终性能和退出条件 | [acceptance](acceptance.md) |
 | 查旧 A/S/P/T/V 编号和遗漏项 | [traceability](traceability.md) |
 

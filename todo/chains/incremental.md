@@ -18,7 +18,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：owner 事务替换、文件/符号反向依赖及 unresolved 消费者批读已接真实 SQLite；Java 失效集合的文件端口联调未结束 |
 | 行为 | 给定失效 owner 后，旧事实/投影/依赖准确替换，基线可按需导出。 |
 | 调用链 | 固定依赖图 → baseline export / 反向索引 → candidate owner/world/producer 替换 → 完整校验。 |
 | 开发前置 | IDX-01 |
@@ -34,7 +34,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：共享 JVM 基线/cancel/ack；固定缓存键字段顺序后，跨进程复用/损坏修复回归通过 |
 | 行为 | 冷增量/缓存路径与相同输入的全量一致；不安全复用明确回退。 |
 | 调用链 | baseline/profile → 原 IncrementalIndexer/Javac*Cache → ProjectAnalysisRunner/FactView → 重解析/框架 → 发布 ack。 |
 | 开发前置 | JVM-03、FW-02 |
@@ -50,7 +50,7 @@
 
 | 项目 | 落地要求 |
 |---|---|
-| 状态 | 待实施 |
+| 状态 | 实施中：既有 full/delta 回归执行中；历史对完整覆盖未结束 |
 | 行为 | 相同目标输入/profile 的 full/delta 模型、事实、查询一致，固定旧 revision 可读。 |
 | 调用链 | fixture 基线/目标对 → JVM full/delta → Rust 发布 → 全页查询/历史源码 → 重启。 |
 | 开发前置 | INC-02、FW-03、QRY-02、QRY-05 |
@@ -61,3 +61,9 @@
 | 追溯 | A2/A9；S5/S6；旧 03 §3；I6/I7/Q10 |
 
 真实工程历史变更对统一见 [ACC-03](../acceptance.md#acc-03)，不编辑 iopengw 基准；native 复用本链场景与预期。
+
+2026-10-10：FactReader 增加 reverse_dependencies / unresolved_consumers，每批最多 500 个键、1024 行，按固定 revision 和 ID keyset 读取；CancelableReader 转发并检查取消。实际 SQLite 100003 个调用点超过全表 select 预算时，定向批读仍准确返回 83 行，EXPLAIN 使用 unresolved partial index 且无临时排序。循环依赖、MAIN/TEST、重复关系、删除后的 owner 原子替换、固定旧 revision 回归通过；源码 `crates/model/src/lib.rs`、`crates/storage/src/lib.rs`，证据 `target/implementation-evidence/reverse-consumers-green-02.log`、`reverse-owner-green-03.log`、`rust-workspace-06.log`。Java 仍负责失效集合，完整文件依赖/基线输出联调未验收。
+
+显式 JVM 的 semantic_identity 现在加入宿主 JDK 25 的 bin/lib/release 内容摘要，并在提交前校验捕获字节；worker 与 daemon 共用宿主路径选择。`jvm-host-profile-01.log` 证明路径迁移身份相等，启动器/模块/动态库/release 变化失效；`rust-clippy-09.log` 通过，完整 CLI 增量复验待完成。
+
+文件依赖 `file-dependencies-red-01.log` 复现缺表；首次 GREEN 编译失败保留，`file-dependencies-green-02/03.log` 共三项通过。候选 schema 4 在 owner 替换/派生的同一事务重建，依赖投影合并重复边，原事实不合并；覆盖注解/元注解 provider、循环、自文件排除、MAIN/TEST、跨 world 端点、删除、固定旧 revision 和分页。100003 条投影的反向读取准确返回 83 行，EXPLAIN 使用 file_dependencies_reverse。此证据只证明存储端口，不宣称 Java 已使用精细文件失效算法。

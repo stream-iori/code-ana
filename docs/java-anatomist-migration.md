@@ -1,5 +1,9 @@
 # Anatomist Java 迁移
 
+2026-10-11 最新验收：完整 native 汇总 `native-complete-acceptance-01.json` 通过：20份真实回执、5339条绝对路径摘要证明，零未解释失败。安全拦截放行后，发行包04的4项门禁通过；崩溃夹具08实际收到SIGSEGV，旧索引保留、daemon存活、worker回收，未收到SIGKILL。回执工具已修正为保留CLI返回的实际信号证据；原夹具与历史失败记录保留。native 160/160 模型与 JVM 零差异，冻结 HEAD 全部2,447,690条Fact IR及464个共享字节码/资源条目相等；公开查询198+21+19+7、只读审计、已提交历史四阶段及重启读取通过。源码进程边界审计1项、原扫描组件13项、Rust工作区163项与产品17项及新增文本/注释6项通过。覆盖仍有148份来源/741项原分析器测试和动态测试工厂待闭合；业务fixture中的5项@Test仅作分析输入保留。正式冷/热各3轮性能已启动，尚无通过回执；完整迁移验收仍未关闭。
+
+2026-10-11 当前工作区：完整 JVM 门禁 `jvm-complete-acceptance-02.json` 已通过，15份回执/4223条绝对路径证明；Java组件654/654、探针17/17、产品58/58、原模型160项全部执行，158相等/2个精确上游构造器缺陷，14图域全部执行且零未解释迁移差异。最新真实发布及198+21+19+7公开查询/生命周期、只读审计、真实提交历史和重启读取均通过；严格参考相等仍为false。新native共享库已构建，生成C头/Rust布局全字段相等，实际生命周期6/6、探针17/17通过；原生错误回传丢失cause/suppressed的缺口已修复，3项边界回归及真实OOM用例通过，完整产品fixture58/58通过（含真实OOM与临时磁盘满）；native160模型、冻结HEAD发布和提交历史已启动。native160模型/真实工程等价、覆盖映射和最终三轮性能未关闭。CLI handshake2 / worker protocol16，candidate schema4。
+
 2026-10-07：Java 实现迁入 `lang-java-adapotr/`，直接复用 Anatomist 核心。旧 `lang-adaptor/` 已删除；历史记录仅用于追溯。
 
 2026-10-09 最新计划核对：**SIGKILL 已复验消失；v15 修复已合入，最终完整替换验收仍在进行**。
@@ -285,3 +289,55 @@ Java 96/Rust 113/native 11 测试、参考 fixture 10 × 14 和发布包四条�
 2026-10-09 用户要求停止全量分析：已检查模型分析、native 见证及自动汇总进程均不在运行。
 模型收集停于 7/160、6 项严格通过，原始证据保留；修正遗留 running 回执为 interrupted，
 停止等待模型结束后的自动汇总，不自动恢复或合入修复。原回执另存 receipt-before-user-stop.json。
+
+2026-10-10 后续复验：`jvm-product-08/receipt.json` 52/52 执行，42 通过、10 失败，产物及测试源码无漂移；容量越过默认事实/结果限制的实际 CLI 用例通过。原失败回执保留。`provider-columns-collision-red-01.log` 复现 metadata namespace 被覆盖，GREEN 保留原 metadata 字符串和独立模型列。`diagnostic-classpath-relocation-red-01.log` 复现捕获 JAR 临时路径使 full/delta 诊断身份漂移；GREEN 用有序捕获内容身份，路径仍供实际编译与运行回执使用，内容变化仍改变诊断摘要；捕获 NoCode 目录摘要改用相对子路径。Standalone 冻结参考的原路径身份不变，来源账本记录这项输入边界适配。
+
+独立参考 `nocode-final-reference-03/receipt.json` 证明原最终图将 `p.Api#get()` 提升到 lib 内部声明；前两次失败（无效合成 POM、缺 Maven 依赖方向）保留，第三次使用相同 Java 字节及等价有效 Maven 图。`super-builder-reference-01/receipt.json` 证明两个 EXTRACTED 调用与六个 INFERRED 候选；`selected-provider-reference-01/receipt.json` 证明生产者 ABI 提供 getter 后消费方原 javac 诊断为空。对应旧断言按原能力校准，完整 full/delta、冻结源码及 producer 删除断言保留。
+
+只读索引审计迁入 `tests/java_index_audit_tests.py`：15 项通过，覆盖捕获清单 hash、字节跨度上界及 file_dependencies canonical ID/重复端点；真实已发布 schema 4 数据库 `audit-index-product-02/expanded-audit.json` 通过且 DB SHA 不变。此项不代表 iopengw 或完整参考语义差异已通过。
+
+`jvm-components-20/receipt.json` 最新完整组件 233/233 通过，源码和产物无漂移。XML 原始 WIRES 之前以 relation=wires 存储，`xml-wiring-product-red-01.log` 和 `xml-wiring-public-red-01.log` 复现公开 wires_possible 查询遗漏；GREEN 将原边映射到可能候选，保留原 EXTRACTED confidence/producer/位置，不凭该静态配置边确认运行时选择。后续完整组件/产品回执待执行。
+
+独立参考断言已迁入 `tests/java_captured_reference_contracts.py`，`captured-reference-contracts-02.log` 2/2 通过，挂入 just test-java-migration-reference；初次脚本因导入 unittest 类导致误收集其他组件测试失败，原日志保留，已改模块导入和真实 TEST 单元身份。`tests/java_index_audit_tests.py` 15/15 挂入 just test-java-jvm-product。
+
+后续 `jvm-components-21/receipt.json` 233/233 通过；`jvm-product-focused-12/receipt.json` 18/18 执行，9 通过、9 失败，无漂移，不能晋升完整门禁。XML/type navigation 公开查询已通过；新字段暴露出 metadata 原 JSON 字符串的键序漂移，`metadata-product-order-red-01.log` 两个快照中 18 个相同 ID 的差异仅为 upstream_metadata 串，解析后 JSON 值相等。`metadata-object-order-red-01.log` / GREEN 以递归规范键序保留 JSON 全部值及原模型列。
+
+`captured-catalogue-delta-red-01.log` 的初版单测误将增量输出直接与完整输出比较，修正 owner 合并后 RED-02 仍复现 52/53；GREEN 采用显式 baseline_source_catalogue_incomplete 全上下文回退。无变化保留快路径，变化跨上下文尚不宣称细粒度增量。生成 NoCode classpath 以前未进入 classpathEntries，诊断落到绝对临时路径分支；`nocode-diagnostic-classpath-red-01.log` / GREEN 证明实际有序 compiler classpath（包括 NoCode JAR/目录内容）纳入捕获身份，三个定向用例通过；standalone 冻结行为不变。
+
+独立参考契约 `captured-reference-contracts-04.log` 4/4 通过。已知上游限制：Unicode 写明注解 \u004eote 的 rawName 被原 javac 名称切片截为 eote，但 FQN p.Note/绑定和值正确；`unicode-annotation-reference-01/receipt.json` 保存严格原始观察。此限制不标为已修复；产品用例保留原证据，另验公开 source 读取保留写明原字节。辅助 primitive 候选的消费方原 javac 诊断为空，不要求制造 ERROR；候选 certainty 断言仍保留。
+
+2026-10-10 继续复验：诊断 provider 列表仍含物理临时 JAR 路径，`diagnostic-provider-relocation-red-01.log` 复现，GREEN-01 因 lambda 局部变量重名编译失败保留，修正后的 GREEN-02 三项通过（实际二进制 provider、NoCode 跨缓存、consumer catalogue）。来源账本同步记录捕获 provider/unreadable-entry 内容身份适配，standalone 路径行为保留。`jvm-components-22/receipt.json` 236/236、`jvm-probe-11/receipt.json` 17/17 通过，无漂移。`jvm-product-focused-13/receipt.json` 18 项执行，17 通过、1 失败；剩余断言误将 enabled=false 等同 xml=false，Rust 分别传递 spring/spring_xml，上游 SpringXmlAnalyzer 仅检查 springXml。校准保留 XML=true 的 Bean/SOFA 原图，并追加 XML=false 的真实清理及 full/delta 比较；定向复验进行中。
+
+冻结工程输入预检 `iopengw-input-capture-02/source-integrity.json` 检查 4376 个已提交捕获输入 SHA，40 模块内 4214 个 Java 源码无遗漏；已登记的大小写物理别名正确归属，两个 Java 命名 TEST 资源以 resource 捕获。独立 dalgen 代码生成项目不属于选定业务 reactor，明确排除且未运行生成器。旧 inputs 的外部 Maven 工具路径指向可变 target 产物，首次预检失败保留；`iopengw-inputs-export-03/receipt.json` 使用任务内固定 Java 8 工具重新导出，模块/源码根/依赖/有效模型字段保持相同。捕获尚不代表 I0–I8/Q1–Q10 或发布验收。
+
+`jvm-product-focused-14/receipt.json` XML 独立开关用例通过（含关闭 XML 后 owner 清理与 full/delta）；`jvm-raw-reference-11/receipt.json` 当前 JVM 与新冻结参考 17×14 零差异，`jvm-type-reference-15-command.log` 对应独立类型关系 13/13 通过。`rust-workspace-10.log` 工作区通过，审计 15 项、可信回执 5 项、JVM bootstrap 2 项再次通过。完整产品 product-09 正在执行，不能据定向结果晋升。
+
+进一步补查发现真实配置装配缺口：SOFA/XML 需要 Spring 插件注册时，原桥将 Spring Java 分析器一并启用，忽略显式 spring=false。`spring-independent-switch-red-01.log` 原行为发布了 src/A.java 的 @Component Bean；GREEN-01 两项通过。新 CapturedSpringPlugin 只按捕获 Java/XML 开关选原扩展组，保留 SOFA 所需插件 ID 和 XML 资源，原分析规则不改；版本指纹包含独立开关。新完整组件回归 component-23 待完成；product-09 使用此前固定产物，不能冒充该新改动的产品回执。
+
+新增 `scripts/java-jvm-project-models.py` 准备新鲜 oracle/JVM 双后端的 80 scope × raw/ast 收集，记录 14 域行多重集摘要、每源码证据与进程退出，resume 必须匹配输入/证据/见证类 SHA；5 项缺域、负行数、输入漂移、重复 case 和证明文件漂移拒绝检查通过。此脚本尚未执行真实工程模型，不代表 I3 完成；旧强制 native/457031ca 的收集入口不用于本轮 JVM 门禁。
+
+`jvm-components-23/receipt.json` 新 Spring 独立开关边界完整组件 237/237 通过、无漂移，源码账本 472/14 校验通过。当前 runner SHA 为 1e2deb65a7234026f1929893bc4249491717e9fc5abbca8c9214b9be5750ab5a；新独立 runtime 位于 `jvm-spring-runtime-01`。真实 CLI RED `spring-switch-product-red-01/receipt.json` 复现同一显式关闭被忽略，GREEN/full-delta、probe-12 和 raw-reference-12 进行中。native 接口预检发现 Maven native profile、manifest 原路径和旧协议/adapter 常量需调整，见 `native-boundary-review-01.json`；尚未构建 native。
+
+当前 Spring 开关修复版 `spring-switch-product-green-01/receipt.json` 真 CLI 开关往返、保留 SOFA、XML 关闭及两次 full/delta 精确比较通过；无测试/产物漂移。`jvm-probe-12/receipt.json` 17/17、`jvm-raw-reference-12/receipt.json` 17×14 零差异、`jvm-xml-model-04-command.log` 三个独立 XML 模型（每组 7/7）通过；type-reference-16 进行中。此前固定版本 product-09 大容量用例已通过：243140 事实/368755204 字节，采样完整，进程树峰值 1078575104 字节。该回执不冒充新 Spring 版；已启动新版本完整 product-10。
+
+`jvm-product-09/receipt.json` 前一固定版本 52/52 完整产品通过，无漂移，完整组门禁通过；源码/产物身份见回执。它包含 metadata/classpath/provider/跨上下文安全回退修复，但尚未包含随后发现的 Spring 独立开关修复。当前新版本 product-10 尚在运行，不晋升新版本完整 JVM 门禁。冻结参考库生成新入口 `scripts/java-frozen-jvm-reference.py` 已准备，显式 freeze receipt，fresh oracle 绑定，私有提交副本与原 Maven 输入逐 scope 验证；复用的参考来源校验器只接收已验证新鲜冻结 Git 构建 SHA，旧摘要不作门槛，未执行仍不标完成。
+
+当前 Spring 独立开关修复版 `jvm-product-10/receipt.json` 52/52 完整产品通过，耗时 1928.475 秒，完整组门禁通过且产物/测试源码无漂移；`jvm-type-reference-16-command.log` 对应独立关系 13/13 通过。已经启动 `iopengw-jvm-publication-01`、`iopengw-fresh-reference-01`、`iopengw-jvm-models-01`，分别保留发布、独立参考、80 scope×raw/ast 模型对照证据；执行中不作为 ACC-03 放行。参考生成入口的成功/失败/缺执行器/超时/中断清理五项自测通过，见 `fresh-reference-command-checks01/receipt.json`。
+
+`iopengw-fresh-reference-01/receipt.json` 新鲜冻结参考库生成完成（375.91 秒），40 模块 Maven 输入逐 scope 验证通过，配置恢复、5039 提交输入字节复核通过，无意外信号或工具输入漂移。配置源码 4214，实际分析 4213，1 个无效 UTF-8 文件按原字节 SHA 单列；物理目录大小写别名经同文件身份核对。`iopengw-query-plan-03.json` 从独立库确认 66 非空模块/scope、14 空上下文，固定 198 个声明/结构/源码用例与七类代表性主体；这只是独立预期准备，Q3–Q10 和真实查询尚未验收。
+
+覆盖盘点补充：`upstream-javac-tests-stage-01/receipt.json` 从冻结源码复制的额外 246 个 Java 用例全部通过、零跳过，逐 case 对账且源码/当前 runner SHA 无漂移；首轮私有编译因 SDK helper 与 Java coverage 产品依赖缺失失败日志保留。SDK helper 沿用已验证原测试，诊断 retention 规则改由实际 Rust 存储验证：`diagnostic-retention-port-01/receipt.json` 50004 次诊断、A.java=50003/B.java=1、报告样本100，发布/重启后计数完整。两组仍在私有测试目录，正式测试入口/来源账本的合入待本轮发布回执封存后执行，不能据此宣称全部覆盖已闭合。
+
+公开能力继续核对：冻结 SemanticOperationRegistry/SearchTextCommand/OverviewCommand 显示 text regex/ignore-case/context 与 overview module/package/dependency 分组仍需补齐。实际 `java-text-options-cli-red-01.log` 在当前固定 CLI 复现不支持 --regex。52/52 既有产品用例只是其自身完整组，不能据此宣称所有计划查询参数已实现；冻结工程正在执行的索引/模型属于基线证据，native 放行仍待完整能力与查询矩阵。
+
+### 2026-10-10：空目标和解码预算修复
+
+- 用户要求优先修复：空目标直接返回，不启动辅助编译；新增显式解码准入（默认 512 MiB，最大 2 GiB），贯通 Rust 配置/protobuf/worker/Java；worker protocol 16。
+- 针对性 Java 11 项通过，Rust 配置/协议 37 项通过。新组件整组回归运行中，不能沿用旧组件回执作为新产物身份。
+- 真实空目标 `app/biz/shared@MAIN` raw/AST 两项 14 域差分为零；迁移 raw 6.106 秒、AST 7.810 秒，原 raw 100.601 秒；仅正确性采集耗时。回执 `javac-empty-real-02` 为诊断子集，完整模型门禁仍未通过。
+- 参考原 JAR 不变，资源策略覆盖层只改变解码准入，并绑定冻结源码 SHA、覆盖层 SHA 与配置。`app/test` 四项暂缓，修复后补跑。
+- 旧产物全量索引 `iopengw-jvm-publication-01` 已完成，publication_accepted=true，3612.799 秒，无源码/产物漂移、无意外信号，配置已恢复；它不是修复后新产物的完整 JVM 放行证明。
+
+修复后的 Rust 全工作区 `rust-workspace-11`：136 项通过；`rust-clippy-12` 无警告；模型采集策略单测 `jvm-model-collection-unit-02`：6 项通过。真实 CLI 的低预算拒绝/2 GiB 发布/默认预算事实等价用例已加入 `JavaProduct.test_explicit_decode_budget_preserves_head_and_semantics`，待新 JVM 包构建后执行。
+
+修复回归完成：`jvm-components-24` 241/241，`rust-workspace-11` 136 项，Clippy 与 JVM 启动校验通过；真实 CLI `java-decode-budget-cli-03` 通过（低预算拒绝并保留 HEAD、2 GiB 发布、默认预算事实等价）。非 `app/test` 的 156 项采集已启动：`iopengw-jvm-models-02`；其余 4 项明确暂缓，完整门禁仍未通过。
