@@ -25,7 +25,7 @@ class StableRuntimeTests(unittest.TestCase):
             for name in (runtime,'compiler-bridge.jar','maven-input-worker.jar'):
                 p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(backend+name);files[name]=stable.sha256(p)
             manifest=source/('manifest.json' if backend=='jvm' else 'native/manifest.json')
-            manifest.write_text(json.dumps(dict(files=files,worker_protocol=16,adapter='test')))
+            manifest.write_text(json.dumps(dict(files=files,worker_protocol=16,adapter='test',abi=2 if backend=='native' else None)))
         def probe(command,**kwargs):
             backend=command[command.index('--backend')+1]
             info=dict(backend=backend,worker_protocol=16,fact_ir=1,adapter='test',analysis_request=8)

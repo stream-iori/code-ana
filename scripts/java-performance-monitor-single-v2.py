@@ -105,7 +105,8 @@ def main():
     command = spec['command']
     if (not isinstance(command, list) or not command or not all(isinstance(item, str) for item in command)
             or spec.get('backend') not in ('reference', 'jvm', 'native')
-            or spec.get('cache_temperature') not in ('cold_application_cache', 'warm_application_cache')):
+            or (spec.get('cache_policy') != 'independent_empty_application_state'
+                and spec.get('cache_temperature') not in ('cold_application_cache', 'warm_application_cache'))):
         raise ValueError('EXPLICIT_BENCHMARK_SPEC_REQUIRED')
     args.evidence.mkdir(parents=True, exist_ok=False)
     report = dict(status='running', process_sample_seconds=1, disk_sample_seconds=10, spec=spec, performance_accepted=False,

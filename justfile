@@ -29,7 +29,7 @@ test-rust:
   cargo fmt --all -- --check
   cargo test --workspace --locked
   cargo build --workspace --locked
-  python3 tests/rust_e2e.py
+  python3 tests/rust_graph_e2e.py
   python3 tests/rust_upstream_text_search.py
   python3 tests/rust_upstream_annotations.py
   cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -37,7 +37,7 @@ test-rust:
 test-rust-release:
   ./scripts/package-rust.sh
   cd "dist/codeana-rust-$(uname -s)-$(uname -m)" && shasum -a 256 -c SHA256SUMS
-  CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_e2e.py
+  CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_graph_e2e.py
 
 demo-rust:
   ./scripts/demo-rust.sh
@@ -56,10 +56,6 @@ test-java-source-audit:
 # Original component tests run against an already accepted runner, without rebuilding it.
 test-java-upstream-audit runner:
   JAVA_HOME="$HOME/.sdkman/candidates/java/25.3.4+1.r25-graal" mvn -q -f lang-java-adapotr/migration-audit/upstream-components/pom.xml -Dcodeana.audit.runner="{{runner}}" test
-
-# Replay already published facts to separate storage cost from Java analysis.
-replay-java-facts revision_directory new_home:
-  cargo run -p codeana-storage --example fact_replay --release --locked -- "{{revision_directory}}" "{{new_home}}"
 
 test-java-jvm-components evidence:
   python3 tests/acceptance_support_tests.py

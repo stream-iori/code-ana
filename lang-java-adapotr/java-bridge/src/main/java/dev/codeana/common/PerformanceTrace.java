@@ -8,7 +8,8 @@ import java.util.Map;
 public final class PerformanceTrace implements AutoCloseable {
     public enum Metric {
         FACT_JSON, FACT_UTF8, OWNER_KEY, IDENTITY_KEY, ARCHIVE_APPEND,
-        ARCHIVE_WRITE, ARCHIVE_FLUSH, ARCHIVE_FORCE, ARCHIVE_MOVE, ARCHIVE_SHA
+        ARCHIVE_WRITE, ARCHIVE_FLUSH, ARCHIVE_FORCE, ARCHIVE_MOVE, ARCHIVE_SHA,
+        INVENTORY_CONTRACT, INVENTORY_IDENTITY, INVENTORY_CATALOGUE, TYPE_ERASURE
     }
     private static final ThreadLocal<PerformanceTrace> ACTIVE = new ThreadLocal<>();
     private static final Scope NOOP = new Scope(null, 0, 0);

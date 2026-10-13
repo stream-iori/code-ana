@@ -19,6 +19,24 @@ EXPECTED = json.loads((FIX / 'expected.json').read_text())
 
 
 class Product(unittest.TestCase):
+    def test_old_fact_schema_rejects_reads_and_delta_but_full_rebuild_uses_head_cas(self):
+        revision = self.cli('index')[1]['revision']
+        database = self.home / 'revisions' / revision / 'facts.db'
+        with sqlite3.connect(database) as db:
+            db.execute('PRAGMA user_version=4')
+        _, rejected = self.cli('overview', '--revision', revision, code=1)
+        self.assertIn('FACT_SCHEMA_REBUILD_REQUIRED', rejected['message'])
+        _, rejected = self.cli('index', code=1)
+        self.assertIn('FACT_SCHEMA_REBUILD_REQUIRED', rejected['message'])
+        _, rebuilt = self.cli('index', '--full')
+        self.assertEqual(rebuilt['publication'], 'published')
+        self.assertNotEqual(rebuilt['revision'], revision)
+        with sqlite3.connect(self.home / 'revisions' / rebuilt['revision'] / 'facts.db') as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 5)
+        with sqlite3.connect(database) as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 4)
+        self.cli('overview', '--revision', rebuilt['revision'])
+
     def test_historical_text_search_is_independent_of_active_workspace(self):
         revision = self.cli('index')[1]['revision']
         snapshot_revision = self.cli('snapshot', 'before', '--name', 'analysis')[1]['revision']

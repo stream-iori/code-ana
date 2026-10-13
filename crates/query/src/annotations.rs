@@ -2,7 +2,7 @@
 use super::*;
 
 pub(super) fn expand(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     direct: Vec<Fact>,
     evidence: &mut Evidence,
 ) -> Result<Vec<Fact>> {

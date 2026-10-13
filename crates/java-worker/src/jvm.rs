@@ -1,4 +1,4 @@
-//! Explicit JVM host. Shares CAF1 validation/publication with the native backend.
+//! Explicit JVM host. Shares GRA1 validation/publication with the native backend.
 use anyhow::{Context, Result, ensure};
 use serde_json::Value;
 use std::{
@@ -13,10 +13,10 @@ pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
     ensure!(
         manifest["version"] == 1
             && manifest["backend"] == "jvm"
-            && manifest["analysis_request"] == 8
+            && manifest["analysis_request"] == 9
             && manifest["worker_protocol"] == codeana_model::WORKER_PROTOCOL_VERSION
             && manifest["fact_ir"] == codeana_model::VERSION
-            && manifest["adapter"] == "anatomist-dff2e395-codeana-jvm1"
+            && manifest["adapter"] == "anatomist-dff2e395-codeana-graph1"
             && manifest["compiler_batch_protocol"] == 2
             && manifest["java_model"] == "javac-model-v50"
             && manifest["target_java"] == serde_json::json!([8]),
@@ -101,6 +101,16 @@ impl Jvm {
             .tempdir_in(scratch)?;
         let task_scratch = task.path().join("scratch");
         std::fs::create_dir(&task_scratch)?;
+        if let Some(path) = value["baseline_summary"]["path"].as_str() {
+            let source = Path::new(path).canonicalize()?;
+            ensure!(
+                source.starts_with(scratch.canonicalize()?),
+                "GRAPH_BASELINE_PATH"
+            );
+            let destination = task_scratch.join("baseline-summary.json");
+            std::fs::copy(source, &destination)?;
+            value["baseline_summary"]["path"] = serde_json::json!(destination);
+        }
         value["scratch"] = serde_json::json!(task_scratch);
         std::fs::write(
             task.path().join("request.json"),
@@ -150,26 +160,43 @@ impl Jvm {
             .path()
             .join("result.json");
         ensure!(
-            std::fs::metadata(&result)?.len() <= max,
+            std::fs::metadata(&result)
+                .with_context(|| format!("JVM_RESULT_MISSING: {}", result.display()))?
+                .len()
+                <= max,
             "JVM_RESULT_BUDGET"
         );
         let output = match directory {
-            Some(path) => tempfile::NamedTempFile::new_in(path)?,
+            Some(path) => tempfile::NamedTempFile::new_in(path)
+                .with_context(|| format!("JVM_DESCRIPTOR_DIRECTORY: {}", path.display()))?,
             None => tempfile::NamedTempFile::new()?,
         };
-        std::fs::copy(result, output.path())?;
+        std::fs::copy(&result, output.path()).with_context(|| {
+            format!(
+                "JVM_RESULT_COPY: {} -> {}",
+                result.display(),
+                output.path().display()
+            )
+        })?;
         if std::env::var_os("CODEANA_PERFORMANCE_TIMINGS_DIR").is_some() {
-            let telemetry = self
+            let scratch = self
                 .task
                 .as_ref()
                 .context("JVM_TASK_REQUIRED")?
                 .path()
-                .join("scratch/native-timings.json");
-            if let Some(directory) = directory
-                && telemetry.metadata().is_ok_and(|m| m.len() <= 8 << 20)
-                && let Err(error) = std::fs::copy(telemetry, directory.join("native-timings.json"))
-            {
-                eprintln!("PERFORMANCE_TIMINGS_WRITE_FAILED: {error}");
+                .join("scratch");
+            if let Some(directory) = directory {
+                for (name, limit) in [
+                    ("native-timings.json", 8 << 20),
+                    ("allocations.jfr", 256 << 20),
+                ] {
+                    let telemetry = scratch.join(name);
+                    if telemetry.metadata().is_ok_and(|m| m.len() <= limit)
+                        && let Err(error) = std::fs::copy(telemetry, directory.join(name))
+                    {
+                        eprintln!("PERFORMANCE_TIMINGS_WRITE_FAILED: {error}");
+                    }
+                }
             }
         }
         Ok(output)

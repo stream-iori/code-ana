@@ -70,8 +70,8 @@ def prepare(root, destination, backend):
         raise ValueError('STABLE_RUNTIME_PROBE_FAILED: '+probe.stderr)
     versions = json.loads(probe.stdout)
     expected = dict(backend=backend, worker_protocol=manifest['worker_protocol'],
-                    fact_ir=1, adapter=manifest['adapter'], analysis_request=8)
-    expected['abi']=2 if backend=='native' else None
+                    fact_ir=manifest['fact_ir'], adapter=manifest['adapter'], analysis_request=manifest['analysis_request'])
+    expected['abi']=manifest['abi'] if backend=='native' else None
     if versions != expected:
         raise ValueError('JAVA_RUNTIME_PROTOCOL_MISMATCH')
     result = dict(binary_directory=str(binaries), versions=versions,

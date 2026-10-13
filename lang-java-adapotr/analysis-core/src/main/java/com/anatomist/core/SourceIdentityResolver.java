@@ -10,6 +10,7 @@ public final class SourceIdentityResolver {
 
     private final Path projectRoot;
     private final List<SourceRoot> roots;
+    private final java.util.Map<Path, SourceRoot> exact = new java.util.HashMap<>();
 
     public SourceIdentityResolver(Path projectRoot, List<Path> sourcePaths) {
         this(projectRoot, inferRoots(projectRoot, sourcePaths), true);
@@ -23,19 +24,28 @@ public final class SourceIdentityResolver {
                                 Comparator.comparingInt((SourceRoot r) -> r.path().getNameCount())
                                         .reversed())
                         .toList();
+        for (SourceRoot root : this.roots) exact.putIfAbsent(root.path(), root);
     }
 
     public static SourceIdentityResolver fromRoots(Path projectRoot, List<SourceRoot> roots) {
         return new SourceIdentityResolver(projectRoot, roots, true);
     }
 
+    private long calls, hits, scans;
+    public record LookupStats(long calls, long exactHits, long scannedRoots) {}
+    public LookupStats statistics() { return new LookupStats(calls, hits, scans); }
+
     public SourceIdentity resolve(String sourceFile) {
+        calls++;
         if (sourceFile == null || sourceFile.isBlank())
             return new SourceIdentity(".", SourceScope.MAIN);
         Path file = Path.of(sourceFile);
         if (!file.isAbsolute()) file = projectRoot.resolve(file);
         Path normalized = file.toAbsolutePath().normalize();
+        SourceRoot direct = exact.get(normalized);
+        if (direct != null) { hits++; return new SourceIdentity(direct.module(), direct.scope()); }
         for (SourceRoot root : roots) {
+            scans++;
             if (normalized.startsWith(root.path())) {
                 return new SourceIdentity(root.module(), root.scope());
             }
@@ -45,6 +55,8 @@ public final class SourceIdentityResolver {
 
     public SourceScope compilationScope(Path path) {
         Path normalized = path.toAbsolutePath().normalize();
+        SourceRoot direct = exact.get(normalized);
+        if (direct != null) return direct.compilationScope();
         for (SourceRoot root : roots)
             if (normalized.startsWith(root.path())) return root.compilationScope();
         return resolve(path.toString()).scope() == SourceScope.TEST

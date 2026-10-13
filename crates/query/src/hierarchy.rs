@@ -3,7 +3,7 @@
 use super::*;
 
 pub(super) fn adjacent(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     ids: &[String],
     incoming: bool,
     kinds: &[&str],
@@ -59,7 +59,7 @@ pub(super) fn instantiability(fact: &Fact) -> (&'static str, &'static str) {
 }
 
 pub(super) fn runtime(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     req: &Request,
     roots: Vec<Fact>,
     evidence: &mut Evidence,
@@ -164,7 +164,7 @@ pub(super) fn runtime(
 }
 
 pub(super) fn relations(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     req: &Request,
     roots: Vec<Fact>,
     evidence: &mut Evidence,

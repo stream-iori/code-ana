@@ -168,7 +168,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/SourceIdentityResolver.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/SourceIdentityResolver.java",
       "sha256": "58ebf03fd8cc12609496e61a929608958d81cf8742fb7c552d6c6e72bb6cf138",
-      "migrated_sha256": "58ebf03fd8cc12609496e61a929608958d81cf8742fb7c552d6c6e72bb6cf138"
+      "migrated_sha256": "3c5731cf888d2707fabcae9586a1b470a7936a31392e1d5380e504626b430727",
+      "adaptation": "Reuse immutable context catalogues with per-unit overlays; preserve binding ambiguity and root precedence."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/SourceRoot.java",
@@ -1477,19 +1478,22 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/EdgeTargetBinder.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/EdgeTargetBinder.java",
       "sha256": "a2e5774079694d065866f54d3ef99f029fb7d5f574e665c7f043631e194915f4",
-      "migrated_sha256": "a2e5774079694d065866f54d3ef99f029fb7d5f574e665c7f043631e194915f4"
+      "migrated_sha256": "b45aed91a5702301b77e7febdca1225fe69fc51e6fe4a088b72f521da2309c2d",
+      "adaptation": "Reuse immutable context catalogues with per-unit overlays; preserve binding ambiguity and root precedence."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/GraphIdentityRewriter.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/GraphIdentityRewriter.java",
       "sha256": "758dd573a7bd8dd219b98e9aef46973b19e195763d0482355f347d022e6dda62",
-      "migrated_sha256": "758dd573a7bd8dd219b98e9aef46973b19e195763d0482355f347d022e6dda62"
+      "migrated_sha256": "0a92e8b46eb88b591d47248f806d31a256b69ba807f96aad94a278c3a5084e1d",
+      "adaptation": "Reuse immutable context catalogues with per-unit overlays; preserve binding ambiguity and root precedence."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/GraphPostProcessor.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/GraphPostProcessor.java",
       "sha256": "21b0764df824db200766eeaec75d5e066dc86c971111e9b1502388503a3a6fda",
-      "migrated_sha256": "21b0764df824db200766eeaec75d5e066dc86c971111e9b1502388503a3a6fda"
+      "migrated_sha256": "1ba45363c2f319fb9fce0663a243915b4486a3507e75b1fda7e6ac27369d3e58",
+      "adaptation": "Reuse immutable context catalogues with per-unit overlays; preserve binding ambiguity and root precedence."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/GraphSemantics.java",
@@ -3276,6 +3280,24 @@
       "sha256": "8adf1aa1f8923074044435b6e13f5baa1df8c2f0e1812631db01b3a7c79dcc24",
       "migrated_sha256": "8adf1aa1f8923074044435b6e13f5baa1df8c2f0e1812631db01b3a7c79dcc24",
       "purpose": "Original component tests execute unchanged against the sealed accepted runner in a separate audit module; no JVM/native bundle rebuild."
+    },
+    {
+      "source": "anatomist-core/src/main/java/com/anatomist/core/AnalysisCoverage.java",
+      "destination": "analysis-core/src/main/java/com/anatomist/core/AnalysisCoverage.java",
+      "sha256": "c2a7edf7bd13697adda86011e0b1d5f3d259df2d6b9ab1b26dbfc32e2be400ae",
+      "migrated_sha256": "c2a7edf7bd13697adda86011e0b1d5f3d259df2d6b9ab1b26dbfc32e2be400ae"
+    },
+    {
+      "source": "anatomist-core/src/main/java/com/anatomist/core/ResolutionDiagnostics.java",
+      "destination": "analysis-core/src/main/java/com/anatomist/core/ResolutionDiagnostics.java",
+      "sha256": "46547e2fb7478f7f6d1844f5325bc12a028c1749fae15c460044b9fa77426e4b",
+      "migrated_sha256": "46547e2fb7478f7f6d1844f5325bc12a028c1749fae15c460044b9fa77426e4b"
+    },
+    {
+      "source": "anatomist-core/src/main/java/com/anatomist/core/IndexDiagnosticRetention.java",
+      "destination": "analysis-core/src/main/java/com/anatomist/core/IndexDiagnosticRetention.java",
+      "sha256": "e733098f54d085c018dcf15dbee0c4e59863a1259209dac98660817843979084",
+      "migrated_sha256": "e733098f54d085c018dcf15dbee0c4e59863a1259209dac98660817843979084"
     }
   ],
   "boundary_recovery_commit": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"

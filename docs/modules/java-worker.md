@@ -1,5 +1,8 @@
 # Java 适配器与 worker
 
+2026-10-13：交付协议改为 GRA1 / protobuf `Row`（固定表枚举、列顺序、NULL/文本/64 位整数/bytes），worker 18 / C ABI 4 / request 9。保留完成 FD 的异步等待和控制帧恢复读取；worker 不运行 Fact JSON 转换或去重数据库。Rust 只在完整长度、EOF、SHA 和 End 校验后允许发布，见[存储迁移](../implementation/anatomist-storage-migration.md)。
+
+
 > 当前实现与剩余门禁见 [Anatomist 迁移](../java-anatomist-migration.md)。以下含旧设计及历史状态。
 
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入，范围见 [Java 实现说明](../java-implementation.md)，证据见 [验收记录](../implementation/java-validation.md)。本页更广的类型、框架与规模化设计仍为目标。
@@ -194,3 +197,13 @@ Maven `selected=false` 的模块保留捕获身份和依赖源码，但不作为
 当前 Spring MVC、生命周期/事件、SOFA 注解已使用独立 analyzer；静态注册是 possible，不能生成 confirmed 调用。NoCode 缩减会保留未变 owner 的事实供查找，并重跑变更源码的扩展以更新位置。当前视图按 compiler context；跨 context 的项目全局视图、单声明故障隔离与完整框架规则仍在实施。
 
 Java发布确认等待最多30秒，包括native释放和Rust缓存原子提交；确认失败披露ack_warning且不进入热池，已发布head保持。该故障期限不是项目性能目标。元注解公开图、原始注解/MVC/事件/SOFA属性、生成覆盖跨度和当前真实项目失败/修复回执见[执行记录](../implementation/java-alignment-execution.md)。
+
+
+## ABI 3 完成通知（第二阶段性能改造）
+
+产品 worker 的 isolate 由一个固定 OS 线程创建、调用和销毁，Tokio 通过有界命令队列请求操作。
+每任务注册非阻塞 Unix socket 的写端；库原子复制 CLOEXEC FD，在 finally 发布终态后写 `0x01` 并关闭。
+Rust 使用异步可读等待，通知后只查一次终态。取消控制帧优先，持久 FrameReader 保存半帧进度。
+无完成字节、异常终态、关闭失败的实例不复用；daemon 共用 2 秒取消/退出期限，然后回收进程组。
+Graal CFunction 调用固定签名 C 包装完成 fcntl，适配 Darwin ARM64 的可变参数约定；无 JNI。
+ABI 2 bundle 明确拒绝混装。完整约束见 [契约](../contracts.md)。

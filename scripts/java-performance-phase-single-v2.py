@@ -42,7 +42,7 @@ def main():
     if build.get('build_profile') != 'release' or any(build['binaries'].get(str((binaries/name).resolve())) != sha256(binaries/name) for name in ('codeana-cli','codeana-daemon','codeana-java-worker')): raise ValueError('RELEASE_BUILD_DRIFT')
     command = [str(binaries / 'codeana-cli'), '--home', str(args.home.resolve()), '--project', str(args.project.resolve())]
     expected = json.loads(args.expected_graph.read_text())
-    if expected.get('status') != 'passed' or expected.get('whole_fact_ir_equal') is not True:
+    if expected.get('status') != 'passed' or not (expected.get('whole_fact_ir_equal') is True or expected.get('graph_storage_correctness_eligible') is True):
         raise ValueError('BACKEND_CORRECTNESS_REQUIRED_BEFORE_PERFORMANCE')
     row = dict(status='running', backend=args.backend, index_seconds=None,
                queries=[], performance_accepted=False, native_accepted=False,
@@ -78,7 +78,11 @@ def main():
         row.update(revision=terminal[0]['revision'], terminal=terminal[0], records=records)
         database = args.home / 'revisions' / row['revision'] / 'facts.db'
         start = time.monotonic()
-        row['graph'] = history.graph(database)
+        if expected.get('graph_encoding')=='anatomist-schema32':
+            spec=importlib.util.spec_from_file_location('graph_storage',ROOT/'scripts/java-graph-storage-acceptance.py')
+            graph_storage=importlib.util.module_from_spec(spec);spec.loader.exec_module(graph_storage)
+            row['graph']=graph_storage.graph(database,ignore_execution_provenance=True)
+        else:row['graph'] = history.graph(database)
         row['graph_verification_seconds'] = time.monotonic() - start
         if row['graph'] != expected['graphs'][args.backend]:
             raise ValueError('PERFORMANCE_FACT_GRAPH_DRIFT')

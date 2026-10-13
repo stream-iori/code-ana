@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+prost.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
@@ -12,6 +13,7 @@ tokio-util.workspace = true
 libc.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
+sha2.workspace = true
 walkdir.workspace = true
 roxmltree = "=0.21.1"
 codeana-model = { path = "../model" }

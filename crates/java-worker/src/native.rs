@@ -23,6 +23,7 @@ type Version = unsafe extern "C" fn(*mut c_void) -> i32;
 type Session = unsafe extern "C" fn(*mut c_void) -> u64;
 type Control = unsafe extern "C" fn(*mut c_void, u64) -> i32;
 type Input = unsafe extern "C" fn(*mut c_void, u64, *const u8, i32) -> i32;
+type Completion = unsafe extern "C" fn(*mut c_void, u64, i32) -> i32;
 type Read = unsafe extern "C" fn(*mut c_void, u64, u64, *mut u8, i32) -> i32;
 
 /// Confined to the calling OS thread. Library outlives every entry point and isolate.
@@ -93,7 +94,10 @@ impl Native {
                 task: 0,
                 _not_send: std::marker::PhantomData,
             };
-            ensure!(version(thread) == 2, "ABI_VERSION_MISMATCH");
+            ensure!(version(thread) == 4, "ABI_VERSION_MISMATCH");
+            let _ = native
+                .library
+                .get::<Completion>(b"codeana_java_set_completion_fd")?;
             if let Some(expected) = heap {
                 let actual = native.heap_bytes()?;
                 ensure!(
@@ -116,6 +120,12 @@ impl Native {
         unsafe { Ok(self.library.get::<Control>(symbol)?(self.thread, self.task)) }
     }
     pub fn start(&mut self, request: &[u8]) -> Result<()> {
+        self.start_inner(request, None)
+    }
+    pub fn start_notified(&mut self, request: &[u8], fd: i32) -> Result<()> {
+        self.start_inner(request, Some(fd))
+    }
+    fn start_inner(&mut self, request: &[u8], notification: Option<i32>) -> Result<()> {
         ensure!(
             self.task == 0 && request.len() <= codeana_model::MAX_RESULT,
             "NATIVE_INPUT_BUDGET"
@@ -125,6 +135,17 @@ impl Native {
                 self.library
                     .get::<Session>(b"codeana_java_session_create")?(self.thread);
             ensure!(self.task != 0, "SESSION_CREATE");
+            if let Some(fd) = notification {
+                ensure!(
+                    self.library
+                        .get::<Completion>(b"codeana_java_set_completion_fd")?(
+                        self.thread,
+                        self.task,
+                        fd
+                    ) == 0,
+                    "COMPLETION_FD_REGISTER"
+                );
+            }
             let input = self.library.get::<Input>(b"codeana_java_input_chunk")?;
             for chunk in request.chunks(1024 * 1024) {
                 ensure!(
@@ -238,15 +259,14 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
             && manifest["backend"] == "native"
             && manifest["worker_protocol"] == codeana_model::WORKER_PROTOCOL_VERSION
             && manifest["fact_ir"] == codeana_model::VERSION
-            && manifest["abi"] == 2
-            && manifest["analysis_request"] == 8
+            && manifest["abi"] == 4
+            && manifest["analysis_request"] == 9
             && manifest["compiler_protocol"] == 2
             && manifest["compiler_batch_protocol"] == 2
-            && manifest["adapter"] == "anatomist-dff2e395-codeana-jvm1"
+            && manifest["adapter"] == "anatomist-dff2e395-codeana-graph1"
             && manifest["java_model"] == "javac-model-v50"
-            && manifest["type_graph_default"] == true
-            && manifest["type_schema"] == 3
-            && manifest["binding_schema"] == 4,
+            && manifest["graph_schema"] == 32
+            && manifest["graph_encoding"] == "GRA1-protobuf-row-v1",
         "BUNDLE_VERSION_MISMATCH"
     );
     let os = if cfg!(target_os = "macos") {

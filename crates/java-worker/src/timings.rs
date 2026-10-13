@@ -46,6 +46,13 @@ impl Drop for PerformanceTimings {
         if source.metadata().is_ok_and(|m| m.len() <= (8 << 20)) {
             let _ = std::fs::copy(source, self.directory.join("java-timings.json"));
         }
+        let recording = self.scratch.join("allocations.jfr");
+        if recording
+            .metadata()
+            .is_ok_and(|m| m.is_file() && m.len() <= (256 << 20))
+        {
+            let _ = std::fs::copy(recording, self.directory.join("allocations.jfr"));
+        }
         if let Ok(bytes) = serde_json::to_vec(&self.capture.snapshot())
             && let Err(error) = std::fs::write(self.directory.join("rust-timings.json"), bytes)
         {

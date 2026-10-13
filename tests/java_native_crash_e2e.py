@@ -20,46 +20,41 @@ def main():
     case = java_e2e.JavaProduct('test_core')
     case.setUp()
     previous_bin = rust_e2e.BIN
+    saved_bundle=None
     try:
         good = case.cli('index', timeout=150)[1]['revision']
         case.stop()
-        package = case.root / 'crash-package'
-        binary_dir = package / 'bin'
-        native_dir = package / 'lib/java/native'
-        binary_dir.mkdir(parents=True)
-        native_dir.mkdir(parents=True)
-        for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
-            shutil.copy2(previous_bin / name, binary_dir / name)
-            # A copied Cargo binary can inherit stale macOS code-signing cache state. Sign the
-            # test-owned copy so AMFI permits entry into the C ABI that intentionally faults.
-            subprocess.run(['codesign', '--force', '--sign', '-', '--identifier', 'dev.codeana.fixture.' + case.root.name + '.' + name, str(binary_dir / name)],
-                           check=True, capture_output=True)
-        source_bundle = (previous_bin / '../lib/java').resolve()
-        if not (source_bundle / 'native/manifest.json').exists():
-            source_bundle = pathlib.Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE',
-                java_e2e.ROOT / 'lang-java-adapotr/target/native')).resolve().parent
-        bridge = source_bundle / 'compiler-bridge.jar'
-        shutil.copy2(bridge, package / 'lib/java/compiler-bridge.jar')
-        shutil.copy2(source_bundle / 'maven-input-worker.jar', package / 'lib/java/maven-input-worker.jar')
+        # Keep the already authorized executable and bundle paths. Only this
+        # stopped test uses the temporary fault library, restored in finally.
+        binary_dir=previous_bin
+        source_bundle=(previous_bin/'../lib/java').resolve()
+        native_dir=source_bundle/'native'
+        if not (native_dir/'manifest.json').is_file():
+            raise AssertionError('STABLE_INSTALLED_NATIVE_BUNDLE_REQUIRED')
+        saved_bundle=case.root/'saved-native';saved_bundle.mkdir()
+        for name in ('libcodeana_java.dylib','manifest.json'):shutil.copy2(native_dir/name,saved_bundle/name)
         crash_source = case.root / 'native-crash.c'
         crash_source.write_text('''
 int graal_create_isolate(void *params, void **isolate, void **thread) { *isolate=(void*)1; *thread=(void*)1; return 0; }
 int graal_tear_down_isolate(void *thread) { return 0; }
-int codeana_java_abi_version(void *thread) { return 2; }
+int codeana_java_abi_version(void *thread) { return 4; }
+int codeana_java_set_completion_fd(void *thread, unsigned long long task, int fd) { return 0; }
 unsigned long codeana_java_heap_bytes(void *thread) { return 268435456; }
 unsigned long codeana_java_session_create(void *thread) { return 1; }
 int codeana_java_input_chunk(void *thread, unsigned long task, const char *data, int length) { return 0; }
 int codeana_java_seal_input(void *thread, unsigned long task) { return 0; }
 int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile int*)0=1; return 0; }
 ''')
+        fault_library=case.root/'libcodeana_java.dylib'
+        subprocess.run(['cc','-dynamiclib','-o',str(fault_library),str(crash_source)],check=True)
         library = native_dir / 'libcodeana_java.dylib'
-        subprocess.run(['cc', '-dynamiclib', '-o', str(library), str(crash_source)], check=True)
+        os.replace(fault_library,library)
         subprocess.run(['codesign', '--force', '--sign', '-', '--identifier', 'dev.codeana.fixture.native.' + case.root.name, str(library)], check=True, capture_output=True)
         manifest = json.loads((source_bundle / 'native/manifest.json').read_text())
         manifest['files'] = {
             'native/' + library.name: sha(library),
-            'compiler-bridge.jar': sha(package / 'lib/java/compiler-bridge.jar'),
-            'maven-input-worker.jar': sha(package / 'lib/java/maven-input-worker.jar'),
+            'compiler-bridge.jar': sha(source_bundle/'compiler-bridge.jar'),
+            'maven-input-worker.jar': sha(source_bundle/'maven-input-worker.jar'),
         }
         (native_dir / 'manifest.json').write_text(json.dumps(manifest))
 
@@ -119,6 +114,12 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         print('Evidence: '+str(directory.relative_to(java_e2e.ROOT)), flush=True)
         raise
     finally:
+        case.stop()
+        if saved_bundle is not None:
+            for name in ('libcodeana_java.dylib','manifest.json'):
+                temporary=native_dir/('.restore-'+name)
+                shutil.copy2(saved_bundle/name,temporary)
+                os.replace(temporary,native_dir/name)
         rust_e2e.BIN = previous_bin
         case.doCleanups()
 

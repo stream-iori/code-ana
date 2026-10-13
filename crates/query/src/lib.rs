@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use text::text_matcher;
 pub use text::{stream_text, stream_text_candidates};
-fn select(r: &dyn FactReader, f: FactFilter) -> Result<Vec<Fact>> {
+fn select(r: &dyn GraphReader, f: FactFilter) -> Result<Vec<Fact>> {
     r.select(&f).map_err(anyhow::Error::msg)
 }
 pub const OPERATIONS: &[&str] = &[
@@ -262,7 +262,7 @@ pub fn preflight(request: &Request) -> Result<()> {
     }
     Ok(())
 }
-pub fn resolve(r: &dyn FactReader, selector: &str, unique: bool) -> Result<Vec<Fact>> {
+pub fn resolve(r: &dyn GraphReader, selector: &str, unique: bool) -> Result<Vec<Fact>> {
     ensure!(!selector.is_empty(), "SELECTOR_REQUIRED");
     let exact = select(
         r,
@@ -305,7 +305,7 @@ fn scope_filter(req: &Request) -> FactFilter {
         ..Default::default()
     }
 }
-fn selector_filter(r: &dyn FactReader, req: &Request) -> Result<FactFilter> {
+fn selector_filter(r: &dyn GraphReader, req: &Request) -> Result<FactFilter> {
     let mut filter = scope_filter(req);
     filter.name = (!req.name.is_empty()).then(|| req.name.clone());
     filter.signature = (!req.signature.is_empty()).then(|| req.signature.clone());
@@ -346,7 +346,7 @@ fn selector_filter(r: &dyn FactReader, req: &Request) -> Result<FactFilter> {
     }
     Ok(filter)
 }
-fn resolve_scoped(r: &dyn FactReader, req: &Request) -> Result<Vec<Fact>> {
+fn resolve_scoped(r: &dyn GraphReader, req: &Request) -> Result<Vec<Fact>> {
     ensure!(
         !req.selector.is_empty() || !req.signature.is_empty(),
         "SELECTOR_REQUIRED"
@@ -394,7 +394,7 @@ fn resolve_scoped(r: &dyn FactReader, req: &Request) -> Result<Vec<Fact>> {
     );
     Ok(facts)
 }
-fn coverage(r: &dyn FactReader, req: &Request) -> Result<Evidence> {
+fn coverage(r: &dyn GraphReader, req: &Request) -> Result<Evidence> {
     let mut e = Evidence::complete();
     if (!req.scope.is_empty()
         && req.scope != "ALL"
@@ -436,7 +436,7 @@ fn coverage(r: &dyn FactReader, req: &Request) -> Result<Evidence> {
     }
     Ok(e)
 }
-fn allowed(r: &dyn FactReader, req: &Request, f: &Fact) -> bool {
+fn allowed(r: &dyn GraphReader, req: &Request, f: &Fact) -> bool {
     if !req.world.is_empty() && f.owner.world != req.world {
         return false;
     }
@@ -449,7 +449,7 @@ fn allowed(r: &dyn FactReader, req: &Request, f: &Fact) -> bool {
             && (req.scope.is_empty() || req.scope == "ALL" || s.scope == req.scope)
     })
 }
-fn fact_source(r: &dyn FactReader, f: &Fact) -> Result<(SourceUnit, Option<Span>)> {
+fn fact_source(r: &dyn GraphReader, f: &Fact) -> Result<(SourceUnit, Option<Span>)> {
     if f.attributes.get("source_available") != Some(&json!(false)) {
         return r
             .manifest()
@@ -457,7 +457,12 @@ fn fact_source(r: &dyn FactReader, f: &Fact) -> Result<(SourceUnit, Option<Span>
             .iter()
             .find(|s| s.path == f.source)
             .cloned()
-            .map(|s| (s, f.span.clone()))
+            .map(|s| {
+                r.source_span(f)
+                    .map(|span| (s, span))
+                    .map_err(anyhow::Error::msg)
+            })
+            .transpose()?
             .ok_or_else(|| anyhow::anyhow!("SOURCE_UNAVAILABLE: {} origin={}", f.id, f.origin));
     }
     ensure!(
@@ -519,7 +524,7 @@ fn values(facts: impl IntoIterator<Item = Fact>) -> Vec<Value> {
         .collect()
 }
 fn call_edges_many(
-    r: &dyn FactReader,
+    r: &dyn GraphReader,
     ids: &[String],
     incoming: bool,
     evidence: &mut Evidence,
@@ -623,7 +628,7 @@ fn call_edges_many(
 }
 /// Freeze a search in bounded batches; IDs are the stable, unique sort key.
 pub fn stream_search(
-    r: &dyn FactReader,
+    r: &dyn GraphReader,
     req: &Request,
     sink: &mut dyn FnMut(Vec<Value>) -> Result<()>,
 ) -> Result<Output> {
@@ -661,7 +666,7 @@ pub fn stream_search(
     })
 }
 pub fn run(
-    r: &dyn FactReader,
+    r: &dyn GraphReader,
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
 ) -> Result<Output> {
@@ -1304,7 +1309,7 @@ mod tests {
             inner: MemoryReader,
             reads: Cell<usize>,
         }
-        impl FactReader for Counted {
+        impl GraphReader for Counted {
             fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
                 assert!(
                     filter.ids.len() <= 500
@@ -2108,7 +2113,7 @@ mod tests {
         revision: Revision,
         facts: Vec<Fact>,
     }
-    impl FactReader for MemoryReader {
+    impl GraphReader for MemoryReader {
         fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
             Ok(self
                 .facts

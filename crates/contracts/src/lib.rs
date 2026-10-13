@@ -2,79 +2,30 @@
 pub mod v1 {
     tonic::include_proto!("codeana.v1");
 }
-pub mod worker {
-    tonic::include_proto!("codeana.worker.v1");
+pub mod protobuf {
+    pub mod graph {
+        pub mod v1 {
+            tonic::include_proto!("codeana.graph.v1");
+        }
+    }
+    pub mod worker {
+        pub mod v1 {
+            tonic::include_proto!("codeana.worker.v1");
+        }
+    }
 }
-pub mod archive;
+pub use protobuf::{graph::v1 as graph, worker::v1 as worker};
+pub mod fixture_graph;
+pub mod graph_archive;
 pub mod java;
 pub mod performance;
+pub mod stream;
 use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 pub fn convert<A: serde::Serialize, B: serde::de::DeserializeOwned>(a: &A) -> Result<B> {
     Ok(serde_json::from_value(serde_json::to_value(a)?)?)
-}
-pub fn fact_to_wire(f: &m::Fact) -> Result<worker::Fact> {
-    let _timer = performance::Timer::start(performance::Metric::FactToWire, 0, true);
-    Ok(worker::Fact {
-        id: f.id.clone(),
-        kind: f.kind.name().into(),
-        owner: Some(worker::Owner {
-            world: f.owner.world.clone(),
-            producer: f.owner.producer.clone(),
-            kind: f.owner.kind.clone(),
-            id: f.owner.id.clone(),
-        }),
-        source: f.source.clone(),
-        span: f.span.as_ref().map(|s| worker::Span {
-            start: s.start,
-            end: s.end,
-        }),
-        name: f.name.clone(),
-        signature: f.signature.clone(),
-        parent: f.parent.clone(),
-        target: f.target.clone(),
-        relation: f.relation.clone(),
-        status: f.status.clone(),
-        origin: f.origin.clone(),
-        evidence_complete: f.evidence_complete,
-        declaration_resolved: f.declaration_resolved,
-        attributes_json: serde_json::to_vec(&f.attributes)?,
-    })
-}
-pub fn fact_from_wire(f: worker::Fact) -> Result<m::Fact> {
-    let _timer = performance::Timer::start(
-        performance::Metric::FactFromWire,
-        f.attributes_json.len() as u64,
-        true,
-    );
-    let owner = f.owner.ok_or_else(|| anyhow::anyhow!("missing owner"))?;
-    Ok(m::Fact {
-        id: f.id,
-        kind: serde_json::from_value(serde_json::Value::String(f.kind))?,
-        owner: m::Owner {
-            world: owner.world,
-            producer: owner.producer,
-            kind: owner.kind,
-            id: owner.id,
-        },
-        source: f.source,
-        span: f.span.map(|s| m::Span {
-            start: s.start,
-            end: s.end,
-        }),
-        name: f.name,
-        signature: f.signature,
-        parent: f.parent,
-        target: f.target,
-        relation: f.relation,
-        status: f.status,
-        origin: f.origin,
-        evidence_complete: f.evidence_complete,
-        declaration_resolved: f.declaration_resolved,
-        attributes: serde_json::from_slice(&f.attributes_json)?,
-    })
 }
 pub fn terminal(r: &m::TaskResult) -> v1::Terminal {
     v1::Terminal {
@@ -121,15 +72,57 @@ pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<worker::Envel
     let mut b = vec![0; n];
     r.read_exact(&mut b).await?;
     drop(timer);
+    decode_frame(&b)
+}
+fn decode_frame(b: &[u8]) -> Result<worker::Envelope> {
+    let n = b.len();
     performance::measure(performance::Metric::FrameValidate, n as u64, false, || {
-        validate_envelope_wire(&b)
+        validate_envelope_wire(b)
     })?;
     Ok(performance::measure(
         performance::Metric::FrameDecode,
         n as u64,
         false,
-        || worker::Envelope::decode(b.as_slice()),
+        || worker::Envelope::decode(b),
     )?)
+}
+
+/// Persistent framing progress: dropping a read future never loses a partial control frame.
+#[derive(Default)]
+pub struct FrameReader {
+    prefix: [u8; 4],
+    prefix_read: usize,
+    body: Vec<u8>,
+    body_read: usize,
+}
+impl FrameReader {
+    pub async fn next<R: AsyncRead + Unpin>(&mut self, input: &mut R) -> Result<worker::Envelope> {
+        let timer = performance::Timer::start(performance::Metric::FrameReadWait, 0, false);
+        while self.prefix_read < 4 {
+            let n = input.read(&mut self.prefix[self.prefix_read..]).await?;
+            ensure!(n != 0, "CONTROL_FRAME_EOF");
+            self.prefix_read += n;
+        }
+        if self.body.is_empty() {
+            let length = u32::from_be_bytes(self.prefix) as usize;
+            ensure!(length > 0 && length <= m::MAX_FRAME, "INVALID_FRAME_LENGTH");
+            self.body.resize(length, 0);
+        }
+        while self.body_read < self.body.len() {
+            let n = input.read(&mut self.body[self.body_read..]).await?;
+            ensure!(n != 0, "CONTROL_FRAME_EOF");
+            self.body_read += n;
+        }
+        drop(timer);
+        let result = decode_frame(&self.body);
+        self.prefix_read = 0;
+        self.body_read = 0;
+        self.body.clear();
+        if self.body.capacity() > 65536 {
+            self.body = Vec::new();
+        }
+        result
+    }
 }
 // Count repeated messages before prost allocation; a small frame must not expand
 // into millions of empty Fact/Owner structs or hide multiple oneof deliveries.
@@ -240,23 +233,57 @@ fn validate_java_config(bytes: &[u8]) -> Result<()> {
         Ok(())
     })
 }
+pub(crate) fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
+    let mut columns = 0;
+    let mut tables = 0;
+    wire_fields(bytes, |tag, value| {
+        match tag {
+            1 => {
+                tables += 1;
+                ensure!(tables == 1, "GRAPH_TABLE_DUPLICATE");
+            }
+            2 => {
+                columns += 1;
+                ensure!(columns <= 34, "GRAPH_COLUMN_BUDGET");
+                let mut alternatives = 0;
+                wire_fields(value, |tag, _| {
+                    ensure!((1..=3).contains(&tag), "GRAPH_CELL_FIELD");
+                    alternatives += 1;
+                    ensure!(alternatives == 1, "GRAPH_CELL_AMBIGUOUS");
+                    Ok(())
+                })?;
+            }
+            _ => bail!("GRAPH_ROW_FIELD"),
+        }
+        Ok(())
+    })?;
+    ensure!(tables == 1, "GRAPH_TABLE_REQUIRED");
+    Ok(())
+}
 fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
     let mut bodies = 0;
     let mut attempts = 0;
     wire_fields(bytes, |tag, body| {
         if tag == 1 {
             attempts += 1;
-        } else if (2..=16).contains(&tag) {
+        } else if (2..=13).contains(&tag) || tag == 16 {
             bodies += 1;
             let mut repeated = 0;
             wire_fields(body, |field, value| {
+                ensure!(
+                    !matches!((tag, field), (5, 5) | (7, 2)),
+                    "LEGACY_FACT_IR_REJECTED"
+                );
+                if tag == 7 && field == 3 {
+                    validate_graph_row_wire(value)?;
+                }
                 if tag == 3 && field == 2 {
                     validate_java_config(value)?;
                 }
                 let limit = match (tag, field) {
-                    (7, 2) => 1024,
+                    (7, 3) => 64,
                     (13, 1) | (13, 3) | (13, 5) => 1000,
-                    (5, 5) | (14, 2) => m::MAX_FACTS,
+
                     (6, 6) => m::MAX_FACTS,
                     (4, 2) | (4, 4) | (4, 6) => 10000,
                     _ => 0,
@@ -266,7 +293,7 @@ fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
                     if repeated > limit {
                         bail!("DECODE_REPEATED_BUDGET");
                     }
-                    if matches!((tag, field), (7, 2) | (5, 5) | (14, 2)) && value.len() < 4 {
+                    if matches!((tag, field), (7, 3)) && value.len() < 2 {
                         bail!("EMPTY_FACT_MESSAGE");
                     }
                 }
@@ -291,6 +318,44 @@ pub fn envelope(attempt: &str, body: worker::envelope::Body) -> worker::Envelope
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn persistent_reader_resumes_prefix_and_body_after_cancelled_waits() {
+        let expected = envelope(
+            "fragmented",
+            worker::envelope::Body::Cancel(worker::Cancel::default()),
+        );
+        let body = expected.encode_to_vec();
+        let bytes = [
+            (body.len() as u32).to_be_bytes().as_slice(),
+            body.as_slice(),
+        ]
+        .concat();
+        let (mut writer, mut input) = tokio::io::duplex(128);
+        let mut reader = FrameReader::default();
+        let mut offset = 0;
+        for end in [1, 3, 4, 5, bytes.len() - 1] {
+            writer.write_all(&bytes[offset..end]).await.unwrap();
+            assert!(
+                tokio::time::timeout(std::time::Duration::from_millis(1), reader.next(&mut input))
+                    .await
+                    .is_err()
+            );
+            offset = end;
+        }
+        writer.write_all(&bytes[offset..]).await.unwrap();
+        assert_eq!(reader.next(&mut input).await.unwrap(), expected);
+        write_frame(&mut writer, &expected).await.unwrap();
+        assert_eq!(reader.next(&mut input).await.unwrap(), expected);
+        drop(writer);
+        assert!(
+            reader
+                .next(&mut input)
+                .await
+                .unwrap_err()
+                .to_string()
+                .contains("CONTROL_FRAME_EOF")
+        );
+    }
     #[tokio::test]
     async fn oversized_frame_rejected_before_allocation() {
         let (mut a, mut b) = tokio::io::duplex(32);
@@ -378,14 +443,9 @@ mod java_protocol_tests {
             }),
         );
         assert!(validate_envelope_wire(&frame.encode_to_vec()).is_err());
-        let baseline = envelope(
-            "a",
-            worker::envelope::Body::BaselineChunk(worker::BaselineChunk {
-                seq: 0,
-                facts: vec![worker::Fact::default()],
-            }),
-        );
-        assert!(validate_envelope_wire(&baseline.encode_to_vec()).is_err());
+        // Reserved legacy payloads are rejected before protobuf can ignore them.
+        let legacy = [0x0a, 1, b'a', 0x72, 0];
+        assert!(validate_envelope_wire(&legacy).is_err());
     }
 }
 
@@ -444,28 +504,5 @@ mod query_option_tests {
         assert!(restored.stages[0].meta);
         let legacy = v1::TaskRequest::decode(&[][..]).unwrap();
         assert!(!legacy.meta);
-    }
-}
-
-#[cfg(test)]
-mod fact_mapping_tests {
-    use super::*;
-    #[test]
-    fn wire_mapping_preserves_large_spans_unicode_and_validates_required_payloads() {
-        let fact: m::Fact = serde_json::from_value(serde_json::json!({
-            "id":"中文😀", "kind":"reference", "owner":{"world":"w","producer":"p","kind":"source","id":"A.java"},
-            "span":{"start":0,"end":u64::MAX},"attributes":{"nested":[1,null,{"key":"值"}]}
-        })).unwrap();
-        let wire = fact_to_wire(&fact).unwrap();
-        assert_eq!(fact_from_wire(wire.clone()).unwrap(), fact);
-        let mut missing = wire.clone();
-        missing.owner = None;
-        assert!(fact_from_wire(missing).is_err());
-        let mut invalid = wire.clone();
-        invalid.attributes_json = b"{".to_vec();
-        assert!(fact_from_wire(invalid).is_err());
-        let mut invalid = wire;
-        invalid.kind = "unknown".into();
-        assert!(fact_from_wire(invalid).is_err());
     }
 }

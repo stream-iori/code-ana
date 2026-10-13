@@ -70,7 +70,7 @@ class AcceptanceAccounting(unittest.TestCase):
             destination = root / 'evidence/runtime'
             from unittest.mock import patch
             import subprocess
-            runtime=json.dumps(dict(worker_protocol=16,fact_ir=1,adapter='fixture-adapter',analysis_request=8,abi=2,backend='native'))
+            runtime=json.dumps(dict(worker_protocol=16,fact_ir=1,adapter='fixture-adapter',analysis_request=8,abi=3,backend='native'))
             with patch('java_product_runtime.subprocess.run',return_value=subprocess.CompletedProcess([],0,stdout=runtime,stderr='')):
                 result = prepare(root, destination)
             self.assertEqual(result['files'], inventory(destination))

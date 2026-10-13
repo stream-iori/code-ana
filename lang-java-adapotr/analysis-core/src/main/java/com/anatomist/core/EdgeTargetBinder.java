@@ -27,29 +27,59 @@ public final class EdgeTargetBinder {
 
     public static int bindExternalTargets(ExtractionResult result, Set<String> knownNodeIds) {
         if (result == null) return 0;
-        Set<String> known = new HashSet<>();
-        if (knownNodeIds != null) known.addAll(knownNodeIds);
-        for (Node n : result.nodes) {
-            if (n.id != null) known.add(n.id);
+        return bindExternalTargets(result, prepare(knownNodeIds));
+    }
+
+    /** Stores ambiguity explicitly, including ambiguity introduced by local nodes. */
+    public static final class Catalogue {
+        private final Set<String> known;
+        private final Map<String, String> symbols = new HashMap<>(), arities = new HashMap<>();
+        private Catalogue(Set<String> ids) {
+            known = ids == null ? Set.of() : Set.copyOf(ids);
+            for (String id : known) index(id, symbols, arities);
         }
-        Map<String, String> uniqueBySymbol = uniqueTargetsBySymbol(known);
-        Map<String, String> uniqueByArity = uniqueMethodTargetsByArity(known);
-        if (known.isEmpty()) return 0;
+        public boolean contains(String id) { return known.contains(id); }
+    }
+
+    public static Catalogue prepare(Set<String> ids) { return new Catalogue(ids); }
+
+    private static void merge(Map<String, String> index, String key, String id) {
+        if (key != null) index.merge(key, id, (old, added) -> old.equals(added) ? old : "");
+    }
+
+    private static void index(String id, Map<String, String> symbols, Map<String, String> arities) {
+        String symbol = NodeKeyFactory.symbolId(id);
+        merge(symbols, symbol, id);
+        merge(arities, methodArityKey(symbol), id);
+    }
+
+    private static String unique(Map<String, String> base, Map<String, String> local, String key) {
+        String a = base.get(key), b = local.get(key);
+        if (a != null && a.isEmpty() || b != null && b.isEmpty()) return null;
+        if (a != null && b != null && !a.equals(b)) return null;
+        return a != null ? a : b;
+    }
+
+    public static int bindExternalTargets(ExtractionResult result, Catalogue catalogue) {
+        if (result == null) return 0;
+        Set<String> local = new HashSet<>();
+        Map<String, String> symbols = new HashMap<>(), arities = new HashMap<>();
+        for (Node n : result.nodes) if (n.id != null && local.add(n.id)) index(n.id, symbols, arities);
         int changed = 0;
         for (Edge e : result.edges) {
             if (!e.isExternal || e.externalTargetFqn == null) continue;
             String target =
-                    known.contains(e.externalTargetFqn)
+                    (catalogue.contains(e.externalTargetFqn) || local.contains(e.externalTargetFqn))
                             ? e.externalTargetFqn
-                            : uniqueBySymbol.get(e.externalTargetFqn);
+                            : unique(catalogue.symbols, symbols, e.externalTargetFqn);
             if (target == null
                     && e.externalTargetFqn.indexOf('$') >= 0
                     && e.metadata != null
                     && e.metadata.contains("\"via\":\"reflection\"")) {
-                target = uniqueBySymbol.get(e.externalTargetFqn.replace('$', '.'));
+                target = unique(catalogue.symbols, symbols, e.externalTargetFqn.replace('$', '.'));
             }
             if (target == null) {
-                target = uniqueByArity.get(methodArityKey(e.externalTargetFqn));
+                target = unique(catalogue.arities, arities, methodArityKey(e.externalTargetFqn));
             }
             if (target == null) continue;
             e.targetId = target;
@@ -59,37 +89,6 @@ public final class EdgeTargetBinder {
             changed++;
         }
         return changed;
-    }
-
-    private static Map<String, String> uniqueTargetsBySymbol(Set<String> known) {
-        Map<String, String> out = new HashMap<>();
-        Set<String> ambiguous = new HashSet<>();
-        for (String id : known) {
-            String symbol = NodeKeyFactory.symbolId(id);
-            if (ambiguous.contains(symbol)) continue;
-            String previous = out.putIfAbsent(symbol, id);
-            if (previous != null && !previous.equals(id)) {
-                out.remove(symbol);
-                ambiguous.add(symbol);
-            }
-        }
-        return out;
-    }
-
-    private static Map<String, String> uniqueMethodTargetsByArity(Set<String> known) {
-        Map<String, String> out = new HashMap<>();
-        Set<String> ambiguous = new HashSet<>();
-        for (String id : known) {
-            String key = methodArityKey(NodeKeyFactory.symbolId(id));
-            if (key == null) continue;
-            if (ambiguous.contains(key)) continue;
-            String previous = out.putIfAbsent(key, id);
-            if (previous != null && !previous.equals(id)) {
-                out.remove(key);
-                ambiguous.add(key);
-            }
-        }
-        return out;
     }
 
     private static String methodArityKey(String methodId) {

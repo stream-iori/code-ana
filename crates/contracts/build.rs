@@ -1,5 +1,6 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let files = ["hello", "task", "worker"].map(|s| format!("../../proto/codeana/v1/{s}.proto"));
+    let files =
+        ["hello", "task", "worker", "graph"].map(|s| format!("../../proto/codeana/v1/{s}.proto"));
     tonic_prost_build::configure()
         .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
         .field_attribute(

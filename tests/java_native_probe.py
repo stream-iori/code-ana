@@ -414,7 +414,8 @@ def main():
         crash_source.write_text('''
 int graal_create_isolate(void *params, void **isolate, void **thread) { *isolate=(void*)1; *thread=(void*)1; return 0; }
 int graal_tear_down_isolate(void *thread) { return 0; }
-int codeana_java_abi_version(void *thread) { return 2; }
+int codeana_java_abi_version(void *thread) { return 3; }
+int codeana_java_set_completion_fd(void *thread, unsigned long long task, int fd) { return 0; }
 unsigned long codeana_java_session_create(void *thread) { return 1; }
 int codeana_java_input_chunk(void *thread, unsigned long task, const char *data, int length) { return 0; }
 int codeana_java_seal_input(void *thread, unsigned long task) { return 0; }

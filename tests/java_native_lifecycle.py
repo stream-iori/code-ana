@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import struct
+import socket
 import tempfile
 import threading
 import time
@@ -22,8 +23,8 @@ class NativeLifecycle(unittest.TestCase):
             ROOT / 'lang-java-adapotr/target/native')).resolve()
         manifest = json.loads((bundle / 'manifest.json').read_text())
         self.assertEqual(manifest['backend'], 'native')
-        self.assertEqual(manifest['abi'], 2)
-        self.assertEqual(manifest['analysis_request'], 8)
+        self.assertEqual(manifest['abi'], 4)
+        self.assertEqual(manifest['analysis_request'], 9)
         for name, expected in manifest['files'].items():
             path = bundle.parent / name
             self.assertTrue(path.resolve().is_relative_to(bundle.parent))
@@ -36,6 +37,7 @@ class NativeLifecycle(unittest.TestCase):
         self.bind('graal_detach_thread', [pointer])
         self.bind('codeana_java_abi_version', [pointer])
         self.bind('codeana_java_session_create', [pointer], ctypes.c_uint64)
+        self.bind('codeana_java_set_completion_fd', [pointer, ctypes.c_uint64, ctypes.c_int])
         self.bind('codeana_java_input_chunk', [pointer, ctypes.c_uint64, pointer, ctypes.c_int])
         self.bind('codeana_java_read_result_chunk',
             [pointer, ctypes.c_uint64, ctypes.c_uint64, pointer, ctypes.c_int])
@@ -44,12 +46,12 @@ class NativeLifecycle(unittest.TestCase):
         self.isolate, self.thread = self.create_isolate()
         self.tasks = set()
         self.addCleanup(self.close_isolate)
-        self.assertEqual(self.library.codeana_java_abi_version(self.thread), 2)
+        self.assertEqual(self.library.codeana_java_abi_version(self.thread), 4)
         source = self.root / 'A.java'
         source.write_text('class A {String value="中文😀"; void run(){target();} void target(){}}')
         unit = dict(path='src/A.java', input=str(source), hash=hashlib.sha256(source.read_bytes()).hexdigest(),
                     module='.', world='main', scope='MAIN', publish=True)
-        self.request = dict(version=8, full=True, facts=True,
+        self.request = dict(version=9, full=True, facts=True,
             java_home=str(pathlib.Path.home() / '.sdkman/candidates/java/8.0.492-zulu'),
             scratch=str(self.root), compiler_timeout_seconds=30,
             contexts=[dict(context='.@MAIN', module='.', world='main', scope='MAIN',
@@ -117,22 +119,48 @@ class NativeLifecycle(unittest.TestCase):
         return state, json.loads(output)
 
     def facts(self, result):
-        descriptor = result['facts_archive']
+        descriptor = result['graph_archive']
         path = pathlib.Path(descriptor['path'])
         body = path.read_bytes()
         self.assertEqual(hashlib.sha256(body).hexdigest(), descriptor['sha256'])
         self.assertEqual(len(body), descriptor['bytes'])
-        self.assertEqual(body[:4], b'CAF1')
+        self.assertEqual(body[:4], b'GRA1')
         offset, facts = 4, []
         while offset < len(body):
             length = struct.unpack('>I', body[offset:offset + 4])[0]
             offset += 4
             self.assertGreater(length, 0)
             self.assertLessEqual(offset + length, len(body))
-            facts.append(json.loads(body[offset:offset + length]))
+            facts.append(body[offset:offset + length])
             offset += length
         self.assertEqual(len(facts), descriptor['count'])
-        return path, sorted(facts, key=lambda fact: fact['id'])
+        return path, sorted(facts)
+
+    def test_completion_notification_success_error_and_unstarted_close(self):
+        for request in (self.request, dict(self.request, version=0)):
+            task = self.submit(request, start=False)
+            reader, writer = socket.socketpair()
+            reader.settimeout(60)
+            self.addCleanup(reader.close)
+            self.addCleanup(writer.close)
+            self.assertNotEqual(self.library.codeana_java_set_completion_fd(self.thread, task, -1), 0)
+            self.assertEqual(self.library.codeana_java_set_completion_fd(self.thread, task, writer.fileno()), 0)
+            self.assertNotEqual(self.library.codeana_java_set_completion_fd(self.thread, task, writer.fileno()), 0)
+            writer.close()  # The native task owns a duplicate, never the caller's FD.
+            self.assertEqual(self.control('analyze_start', task), 0)
+            self.assertEqual(reader.recv(1), b'\x01')
+            self.assertEqual(reader.recv(1), b'')
+            self.assertIn(self.control('poll_event', task), (-1, 1))
+            self.result(task)
+            self.close(task)
+        task = self.task()
+        reader, writer = socket.socketpair()
+        reader.settimeout(3)
+        self.addCleanup(reader.close)
+        self.assertEqual(self.library.codeana_java_set_completion_fd(self.thread, task, writer.fileno()), 0)
+        writer.close()
+        self.close(task)
+        self.assertEqual(reader.recv(1), b'')
 
     def test_same_isolate_reuses_tasks_and_releases_archives_after_close(self):
         observed = []
@@ -148,7 +176,7 @@ class NativeLifecycle(unittest.TestCase):
             self.assertFalse(archive.exists())
             self.assertEqual(self.control('poll_event', task), -2)
         self.assertEqual(observed[0], observed[1])
-        self.assertTrue(any(fact['kind'] == 'call_target' for fact in observed[0]))
+        self.assertTrue(any(row.startswith(b'\x08\x02') and b'CALLS' in row for row in observed[0]))
         self.assertFalse(list(self.root.rglob('*.class')))
 
     def test_session_capacity_and_closed_handle_are_explicit(self):
@@ -207,10 +235,10 @@ class NativeLifecycle(unittest.TestCase):
         worker.start()
         worker.join(timeout=15)
         self.assertFalse(worker.is_alive())
-        self.assertEqual(outcomes, [0, 2, 0])
+        self.assertEqual(outcomes, [0, 4, 0])
         _, other = self.create_isolate()
         try:
-            self.assertEqual(self.library.codeana_java_abi_version(other), 2)
+            self.assertEqual(self.library.codeana_java_abi_version(other), 4)
             tasks = [self.task() for _ in range(4)]
             separate = self.library.codeana_java_session_create(other)
             self.assertNotEqual(separate, 0)

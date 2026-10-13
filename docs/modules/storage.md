@@ -1,5 +1,7 @@
 # 存储与原子发布
 
+2026-10-13：当前图布局迁为 Anatomist schema 32（本产品 user_version 6），详见[实施记录](../implementation/anatomist-storage-migration.md)。旧库须全量重建；catalog、源码 blob、人工标注和不可变 revision 保留。
+
 > 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
 
 当前 catalog schema 2、annotation schema 2 使用事务升级；旧标注无锚点时保留正文并显示未绑定。GC 删除 revision 前登记 `cleanup_pending`，重启后 recover 重试；单库与整个 home 的容量验收仍待做。
@@ -26,17 +28,16 @@
 
 存储设计和实现逻辑参考 Anatomist Java，再由 Rust 实现；数据库文件兼容和历史数据导入不属于当前迁移。catalog/graph/annotations/report 分别版本化；跨文件没有天然事务，必须遵守下述持久化顺序。
 
-| 逻辑表组 | 建议索引 / 用途 |
+| 实际表组（Anatomist schema 32） | 用途 |
 |---|---|
-| source_units / declarations / external_symbols | world+path、SymbolKey 唯一、parent、kind、检索字段 |
-| occurrences / call_sites / call_targets | owner+位置稳定排序、call site、target 的反向查询 |
-| structural_relations / facets | kind+source、kind+target、类型化可查询字段 |
-| owners / dependencies | owner 到事实、依赖到消费者、未解析查找桶 |
-| diagnostics / coverage / provenance | world/scope/producer/owner/code，支持零事实 owner |
-| graph_identity | Fact IR、schema、semantics、profile、source snapshot；不放入口特有 Git selector |
-| catalog | revisions、snapshots、heads、build attempts、comparison results、对象引用和恢复状态 |
+| nodes / edges | 节点、声明字段、非 CALLS 关系；保留重复事实的 ordinal |
+| call_site_owners / call_sites / call_site_targets | 调用点、目标集合、confidence 和 resolution_status |
+| annotations / annotation_meta_relations / semantic_annotations | 原始注解、元注解与语义标注 |
+| file_cache / file_dependencies / symbol_dependencies | 文件指纹与增量失效依赖 |
+| index_diagnostics / analysis_coverage / index_providers / project_meta | 诊断、能力缺口与 provider 身份 |
+| node_names | Anatomist FTS5；4096 字节页 |
 
-复杂 facet 可保留版本化 payload，但高频查询字段需结构化索引，不能把所有语义塞进无法检索的 JSON。具体 DDL 在 P0 回放验证后冻结。
+`facts.db` 保留文件名，内部已移除 `facts(body)`、完整 Fact JSON 和额外 Java type/binding/syntax 表。输出实体仅在查询时组装，不能作为存储源。DDL、索引和 staging 绑定顺序固定参考 dff2e395；实现见 `crates/storage/src/anatomist-*.sql`、`graph_store.rs`。
 
 ## 2. 定向端口
 
@@ -47,12 +48,12 @@
 | read_call_sites / read_targets / batch_adjacency | 批量正反向读取，避免每条边一次数据库往返 |
 | read_coverage / read_provenance | 保留选择范围、缺口和零结果证据 |
 | export_baseline | 固定 revision/profile 的事实与依赖摘要 |
-| create_candidate / apply_delta | 仅操作私有未发布事实库；按 owner 删除并替换 |
+| create_candidate / apply_delta | 仅操作私有未发布事实库；按源文件及 hash/ordinal 删除并替换 |
 | validate / publish | 返回提交身份或明确失败；不向调用者泄露部分可见结果 |
 
 存储不推导 Java 派发、不解释健康策略、不执行 pipeline，也不暴露万能 ORM。
 
-Rust application 可向 staging 提交 `CandidateDerivation`。存储在私有候选中按规则声明的 producer/aggregate ID 清理旧派生 owner，提供关系读取、按 ID/源码 world 签名读取、捕获单元查询和受 owner/manifest 校验的插入；规则完成后仍执行全库 dangling/coverage/完整性校验。关系含义由 application 决定。派生 aggregate 不交回语言 worker，普通 revision 导出继续保留。取消、磁盘预算、派生失败和 CAS 冲突均不能改动旧 head。
+Java 只交付类型化 Anatomist rows。Rust staging 完成引用解析、UTF-16 长度规则的事实 hash、重复 ordinal、调用点目标归并和派生 WIRES。不会把调用点展开成额外方法 CALLS 边。全量导入暂停非唯一索引和节点 FTS 触发器，导入后重建；增量保留匹配的 hash/ordinal，只刷新受影响文件的调用点。源路径、module/scope、列数/类型和最终 End 均须校验。取消、失败和 CAS 冲突保留旧 head。
 
 ## 3. 发布协议
 

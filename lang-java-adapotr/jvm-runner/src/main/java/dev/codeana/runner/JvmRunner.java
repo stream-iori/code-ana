@@ -2,13 +2,13 @@ package dev.codeana.runner;
 
 import dev.codeana.adapter.AnalysisSession;
 import dev.codeana.adapter.AnalysisTelemetry;
-import dev.codeana.common.FactArchive;
+import dev.codeana.common.GraphArchive;
 import dev.codeana.common.Json;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-/** Explicit JVM development entry: request/result 8, task-owned CAF1 output. */
+/** Explicit JVM development entry: request/result 9, task-owned GRA1 output. */
 public final class JvmRunner {
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("request.json result.json required");
@@ -39,9 +39,9 @@ public final class JvmRunner {
             Runtime.getRuntime().addShutdownHook(shutdown);
             try {
                 Map<String, Object> result = session.analyze();
-                FactArchive facts = (FactArchive) result.remove("facts");
+                GraphArchive facts = (GraphArchive) result.remove("facts");
                 telemetry.phase("archive_seal", "", true);
-                result.put("facts_archive", facts.export(resultPath.resolveSibling("facts.caf")));
+                result.put("graph_archive", facts.export(resultPath.resolveSibling("graph.rows")));
                 telemetry.phase("archive_seal", "", false);
                 Json.writeTo(resultPath, result, 64L << 20);
                 terminalState = 1;

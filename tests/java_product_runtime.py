@@ -32,7 +32,7 @@ def prepare(root, destination, backend=None):
         probe=subprocess.run([str(root/'target/debug/codeana-java-worker'),str(source/'runner.jar'),'--backend','jvm','--runtime-info'],capture_output=True,text=True,timeout=15)
         if probe.returncode:raise ValueError('JVM_RUNTIME_WORKER_NOT_CURRENT: '+probe.stderr)
         versions=json.loads(probe.stdout)
-        if versions['backend']!='jvm' or versions['worker_protocol']!=manifest['worker_protocol'] or versions['adapter']!=manifest['adapter'] or versions['analysis_request']!=8 or versions['fact_ir']!=1:raise ValueError('JVM_RUNTIME_PROTOCOL_MISMATCH')
+        if versions['backend']!='jvm' or versions['worker_protocol']!=manifest['worker_protocol'] or versions['adapter']!=manifest['adapter'] or versions['analysis_request']!=9 or versions['fact_ir']!=2:raise ValueError('JVM_RUNTIME_PROTOCOL_MISMATCH')
         destination.mkdir(parents=True,exist_ok=False)
         binaries=destination/'target/debug';binaries.mkdir(parents=True)
         bundle=destination/'target/lib/java/jvm';bundle.mkdir(parents=True)
@@ -59,8 +59,8 @@ def prepare(root, destination, backend=None):
     if probe.returncode:
         raise ValueError('JAVA_RUNTIME_WORKER_NOT_CURRENT: rebuild Rust binaries; ' + probe.stderr.strip())
     versions = json.loads(probe.stdout)
-    expected_versions = dict(worker_protocol=manifest['worker_protocol'], fact_ir=1,
-                             adapter=manifest['adapter'], analysis_request=8, abi=2, backend='native')
+    expected_versions = dict(worker_protocol=manifest['worker_protocol'], fact_ir=2,
+                             adapter=manifest['adapter'], analysis_request=9, abi=4, backend='native')
     if versions != expected_versions:
         raise ValueError('JAVA_RUNTIME_PROTOCOL_MISMATCH: ' + json.dumps(versions))
     # A new task-owned directory is required; never overwrite an active runtime.

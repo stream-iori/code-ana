@@ -61,9 +61,14 @@ public final class Json {
                     });
 
     public static String sha(byte[] bytes) {
+        return sha(bytes, 0, bytes.length);
+    }
+
+    public static String sha(byte[] bytes, int offset, int length) {
         MessageDigest digest = SHA256.get();
         digest.reset();
-        return hex(digest.digest(bytes));
+        digest.update(bytes, offset, length);
+        return hex(digest.digest());
     }
 
     private static final char[] HEX = "0123456789abcdef".toCharArray();
@@ -140,6 +145,114 @@ public final class Json {
             return result;
         } catch (java.nio.charset.CharacterCodingException e) {
             throw new IllegalArgumentException("INVALID_UTF8", e);
+        }
+    }
+
+    /** Fixed canonical fields avoid temporary Map entries and repeated sorting. */
+    public interface Fields {
+        int fieldCount();
+        String fieldName(int index);
+        Object fieldValue(int index);
+        default byte[] encodedFieldName(int index) { return null; }
+    }
+
+    /** A synchronous consumer: the borrowed bytes cannot outlive this call. */
+    public interface EncodedSink { void accept(byte[] bytes, int offset, int length); }
+
+    private static final ThreadLocal<Utf8Output> UTF8 = ThreadLocal.withInitial(Utf8Output::new);
+
+    /** Same UTF-8 replacement policy as String.getBytes, with bounded reusable storage. */
+    public static byte[] encode(Object value) {
+        final byte[][] result = {null};
+        encodeTo(value, (bytes, offset, length) -> result[0] = Arrays.copyOfRange(bytes, offset, offset + length));
+        return result[0];
+    }
+
+    public static void encodeTo(Object value, EncodedSink sink) {
+        Utf8Output reusable = UTF8.get();
+        Utf8Output out = reusable.inUse ? new Utf8Output() : reusable;
+        out.inUse = true;
+        out.reset();
+        try {
+            append(out, value, 0);
+            out.finishSurrogate();
+            sink.accept(out.bytes.buffer(), 0, out.bytes.size());
+        } catch (IOException impossible) { throw new java.io.UncheckedIOException(impossible); }
+        finally { out.releaseLargeBuffer(); out.inUse = false; }
+    }
+
+    private static final class Utf8Output implements Appendable {
+        private BoundedBytes bytes = new BoundedBytes();
+        private char high;
+        private boolean inUse;
+        void reset() { bytes.reset(); high = 0; }
+        void releaseLargeBuffer() { if (bytes.capacity() > 65536) bytes = new BoundedBytes(); }
+        void finishSurrogate() { if (high != 0) { bytes.write('?'); high = 0; } }
+        public Appendable append(char value) {
+            if (high != 0) {
+                if (Character.isLowSurrogate(value)) {
+                    int cp = Character.toCodePoint(high, value); high = 0;
+                    bytes.write(0xf0 | cp >>> 18); bytes.write(0x80 | cp >>> 12 & 63);
+                    bytes.write(0x80 | cp >>> 6 & 63); bytes.write(0x80 | cp & 63);
+                    return this;
+                }
+                finishSurrogate();
+            }
+            if (Character.isHighSurrogate(value)) high = value;
+            else if (Character.isLowSurrogate(value)) bytes.write('?');
+            else if (value < 128) bytes.write(value);
+            else if (value < 2048) {
+                bytes.write(0xc0 | value >>> 6); bytes.write(0x80 | value & 63);
+            } else {
+                bytes.write(0xe0 | value >>> 12); bytes.write(0x80 | value >>> 6 & 63);
+                bytes.write(0x80 | value & 63);
+            }
+            return this;
+        }
+        public Appendable append(CharSequence value) {
+            if (value == null) value = "null";
+            return append(value, 0, value.length());
+        }
+        public Appendable append(CharSequence value, int begin, int end) {
+            if (value == null) value = "null";
+            int i = begin;
+            while (i < end) {
+                if (high != 0 || value.charAt(i) >= 128) { append(value.charAt(i++)); continue; }
+                int start = i;
+                while (i < end && value.charAt(i) < 128) i++;
+                bytes.ascii(value, start, i);
+            }
+            return this;
+        }
+        void raw(byte[] value) { finishSurrogate(); bytes.block(value); }
+    }
+    private static final class BoundedBytes extends java.io.ByteArrayOutputStream {
+        BoundedBytes() { super(4096); }
+        int capacity() { return buf.length; }
+        byte[] buffer() { return buf; }
+        private void reserve(int length) {
+            if (length < 0 || length > MAX_BYTES - count) throw new IllegalArgumentException("JSON_BUDGET");
+            int needed = count + length;
+            if (needed > buf.length) buf = Arrays.copyOf(buf, Math.min(MAX_BYTES, Math.max(needed, buf.length * 2)));
+        }
+        @SuppressWarnings("deprecation")
+        void ascii(CharSequence value, int begin, int end) {
+            reserve(end - begin);
+            if (value instanceof String text) {
+                // The caller has checked every character is ASCII. This legacy
+                // low-byte API copies directly into the destination, allocating
+                // no intermediate byte[]; Latin-1 strings use an array copy.
+                text.getBytes(begin, end, buf, count);
+                count += end - begin;
+            } else {
+                for (int i = begin; i < end; i++) buf[count++] = (byte) value.charAt(i);
+            }
+        }
+        void block(byte[] value) { reserve(value.length); System.arraycopy(value, 0, buf, count, value.length); count += value.length; }
+        @Override public void write(int value) {
+            if (count >= MAX_BYTES) throw new IllegalArgumentException("JSON_BUDGET");
+            if (count == buf.length) buf = Arrays.copyOf(buf, Math.min(MAX_BYTES, buf.length * 2));
+            buf[count++] = (byte) value;
         }
     }
 
@@ -276,14 +389,32 @@ public final class Json {
             }
             out.append(s, chunk, s.length());
             out.append('"');
+        } else if (v instanceof Fields) {
+            Fields fields = (Fields) v;
+            out.append('{');
+            for (int i = 0; i < fields.fieldCount(); i++) {
+                if (i != 0) out.append(',');
+                byte[] name = out instanceof Utf8Output ? fields.encodedFieldName(i) : null;
+                if (name != null) ((Utf8Output) out).raw(name);
+                else { append(out, fields.fieldName(i), depth + 1); out.append(':'); }
+                append(out, fields.fieldValue(i), depth + 1);
+            }
+            out.append('}');
         } else if (v instanceof Map) {
             out.append('{');
             boolean first = true;
-            Map.Entry<?, ?>[] ordered = ((Map<?, ?>) v).entrySet().toArray(new Map.Entry<?, ?>[0]);
-            for (Map.Entry<?, ?> entry : ordered) {
+            Map<?, ?> map = (Map<?, ?>) v;
+            boolean sorted = map instanceof SortedMap && ((SortedMap<?, ?>) map).comparator() == null;
+            for (Map.Entry<?, ?> entry : map.entrySet()) {
                 if (!(entry.getKey() instanceof String)) throw new IllegalArgumentException("JSON_OBJECT_KEY");
             }
-            Arrays.sort(ordered, (left, right) -> ((String) left.getKey()).compareTo((String) right.getKey()));
+            Iterable<? extends Map.Entry<?, ?>> ordered;
+            if (sorted) ordered = map.entrySet();
+            else {
+                Map.Entry<?, ?>[] entries = map.entrySet().toArray(new Map.Entry<?, ?>[0]);
+                Arrays.sort(entries, (left, right) -> ((String) left.getKey()).compareTo((String) right.getKey()));
+                ordered = Arrays.asList(entries);
+            }
             for (Map.Entry<?, ?> e : ordered) {
                 if (!first) out.append(',');
                 first = false;
@@ -292,14 +423,6 @@ public final class Json {
                 append(out, e.getValue(), depth + 1);
             }
             out.append('}');
-        } else if (v instanceof FactArchive) {
-            FactArchive records = (FactArchive) v;
-            out.append('[');
-            for (int index = 0; index < records.size(); index++) {
-                if (index != 0) out.append(',');
-                appendRecord(out, records.encoded(index), depth + 1);
-            }
-            out.append(']');
         } else if (v instanceof Iterable) {
             out.append('[');
             boolean first = true;

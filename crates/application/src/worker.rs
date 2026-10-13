@@ -1,7 +1,11 @@
 use anyhow::{Context, Result, bail, ensure};
-use codeana_contracts::archive::{FactArchive, FactArchiveBuilder, SpooledAnalysis};
+use codeana_contracts::graph_archive::{Builder as GraphArchiveBuilder, GraphArchive};
+pub struct SpooledAnalysis {
+    pub header: AnalysisHeader,
+    pub records: GraphArchive,
+}
 use codeana_contracts::{
-    convert, envelope, fact_from_wire, read_frame, worker as w, worker::envelope::Body, write_frame,
+    convert, envelope, read_frame, worker as w, worker::envelope::Body, write_frame,
 };
 use codeana_model::*;
 use std::{os::fd::AsRawFd, path::Path, time::Duration};
@@ -286,7 +290,12 @@ impl Worker {
                     bail!("WORKER_PROTOCOL: {error}; pid={}; command={}; exit={status}; stderr={logs}",self.process_group,self.command);
                 }
             },
-            _=cancel.cancelled()=>{let _=self.send(Body::Cancel(w::Cancel{})).await;let _=tokio::time::timeout(Duration::from_secs(2),self.child.wait()).await;bail!("CANCELLED")}
+            _=cancel.cancelled()=>{
+                let deadline=tokio::time::Instant::now()+Duration::from_secs(2);
+                let _=tokio::time::timeout_at(deadline,self.send(Body::Cancel(w::Cancel{}))).await;
+                let _=tokio::time::timeout_at(deadline,self.child.wait()).await;
+                bail!("CANCELLED")
+            }
         };
         ensure!(frame.attempt == self.attempt, "ATTEMPT_MISMATCH");
         match frame.body.context("EMPTY_FRAME")? {
@@ -299,7 +308,7 @@ impl Worker {
         manifest: &Manifest,
         profile: &str,
         baseline: &str,
-        old: Option<&FactArchive>,
+        old: Option<&serde_json::Value>,
         full: bool,
         cancel: &CancellationToken,
     ) -> Result<SpooledAnalysis> {
@@ -310,30 +319,17 @@ impl Worker {
                 let mut full = full;
                 for retry in 0..2 {
                     self.attempt = new_id("attempt");
-                    let baseline_input = if full { None } else { old };
-                    let mut sequence = 0;
-                    if let Some(archive) = baseline_input {
-                        for chunk in archive.chunks()? {
-                            self.send(Body::BaselineChunk(w::BaselineChunk {
-                                seq: sequence,
-                                facts: chunk?,
-                            }))
-                            .await?;
-                            sequence += 1;
-                        }
-                    }
-                    self.send(Body::BaselineEnd(w::BaselineEnd {
-                        count: baseline_input.map_or(0, |a| a.count),
-                        checksum: baseline_input
-                            .map_or_else(|| digest(&Vec::<Fact>::new()), |a| a.checksum.clone()),
-                    }))
-                    .await?;
+                    let baseline_summary_json = if full {
+                        Vec::new()
+                    } else {
+                        old.map(serde_json::to_vec).transpose()?.unwrap_or_default()
+                    };
                     self.send(Body::Analyze(w::Analyze {
+                        baseline_summary_json,
                         manifest: Some(convert(manifest)?),
                         profile: profile.into(),
                         baseline: baseline.into(),
                         full,
-                        baseline_facts: vec![],
                     }))
                     .await?;
                     let begin = match self.receive(cancel).await? {
@@ -352,26 +348,25 @@ impl Worker {
                         "RESULT_IDENTITY_MISMATCH"
                     );
                     ensure!(!full || begin.mode == "full", "EXPECTED_FULL_RESULT");
-                    let mut facts = match self.scratch.lock().unwrap().as_ref() {
-                        Some(budget) => FactArchiveBuilder::new_in(
-                            self.output_limits.bytes,
-                            self.output_limits.facts,
-                            &budget.root,
-                        )?,
-                        None => FactArchiveBuilder::new(
-                            self.output_limits.bytes,
-                            self.output_limits.facts,
-                        )?,
-                    };
+                    let root = self
+                        .scratch
+                        .lock()
+                        .unwrap()
+                        .as_ref()
+                        .map(|b| b.root.clone());
+                    let mut facts = GraphArchiveBuilder::new(
+                        root.as_deref(),
+                        self.output_limits.bytes,
+                        self.output_limits.facts,
+                    )?;
                     let mut seq = 0;
                     let archive = loop {
                         match self.receive(cancel).await? {
                             Body::Chunk(chunk) => {
                                 ensure!(chunk.seq == seq, "CHUNK_SEQUENCE_MISMATCH");
                                 seq += 1;
-                                for f in chunk.facts {
-                                    let f = fact_from_wire(f)?;
-                                    facts.push(&f)?;
+                                for row in chunk.rows {
+                                    facts.push(&row)?;
                                 }
                             }
                             Body::End(end) => {
@@ -406,6 +401,102 @@ impl Worker {
                         header: r,
                         records: archive,
                     });
+                }
+                bail!("REPLAN_BUDGET")
+            })
+            .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub async fn analyze_into(
+        &mut self,
+        manifest: &Manifest,
+        profile: &str,
+        baseline: &str,
+        old: Option<&serde_json::Value>,
+        full: bool,
+        cancel: &CancellationToken,
+        mut begin_sink: impl FnMut(
+            &AnalysisHeader,
+        ) -> Result<
+            tokio::sync::mpsc::Sender<codeana_contracts::stream::GraphStreamEvent>,
+        >,
+    ) -> Result<AnalysisHeader> {
+        let diagnostics = codeana_contracts::performance::Report::new("transport");
+        diagnostics
+            .capture
+            .scope(async {
+                let mut full = full;
+                for retry in 0..2 {
+                    self.attempt = new_id("attempt");
+                    let baseline_summary_json=if full { Vec::new() } else { old.map(serde_json::to_vec).transpose()?.unwrap_or_default() };
+                    self.send(Body::Analyze(w::Analyze {
+                        baseline_summary_json,
+                        manifest: Some(convert(manifest)?),
+                        profile: profile.into(),
+                        baseline: baseline.into(),
+                        full,
+                    }))
+                    .await?;
+                    let begin = match self.receive(cancel).await? {
+                        Body::Begin(b) => b,
+                        Body::Replan(_) if retry == 0 && !full => {
+                            full = true;
+                            continue;
+                        }
+                        _ => bail!("EXPECTED_RESULT_BEGIN"),
+                    };
+                    ensure!(
+                        begin.manifest == manifest.id()
+                            && begin.profile == profile
+                            && begin.baseline == baseline
+                            && begin.producer == self.context.producer,
+                        "RESULT_IDENTITY_MISMATCH"
+                    );
+                    ensure!(!full || begin.mode == "full", "EXPECTED_FULL_RESULT");
+                    let r = AnalysisHeader {
+                        mode: begin.mode, baseline: begin.baseline, manifest: begin.manifest,
+                        profile: begin.profile, producer: begin.producer,
+                        replacements: begin.replacements.iter().map(convert).collect::<Result<_>>()?,
+                    };
+                    r.validate(manifest).map_err(anyhow::Error::msg)?;
+                    let sink = begin_sink(&r)?;
+                    let mut checksum = sha2::Sha256::new();
+                    use sha2::Digest;
+                    checksum.update(codeana_contracts::graph_archive::MAGIC);
+                    let mut count = 0u64;
+                    let mut bytes = 4u64;
+                    let mut seq = 0;
+                    loop {
+                        match self.receive(cancel).await? {
+                            Body::Chunk(chunk) => {
+                                ensure!(!chunk.rows.is_empty() && chunk.rows.len() <= 64, "FACT_CHUNK_BUDGET");
+                                ensure!(chunk.seq == seq, "CHUNK_SEQUENCE_MISMATCH");
+                                seq += 1;
+                                let mut batch = Vec::new();
+                                for record in chunk.rows {
+                                    use prost::Message;
+                                    let encoded=record.encode_to_vec();let size=encoded.len();
+                                    ensure!(count<self.output_limits.facts && bytes+size as u64+4<=self.output_limits.bytes,"GRAPH_ARCHIVE_BUDGET");
+                                    codeana_contracts::graph_archive::update_digest(&mut checksum,&encoded);count+=1;bytes+=size as u64+4;
+                                    batch.push(record);
+                                }
+                                if !batch.is_empty() {
+                                    tokio::select! {
+                                        _ = cancel.cancelled() => bail!("CANCELLED"),
+                                        sent = sink.send(codeana_contracts::stream::GraphStreamEvent::Batch(batch)) => sent.map_err(|_| anyhow::anyhow!("CANDIDATE_STREAM_CLOSED"))?,
+                                    }
+                                }
+                            }
+                            Body::End(end) => {
+                                ensure!(end.chunks == seq && end.count == count, "RESULT_CHECKSUM_MISMATCH");
+                                ensure!(end.checksum == format!("{:x}", checksum.finalize()), "RESULT_CHECKSUM_MISMATCH");
+                                sink.send(codeana_contracts::stream::GraphStreamEvent::VerifiedEnd).await
+                                    .map_err(|_| anyhow::anyhow!("CANDIDATE_STREAM_CLOSED"))?;
+                                return Ok(r);
+                            }
+                            _ => bail!("UNEXPECTED_RESULT_MESSAGE"),
+                        }
+                    };
                 }
                 bail!("REPLAN_BUDGET")
             })

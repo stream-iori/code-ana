@@ -1,5 +1,8 @@
 # 公共契约：事实、身份与协议
 
+> 2026-10-13 当前存储/传输契约：graph model 2、worker 18、request/result 9、C ABI 4、daemon 3；图库 user_version 6、Anatomist schema 32。下文旧 Fact IR / CAF1 的归档和协议版本属于历史实现，已由 [GRA1 协议](implementation/anatomist-storage-migration.md)替代。查询实体仍可用 Fact 形状表达，但不持久化完整实体 JSON。旧库明确要求 `index --full`，没有双写或旧格式回退。
+
+
 > 当前 Java 迁移以 [迁移记录](java-anatomist-migration.md) 为准；以下带日期的旧模型和协议变更保留作历史记录。
 
 2026-10-06 历史重写版本：compiler9/model9/worker12/native request6，ABI2和Fact IR1保持；旧索引与Java缓存不迁移，混装拒绝。 进度和未完成验收见[重写记录](implementation/java-adaptor-rewrite.md)。历史版本只用于追溯。
@@ -8,7 +11,7 @@
 
 **先冻结“一个事实属于谁、对应哪个输入、怎样证明交付完成”，再实现传输和表结构。**
 
-状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 2；worker 协议 16，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型 javac-model-v50、编译器 batch 2、analysis request/result 8、C ABI 2。Java 8 桥字节码与显式 JVM 最小链路已验证；本次 native 尚未构建，完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
+状态：事实组和身份分层继承原提案；CLI-daemon 已采用 gRPC/HTTP/2 + protobuf，握手协议 2；worker 协议 17，Fact IR 1。消息定义在 `proto/codeana/v1/task.proto` 与 `worker.proto`；当前 Java 模型 javac-model-v50、编译器 batch 2、analysis request/result 8、C ABI 3。Java 8 桥字节码与显式 JVM 最小链路已验证；本次 native 尚未构建，完整门禁按实际回执记录。关联 D02/D05/D06/D07/D11/D13。
 
 ## 1. 身份
 
@@ -487,3 +490,31 @@ Model 7 归档的类型图在打开时逐图完整验证；任务内按原归档
 ### javac 解码资源准入
 
 `[resources.index].java_model_decode_bytes` 控制单个 javac 响应全部文件的保守分配累计估算，默认 512 MiB，可显式设为 64 KiB–2 GiB。它独立于编译器/宿主 heap、模型归档字节数和事实输出上限，不改变语言语义或语义指纹。Rust→worker 的 `JavaContext.model_decode_bytes` 为字段 25，worker protocol 16；0 表示使用默认值，越界在执行前拒绝。Java 同一分析会话的上下文预算须一致，禁止混装旧 worker 静默忽略该限制。
+
+### worker 17：私有候选流水线（2026-10-12）
+
+Begin/Chunk 表示 provisional 事实；Java 完成封存后，Rust 可以边校验/去重边交付。
+End 只能在原始 CAF 长度、EOF、完整 SHA-256、事实预算及身份冲突校验全部通过后发送。
+End 的 chunks/count/checksum 保持原规范事实 JSON 数组 SHA-256 语义。
+daemon 核对序号、预算、摘要，并在收到验证成功的 End 前只写私有候选；
+流提前关闭、错误 End、取消、任何记录/归档失败都不可形成可发布候选。
+双方各保留最多四个不超过 8 MiB 的排队批次；FFI handle 不跨 OS 线程。
+旧 worker/manifest 拒绝混装；C ABI 2、Fact IR 1、request/result 8、CLI-daemon 2 与数据库 schema 不变。
+
+
+### Native 完成通知与事实库 schema 5（第二阶段性能改造）
+
+| 边界 | 当前契约 |
+|---|---|
+| 版本 | C ABI **3**、candidate facts schema **5**；worker 17、Fact IR 1、request/result 8、catalog/annotations 2 保持 |
+| FFI 所有权 | Rust 固定 OS 线程创建、调用、销毁 isolate；Native 仍不可 Send；有界命令队列 8，Tokio 控制通道独立等待 |
+| 完成通知 | start 前 `codeana_java_set_completion_fd(thread,task,fd)`；库用 F_DUPFD_CLOEXEC 复制非阻塞 Unix socket。Java finally 先发布输出和 terminal state，再 send 一个 `0x01` 并关闭自己的 FD；成功、异常、OOM 共用路径 |
+| 等待 | Tokio 等待可读事件，只在通知后获取一次 terminal state；EOF、错误字节或非 terminal state 明确失败。直接 ABI 诊断可不注册通知，产品链路必须注册 |
+| 取消 | 优先读取 Cancel；关闭在 FFI 所属线程执行。daemon 的 Cancel 发送与等待退出共用 2 秒期限，超时杀 worker 进程组；失败实例不得复用 |
+| 帧 | 持久 FrameReader 保存前缀/正文进度；select 取消等待不丢半帧。现有 8 MiB 帧限额和 wire 校验保持 |
+| 入库 | signature/status 独立列；从已解码 Fact 写声明投影，同事实处于同一私有事务。删除触发器只按 ID 清理投影；FTS 使用 rowid |
+| 旧库 | 读取及 delta 返回 FACT_SCHEMA_REBUILD_REQUIRED；`index --full` 只使用旧 head 的 CAS 身份，重建新库，不读取旧事实、不自动删除旧 revision |
+| 持久性 | FULL、完整 EOF/SHA、图校验、SQLite/FTS 完整性检查与发布目录屏障保持 |
+
+Darwin ARM64 的 fcntl 可变参数由固定签名 C 包装调用；C 包装静态链接进共享库，无 JNI。
+Native 构建先执行 `build-java-completion.sh`，通过 JVM 构建属性提供静态库目录；标准 JVM 前置验收不变。

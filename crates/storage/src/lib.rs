@@ -1,17 +1,17 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
 pub mod derived_cache;
-pub mod fact_dedup;
+mod graph_calls;
+mod graph_query;
+pub mod graph_store;
 mod pages;
-mod schema;
 mod staged;
-mod symbol_search;
 mod text_search;
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use codeana_model::*;
 pub use pages::PageSpool;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
-pub use staged::{CandidateDerivation, CandidateFacts, StagedCandidate, StagedSummary};
+pub use staged::{StagedCandidate, StagedSummary};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -41,8 +41,10 @@ pub struct AnnotationCommand<'a> {
 }
 pub struct ReadContext {
     connection: Connection,
+    sources: BTreeMap<String, usize>,
     revision: Revision,
     coord: Arc<Mutex<Coordination>>,
+    home: PathBuf,
 }
 impl Drop for ReadContext {
     fn drop(&mut self) {
@@ -302,16 +304,32 @@ impl Store {
             self.home.join("revisions").join(&r.id).join("facts.db"),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         )?;
-        let identity: String =
-            c.query_row("SELECT value FROM identity WHERE key='revision'", [], |r| {
-                r.get(0)
-            })?;
+        let schema_version: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
+        ensure!(
+            schema_version == graph_store::SCHEMA_VERSION,
+            "GRAPH_SCHEMA_REBUILD_REQUIRED: expected={} actual={schema_version}; run index --full",
+            graph_store::SCHEMA_VERSION
+        );
+        let identity: String = c.query_row(
+            "SELECT value FROM project_meta WHERE key='codeana.revision'",
+            [],
+            |r| r.get(0),
+        )?;
         ensure!(identity == r.id, "GRAPH_IDENTITY_MISMATCH");
         *lock.readers.entry(id.into()).or_default() += 1;
+        let sources = r
+            .manifest
+            .files
+            .iter()
+            .enumerate()
+            .map(|(index, s)| (s.path.clone(), index))
+            .collect();
         Ok(ReadContext {
+            sources,
             connection: c,
             revision: r,
             coord: self.coord.clone(),
+            home: self.home.clone(),
         })
     }
     /// In-memory fixture compatibility. Production already receives a disk archive.
@@ -322,15 +340,19 @@ impl Store {
         expected: &str,
         task: &str,
     ) -> Result<Revision> {
-        let mut archive = codeana_contracts::archive::FactArchiveBuilder::new(
-            MAX_RESULT as u64,
-            MAX_FACTS as u64,
+        ensure!(
+            revision.producer.starts_with("mock"),
+            "MOCK_FIXTURE_REQUIRED"
+        );
+        let rows = codeana_contracts::fixture_graph::rows(&revision.manifest, &result.facts);
+        let candidate = self.stage_graph_records(
+            revision,
+            &result.header(),
+            rows.into_iter().map(Ok),
+            expected,
+            || Ok(()),
+            |_| Ok(()),
         )?;
-        for fact in &result.facts {
-            archive.push(fact)?;
-        }
-        let archive = archive.seal()?;
-        let candidate = self.stage_archive(revision, &result.header(), &archive, expected)?;
         self.publish_staged(candidate, task)
     }
     pub fn put_object<T: Serialize>(
@@ -882,406 +904,6 @@ impl Store {
         Ok(serde_json::json!({"execute":execute,"orphans":orphan,"pending":pending}))
     }
 }
-impl ReadContext {
-    fn fact_predicate(&self, f: &FactFilter) -> Result<(String, Vec<String>)> {
-        let mut sql = "1=1".to_owned();
-        let mut values = Vec::new();
-        let selectors = f.signature.is_some()
-            || f.package.is_some()
-            || f.package_prefix.is_some()
-            || f.visibility.is_some()
-            || f.synthetic.is_some()
-            || f.entity_kind.is_some();
-        let projected = selectors && f.kinds != [FactKind::Facet] && self.connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='declaration_projection' AND type='table')", [], |r| r.get::<_,bool>(0))?;
-        if projected {
-            sql.push_str(" AND f.id IN(SELECT p.id FROM declaration_projection p WHERE 1=1");
-            for (column, value) in [
-                ("p.signature", &f.signature),
-                ("p.package", &f.package),
-                ("p.visibility", &f.visibility),
-            ] {
-                if let Some(value) = value {
-                    sql.push_str(&format!(" AND {column}=?"));
-                    values.push(value.clone());
-                }
-            }
-            if let Some(prefix) = &f.package_prefix {
-                sql.push_str(" AND (p.package=? OR instr(p.package,?)=1)");
-                values.extend([prefix.clone(), format!("{prefix}.")]);
-            }
-            if let Some(synthetic) = f.synthetic {
-                sql.push_str(" AND p.synthetic=CAST(? AS INTEGER)");
-                values.push(if synthetic { "1" } else { "0" }.into());
-            }
-            if let Some(kind) = &f.entity_kind {
-                sql.push_str(
-                    if matches!(
-                        kind.as_str(),
-                        "type"
-                            | "callable"
-                            | "value"
-                            | "artifact"
-                            | "component"
-                            | "config_entity"
-                            | "entity"
-                    ) {
-                        " AND p.entity_kind=?"
-                    } else {
-                        " AND p.language_kind=?"
-                    },
-                );
-                values.push(kind.clone());
-            }
-            sql.push(')');
-        }
-        for (column, value) in [
-            ("f.parent", &f.parent),
-            ("f.target", &f.target),
-            ("f.relation", &f.relation),
-            ("f.name", &f.name),
-            ("f.source", &f.source),
-            ("f.world", &f.world),
-            ("json_extract(f.body,'$.signature')", &f.signature),
-            (
-                "COALESCE(json_extract(f.body,'$.attributes.package'),json_extract(f.body,'$.attributes.namespace'),'')",
-                &f.package,
-            ),
-            (
-                "COALESCE(json_extract(f.body,'$.attributes.visibility'),'')",
-                &f.visibility,
-            ),
-        ] {
-            if projected && (column.starts_with("json_extract") || column.starts_with("COALESCE")) {
-                continue;
-            }
-            if let Some(value) = value {
-                sql.push_str(&format!(" AND {column}=?"));
-                values.push(value.clone());
-            }
-        }
-        if let Some(prefix) = &f.package_prefix
-            && !projected
-        {
-            sql.push_str(" AND (json_extract(f.body,'$.attributes.package')=? OR instr(json_extract(f.body,'$.attributes.package'),?)=1)");
-            values.extend([prefix.clone(), format!("{prefix}.")]);
-        }
-        if let Some(synthetic) = f.synthetic
-            && !projected
-        {
-            sql.push_str(
-                " AND COALESCE(json_extract(f.body,'$.attributes.synthetic'),0)=CAST(? AS INTEGER)",
-            );
-            values.push(if synthetic { "1" } else { "0" }.into());
-        }
-        if let Some(kind) = &f.entity_kind
-            && !projected
-        {
-            if matches!(
-                kind.as_str(),
-                "type"
-                    | "callable"
-                    | "value"
-                    | "artifact"
-                    | "component"
-                    | "config_entity"
-                    | "entity"
-            ) {
-                sql.push_str(" AND COALESCE(json_extract(f.body,'$.attributes.entity_kind'),CASE json_extract(f.body,'$.attributes.element_kind') WHEN 'CLASS' THEN 'type' WHEN 'INTERFACE' THEN 'type' WHEN 'ENUM' THEN 'type' WHEN 'ANNOTATION' THEN 'type' WHEN 'RECORD' THEN 'type' WHEN 'METHOD' THEN 'callable' WHEN 'CONSTRUCTOR' THEN 'callable' WHEN 'LAMBDA' THEN 'callable' WHEN 'METHOD_REF' THEN 'callable' WHEN 'FIELD' THEN 'value' WHEN 'ENUM_CONSTANT' THEN 'value' WHEN 'BEAN' THEN 'component' WHEN 'ARTIFACT' THEN 'artifact' ELSE 'entity' END)=?");
-            } else {
-                sql.push_str(" AND (json_extract(f.body,'$.attributes.element_kind')=? OR json_extract(f.body,'$.attributes.entity_kind')=?)");
-                values.push(kind.clone());
-            }
-            values.push(kind.clone());
-        }
-        if let Some(annotation) = &f.annotation {
-            sql.push_str(" AND EXISTS(SELECT 1 FROM facts a WHERE a.kind='facet' AND a.relation='java.annotation' AND a.parent=f.id AND (a.name=? OR json_extract(a.body,'$.attributes.annotation')=?))");
-            values.extend([annotation.clone(), annotation.clone()]);
-        }
-        for (column, ids) in [
-            ("f.id", f.ids.clone()),
-            ("f.parent", f.parents.clone()),
-            ("f.target", f.targets.clone()),
-            (
-                "f.kind",
-                f.kinds.iter().map(|kind| kind.name().to_owned()).collect(),
-            ),
-        ] {
-            if !ids.is_empty() {
-                ensure!(ids.len() <= 1000, "SELECTOR_BUDGET");
-                sql.push_str(&format!(
-                    " AND {column} IN ({})",
-                    vec!["?"; ids.len()].join(",")
-                ));
-                values.extend(ids);
-            }
-        }
-        if !f.sources.is_empty() {
-            // One JSON bind supports a large captured manifest without exceeding SQLite limits.
-            sql.push_str(" AND f.source IN (SELECT value FROM json_each(?))");
-            values.push(serde_json::to_string(&f.sources)?);
-        }
-        if f.module.is_some() || f.scope.is_some() {
-            let projected: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='source_units' AND type='table')", [], |r| r.get(0))?;
-            let sources = if projected {
-                "source_units".to_owned()
-            } else {
-                values.push(serde_json::to_string(&self.revision.manifest.files)?);
-                "(SELECT json_extract(value,'$.path') AS path,json_extract(value,'$.world') AS world,json_extract(value,'$.module') AS module,json_extract(value,'$.scope') AS scope,json_extract(value,'$.auxiliary') AS auxiliary FROM json_each(?))".to_owned()
-            };
-            sql.push_str(&format!(" AND EXISTS(SELECT 1 FROM {sources} s WHERE s.auxiliary=0 AND ((s.path=f.source AND s.world=f.world) OR (f.kind='external_symbol' AND EXISTS(SELECT 1 FROM facts observation WHERE observation.target=f.id AND observation.source=s.path AND observation.world=s.world AND observation.kind IN ('call_target','reference','relation'))))"));
-            for (column, value) in [("s.module", &f.module), ("s.scope", &f.scope)] {
-                if let Some(value) = value {
-                    sql.push_str(&format!(" AND {column}=?"));
-                    values.push(value.clone());
-                }
-            }
-            sql.push(')');
-        }
-        if projected && (f.kinds.is_empty() || f.kinds.contains(&FactKind::Facet)) {
-            // Existing immutable revisions project only declarations. Apply the
-            // same selectors to public configuration facets without rebuilding
-            // their authoritative graph or widening declaration counts.
-            let mut configuration = f.clone();
-            configuration.kinds = vec![FactKind::Facet];
-            let (fallback, extra) = self.fact_predicate(&configuration)?;
-            sql = format!(
-                "({sql} OR ({fallback} AND COALESCE(json_extract(f.body,'$.signature'),'')<>'' AND f.relation IN ('java.bean','java.sofa','java.spring.xml','java.spring.mvc','java.spring.handler')))"
-            );
-            values.extend(extra);
-        }
-        Ok((sql, values))
-    }
-}
-impl FactReader for ReadContext {
-    fn annotation_meta_edges(
-        &self,
-        names: &[String],
-    ) -> std::result::Result<Vec<AnnotationMetaEdge>, String> {
-        (|| -> Result<_> {
-            ensure!(!names.is_empty() && names.len()<=500,"ANNOTATION_META_KEY_BUDGET");
-            let columns=["raw_name","language","mechanism","resolution","upstream_producer"];
-            let sql=format!("SELECT json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation'),{} FROM facts WHERE kind='facet' AND relation='java.annotation.meta' AND json_extract(body,'$.attributes.annotation') IN ({}) AND json_extract(body,'$.attributes.meta_annotation') IS NOT NULL GROUP BY json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation') LIMIT 10001",
-                columns.iter().map(|key|format!("min(json_extract(body,'$.attributes.{key}'))")).collect::<Vec<_>>().join(","),vec!["?";names.len()].join(","));
-            let mut statement=self.connection.prepare(&sql)?;
-            let mut rows=statement.query(rusqlite::params_from_iter(names))?;
-            let mut output=Vec::new();
-            while let Some(row)=rows.next()? {
-                ensure!(output.len()<10000,"QUERY_WORK_BUDGET");
-                let mut attributes=BTreeMap::new();
-                for (index,key) in columns.iter().enumerate() {
-                    if let Some(value)=row.get::<_,Option<String>>(index+2)? { attributes.insert((*key).into(),serde_json::json!(value)); }
-                }
-                output.push(AnnotationMetaEdge { annotation:row.get(0)?,meta_annotation:row.get(1)?,attributes });
-            }
-            Ok(output)
-        })().map_err(|error|error.to_string())
-    }
-    fn overview_groups(
-        &self,
-        filter: &FactFilter,
-        section: &str,
-        direction: &str,
-        relations: &[String],
-    ) -> std::result::Result<Vec<serde_json::Value>, String> {
-        (|| -> Result<_> {
-            let mut owned = filter.clone();
-            if section == "dependencies" {
-                owned.package = None;
-                owned.package_prefix = None;
-            }
-            let (mut predicate, mut values) = self.fact_predicate(&owned)?;
-            let (joins, columns, grouping) = match section {
-                "modules" => ("JOIN source_units s ON s.path=f.source AND s.world=f.world AND s.auxiliary=0", "s.module", "s.module"),
-                "packages" => ("JOIN declaration_projection p ON p.id=f.id", "p.package", "p.package"),
-                "dependencies" => (
-                    "LEFT JOIN facts site ON f.kind='call_target' AND site.id=f.parent JOIN declaration_projection p ON p.id=CASE WHEN f.kind='call_target' THEN site.parent ELSE f.parent END JOIN declaration_projection t ON t.id=f.target",
-                    "p.package,t.package,f.relation", "p.package,t.package,f.relation"),
-                _ => bail!("OVERVIEW_SECTION_INVALID"),
-            };
-            if section == "packages" {
-                predicate.push_str(" AND f.kind='declaration'");
-            } else if section == "dependencies" {
-                predicate.push_str(" AND f.kind IN ('call_target','reference','relation') AND f.relation<>'contains' AND p.package<>t.package");
-                if !relations.is_empty() {
-                    ensure!(relations.len() <= 100, "OVERVIEW_RELATION_BUDGET");
-                    predicate.push_str(&format!(" AND f.relation IN ({})", vec!["?"; relations.len()].join(",")));
-                    values.extend_from_slice(relations);
-                }
-                if filter.package.is_some() || filter.package_prefix.is_some() {
-                    let mut endpoints = Vec::new();
-                    let columns: &[&str] = match direction {
-                        "in" => &["t.package"],
-                        "out" => &["p.package"],
-                        "both" => &["p.package", "t.package"],
-                        _ => bail!("OVERVIEW_DIRECTION_INVALID"),
-                    };
-                    for column in columns {
-                        if let Some(package) = &filter.package {
-                            endpoints.push(format!("{column}=?"));
-                            values.push(package.clone());
-                        } else if let Some(prefix) = &filter.package_prefix {
-                            endpoints.push(format!("({column}=? OR instr({column},?)=1)"));
-                            values.extend([prefix.clone(), format!("{prefix}.")]);
-                        }
-                    }
-                    predicate.push_str(&format!(" AND ({})", endpoints.join(" OR ")));
-                }
-            }
-            let mut statement = self.connection.prepare(&format!(
-                "SELECT {columns},COUNT(*) FROM facts f {joins} WHERE {predicate} GROUP BY {grouping} ORDER BY {grouping} LIMIT 10001"
-            ))?;
-            let rows = statement.query_map(rusqlite::params_from_iter(values), |row| {
-                Ok(if section == "dependencies" {
-                    serde_json::json!({"package":row.get::<_,String>(0)?,"target_package":row.get::<_,String>(1)?,"relation":row.get::<_,String>(2)?,"count":row.get::<_,i64>(3)?})
-                } else {
-                    serde_json::json!({if section == "modules" { "module" } else { "package" }:row.get::<_,String>(0)?,"count":row.get::<_,i64>(1)?})
-                })
-            })?.collect::<rusqlite::Result<Vec<_>>>()?;
-            ensure!(rows.len() <= 10000, "OVERVIEW_GROUP_BUDGET");
-            Ok(rows)
-        })().map_err(|error| error.to_string())
-    }
-    fn reverse_file_dependencies(
-        &self,
-        targets: &[FileKey],
-        source_world: Option<&str>,
-        after: &str,
-        limit: usize,
-    ) -> std::result::Result<Vec<FileDependency>, String> {
-        (|| -> Result<_> {
-            ensure!(targets.len() <= 500 && (1..=1024).contains(&limit), "INVALID_DEPENDENCY_BATCH");
-            if targets.is_empty() { return Ok(Vec::new()); }
-            let available: bool = self.connection.query_row("SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE name='file_dependencies' AND type='table')", [], |r| r.get(0))?;
-            ensure!(available, "FILE_DEPENDENCIES_UNAVAILABLE");
-            let keys = serde_json::to_string(targets)?;
-            let mut statement = self.connection.prepare("SELECT id,source_world,source_file,target_world,target_file FROM file_dependencies WHERE (target_world,target_file) IN (SELECT json_extract(value,'$.world'),json_extract(value,'$.path') FROM json_each(?)) AND (? IS NULL OR source_world=?) AND id>? ORDER BY id LIMIT ?")?;
-            Ok(statement.query_map(params![keys, source_world, source_world, after, limit as i64], |r| Ok(FileDependency {
-                id:r.get(0)?, source_world:r.get(1)?, source_file:r.get(2)?, target_world:r.get(3)?, target_file:r.get(4)?
-            }))?.collect::<rusqlite::Result<Vec<_>>>()?)
-        })().map_err(|error| error.to_string())
-    }
-
-    fn unresolved_consumers(
-        &self,
-        syntax_targets: &[String],
-        filter: &FactFilter,
-        after: &str,
-        limit: usize,
-    ) -> std::result::Result<Vec<Fact>, String> {
-        (|| -> Result<_> {
-            ensure!(syntax_targets.len() <= 500 && (1..=1024).contains(&limit), "INVALID_DEPENDENCY_BATCH");
-            if syntax_targets.is_empty() {return Ok(Vec::new());}
-            let mut filter = filter.clone();
-            filter.kinds = vec![FactKind::CallSite];
-            let (predicate, mut values) = self.fact_predicate(&filter)?;
-            values.extend_from_slice(syntax_targets);
-            values.push(after.into());
-            values.push(limit.to_string());
-            let placeholders = vec!["?"; syntax_targets.len()].join(",");
-            let mut statement = self.connection.prepare(&format!(
-                "SELECT f.body FROM facts f WHERE {predicate} AND f.kind='call_site' AND json_extract(f.body,'$.status')='unresolved' AND f.name IN ({placeholders}) AND f.id>? ORDER BY f.id LIMIT ?"
-            ))?;
-            let mut result = Vec::new();
-            for row in statement.query_map(rusqlite::params_from_iter(values), |row| row.get::<_, String>(0))? {
-                result.push(serde_json::from_str(&row?)?);
-            }
-            Ok(result)
-        })().map_err(|error| error.to_string())
-    }
-
-    fn scan(
-        &self,
-        filter: &FactFilter,
-        after: &str,
-        limit: usize,
-    ) -> std::result::Result<Vec<Fact>, String> {
-        (|| -> Result<_> {
-            ensure!((1..=1024).contains(&limit), "INVALID_SCAN_BATCH");
-            let (predicate, mut values) = self.fact_predicate(filter)?;
-            values.push(after.into());
-            values.push(limit.to_string());
-            let mut statement = self.connection.prepare(&format!(
-                "SELECT f.body FROM facts f WHERE {predicate} AND f.id>? ORDER BY f.id LIMIT ?"
-            ))?;
-            let mut result = Vec::new();
-            for row in statement.query_map(rusqlite::params_from_iter(values), |row| {
-                row.get::<_, String>(0)
-            })? {
-                result.push(serde_json::from_str(&row?)?);
-            }
-            Ok(result)
-        })()
-        .map_err(|error| error.to_string())
-    }
-    fn scan_symbols(
-        &self,
-        text: &str,
-        filter: &FactFilter,
-        after: &str,
-        limit: usize,
-    ) -> std::result::Result<Vec<Fact>, String> {
-        (|| -> Result<_> {
-            ensure!((1..=1024).contains(&limit), "INVALID_SCAN_BATCH");
-            let (predicate, values) = self.fact_predicate(filter)?;
-            symbol_search::scan_scoped(&self.connection, text, &predicate, values, after, limit)
-        })()
-        .map_err(|error| error.to_string())
-    }
-    fn search_symbols_filtered(
-        &self,
-        text: &str,
-        filter: &FactFilter,
-    ) -> std::result::Result<Vec<Fact>, String> {
-        (|| -> Result<_> {
-            let (predicate, values) = self.fact_predicate(filter)?;
-            symbol_search::select_scoped(&self.connection, text, &predicate, values)
-        })()
-        .map_err(|e| e.to_string())
-    }
-    fn count_by_kind(
-        &self,
-        filter: &FactFilter,
-    ) -> std::result::Result<BTreeMap<String, u64>, String> {
-        (|| -> Result<_> {
-            let (predicate, values) = self.fact_predicate(filter)?;
-            let mut statement = self.connection.prepare(&format!(
-                "SELECT f.kind,COUNT(*) FROM facts f WHERE {predicate} GROUP BY f.kind"
-            ))?;
-            Ok(statement
-                .query_map(rusqlite::params_from_iter(values), |row| {
-                    Ok((row.get(0)?, row.get::<_, i64>(1)? as u64))
-                })?
-                .collect::<rusqlite::Result<BTreeMap<_, _>>>()?)
-        })()
-        .map_err(|error| error.to_string())
-    }
-    fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
-        symbol_search::select(&self.connection, text).map_err(|e| e.to_string())
-    }
-    fn manifest(&self) -> &Manifest {
-        &self.revision.manifest
-    }
-    fn revision(&self) -> &Revision {
-        &self.revision
-    }
-    fn select(&self, f: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
-        (|| -> Result<Vec<Fact>> {
-            let (predicate, values) = self.fact_predicate(f)?;
-            let sql =
-                format!("SELECT f.body FROM facts f WHERE {predicate} ORDER BY f.id LIMIT 100001");
-            let mut q = self.connection.prepare(&sql)?;
-            let mut out = Vec::new();
-            for row in q.query_map(rusqlite::params_from_iter(values), |r| {
-                r.get::<_, String>(0)
-            })? {
-                out.push(serde_json::from_str(&row?)?);
-            }
-            ensure!(out.len() <= MAX_FACTS, "QUERY_WORK_BUDGET");
-            Ok(out)
-        })()
-        .map_err(|e| e.to_string())
-    }
-}
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1457,11 +1079,18 @@ mod tests {
             .unwrap();
         assert_eq!(main.len(), 1);
         assert_eq!(main[0].source_file, "A.java");
+        let all = baseline
+            .reverse_file_dependencies(&keys, None, "", 1024)
+            .unwrap();
+        assert_eq!(all.len(), 2);
         let next = baseline
-            .reverse_file_dependencies(&keys, None, &main[0].id, 1)
+            .reverse_file_dependencies(&keys, None, &all[0].id, 1)
             .unwrap();
         assert_eq!(next.len(), 1);
-        assert_eq!(next[0].source_world, "test");
+        assert_eq!(next[0], all[1]);
+        let test_rows = baseline
+            .reverse_file_dependencies(&keys, Some("test"), "", 1024)
+            .unwrap();
         assert!(
             baseline
                 .reverse_file_dependencies(&keys, None, &next[0].id, 1)
@@ -1507,7 +1136,7 @@ mod tests {
             current
                 .reverse_file_dependencies(&keys, None, "", 1024)
                 .unwrap(),
-            next
+            test_rows
         );
         assert_eq!(
             baseline
@@ -1519,67 +1148,56 @@ mod tests {
     }
 
     #[test]
-    fn file_dependency_batches_use_the_reverse_index_above_the_global_budget() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100003) INSERT INTO file_dependencies SELECT printf('%08d',n),'main',printf('Source%d.java',n),'main','Target.java' FROM sequence",[]).unwrap();
-        let plan:Vec<String>=db.prepare("EXPLAIN QUERY PLAN SELECT id FROM file_dependencies WHERE (target_world,target_file) IN (SELECT json_extract(value,'$.world'),json_extract(value,'$.path') FROM json_each('[{\"world\":\"main\",\"path\":\"Target.java\"}]')) AND id>'00000083' ORDER BY id LIMIT 83").unwrap().query_map([],|r|r.get(3)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
-        assert!(
-            plan.iter()
-                .any(|line| line.contains("file_dependencies_reverse")),
-            "{plan:?}"
-        );
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        let rows = reader
-            .reverse_file_dependencies(
-                &[FileKey {
-                    world: "main".into(),
-                    path: "Target.java".into(),
-                }],
-                Some("main"),
-                "00000083",
-                83,
-            )
-            .unwrap();
-        assert_eq!(rows.len(), 83);
-        assert_eq!(rows[0].id, "00000084");
-        assert_eq!(rows[82].id, "00000166");
-        assert!(
-            reader
-                .reverse_file_dependencies(&[], None, "", 1025)
-                .is_err()
-        );
-    }
-
-    #[test]
-    fn reverse_dependencies_keep_cycles_scopes_occurrences_and_atomic_owner_replacement() {
+    fn reverse_dependencies_keep_cycles_scopes_occurrences_and_atomic_source_replacement() {
         let directory = tempfile::tempdir().unwrap();
         let store = Store::open(directory.path()).unwrap();
-        let make = |id: &str, kind: &str, owner: &str, world: &str, parent: &str, target: &str| {
-            serde_json::from_value::<Fact>(serde_json::json!({"id":id,"kind":kind,
-                "owner":{"world":world,"producer":"mock","kind":"context","id":owner},
-                "parent":parent,"target":target,"origin":"mock"}))
-            .unwrap()
-        };
-        let a = make("a", "declaration", "a-owner", "main", "", "");
-        let b = make("b", "declaration", "b-owner", "main", "", "");
-        let test = make("test", "declaration", "test-owner", "test", "", "");
+        let mut rev = revision();
+        let content = b"class A {}".to_vec();
+        let digest = hash(&content);
+        store
+            .put_blobs(&BTreeMap::from([(digest.clone(), content)]))
+            .unwrap();
+        for (path, world, scope) in [
+            ("A.java", "main", "MAIN"),
+            ("B.java", "main", "MAIN"),
+            ("Test.java", "test", "TEST"),
+        ] {
+            rev.manifest.files.push(SourceUnit {
+                path: path.into(),
+                hash: digest.clone(),
+                size: 10,
+                module: "app".into(),
+                world: world.into(),
+                scope: scope.into(),
+                language: "java".into(),
+                auxiliary: false,
+            });
+        }
+        let make =
+            |id: &str, kind: &str, path: &str, world: &str, parent: &str, target: &str| -> Fact {
+                serde_json::from_value(
+                    serde_json::json!({"id":id,"signature":id,"kind":kind,"source":path,
+                "owner":{"world":world,"producer":"mock","kind":"source","id":path},
+                "parent":parent,"target":target,"relation":"type_reference","origin":"mock"}),
+                )
+                .unwrap()
+            };
+        let a = make("a", "declaration", "A.java", "main", "", "");
+        let b = make("b", "declaration", "B.java", "main", "", "");
+        let test = make("test", "declaration", "Test.java", "test", "", "");
         let mut initial = result();
+        initial.manifest = rev.manifest.id();
         initial.facts = vec![
             a.clone(),
             b.clone(),
             test,
-            make("ab-1", "dependency", "a-owner", "main", "a", "b"),
-            make("ab-2", "reference", "a-owner", "main", "a", "b"),
-            make("ba", "relation", "b-owner", "main", "b", "a"),
-            make("test-b", "call_target", "test-owner", "test", "test", "b"),
+            make("ab1", "reference", "A.java", "main", "a", "b"),
+            make("ab2", "reference", "A.java", "main", "a", "b"),
+            make("ba", "relation", "B.java", "main", "b", "a"),
+            make("test-b", "reference", "Test.java", "test", "test", "b"),
         ];
         let first = store
-            .publish(revision(), &initial, "", "dependency-initial")
+            .publish(rev.clone(), &initial, "", "dependency-initial")
             .unwrap();
         let baseline = store.read(&first.id).unwrap();
         let scoped = FactFilter {
@@ -1589,30 +1207,27 @@ mod tests {
         let incoming = baseline
             .reverse_dependencies(&["b".into()], &scoped, "", 1024)
             .unwrap();
-        assert_eq!(
-            incoming
-                .iter()
-                .map(|fact| fact.id.as_str())
-                .collect::<Vec<_>>(),
-            ["ab-1", "ab-2"]
-        );
+        assert_eq!(incoming.len(), 2);
+        assert_ne!(incoming[0].id, incoming[1].id);
+        assert!(incoming.iter().all(|f| f.parent == "a" && f.target == "b"));
         assert_eq!(
             baseline
                 .reverse_dependencies(&["a".into()], &scoped, "", 1024)
                 .unwrap()[0]
-                .id,
-            "ba"
+                .parent,
+            "b"
         );
-        let mut missing = make("missing", "call_site", "b-owner", "main", "b", "");
+        let mut missing = make("missing", "call_site", "B.java", "main", "b", "");
         missing.name = "A.read".into();
         missing.status = "unresolved".into();
         let mut delta = result();
         delta.mode = "delta".into();
         delta.baseline = first.id.clone();
+        delta.manifest = rev.manifest.id();
         delta.replacements = vec![a.owner, b.owner.clone()];
         delta.facts = vec![b, missing];
         let second = store
-            .publish(revision(), &delta, &first.id, "dependency-deletion")
+            .publish(rev, &delta, &first.id, "dependency-deletion")
             .unwrap();
         let current = store.read(&second.id).unwrap();
         assert!(
@@ -1621,13 +1236,11 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
-        assert_eq!(
-            current
-                .unresolved_consumers(&["A.read".into()], &scoped, "", 1024)
-                .unwrap()[0]
-                .id,
-            "missing"
-        );
+        let unresolved = current
+            .unresolved_consumers(&["A.read".into()], &scoped, "", 1024)
+            .unwrap();
+        assert_eq!(unresolved.len(), 1);
+        assert_eq!(unresolved[0].parent, "b");
         assert!(
             current
                 .unresolved_consumers(
@@ -1646,8 +1259,8 @@ mod tests {
             current
                 .reverse_dependencies(&["b".into()], &FactFilter::default(), "", 1024)
                 .unwrap()[0]
-                .id,
-            "test-b"
+                .source,
+            "Test.java"
         );
         assert_eq!(
             baseline
@@ -1664,88 +1277,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn unresolved_consumers_read_a_bounded_batch_above_the_global_select_budget() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        let body = serde_json::json!({"id":"template","kind":"call_site","owner":{"world":"w","producer":"mock","kind":"context","id":"ctx"},"name":"missing()","status":"unresolved","origin":"mock"}).to_string();
-        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100003) INSERT INTO facts SELECT printf('%08d',n),'call_site','owner','','','','missing()','','w',json_set(?,'$.id',printf('%08d',n)) FROM sequence", [body]).unwrap();
-        schema::prepare_queries(&db).unwrap();
-        let plan: Vec<String> = db.prepare("EXPLAIN QUERY PLAN SELECT id FROM facts WHERE kind='call_site' AND json_extract(body,'$.status')='unresolved' AND name='missing()' AND id>'00000083' ORDER BY id LIMIT 83").unwrap()
-            .query_map([], |row| row.get(3)).unwrap().collect::<rusqlite::Result<_>>().unwrap();
-        assert!(
-            plan.iter()
-                .any(|line| line.contains("fact_unresolved_consumers")),
-            "{plan:?}"
-        );
-        assert!(
-            !plan.iter().any(|line| line.contains("TEMP B-TREE")),
-            "{plan:?}"
-        );
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        let rows = reader
-            .unresolved_consumers(
-                &["missing()".into()],
-                &FactFilter::default(),
-                "00000083",
-                83,
-            )
-            .unwrap();
-        assert_eq!(rows.len(), 83);
-        assert_eq!(rows[0].id, "00000084");
-        assert_eq!(rows[82].id, "00000166");
-        assert!(
-            reader
-                .unresolved_consumers(&["absent()".into()], &FactFilter::default(), "", 83)
-                .unwrap()
-                .is_empty()
-        );
-    }
-
-    #[test]
-    fn keyset_search_enumerates_more_than_one_hundred_thousand_without_duplicate_ids() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        let body = serde_json::json!({"id":"template","kind":"declaration","owner":{"world":"w","producer":"mock","kind":"source","id":"A.java"},"source":"A.java","name":"Same","signature":"Same","origin":"mock"}).to_string();
-        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100003) INSERT INTO facts SELECT printf('%08d',n),'declaration','owner','','','','Same','A.java','w',json_set(?,'$.id',printf('%08d',n)) FROM sequence", [body]).unwrap();
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        let mut after = String::new();
-        let mut total = 0;
-        loop {
-            let batch = reader
-                .scan_symbols("Same", &FactFilter::default(), &after, 1024)
-                .unwrap();
-            assert!(batch.len() <= 1024);
-            if batch.is_empty() {
-                break;
-            }
-            for fact in batch {
-                total += 1;
-                assert_eq!(fact.id, format!("{total:08}"));
-                after = fact.id;
-            }
-        }
-        assert_eq!(total, 100003);
-        assert!(
-            reader
-                .scan(&FactFilter::default(), &after, 512)
-                .unwrap()
-                .is_empty()
-        );
-        assert!(
-            reader
-                .scan_symbols("Same", &FactFilter::default(), "", 1025)
-                .is_err()
-        );
-    }
     #[test]
     fn page_spool_survives_recovery_pins_revision_and_cleans_up_on_expiry() {
         let directory = tempfile::tempdir().unwrap();
@@ -1810,271 +1341,9 @@ mod tests {
         store.gc(true).unwrap();
         assert!(!directory.path().join("pages/page_orphan.db").exists());
     }
-    #[test]
-    fn meta_catalogue_groups_more_than_the_fact_budget_before_returning_edges() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        let body=serde_json::json!({"id":"template","kind":"facet","owner":{"world":"w","producer":"java","kind":"source","id":"A.java"},"source":"A.java","relation":"java.annotation.meta","attributes":{"annotation":"A","meta_annotation":"B","raw_name":"z","resolution":"exact"}}).to_string();
-        db.execute("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100001) INSERT INTO facts SELECT printf('%08d',n),'facet','o','','','java.annotation.meta','','A.java','w',json_set(?,'$.id',printf('%08d',n)) FROM sequence",[body]).unwrap();
-        db.execute(
-            "UPDATE facts SET body=json_set(body,'$.attributes.raw_name','a') WHERE id='00000001'",
-            [],
-        )
-        .unwrap();
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        assert_eq!(
-            reader.annotation_meta_edges(&["A".into()]).unwrap().len(),
-            1,
-            "legacy revisions group before the fact budget without new indexes"
-        );
-        schema::prepare_queries(&reader.connection).unwrap();
-        // The dense legacy case above legitimately scans every matching row.
-        // Exercise the directed plan separately with many other annotation keys.
-        reader.connection.execute("UPDATE facts SET body=json_set(body,'$.attributes.annotation',printf('Other%04d',CAST(id AS INTEGER)%1000)) WHERE id<>'00000001'",[]).unwrap();
-        reader.connection.execute_batch("ANALYZE").unwrap();
-        let plan=reader.connection.prepare("EXPLAIN QUERY PLAN SELECT json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation'),min(json_extract(body,'$.attributes.raw_name')) FROM facts WHERE kind='facet' AND relation='java.annotation.meta' AND json_extract(body,'$.attributes.annotation')='A' GROUP BY json_extract(body,'$.attributes.annotation'),json_extract(body,'$.attributes.meta_annotation')").unwrap().query_map([],|row|row.get::<_,String>(3)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap().join(" ");
-        assert!(plan.contains("fact_annotation_meta_pair"), "{plan}");
-        // SQLite may group the already restricted rows in a temporary B-tree.
-        // That does not imply a full catalogue scan.
-        let edges = reader.annotation_meta_edges(&["A".into()]).unwrap();
-        assert_eq!(edges.len(), 1);
-        assert_eq!(edges[0].meta_annotation, "B");
-        assert_eq!(edges[0].attributes["raw_name"], "a");
-        assert!(
-            reader
-                .annotation_meta_edges(&["Other".into()])
-                .unwrap()
-                .is_empty()
-        );
-        assert!(reader.annotation_meta_edges(&[]).is_err());
-    }
-    #[test]
-    fn configuration_selectors_use_captured_scope_without_declaration_projection_rows() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        for (id, relation, world, source) in [
-            ("main-bean", "java.bean", "main", "main.xml"),
-            ("test-bean", "java.bean", "test", "test.xml"),
-            ("helper", "java.binding", "main", "main.xml"),
-        ] {
-            let body = serde_json::json!({"id":id,"kind":"facet","owner":{"world":world,"producer":"framework","kind":"source","id":source},"name":"api","signature":"bean:api","source":source,"relation":relation,"attributes":{"entity_kind":"component","element_kind":"BEAN"}}).to_string();
-            db.execute(
-                "INSERT INTO facts VALUES(?,'facet','o','','',?,'api',?,?,?)",
-                params![id, relation, source, world, body],
-            )
-            .unwrap();
-        }
-        db.execute_batch("INSERT INTO source_units VALUES('main.xml','main','app','RESOURCE','hash',0); INSERT INTO source_units VALUES('test.xml','test','app','RESOURCE','hash',0);").unwrap();
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        let filter = FactFilter {
-            signature: Some("bean:api".into()),
-            entity_kind: Some("component".into()),
-            world: Some("main".into()),
-            module: Some("app".into()),
-            scope: Some("RESOURCE".into()),
-            ..Default::default()
-        };
-        assert_eq!(
-            reader
-                .select(&filter)
-                .unwrap()
-                .iter()
-                .map(|f| f.id.as_str())
-                .collect::<Vec<_>>(),
-            ["main-bean"]
-        );
-        assert_eq!(
-            reader.search_symbols_filtered("api", &filter).unwrap()[0].id,
-            "main-bean"
-        );
-        assert!(
-            reader
-                .select(&FactFilter {
-                    module: Some("other".into()),
-                    ..filter.clone()
-                })
-                .unwrap()
-                .is_empty()
-        );
-        assert!(
-            reader
-                .select(&FactFilter {
-                    entity_kind: Some("type".into()),
-                    ..filter.clone()
-                })
-                .unwrap()
-                .is_empty()
-        );
-        assert!(
-            reader
-                .select(&FactFilter {
-                    scope: Some("MAIN".into()),
-                    ..filter
-                })
-                .unwrap()
-                .is_empty()
-        );
-    }
-    #[test]
-    fn filtered_symbol_search_applies_scope_before_work_budget() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        let body=serde_json::to_string(&serde_json::from_value::<Fact>(serde_json::json!({"id":"needle","kind":"declaration","name":"Api","signature":"p.Api","source":"B.java","owner":{"world":"w","producer":"mock","kind":"source","id":"B.java"},"attributes":{"package":"p","element_kind":"CLASS","visibility":"public","synthetic":false}})).unwrap()).unwrap();
-        db.execute(
-            "INSERT INTO facts VALUES('needle','declaration','o','','','','Api','B.java','w',?)",
-            [body],
-        )
-        .unwrap();
-        db.execute_batch("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100001) INSERT INTO facts SELECT printf('%08d',n),'declaration','o','','','','Api','A.java','other','{}' FROM sequence; INSERT INTO source_units VALUES('B.java','w','selected','MAIN','hash',0); INSERT INTO source_units VALUES('A.java','other','other','MAIN','hash',0);").unwrap();
-        db.execute("INSERT INTO facts VALUES('ann','facet','o','needle','','java.annotation','','B.java','w',?)", [r#"{"id":"ann","kind":"facet","owner":{"world":"w","producer":"javac","kind":"source","id":"B.java"},"parent":"needle","relation":"java.annotation","attributes":{"annotation":"p.Mark"}}"#]).unwrap();
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        let filter = FactFilter {
-            module: Some("selected".into()),
-            package: Some("p".into()),
-            entity_kind: Some("type".into()),
-            visibility: Some("public".into()),
-            synthetic: Some(false),
-            ..Default::default()
-        };
-        let hits = reader.search_symbols_filtered("Api", &filter).unwrap();
-        assert_eq!(
-            hits.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(),
-            ["needle"]
-        );
-        assert_eq!(
-            reader
-                .search_symbols_filtered(
-                    "Api",
-                    &FactFilter {
-                        annotation: Some("p.Mark".into()),
-                        ..filter.clone()
-                    }
-                )
-                .unwrap()
-                .len(),
-            1
-        );
-        assert!(
-            reader
-                .search_symbols_filtered(
-                    "Api",
-                    &FactFilter {
-                        package: Some("wrong".into()),
-                        ..filter
-                    }
-                )
-                .unwrap()
-                .is_empty()
-        );
-    }
+
     use super::*;
-    #[test]
-    fn large_aggregate_counts_do_not_decode_bodies_or_inherit_select_limit() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        db.execute_batch("WITH RECURSIVE sequence(n) AS (VALUES(1) UNION ALL SELECT n+1 FROM sequence WHERE n<100001) INSERT INTO facts SELECT printf('%08d',n),'declaration','owner','','','','Api','A.java','w','{}' FROM sequence;
-            INSERT INTO source_units VALUES('A.java','w','selected','MAIN','hash',0);").unwrap();
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        assert_eq!(
-            reader.count_by_kind(&FactFilter::default()).unwrap()["declaration"],
-            100001
-        );
-        assert_eq!(
-            reader
-                .count_by_kind(&FactFilter {
-                    module: Some("selected".into()),
-                    ..Default::default()
-                })
-                .unwrap()["declaration"],
-            100001
-        );
-        assert!(
-            reader
-                .count_by_kind(&FactFilter {
-                    module: Some("other".into()),
-                    ..Default::default()
-                })
-                .unwrap()
-                .is_empty()
-        );
-        // Bodies deliberately cannot decode as Fact; aggregation must use projections.
-        let packages = reader
-            .overview_groups(&FactFilter::default(), "packages", "out", &[])
-            .unwrap();
-        assert_eq!(
-            packages,
-            vec![serde_json::json!({"package":"","count":100001})]
-        );
-        let modules = reader
-            .overview_groups(&FactFilter::default(), "modules", "out", &[])
-            .unwrap();
-        assert_eq!(
-            modules,
-            vec![serde_json::json!({"module":"selected","count":100001})]
-        );
-    }
-    #[test]
-    fn overview_dependency_counts_keep_occurrences_direction_and_relation() {
-        let db = Connection::open_in_memory().unwrap();
-        schema::initialize(&db).unwrap();
-        db.execute_batch("INSERT INTO facts VALUES('a','declaration','owner','','','','A','A.java','w','{\"attributes\":{\"package\":\"p.a\"}}'),('b','declaration','owner','','','','B','B.java','w','{\"attributes\":{\"package\":\"p.b\"}}'),('site','call_site','owner','a','','','','A.java','w','{}'),('c1','call_target','owner','site','b','calls','','A.java','w','{}'),('c2','call_target','owner','site','b','calls','','A.java','w','{}'),('r','reference','owner','b','a','reads','','B.java','w','{}');").unwrap();
-        let reader = ReadContext {
-            connection: db,
-            revision: revision(),
-            coord: Arc::default(),
-        };
-        let filter = FactFilter {
-            package: Some("p.a".into()),
-            ..Default::default()
-        };
-        let outgoing = reader
-            .overview_groups(&filter, "dependencies", "out", &[])
-            .unwrap();
-        assert_eq!(
-            outgoing,
-            vec![
-                serde_json::json!({"package":"p.a","target_package":"p.b","relation":"calls","count":2})
-            ]
-        );
-        let incoming = reader
-            .overview_groups(&filter, "dependencies", "in", &[])
-            .unwrap();
-        assert_eq!(
-            incoming,
-            vec![
-                serde_json::json!({"package":"p.b","target_package":"p.a","relation":"reads","count":1})
-            ]
-        );
-        assert_eq!(
-            reader
-                .overview_groups(&filter, "dependencies", "both", &[])
-                .unwrap()
-                .len(),
-            2
-        );
-        assert!(
-            reader
-                .overview_groups(&filter, "dependencies", "in", &["calls".into()])
-                .unwrap()
-                .is_empty()
-        );
-    }
+
     pub(super) fn revision() -> Revision {
         Revision {
             id: String::new(),
@@ -2148,34 +1417,20 @@ mod tests {
         }
     }
     #[test]
-    fn staged_binding_evidence_checks_parent_kind_and_owner() {
+    fn removed_binding_capability_is_explicitly_rejected_by_graph_reader() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
-        let owner = serde_json::json!({"world":"w","producer":"javac","kind":"context","id":"c"});
-        let site: Fact = serde_json::from_value(serde_json::json!({
-            "id":"site", "kind":"call_site", "owner":owner, "origin":"javac"
-        }))
-        .unwrap();
-        let binding: Fact = serde_json::from_value(serde_json::json!({
-            "id":"binding", "kind":"facet", "parent":"site", "owner":owner,
-            "origin":"javac", "relation":"java.binding",
-            "attributes":{"schema_version":3,"evidence_owner":"site","resolved":true,"complete":true}
-        })).unwrap();
-        let mut evidence = result();
-        evidence.facts = vec![site, binding];
-        let valid = store.publish(revision(), &evidence, "", "valid").unwrap();
-        evidence.facts[0].kind = FactKind::Declaration;
-        let failed = store
-            .publish(revision(), &evidence, &valid.id, "bad-kind")
+        let graph = store.publish(revision(), &result(), "", "initial").unwrap();
+        let reader = store.read(&graph.id).unwrap();
+        let error = reader
+            .select(&FactFilter {
+                kinds: vec![FactKind::Facet],
+                relation: Some("java.binding".into()),
+                ..Default::default()
+            })
             .unwrap_err();
-        assert!(failed.to_string().contains("INVALID_BINDING_EVIDENCE"));
-        evidence.facts[0].kind = FactKind::CallSite;
-        evidence.facts[0].owner.world = "other".into();
-        let failed = store
-            .publish(revision(), &evidence, &valid.id, "bad-owner")
-            .unwrap_err();
-        assert!(failed.to_string().contains("INVALID_BINDING_EVIDENCE"));
-        assert_eq!(store.head("t").unwrap(), valid.id);
+        assert!(error.contains("UNSUPPORTED_CAPABILITY"));
+        assert_eq!(store.head("t").unwrap(), graph.id);
     }
     #[test]
     fn publish_cas_reader_and_gc() {
@@ -2218,25 +1473,28 @@ mod tests {
         assert_eq!(s.head("t").unwrap(), next.id);
     }
     #[test]
-    fn owner_replacement_removes_deleted_facts() {
-        let d = tempfile::tempdir().unwrap();
-        let s = Store::open(d.path()).unwrap();
-        let mut first = result();
-        let f:Fact=serde_json::from_value(serde_json::json!({"id":"a","kind":"declaration","owner":{"world":"w","producer":"mock","kind":"aggregate","id":"a"},"origin":"mock"})).unwrap();
-        first.facts.push(f.clone());
-        let r = s.publish(revision(), &first, "", "task1").unwrap();
+    fn aggregate_replacement_is_rejected_without_changing_head() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let first = store.publish(revision(), &result(), "", "initial").unwrap();
         let mut delta = result();
         delta.mode = "delta".into();
-        delta.baseline = r.id.clone();
-        delta.replacements.push(f.owner);
-        let r2 = s.publish(revision(), &delta, &r.id, "task2").unwrap();
+        delta.baseline = first.id.clone();
+        delta.replacements.push(Owner {
+            world: "w".into(),
+            producer: "mock".into(),
+            kind: "aggregate".into(),
+            id: "a".into(),
+        });
+        let error = store
+            .publish(revision(), &delta, &first.id, "invalid")
+            .unwrap_err();
         assert!(
-            s.read(&r2.id)
-                .unwrap()
-                .select(&FactFilter::default())
-                .unwrap()
-                .is_empty()
+            error
+                .to_string()
+                .contains("GRAPH_REPLACEMENT_SOURCE_REQUIRED")
         );
+        assert_eq!(store.head("t").unwrap(), first.id);
     }
     #[test]
     fn catalog_failure_leaves_head_and_recovers_orphan() {

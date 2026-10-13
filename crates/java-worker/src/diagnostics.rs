@@ -101,6 +101,30 @@ impl ReplayEvidence {
             phases: Vec::new(),
         }))
     }
+    /// Keep one sealed raw CAF for duplicate/layout diagnostics, outside formal measurements.
+    pub fn sealed_descriptor(&self, path: &Path) -> Result<()> {
+        let mut value: Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        let archive = &mut value["facts_archive"];
+        let source = PathBuf::from(
+            archive["path"]
+                .as_str()
+                .ok_or_else(|| anyhow::anyhow!("CAF_PATH"))?,
+        )
+        .canonicalize()?;
+        ensure!(source.starts_with(&self.scratch), "DIAGNOSTIC_ARCHIVE_PATH");
+        let target = self.directory.join("facts.caf");
+        std::fs::copy(&source, &target)?;
+        ensure!(
+            codeana_model::hash_file(&target)? == archive["sha256"].as_str().unwrap_or(""),
+            "DIAGNOSTIC_ARCHIVE_SHA"
+        );
+        archive["path"] = target.to_string_lossy().into_owned().into();
+        std::fs::write(
+            self.directory.join("descriptor.json"),
+            serde_json::to_vec_pretty(&value)?,
+        )?;
+        Ok(())
+    }
     pub fn phase(&mut self, phase: &str) {
         self.phases.push(
             serde_json::json!({"phase":phase,"elapsed_ms":self.started.elapsed().as_millis()}),

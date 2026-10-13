@@ -1,0 +1,34 @@
+syntax = "proto3";
+package codeana.graph.v1;
+option java_package = "dev.codeana.graph";
+option java_outer_classname = "GraphRecords";
+
+// Column order and types are frozen per table in the Anatomist row contract.
+// An unset Cell is SQL NULL; empty text is not NULL. JSON is confined to the
+// upstream metadata/attributes columns, never a whole serialized fact.
+message Cell {
+  oneof value {
+    string text = 1;
+    sint64 integer = 2;
+    bytes blob = 3;
+  }
+}
+enum Table {
+  TABLE_UNSPECIFIED = 0;
+  NODE = 1;
+  EDGE = 2;
+  DECLARATION = 3;
+  ANNOTATION = 4;
+  ANNOTATION_META = 5;
+  SEMANTIC_ANNOTATION = 6;
+  UNRESOLVED_CALL = 7;
+  FILE_CACHE = 8;
+  FILE_DEPENDENCY = 9;
+  SYMBOL_DEPENDENCY = 10;
+  DIAGNOSTIC = 11;
+  COVERAGE = 12;
+  PROVIDER = 13;
+  PROJECT_META = 14;
+}
+message Row { Table table = 1; repeated Cell cells = 2; }
+message Batch { uint64 seq = 1; repeated Row rows = 2; }

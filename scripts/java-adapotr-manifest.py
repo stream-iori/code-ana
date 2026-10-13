@@ -10,8 +10,8 @@ adapter=re.search(r'IDENTITY\s*=\s*"([^"]+)"',(project/'java-bridge/src/main/jav
 worker=int(re.search(r'WORKER_PROTOCOL_VERSION: u32 = (\d+)',(project.parent/'crates/model/src/lib.rs').read_text())[1])
 suffix='dylib' if sys.platform=='darwin' else 'so'
 files=[root/'native'/f'libcodeana_java.{suffix}',root/'compiler-bridge.jar',root/'maven-input-worker.jar']
-manifest=dict(version=2,backend='native',worker_protocol=worker,fact_ir=1,abi=2,analysis_request=8,compiler_protocol=batch,compiler_batch_protocol=batch,java_model=model,
-              adapter=adapter,type_graph_default=True,type_schema=3,binding_schema=4,target_java=[8],
+manifest=dict(version=2,backend='native',native_gc=os.environ.get('CODEANA_NATIVE_GC','serial'),worker_protocol=worker,fact_ir=2,abi=4,analysis_request=9,compiler_protocol=batch,compiler_batch_protocol=batch,java_model=model,
+              adapter=adapter,graph_schema=32,graph_encoding="GRA1-protobuf-row-v1",target_java=[8],
               os=platform.system(),arch=platform.machine(),
               files={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in files})
 with tempfile.NamedTemporaryFile(mode='w',dir=root/'native',prefix='.manifest-',delete=False) as output:

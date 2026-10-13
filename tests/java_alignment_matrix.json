@@ -1424,7 +1424,7 @@
   "current_transport": {
     "worker": 12,
     "analysis_request": 6,
-    "native_abi": 2,
+    "native_abi": 3,
     "compiler": 9,
     "model": 9,
     "fact_ir": 1

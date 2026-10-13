@@ -1,7 +1,7 @@
 //! Exercise the daemon's index engine, supervisor and publication without a listening socket.
 use anyhow::{Result, ensure};
 use codeana_application::Engine;
-use codeana_model::{FactFilter, FactKind, FactReader, Request, new_id};
+use codeana_model::{FactFilter, FactKind, GraphReader, Request, new_id};
 use std::{path::PathBuf, time::Duration};
 
 #[tokio::main]

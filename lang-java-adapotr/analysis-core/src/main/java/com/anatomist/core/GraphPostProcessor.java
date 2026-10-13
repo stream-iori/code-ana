@@ -19,12 +19,14 @@ public class GraphPostProcessor {
     }
 
     public Summary process(ExtractionResult result, Set<String> survivingNodeIds) {
+        return process(result, EdgeTargetBinder.prepare(survivingNodeIds));
+    }
+
+    public Summary process(ExtractionResult result, EdgeTargetBinder.Catalogue catalogue) {
         if (result == null) return new Summary(0, 0);
-        Set<String> known = new HashSet<>();
-        if (survivingNodeIds != null) known.addAll(survivingNodeIds);
         backfillFactOrigins(result);
-        int rebound = EdgeTargetBinder.bindExternalTargets(result, known);
-        int dropped = pruneDanglingInternalEdges(result, known);
+        int rebound = EdgeTargetBinder.bindExternalTargets(result, catalogue);
+        int dropped = pruneDanglingInternalEdges(result, catalogue);
         return new Summary(rebound, dropped);
     }
 
@@ -48,9 +50,8 @@ public class GraphPostProcessor {
     }
 
     private static int pruneDanglingInternalEdges(
-            ExtractionResult r, Set<String> survivingNodeIds) {
+            ExtractionResult r, EdgeTargetBinder.Catalogue catalogue) {
         Set<String> known = new HashSet<>();
-        if (survivingNodeIds != null) known.addAll(survivingNodeIds);
         for (Node n : r.nodes) {
             if (n.id != null) known.add(n.id);
         }
@@ -60,19 +61,19 @@ public class GraphPostProcessor {
         r.edges.removeIf(
                 e -> {
                     boolean drop =
-                            !e.isExternal && (e.targetId == null || !known.contains(e.targetId));
+                            !e.isExternal && (e.targetId == null || !known.contains(e.targetId) && !catalogue.contains(e.targetId));
                     if (drop && dbg) debugDrop("target", e);
                     return drop;
                 });
         r.edges.removeIf(
                 e -> {
-                    boolean drop = e.sourceId == null || !known.contains(e.sourceId);
+                    boolean drop = e.sourceId == null || !known.contains(e.sourceId) && !catalogue.contains(e.sourceId);
                     if (drop && dbg) debugDrop("source", e);
                     return drop;
                 });
         r.annotations.removeIf(
                 a -> {
-                    boolean drop = a.nodeId == null || !known.contains(a.nodeId);
+                    boolean drop = a.nodeId == null || !known.contains(a.nodeId) && !catalogue.contains(a.nodeId);
                     if (drop && dbg) {
                         AnatomistLog.debug(
                                 "pruned annotation (dangling node): "

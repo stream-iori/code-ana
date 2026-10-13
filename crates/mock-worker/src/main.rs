@@ -2,8 +2,7 @@
 use anyhow::{Result, bail, ensure};
 use clap::Parser;
 use codeana_contracts::{
-    convert, envelope, fact_from_wire, fact_to_wire, read_frame, worker as w,
-    worker::envelope::Body, write_frame,
+    convert, envelope, read_frame, worker as w, worker::envelope::Body, write_frame,
 };
 use codeana_model::*;
 use std::{collections::BTreeSet, os::fd::FromRawFd, path::PathBuf};
@@ -28,8 +27,6 @@ async fn main() -> Result<()> {
     socket.set_nonblocking(true)?;
     let mut ipc = UnixStream::from_std(socket)?;
     let mut selected: Option<FixtureState> = None;
-    let mut baseline = Vec::new();
-    let mut baseline_seq = 0;
     loop {
         let frame = read_frame(&mut ipc).await?;
         let attempt = frame.attempt;
@@ -94,23 +91,6 @@ async fn main() -> Result<()> {
                     .await?;
                 }
             }
-            Some(Body::BaselineChunk(c)) => {
-                ensure!(c.seq == baseline_seq, "BASELINE_SEQUENCE");
-                baseline_seq += 1;
-                baseline.extend(
-                    c.facts
-                        .into_iter()
-                        .map(fact_from_wire)
-                        .collect::<Result<Vec<_>>>()?,
-                );
-                ensure!(baseline.len() <= MAX_FACTS, "BASELINE_BUDGET");
-            }
-            Some(Body::BaselineEnd(e)) => {
-                ensure!(
-                    e.count == baseline.len() as u64 && e.checksum == digest(&baseline),
-                    "BASELINE_CHECKSUM"
-                );
-            }
             Some(Body::Analyze(a)) => {
                 let s = selected
                     .as_ref()
@@ -132,8 +112,6 @@ async fn main() -> Result<()> {
                     tokio::select! {_ = tokio::time::sleep(std::time::Duration::from_millis(duration))=>{},v=read_frame(&mut ipc)=>{if matches!(v?.body,Some(Body::Cancel(_))){return Ok(());}bail!("UNEXPECTED_WHILE_ANALYZING");}}
                 }
                 if s.behavior == "replan" && !a.full {
-                    baseline.clear();
-                    baseline_seq = 0;
                     write_frame(
                         &mut ipc,
                         &envelope(
@@ -146,11 +124,31 @@ async fn main() -> Result<()> {
                     .await?;
                     continue;
                 }
-                let old = std::mem::take(&mut baseline);
-                baseline_seq = 0;
-                let mut replacements: BTreeSet<Owner> =
-                    old.iter().map(|f| f.owner.clone()).collect();
-                replacements.extend(s.facts.iter().map(|f| f.owner.clone()));
+                let summary: serde_json::Value = if a.baseline_summary_json.is_empty() {
+                    serde_json::json!({})
+                } else {
+                    serde_json::from_slice(&a.baseline_summary_json)?
+                };
+                let mut replacements: BTreeSet<Owner> = manifest
+                    .files
+                    .iter()
+                    .map(|f| Owner {
+                        world: f.world.clone(),
+                        producer: s.context.producer.clone(),
+                        kind: "source".into(),
+                        id: f.path.clone(),
+                    })
+                    .collect();
+                if let Some(files) = summary["files"].as_array() {
+                    for f in files {
+                        replacements.insert(Owner {
+                            world: f["world"].as_str().unwrap_or_default().into(),
+                            producer: s.context.producer.clone(),
+                            kind: "source".into(),
+                            id: f["path"].as_str().unwrap_or_default().into(),
+                        });
+                    }
+                }
                 let begin = w::Begin {
                     mode: if a.full { "full" } else { "delta" }.into(),
                     baseline: a.baseline,
@@ -165,7 +163,17 @@ async fn main() -> Result<()> {
                     ipc.write_u32((MAX_FRAME + 1) as u32).await?;
                     return Ok(());
                 }
-                for (i, chunk) in s.facts.chunks(128).enumerate() {
+                let graph_rows = codeana_contracts::fixture_graph::rows(&manifest, &s.facts);
+                let mut spool = codeana_contracts::graph_archive::Builder::new(
+                    None,
+                    MAX_RESULT as u64,
+                    MAX_FACTS as u64,
+                )?;
+                for row in &graph_rows {
+                    spool.push(row)?;
+                }
+                let archive = spool.seal()?;
+                for (i, chunk) in graph_rows.chunks(64).enumerate() {
                     write_frame(
                         &mut ipc,
                         &envelope(
@@ -176,7 +184,7 @@ async fn main() -> Result<()> {
                                 } else {
                                     i as u64
                                 },
-                                facts: chunk.iter().map(fact_to_wire).collect::<Result<_>>()?,
+                                rows: chunk.to_vec(),
                             }),
                         ),
                     )
@@ -188,15 +196,15 @@ async fn main() -> Result<()> {
                 let checksum = if s.behavior == "bad-checksum" {
                     "invalid".into()
                 } else {
-                    digest(&s.facts)
+                    archive.checksum.clone()
                 };
                 write_frame(
                     &mut ipc,
                     &envelope(
                         &attempt,
                         Body::End(w::End {
-                            chunks: s.facts.len().div_ceil(128) as u64,
-                            count: s.facts.len() as u64,
+                            chunks: graph_rows.len().div_ceil(64) as u64,
+                            count: graph_rows.len() as u64,
                             checksum,
                         }),
                     ),

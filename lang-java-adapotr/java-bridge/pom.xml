@@ -3,6 +3,7 @@
   <parent><groupId>dev.codeana</groupId><artifactId>lang-java-adapotr</artifactId><version>0.1.0</version></parent>
   <artifactId>java-bridge</artifactId>
   <dependencies>
+    <dependency><groupId>com.google.protobuf</groupId><artifactId>protobuf-javalite</artifactId><version>4.34.1</version></dependency>
     <dependency><groupId>dev.codeana</groupId><artifactId>analysis-core</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>dev.codeana</groupId><artifactId>framework-spring</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>dev.codeana</groupId><artifactId>framework-sofa</artifactId><version>${project.version}</version></dependency>

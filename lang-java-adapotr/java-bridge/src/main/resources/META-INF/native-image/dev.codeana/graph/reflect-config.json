@@ -1,0 +1,32 @@
+[
+  {
+    "name": "sun.misc.Unsafe",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "dev.codeana.graph.GraphRecords$Row",
+    "fields": [
+      {
+        "name": "table_",
+        "allowUnsafeAccess": true
+      },
+      {
+        "name": "cells_",
+        "allowUnsafeAccess": true
+      }
+    ]
+  },
+  {
+    "name": "dev.codeana.graph.GraphRecords$Cell",
+    "fields": [
+      {
+        "name": "value_",
+        "allowUnsafeAccess": true
+      },
+      {
+        "name": "valueCase_",
+        "allowUnsafeAccess": true
+      }
+    ]
+  }
+]

@@ -189,12 +189,16 @@ public final class CapturedProject {
         return sourceRoots;
     }
 
+    private Set<String> publishFilter;
+    public void publishedSources(Set<String> sources) { publishFilter=Set.copyOf(sources); }
+    public boolean publishes(Path path) { return publishFilter==null || publishFilter.contains(source(path).path()); }
+
     public JavaSourcePlan sourcePlan(Set<String> dirty) {
         List<Path> publish =
                 contexts.stream()
                         .filter(c -> dirty.contains(c.world()))
                         .flatMap(c -> c.publish().stream())
-                        .filter(p -> source(p).validEncoding())
+                        .filter(p -> source(p).validEncoding() && publishes(p))
                         .toList();
         List<Path> visible =
                 sources.values().stream()
@@ -238,7 +242,7 @@ public final class CapturedProject {
                                                 .toList(),
                                         dirty.contains(c.world())
                                                 ? c.publish().stream()
-                                                        .filter(p -> source(p).validEncoding())
+                                                        .filter(p -> source(p).validEncoding() && publishes(p))
                                                         .collect(
                                                                 java.util.stream.Collectors.toSet())
                                                 : Set.of(),

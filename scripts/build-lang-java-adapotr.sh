@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+native_gc="${CODEANA_NATIVE_GC:-serial}"
+case "$native_gc" in serial|G1) ;; *) echo "CODEANA_NATIVE_GC must be serial or G1" >&2; exit 2;; esac
+native_monitoring=()
+case "${CODEANA_NATIVE_MONITORING:-}" in "") ;; jfr) native_monitoring=(--enable-monitoring=jfr);; *) echo "CODEANA_NATIVE_MONITORING must be empty or jfr" >&2; exit 2;; esac
 python3 "$repo_root/scripts/check-java-jvm-acceptance.py"
 set +u
 source "$HOME/.sdkman/bin/sdkman-init.sh"
@@ -23,7 +27,9 @@ PY
 native_temp="$(mktemp -d "$PWD/target/native/.build-XXXXXX")"
 trap 'rm -rf "$native_temp"' EXIT
 export TMPDIR="$native_temp"
-"$JAVA_HOME/bin/native-image" --shared -R:MaxHeapSize=256m \
+bash "$repo_root/scripts/build-java-completion.sh" "$native_temp"
+"$JAVA_HOME/bin/native-image" --shared "--gc=$native_gc" "${native_monitoring[@]}" -R:MaxHeapSize=256m \
+  "-J-Dcodeana.completion.library=$native_temp" \
   "-J-Djava.io.tmpdir=$native_temp" "-H:TempDirectory=$native_temp" \
   -H:IncludeResources='META-INF/anatomist/javac-worker.jar' \
   --native-compiler-options=-save-temps=obj \

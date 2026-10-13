@@ -1,6 +1,6 @@
 # 总体架构
 
-2026-10-10：新核心通过显式 JVM 后端执行，共享 java-bridge/CAF1；默认 native 选择不变且无自动回退。新 native 产物须在 JVM fixture 和冻结 iopengw 完整门禁后构建；下方旧 native 验证不作为此次迁移的通过证据，见[迁移记录](java-anatomist-migration.md)。
+2026-10-13：Java 输出 Anatomist 类型化 protobuf rows，经 C ABI 4 共享库或显式 JVM 后端交付。Rust 负责 schema 32 staging、SQLite、索引和查询；不再持久化完整 Fact IR / CAF1。实施与未完成验收见[存储迁移](implementation/anatomist-storage-migration.md)。
 
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入；结构化类型、ASM 外部声明与 owner 级冷增量见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 
@@ -67,7 +67,7 @@ Rust worker host 是 Java 分析器的宿主，与 Rust 语言的 rust-analyzer 
 
 通用派生缓存由 Rust storage 管理持久目录、跨进程锁、内容回执、共享配额和 LRU。Java worker host 为每个任务复制经过 SHA 校验的独立缓存，发布 Ack 后提交已封存条目；取消/失败不提交，任务副本随任务释放。Java 只决定语言签名 key、NoCode 可复用性与任务内编译器 pin，不直接管理产品持久缓存。独立 JVM/native fixture 的本地缓存仍用于语言行为验证。
 
-Java 原生库交付封存 CAF1 描述符；Rust worker 流式校验归档并在任务临时 SQLite 中执行全局事实去重。Java 不保留全项目结果 JSON 和事实去重表。完整校验后才交付 daemon，失败不发布。语言声明与类型图缓存有界、随任务或上下文释放。
+Java 原生库交付封存 CAF1 描述符；Rust worker 流式校验归档并在任务临时 SQLite 中执行全局事实去重。Java 不保留全项目结果 JSON 和事实去重表。worker protocol 17 允许校验/去重、分块交付与 daemon 私有候选入库重叠；原始 EOF/SHA 和全部身份校验成功后才发送 End，daemon 再核对规范摘要并完成候选/发布。失败丢弃私有候选，旧 head 不变。语言声明与类型图缓存有界、随任务或上下文释放。阶段性能与门禁见 [Native 改造](implementation/native-performance-upgrade.md)。
 
 跨 producer 的静态图派生由 Rust indexing policy 完成，经存储的定向候选读写接口参与原子发布；例如注入点到直接实现的 `wires_possible`。Java 只生成注入/继承的语言事实，Rust 不解析 AST、不替代 Java 类型推断。
 
@@ -160,3 +160,6 @@ Java 解析、绑定只走 javac；提取器和框架消费脱离编译器对象
 本项目为全新产品，Anatomist 仅作代码与设计参考，无旧命令/输出/配置/数据库兼容要求。目标项目编译只返回执行建议，交 Agent/人类操作。
 
 依赖与验收顺序见 [delivery](delivery.md)；每个模块的输入、输出和失败处理见对应模块文档。
+
+
+Native 第二阶段性能改造使用 ABI 3：专属 OS 线程拥有 isolate，Tokio 通过非阻塞 Unix socket 等待任务完成；库持有 CLOEXEC duplicate，终态 finally 通知并关闭。控制帧读取保存半帧进度，取消不依赖周期 poll。事实库 schema 5 将 signature/status 与声明投影直接从 Fact 写入，FTS 保留 rowid；旧事实库显式要求全量重建，catalog CAS 保持。见 [契约](contracts.md#native-完成通知与事实库-schema-5第二阶段性能改造)。

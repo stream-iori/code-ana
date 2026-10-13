@@ -337,7 +337,7 @@ impl Engine {
         &self,
         req: &Request,
         project: &str,
-        reader: &dyn FactReader,
+        reader: &dyn GraphReader,
         refs: Vec<String>,
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
@@ -352,7 +352,7 @@ impl Engine {
     pub(crate) fn text_page(
         &self,
         req: &Request,
-        reader: &dyn FactReader,
+        reader: &dyn GraphReader,
         source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
         refs: Vec<String>,
         cancel: &CancellationToken,

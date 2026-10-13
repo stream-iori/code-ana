@@ -1,13 +1,7 @@
 syntax = "proto3";
+import "codeana/v1/graph.proto";
 package codeana.worker.v1;
 message Owner { string world = 1; string producer = 2; string kind = 3; string id = 4; }
-message Span { uint64 start = 1; uint64 end = 2; }
-message Fact {
- string id = 1; string kind = 2; Owner owner = 3; string source = 4; Span span = 5;
- string name = 6; string signature = 7; string parent = 8; string target = 9; string relation = 10;
- string status = 11; string origin = 12; bool evidence_complete = 13; bool declaration_resolved = 14;
- bytes attributes_json = 15;
-}
 message SourceUnit { string path = 1; string hash = 2; uint64 size = 3; string module = 4; string world = 5; string scope = 6; string language = 7; bool auxiliary = 8; }
 message Manifest { repeated SourceUnit files = 1; }
 message BuildContext { string language = 1; repeated string modules = 2; string source_version = 3; repeated string classpath = 4; string producer = 5; repeated string capabilities = 6; }
@@ -42,15 +36,14 @@ message JavaConfig {
  uint32 fact_limit = 17;
 }
 message Discover { Manifest manifest = 1; JavaConfig java = 2; }
-message BaselineChunk { uint64 seq = 1; repeated Fact facts = 2; }
-message BaselineEnd { uint64 count = 1; string checksum = 2; }
-message Analyze { Manifest manifest = 1; string profile = 2; string baseline = 3; bool full = 4; repeated Fact baseline_facts = 5; }
+message Analyze { Manifest manifest = 1; string profile = 2; string baseline = 3; bool full = 4; reserved 5; bytes baseline_summary_json = 6; }
+// Protocol 18: Begin/Chunk are provisional. Only a verified End permits candidate finalization.
 message Begin { string mode = 1; string baseline = 2; string manifest = 3; string profile = 4; string producer = 5; repeated Owner replacements = 6; }
-message Chunk { uint64 seq = 1; repeated Fact facts = 2; }
+message Chunk { uint64 seq = 1; reserved 2; repeated codeana.graph.v1.Row rows = 3; }
 message End { uint64 chunks = 1; uint64 count = 2; string checksum = 3; }
 message Replan { string reason = 1; }
 message Cancel {}
 message Ack { string revision = 1; }
 message Acked { string revision = 1; }
 message Failure { string code = 1; string message = 2; }
-message Envelope { string attempt = 1; oneof body { Hello hello = 2; Discover discover = 3; BuildContext context = 4; Analyze analyze = 5; Begin begin = 6; Chunk chunk = 7; End end = 8; Replan replan = 9; Cancel cancel = 10; Ack ack = 11; Failure failure = 12; BuildAdvice advice = 13; BaselineChunk baseline_chunk = 14; BaselineEnd baseline_end = 15; Acked acked = 16; } }
+message Envelope { reserved 14, 15; string attempt = 1; oneof body { Hello hello = 2; Discover discover = 3; BuildContext context = 4; Analyze analyze = 5; Begin begin = 6; Chunk chunk = 7; End end = 8; Replan replan = 9; Cancel cancel = 10; Ack ack = 11; Failure failure = 12; BuildAdvice advice = 13; Acked acked = 16; } }

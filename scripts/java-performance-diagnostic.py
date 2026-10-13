@@ -33,8 +33,11 @@ def freeze(destination):
     for directory in ('crates', 'proto', 'lang-java-adapotr', 'scripts', 'tests'):
         for source in (ROOT / directory).rglob('*'):
             if (not source.is_file() or 'target' in source.relative_to(ROOT).parts
-                    or '__pycache__' in source.parts or source.suffix not in
-                    ('.rs', '.proto', '.java', '.py', '.toml', '.xml', '.sh', '.sql')):
+                    or '__pycache__' in source.parts
+                    or (source.suffix not in
+                        ('.rs', '.proto', '.java', '.c', '.h', '.py', '.toml', '.xml', '.sh', '.sql', '.json')
+                        and source.name != '.sdkmanrc'
+                        and '/src/main/resources/' not in source.as_posix())):
                 continue
             relative = source.relative_to(ROOT)
             target = destination / relative

@@ -68,7 +68,7 @@
 | `cargo test --workspace --locked` | 28 个 Rust 单测通过；schema 2 settings 变更拒绝 |
 | `cargo clippy --workspace --all-targets --locked -- -D warnings`、`python3 tests/rust_e2e.py` | 无警告；14 个 Rust 产品回归通过 |
 | `python3 tests/java_maven_export.py` | schema 2 真实 Maven 导出、显式 profile 与 active profile 身份通过 |
-| `python3 tests/java_parallel_benchmark.py` | 5 次预热、20 次计时，452 个事实逐次相等；串行中位数 0.804 秒，并行 0.537 秒，比例 0.668 |
+| 旧 `java_parallel_benchmark.py`（已退役） | 5 次预热、20 次计时，452 个事实逐次相等；串行中位数 0.804 秒，并行 0.537 秒，比例 0.668 |
 | `python3 tests/java_native_probe.py` | native → Java 8、取消清理、禁用处理器、bundle 拒绝、两个 javac 子进程同时运行与串行事实等价通过 |
 | `just test-java-release` | macOS arm64 成套构建、全部 SHA256SUMS 校验、包内 7 项 daemon 验收通过（33.551 秒） |
 

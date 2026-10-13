@@ -22,19 +22,29 @@ public final class GraphIdentityRewriter {
             ExtractionResult result,
             SourceIdentityResolver identities,
             Set<String> survivingNodeIds) {
-        com.anatomist.provider.FactDefaults.normalize(result);
-        Map<String, Map<String, Candidate>> candidates = new HashMap<>();
-        if (survivingNodeIds != null) {
-            for (String key : survivingNodeIds) {
-                if (!NodeKeyFactory.isKey(key)) continue;
-                String symbol = NodeKeyFactory.symbolId(key);
-                addCandidate(
-                        candidates,
-                        NodeKeyFactory.providerId(key),
-                        symbol,
+        rewrite(result, identities, prepare(survivingNodeIds));
+    }
+
+    /** Immutable context catalogue; local candidates never mutate another source unit. */
+    public static final class Catalogue {
+        private final Map<String, Map<String, Candidate>> candidates;
+
+        private Catalogue(Set<String> known) {
+            candidates = new HashMap<>();
+            if (known != null) for (String key : known) {
+                if (NodeKeyFactory.isKey(key)) addCandidate(candidates,
+                        NodeKeyFactory.providerId(key), NodeKeyFactory.symbolId(key),
                         new Candidate(key, NodeKeyFactory.identity(key), null));
             }
         }
+    }
+
+    public static Catalogue prepare(Set<String> known) { return new Catalogue(known); }
+
+    public static void rewrite(ExtractionResult result, SourceIdentityResolver identities,
+                               Catalogue catalogue) {
+        com.anatomist.provider.FactDefaults.normalize(result);
+        Map<String, Map<String, Candidate>> candidates = new HashMap<>();
 
         for (Node node : result.nodes) {
             String symbol =
@@ -48,6 +58,9 @@ public final class GraphIdentityRewriter {
             node.module = identity.module();
             node.scope = identity.scope().name();
             node.id = NodeKeyFactory.key(node.providerId, identity, symbol);
+            String candidateKey = candidateKey(node.providerId, symbol);
+            candidates.computeIfAbsent(candidateKey, ignored ->
+                    new LinkedHashMap<>(catalogue.candidates.getOrDefault(candidateKey, Map.of())));
             addCandidate(
                     candidates,
                     node.providerId,
@@ -60,7 +73,7 @@ public final class GraphIdentityRewriter {
             if (NodeKeyFactory.isKey(site.callerId())) continue;
             Candidate resolved =
                     select(
-                            candidates.get(candidateKey("java-core", site.callerId())),
+                            lookup(candidates, catalogue, candidateKey("java-core", site.callerId())),
                             identities.resolve(site.sourceFile()),
                             site.sourceFile());
             if (resolved != null)
@@ -72,7 +85,7 @@ public final class GraphIdentityRewriter {
             SourceIdentity identity = identities.resolve(annotation.sourceFile);
             Candidate resolved =
                     select(
-                            candidates.get(candidateKey(annotation.providerId, annotation.nodeId)),
+                            lookup(candidates, catalogue, candidateKey(annotation.providerId, annotation.nodeId)),
                             identity,
                             annotation.sourceFile);
             if (resolved != null) {
@@ -86,7 +99,7 @@ public final class GraphIdentityRewriter {
             if (!NodeKeyFactory.isKey(edge.sourceId)) {
                 Candidate resolved =
                         select(
-                                candidates.get(candidateKey(edge.providerId, edge.sourceId)),
+                                lookup(candidates, catalogue, candidateKey(edge.providerId, edge.sourceId)),
                                 sourceIdentity,
                                 edge.sourceFile);
                 if (resolved != null) {
@@ -97,7 +110,7 @@ public final class GraphIdentityRewriter {
             if (!edge.isExternal && !NodeKeyFactory.isKey(edge.targetId)) {
                 Candidate resolved =
                         select(
-                                candidates.get(candidateKey(edge.providerId, edge.targetId)),
+                                lookup(candidates, catalogue, candidateKey(edge.providerId, edge.targetId)),
                                 sourceIdentity,
                                 null);
                 if (resolved != null) edge.targetId = resolved.key();
@@ -108,7 +121,7 @@ public final class GraphIdentityRewriter {
                                 : edge.externalTargetProviderId;
                 Candidate resolved =
                         select(
-                                candidates.get(
+                                lookup(candidates, catalogue,
                                         candidateKey(targetProvider, edge.externalTargetFqn)),
                                 sourceIdentity,
                                 null);
@@ -131,6 +144,12 @@ public final class GraphIdentityRewriter {
                 edge.resolution = GraphConstants.Resolution.SOURCE_FALLBACK;
             }
         }
+    }
+
+    private static Map<String, Candidate> lookup(Map<String, Map<String, Candidate>> local,
+                                                 Catalogue catalogue, String key) {
+        Map<String, Candidate> value = local.get(key);
+        return value == null ? catalogue.candidates.get(key) : value;
     }
 
     private static void addCandidate(

@@ -22,7 +22,9 @@ probe_classpath="$probe_root/classes:$probe_jar"
 probe_temp="$(mktemp -d "$probe_root/.build-XXXXXX")"
 trap 'rm -rf "$probe_temp"' EXIT
 export TMPDIR="$probe_temp"
+bash "$repo_root/scripts/build-java-completion.sh" "$probe_temp"
 "$JAVA_HOME/bin/native-image" --no-fallback -R:MaxHeapSize=2048m \
+  "-J-Dcodeana.completion.library=$probe_temp" \
   "-J-Djava.io.tmpdir=$probe_temp" "-H:TempDirectory=$probe_temp" \
   --native-compiler-options=-save-temps=obj \
   -H:ReflectionConfigurationFiles="$probe_root/reflection.json" \

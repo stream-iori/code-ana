@@ -92,7 +92,7 @@ fn lines(
 }
 
 pub fn stream_text(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
     sink: &mut dyn FnMut(Vec<Value>) -> Result<()>,
@@ -101,7 +101,7 @@ pub fn stream_text(
 }
 
 pub fn stream_text_candidates(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
     candidates: Option<&BTreeSet<(String, String)>>,

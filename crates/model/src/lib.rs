@@ -6,9 +6,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const VERSION: u32 = 1;
-pub const WORKER_PROTOCOL_VERSION: u32 = 16;
-pub const DAEMON_PROTOCOL_VERSION: u32 = 2;
+pub const VERSION: u32 = 2;
+pub const WORKER_PROTOCOL_VERSION: u32 = 18;
+pub const DAEMON_PROTOCOL_VERSION: u32 = 3;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
 pub const MAX_FACTS: usize = 100_000;
@@ -796,7 +796,12 @@ pub struct AnnotationMetaEdge {
     pub meta_annotation: String,
     pub attributes: BTreeMap<String, serde_json::Value>,
 }
-pub trait FactReader {
+pub trait GraphReader {
+    /// Source bytes stay outside the semantic graph. SQL implementations map
+    /// upstream line/UTF-16 coordinates against the captured, verified blob.
+    fn source_span(&self, entity: &Fact) -> Result<Option<Span>, String> {
+        Ok(entity.span.clone())
+    }
     /// Frozen meta catalogue grouping, restricted to up to 500 annotation names.
     /// SQL readers aggregate duplicate producer facts before applying the budget.
     fn annotation_meta_edges(&self, names: &[String]) -> Result<Vec<AnnotationMetaEdge>, String> {

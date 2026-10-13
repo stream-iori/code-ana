@@ -1,5 +1,4 @@
 //! Application orchestration. CLI and Java adapters contain no product policy.
-mod derived;
 mod history;
 mod java;
 pub mod maven_inputs;
@@ -8,10 +7,7 @@ mod timings;
 mod worker;
 use anyhow::{Context, Result, bail, ensure};
 use codeana_config::Capture;
-use codeana_contracts::{
-    archive::{FactArchive, FactArchiveBuilder, SpooledAnalysis},
-    terminal, v1 as p,
-};
+use codeana_contracts::{graph_archive::Builder as GraphArchiveBuilder, terminal, v1 as p};
 use codeana_model::*;
 use codeana_storage::{AnnotationCommand, Store};
 use serde::{Deserialize, Serialize};
@@ -27,6 +23,7 @@ use std::{
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
+use worker::SpooledAnalysis;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Endpoint {
     pub address: String,
@@ -261,7 +258,7 @@ impl Engine {
                         &message,
                         if code == "CANCELLED" {
                             130
-                        } else if code == "TIMEOUT" {
+                        } else if matches!(code, "TIMEOUT" | "CAPTURE_TIMEOUT") {
                             124
                         } else {
                             1
@@ -528,7 +525,7 @@ impl Engine {
         let profile = digest(&(
             &c.effective.semantic_digest,
             &worker.context,
-            derived::PROFILE,
+            "anatomist-schema32-graph1",
         ));
         if let Some(timings) = &mut timings {
             timings.phase("worker_context");
@@ -536,45 +533,29 @@ impl Engine {
         let mut full = req.full || c.effective.config.index.mode == "full" || expected.is_empty();
         let mut old = None;
         let mut unchanged = false;
-        if !expected.is_empty() {
+        if !expected.is_empty() && !full {
             let store = self.store.clone();
             let baseline_id = expected.clone();
             let desired_profile = profile.clone();
             let desired_manifest = c.manifest.id();
-            let requested_full = full;
+            let desired_files = c.manifest.clone();
             let baseline_cancel = cancel.clone();
-            let baseline_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
-            let output_limits = prepared
-                .as_ref()
-                .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
-                .transpose()?
-                .unwrap_or_default();
-            let (baseline_profile, baseline, same_inputs) = tokio::task::spawn_blocking(
-                move || -> Result<(String, Option<FactArchive>, bool)> {
-                    let reader = store.read(&baseline_id)?;
-                    let profile = reader.revision().profile.clone();
-                    let same_inputs = reader.revision().manifest.id() == desired_manifest;
-                    let facts = if requested_full || profile != desired_profile {
-                        None
-                    } else {
-                        Some(reader.export_adapter_archive_checked_in(
-                            output_limits.bytes,
-                            output_limits.facts,
-                            baseline_disk.as_ref().map(|budget| budget.root.as_path()),
-                            &derived::owners(&reader.revision().manifest),
-                            || {
-                                ensure!(!baseline_cancel.is_cancelled(), "CANCELLED");
-                                if let Some(budget) = &baseline_disk {
-                                    budget.check()?;
-                                }
-                                Ok(())
-                            },
-                        )?)
-                    };
-                    Ok((profile, facts, same_inputs))
-                },
-            )
-            .await??;
+            let summary_root = prepared.as_ref().map(|p| p.disk_budget.root.clone());
+            let (baseline_profile,baseline,same_inputs)=tokio::task::spawn_blocking(move || ->Result<(String,Option<serde_json::Value>,bool)> {
+                ensure!(!baseline_cancel.is_cancelled(),"CANCELLED");
+                let reader=store.read(&baseline_id)?;
+                let profile=reader.revision().profile.clone();let same=reader.revision().manifest.id()==desired_manifest;
+                let summary=if profile!=desired_profile || same {None}else{
+                    let summary=reader.baseline_summary_for(&desired_files)?;
+                    if let Some(root)=summary_root {
+                        let path=root.join("baseline-summary.json");let bytes=serde_json::to_vec(&summary)?;
+                        ensure!(bytes.len()<=64<<20,"GRAPH_BASELINE_BUDGET");
+                        codeana_storage::durable_write(&path,&bytes)?;
+                        Some(serde_json::json!({"path":path,"sha256":codeana_model::hash(&bytes),"bytes":bytes.len()}))
+                    }else{Some(summary)}
+                };
+                Ok((profile,summary,same))
+            }).await??;
             if baseline_profile != profile {
                 full = true;
             }
@@ -612,81 +593,160 @@ impl Engine {
             ),
         )?;
         let analyzing = Instant::now();
-        let result = if unchanged {
-            // The captured manifest and semantic profile include adapter/toolchain identity.
-            // Keep baseline export validation/budgets and normal candidate validation/publication,
-            // but avoid sending unchanged facts through Java just to discover zero dirty owners.
-            if !undiscovered_warm {
-                worker.retire_unused().await?;
-            }
-            let prepared = prepared.as_ref().context("JAVA_REQUIRED")?;
-            let limits = codeana_contracts::java::OutputLimits::from_config(&prepared.config)?;
-            SpooledAnalysis {
-                header: AnalysisHeader {
-                    mode: "delta".into(),
-                    baseline: expected.clone(),
-                    manifest: c.manifest.id(),
-                    profile: profile.clone(),
-                    producer: worker.context.producer.clone(),
-                    replacements: vec![],
-                },
-                records: FactArchiveBuilder::new_in(
-                    limits.bytes,
-                    limits.facts,
-                    &prepared.disk_budget.root,
-                )?
-                .seal()?,
-            }
-        } else {
-            worker
-                .analyze(&c.manifest, &profile, &expected, old.as_ref(), full, cancel)
-                .await?
-        };
-        let analyze_ms = analyzing.elapsed().as_millis() as u64;
-        if let Some(timings) = &mut timings {
-            timings.phase("analyzed");
-        }
-        if let Some(prepared) = &prepared {
-            prepared.verify()?;
-        }
-        let result_mode = result.header.mode.clone();
-        let revision = Revision {
-            id: String::new(),
-            target: c.target.clone(),
-            project: c.project.clone(),
-            checkout: c.checkout.clone(),
-            manifest: c.manifest.clone(),
-            profile,
-            producer: result.header.producer.clone(),
-            created: 0,
-        };
-        let store = self.store.clone();
-        let baseline_id = expected.clone();
-        let staging_cancel = cancel.clone();
-        let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
-        let candidate = tokio::task::spawn_blocking(move || {
-            let diagnostics = codeana_contracts::performance::Report::new("storage-detail");
-            diagnostics.capture.sync(|| {
-                store.stage_archive_with_derivation(
-                    revision,
-                    &result.header,
-                    &result.records,
-                    &baseline_id,
-                    || {
-                        ensure!(!staging_cancel.is_cancelled(), "CANCELLED");
-                        Ok(())
+        let streaming = prepared.is_some() && !unchanged;
+        let analyze_ms;
+        let (result_mode, candidate) = if streaming {
+            let store = self.store.clone();
+            let revision = Revision {
+                id: String::new(),
+                target: c.target.clone(),
+                project: c.project.clone(),
+                checkout: c.checkout.clone(),
+                manifest: c.manifest.clone(),
+                profile: profile.clone(),
+                producer: worker.context.producer.clone(),
+                created: 0,
+            };
+            let baseline_id = expected.clone();
+            let staging_cancel = cancel.clone();
+            let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
+            let mut candidate_task = None;
+            let header = worker
+                .analyze_into(
+                    &c.manifest,
+                    &profile,
+                    &expected,
+                    old.as_ref(),
+                    full,
+                    cancel,
+                    |header| {
+                        let (sender, records) = codeana_contracts::stream::GraphStream::channel();
+                        let store = store.clone();
+                        let revision = revision.clone();
+                        let header = header.clone();
+                        let baseline_id = baseline_id.clone();
+                        let staging_cancel = staging_cancel.clone();
+                        let candidate_disk = candidate_disk.clone();
+                        candidate_task = Some(tokio::task::spawn_blocking(move || {
+                            let diagnostics =
+                                codeana_contracts::performance::Report::new("storage-detail");
+                            diagnostics.capture.sync(|| {
+                                store.stage_graph_records(
+                                    revision,
+                                    &header,
+                                    records,
+                                    &baseline_id,
+                                    || {
+                                        ensure!(!staging_cancel.is_cancelled(), "CANCELLED");
+                                        Ok(())
+                                    },
+                                    |path| {
+                                        if let Some(budget) = &candidate_disk {
+                                            budget.check_candidate(Some(path))?;
+                                        }
+                                        Ok(())
+                                    },
+                                )
+                            })
+                        }));
+                        Ok(sender)
                     },
-                    |path| {
-                        if let Some(budget) = &candidate_disk {
-                            budget.check_candidate(Some(path))?;
-                        }
-                        Ok(())
-                    },
-                    Some(&derived::Wiring),
                 )
+                .await;
+            analyze_ms = analyzing.elapsed().as_millis() as u64;
+            if let Some(timings) = &mut timings {
+                timings.phase("analyzed");
+            }
+            let staged = match candidate_task {
+                Some(task) => Some(task.await?),
+                None => None,
+            };
+            let header = header?;
+            if let Some(prepared) = &prepared {
+                prepared.verify()?;
+            }
+            (
+                header.mode,
+                staged.context("CANDIDATE_STREAM_NOT_STARTED")??,
+            )
+        } else {
+            let result = if unchanged {
+                // The captured manifest and semantic profile include adapter/toolchain identity.
+                // Keep baseline export validation/budgets and normal candidate validation/publication,
+                // but avoid sending unchanged facts through Java just to discover zero dirty owners.
+                if !undiscovered_warm {
+                    worker.retire_unused().await?;
+                }
+                let prepared = prepared.as_ref().context("JAVA_REQUIRED")?;
+                let limits = codeana_contracts::java::OutputLimits::from_config(&prepared.config)?;
+                SpooledAnalysis {
+                    header: AnalysisHeader {
+                        mode: "delta".into(),
+                        baseline: expected.clone(),
+                        manifest: c.manifest.id(),
+                        profile: profile.clone(),
+                        producer: worker.context.producer.clone(),
+                        replacements: vec![],
+                    },
+                    records: GraphArchiveBuilder::new(
+                        Some(&prepared.disk_budget.root),
+                        limits.bytes,
+                        limits.facts,
+                    )?
+                    .seal()?,
+                }
+            } else {
+                worker
+                    .analyze(&c.manifest, &profile, &expected, old.as_ref(), full, cancel)
+                    .await?
+            };
+
+            analyze_ms = analyzing.elapsed().as_millis() as u64;
+            if let Some(timings) = &mut timings {
+                timings.phase("analyzed");
+            }
+            if let Some(prepared) = &prepared {
+                prepared.verify()?;
+            }
+            let result_mode = result.header.mode.clone();
+            let revision = Revision {
+                id: String::new(),
+                target: c.target.clone(),
+                project: c.project.clone(),
+                checkout: c.checkout.clone(),
+                manifest: c.manifest.clone(),
+                profile,
+                producer: result.header.producer.clone(),
+                created: 0,
+            };
+            let store = self.store.clone();
+            let baseline_id = expected.clone();
+            let staging_cancel = cancel.clone();
+            let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
+            let candidate = tokio::task::spawn_blocking(move || {
+                let diagnostics = codeana_contracts::performance::Report::new("storage-detail");
+                diagnostics.capture.sync(|| {
+                    store.stage_graph_records(
+                        revision,
+                        &result.header,
+                        result.records.records()?,
+                        &baseline_id,
+                        || {
+                            ensure!(!staging_cancel.is_cancelled(), "CANCELLED");
+                            Ok(())
+                        },
+                        |path| {
+                            if let Some(budget) = &candidate_disk {
+                                budget.check_candidate(Some(path))?;
+                            }
+                            Ok(())
+                        },
+                    )
+                })
             })
-        })
-        .await??;
+            .await??;
+            (result_mode, candidate)
+        };
         let limits = prepared
             .as_ref()
             .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
@@ -1224,7 +1284,7 @@ impl Engine {
 
 struct FilesReader(Revision);
 struct CancelableReader<'a> {
-    inner: &'a dyn FactReader,
+    inner: &'a dyn GraphReader,
     cancel: &'a CancellationToken,
 }
 impl CancelableReader<'_> {
@@ -1242,7 +1302,10 @@ impl CancelableReader<'_> {
         Ok(facts)
     }
 }
-impl FactReader for CancelableReader<'_> {
+impl GraphReader for CancelableReader<'_> {
+    fn source_span(&self, entity: &Fact) -> std::result::Result<Option<Span>, String> {
+        self.checked(|| self.inner.source_span(entity))
+    }
     fn annotation_meta_edges(
         &self,
         names: &[String],
@@ -1348,7 +1411,7 @@ fn report_summary(value: &Value) -> Result<Value> {
         .cloned()
         .context("REPORT_FORMAT_UNSUPPORTED")
 }
-impl FactReader for FilesReader {
+impl GraphReader for FilesReader {
     fn select(&self, _: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
         Ok(vec![])
     }
@@ -1388,7 +1451,7 @@ pub fn project_path(path: &Path) -> Result<PathBuf> {
 mod reader_tests {
     use super::*;
     struct IndexedReader;
-    impl FactReader for IndexedReader {
+    impl GraphReader for IndexedReader {
         fn reverse_file_dependencies(
             &self,
             targets: &[FileKey],

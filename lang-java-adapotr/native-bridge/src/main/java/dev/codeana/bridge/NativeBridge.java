@@ -3,7 +3,7 @@ package dev.codeana.bridge;
 import dev.codeana.adapter.AnalysisSession;
 import dev.codeana.adapter.AnalysisTelemetry;
 import dev.codeana.common.AnalysisLimits;
-import dev.codeana.common.FactArchive;
+import dev.codeana.common.GraphArchive;
 import dev.codeana.common.Json;
 import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
@@ -17,7 +17,7 @@ import org.graalvm.nativeimage.IsolateThread;
 import org.graalvm.nativeimage.c.function.CEntryPoint;
 import org.graalvm.nativeimage.c.type.CCharPointer;
 
-/** ABI v2: caller-owned input/output buffers; all entry points catch ordinary Java exceptions. */
+/** ABI v4: caller-owned input/output buffers; all entry points catch ordinary Java exceptions. */
 public final class NativeBridge {
     private static final ConcurrentHashMap<Long, Task> TASKS = new ConcurrentHashMap<>();
     private static final AtomicLong NEXT = new AtomicLong(1);
@@ -42,6 +42,9 @@ public final class NativeBridge {
             if (message.length() > 2048) message = message.substring(0, 2048);
             if (!text.isEmpty()) text.append("\ncaused or suppressed: ");
             text.append(message);
+            StackTraceElement[] frames=current.getStackTrace();
+            for(int i=0;i<Math.min(frames.length,8) && text.length()<8192;i++)
+                text.append("\n at ").append(frames[i]);
             if (current.getCause() != null) pending.addLast(current.getCause());
             for (Throwable suppressed : current.getSuppressed()) {
                 if (pending.size() >= 16) break;
@@ -62,6 +65,7 @@ public final class NativeBridge {
         volatile AnalysisSession compiler;
         volatile Thread thread;
         volatile boolean cancelled;
+        volatile int completionFd = -1;
         boolean sealed;
 
         void run() {
@@ -73,7 +77,7 @@ public final class NativeBridge {
                 Map<String, Object> request = Json.map(Json.parse(input.toByteArray()));
                 input.reset();
                 long version = Json.number(request, "version");
-                if (version != 8) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+                if (version != 9) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
                 request.put("defer_fact_dedup", true);
                 AnalysisLimits limits = new AnalysisLimits(request);
                 telemetryPath =
@@ -86,10 +90,10 @@ public final class NativeBridge {
                             Files.createTempDirectory(
                                     Path.of(Json.string(request, "scratch")), "native-result-");
                     outputPath = outputDirectory.resolve("result.json");
-                    var archive = (FactArchive) result.remove("facts");
+                    var archive = (GraphArchive) result.remove("facts");
                     telemetry.phase("archive_seal", "", true);
-                    archivePath = outputDirectory.resolve("facts.caf");
-                    result.put("facts_archive", archive.export(archivePath));
+                    archivePath = outputDirectory.resolve("graph.rows");
+                    result.put("graph_archive", archive.export(archivePath));
                     telemetry.phase("archive_seal", "", false);
                     outputLength = Json.writeTo(outputPath, result, limits.bytes);
                     output = FileChannel.open(outputPath, StandardOpenOption.READ);
@@ -124,6 +128,9 @@ public final class NativeBridge {
                     // Even an exhausted heap must expose the preallocated terminal response.
                 } finally {
                     state = terminalState;
+                    int fd = completionFd;
+                    completionFd = -1;
+                    CompletionNotification.complete(fd);
                 }
             }
         }
@@ -139,7 +146,7 @@ public final class NativeBridge {
 
     @CEntryPoint(name = "codeana_java_abi_version")
     public static int version(IsolateThread thread) {
-        return 2;
+        return 4;
     }
 
     @CEntryPoint(name = "codeana_java_heap_bytes")
@@ -205,6 +212,21 @@ public final class NativeBridge {
         } catch (Exception e) {
             return -1;
         }
+    }
+
+    @CEntryPoint(name = "codeana_java_set_completion_fd")
+    public static int completionFd(IsolateThread thread, long id, int fd) {
+        try {
+            Task task = TASKS.get(id);
+            if (task == null || fd < 0) return -2;
+            synchronized (task) {
+                if (task.thread != null || task.completionFd >= 0) return -2;
+                int owned = CompletionNotification.duplicate(fd);
+                if (owned < 0) return -1;
+                task.completionFd = owned;
+                return 0;
+            }
+        } catch (Exception failure) { return -1; }
     }
 
     @CEntryPoint(name = "codeana_java_poll_event")
@@ -279,6 +301,9 @@ public final class NativeBridge {
                 if (t.thread.isAlive()) return -1;
             }
             if (t.output != null) t.output.close();
+            int fd = t.completionFd;
+            t.completionFd = -1;
+            if (fd >= 0) CompletionNotification.close(fd);
             if (t.outputPath != null) Files.deleteIfExists(t.outputPath);
             if (t.archivePath != null) Files.deleteIfExists(t.archivePath);
             if (t.outputDirectory != null) Files.deleteIfExists(t.outputDirectory);

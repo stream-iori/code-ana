@@ -37,7 +37,11 @@ fn modifier(fact: &Fact, name: &str) -> bool {
         .and_then(Value::as_array)
         .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(name)))
 }
-fn load(reader: &dyn FactReader, ids: &[String], cache: &mut BTreeMap<String, Fact>) -> Result<()> {
+fn load(
+    reader: &dyn GraphReader,
+    ids: &[String],
+    cache: &mut BTreeMap<String, Fact>,
+) -> Result<()> {
     let missing = ids
         .iter()
         .filter(|id| !cache.contains_key(*id))
@@ -68,7 +72,7 @@ struct Traversal {
 type Graph = BTreeMap<(bool, bool, String), Vec<Fact>>;
 
 fn adjacent_cached(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     ids: &[String],
     traversal: Traversal,
     graph: &mut Graph,
@@ -105,7 +109,7 @@ fn adjacent_cached(
 }
 
 fn walk(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     seed: &str,
     traversal: Traversal,
     evidence: &mut Evidence,
@@ -190,7 +194,7 @@ fn walk(
 }
 
 pub(super) fn candidates(
-    reader: &dyn FactReader,
+    reader: &dyn GraphReader,
     req: &Request,
     site: &Fact,
     binding: &Fact,
