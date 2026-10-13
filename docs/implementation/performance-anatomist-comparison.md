@@ -1,5 +1,7 @@
 # 性能改造与 Anatomist 设计对照
 
+> 历史记录（2026-10-13 文档对齐）：2026-10-11/12 的后端与 CAF1 成本对照；冷/热标签仅指原应用缓存口径，不表示 Native 有冷热模式。G1 未测等表述只对应当时。现行版本、验证范围及未完成门禁见 [当前实现](../current-state.md)，最新结果见 [存储实施记录](anatomist-storage-migration.md)。
+
 2026-10-12 最新分段实测及下一步方案见 [Java Native 性能分析](native-performance-analysis.md)。JVM 冷/热 681.276/649.956 秒，Native 995.621/970.591 秒，完整图一致；Java 内部解释约 98% 的后端差距。Native GC 约 180 秒、归档 SHA 约 25 秒；FFI 轮询 CPU 仅约 0.24 秒，protobuf 编码约 0.38 秒。当前事实交付已有异步分块，但 Java 封存和完整校验前有全量屏障。
 
 本机 Oracle `25.3.4+1.r25-graal` 平台源码和静态库支持 macOS/aarch64 G1，Anatomist 的同版 SDKMAN/macOS profile 默认 G1。项目配置已按用户要求切到该 Oracle 版本；本轮测量仍为 Community/Serial，不重标旧产物。后续先做同 Oracle 编译器的 Serial/G1 对照，再定位 typed 数据、分配、SHA 和 SQLite 的成本；G1 性能及 Native 减半仍未通过。

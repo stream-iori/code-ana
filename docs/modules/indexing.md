@@ -1,12 +1,12 @@
 # 索引编排与增量
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+> 对齐 2026-10-13。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
-当前 Discover 响应可为 BuildContext 或结构化 BuildAdvice；mock 仅按已知输入 hash 回放，不读取 Maven/Gradle 有效模型。`discovery.mode=auto` 索引明确失败，需等待真实发现 provider；FILES 和工作区文本搜索不进入语言发现。
+当前 Discover 响应可为 BuildContext 或结构化 BuildAdvice。Java 支持 plain 显式根，以及有外部 inputs_manifest 的 Maven auto 模块展开；无 metadata 的 auto 明确拒绝。mock 只按已知 fixture 输入 hash 回放。FILES 和工作区文本搜索不进入语言发现。
 
 **daemon 决定任务与发布；adapter 决定语言依赖如何失效。增量正确性以同输入全量结果为对照。**
 
-状态：全量/增量职责继承提案；具体计划、owner 替换和重试策略为建议，关联 D05/D07/D09/D11。
+当前使用固定基线、归属替换、私有 candidate 和 CAS；语言失效在 adapter，引用/交付/发布校验在 Rust，关联 D05/D07/D09/D11。
 
 ## 1. 端口与状态
 
@@ -64,7 +64,7 @@ PREPARING 固定项目配置字节及用户配置 generation；discover 解析 a
     -> 资源/producer 分析 -> 完整 replacement owners -> delta
 ```
 
-小 delta 不保证小编译上下文。未变事实是项目逻辑视图的一部分，但 BaselineFacts 本身不能作为 javac 的类型输入；P0/P1 先以足够源码上下文保证正确，P2 再评估模块签名投影。必需输入被排除/缺失时明确披露或重规划，不偷偷读取活工作区。
+小 delta 不保证小编译上下文。未变事实是项目逻辑视图的一部分，但 BaselineFacts 本身不能作为 javac 的类型输入；当前以完整源码或验证后的 NoCode 模块签名提供类型输入；不完整签名有界回退捕获源码。必需输入被排除/缺失时明确披露或重规划，不偷偷读取活工作区。
 
 可选签名缓存须保留源码身份、SOURCE 注解和独立声明目录；NoCode 只供索引，不可执行、不证明构建成功。键包含源码、依赖内容及顺序、目标 JDK、编译器桥/模型版本、Lombok 规则/配置。缺签名、冲突或完整性不成立时有界退回封存源码；最终仍须通过 full/delta 等价验收。
 
@@ -107,11 +107,11 @@ daemon 不自行实现 Java 名称求解或 Rust 宏失效。adapter 负责解�
 
 | 情况 | 做法 |
 |---|---|
-| 冷 worker，无 AST | 从固定 revision 导出类型/符号/Bean、依赖/查找桶、必要未变事实及其证据 |
-| 不知道最小基线 | P0 先使用足够大的基线验证正确性，再缩小并测量 |
+| 新 worker，无任务内模型 | 从固定 revision 导出声明/符号/Bean、依赖/查找摘要及必要未变逻辑记录；不导出已移除的 raw type/binding/syntax 表 |
+| 不知道最小基线 | 使用已实现的基线摘要与必要逻辑记录，缩减范围须先验证全量/增量等价 |
 | 分析发现额外需求 | 返回 ReplanNeeded；当前 attempt 不交付可发布 delta；扩范围重跑 |
-| 反复扩展或 delta 太大 | 达到明确配置上限后全量；全量仍超预算则失败保旧版 |
-| 基线不兼容 / 无输入证据 | 不使用旧事实，转全量或明确失败 |
+| 反复扩展或 delta 太大 | 按执行路径的重规划边界退全量；全量仍超预算则失败保旧版 |
+| 基线不兼容 / 无输入证据 | 不使用旧事实；profile 不兼容按执行策略全量，物理格式不兼容明确要求 index --full |
 | 发布时 active revision 已变 | CAS 冲突；重新取得基线重新分析，不自动把旧 delta 套到新版 |
 | worker 会话结果未提交 | 不可作为下一次基线；丢弃或保持隔离直到 PublishAck |
 
@@ -127,3 +127,9 @@ daemon 不自行实现 Java 名称求解或 Rust 宏失效。adapter 负责解�
 | 同输入 full/delta 规范化一致 | 验收失败；不以行数近似代替内容比较 |
 
 规范化比较保留重复调用、诊断总数、coverage 和 provenance 的语义内容，只排除 task ID、耗时、数据库行号等非语义字段。测试必须覆盖删除、重命名、未解析转已解析、插件停用、资源依赖、OOM、中断和发布冲突。
+
+## 当前交付与存储边界
+
+Java 封存 GRA1/protobuf rows，worker 18 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 7，查询以逻辑 schema 33 读取；不再经过 CAF1 / Fact JSON 去重数据库。
+
+增量对兼容基线使用 SQLite backup，保持未变节点整数主键并重映射新暂存引用，封存时回收孤立字典/元注解定义并重建索引/FTS。旧格式 delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 只固定旧 head 的 CAS 身份，建新库成功后切入口。G1 worker 复用健康 isolate，失败恢复换进程。

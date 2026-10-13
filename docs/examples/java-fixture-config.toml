@@ -1,5 +1,5 @@
-# Java fixture 首阶段示例；保存到 fixture 根目录的 .code-ana/config.toml。
-# 仅为设计示例，源码目录需由测试准备流程提供；不执行目标项目编译。
+# Java 8 fixture 显式配置示例；保存到 fixture 根目录的 .code-ana/config.toml。
+# 源码根示例，源码目录需由测试准备流程提供；不执行目标项目编译。
 # Java 后端固定 javac，无解析器切换/回退；parse/analyze 禁用处理器。
 # auto 工具链仅从用户登记的别名选唯一匹配 JDK，不回退 JAVA_HOME/PATH。
 
@@ -23,8 +23,8 @@ mode = "semantic"
 build_system = "plain"
 
 [languages.java.analysis]
-source_version = "17" # 目标 fixture 版本；adapter 自身仍用 Java 25/GraalVM
-toolchain = "jdk17" # 先在用户配置登记；见 user-config.toml
+source_version = "8" # 目标 fixture 版本；adapter 自身仍用 Java 25/GraalVM
+toolchain = "java8" # 先在用户配置登记；见 user-config.toml
 classpath = "none"
 vm_classpath = true # javac semantic 必需；false 拒绝
 

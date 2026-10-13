@@ -1,5 +1,7 @@
 # Anatomist 存储迁移
 
+> 现行入口：[当前实现](../current-state.md)、[存储模块](../modules/storage.md)、[公共契约](../contracts.md)。本页按轮次保留演进和原始失败，最新结果在“紧凑存储实施与唯一一轮验证”；此前 schema 32 / 606.65 MB / Serial 等按各自产物解释。
+
 实施记录，2026-10-13。最初参考 `../anatomist` 的 `dev/replace-parser` 提交 `dff2e3954096853352ec91fcbfc6b995fbd4f390`；紧凑存储继续同步 `4a903272c22083585107e982f2899ed03a280aa2`。保留 Rust catalog、源码 blob、不可变 revision、snapshot/diff 和人工标注；语义图、索引和 staging 迁入 Rust。下文旧轮次指标保留，最新紧凑存储结果见文末。
 
 ```text

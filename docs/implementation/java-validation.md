@@ -1,5 +1,7 @@
 # Java 8 实施验证记录
 
+> 历史记录（2026-10-13 文档对齐）：旧 lang-adaptor 版本的执行回执和追加记录；原数字/失败保留，不作为当前 build-only 或正式放行依据。现行版本、验证范围及未完成门禁见 [当前实现](../current-state.md)，最新结果见 [存储实施记录](anatomist-storage-migration.md)。
+
 日期：2026-09-29。平台：macOS / arm64。参考 Anatomist `dev/replace-parser@2dfc7977cb03095d14894f069ff30985551457b1`，未运行 Anatomist 兼容测试。
 
 | 工具链 | 本次实际版本 |

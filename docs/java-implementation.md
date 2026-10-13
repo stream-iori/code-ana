@@ -1,5 +1,7 @@
 # Java 8 实现与验收
 
+> 历史记录（2026-10-13 文档对齐）：已删除 lang-adaptor 的旧实现。文中的路径和命令仅供追溯，不再是可执行开发入口。现行版本、验证范围及未完成门禁见 [当前实现](current-state.md)，最新结果见 [存储实施记录](implementation/anatomist-storage-migration.md)。
+
 > 本页保留旧 `lang-adaptor` 的实现与历史回执。2026-10-07 起，新实现与门禁状态见 [Anatomist 迁移](java-anatomist-migration.md)。
 
 Java 代码位于 `lang-adaptor`：`src/compiler/java` 为独立 Java 8 编译器桥；`analysis` 为独立模型到事实、框架和冷增量；`bridge` 为 Java 25 native C ABI。没有 JNI 应用调用、JavaParser 或 JVM 产品回退。

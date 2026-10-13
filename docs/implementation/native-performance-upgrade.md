@@ -1,6 +1,8 @@
 # Native 分阶段性能改造
 
-2026-10-13：存储和索引已改为 Anatomist schema 32，Java 输出类型化 GRA1 rows，Rust 直接入库。单轮 Native 索引 582.84 → 231.52 秒（-60.3%），图库 606.65 MB；具体限制与查询回归见[当前实施记录](anatomist-storage-migration.md)。下文保留上一阶段 CAF/Fact IR 的历史结果。
+> 历史记录（2026-10-13 文档对齐）：Native 优化演进记录；CAF1/Fact IR、ABI 2/3 和 schema 4/5/32 的结果均是历史产物。最新 GRA1/G1 紧凑存储结果见下方现行入口。现行版本、验证范围及未完成门禁见 [当前实现](../current-state.md)，最新结果见 [存储实施记录](anatomist-storage-migration.md)。
+
+2026-10-13 现行状态：默认 G1，GRA1/protobuf 行交付，物理 storage schema 7 / 逻辑 schema 33。最新唯一一轮冻结 iopengw 为 214.28 秒、图库 233.49 MB；历史正常 G1 为 234.88 秒 / 606.65 MB。首轮测量的查询失败保留，FTS 修复后在同库复验，无第二次索引。完整证据和限制见 [存储实施记录](anatomist-storage-migration.md)。下文的 582.84 → 231.52 秒等属于此前 CAF1/非紧凑图演进，不重标为本轮产物。
 
 
 2026-10-12。第一阶段实现、正确性校验与单轮性能对照已完成。第二阶段实现及验证见文末；完整迁移验收单独登记，不沿用历史版本的通过结论。

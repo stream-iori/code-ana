@@ -1,5 +1,7 @@
 # Java 适配层重写
 
+> 历史记录（2026-10-13 文档对齐）：按 dff2e395 冻结的适配层重写记录；旧模型/协议/暂存格式不是当前产品契约。现行版本、验证范围及未完成门禁见 [当前实现](../current-state.md)，最新结果见 [存储实施记录](anatomist-storage-migration.md)。
+
 参考 Anatomist dev/replace-parser@dff2e3954096853352ec91fcbfc6b995fbd4f390。Java保持文件级独立模型、上下文查询、文件级扩展事务；Rust保持捕获、调度、缓存、存储、发布、查询。
 
 | 决定 | 内容 |

@@ -1,8 +1,8 @@
-# code-ana 多语言项目配置草案 v1，Rust 严格 schema 已实现；各语言/策略能力见 rust-first.md。
+# code-ana 多语言项目配置 schema 示例 v1，Rust 严格 schema 已实现；各语言/策略能力见 rust-first.md。
 # 建议保存到 <project>/.code-ana/config.toml。
 # 这是 Java + Rust 混合仓库示例；模块路径、features 应按项目修改。
 # 字段、默认、优先级见 configuration.md；无旧配置兼容。
-# 此示例展示后续多语言配置；当前先验收显式启用 Java 的 fixture。
+# 此示例展示 Java + 后续 Rust 请求形状；Rust adapter 未实现。可运行的 Java 8 示例见 examples/java-fixture-config.toml。
 # Java 后端固定 javac，无解析器切换/回退；parse/analyze 禁用处理器。
 # auto 工具链仅从用户登记的别名选唯一匹配 JDK，不回退 JAVA_HOME/PATH。
 
@@ -34,18 +34,19 @@ mode = "auto" # full：明确全量；auto：兼容时增量
 # java_parallelism = 8 # 1–8；显式设置须满足 host/JVM 堆与非堆空间预约，128 MiB 堆的 8 并行至少 2 GiB
 # java_model_record_limit = 100000 # 每 context 的模型工作记录数，1–5000000
 # java_model_archive_bytes = 67108864 # 每 context 临时/最终模型，64 KiB–1 GiB
-# java_native_heap_bytes = 268435456 # Graal isolate 实际堆，8–1024 MiB、按 MiB 对齐
+# java_model_decode_bytes = 536870912 # 单 context 解码分配估算，64 KiB–2 GiB
+# java_native_heap_bytes = 268435456 # Graal isolate 实际堆，8–2048 MiB、按 MiB 对齐
 # java_compiler_timeout_seconds = 120 # 单 context javac，1–3600 秒
-# java_result_bytes = 67108864 # 结果 JSON / 事实归档各自上限，64 KiB–8 GiB
+# java_result_bytes = 67108864 # 控制结果 / GRA1 行归档各自上限，64 KiB–8 GiB
 # java_fact_limit = 100000 # 全任务事实/owner 数，1–5000000
 # java_scratch_bytes = 2147483648 # 任务暂存总额，64 KiB–32 GiB；包含捕获副本和候选 SQLite
 
 [resources.query]
-diff_spill_bytes = 8388608
+diff_spill_bytes = 8388608 # 当前仅 schema 字段，未接入执行预算
 
 [query]
-scopes = ["ALL"] # 只选择已捕获范围；不增加 TEST 索引
-# max_output_bytes = 32768 # 省略时使用本项目各命令默认值
+scopes = ["ALL"] # 当前 TOML query 默认未应用；实际以 CLI/TaskRequest 为准
+# max_output_bytes = 32768 # 当前仅 schema，查询以 CLI 参数为准
 
 [observability]
 mode = "basic"
@@ -55,7 +56,8 @@ enabled = true
 mode = "semantic"
 
 [languages.java.discovery]
-build_system = "maven" # auto / maven / gradle / plain
+build_system = "maven" # auto / maven / plain；gradle 仅保留 schema，adapter 未支持
+# inputs_manifest = ".code-ana/java-inputs.json" # auto 展开需外部 codeana-export-java-inputs 准备
 
 [languages.java.analysis]
 source_version = "auto" # 从模块构建声明解析；不是 adapter 的 Java 25 版本
@@ -72,7 +74,7 @@ enabled = true
 xml = false
 
 [languages.java.extensions.sofa]
-enabled = true # 依赖 Spring；关闭 Spring 时必须一并关闭 SOFA
+enabled = true # 静态 SOFA XML 可独立于 Spring；不自动开启 Spring
 
 [languages.java.external]
 exclude_patterns = ["java.lang.*", "java.io.*", "java.net.*", "java.nio.*", "java.math.*", "sun.*", "com.sun.*", "jdk.*"]
@@ -95,7 +97,7 @@ root = "services/order"
 manifest = "pom.xml" # 相对 module.root
 
 [modules.analysis]
-source_version = "17" # 此模块覆盖语言默认；adapter 仍由 Java 25/GraalVM 构建
+source_version = "8" # 当前产品只支持目标 Java 8；adapter 仍由 Java 25/GraalVM 构建
 
 [modules.extensions.spring]
 xml = true
@@ -136,8 +138,8 @@ auto = true
 keep = 20
 max_bytes = 0 # 0：不设置该项目字节预算；保护引用仍不能被强删
 max_age_days = 30
-include_caches = false
+include_caches = false # 当前 GC 不读取此字段，派生缓存另有配额/LRU
 
 [search.text]
-backend = "grep"
+backend = "grep" # 当前不切换引擎，使用 Rust 匹配/可选 FTS
 include = ["**/*.java", "**/*.rs", "**/*.xml", "**/*.toml", "docs/**/*.md"]

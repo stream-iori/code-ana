@@ -1,150 +1,90 @@
 # 存储与原子发布
 
-2026-10-13：当前图布局迁为 Anatomist schema 32（本产品 user_version 6），详见[实施记录](../implementation/anatomist-storage-migration.md)。旧库须全量重建；catalog、源码 blob、人工标注和不可变 revision 保留。
+对齐 2026-10-13：图库物理 `user_version=7`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs)、[graph_compact.rs](../../crates/storage/src/graph_compact.rs) 和 [实施记录](../implementation/anatomist-storage-migration.md)。
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
-
-当前 catalog schema 2、annotation schema 2 使用事务升级；旧标注无锚点时保留正文并显示未绑定。GC 删除 revision 前登记 `cleanup_pending`，重启后 recover 重试；单库与整个 home 的容量验收仍待做。
-
-**先持久化不可变对象，再提交入口引用；只有 catalog 提交代表发布成功。**
-
-文件式源码 blob 捕获逐文件复制、sync_all、hash 校验后重命名，整批完成再同步 blobs 目录，随后才允许提交入口。成功复用已有 blob 的批次也同步目录，确保失败批次残留的重命名持久化；内存式 blob 写入保留同一复用屏障。批次失败不允许发布引用，未引用的部分文件可重试或由 GC 回收。
-
-状态：SQLite、原子发布、失败保旧版为原文要求；不可变 generation 是 D03 建议，P0 必须验证复制和磁盘成本。
-
-## 1. 建议布局与数据表
+## 1. 布局
 
 ```text
-<new-storage-home>/<repository>/<project>/
-  catalog.db               入口、revision、snapshot、构建、比较、引用
-  revisions/<id>/facts.db   不可变 SQLite 图
-  manifests/<id>           捕获输入清单
-  blobs/<content-hash>      源码/所需输入内容
-  candidates/<attempt>/    未发布事实库与接收产物
-  comparisons/<id>/        冻结 diff 结果和证据
-  annotations.db           人工内容与绑定状态
-  reports/                 内部报告及诊断附件
+<user-home>/                     默认 ~/.code-ana
+  catalog.db                    project / checkout / target / refs / tasks / objects
+  annotations.db                人工正文、版本和锚点
+  revisions/<id>/facts.db        不可变语义图
+  candidates/                   私有未发布候选
+  blobs/<content-hash>           捕获源码 / 输入内容
+  pages/                        冻结查询页
+  reports/                      报告附件
+  cache/java-signatures/        可重建的有界 NoCode 缓存
 ```
 
-存储设计和实现逻辑参考 Anatomist Java，再由 Rust 实现；数据库文件兼容和历史数据导入不属于当前迁移。catalog/graph/annotations/report 分别版本化；跨文件没有天然事务，必须遵守下述持久化顺序。
+home 共享 catalog，以身份隔离项目；不是每仓库一套 catalog。manifest、snapshot、diff、报告等对象及引用由 catalog 保存。catalog 和人工标注升级各用事务；旧标注无可靠锚点时保留正文并显示 unbound。
 
-| 实际表组（Anatomist schema 32） | 用途 |
-|---|---|
-| nodes / edges | 节点、声明字段、非 CALLS 关系；保留重复事实的 ordinal |
-| call_site_owners / call_sites / call_site_targets | 调用点、目标集合、confidence 和 resolution_status |
-| annotations / annotation_meta_relations / semantic_annotations | 原始注解、元注解与语义标注 |
-| file_cache / file_dependencies / symbol_dependencies | 文件指纹与增量失效依赖 |
-| index_diagnostics / analysis_coverage / index_providers / project_meta | 诊断、能力缺口与 provider 身份 |
-| node_names | Anatomist FTS5；4096 字节页 |
+## 2. 物理布局与逻辑读取
 
-`facts.db` 保留文件名，内部已移除 `facts(body)`、完整 Fact JSON 和额外 Java type/binding/syntax 表。输出实体仅在查询时组装，不能作为存储源。DDL、索引和 staging 绑定顺序固定参考 dff2e395；实现见 `crates/storage/src/anatomist-*.sql`、`graph_store.rs`。
-
-## 2. 定向端口
-
-| 端口 | 契约 |
-|---|---|
-| open_read(identity) | 在同一协调区内解析入口并登记引用，返回固定 ReadContext |
-| lookup_symbols / read_declarations | 精确/候选匹配、声明树；稳定排序 |
-| read_call_sites / read_targets / batch_adjacency | 批量正反向读取，避免每条边一次数据库往返 |
-| read_coverage / read_provenance | 保留选择范围、缺口和零结果证据 |
-| export_baseline | 固定 revision/profile 的事实与依赖摘要 |
-| create_candidate / apply_delta | 仅操作私有未发布事实库；按源文件及 hash/ordinal 删除并替换 |
-| validate / publish | 返回提交身份或明确失败；不向调用者泄露部分可见结果 |
-
-存储不推导 Java 派发、不解释健康策略、不执行 pipeline，也不暴露万能 ORM。
-
-Java 只交付类型化 Anatomist rows。Rust staging 完成引用解析、UTF-16 长度规则的事实 hash、重复 ordinal、调用点目标归并和派生 WIRES。不会把调用点展开成额外方法 CALLS 边。全量导入暂停非唯一索引和节点 FTS 触发器，导入后重建；增量保留匹配的 hash/ordinal，只刷新受影响文件的调用点。源路径、module/scope、列数/类型和最终 End 均须校验。取消、失败和 CAS 冲突保留旧 head。
-
-## 3. 发布协议
-
-```text
-active = r10
-   |
-   +--> query Q 固定 r10，登记读者引用
-   |
-   +--> full: 新建 candidate
-        delta: SQLite backup r10 -> 私有 candidate -> 应用 delta
-                    |
-             完整接收 + 校验 + 门禁
-                    |
-             关闭写连接，处理 sidecar，校验候选
-                    |
-             持久化 blobs / manifest / facts.db
-                    |
-             移至不可变 revision 路径并保证持久化
-                    |
-             catalog 事务：检查 active == r10
-                插入 ready revision + 更新入口 + 提交记录
-                    |
-                 active = r11
-
-Q 继续读 r10；新查询固定 r11；Q 释放前 GC 不能回收 r10。
-```
-
-事实、coverage、profile、输入身份必须在同一候选内准备完成。发布事务只引用已经耐久化的产物，不能先让 catalog 指向未落盘的文件。文件与目录的同步、同文件系统移动、SQLite backup/checkpoint/关闭要求需平台故障测试验证。
-
-只在 candidate 中写入，已发布图永不修改。不使用“复制正在写入的 SQLite 文件”代替 backup API。D03 的磁盘复制成本包括增量写放大，不能误称零拷贝。
-
-## 4. 崩溃与升级
-
-| 崩溃 / 故障点 | 恢复规则 |
-|---|---|
-| 接收未完成 | candidate 为中断状态；旧 head 不变 |
-| 文件已落盘、catalog 未提交 | 是未发布孤儿对象；核对构建记录后清理，不能自动补发 |
-| catalog 已提交、响应未发 | revision 已发布；按任务提交记录返回相同结果 |
-| expected revision 冲突 | 候选不发布，重新规划，不覆盖后来写入 |
-| blob 损坏 / 磁盘满 | 校验或持久化失败；旧版保持可读 |
-| 本项目未来 graph schema 演进失败 | 保留原目录与恢复信息，不先删除已发布数据；旧 schema 读取能力另作版本声明 |
-| catalog migration 失败 | 事务回滚；重大不兼容用影子 catalog 与恢复入口验证后接替 |
-| 清理失败 | 登记 pending，后续恢复重试，不将已发布 revision 改报失败 |
-
-GC 与 open_read 必须共享引用协调机制，避免“先查到路径、尚未登记读者就被删除”的窗口。daemon 重启后失效进程引用只能在确认拥有者已结束后解除；固定快照和持久比较引用不随进程退出消失。
-
-## 5. D03 取舍与验收
-
-| 方案 | 收益 | 成本 / 限制 |
+| 物理表 / 对象 | 逻辑入口 | 压缩与不变量 |
 |---|---|---|
-| 建议：不可变 generation | 查询、历史、恢复共用身份；发布不干扰旧读者 | 增量可能复制整库；磁盘和写入耗时必须测量 |
-| 备选：live SQLite WAL + 历史物化 | 活动增量写放大可能更低 | 长读者、WAL 回收、历史固定和发布恢复更复杂 |
+| graph_nodes | nodes | 公开 id 不变；整数 node_pk 支撑关系、注解和 FTS；UPSERT 保留未变节点主键 |
+| graph_edges | edges | 节点引用为整数；保留 fact_hash / fact_ordinal，边 source_file 独立保存 |
+| graph_call_site_owners / graph_call_sites / graph_call_site_targets | call_site_owners / call_sites / call_site_targets | 调用点与目标分离；不额外展开方法 CALLS 边 |
+| graph_annotations / graph_semantic_annotations | annotations / semantic_annotations | 引用节点和路径字典；图语义标注不同于独立人工正文 |
+| annotation_meta_relations / annotation_meta_sources / annotation_meta_owners | annotation_meta_owned | 定义复用、归属独立，owners 为 WITHOUT ROWID |
+| graph_file_cache / graph_file_dependencies / graph_symbol_dependencies | file_cache / file_dependencies / symbol_dependencies | 源文件字典 + 增量契约/依赖 |
+| graph_index_diagnostics / graph_analysis_coverage | index_diagnostics / analysis_coverage | 零事实文件与 partial 缺口仍保留 |
+| index_providers / project_meta | 同名表 | provider 身份、逻辑 schema 与计数 |
+| source_files | 路径逻辑列 | 全局复用路径，NULL 与空字符串分开 |
+| external_targets | 外部目标逻辑列 | 四 nullable 字段完整身份，NULL/空不能混并 |
+| metadata_values | metadata 逻辑列 | 仅原始 UTF-8 ≥256 bytes 且重复至少两次共享 |
+| node_names | FTS5 | external-content 为 graph_nodes，以 node_pk 连接；4096 字节页 |
 
-不依据理论大小直接切方案。验收覆盖每个崩溃窗口、GC/读者竞争、并发 CAS、跨 schema 失败保旧版、增量/全量相等及实际库规模下的复制成本。SurrealDB 只实现同一端口参与独立实验。
+逻辑视图负责恢复字符串列，私有候选的写触发器负责翻译整数引用。查询只读逻辑投影，不把内部主键输出。`facts(body)`、整条 Fact JSON、Java raw type/binding/syntax 表均不在产品图库中。
 
-## Java 分析缓存边界
+DDL 生成入口：[generate-compact-schema.py](../../scripts/generate-compact-schema.py) 从 [anatomist-schema.sql](../../crates/storage/src/anatomist-schema.sql) 和 [compact-meta.sql](../../crates/storage/src/compact-meta.sql) 生成 [compact-schema.sql](../../crates/storage/src/compact-schema.sql)。修改生成输入并运行生成器，不手改生成文件；`--check` 已纳入 `just test-rust`。
 
-公共事实和 Java facets 按 revision 保存绑定来源、证据完整性与诊断；不能只落“resolved”一个布尔值。javac 上下文对象不进入数据库。
+metadata 共享保持原始文本，不做 JSON canonicalization。SHA-256 只是候选索引，完整字节相等才合并；同 SHA 不同内容不合并。分组使用临时 SQLite，每次处理一个值，不把全库文本装入 Rust map。仅 nodes/edges/call_sites 的合格重复值共享。
 
-NoCode 模块签名与声明目录属于可重建分析缓存，不是已发布事实库或目标构建产物。缓存损坏/缺失只能触发源码重算或明确失败，不得降低事实要求；在途签名 lease 必须参与缓存回收协调。存储不承担 Java 模型恢复或名称解析。
+元注解保留各来源首次位置、各归属 resolution_status 和定义聚合状态。全局路径字典保留 NULL/空；元注解 identity_file 仍遵守上游无文件身份规则。删除/停用 producer 时清理对应归属，封存时删除孤儿定义。
 
+## 3. 导入与增量
 
-## Anatomist 存储逻辑迁入 Rust（2026-10-08）
+| 阶段 | 行为 |
+|---|---|
+| 接收 | GRA1 行长度/列数/类型/源路径/module/scope/序号受限；End 前只写私有候选 |
+| staging | 原逻辑列暂存，解析引用、UTF-16 长度规则 hash、重复 ordinal、调用点目标和派生 WIRES |
+| full | candidate 使用私有导入设置，保留唯一约束，暂停非唯一索引/FTS 触发器，导入后重建 |
+| delta | SQLite backup 固定兼容 baseline；按替换归属删除/合并，重映射暂存整数引用，保留未变 hash/ordinal |
+| 封存 | 调用点/派生关系/依赖更新，字典共享及孤儿清理，索引/FTS/统计重建 |
+| 校验 | 完整归档与 End、引用、coverage、SQLite integrity、foreign_key_check 和 FTS |
 
-用户明确要求将 Java 存储设计和逻辑一并参考迁入 Rust。以
-[存储对照与验证](../storage-anatomist-migration.md) 为实施清单。
+candidate 的快速导入设置不能推广到 catalog 或已发布图。最终使用新的发布连接 WAL/NORMAL、checkpoint/关闭和持久化屏障；完整校验没有移除。
+
+## 4. 发布
 
 ```text
-Anatomist Java                         code-ana Rust
-StagedGraphStore / StagingSchema  -->  CAF1 + 私有候选 facts.db
-schema.sql / DataReader          -->  storage SQL + FactReader 定向读取
-CallSitePersistence              -->  call_site / call_target 独立事实与索引
-SourceBlobStore                  -->  SHA-256 blobs
-AffectedScope / fact_hash        -->  Owner replacement + 稳定事实 ID
-IndexFileSwap / IndexRevision    -->  不可变 revision + catalog CAS
+active r10 ──► reader Q 固定 r10，引用保护
+     │
+     └─► full 新 candidate / delta backup(r10)
+           → 完整交付 + 校验 + 门禁
+           → blobs / manifest / facts.db 同步
+           → 不可变 revision 路径 + 目录同步
+           → catalog 事务检查 expected head == r10
+           → ready revision + head + commit 记录
+           → active r11
+
+Q 继续读 r10；新读者取 r11；Q 释放前 GC 不删 r10。
 ```
 
-采用其批量入库、定向索引、调用点与目标分离、出现次数保留、内容寻址和发布前校验逻辑。
-Rust 仍使用版本化 Fact IR 保存完整事实；专用查询字段使用 SQLite 索引。
-DDL 来源为 `crates/storage/src/schema.sql` 与 `query-indexes.sql`；旧索引仅在私有候选升级。
-候选 schema 4 保留 source_units 和 declaration_projection，并增加 file_dependencies。事实正文仍为权威；声明投影通过 INSERT/UPDATE/DELETE 触发器与 owner 替换在同一事务更新。文件依赖按记录的内部关系端点及原始 provider/注解名称重建，来源为冻结 Anatomist DataWriter 的依赖 joins；不从源码推断。候选完成派生后在同一事务刷新，保存两端 world/path，去除自文件依赖并合并重复出现；原始事实保留全部出现次数。反向读取每批最多 500 个文件键、1024 行，ID keyset 续读。历史库不原地升级，缺此投影返回 FILE_DEPENDENCIES_UNAVAILABLE，由 Java 决定保守回退。导入、派生及完整性校验后，发布前逐索引 ANALYZE；每个索引前后检查取消，I/O、磁盘满和损坏错误终止发布，普通统计错误记入警告。
-冻结查询结果放在 pages/<page-id>.db，catalog 仅保存结果头、总数、参数身份和 revision 引用。SQLite 页记录按 sequence 索引读取；私有 spool 在失败/取消时释放，崩溃遗留由 recover 清理，过期页及孤儿页库由 GC 回收。
-全量先流式入库，再建立查询索引并派生；增量复制现有索引，重复准备不重建。
-发布目录、历史读者和失败保旧版继续使用本项目已有的不可变 revision 契约。
-冻结参考 JAR 的模型解码上限与存储设计迁移分开记录，不能据此跳过存储验证。
+blob 批次逐文件校验、同步和重命名，整批同步 blobs 目录；复用已有 blob 同样保持目录同步屏障。只在私有 candidate 写，已发布图永不修改。delta 使用 SQLite backup API，不能复制正在写入的数据库文件冒充一致快照。
 
+## 5. 失败、升级与回收
 
-## 全量批量构建与性能计时（2026-10-11）
+| 情况 | 处理 |
+|---|---|
+| 缺块/错摘要/取消/磁盘满/worker 崩溃 | 候选不发布，旧 head 保留 |
+| 文件落盘但 catalog 未提交 | 未发布孤儿，核对归属再清理，不自动补发 |
+| catalog 提交后响应/ack/报告失败 | 已发布事实保留，以 commit 记录裁决 |
+| CAS 冲突 | 不覆盖新 head；当前候选不发布 |
+| graph schema 6 或其他不兼容格式 | 查询/delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；index --full 建新 revision 后切 head，旧文件保留 |
+| 旧格式历史 | 文件保留不等于新 reader 支持；显式图读取同样拒绝旧格式 |
+| catalog/annotation migration 失败 | 事务回滚；人工正文不随 graph rebuild 删除 |
+| GC | 受活动入口、snapshot、reader、build、有效结果引用保护；删除失败登记 cleanup_pending，recover 重试 |
 
-全量候选是新库：事实初始写入时暂停声明投影触发器，并延后 owner/source 及声明选择索引；归档全部校验、入库后批量生成声明投影、恢复全部索引和触发器，然后准备查询/FTS，随后才允许 Wiring 派生。派生新增声明仍由触发器维护。增量备份库继续使用原触发器和 owner 替换路径。表结构与 `user_version=4` 不变。
-
-CAF1 的任务自有归档由 builder 生成规范 JSON。存储的记录迭代器仍解析 Fact、检查帧预算/尾部/摘要，并执行 FactValidator；SQL body 复用同一记录的 JSON，省去重新编码。owner 键缓存限制为 1024 项且计入字符串与保守对象开销的容量不超过 1 MiB。磁盘身份去重对新 ID 先执行 INSERT OR IGNORE，仅重复时读取首次摘要/偏移；冲突证据和批次提交语义保留。
-
-任务报告新增 `summary.timing.storage_phase_ms`：候选准备/备份、归档校验与入库、投影/查询索引/FTS、Wiring、文件依赖与提交、全图校验和摘要、完整性检查、统计。计时不是 Fact IR；已发布事实不包含性能字段。完整图与性能验收状态见 [单轮优化计划](../../todo/chains/performance.md)。
+当前 GC 字节预算只计 facts.db，不是整个 home 硬配额。backup 和不可变 revision 会占额外磁盘；233.49 MB 是单个最终图库，不能等同分析时峰值或整个 home。单轮结果和边界见 [当前实现](../current-state.md)。

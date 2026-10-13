@@ -1,6 +1,6 @@
 # Rust 实现与本地验收
 
-**Rust 主链路可用独立 mock-worker 验证。集成测试按场景隔离，并验证发布崩溃窗口、迁移回滚和报告失败；diff 保持原行为，暂不扩展。真实 Java 8 的实现和验收见 [Java 实现说明](java-implementation.md)。**
+**Rust 主链路可用独立 mock-worker 验证。集成测试按场景隔离，并验证发布崩溃窗口、迁移回滚和报告失败；diff 保持原行为，暂不扩展。当前 Java/G1 与紧凑存储见 [当前实现](current-state.md) 和 [Java worker](modules/java-worker.md)。**
 
 ```text
 clap CLI ── authenticated gRPC ── Rust daemon
@@ -10,8 +10,8 @@ clap CLI ── authenticated gRPC ── Rust daemon
                                   ├─ SQLite candidate → immutable revision → catalog CAS
                                   └─ 查询 / pipeline / snapshot / diff / report / annotation / GC
 
-保留：Rust java-worker ── C ABI ── Java 25 Native Image Hello
-生产：真实 Java 8 javac Fact IR producer；mock 保留独立回归
+生产：Rust java-worker ── C ABI 4 ── Java 25/G1 ── Java 8 javac
+      GRA1/protobuf 行 → 紧凑 SQLite（物理 7 / 逻辑 33）；mock 保留独立回归
 ```
 
 ## 运行
@@ -109,15 +109,15 @@ terminal { "execution":..., "publication":..., "evidence":... }
 
 | crate | 职责 |
 |---|---|
-| model | 身份、Fact IR、owner 替换与证据 |
+| model | 身份、查询实体、owner 替换与证据（不是完整 Fact JSON 存储） |
 | contracts | task/worker protobuf、大小受限的帧、领域映射 |
 | config | 严格 TOML、显式语言、模块/源码范围、输入捕获 |
 | application | 调度、worker 监督、发布编排、历史与运维 |
 | storage | SQLite、blob、catalog、任务事件、人工标注 |
-| query | 面向 FactReader 的查询和 pipeline，不依赖 SQLite |
+| query | 面向 FactReader 逻辑投影的查询和 pipeline；SQL 在 storage |
 | cli / daemon | 命令行解析 / gRPC 接入 |
 | mock-worker | 已知输入回放与协议故障注入，不包含 Java parser |
-| java-worker | Java 8 native/javac 已接入；范围见 Java 实现说明 |
+| java-worker | Java 8 Native/G1、异步完成 FD、GRA1 交付；范围见 Java worker |
 
 当前 home 共享一个 catalog，以 project/checkout/target 隔离；每个 revision 独立 SQLite。catalog schema 2、annotation schema 2 会事务升级旧库；旧标注正文与版本保留，旧记录没有可靠锚点时显示 `unbound`。GC 删除中断留下的 `cleanup_pending` 由 recover 重试。配置、报告、快照和冻结页是 catalog 中的版本化对象。
 
@@ -125,13 +125,13 @@ terminal { "execution":..., "publication":..., "evidence":... }
 
 | 项目 | 当前实现 / 限制 |
 |---|---|
-| 输入 | 配置文件最多 1 MiB，每文件/IPC 帧 8 MiB，单捕获/结果 64 MiB，最多扫描 100,000 项、捕获 10,000 文件、接收 100,000 事实；符号链接输入拒绝 |
+| 输入 | 配置文件最多 1 MiB，源码/IPC 帧 8 MiB，捕获累计 2 GiB，依赖单项 256 MiB，最多扫描 100,000 项、捕获 10,000 文件；结果默认 64 MiB / 100,000 行，Java 可显式放大预算；符号链接输入拒绝 |
 | 并发 | 默认 2 个 worker，最多 8 个活动/排队任务；用户 max_workers 上限 8 |
 | worker 内存 | 默认每 worker 256 MiB；按独立进程组 RSS 每 100ms 调度采样，超额终止；不是内核级硬隔离 |
 | 超时 | 任务默认 120s，显式 deadline 最大 86400s；单 javac context 仍最多 3600s。捕获、查询、发布和 Git 读取在阻塞线程运行；查询在选择器/源码读取边界检查取消，正在执行的单条 SQLite 语句尚无中断钩子 |
 | 输出 | 默认 100 条、32 KiB；最多 10,000 条、8 MiB；至少 2 KiB 用于终态和记录 |
-| 发现 | mock 只支持显式 Java source_roots；`discovery.mode=auto` 索引明确报不支持。缺输入返回协议 3 的结构化 BuildAdvice，cwd 指向用户 checkout；Maven/Gradle 有效模型和真实工具链识别仍待 Java 适配器 |
-| 增量 | Rust 真正执行 backup + owner 替换；mock 用全 owner 替换验证冷基线，不宣称语义失效算法 |
+| 发现 | mock 只支持显式 Java source_roots；生产 Java 的 auto 支持已有 Maven inputs_manifest，索引不调用 Maven。缺输入返回 BuildAdvice，cwd 指向用户 checkout；Gradle/Rust adapter 未支持 |
+| 增量 | Rust 真正执行 backup + owner 替换；mock 用全 owner 替换验证独立 worker 基线，不宣称语义失效算法 |
 | 高级语义 | 消费已有 overrides/implements 等事实；不在 Rust 重做 javac 类型推理。派发候选、impact 明确可能性 |
 | Git | 只读解析 commit/tree/blob；不运行 checkout、构建、钩子或 annotation processor |
 | diff | 文件 hash；声明/关系语义多重集；不推断重命名。位置独立 ID 的完整跨版本对应仍需要 Java producer 契约 |
@@ -140,7 +140,7 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | 报告 | off/basic/full；诊断总量、分组、至多 100 条样例与省略数；自动报告上限 4 MiB。显式导出不可覆盖；没有 Java 原始诊断时 mock 不能验证诊断质量 |
 | 平台 | 本轮 macOS 实测；Linux 分发未验收；Rust 源码分析仍为 P3 |
 
-`docs/config.toml` 保留目标完整 schema 示例。schema 接受不等于对应 adapter/自动 GC 能力已验收；doctor 与本页列出当前能力。真实 Java 的 BuildContext、JDK 8/17/25、Lombok/Spring/SOFA、签名缓存、native/compiler bridge 均不能用 mock 测试代替。
+`docs/config.toml` 保留目标完整 schema 示例。schema 接受不等于字段已执行；query 默认、diff_spill_bytes、文本 backend、GC include_caches 尚未接入。auto GC 已在发布后调用，adapter 能力仍分别验收；doctor 与本页列出当前能力。真实 Java 8 的 BuildContext、框架、签名缓存和 native/compiler bridge 使用独立门禁，不能由 mock 代替；Java 17/25、Rust 语言分析仍未支持。
 
 ## 验证入口
 
@@ -148,14 +148,14 @@ terminal { "execution":..., "publication":..., "evidence":... }
 |---|---|
 | Rust 单元/文档测试 | `cargo test --workspace --locked` |
 | 格式与静态检查 | `cargo fmt --all -- --check`；`cargo clippy --workspace --all-targets -- -D warnings` |
-| 真实进程闭环 | `python3 tests/rust_e2e.py`；各用例独立 home/daemon，覆盖查询、增量/全量等价、历史、Git、分页、认证、故障、取消、恢复、重订阅和队列上限 |
+| 真实进程闭环 | `python3 tests/rust_graph_e2e.py`、`tests/rust_upstream_text_search.py`、`tests/rust_upstream_annotations.py`；各用例独立 home/daemon，覆盖查询、增量/全量等价、历史、Git、分页、认证、故障、取消、恢复、重订阅和队列上限 |
 | 本地演示 | `scripts/demo-rust.sh`，独立临时目录和进程，退出后清理 |
 | Rust 分发 | `just test-rust-release`，构建 release 包、验证全部 SHA256SUMS，以包内二进制和 fixture 运行无故障注入的端到端测试；manifest 标出 mock-only |
-| Java Hello | `scripts/smoke.sh`，需已配置 GraalVM JDK 25；与 Rust 验收独立 |
+| Java Hello | `scripts/smoke.sh`，需固定 GraalVM JDK 25 与有效正式构建回执；与 Rust 验收独立 |
 
 fixture 原始输入和人工编写的查询预期见 `tests/fixtures/`；`build_mock.py` 仅生成固定测试数据，不是从任意源码提取语义的解析器。发布、迁移和报告故障点仅在 debug 构建的显式 mock home 下响应 `CODEANA_TEST_FAULT`；release 构建无此路径。
 
-## 本轮实测记录（2026-09-29，macOS arm64）
+## 历史实测记录（2026-09-29，macOS arm64）
 
 | 项目 | 结果 |
 |---|---|
@@ -165,4 +165,4 @@ fixture 原始输入和人工编写的查询预期见 `tests/fixtures/`；`build
 | Java 原生 Hello | GraalVM CE 25.3.4.1+1.1，构建共享库成功；两条 Hello 均通过 |
 | Rust release 包 | `just test-rust-release` 通过；`dist/codeana-rust-Darwin-arm64/` 全部 SHA256SUMS 验证通过，manifest 标明 mock-only |
 
-本次重跑已确认 `127.0.0.1` 绑定成功，debug 与 release 门禁均通过。上述结果没有验证真实 Java 语义或大型项目性能。
+上述历史重跑已确认 `127.0.0.1` 绑定成功，debug 与 release 门禁均通过。上述结果没有验证真实 Java 语义或大型项目性能。

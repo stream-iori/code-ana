@@ -1,5 +1,7 @@
 # Anatomist 存储设计与逻辑的 Rust 实现
 
+> 历史记录（2026-10-13 文档对齐）：2026-10-08 的存储对照和旧 Fact IR/CAF1 优化。旧 DDL/查询布局已被 GRA1 与紧凑图库替代。现行版本、验证范围及未完成门禁见 [当前实现](current-state.md)，最新结果见 [存储实施记录](implementation/anatomist-storage-migration.md)。
+
 2026-10-08：用户明确要求参考 `../anatomist` Java 存储实现，而非只迁 Java 分析核心。
 目标是保留事实语义和成熟的存储逻辑，由 Rust 持有数据库生命周期。
 

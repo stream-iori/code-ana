@@ -1,12 +1,12 @@
 # 诊断、报告与人工标注
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+> 对齐 2026-10-13。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
-当前 `doctor` 返回生效 generation、字段来源与能力；报告支持 off/basic/full、诊断计数/分组/样例上限、可比指标差值，导出只写新路径。标注库单独迁移并保存 annotation revision 与事实锚点；list 固定一次标注读取和指定图 revision。标注进入 typed pipeline、真实 javac 诊断质量和完整文件级诊断基线仍待完成。
+当前 `doctor` 返回生效 generation、字段来源与能力；报告支持 off/basic/full、诊断计数/分组/样例上限、可比指标差值，导出只写新路径。标注库单独迁移并保存 annotation revision 与事实锚点；list 固定一次标注读取和指定图 revision。真实 javac 诊断已进入图与报告，包含当前冻结项目的 partial 结果；标注进入 typed pipeline、完整诊断/迁移覆盖仍待完成。
 
 **执行、质量、门禁、发布和报告是五个独立结果；人工内容不属于可重建分析事实。**
 
-状态：状态分离、标注保全继承提案；独立存储和绑定模型为 D10 建议。
+当前独立 annotations.db 保存正文/版本/锚点；list 固定一次标注读取与所选图 revision，graph 重建不删除正文。
 
 ## 1. 状态模型
 
@@ -18,7 +18,7 @@
 | publication | 未提交 / 已发布 revision / 冲突 / 保留旧版 | 发布后报告失败不能写成未发布 |
 | report | 保存成功 / 写入失败 / 关闭 / 已过期 | 无报告不代表无索引事实 |
 
-对外按本项目独立定义的结构与退出码表达；字段与默认值在 P0 冻结，不继承旧文本协议。内部 unknown/interrupted 需通过恢复查明发布结果后再给出确定结论。
+对外按本项目独立定义的结构与退出码表达；字段与默认值见现行公共契约，不继承旧文本协议。内部 unknown/interrupted 需通过恢复查明发布结果后再给出确定结论。
 
 ## 2. 组件与接口
 
@@ -50,11 +50,11 @@
 
 | 行为 | 约束 |
 |---|---|
-| stdout / stderr | 数据命令使用本项目文本契约；进度/人工诊断走 stderr；quiet 的行为在 P0 冻结 |
+| stdout / stderr | 数据命令使用本项目文本契约；进度/人工诊断走 stderr；quiet 的实际参数以 CLI help 为准 |
 | 报告级别 | off/basic/full 保留含义；内部调度 ID 不强制公开成 run_id |
 | 自动报告 | 采用本项目声明的大小/数量预算；独立于语义事实生命周期 |
 | 显式导出 | 新路径、禁止覆盖；不参与自动报告 GC |
-| 写报告失败 | 建议返回非零退出；同时保留真实 published revision |
+| 写报告失败 | 返回失败状态/非零退出；同时保留真实 published revision |
 | 报告对比 | project/profile/扫描策略满足可比性；缺基线明确失败 |
 | 报告过期/格式不支持 | 明确 unavailable/unsupported，不重跑写操作 |
 
@@ -79,7 +79,7 @@ Annotation（独立正文与用户来源）
 
 重建只更新派生 binding，不删除正文。自动同名/重命名重绑暂不承诺；显式锚点映射也须附依据。跨 world 不能默认共享标注。
 
-查询若包含人工标注，ReadContext 另固定 annotation revision，避免 pipeline 中途混入用户新编辑；图 revision 不被人工编辑重写。历史默认返回针对所选 revision 可证明的绑定，并披露 annotation revision；是否提供标注本身的历史回溯由 D10 决定。
+后续若将人工标注接入 pipeline，ReadContext 需另固定 annotation revision，避免中途混入用户新编辑；当前仅独立 annotate list 固定读取；图 revision 不被人工编辑重写。历史默认返回针对所选 revision 可证明的绑定，并披露 annotation revision；是否提供标注本身的历史回溯由 D10 决定。
 
 人工标注从本项目创建时独立保存；重建保全验证只针对本项目数据，不实现 Anatomist 标注导入或旧库迁移。
 
@@ -92,4 +92,4 @@ Annotation（独立正文与用户来源）
 | basic/full 报告对比 | 能力不同正确拒绝，不重跑分析 |
 | full rebuild / schema migration | 人工正文与 ID 保留 |
 | 符号删除/重命名/多 world 歧义 | 绑定失效可见，不丢内容、不乱绑 |
-| 标注编辑与 pipeline 并发 | 一条 pipeline 固定同一 annotation revision |
+| 标注 list 与编辑并发 | list 固定一次标注读取；标注接入 pipeline 仍未实现 |

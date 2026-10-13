@@ -1,5 +1,7 @@
 # Java / 扩展 / Maven：Anatomist 能力对齐审计
 
+> 历史记录（2026-10-13 文档对齐）：早期 2dfc797 能力审计；表中缺口与旧源码位置按当时解释，不能直接当作现在的待办。现行版本、验证范围及未完成门禁见 [当前实现](../current-state.md)，最新结果见 [存储实施记录](anatomist-storage-migration.md)。
+
 **结论：Java 8 产品链路已打通，但还不能称为 Anatomist 能力对齐。主要缺口是完整模型与绑定证据、扩展机制及规则、Maven 依赖调解，以及签名和规模化复用。**
 
 | 审计项 | 基线与口径 |
@@ -188,7 +190,7 @@ A0 ──┬── M1 → M2 ─────────────────
 
 Maven 输入正确性与模型可分支推进；扩展底座先于继续堆规则，复杂签名晚于完整声明/注解/生成来源。真实项目已授权按冻结 HEAD `267c7ced4993aa88613f8f17a8099943fec98159` 验收，仅已提交内容。输入捕获的结果不能替代语义索引与参考差分。
 
-当前实施状态与执行证据见 [验证记录](java-validation.md) 和 [Java worker TODO](../../todo/08-java-worker.md)。上表缺口是本轮实施前基线，不是最终完成清单。
+当前实施状态与执行证据见 [验证记录](java-validation.md) 和 Java worker TODO（历史路径 `../../todo/08-java-worker.md`，已不存在）。上表缺口是本轮实施前基线，不是最终完成清单。
 
 复用优先级：**借鉴实现与边界测试 > 机械复制类文件**。extract/框架输出依赖 Anatomist Node/Edge/ExtractionResult，需映射 owner/world/Fact IR；Maven worker 抽出模型导出职责；目标 JVM 会话适配 Rust supervisor/C ABI。实际借用源码记录 commit/hash/许可证/传递依赖/修改，不引入其数据库/应用层或第二种 Java parser。
 
@@ -218,18 +220,18 @@ Lombok compile 是明确架构差异：参考会运行锁定 processor 并生成
 | T2 | [JavaSignatureArchiveIT](../../../anatomist/anatomist-app/src/test/java/com/anatomist/core/javac/JavaSignatureArchiveIT.java)；同目录 JavaModelExtensionIT、LombokJavaModelIT、LombokTypeAnnotationIT、LombokUtilityClassIT、JavaModeledOverridesIT；[LombokConfigurationScopeTest](../../../anatomist/anatomist-app/src/test/java/com/anatomist/framework/lombok/LombokConfigurationScopeTest.java) |
 | T3 | [SpringJavaModelTest](../../../anatomist/anatomist-framework-spring/src/test/java/com/anatomist/framework/spring/SpringJavaModelTest.java)、[SpringBeanParserTest](../../../anatomist/anatomist-framework-spring/src/test/java/com/anatomist/core/SpringBeanParserTest.java)、[SofaJavaModelTest](../../../anatomist/anatomist-framework-sofa/src/test/java/com/anatomist/framework/sofa/SofaJavaModelTest.java) |
 | T4 | [JavacMavenInputsIT](../../../anatomist/anatomist-app/src/test/java/com/anatomist/core/javac/JavacMavenInputsIT.java)：selectedInputsReuseOneMavenProcess、selectionFailureAndChangedPomAbortTheMavenSession、effectiveMavenInputsMediatePerModuleAndScopeWithoutBuildingTheReactor、explicitClasspathMediatesOnlyDeclaredReactorPaths；物理模块/标签、无关 worktree、回执/响应预算 |
-| T5 | [javac-parser.md](../../../anatomist/docs/javac-parser.md)、[java-scope-validation.md](../../../anatomist/docs/java-scope-validation.md) 历史矩阵与容量记录 |
+| T5 | [javac-parser.md](../../../anatomist/docs/javac-parser.md)、java-scope-validation.md（历史路径 `../../../anatomist/docs/java-scope-validation.md`，已不存在） 历史矩阵与容量记录 |
 | T6 | 本项目 [java_model_tests.py](../../tests/java_model_tests.py)、[java_maven_export.py](../../tests/java_maven_export.py)：基本泛型/SAM/二进制、签名回退、框架子集、单模块 Maven/profile；不能替代 T1–T4 |
 
 | 编号 | code-ana 当前实现 |
 |---|---|
-| C1 | [CompilerBridge](../../lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java) |
-| C2 | [FactExtractor](../../lang-adaptor/src/main/java/dev/codeana/analysis/FactExtractor.java)、[BinaryIndex](../../lang-adaptor/src/main/java/dev/codeana/analysis/BinaryIndex.java) |
-| C3 | [FrameworkAnalysis](../../lang-adaptor/src/main/java/dev/codeana/analysis/FrameworkAnalysis.java)、[LombokModel](../../lang-adaptor/src/main/java/dev/codeana/analysis/LombokModel.java) |
+| C1 | CompilerBridge（历史路径 `../../lang-adaptor/src/compiler/java/dev/codeana/compiler/CompilerBridge.java`，已不存在） |
+| C2 | FactExtractor（历史路径 `../../lang-adaptor/src/main/java/dev/codeana/analysis/FactExtractor.java`，已不存在）、BinaryIndex（历史路径 `../../lang-adaptor/src/main/java/dev/codeana/analysis/BinaryIndex.java`，已不存在） |
+| C3 | FrameworkAnalysis（历史路径 `../../lang-adaptor/src/main/java/dev/codeana/analysis/FrameworkAnalysis.java`，已不存在）、LombokModel（历史路径 `../../lang-adaptor/src/main/java/dev/codeana/analysis/LombokModel.java`，已不存在） |
 | C4 | [Rust query](../../crates/query/src/lib.rs) |
 | C5 | [Maven 导出器](../../scripts/export-java-inputs.py)、[JavaInputs](../../crates/config/src/java_inputs.rs) |
 | C6 | [配置/输入捕获](../../crates/config/src/lib.rs)、[Java context 计划](../../crates/application/src/java.rs) |
-| C7 | [SignatureCache](../../lang-adaptor/src/main/java/dev/codeana/analysis/SignatureCache.java)、[JavaAnalysis](../../lang-adaptor/src/main/java/dev/codeana/analysis/JavaAnalysis.java)、[CompilerSession](../../lang-adaptor/src/main/java/dev/codeana/analysis/CompilerSession.java) |
+| C7 | SignatureCache（历史路径 `../../lang-adaptor/src/main/java/dev/codeana/analysis/SignatureCache.java`，已不存在）、JavaAnalysis（历史路径 `../../lang-adaptor/src/main/java/dev/codeana/analysis/JavaAnalysis.java`，已不存在）、CompilerSession（历史路径 `../../lang-adaptor/src/main/java/dev/codeana/analysis/CompilerSession.java`，已不存在） |
 | C8 | [验证记录](java-validation.md)、[实现范围](../java-implementation.md)、[压力脚本](../../tests/java_stress.py) |
 
 S2/M08 已加入 Java source_roots.label：MAIN 多标签共享物理编译上下文、TEST 读取 MAIN，来源声明保持标签逻辑身份；capture metadata 二次读取保留标签，依赖/CP 仍按物理 ID。最长根/歧义、JVM full/delta 与真实 daemon 的外部 JAR/标签改名/旧 head 保留通过。

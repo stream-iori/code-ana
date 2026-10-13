@@ -1,5 +1,7 @@
 # Java 参考实现审计
 
+> 历史记录（2026-10-13 文档对齐）：复用审计与各自冻结来源；本页 dff2e395 指当时基线，后续紧凑存储参考已更新至 4a903272。来源 JSON 保留原 SHA，不随文档更新重签。现行版本、验证范围及未完成门禁见 [当前实现](../current-state.md)，最新结果见 [存储实施记录](anatomist-storage-migration.md)。
+
 当前冻结 Anatomist `dev/replace-parser@dff2e3954096853352ec91fcbfc6b995fbd4f390`；旧回执保留各自提交。实际复制和改编文件的提交、SHA 与修改记录见 [复用来源清单](java-reference-sources.json)。
 
 | 参考 | 决定 |

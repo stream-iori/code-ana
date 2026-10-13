@@ -1,4 +1,4 @@
-# code-ana 用户配置草案 v1，建议保存到 ~/.code-ana/config.toml。
+# code-ana 用户配置示例 v1，建议保存到 ~/.code-ana/config.toml。
 # 仅控制本机服务、资源和工具链映射；不存项目语言分析默认值。
 # 以下数值仅演示 schema，不是已验证的容量或性能默认值。
 schema_version = 1
@@ -6,7 +6,7 @@ kind = "user"
 
 [daemon]
 idle_timeout_seconds = 600
-java_warm_workers = true
+java_warm_workers = true # 复用健康 worker/isolate，不表示 Native 冷热模式
 java_signature_cache = true
 
 [limits]
@@ -15,15 +15,15 @@ max_worker_memory_bytes = 2147483648 # 整个 worker 进程树预算
 max_total_worker_memory_bytes = 4294967296
 
 # 每个别名有语言和本机绝对路径。启用示例前替换成真实安装路径。
-# 分析项目可以用 toolchain = "jdk17"，但不能用它改 adapter 的构建工具链。
+# 分析项目可以用 toolchain = "java8"，但不能用它改 adapter 的构建工具链。
 # javac 使用匹配目标版本的完整 JDK；auto 只选择已登记的唯一匹配项。
-# [toolchains.jdk17]
+# [toolchains.java8]
 # language = "java"
-# home = "/absolute/path/to/jdk-17"
+# home = "/absolute/path/to/sdkman-java-8"
 
 # [toolchains.rust_stable]
 # language = "rust"
 # home = "/absolute/path/to/rust-toolchain"
 
-# CLI-daemon 固定采用 HTTP/2 + protobuf，建议 gRPC；这里不开放协议切换。
+# CLI-daemon 固定采用 HTTP/2 + protobuf gRPC；这里不开放协议切换。
 # endpoint/动态端口由 daemon 生成和登记，不在项目配置中指定。

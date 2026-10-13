@@ -1,4 +1,6 @@
-# Rust worker
+# Rust worker（后续设计）
+
+> 对齐 2026-10-13：本页是尚未交付的 rust-analyzer 设计。当前 Rust 编排代码和 mock-worker 不提供任意 Rust 源码 syntax/semantic 分析；配置被 schema 接受不代表 adapter 已实现。
 
 **syntax 与 semantic 是两种明确能力；不能用语法结果冒充完成名称解析。**
 

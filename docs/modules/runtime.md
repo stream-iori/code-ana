@@ -1,6 +1,6 @@
 # CLI 与 daemon
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+> 对齐 2026-10-13。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 当前 daemon 把提交时捕获、定向查询、Git 读取和发布存储工作放入阻塞线程；每项目一项分析、同目标写入串行，只读查询可并发。取消在查询选择器和源码读取边界生效；单条正在执行的 SQLite 语句、硬 RSS 隔离与严格项目间公平性仍需规模化验证。
 
@@ -8,7 +8,7 @@
 
 **CLI 只表达任务；daemon 管执行、版本句柄和资源。**
 
-状态：D01 已确认每用户一个 daemon；D02 已确定 HTTP/2 + protobuf 方向，建议 gRPC；升级协调、具体协议库和 D12 阈值待验证。协议见 [contracts](../contracts.md)。
+D01/D02 已落地：每用户一个 daemon，tonic gRPC/HTTP/2 + protobuf，handshake 3；有界调度与进程树 RSS 采样。协议见 [contracts](../contracts.md)，正式容量阈值仍待验收。
 
 ## 1. 输入、输出与内部组件
 
@@ -25,12 +25,12 @@
 
 用户已确认每用户一个 daemon，内部以 ProjectKey/CheckoutKey/IndexTarget 隔离。不同项目共享调度器，不共享可变查询状态、连接事务或无身份缓存。
 
-建议首版通过本机 loopback TCP 承载 gRPC/HTTP/2，绑定端口由 daemon 登记到用户级运行目录；发现记录包括 endpoint、进程启动身份与协议版本。仅监听本机，访问校验须识别所属用户；端口发现不等于访问授权。Unix domain socket 可作为同一 gRPC 服务的本地承载优化，须验证库与平台支持，不能发展出另一套业务消息协议。
+当前通过本机 loopback TCP 承载 gRPC/HTTP/2，绑定端口由 daemon 登记到用户级运行目录；发现记录包括 endpoint、进程启动身份与协议版本。仅监听本机，随机 token 校验、0700 home 与 flock 单实例共同限制访问；端口发现不等于访问授权。Unix domain socket 可作为同一 gRPC 服务的本地承载优化，须验证库与平台支持，不能发展出另一套业务消息协议。
 
-CLI 持有可复用的 gRPC channel；daemon 的连接生命周期与任务生命周期独立。RPC 定义、protobuf presence、业务状态与传输状态分离详见 contracts 第 5 节。
+CLI 持有可复用的 gRPC channel；daemon 的连接生命周期与任务生命周期独立。RPC 定义、protobuf presence、业务状态与传输状态分离详见 [公共契约的进程协议](../contracts.md#3-cli-daemon-与-worker)。
 
-Java 分析进程内部为 `Rust host -> C ABI/FFI -> GraalVM Java shared library`；daemon 不装载该库。host 负责 isolate/线程和缓冲生命周期，supervisor 负责进程级取消兜底与崩溃恢复。host 与库的内存共同计入一个进程 RSS。D17 候选增加目标 JDK 编译器子进程：host/原生库拥有内部协议与上下文，supervisor 登记进程启动身份、归属及退出状态；顶层 worker 退出时必须回收所属子进程。整个进程树计入该 worker 预算，不能把 -Xmx 当 RSS 上限。
-此次迁移先使用显式 JVM：`Rust host -> JVM runner -> 目标 JDK javac`。JVM runner 单独验证 bundle manifest 与各文件 SHA；任务请求、结果及取消标记放在私有目录，Java 消费同一捕获输入/bridge。JVM host 与 javac 的 RSS 均计入 worker 进程树；JVM 堆上限复用 java_native_heap_bytes。后端显式选择，无 JVM/native 自动回退。显式 JVM 的宿主 JDK 25 由 daemon 与 worker 共用路径选择，bin/lib/release 内容摘要进入语义身份，发布前重新验证；路径搬迁不改变内容身份，宿主字节变化阻止旧基线复用。
+Java 分析进程内部为 `Rust host -> C ABI/FFI -> GraalVM Java shared library`；daemon 不装载该库。host 负责 isolate/线程和缓冲生命周期，supervisor 负责进程级取消兜底与崩溃恢复。host 与库的内存共同计入一个进程 RSS。D17 已接入目标 Java 8 javac 子进程：host/原生库拥有内部协议与上下文，supervisor 登记进程启动身份、归属及退出状态；顶层 worker 退出时必须回收所属子进程。整个进程树计入该 worker 预算，不能把 -Xmx 当 RSS 上限。
+默认使用 Native/G1；显式 JVM 用于开发/诊断：`Rust host -> JVM runner -> 目标 JDK javac`。JVM runner 单独验证 bundle manifest 与各文件 SHA；任务请求、结果及取消标记放在私有目录，Java 消费同一捕获输入/bridge。JVM host 与 javac 的 RSS 均计入 worker 进程树；JVM 堆上限复用 java_native_heap_bytes。后端显式选择，无 JVM/native 自动回退。显式 JVM 的宿主 JDK 25 由 daemon 与 worker 共用路径选择，bin/lib/release 内容摘要进入语义身份，发布前重新验证；路径搬迁不改变内容身份，宿主字节变化阻止旧基线复用。
 
 用户配置管理 daemon 生命周期、worker 总资源上限和本机工具链别名；项目配置管理语言/module/world。首版用户配置经 drain/restart 切换 generation，任务固定生效值；项目无权改变单用户 daemon 的服务设置。具体字段与优先级见 [configuration](../configuration.md)。
 
@@ -57,7 +57,7 @@ worker: starting -> ready -> analyzing -> frozen -> dumping -> idle / stopped
 
 ## 3. 并发与预算
 
-| 资源 | 首版建议 | 超限行为 |
+| 资源 | 当前机制 / 约束 | 超限行为 |
 |---|---|---|
 | 同一 IndexTarget 构建 | 串行；发布仍校验 expected revision | 排队或返回冲突，不覆盖较新入口 |
 | 仓库维护 / GC | 与版本捕获和引用变更协调 | 等待并重新检查引用 |
@@ -70,7 +70,7 @@ worker: starting -> ready -> analyzing -> frozen -> dumping -> idle / stopped
 
 资源预算需要覆盖 daemon 空闲、索引暂存、查询中间记录、Java/Rust RSS、传输缓冲、磁盘候选和结果缓存；不能只统计 Rust 堆。
 
-Java P0/P1 先每个 worker 单个编译器子进程、串行上下文；P2 才评估有界并行。批次接收校验、模型解码、框架提取均有取消检查；不允许长 FFI 或阻塞编译器管道阻断取消入口。严重协议/进程错误结束 attempt，不自动重放。回收阈值需本项目测量，不能照搬参考实现的任务数或堆阈值。
+Java 默认按预算规划编译上下文并发；显式 java_parallelism 支持 1–8，须通过 host/javac 预约检查。批次接收校验、模型解码、框架提取均有取消检查；不允许长 FFI 或阻塞编译器管道阻断取消入口。严重协议/进程错误结束 attempt，不自动重放。回收阈值需本项目测量，不能照搬参考实现的任务数或堆阈值。
 
 解码预算覆盖跨帧累计对象分配估算、字符串/集合/类型/树/诊断；临时磁盘和已编码待消费结果另有限额。RSS 按同一时刻采样进程树，不累加各进程独立峰值。
 
@@ -101,6 +101,10 @@ Java P0/P1 先每个 worker 单个编译器子进程、串行上下文；P2 才�
 | protobuf 新旧客户端 | 兼容字段可演进，未知必需能力或破坏性版本明确拒绝 |
 | gRPC 流断开 / deadline / 重订阅 | 事件不重复输出，提交结果不丢，写任务不自动重复执行 |
 
-指标和数值门槛由 [delivery](../delivery.md) 的 P0 基准计划冻结。
+当前默认预算与未完成规模化门禁见 [delivery](../delivery.md) 和 [配置](../configuration.md)。
 
 JVM 回放阶段使用 `jvm_started/jvm_finished`，独立探针超时为 `JVM_TIMEOUT`；native 继续使用自己的阶段和超时代码。两者的 heap 配置仍使用现有 java_native_heap_bytes 字段。
+
+## G1 的恢复边界
+
+Native 默认 G1。一个 worker 进程仅创建一次 isolate，健康任务复用；teardown 后也不进程内重建。终态通过非阻塞 socket 异步等待，不周期 poll；取消/致命失败退出 worker，由 supervisor 启动新进程。缺失/未知 GC manifest 拒绝加载。RSS 按同时刻 worker 整个进程树采样，超额终止；这是应用级预算执行，不是内核硬隔离。

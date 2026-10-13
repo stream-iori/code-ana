@@ -1,72 +1,48 @@
-# code-ana 设计文档
+# code-ana 文档导航
 
-**设计仍是实施依据；Rust 产品实现与实际能力见 [Rust 实现说明](rust-first.md)，Java 8 当前实现见 [Java 实现说明](java-implementation.md)。**
-
-| 项目 | 基线 |
-|---|---|
-| 设计来源 | [下一代 Anatomist](../../anatomist/ana-next-gen/next-gen-anatomist.md)，修订日期 2026-09-24 |
-| 原提案源码基线 | `686ee91`，Java 25，schema 32，graph semantics 25 |
-| javac 参考核查 | 2026-09-29；`dev/replace-parser@2dfc7977cb03095d14894f069ff30985551457b1` 已提交代码，排除工作区修改；未重跑测试 |
-| 本项目现状 | 已实现 Rust 配置、任务、worker IPC、SQLite、查询/历史/运维；Java 8 真实共享库/编译器桥/事实/冷增量已接入，mock 保留独立回归 |
-| 状态用语 | **原文已定**：继承提案；**用户已确认**：本轮明确选择；**建议**：本轮补充，待评审；**待验证**：需要原型或测量 |
-| 用户已确认 | 每个用户一个 daemon，内部隔离项目（D01） |
-| Java 适配技术 | Java 相关代码放在 `lang-adaptor/`；Java 25 + GraalVM shared library，由独立 Rust worker 通过 C ABI / FFI 调用，禁止 JNI（D13） |
-| Java 后端 | 仅 javac，无 JavaParser/SymbolSolver 或回退（D16）；原生库协调目标 Java 8 子进程已实现，完整 D17 门禁仍按能力范围验证 |
-| CLI 通信 | HTTP/2 + Protocol Buffers；建议用标准 gRPC 实现（D02） |
-| 产品边界 | 全新产品，无旧版兼容、数据或配置迁移要求；Anatomist 仅作设计与代码参考（D08） |
-| 目标项目编译 | 仅返回可由 Agent/人类执行的构建建议，产品不自动执行（D09） |
-| 语言选择 | 必须在项目配置显式启用；缺少配置时不自动发现语言（D14） |
-| 源码读取 | 普通 source 校验当前文件 hash，变化则报错；历史 source 读取冻结内容（D15） |
-| 当前验收 | Java 优先，使用 fixture；真实项目、正式容量门槛暂缓（D04/D12） |
-
-## 阅读顺序
+先读 [当前实现与验证边界](current-state.md)，再查架构、契约和模块。以下现行指南对齐 2026-10-13 代码；历史记录保留原提交、指标和失败，不作为当前操作说明。
 
 ```text
-设计评审：为什么这样做、哪些还没决定
-    |
-    v
-全局架构：职责、依赖、主流程
-    |
-    v
-公共契约：身份、事实、协议、证据
-    |
-    +--> 配置：公共策略 / 语言 / 模块 / world
-    +--> CLI / daemon
-    +--> 索引编排 --> Java / Rust worker
-    +--> 存储发布 <--> 版本 / 源码 / diff
-    +--> 查询 / pipeline
-    +--> 诊断 / 报告 / 人工标注
-    |
-    v
-实施与验收：P0 -> P1 -> P2 -> P3
+当前实现 → 架构 / 契约 → 配置 / 模块 → 验证与分发
+                              ↑
+                  历史方案与回执：用于追溯
 ```
 
-| 层次 | 文档 | 回答的问题 |
-|---|---|---|
-| 评审 | [设计合理性与待决项](design-review.md) | 哪些有依据，哪些是风险，何时必须决定？ |
-| 全局 | [总体架构](architecture.md) | 系统怎样拆分，各层负责什么？ |
-| 契约 | [事实、身份与进程协议](contracts.md) | 各模块交换什么，怎样证明结果完整？ |
-| 配置 | [多语言配置设计](configuration.md) | 配置如何分层、显式启用语言、校验与冻结？ |
-| 示例 | [项目 config.toml](config.toml) / [用户 config.toml](examples/user-config.toml) | Java/Rust 混合项目与本机服务如何配置？ |
-| 当前示例 | [Java fixture config.toml](examples/java-fixture-config.toml) | 首阶段如何显式配置 Java 源码与建议式构建？ |
-| 模块 | [CLI 与 daemon](modules/runtime.md) | 如何提交、调度、取消、重连任务？ |
-| 模块 | [索引与增量](modules/indexing.md) | 如何固定输入、扩散失效、交付变更？ |
-| 模块 | [Java worker](modules/java-worker.md) | javac、独立 Java 模型、原生库和编译器子进程如何分工？ |
-| 模块 | [Rust worker](modules/rust-worker.md) | syntax/semantic、world、宏怎样表达？ |
-| 模块 | [存储与发布](modules/storage.md) | 怎样保证失败不损坏旧版、读者不混版？ |
-| 模块 | [查询与 pipeline](modules/query.md) | 如何组合查询并保留证据缺口？ |
-| 模块 | [版本、源码与 diff](modules/versioning.md) | 如何冻结历史、续页、恢复和 GC？ |
-| 模块 | [诊断、报告与人工标注](modules/operations.md) | 怎样说明失败、保存报告和用户数据？ |
-| 落地 | [实施与验收](delivery.md) | 每阶段交付什么，以什么证据退出？ |
+| 现行指南 | 内容 |
+|---|---|
+| [当前实现](current-state.md) | 版本、G1、紧凑存储、最新单轮结果和未完成范围 |
+| [总体架构](architecture.md) / [公共契约](contracts.md) | 进程、身份、GRA1、取消和发布边界 |
+| [配置](configuration.md) | 显式语言、外部 Maven metadata、预算和优先级 |
+| [Java fixture](examples/java-fixture-config.toml) / [用户配置](examples/user-config.toml) | 目标 Java 8 与本机工具链；使用前替换真实路径 |
+| [完整配置 schema 示例](config.toml) | 混合语言请求形状；Rust 分析尚未实现 |
+| [CLI / daemon](modules/runtime.md) / [索引](modules/indexing.md) | 任务、调度、冻结输入和增量 |
+| [Java worker](modules/java-worker.md) / [Rust worker 设计](modules/rust-worker.md) | 已实现 Java 链路与后续 Rust 能力 |
+| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 7、逻辑 schema 33、只读投影和 pipeline |
+| [版本与源码](modules/versioning.md) / [诊断与标注](modules/operations.md) | 冻结历史、diff、引用保护和用户内容 |
+| [决策登记](design-review.md) / [实施与验收](delivery.md) | 已落实决策、剩余门禁与实际测试入口 |
+| [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |
+| [存储实施记录](implementation/anatomist-storage-migration.md) | GRA1 与紧凑布局的实现、单轮测量、原失败及修复回执 |
 
-## 使用规则
+## 历史设计与证据
+
+| 文档 | 用途 |
+|---|---|
+| [旧公共契约](history/contracts-fact-ir.md) | Fact IR / CAF1 与旧 worker/ABI 的逐轮演进 |
+| [Java 旧实现](java-implementation.md) / [最初验证](implementation/java-validation.md) | 已删除 lang-adaptor 的历史实现与回执 |
+| [Java 迁移](java-anatomist-migration.md) / [对齐执行](implementation/java-alignment-execution.md) | 各版本能力、差分和迁移门禁记录 |
+| [复用审计](implementation/java-reuse.md) / [能力审计](implementation/java-anatomist-alignment.md) / [重写](implementation/java-adaptor-rewrite.md) | 借用来源和阶段性缺口；清单保留各自冻结提交 |
+| [早期存储对照](storage-anatomist-migration.md) | 紧凑图迁移前的 Rust 存储设计 |
+| [SIGKILL 排查](java-sigkill-diagnosis.md) / [性能诊断](java-performance-diagnosis.md) | 特定旧产物的诊断，不能推断当前状态 |
+| [Native 性能分析](implementation/native-performance-analysis.md) / [改造记录](implementation/native-performance-upgrade.md) / [Anatomist 对照](implementation/performance-anatomist-comparison.md) | CAF1 阶段瓶颈与优化；最新结果读存储实施记录 |
+
+## 维护约定
 
 | 规则 | 做法 |
 |---|---|
-| 决策集中维护 | `D01`～`D17` 在设计评审中登记，区分用户决策与待验证细节 |
-| 契约优先 | 模块实现不能自行修改身份、证据或发布含义 |
-| 状态真实 | 建议方案不视作用户已确认；性能、容量、兼容性均需验收 |
-| 接口设计 | 本项目独立定义命令、输出、配置与存储契约；Anatomist 示例和测试不能作为兼容门禁 |
-| 链接约定 | `../../anatomist/` 等链接指向同级参考仓库；借用源码/fixture 时记录来源并在本项目独立维护 |
+| 现行文档 | 改代码时同步版本、能力、命令和失败处理；代码常量/DDL/.proto 为依据 |
+| 历史文档 | 在入口标明历史口径；原失败回执不能改成成功，原测量不能重标新产物 |
+| 参考仓库 | 记录固定 commit、文件 SHA 和改动；同级 Anatomist 链接是研究线索，不能当作当前分支快照 |
+| 性能 | Native 不分冷热；本次只测一轮，写清输入、缓存状态、产物与预算 |
+| 验收 | 区分开发构建、fixture、真实项目测量和正式放行；不把未完成项写成通过 |
 
-Rust 验收和演示见 [根目录 README](../README.md)；Java 8 证据见 [验收记录](implementation/java-validation.md)，正式性能基准未验收。
+开发约定见 [AGENTS.md](../AGENTS.md)，常用命令以 [justfile](../justfile) 为准。

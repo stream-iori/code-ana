@@ -1,12 +1,12 @@
 # 版本、源码、diff 与 GC
 
-> 2026-09-29 实现状态：Rust 产品链路与独立 mock 已落地；具体命令、预算和首版限制见 [Rust 实现说明](../rust-first.md)。本页未验收的 Java/规模化设计仍保留为目标。
+> 对齐 2026-10-13。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
-FILES 快照现在允许无语言配置，并保存本次 EffectiveConfig/捕获策略；`search-text` 可独立搜索工作区 `text_only`，不改变已存历史。Git 输出在读取时按字节上限截断。diff 命令本轮保留原样，以下 diff 章节仍是后续目标。
+FILES 快照现在允许无语言配置，并保存本次 EffectiveConfig/捕获策略；`search-text` 可独立搜索工作区 `text_only`，不改变已存历史。Git 输出在读取时按字节上限截断。files/declarations/relations/impact diff 已接入，冻结结果与双端引用保护保持；不做重命名推断，完整语义对应仍受 producer 证据限制。
 
 **历史由冻结输入和不可变结果决定，续页不能重新比较当前工作区。**
 
-状态：files/analysis、冻结 diff 与引用保护继承提案；统一 revision 捕获与引用模型为 D03/D10/D11 建议。
+当前 files/analysis、冻结 diff、源码 blob 与引用保护已实现；D03/D10/D11 的未完成能力仍按实际支持范围披露。
 
 ## 1. 对象关系与端口
 
@@ -43,7 +43,7 @@ ComparisonResultId ----> base snapshot + target snapshot + rows + evidence
 | files-only | 只捕获既定政策包含的文件；不触发构建或解析 |
 | MAIN / TEST | 捕获范围与查询选择分开；未捕获 TEST 不能解释为无测试变更 |
 | 自动缓存选择 | 校验请求、profile、捕获策略和所需依赖身份 |
-| 精确历史 ID | 不依赖当前 classpath、工作区或 branch 存在 |
+| 精确历史 ID | 兼容格式不依赖当前 classpath、工作区或 branch 存在；旧 graph 格式明确拒绝 |
 | 准备历史语义快照但缺构建产物 | 返回指定 commit/profile 的外部准备建议；不能自动编译该提交，也不能借用无法证明匹配的当前工作区产物 |
 | 历史 source | 只读捕获 blob，校验 hash；不回退当前文件 |
 | 普通活动索引 source | 用户已确认校验当前文件/hash；不匹配报错，不以冻结源码替代当前源码返回 |
@@ -114,3 +114,7 @@ impact 用双方捕获图分别遍历；展示 scope 不截断中间路径。可
 历史语义 profile 保存 javac 后端、独立 Java 模型/编译器桥版本、目标 JDK 内容身份、有序依赖和 Lombok 模型配置。读取已发布历史不需要当前 JDK；创建或重建历史分析才验证工具链与封存输入。签名缓存命中不替代历史输入证据，也不保证缓存永久存在。
 
 不同绑定来源或证据完整性的变化必须进入语义 diff；不能为缩小差异而忽略诊断/未解析调用。线程数、编译器堆和回收策略是执行记录；若改变语义恢复预算，则进入 profile 与可比性判断。
+
+## 图格式升级边界
+
+历史文件保留与读者兼容是两件事。当前仅打开物理 schema 7 的图；schema 6 及更旧查询/delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED。index --full 创建新图并在成功后切换 head，不原地升级旧 revision。已经打开的同格式 revision 仍受 reader 引用保护；FILES/源码捕获与人工标注生命周期独立。

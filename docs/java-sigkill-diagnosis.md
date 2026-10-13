@@ -1,5 +1,7 @@
 # SIGKILL 排查与修复（2026-10-08）
 
+> 历史记录（2026-10-13 文档对齐）：特定旧产物的 SIGKILL 排查；系统原因未确证，不能据旧失败判断当前产品。后续原路径重试和真实崩溃验证见最新实施记录。现行版本、验证范围及未完成门禁见 [当前实现](current-state.md)，最新结果见 [存储实施记录](implementation/anatomist-storage-migration.md)。
+
 **旧产物混用和 native 原地覆盖已修复。原始 SIGKILL 的系统原因仍未确认，daemon 端到端尚未复验。**
 
 | 证据 | 判断 |
