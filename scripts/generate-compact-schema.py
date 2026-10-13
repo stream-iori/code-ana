@@ -16,9 +16,9 @@ DESTINATION = ROOT / 'crates/storage/src/compact-schema.sql'
 TABLES = ('nodes', 'edges', 'call_site_owners', 'call_sites', 'call_site_targets',
           'annotations', 'semantic_annotations', 'file_cache', 'file_dependencies',
           'symbol_dependencies', 'index_diagnostics', 'analysis_coverage')
-REFS = {'edges': {'source_id', 'target_id'}, 'call_site_owners': {'caller_id'},
-        'call_site_targets': {'target_id'}, 'annotations': {'node_id'},
-        'semantic_annotations': {'node_id'}}
+REFS = {'edges': ('source_id', 'target_id'), 'call_site_owners': ('caller_id',),
+        'call_site_targets': ('target_id',), 'annotations': ('node_id',),
+        'semantic_annotations': ('node_id',)}
 EXTERNAL = ('external_target_fqn', 'external_target_symbol',
             'external_target_language', 'external_target_provider_id')
 META = {'nodes', 'edges', 'call_sites'}

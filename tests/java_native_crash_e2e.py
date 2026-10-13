@@ -8,8 +8,7 @@ import shutil
 import subprocess
 import time
 
-import java_e2e
-import rust_e2e
+import product_support
 
 
 def sha(path):
@@ -17,9 +16,9 @@ def sha(path):
 
 
 def main():
-    case = java_e2e.JavaProduct('test_core')
+    case = product_support.JavaProductHarness()
     case.setUp()
-    previous_bin = rust_e2e.BIN
+    previous_bin = product_support.BIN
     saved_bundle=None
     try:
         good = case.cli('index', timeout=150)[1]['revision']
@@ -58,7 +57,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         }
         (native_dir / 'manifest.json').write_text(json.dumps(manifest))
 
-        rust_e2e.BIN = binary_dir
+        product_support.BIN = binary_dir
         case.log = open(case.root / 'daemon.log', 'a')
         case.daemon = subprocess.Popen(
             [str(binary_dir / 'codeana-daemon'), '--home', str(case.home)],
@@ -102,7 +101,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         assert not workers, workers
         print('daemon native SIGSEGV: old head preserved, daemon alive, worker reaped')
     except BaseException as failure:
-        directory = java_e2e.ROOT/'target/java-alignment/evidence'/('native-crash-failure-'+time.strftime('%Y%m%d-%H%M%S'))
+        directory = product_support.ROOT/'target/java-alignment/evidence'/('native-crash-failure-'+time.strftime('%Y%m%d-%H%M%S'))
         directory.mkdir(parents=True, exist_ok=True)
         evidence = str(failure)+'\n'+case.daemon_log()
         (directory/'failure.log').write_text(evidence)
@@ -111,7 +110,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
             sigkill_observed='signal: 9' in evidence or 'SIGKILL' in evidence,
             expected_signal='SIGSEGV', daemon_pid=case.daemon.pid if case.daemon else None,
             worker_binary=str(binary_dir/'codeana-java-worker')), indent=2)+'\n')
-        print('Evidence: '+str(directory.relative_to(java_e2e.ROOT)), flush=True)
+        print('Evidence: '+str(directory.relative_to(product_support.ROOT)), flush=True)
         raise
     finally:
         case.stop()
@@ -120,7 +119,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
                 temporary=native_dir/('.restore-'+name)
                 shutil.copy2(saved_bundle/name,temporary)
                 os.replace(temporary,native_dir/name)
-        rust_e2e.BIN = previous_bin
+        product_support.BIN = previous_bin
         case.doCleanups()
 
 

@@ -1,6 +1,7 @@
 """Small standard-library gate helpers; no product parser or normalizer oracle."""
 import collections
 import hashlib
+import json
 import os
 import pathlib
 import re
@@ -78,3 +79,28 @@ def run_command(command, log, timeout, *, cwd=None, env=None):
                 result.update(exit_code=process.wait(), error='TIMEOUT')
     result.update(seconds=time.monotonic() - started, log=str(log), log_sha256=sha256(log))
     return result
+
+
+def atomic_bytes(path, body):
+    path = pathlib.Path(path)
+    if path.is_symlink():
+        raise ValueError('ACCEPTANCE_SYMLINK: ' + str(path))
+    temporary = path.with_name(path.name + '.tmp-' + str(os.getpid()))
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(descriptor, 'wb') as stream:
+            stream.write(body)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        descriptor = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def atomic_json(path, value):
+    atomic_bytes(path, (json.dumps(value, ensure_ascii=False, indent=2) + '\n').encode())

@@ -8,7 +8,7 @@
 |---|---|
 | Rust CLI/daemon/gRPC、任务与取消、不可变 revision/CAS | 规模化公平性、内核级资源隔离 |
 | Java 8 javac、Java 25 Native/G1、C ABI、NoCode、框架静态图 | 目标 Java 17/25、Gradle、Linux、完整框架覆盖 |
-| GRA1 行交付、物理 schema 7、逻辑 schema 33、FTS | 当前版本完整 raw model/AST 迁移与来源测试覆盖 |
+| GRA1 行交付、物理 schema 7、逻辑 schema 33、FTS | 当前版本完整语义/来源覆盖验收；过期 raw transport 测试已删除 |
 | 查询/pipeline、源码、快照/diff、报告、GC、独立人工标注 | 标注接入 typed pipeline、跨语言语义 |
 | 冻结 iopengw 一轮：214.28 s、facts.db 233.49 MB | 独占容量/稳定性能承诺；native_accepted/performance_accepted 仍 false |
 | 独立 mock 产品回归 | rust-analyzer syntax/semantic 语言分析 |
@@ -25,11 +25,13 @@
 | 4 原路径产品组 | just test-java-native-product EVIDENCE | group=graph；需已构建且兼容 bundle，不签完整迁移验收 |
 | 5 分发 | just test-java-release | 构建 release、SHA/包检查、图/错误 JDK/自带 fixture；原 Cargo 路径临时 release 后恢复 |
 | 6 冻结真实项目 | scripts/java-compact-storage-single.py 的参数以 --help 为准 | HEAD 267c7ced4993aa88613f8f17a8099943fec98159，MAIN+TEST，仅已提交内容 |
-| 分离的迁移门禁 | justfile 的 JVM/native probe、迁移 reference、完整 acceptance 工具 | 必须绑定当前源码与真实回执，不能用旧格式通过结论替代 |
+| 正式构建前置 | scripts/check-java-jvm-acceptance.py | 仍要求有效完整 JVM 回执和源码 SHA；删除旧门禁不等于当前正式迁移通过 |
 
 `./scripts/build-java-native.sh --build-only` 走完整开发构建，默认 G1；不带参数要求有效 `CODEANA_JVM_ACCEPTANCE_RECEIPT`。安装使用 `python3 scripts/install-java-native.py`，检查原路径无活跃进程、校验 SHA、归档旧 SDK 并原子替换。
 
-`just smoke` 调用正式 Native 构建，只验 gRPC/FFI Hello；不应作为当前开发构建的默认推荐。实际入口以 [justfile](../justfile) 与脚本 help 为准，旧 tests/rust_e2e.py 保留 schema 5 的历史测试，当前主门禁使用 rust_graph_e2e.py；不推荐已退役的 Fact replay。
+JVM 图产品门禁同样使用原 `target/debug/codeana-*` 路径；新构建的 bundle 校验后安装到 `target/lib/java/jvm`，旧 bundle 归档在本轮证据的 `jvm-install/previous-jvm`。替换前要求无活跃进程，失败恢复旧 bundle。
+
+`just smoke` 调用正式 Native 构建，只验 gRPC/FFI Hello；不应作为当前开发构建的默认推荐。实际入口以 [justfile](../justfile) 与脚本 help 为准，过期 Fact IR/CAF1 门禁、测试和旧文档已删除；共享进程工具位于 tests/product_support.py，当前主门禁使用 rust_graph_e2e.py。
 
 ## 3. 正确性门禁
 

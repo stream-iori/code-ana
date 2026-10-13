@@ -1,6 +1,6 @@
 # 公共契约：身份、图记录与协议
 
-现行契约对齐 2026-10-13。版本总表见 [当前实现](current-state.md)；旧 Fact IR / CAF1 方案和逐轮协议变更见 [历史契约](history/contracts-fact-ir.md)。
+现行契约对齐 2026-10-13。版本总表见 [当前实现](current-state.md)；过期 Fact IR / CAF1 契约已删除。
 
 ## 1. 身份与版本
 

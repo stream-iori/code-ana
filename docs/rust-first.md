@@ -154,15 +154,3 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | Java Hello | `scripts/smoke.sh`，需固定 GraalVM JDK 25 与有效正式构建回执；与 Rust 验收独立 |
 
 fixture 原始输入和人工编写的查询预期见 `tests/fixtures/`；`build_mock.py` 仅生成固定测试数据，不是从任意源码提取语义的解析器。发布、迁移和报告故障点仅在 debug 构建的显式 mock home 下响应 `CODEANA_TEST_FAULT`；release 构建无此路径。
-
-## 历史实测记录（2026-09-29，macOS arm64）
-
-| 项目 | 结果 |
-|---|---|
-| workspace 单元测试 | 24 个通过；所有 doc-test 通过 |
-| clippy / fmt | 零警告通过 / 格式通过 |
-| CLI 真实进程回归 | 14 个独立场景，开发版全部通过；release 包 8 个适用场景通过，6 个 debug 故障注入场景跳过 |
-| Java 原生 Hello | GraalVM CE 25.3.4.1+1.1，构建共享库成功；两条 Hello 均通过 |
-| Rust release 包 | `just test-rust-release` 通过；`dist/codeana-rust-Darwin-arm64/` 全部 SHA256SUMS 验证通过，manifest 标明 mock-only |
-
-上述历史重跑已确认 `127.0.0.1` 绑定成功，debug 与 release 门禁均通过。上述结果没有验证真实 Java 语义或大型项目性能。

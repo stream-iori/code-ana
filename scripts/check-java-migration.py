@@ -18,6 +18,13 @@ for row in ledger['files']:
     if actual != row['sha256']:
         assert row.get('adaptation'), 'missing adaptation rationale: ' + row['destination']
         changed.append(row['destination'])
+for row in ledger.get('local_sources', []):
+    assert row['origin'] == 'codeana' and row['reason'], 'local source rationale required'
+    path = ROOT / row['destination']
+    assert path.resolve().is_relative_to(ROOT.resolve()), row['destination']
+    assert row['destination'] not in seen, row['destination']
+    seen.add(row['destination'])
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == row['migrated_sha256'], 'local source drift: ' + row['destination']
 for path in ROOT.glob('*/src/**/com/anatomist/**/*.java'):
     assert str(path.relative_to(ROOT)) in seen, 'untracked upstream source: ' + str(path)
 print(json.dumps({'upstream': ledger['commit'], 'files': len(seen), 'adapted': len(changed)}))

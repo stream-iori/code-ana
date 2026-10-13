@@ -28,7 +28,7 @@ def main():
     if any(sha256(binaries/name) != digest for name, digest in profile['files'].items()):
         raise ValueError('DEBUG_BINARY_DRIFT')
     os.environ['CODEANA_TEST_BIN'] = str(binaries)
-    module = importlib.import_module('rust_e2e')
+    module = importlib.import_module('rust_graph_e2e')
     suite = unittest.defaultTestLoader.loadTestsFromModule(module)
     expected = [test.id() for test in results.flatten(suite)]
     results.PROGRESS_FILE = output/'progress.json'

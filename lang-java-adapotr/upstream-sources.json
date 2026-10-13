@@ -617,7 +617,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaAnnotationFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaAnnotationFacts.java",
       "sha256": "29b32801022ad7d8e39d66b89a294618a26936cbde86a366a01ef90e5bc28dd5",
-      "migrated_sha256": "29b32801022ad7d8e39d66b89a294618a26936cbde86a366a01ef90e5bc28dd5"
+      "migrated_sha256": "b41a0f35caa59994afec7b0eff0b18fc92a4b7e6df402900808f7a09bc8b8e3b",
+      "adaptation": "Retain the frozen javac annotation contract while applying bounded context-local direct-parent metadata caching and per-file emitted-origin deduplication; repeated traversal still permits shallower paths (compact storage upgrade 9b0008e)."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaCallEvidence.java",
@@ -1499,7 +1500,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/GraphSemantics.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/GraphSemantics.java",
       "sha256": "e937ab52314c15dbcf0e7e6b3bfb6578bf286fdc3ef32632142ab37a6ffb5205",
-      "migrated_sha256": "e937ab52314c15dbcf0e7e6b3bfb6578bf286fdc3ef32632142ab37a6ffb5205"
+      "migrated_sha256": "2722c0a3399a430727323ffee20b371b7f2530d63e0c178298575372d688ba7e",
+      "adaptation": "Advance persisted graph semantics to 26 for schema 33 metadata definition/source/ownership observations (compact storage upgrade 9b0008e)."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/provider/FactDefaults.java",
@@ -3298,7 +3300,22 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/IndexDiagnosticRetention.java",
       "sha256": "e733098f54d085c018dcf15dbee0c4e59863a1259209dac98660817843979084",
       "migrated_sha256": "e733098f54d085c018dcf15dbee0c4e59863a1259209dac98660817843979084"
+    },
+    {
+      "source": "anatomist-core/src/main/java/com/anatomist/extract/AnnotationMetaCache.java",
+      "destination": "analysis-core/src/main/java/com/anatomist/extract/AnnotationMetaCache.java",
+      "sha256": "e8823d36e29bbf9866c9589ab482b0ba0186b3ee7aed60dc079eb5c71a66bf1f",
+      "migrated_sha256": "e8823d36e29bbf9866c9589ab482b0ba0186b3ee7aed60dc079eb5c71a66bf1f",
+      "origin_commit": "4a903272c22083585107e982f2899ed03a280aa2"
     }
   ],
-  "boundary_recovery_commit": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
+  "boundary_recovery_commit": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc",
+  "local_sources": [
+    {
+      "destination": "java-bridge/src/test/java/com/anatomist/extract/AnnotationMetaCacheTest.java",
+      "migrated_sha256": "858d77814ec9402442e92dde7f7a6b40bb10acd17690e9e93db0527e4938b19b",
+      "origin": "codeana",
+      "reason": "Code-ana compact-storage implementation 9b0008e: bounded direct-parent cache and independent limit/immutability regression, in the core package for package-private access."
+    }
+  ]
 }

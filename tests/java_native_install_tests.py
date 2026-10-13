@@ -1,4 +1,4 @@
-"""Native installation preserves stopped runtime bytes and rolls back partial writes."""
+"""SDK installation preserves executable bytes and rolls back failed replacement."""
 import importlib.util
 import json
 from pathlib import Path
@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
+from java_product_runtime import install_jvm, sha
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('native_install', ROOT/'scripts/install-java-native.py')
@@ -64,6 +65,62 @@ class NativeInstallation(unittest.TestCase):
             with self.assertRaises(OSError):install.install(self.root,self.root/'archive')
         self.assertEqual(self.before,{p:p.read_bytes() for p in self.before})
         self.assertEqual(self.apps,{p:p.read_bytes() for p in self.apps})
+
+
+class JvmInstallation(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name).resolve()
+        self.source = self.root/'lang-java-adapotr/target/jvm'
+        self.target = self.root/'target/lib/java/jvm'
+        self.archive = self.root/'archive'
+        self.source.mkdir(parents=True)
+        self.target.mkdir(parents=True)
+        (self.source/'runner.jar').write_bytes(b'new JVM')
+        (self.source/'manifest.json').write_text(json.dumps(dict(
+            backend='jvm', files={'runner.jar': sha(self.source/'runner.jar')})))
+        (self.target/'runner.jar').write_bytes(b'old JVM')
+        self.bin = self.root/'target/debug'
+        self.bin.mkdir()
+        (self.bin/'codeana-java-worker').write_bytes(b'original application')
+        (self.target.parent/'compiler-bridge.jar').write_bytes(b'Native bridge')
+
+    def test_install_archives_old_jvm_and_keeps_native_and_executable_bytes(self):
+        with patch('java_product_runtime.subprocess.check_output', return_value=''):
+            install_jvm(self.root, self.source, self.archive)
+        self.assertEqual((self.archive/'previous-jvm/runner.jar').read_bytes(), b'old JVM')
+        self.assertEqual((self.target/'runner.jar').read_bytes(), b'new JVM')
+        self.assertEqual((self.bin/'codeana-java-worker').read_bytes(), b'original application')
+        self.assertEqual((self.target.parent/'compiler-bridge.jar').read_bytes(), b'Native bridge')
+        install_jvm(self.root, self.source, self.archive)  # Unchanged bundles need no replacement.
+
+    def test_running_worker_prevents_replacement(self):
+        with patch('java_product_runtime.subprocess.check_output',
+                   return_value='42 '+str(self.bin/'codeana-java-worker')):
+            with self.assertRaisesRegex(ValueError, 'STOP_RUNTIME_BEFORE_JVM_INSTALL'):
+                install_jvm(self.root, self.source, self.archive)
+        self.assertEqual((self.target/'runner.jar').read_bytes(), b'old JVM')
+        self.assertFalse(self.archive.exists())
+
+    def test_failed_directory_swap_restores_previous_bundle(self):
+        rename = Path.rename
+        def failing(path, destination):
+            if path == self.archive/'new-jvm':
+                raise OSError('injected install failure')
+            return rename(path, destination)
+        with patch('java_product_runtime.subprocess.check_output', return_value=''), \
+             patch.object(Path, 'rename', failing):
+            with self.assertRaises(OSError):
+                install_jvm(self.root, self.source, self.archive)
+        self.assertEqual((self.target/'runner.jar').read_bytes(), b'old JVM')
+
+    def test_corrupt_build_is_rejected_before_modifying_installation(self):
+        (self.source/'runner.jar').write_bytes(b'drift')
+        with self.assertRaisesRegex(ValueError, 'JAVA_RUNTIME_BUILD_CHECKSUM'):
+            install_jvm(self.root, self.source, self.archive)
+        self.assertEqual((self.target/'runner.jar').read_bytes(), b'old JVM')
+        self.assertFalse(self.archive.exists())
 
 
 if __name__=='__main__':unittest.main()

@@ -39,7 +39,7 @@
 | 紧凑 DDL | 改 `anatomist-schema.sql` / `compact-meta.sql` 及生成器，再生成 `compact-schema.sql`；`python3 scripts/generate-compact-schema.py --check` |
 | mock | 独立 home + 显式 `--dev-mock-fixtures`，仅 Rust 产品回归，不是 Rust/Java parser |
 
-不能把 Hello、开发构建、旧版本或 fixture 的通过写成当前正式放行；Linux、目标 Java 17/25、Rust 语言分析、完整迁移覆盖与容量/稳定性能仍有未完成项。当前边界及最新 214.28 s / 233.49 MB 单轮记录见 `docs/current-state.md`。
+不能把 Hello、开发构建、旧版本或 fixture 的通过写成当前正式放行；Linux、目标 Java 17/25、Rust 语言分析、完整语义/来源覆盖与容量/稳定性能仍有未完成项。当前边界及最新 214.28 s / 233.49 MB 单轮记录见 `docs/current-state.md`。
 
 `lang-java-adapotr/e2e/fixtures/*/AGENTS.md` 是 Anatomist 参考场景的分析输入，保留其原始 CLI/编辑边界，不作为 code-ana 根目录开发命令。
 
@@ -50,4 +50,4 @@ cargo run -p codeana-cli -- hello
 python3 scripts/install-java-native.py
 ```
 
-常用入口以 `justfile` 为准。`just smoke` 仅验证 gRPC/FFI Hello，内部调用正式 Native 构建并要求有效验收回执；不替代 javac/图产品测试。新增或修改能力时同步现行 docs；历史文档标明版本与已退役路径，不改写原测量和失败记录。
+常用入口以 `justfile` 为准。`just smoke` 仅验证 gRPC/FFI Hello，内部调用正式 Native 构建并要求有效验收回执；不替代 javac/图产品测试。新增或修改能力时同步现行 docs；过期文档与旧协议测试直接删除，共享工具先拆出，并修正门禁、导入、打包和覆盖映射；不把清理写成正式验收通过。

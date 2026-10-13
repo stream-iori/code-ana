@@ -2087,7 +2087,7 @@
       "sha256": "9e27cf5c8204d9d5d36952edb6d6414088478e2cd8c3fd59475d397e4bd8997e",
       "disposition": "archived",
       "reason": "These JMH harnesses benchmark the original Java CLI/application/Gradle product. They are not parser fixtures or correctness tests. Final Rust/JVM/native measurements use exclusive process-tree observations and actual product commands; no performance pass is inferred from archiving JMH.",
-      "replacement_source": "scripts/java-performance-monitor.py",
+      "replacement_source": "scripts/java-performance-monitor-single-v2.py",
       "original_test_cases": []
     },
     {
@@ -2095,7 +2095,7 @@
       "sha256": "7f40d5446bb9de6e4a85be037dc3e25b2132182ef0267089e171a4e905474f57",
       "disposition": "archived",
       "reason": "These JMH harnesses benchmark the original Java CLI/application/Gradle product. They are not parser fixtures or correctness tests. Final Rust/JVM/native measurements use exclusive process-tree observations and actual product commands; no performance pass is inferred from archiving JMH.",
-      "replacement_source": "scripts/java-performance-monitor.py",
+      "replacement_source": "scripts/java-performance-monitor-single-v2.py",
       "original_test_cases": []
     },
     {
@@ -2103,7 +2103,7 @@
       "sha256": "7b99a4c5bb4a5d9451181e7dc9e2d513ca351931ab76641632ec87423a1fdd98",
       "disposition": "archived",
       "reason": "These JMH harnesses benchmark the original Java CLI/application/Gradle product. They are not parser fixtures or correctness tests. Final Rust/JVM/native measurements use exclusive process-tree observations and actual product commands; no performance pass is inferred from archiving JMH.",
-      "replacement_source": "scripts/java-performance-monitor.py",
+      "replacement_source": "scripts/java-performance-monitor-single-v2.py",
       "original_test_cases": []
     },
     {
@@ -2111,7 +2111,7 @@
       "sha256": "4d0fcebdbfb7c466efb8d599fd3bfc0226c7574fca5918ad2b7eb09e356d8379",
       "disposition": "archived",
       "reason": "These JMH harnesses benchmark the original Java CLI/application/Gradle product. They are not parser fixtures or correctness tests. Final Rust/JVM/native measurements use exclusive process-tree observations and actual product commands; no performance pass is inferred from archiving JMH.",
-      "replacement_source": "scripts/java-performance-monitor.py",
+      "replacement_source": "scripts/java-performance-monitor-single-v2.py",
       "original_test_cases": []
     },
     {

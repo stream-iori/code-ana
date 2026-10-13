@@ -56,10 +56,14 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 exec "$script_dir/codeana-cli" java-inputs export "$@"
 EXPORT
 chmod +x "$package_dir/bin/codeana-export-java-inputs"
-mkdir -p "$package_dir/docs/implementation"
-cp docs/java-package.md "$package_dir/README.md"
-cp docs/java-implementation.md "$package_dir/docs/"
-cp docs/implementation/java-validation.md docs/implementation/java-reuse.md "$package_dir/docs/implementation/"
+cp -R docs "$package_dir/docs"
+python3 - "$package_dir" <<'DOCS'
+import pathlib,sys
+root=pathlib.Path(sys.argv[1])
+text=(root/'docs/java-package.md').read_text()
+text=text.replace('](configuration.md)','](docs/configuration.md)').replace('](current-state.md)','](docs/current-state.md)')
+(root/'README.md').write_text(text)
+DOCS
 cp -R tests/fixtures/java-native/base "$package_dir/fixtures/"
 python3 - "$package_dir" <<'PY'
 import hashlib,json,pathlib,sys

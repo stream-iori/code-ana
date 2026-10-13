@@ -12,7 +12,7 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location('single_monitor', ROOT/'scripts/java-performance-monitor-single.py')
+SPEC = importlib.util.spec_from_file_location('single_monitor', ROOT/'scripts/java-performance-monitor-single-v2.py')
 MONITOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MONITOR)
 
@@ -36,7 +36,7 @@ def main():
     project = Path(installation['project'])
     inputs = {p: digest for p, digest in native['phase']['inputs'].items()
               if Path(p).is_relative_to(runtime) or Path(p).is_relative_to(project)}
-    inputs.update({str(p.resolve()): sha(p) for p in (args.baseline, Path(__file__), ROOT/'scripts/java-performance-monitor-single.py')})
+    inputs.update({str(p.resolve()): sha(p) for p in (args.baseline, Path(__file__), ROOT/'scripts/java-performance-monitor-single-v2.py')})
     if any(sha(Path(p)) != digest for p, digest in inputs.items()):
         raise ValueError('BASELINE_RUNTIME_DRIFT')
     user_config = Path(installation['home'])/'config.toml'

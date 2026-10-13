@@ -14,9 +14,10 @@ output.mkdir(parents=True, exist_ok=True)
 for source, name in [
     (project / 'jvm-runner/target/jvm-runner-0.1.0.jar', 'runner.jar'),
     (project / 'analysis-core/target/classes/META-INF/anatomist/javac-worker.jar', 'compiler-bridge.jar'),
-    (project / 'target/maven-input-worker.jar', 'maven-input-worker.jar'),
+    (output / 'maven-input-worker.jar', 'maven-input-worker.jar'),
 ]:
-    shutil.copy2(source, output / name)
+    if source.resolve() != (output / name).resolve():
+        shutil.copy2(source, output / name)
 adapter = project / 'java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java'
 protocol_source = (project.parent / 'crates/model/src/lib.rs').read_text()
 protocol = int(re.search(r'WORKER_PROTOCOL_VERSION: u32 = (\d+)', protocol_source)[1])

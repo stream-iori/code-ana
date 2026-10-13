@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Production typed Anatomist graph regressions; uses the existing executable paths."""
 import contextlib, json, os, sqlite3, unittest
-from java_e2e import JavaProduct
+from product_support import JavaProductHarness
 
 TABLES=('nodes','edges','annotations','annotation_meta_owned','semantic_annotations',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
-class GraphStorage(JavaProduct):
-    # Inherit lifecycle helpers, not the obsolete Fact-IR acceptance cases.
+class GraphStorage(JavaProductHarness):
+    # Shared fixture helpers never contain legacy acceptance cases.
     def canonical(self,revision):
         with contextlib.closing(sqlite3.connect(self.home/'revisions'/revision/'facts.db')) as db:
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
@@ -113,7 +113,7 @@ class GraphStorage(JavaProduct):
         source=self.project/'src/p/App.java'
         original=source.read_text()
         # Existing regression observes real javac children before cancellation/crash.
-        JavaProduct.test_cancel_and_crash_preserve_head(self)
+        self.assert_cancel_and_crash_preserve_head()
         before=self.cli('overview')[1]['revision']
         graph=self.canonical(before)
         self.assertIsNone(self.java_worker_pid())

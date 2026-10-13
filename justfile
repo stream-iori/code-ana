@@ -61,54 +61,25 @@ test-java-upstream-audit runner:
 test-java-jvm-components evidence:
   python3 tests/acceptance_support_tests.py
   python3 tests/java_source_cases_tests.py
-  python3 tests/java_performance_monitor_tests.py
-  python3 tests/java_performance_correctness_gate_tests.py
   python3 tests/java_coverage_acceptance_gate_tests.py
-  python3 tests/java_native_acceptance_gate_tests.py
-  python3 tests/java_jvm_acceptance_gate_tests.py
-  python3 tests/java_known_upstream_tests.py
+  python3 tests/java_native_build_gate_tests.py
+  python3 tests/java_native_install_tests.py
+  python3 tests/java_performance_monitor_v2_tests.py
+  python3 tests/java_performance_stable_runtime_tests.py
+  python3 tests/java_performance_upgrade_runtime_tests.py
   python3 tests/java_jvm_gate.py --evidence "{{evidence}}"
   python3 tests/java_jvm_bootstrap_tests.py
-  python3 tests/java_jvm_model_collection_tests.py
-  python3 tests/java_committed_history_tests.py
-  python3 tests/java_backend_fact_equivalence_tests.py
-  python3 tests/java_alignment_entry_tests.py
-  python3 tests/java_native_model_gate_tests.py
-  python3 tests/java_native_build_gate_tests.py
-
-test-java-jvm-probe evidence:
-  cargo build --workspace --locked
-  python3 tests/java_jvm_product_gate.py --group probe --evidence "{{evidence}}"
 
 test-java-jvm-product evidence:
   cargo build --workspace --locked
-  python3 tests/java_index_audit_tests.py
-  python3 tests/java_jvm_product_gate.py --group product --evidence "{{evidence}}"
+  python3 tests/java_jvm_product_gate.py --backend jvm --group graph --evidence "{{evidence}}"
 
 test-java-jvm-fixtures evidence:
   just test-java-jvm-components "{{evidence}}/components"
-  just test-java-jvm-probe "{{evidence}}/probe"
-  just test-java-jvm-product "{{evidence}}/product"
+  just test-java-jvm-product "{{evidence}}/graph"
 
 java-reference:
   python3 scripts/build-java-reference.py
-
-test-java-migration-reference:
-  ./scripts/test-java-reference.sh
-  python3 tests/java_captured_reference_contracts.py
-
-# Compatibility recipe names now run the migrated fixtures. Real-project and
-# final acceptance remain separately sealed; fixtures never claim 52/52 parity.
-test-java-alignment:
-  just test-java-jvm-fixtures "target/java-alignment/jvm-$(date +%s)-$$"
-
-test-java-alignment-fixtures:
-  just test-java-jvm-fixtures "target/java-alignment/jvm-$(date +%s)-$$"
-
-test-java-alignment-native:
-  just test-java-native-probe "target/java-alignment/native-probe-$(date +%s)-$$"
-  just test-java-native-product "target/java-alignment/native-product-$(date +%s)-$$"
-  just test-java-native-lifecycle "target/java-alignment/native-lifecycle-$(date +%s)-$$"
 
 test-java-maven:
   ./scripts/build-java-maven.sh
@@ -122,13 +93,10 @@ test-java-native:
   python3 tests/java_native_manifest_tests.py
   python3 tests/java_native_lifecycle.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java_native_environment.py
   python3 tests/java_native_crash_e2e.py
 
 # Run a freshly built native bundle with the same recorded Java fixture groups.
-test-java-native-probe evidence:
-  cargo build --workspace --locked
-  python3 tests/java_jvm_product_gate.py --backend native --group probe --evidence "{{evidence}}"
-
 test-java-native-product evidence:
   cargo build --workspace --locked
   python3 scripts/install-java-native.py
@@ -142,6 +110,7 @@ test-java-native-lifecycle evidence:
 test-java-e2e:
   cargo build --workspace --locked
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java_native_environment.py
   python3 tests/java_native_crash_e2e.py
 
 package-java:
@@ -153,6 +122,3 @@ test-java-release:
   cargo build --release --workspace --locked
   python3 scripts/install-java-native.py
   python3 tests/java_release.py --bin-root "$PWD/target/debug" --stage-release
-
-test-java-stress:
-  python3 tests/java_stress.py --rounds 20

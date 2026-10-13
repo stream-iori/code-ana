@@ -37,7 +37,7 @@ def main():
                       TMPDIR=str(scratch))
     sys.path.insert(0, str(runtime / 'tests'))
     fixture = importlib.import_module('java_native_crash_e2e')
-    product = fixture.java_e2e.JavaProduct
+    product = fixture.product_support.JavaProductHarness
 
     class RecordedProduct(product):
         def doCleanups(self):
@@ -46,7 +46,7 @@ def main():
                 shutil.copytree(self.root, evidence / 'workspace', dirs_exist_ok=True)
             return super().doCleanups()
 
-    fixture.java_e2e.JavaProduct = RecordedProduct
+    fixture.product_support.JavaProductHarness = RecordedProduct
     original_run = fixture.subprocess.run
     crash_results = []
 
@@ -82,7 +82,7 @@ def main():
             fixture.subprocess.run = original_run
             (evidence / 'crash-command.json').write_text(json.dumps(crash_results, indent=2) + '\n')
     paths = [Path(__file__).resolve(), Path(fixture.__file__).resolve(),
-             runtime / 'tests/java_e2e.py', runtime / 'tests/rust_e2e.py', log,
+             runtime / 'tests/product_support.py', log,
              evidence / 'crash-command.json']
     paths += list((evidence / 'workspace').rglob('*'))
     report['inputs'] = {str(path): sha(path) for path in paths if path.is_file()}

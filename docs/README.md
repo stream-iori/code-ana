@@ -1,11 +1,9 @@
 # code-ana 文档导航
 
-先读 [当前实现与验证边界](current-state.md)，再查架构、契约和模块。以下现行指南对齐 2026-10-13 代码；历史记录保留原提交、指标和失败，不作为当前操作说明。
+先读 [当前实现与验证边界](current-state.md)，再查架构、契约和模块。以下现行指南对齐 2026-10-13 代码；过期方案、旧协议测试和无效入口已删除；本机测量回执按其产物解释。
 
 ```text
 当前实现 → 架构 / 契约 → 配置 / 模块 → 验证与分发
-                              ↑
-                  历史方案与回执：用于追溯
 ```
 
 | 现行指南 | 内容 |
@@ -23,24 +21,12 @@
 | [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |
 | [存储实施记录](implementation/anatomist-storage-migration.md) | GRA1 与紧凑布局的实现、单轮测量、原失败及修复回执 |
 
-## 历史设计与证据
-
-| 文档 | 用途 |
-|---|---|
-| [旧公共契约](history/contracts-fact-ir.md) | Fact IR / CAF1 与旧 worker/ABI 的逐轮演进 |
-| [Java 旧实现](java-implementation.md) / [最初验证](implementation/java-validation.md) | 已删除 lang-adaptor 的历史实现与回执 |
-| [Java 迁移](java-anatomist-migration.md) / [对齐执行](implementation/java-alignment-execution.md) | 各版本能力、差分和迁移门禁记录 |
-| [复用审计](implementation/java-reuse.md) / [能力审计](implementation/java-anatomist-alignment.md) / [重写](implementation/java-adaptor-rewrite.md) | 借用来源和阶段性缺口；清单保留各自冻结提交 |
-| [早期存储对照](storage-anatomist-migration.md) | 紧凑图迁移前的 Rust 存储设计 |
-| [SIGKILL 排查](java-sigkill-diagnosis.md) / [性能诊断](java-performance-diagnosis.md) | 特定旧产物的诊断，不能推断当前状态 |
-| [Native 性能分析](implementation/native-performance-analysis.md) / [改造记录](implementation/native-performance-upgrade.md) / [Anatomist 对照](implementation/performance-anatomist-comparison.md) | CAF1 阶段瓶颈与优化；最新结果读存储实施记录 |
-
 ## 维护约定
 
 | 规则 | 做法 |
 |---|---|
 | 现行文档 | 改代码时同步版本、能力、命令和失败处理；代码常量/DDL/.proto 为依据 |
-| 历史文档 | 在入口标明历史口径；原失败回执不能改成成功，原测量不能重标新产物 |
+| 清理 | 过期方案与测试直接删除；共享工具先拆出，修正门禁/导入/打包/覆盖映射；测量不重标产物 |
 | 参考仓库 | 记录固定 commit、文件 SHA 和改动；同级 Anatomist 链接是研究线索，不能当作当前分支快照 |
 | 性能 | Native 不分冷热；本次只测一轮，写清输入、缓存状态、产物与预算 |
 | 验收 | 区分开发构建、fixture、真实项目测量和正式放行；不把未完成项写成通过 |

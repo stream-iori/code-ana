@@ -20,6 +20,41 @@ def inventory(root):
     return {str(p.relative_to(root)): sha(p) for p in sorted(root.rglob('*')) if p.is_file()}
 
 
+def install_jvm(root, source, archive):
+    """Replace a verified JVM bundle, preserving the old SDK and executable paths."""
+    manifest = json.loads((source/'manifest.json').read_text())
+    names = [*manifest['files'], 'manifest.json']
+    for name, digest in manifest['files'].items():
+        path = source/name
+        if not path.resolve().is_relative_to(source.resolve()) or sha(path) != digest:
+            raise ValueError('JAVA_RUNTIME_BUILD_CHECKSUM: '+name)
+    target = root/'target/lib/java/jvm'
+    if all((target/name).is_file() and sha(target/name) == sha(source/name) for name in names):
+        return
+    binaries = (root/'target/debug').resolve()
+    active = subprocess.check_output(['ps', '-axo', 'pid=,comm='], text=True)
+    if any(len(fields := line.strip().split(None, 1)) == 2
+           and fields[1].startswith(str(binaries)+'/codeana-') for line in active.splitlines()):
+        raise ValueError('STOP_RUNTIME_BEFORE_JVM_INSTALL')
+    archive.mkdir(parents=True, exist_ok=False)
+    staged = archive/'new-jvm'
+    staged.mkdir()
+    for name in names:
+        path = staged/name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source/name, path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    old = archive/'previous-jvm'
+    if target.exists():
+        target.rename(old)
+    try:
+        staged.rename(target)
+    except BaseException:
+        if old.exists():
+            old.rename(target)
+        raise
+
+
 def prepare(root, destination, backend=None, stable_paths=False):
     backend=backend or os.environ.get('CODEANA_JAVA_BACKEND','native')
     if backend=='jvm':
@@ -33,12 +68,29 @@ def prepare(root, destination, backend=None, stable_paths=False):
         if probe.returncode:raise ValueError('JVM_RUNTIME_WORKER_NOT_CURRENT: '+probe.stderr)
         versions=json.loads(probe.stdout)
         if versions['backend']!='jvm' or versions['worker_protocol']!=manifest['worker_protocol'] or versions['adapter']!=manifest['adapter'] or versions['analysis_request']!=9 or versions['fact_ir']!=2:raise ValueError('JVM_RUNTIME_PROTOCOL_MISMATCH')
+        installed_files = {}
+        if stable_paths:
+            install_jvm(root, source, destination.parent/'jvm-install')
+            installed = root/'target/lib/java/jvm'
+            for relative in [*manifest['files'], 'manifest.json']:
+                path = installed/relative
+                if not path.is_file() or sha(path) != sha(source/relative):
+                    raise ValueError('JAVA_RUNTIME_INSTALLED_BUILD_MISMATCH: '+relative)
+                installed_files[str(path.resolve())] = sha(path)
         destination.mkdir(parents=True,exist_ok=False)
-        binaries=destination/'target/debug';binaries.mkdir(parents=True)
+        binaries=destination/'target/debug'
+        if stable_paths:
+            binaries.parent.mkdir(parents=True)
+            binaries.symlink_to((root/'target/debug').resolve(),target_is_directory=True)
+        else:
+            binaries.mkdir(parents=True)
+            for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):shutil.copy2(root/'target/debug'/name,binaries/name)
         bundle=destination/'target/lib/java/jvm';bundle.mkdir(parents=True)
-        for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):shutil.copy2(root/'target/debug'/name,binaries/name)
         for relative in [*manifest['files'],'manifest.json']:shutil.copy2(source/relative,bundle/relative)
-        result=dict(backend='jvm',binary_directory=str(binaries.resolve()),versions=versions,files=inventory(destination))
+        result=dict(backend='jvm',binary_directory=str(binaries.resolve()),versions=versions,
+            files=inventory(destination),relocated_binaries=not stable_paths,installed_files=installed_files,
+            application_files={str((binaries/name).resolve()):sha(binaries/name)
+                for name in ('codeana-cli','codeana-daemon','codeana-java-worker')})
         (destination/'runtime.json').write_text(json.dumps(result,indent=2)+'\n')
         return result
     if backend!='native':raise ValueError('JAVA_RUNTIME_BACKEND')
@@ -92,6 +144,15 @@ def prepare(root, destination, backend=None, stable_paths=False):
                       for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker')})
     (destination.parent / 'product-runtime.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
+
+
+def input_files():
+    paths = [ROOT / name for name in ('Cargo.toml','Cargo.lock','lang-java-adapotr/pom.xml','lang-java-adapotr/.sdkmanrc','justfile')]
+    extensions = {'.rs','.java','.py','.sh','.proto','.toml','.xml','.json','.sql'}
+    for directory in ('crates','lang-java-adapotr','scripts','tests','proto'):
+        paths += [p for p in (ROOT / directory).rglob('*') if p.is_file() and p.suffix in extensions
+                  and not {'target','__pycache__'}.intersection(p.relative_to(ROOT).parts)]
+    return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(set(paths))}
 
 
 if __name__ == '__main__':

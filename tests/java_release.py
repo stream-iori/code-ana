@@ -2,7 +2,7 @@
 """Run actual release-package CLI/daemon/native smoke without rebuilding frozen artifacts.
 
 This certifies the packaged runtime only. All Java parity and exclusive capacity
-gates remain independently required by java_alignment's final accounting.
+gates remain independently required; this fixture does not sign final acceptance.
 """
 import argparse
 import json
@@ -14,8 +14,8 @@ from java_product_runtime import sha
 import tempfile
 import time
 
-import java_alignment as alignment
-import java_functional_reference_alignment as reference
+import java_product_runtime as alignment
+from acceptance_support import sha256
 from java_product_runtime import inventory
 
 
@@ -37,7 +37,7 @@ def release_artifacts():
     files += [root / 'lang-java-adapotr/target' / name for name in
               ('compiler-bridge.jar', 'maven-input-worker.jar',
                'native/libcodeana_java.dylib', 'native/manifest.json')]
-    return {str(path.relative_to(root)): reference.digest(path) for path in files}
+    return {str(path.relative_to(root)): sha256(path) for path in files}
 
 
 def packaged_fixture_smoke(package, evidence, binaries=None):
@@ -92,7 +92,6 @@ def main():
         parser.error('--stage-release requires --bin-root')
     if args.runtime_root:
         alignment.ROOT=args.runtime_root.resolve()
-        reference.ROOT=alignment.ROOT
     base=(args.evidence or alignment.ROOT/'target/java-alignment/evidence'/
           ('release-package-'+time.strftime('%Y%m%d-%H%M%S')+'-'+str(os.getpid()))).resolve()
     base.mkdir(parents=True,exist_ok=False)
@@ -112,7 +111,7 @@ def main():
             checksum,path=entry.split('  ',1)
             target=package/path
             if not target.resolve().is_relative_to(package):raise ValueError('PACKAGE_CHECKSUM_PATH')
-            if reference.digest(target)!=checksum:raise ValueError('PACKAGE_CHECKSUM_MISMATCH: '+path)
+            if sha256(target)!=checksum:raise ValueError('PACKAGE_CHECKSUM_MISMATCH: '+path)
             if path in expected:raise ValueError('DUPLICATE_PACKAGE_CHECKSUM: '+path)
             expected[path]=checksum
         if expected!={key:value for key,value in before.items() if key!='SHA256SUMS'}:
@@ -133,16 +132,16 @@ def main():
             report['temporarily_staged_release']=True
         if args.bin_root:
             for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):
-                if reference.digest(binaries/name) != reference.digest(package/'bin'/name):
+                if sha256(binaries/name) != sha256(package/'bin'/name):
                     raise ValueError('PACKAGE_STABLE_BINARY_MISMATCH: '+name)
             for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','maven-input-worker.jar','native/manifest.json'):
-                if reference.digest(binaries.parent/'lib/java'/name) != reference.digest(package/'lib/java'/name):
+                if sha256(binaries.parent/'lib/java'/name) != sha256(package/'lib/java'/name):
                     raise ValueError('PACKAGE_STABLE_BUNDLE_MISMATCH: '+name)
         report['execution_binary_directory']=str(binaries)
         report['package_bytes_verified_at_execution_paths']=bool(args.bin_root)
         environment=dict(os.environ,CODEANA_TEST_BIN=str(binaries))
         for name, script, selector in [('typed_graph', 'java_graph_storage.py', None),
-                                       ('wrong_jdk', 'java_e2e.py', 'test_wrong_jdk')]:
+                                       ('wrong_jdk', 'java_native_environment.py', None)]:
             command=[os.sys.executable,'-m','unittest','discover','-s','tests','-p',script,'-v']
             if selector:
                 command += ['-k', selector]
@@ -150,7 +149,7 @@ def main():
             with log.open('wb') as stream:
                 result=subprocess.run(command,cwd=alignment.ROOT,env=environment,stdout=stream,
                                       stderr=subprocess.STDOUT,timeout=900)
-            report['gates'].append(dict(name=name,exit_code=result.returncode,log_sha256=reference.digest(log)))
+            report['gates'].append(dict(name=name,exit_code=result.returncode,log_sha256=sha256(log)))
         demo=base/'shipped-fixture';demo.mkdir()
         report['shipped_fixture_steps']=packaged_fixture_smoke(package,demo,binaries)
         report['gates'].append(dict(name='shipped_fixture_automatic_daemon_index_calls_source',exit_code=0))

@@ -88,9 +88,9 @@ isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任�
 | ./scripts/build-java-native.sh | 要求有效 CODEANA_JVM_ACCEPTANCE_RECEIPT 与源码/证据 SHA；不能拿旧版本回执放行 |
 | python3 scripts/install-java-native.py | 验证 bundle/worker SHA 与协议，拒绝活跃进程替换；归档旧 SDK，原子安装到 target/lib/java |
 | just test-java-native | 构建、安装、manifest、生命周期、当前 GRA1 图回归、真实崩溃 |
-| just test-java-native-product EVIDENCE | 当前图门禁，回执 group=graph；不替代历史 raw model/AST 门禁 |
+| just test-java-native-product EVIDENCE | 当前图门禁，回执 group=graph；不签正式迁移/容量验收 |
 | just test-java-release | 开发构建 + release + 包/图/错误 JDK/自带 fixture；保留原路径并恢复开发字节 |
 
 执行文件沿用原 Cargo 路径。`tests/java_release.py --bin-root "$PWD/target/debug" --stage-release` 先检查无活跃进程，归档并原子安装 release 字节，运行后恢复；包与执行路径 SDK/二进制必须逐字节一致。
 
-最新正确性、单轮 iopengw 和未完成验收见 [存储实施记录](../implementation/anatomist-storage-migration.md)。旧模型迁移证据见 [Java 迁移历史](../java-anatomist-migration.md)，不能沿用到当前版本宣称正式放行。
+最新正确性、单轮 iopengw 和未完成验收见 [存储实施记录](../implementation/anatomist-storage-migration.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。

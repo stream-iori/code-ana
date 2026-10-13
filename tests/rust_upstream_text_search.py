@@ -2,13 +2,13 @@
 """Original text-search limits through the real Rust CLI and daemon."""
 import unittest
 import subprocess
-import rust_e2e
+import product_support
 
 
-class TextSearchProduct(rust_e2e.Product):
+class TextSearchProduct(product_support.MockProductHarness):
     def test_upstream_closed_text_output_does_not_hang_or_stop_daemon(self):
         (self.project / 'many.txt').write_text('hit\n' * 10000)
-        command = [str(rust_e2e.BIN / 'codeana-cli'), '--home', str(self.home),
+        command = [str(product_support.BIN / 'codeana-cli'), '--home', str(self.home),
                    '--project', str(self.project), 'search-text', 'hit', '--path', 'many.txt',
                    '--max-records', '10000', '--max-output-bytes', '8388608']
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

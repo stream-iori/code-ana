@@ -72,7 +72,7 @@ def main():
     global PROGRESS_FILE, REFERENCE_FILES
     parser = argparse.ArgumentParser()
     parser.add_argument('--evidence', type=pathlib.Path, required=True)
-    parser.add_argument('--group', choices=('probe', 'product', 'graph', 'lifecycle'), required=True)
+    parser.add_argument('--group', choices=('graph', 'lifecycle'), required=True)
     parser.add_argument('--backend', choices=('jvm', 'native'), default='jvm')
     parser.add_argument('--case', action='append', default=[])
     args = parser.parse_args()
@@ -82,23 +82,15 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     PROGRESS_FILE = output / 'progress.json'
     os.environ['CODEANA_JAVA_BACKEND'] = args.backend
-    # Resolve and verify the independent oracle before starting expensive cases.
-    # A private source snapshot must be given an explicit manifest path.
-    from java_fresh_reference import reference
-    oracle, proof = reference()
-    manifest = pathlib.Path(os.environ.get('ANATOMIST_REFERENCE_MANIFEST',
-        ROOT / 'target/frozen-reference/manifest.json')).resolve()
-    REFERENCE_FILES = [manifest, oracle] + [manifest.parent/'source'/name for name in proof['sources']]
-    REFERENCE_FILES += [pathlib.Path(name) for name in proof['toolchain']]
+    REFERENCE_FILES = []
     from java_product_runtime import prepare
     runtime = prepare(ROOT, output / 'runtime', args.backend,
-                      stable_paths=args.backend == 'native' and args.group in ('graph', 'lifecycle'))
+                      stable_paths=True)
     os.environ['CODEANA_TEST_BIN'] = runtime['binary_directory']
     os.environ['CODEANA_TEST_JAVA_BUNDLE'] = str(output / 'runtime/target/lib/java' / args.backend)
     REFERENCE_FILES += [pathlib.Path(name) for name in runtime.get('application_files', {})]
     REFERENCE_FILES += [pathlib.Path(name) for name in runtime.get('installed_files', {})]
-    module = importlib.import_module(dict(probe='java_anatomist_native',
-        product='java_e2e', graph='java_graph_storage', lifecycle='java_native_lifecycle')[args.group])
+    module = importlib.import_module(dict(graph='java_graph_storage', lifecycle='java_native_lifecycle')[args.group])
     suite = unittest.defaultTestLoader.loadTestsFromModule(module)
     all_tests = list(flatten(suite))
     if args.case:

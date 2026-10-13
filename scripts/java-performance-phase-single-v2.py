@@ -13,10 +13,7 @@ import time
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 from acceptance_support import sha256
-from java_real_acceptance import atomic_json
-spec = importlib.util.spec_from_file_location('history', ROOT / 'scripts/java-jvm-committed-history.py')
-history = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(history)
+from acceptance_support import atomic_json
 
 
 def main():
@@ -42,7 +39,7 @@ def main():
     if build.get('build_profile') != 'release' or any(build['binaries'].get(str((binaries/name).resolve())) != sha256(binaries/name) for name in ('codeana-cli','codeana-daemon','codeana-java-worker')): raise ValueError('RELEASE_BUILD_DRIFT')
     command = [str(binaries / 'codeana-cli'), '--home', str(args.home.resolve()), '--project', str(args.project.resolve())]
     expected = json.loads(args.expected_graph.read_text())
-    if expected.get('status') != 'passed' or not (expected.get('whole_fact_ir_equal') is True or expected.get('graph_storage_correctness_eligible') is True):
+    if expected.get('status') != 'passed' or expected.get('graph_storage_correctness_eligible') is not True:
         raise ValueError('BACKEND_CORRECTNESS_REQUIRED_BEFORE_PERFORMANCE')
     row = dict(status='running', backend=args.backend, index_seconds=None,
                queries=[], performance_accepted=False, native_accepted=False,
@@ -78,11 +75,11 @@ def main():
         row.update(revision=terminal[0]['revision'], terminal=terminal[0], records=records)
         database = args.home / 'revisions' / row['revision'] / 'facts.db'
         start = time.monotonic()
-        if expected.get('graph_encoding') in ('anatomist-schema32','anatomist-logical-rows'):
-            spec=importlib.util.spec_from_file_location('graph_storage',ROOT/'scripts/java-graph-storage-acceptance.py')
-            graph_storage=importlib.util.module_from_spec(spec);spec.loader.exec_module(graph_storage)
-            row['graph']=graph_storage.graph(database,ignore_execution_provenance=True)
-        else:row['graph'] = history.graph(database)
+        if expected.get('graph_encoding') != 'anatomist-logical-rows':
+            raise ValueError('TYPED_LOGICAL_GRAPH_BASELINE_REQUIRED')
+        spec=importlib.util.spec_from_file_location('graph_storage',ROOT/'scripts/java-graph-storage-acceptance.py')
+        graph_storage=importlib.util.module_from_spec(spec);spec.loader.exec_module(graph_storage)
+        row['graph']=graph_storage.graph(database,ignore_execution_provenance=True)
         row['graph_verification_seconds'] = time.monotonic() - start
         if row['graph'] != expected['graphs'][args.backend]:
             raise ValueError('PERFORMANCE_FACT_GRAPH_DRIFT')

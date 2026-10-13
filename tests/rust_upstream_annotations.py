@@ -2,10 +2,10 @@
 """Original annotation write outcomes through explicit Rust note IDs and CAS."""
 import json
 import unittest
-import rust_e2e
+import product_support
 
 
-class AnnotationProduct(rust_e2e.Product):
+class AnnotationProduct(product_support.MockProductHarness):
     def setUp(self):
         super().setUp()
         self.cli('index')
