@@ -1,8 +1,10 @@
 # codeana Java 8 / macOS
 
+Native 默认采用 G1，worker 进程内复用一个 isolate；显式 `CODEANA_NATIVE_GC=serial` 可构建 Serial。
+
 包内包含 CLI、daemon、Rust worker、GraalVM 共享库、Java 8 编译器桥和 C header。目标 JDK 由本机 SDKMAN 提供，不随包分发。
 
-开发验收可用 `scripts/package-java.sh --from-build --output /new/package/path` 从已冻结产物打包，先检查 native/SDK8 桥 SHA，不重新编译；指定输出目录必须尚不存在。`python3 tests/java_release.py` 检查完整包校验清单，并从包内 bin/lib 执行真实 CLI、daemon、Java worker 的核心及 Maven 资源模块正反例。该门禁不替代全部能力差分和独占容量验收。
+开发验收可用 `scripts/package-java.sh --from-build --output /new/package/path` 从已冻结产物打包，先检查 native/SDK8 桥 SHA，不重新编译；指定输出目录必须尚不存在。`python3 tests/java_release.py` 检查完整包校验清单，并从包内 bin/lib 执行真实 CLI、daemon、Java worker 的类型化图、增量/删除、XML、取消/崩溃/OOM 恢复及错误 JDK 用例。该门禁不替代全部能力差分和独占容量验收。
 
 ## 验证并运行 fixture
 
@@ -38,3 +40,5 @@ Maven 项目先由用户显式准备 metadata：
 ```
 
 导出由包内 Rust CLI 执行，需要 Maven 与 SDKMAN Java 8，无需 Python。一次 Maven 会话通过 core extension 导出有效模型和已调解依赖，并在生命周期前退出；可能下载依赖。索引只消费已有输入，不调用 Maven、不运行处理器、不生成业务 class。项目配置与能力范围见 [实现说明](docs/java-implementation.md)，实际验证见 [验收记录](docs/implementation/java-validation.md)。
+
+开发回归使用 `just test-java-native` / `just test-java-release`；开发构建不替代完整迁移验收。测试需保留原执行路径时，可使用 `python3 tests/java_release.py --bin-root "$PWD/target/debug" --stage-release`；先校验包与原路径二进制/SDK 字节完全一致，再运行用例，执行路径会进入回执。`--stage-release` 要求原路径无活跃进程，归档并临时原子安装 release 字节，测试后恢复原二进制。

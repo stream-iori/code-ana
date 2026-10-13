@@ -19,11 +19,13 @@ def main():
     parser = argparse.ArgumentParser()
     for name in ('native-gate', 'proof-source-root', 'bundle-root', 'java-home', 'evidence'):
         parser.add_argument('--' + name, type=pathlib.Path, required=True)
-    parser.add_argument('--gc', choices=('serial','G1'), default='serial')
+    parser.add_argument('--gc', choices=('serial','G1'), default='G1')
     parser.add_argument('--jfr', action='store_true')
     parser.add_argument('--cpu-target', choices=('baseline', 'native'), default='baseline')
     parser.add_argument('--young-percent', type=int, choices=(10, 25, 50))
     args = parser.parse_args()
+    if args.young_percent is not None and args.gc != "serial":
+        parser.error("--young-percent requires --gc=serial")
     spec = importlib.util.spec_from_file_location('sealed_single', ROOT / 'scripts/java-performance-single.py')
     sealed = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(sealed)
@@ -55,7 +57,9 @@ def main():
     scratch.mkdir(mode=0o700)
     for name in ('compiler-bridge.jar', 'maven-input-worker.jar'):
         shutil.copy2(original / 'target' / name, target / name)
+    subprocess.run(['bash', str(ROOT / 'scripts/build-java-completion.sh'), str(scratch)], check=True)
     command = [str(image), '--shared', '--gc='+args.gc, '-R:MaxHeapSize=256m',
+               '-J-Dcodeana.completion.library=' + str(scratch),
                '-H:-DeleteLocalSymbols', '-H:IncludeResources=META-INF/anatomist/javac-worker.jar',
                '--native-compiler-options=-save-temps=obj',
                '-J-Djava.io.tmpdir=' + str(scratch), '-H:TempDirectory=' + str(scratch),
@@ -67,7 +71,8 @@ def main():
         command.insert(1, '-H:MaximumYoungGenerationSizePercent=' + str(args.young_percent))
     inputs = {str(path): sha256(path) for path in sources + bound_sources +
               [args.native_gate.resolve(), pathlib.Path(__file__).resolve(),
-               ROOT / 'scripts/java-performance-single.py', image]}
+               ROOT / 'scripts/java-performance-single.py', ROOT / 'scripts/build-java-completion.sh',
+              ROOT / 'lang-java-adapotr/native-bridge/src/main/c/completion-notification.c', image]}
     report = dict(status='running', command=command, gc=args.gc, jfr=args.jfr, cpu_target=args.cpu_target,
                   young_generation_percent=args.young_percent,
                   heap_limit_changed=False, worker_budget_changed=False,

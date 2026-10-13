@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-native_gc="${CODEANA_NATIVE_GC:-serial}"
+native_gc="${CODEANA_NATIVE_GC:-G1}"
 case "$native_gc" in serial|G1) ;; *) echo "CODEANA_NATIVE_GC must be serial or G1" >&2; exit 2;; esac
 native_monitoring="${CODEANA_NATIVE_MONITORING:-}"
 case "$native_monitoring" in ""|jfr) ;; *) echo "CODEANA_NATIVE_MONITORING must be empty or jfr" >&2; exit 2;; esac

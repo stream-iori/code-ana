@@ -27,7 +27,7 @@ python3 - "$repo_root/lang-java-adapotr/target" <<'VERIFY'
 import hashlib,json,pathlib,subprocess,sys
 root=pathlib.Path(sys.argv[1]).resolve()
 manifest=json.loads((root/'native/manifest.json').read_text())
-for name in ('native/libcodeana_java.dylib','compiler-bridge.jar'):
+for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','maven-input-worker.jar'):
     path=root/name
     assert path.resolve().is_relative_to(root), 'NATIVE_ARTIFACT_PATH'
     assert hashlib.sha256(path.read_bytes()).hexdigest()==manifest['files'][name], 'NATIVE_BUILD_CHECKSUM: '+name
@@ -66,7 +66,7 @@ import hashlib,json,pathlib,sys
 root=pathlib.Path(sys.argv[1])
 native=json.loads((root/'lib/java/native/manifest.json').read_text())
 metadata={key:native[key] for key in ('abi','analysis_request','compiler_protocol','java_model',
-    'type_graph_default','type_schema','binding_schema','target_java')}
+    'graph_schema','graph_encoding','native_gc','native_build_mode','target_java')}
 metadata.update(package='codeana-java8',worker_protocol=native['worker_protocol'],fact_ir=2,backend='native',
     toolchain='externally registered SDKMAN Java 8')
 (root/'manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')

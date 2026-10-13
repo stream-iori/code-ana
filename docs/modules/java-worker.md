@@ -74,15 +74,15 @@ Java 25 / GraalVM 共享库（同进程）
 
 ## Native 开发构建
 
-`CODEANA_NATIVE_GC=G1 ./scripts/build-java-native.sh --build-only` 使用同一构建脚本完整执行 Maven 编译/测试、Java 8 编译器桥与 Maven worker 构建、Native Image 链接和 bundle SHA manifest。显式开发构建不要求已封存的完整 JVM 迁移验收回执，manifest 标记 `native_build_mode=build-only`；它不签署迁移或发布验收。默认不带该参数仍先校验 `CODEANA_JVM_ACCEPTANCE_RECEIPT` 及源码/证据 SHA。
+`./scripts/build-java-native.sh --build-only`（默认 G1；显式 `CODEANA_NATIVE_GC=serial` 可构建 Serial） 使用同一构建脚本完整执行 Maven 编译/测试、Java 8 编译器桥与 Maven worker 构建、Native Image 链接和 bundle SHA manifest。显式开发构建不要求已封存的完整 JVM 迁移验收回执，manifest 标记 `native_build_mode=build-only`；它不签署迁移或发布验收。默认不带该参数仍先校验 `CODEANA_JVM_ACCEPTANCE_RECEIPT` 及源码/证据 SHA。
 
 ## G1 isolate 生命周期
 
 Oracle GraalVM 的 G1 共享库在本机支持 macOS ARM64，但不能在同一进程创建第二个 isolate，首次 teardown 后重建也会 abort。一个 Rust worker 进程只创建一次 isolate，多次分析创建/关闭 task 并复用该 isolate；取消或错误关闭引擎后退出 worker，后续由 supervisor 启动新进程。
 
-Rust bootstrap 依据已校验 bundle 的 `native_gc` 声明记录进程级 isolate 历史。创建 G1 后再次创建 isolate，或在已有 Serial isolate 的进程切换 G1，返回 `G1_ISOLATE_PROCESS_RESTART_REQUIRED`，在调用 GraalVM 前阻止 abort；该标记不会因 teardown 清除。
+Rust bootstrap 要求已校验 bundle 显式声明 `native_gc=G1/serial`；缺失或未知值在加载共享库前拒绝。依据该声明记录进程级 isolate 历史。创建 G1 后再次创建 isolate，或在已有 Serial isolate 的进程切换 G1，返回 `G1_ISOLATE_PROCESS_RESTART_REQUIRED`，在调用 GraalVM 前阻止 abort；该标记不会因 teardown 清除。
 
-`tests/java_native_lifecycle.py` 根据 manifest 选择验证方式：Serial 保留进程内多 isolate 测试；G1 的通用 ABI 用例每项独立进程，并以两个同时持有满额 session 的进程验证隔离。线程 attach/detach 单独验证，多次 task、错误后恢复和取消检查均保留。G1 重建防护另用真实共享库执行 Rust 集成测试。
+`tests/java_native_lifecycle.py` 根据 manifest 选择验证方式：Serial 保留进程内多 isolate 测试；G1 的通用 ABI 用例每项独立进程，模块、类、单个方法和 discovery 入口均遵守此约束；以两个同时持有满额 session 的进程验证隔离。线程 attach/detach 单独验证，多次 task、错误后恢复和取消检查均保留。G1 重建防护另用真实共享库执行 Rust 集成测试。
 
 ## 1. 输入、模型与事实
 
@@ -219,3 +219,7 @@ Rust 使用异步可读等待，通知后只查一次终态。取消控制帧优
 无完成字节、异常终态、关闭失败的实例不复用；daemon 共用 2 秒取消/退出期限，然后回收进程组。
 Graal CFunction 调用固定签名 C 包装完成 fcntl，适配 Darwin ARM64 的可变参数约定；无 JNI。
 ABI 2 bundle 明确拒绝混装。完整约束见 [契约](../contracts.md)。
+
+Native 构建、bundle manifest 和默认性能变体统一选择 G1；显式 Serial 仍受支持。Java heap 默认仍是 256 MiB，worker RSS 预算保持显式限制。`python3 scripts/install-java-native.py` 校验构建产物和 worker 协议、拒绝活跃进程期间替换、归档旧库并原子安装至原 Cargo 路径。
+
+常用 Native 回归入口改跑当前 GRA1/Anatomist 图测试，`test-java-native-product` 的回执组为 `graph`，与历史 raw model/AST 迁移门禁独立。打包保留 graph schema/encoding、GC 和开发构建标记，不再读取已退役的 Fact IR 字段。包内字节可通过 `tests/java_release.py --bin-root /original/binary/directory` 在原执行路径验证，要求全部二进制和 SDK 与包逐字节一致；`--stage-release` 可归档/临时原子安装 release 二进制，结束后恢复，且拒绝活跃进程；回执区分该方式与直接启动包内路径。

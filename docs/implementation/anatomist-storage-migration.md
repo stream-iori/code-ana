@@ -97,7 +97,7 @@ G1 诊断库及回执位于 `target/g1-build-diagnostic`，Serial 安装已归�
 | 图库 | 606,650,368 字节 | 606,650,368 字节 |
 | 进程树峰值 RSS | 1.56 GiB | 2.55 GiB |
 
-该比较包含测量后 overview、增量继承摘要和本次 worker 防护等版本差异，不能把全部变化归因于 GC。单轮没有显示 G1 的性能收益，构建默认仍为 Serial；当前产品测试安装保留 G1 供继续验证。测量命令使用原 `target/debug/codeana-*` 路径，release 构建 SHA 逐文件绑定；旧 dev 二进制及 Serial 库分别归档，没有改名执行。完整结果见 `target/g1-build-diagnostic/regression-receipt.json` 与 `iopengw-single-01/phase/receipt.json`。
+该比较包含测量后 overview、增量继承摘要和本次 worker 防护等版本差异，不能把全部变化归因于 GC。单轮没有显示 G1 的性能收益，当时构建默认仍为 Serial（后续已按用户要求切换 G1）；当时产品测试安装保留 G1 供继续验证。测量命令使用原 `target/debug/codeana-*` 路径，release 构建 SHA 逐文件绑定；旧 dev 二进制及 Serial 库分别归档，没有改名执行。完整结果见 `target/g1-build-diagnostic/regression-receipt.json` 与 `iopengw-single-01/phase/receipt.json`。
 
 ## 正常构建及产品链路的 G1 复验
 
@@ -119,3 +119,13 @@ G1 诊断库及回执位于 `target/g1-build-diagnostic`，Serial 安装已归�
 | isolate 错误 | 无 |
 
 维持既有 854 个 partial 文件的覆盖结果，没有将其写成完整语义覆盖。输入 SHA 无漂移、查询未修改图库、测量时无其它分析进程。历史 Serial 231.525 秒与本轮相差 +1.45%，历史 G1 248.904 秒也只是另一轮观测；不据这些单点推断稳定 GC 收益。旧 abort 来自同进程反复创建 isolate 的测试，与此正常索引流程不同。
+
+## G1 默认与相关测试入口
+
+2026-10-13 按用户要求将 Native 默认 GC 统一为 G1：构建脚本、manifest 生成和默认性能变体一致；`CODEANA_NATIVE_GC=serial` / `--gc serial` 保留。无 GC 环境变量的 Native 构建已确认输出 G1，47.7 秒。Java 源码未变化，沿用上一轮 633 项组件测试，不重跑性能测量。
+
+生命周期测试覆盖完整 suite、单个方法和 discovery；用例 ID 在子进程包装前后保持一致，正式回执核对 8/8、无漏测/重复/漂移。Serial 的进程内多 isolate 回归保留。Rust 对缺失/未知 GC 声明拒绝加载，避免错误推断 collector。安装脚本校验/归档/原子替换，并拒绝活跃 worker 期间替换 SDK。
+
+Native 常用入口使用当前类型化图的 6 项产品回归；旧 raw model/AST 的完整迁移门禁仍独立，不能用 G1 fixture 成功关闭。打包元数据改为 graph schema 32 / GRA1 encoding / GC，清理已退役的字段要求；包的二进制和 SDK 完整校验。包副本路径启动 daemon 曾收到 SIGKILL，原路径下逐字节一致的 release 产物验证通过，回执明确记录原执行路径，不将其写成副本路径启动成功。
+
+默认切换的回归记录：Native manifest 5 项、默认构建门禁 6 项、安装/回滚/活跃进程保护 3 项、runtime accounting 6 项、稳定路径 3 项和升级回滚 3 项通过；Rust 完整门禁通过；G1 ABI 8 项、Serial ABI 8 项、单方法/discovery 入口及真实 G1 重建防护通过。产品图 6 项、真实 SIGSEGV 回执、打包图/错误 JDK/自动启动索引和查询通过。release 验证以原 `target/debug` 路径暂存 release 字节并自动恢复，无源码/产物/包漂移。包副本及 release 路径的自动启动曾遭 SIGKILL，不把这些失败标成通过。当前规范入口保留原路径及字节校验。完整回执：`target/g1-default-final/receipt.json`。

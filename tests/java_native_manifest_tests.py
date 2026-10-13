@@ -1,6 +1,7 @@
 """Native bundle metadata only; these checks never load or accept native code."""
 import hashlib
 import json
+import os
 import pathlib
 import shutil
 import subprocess
@@ -29,12 +30,21 @@ class NativeManifest(unittest.TestCase):
         self.library = self.target / 'native' / ('libcodeana_java.dylib' if sys.platform == 'darwin' else 'libcodeana_java.so')
         for path in [self.library, self.target / 'compiler-bridge.jar', self.target / 'maven-input-worker.jar']:
             path.write_bytes(('fixture:' + path.name).encode())
-        subprocess.run([sys.executable, str(ROOT / 'scripts/java-adapotr-manifest.py'), str(self.target)], check=True)
+        self.environment = dict(os.environ)
+        self.environment.pop('CODEANA_NATIVE_GC', None)
+        subprocess.run([sys.executable, str(ROOT / 'scripts/java-adapotr-manifest.py'), str(self.target)], env=self.environment, check=True)
         self.manifest_path = self.target / 'native/manifest.json'
         self.manifest = json.loads(self.manifest_path.read_text())
 
     def probe(self):
         return subprocess.run([str(ROOT / 'target/debug/codeana-java-worker'), str(self.library), '--runtime-info'], capture_output=True, text=True, timeout=10)
+
+    def test_default_gc_is_g1_and_serial_override_is_preserved(self):
+        self.assertEqual(self.manifest['native_gc'], 'G1')
+        subprocess.run([sys.executable, str(ROOT / 'scripts/java-adapotr-manifest.py'), str(self.target)],
+                       env=dict(self.environment, CODEANA_NATIVE_GC='serial'), check=True)
+        self.assertEqual(json.loads(self.manifest_path.read_text())['native_gc'], 'serial')
+        self.assertEqual(self.probe().returncode, 0)
 
     def test_shared_bridge_identity_and_all_distribution_resources(self):
         self.assertEqual(self.manifest['backend'], 'native')
@@ -45,6 +55,19 @@ class NativeManifest(unittest.TestCase):
         result = self.probe()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)['worker_protocol'], self.manifest['worker_protocol'])
+
+    def test_missing_or_unknown_gc_is_rejected_before_loading(self):
+        for value in (None, 'unknown'):
+            with self.subTest(gc=value):
+                changed = dict(self.manifest)
+                if value is None:
+                    changed.pop('native_gc')
+                else:
+                    changed['native_gc'] = value
+                self.manifest_path.write_text(json.dumps(changed))
+                result = self.probe()
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('BUNDLE_GC_', result.stderr)
 
     def test_old_worker_policy_is_rejected_before_native_loading(self):
         self.manifest['worker_protocol'] -= 1

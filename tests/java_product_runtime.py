@@ -20,7 +20,7 @@ def inventory(root):
     return {str(p.relative_to(root)): sha(p) for p in sorted(root.rglob('*')) if p.is_file()}
 
 
-def prepare(root, destination, backend=None):
+def prepare(root, destination, backend=None, stable_paths=False):
     backend=backend or os.environ.get('CODEANA_JAVA_BACKEND','native')
     if backend=='jvm':
         source=root/'lang-java-adapotr/target/jvm'
@@ -63,18 +63,33 @@ def prepare(root, destination, backend=None):
                              adapter=manifest['adapter'], analysis_request=9, abi=4, backend='native')
     if versions != expected_versions:
         raise ValueError('JAVA_RUNTIME_PROTOCOL_MISMATCH: ' + json.dumps(versions))
+    installed = root / 'target/lib/java'
+    installed_files = {}
+    if stable_paths:
+        for relative in sorted(required | {'native/manifest.json'}):
+            path = installed / relative
+            if not path.is_file() or sha(path) != sha(source / relative):
+                raise ValueError('JAVA_RUNTIME_INSTALLED_BUILD_MISMATCH: ' + relative)
+            installed_files[str(path.resolve())] = sha(path)
     # A new task-owned directory is required; never overwrite an active runtime.
     destination.mkdir(parents=True, exist_ok=False)
     binaries = destination / 'target/debug'
     bundle = destination / 'target/lib/java'
-    binaries.mkdir(parents=True)
+    if stable_paths:
+        binaries.parent.mkdir(parents=True)
+        binaries.symlink_to((root / 'target/debug').resolve(), target_is_directory=True)
+    else:
+        binaries.mkdir(parents=True)
+        for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
+            shutil.copy2(root / 'target/debug' / name, binaries / name)
     (bundle / 'native').mkdir(parents=True)
-    for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
-        shutil.copy2(root / 'target/debug' / name, binaries / name)
     for relative in sorted(required | {'native/manifest.json', 'maven-input-worker.jar'}):
         shutil.copy2(source / relative, bundle / relative)
     result = dict(binary_directory=str(binaries.resolve()), versions=versions,
-                  files=inventory(destination))
+                  files=inventory(destination), relocated_binaries=not stable_paths,
+                  installed_files=installed_files,
+                  application_files={str((binaries / name).resolve()): sha(binaries / name)
+                      for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker')})
     (destination.parent / 'product-runtime.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
 

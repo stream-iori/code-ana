@@ -26,12 +26,21 @@ def child_environment():
 
 
 class NativeLifecycle(unittest.TestCase):
+    def run(self, result=None):
+        # Cover module discovery, class/method selectors, and receipt runners alike.
+        # Only the child process may enter the actual G1 C ABI test.
+        gc = json.loads((bundle_path() / 'manifest.json').read_text())['native_gc']
+        if gc == 'G1' and os.environ.get('CODEANA_NATIVE_LIFECYCLE_CHILD') != '1':
+            return ProcessLifecycle(self._testMethodName).run(result)
+        return super().run(result)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='codeana-native-lifecycle-')
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
         bundle = bundle_path()
         manifest = json.loads((bundle / 'manifest.json').read_text())
+        self.gc = manifest['native_gc']
         self.assertEqual(manifest['backend'], 'native')
         self.assertEqual(manifest['abi'], 4)
         self.assertEqual(manifest['analysis_request'], 9)
@@ -256,6 +265,10 @@ class NativeLifecycle(unittest.TestCase):
         self.assertFalse(worker.is_alive())
         self.assertEqual(outcomes, [0, 4, 0])
     def test_independent_isolates(self):
+        if self.gc == 'G1':
+            # Different processes replace the unsupported second in-process isolate.
+            IndependentProcesses.test_session_capacity_is_process_scoped(self)
+            return
         _, other = self.create_isolate()
         try:
             self.assertEqual(self.library.codeana_java_abi_version(other), 4)
@@ -277,7 +290,7 @@ class ProcessLifecycle(unittest.TestCase):
         self.native_name = native_name
 
     def id(self):
-        return 'G1Process.' + self.native_name
+        return NativeLifecycle(self.native_name).id()
 
     def shortDescription(self):
         return self.id()
@@ -321,14 +334,6 @@ class IndependentProcesses(unittest.TestCase):
 
 
 def load_tests(loader, tests, pattern):
-    names = loader.getTestCaseNames(NativeLifecycle)
-    gc = json.loads((bundle_path() / 'manifest.json').read_text()).get('native_gc', 'serial')
-    if gc == 'G1' and os.environ.get('CODEANA_NATIVE_LIFECYCLE_CHILD') != '1':
-        # Preserve common ABI assertions; replace only unsupported in-process isolation.
-        suite = unittest.TestSuite(ProcessLifecycle(name) for name in names
-                                   if name != 'test_independent_isolates')
-        suite.addTests(loader.loadTestsFromTestCase(IndependentProcesses))
-        return suite
     return loader.loadTestsFromTestCase(NativeLifecycle)
 
 

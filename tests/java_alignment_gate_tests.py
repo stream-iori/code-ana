@@ -62,7 +62,7 @@ class AcceptanceAccounting(unittest.TestCase):
             library = 'native/libcodeana_java.' + ('dylib' if sys.platform == 'darwin' else 'so')
             for relative in (library, 'compiler-bridge.jar', 'maven-input-worker.jar'):
                 (source / relative).write_bytes(b'fresh build')
-            (source / 'native/manifest.json').write_text(json.dumps(dict(adapter='fixture-adapter',worker_protocol=16,backend='native',files={
+            (source / 'native/manifest.json').write_text(json.dumps(dict(adapter='fixture-adapter',worker_protocol=18,backend='native',files={
                 relative: sha(source / relative) for relative in (library, 'compiler-bridge.jar', 'maven-input-worker.jar')})))
             stale = root / 'target/lib/java/native'
             stale.mkdir(parents=True)
@@ -70,7 +70,7 @@ class AcceptanceAccounting(unittest.TestCase):
             destination = root / 'evidence/runtime'
             from unittest.mock import patch
             import subprocess
-            runtime=json.dumps(dict(worker_protocol=16,fact_ir=1,adapter='fixture-adapter',analysis_request=8,abi=3,backend='native'))
+            runtime=json.dumps(dict(worker_protocol=18,fact_ir=2,adapter='fixture-adapter',analysis_request=9,abi=4,backend='native'))
             with patch('java_product_runtime.subprocess.run',return_value=subprocess.CompletedProcess([],0,stdout=runtime,stderr='')):
                 result = prepare(root, destination)
             self.assertEqual(result['files'], inventory(destination))
@@ -82,6 +82,37 @@ class AcceptanceAccounting(unittest.TestCase):
             (source / 'compiler-bridge.jar').write_bytes(b'bad build checksum')
             with self.assertRaisesRegex(ValueError, 'JAVA_RUNTIME_BUILD_CHECKSUM'):
                 prepare(root, root / 'evidence/rejected')
+
+    def test_stable_native_runtime_requires_matching_install_and_preserves_binary_paths(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder)
+            source = root / 'lang-java-adapotr/target'
+            installed = root / 'target/lib/java'
+            binaries = root / 'target/debug'
+            (source / 'native').mkdir(parents=True)
+            binaries.mkdir(parents=True)
+            for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
+                (binaries / name).write_bytes(b'original application')
+            import sys, subprocess
+            from unittest.mock import patch
+            library = 'native/libcodeana_java.' + ('dylib' if sys.platform == 'darwin' else 'so')
+            for name in (library, 'compiler-bridge.jar', 'maven-input-worker.jar'):
+                (source / name).write_bytes(b'fresh bundle')
+            (source / 'native/manifest.json').write_text(json.dumps(dict(
+                adapter='fixture', worker_protocol=18, native_gc='G1', backend='native',
+                files={name: sha(source/name) for name in (library, 'compiler-bridge.jar', 'maven-input-worker.jar')})))
+            versions=json.dumps(dict(worker_protocol=18, fact_ir=2, adapter='fixture', analysis_request=9, abi=4, backend='native'))
+            with patch('java_product_runtime.subprocess.run', return_value=subprocess.CompletedProcess([],0,stdout=versions,stderr='')):
+                with self.assertRaisesRegex(ValueError, 'INSTALLED_BUILD_MISMATCH'):
+                    prepare(root, root/'rejected', stable_paths=True)
+                import shutil
+                shutil.copytree(source, installed)
+                before={name: sha(binaries/name) for name in ('codeana-cli','codeana-daemon','codeana-java-worker')}
+                runtime=prepare(root, root/'evidence/runtime', stable_paths=True)
+                self.assertEqual(runtime['binary_directory'], str(binaries.resolve()))
+                self.assertFalse(runtime['relocated_binaries'])
+                self.assertEqual(before, {name: sha(binaries/name) for name in before})
+                self.assertIn(str((installed/library).resolve()),runtime['installed_files'])
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

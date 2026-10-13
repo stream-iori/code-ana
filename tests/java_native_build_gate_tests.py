@@ -31,8 +31,9 @@ class NativeBuildPrerequisites(unittest.TestCase):
         self.receipt.write_text(json.dumps(self.value))
         return gate.check(self.receipt, self.root)
 
-    def test_default_entry_requires_verified_gate_even_when_g1_is_selected(self):
-        environment = dict(os.environ, CODEANA_NATIVE_GC='G1')
+    def test_default_g1_entry_still_requires_verified_gate(self):
+        environment = dict(os.environ)
+        environment.pop('CODEANA_NATIVE_GC', None)
         environment.pop('CODEANA_JVM_ACCEPTANCE_RECEIPT', None)
         result = subprocess.run([str(ROOT / 'scripts/build-java-native.sh')],
                                 env=environment, capture_output=True, text=True, timeout=10)

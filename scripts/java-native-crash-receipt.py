@@ -53,8 +53,8 @@ def main():
     def recorded_run(command, *arguments, **options):
         result = original_run(command, *arguments, **options)
         if (isinstance(command, (list, tuple)) and command
-                and 'crash-package/bin/codeana-cli' in str(command[0])
-                and 'index' in command and '--full' in command):
+                and Path(command[0]).name == 'codeana-cli'
+                and 'index' in command and '--full' in command and result.returncode != 0):
             crash_results.append(dict(command=list(map(str, command)),
                                       returncode=result.returncode,
                                       stdout=result.stdout, stderr=result.stderr))

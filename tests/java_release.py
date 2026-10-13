@@ -10,12 +10,23 @@ import os
 import pathlib
 import subprocess
 import shutil
+from java_product_runtime import sha
 import tempfile
 import time
 
 import java_alignment as alignment
 import java_functional_reference_alignment as reference
 from java_product_runtime import inventory
+
+
+def atomic_binary_copy(source, destination):
+    with tempfile.NamedTemporaryFile(dir=destination.parent, prefix='.release-test-', delete=False) as stream:
+        stage = pathlib.Path(stream.name)
+    try:
+        shutil.copy2(source, stage)
+        os.replace(stage, destination)
+    finally:
+        stage.unlink(missing_ok=True)
 
 
 def release_artifacts():
@@ -29,7 +40,7 @@ def release_artifacts():
     return {str(path.relative_to(root)): reference.digest(path) for path in files}
 
 
-def packaged_fixture_smoke(package, evidence):
+def packaged_fixture_smoke(package, evidence, binaries=None):
     """Exercise shipped source/config and automatic daemon start, not a generated fixture."""
     with tempfile.TemporaryDirectory(prefix='codeana-release-demo-') as folder:
         workspace=pathlib.Path(folder);project=workspace/'project';home=workspace/'home'
@@ -37,7 +48,7 @@ def packaged_fixture_smoke(package, evidence):
         jdk=pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'
         (home/'config.toml').write_text('schema_version=1\nkind="user"\n[limits]\nmax_workers=1\n'
             'max_worker_memory_bytes=536870912\n[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(str(jdk))+'\n')
-        command=[str(package/'bin/codeana-cli'),'--home',str(home),'--project',str(project)]
+        command=[str((binaries or package/'bin')/'codeana-cli'),'--home',str(home),'--project',str(project)]
         steps=[]
         primary_failure = None
         try:
@@ -72,7 +83,13 @@ def packaged_fixture_smoke(package, evidence):
 def main():
     parser=argparse.ArgumentParser();parser.add_argument('--evidence',type=pathlib.Path)
     parser.add_argument('--runtime-root',type=pathlib.Path)
+    parser.add_argument('--bin-root',type=pathlib.Path,
+        help='Keep existing application paths; binaries and installed bundle must match the package byte-for-byte')
+    parser.add_argument('--stage-release',action='store_true',
+        help='Temporarily stage package binaries into --bin-root, archive and restore original bytes')
     args=parser.parse_args()
+    if args.stage_release and not args.bin_root:
+        parser.error('--stage-release requires --bin-root')
     if args.runtime_root:
         alignment.ROOT=args.runtime_root.resolve()
         reference.ROOT=alignment.ROOT
@@ -83,6 +100,7 @@ def main():
     package=base/'package';started=time.monotonic()
     report=dict(kind='release_package_real_runtime',all_ok=False,full_semantic_diff_accepted=False,
                 final_capacity_accepted=False,inputs=frozen,artifacts=artifacts,gates=[])
+    original_binaries={}
     try:
         with (base/'package.log').open('wb') as log:
             subprocess.run(['./scripts/package-java.sh','--from-build','--output',str(package)],
@@ -99,16 +117,42 @@ def main():
             expected[path]=checksum
         if expected!={key:value for key,value in before.items() if key!='SHA256SUMS'}:
             raise ValueError('INCOMPLETE_PACKAGE_CHECKSUMS')
-        environment=dict(os.environ,CODEANA_TEST_BIN=str(package/'bin'))
-        for name in ('test_core','test_maven_xml_only_main_test_contexts_publish_and_delta','test_wrong_jdk'):
-            command=[os.sys.executable,'-m','unittest','discover','-s','tests','-p','java_e2e.py','-k',name,'-v']
+        binaries = args.bin_root.resolve() if args.bin_root else package/'bin'
+        if args.stage_release:
+            active=subprocess.check_output(['ps','-axo','pid=,comm='],text=True)
+            for line in active.splitlines():
+                fields=line.strip().split(None,1)
+                if len(fields)==2 and fields[1].startswith(str(binaries)+'/codeana-'):
+                    raise ValueError('STOP_RUNTIME_BEFORE_RELEASE_TEST: '+fields[0])
+            saved=base/'original-binaries';saved.mkdir()
+            for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):
+                path=binaries/name
+                shutil.copy2(path,saved/name)
+                original_binaries[path]=saved/name
+                atomic_binary_copy(package/'bin'/name,path)
+            report['temporarily_staged_release']=True
+        if args.bin_root:
+            for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):
+                if reference.digest(binaries/name) != reference.digest(package/'bin'/name):
+                    raise ValueError('PACKAGE_STABLE_BINARY_MISMATCH: '+name)
+            for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','maven-input-worker.jar','native/manifest.json'):
+                if reference.digest(binaries.parent/'lib/java'/name) != reference.digest(package/'lib/java'/name):
+                    raise ValueError('PACKAGE_STABLE_BUNDLE_MISMATCH: '+name)
+        report['execution_binary_directory']=str(binaries)
+        report['package_bytes_verified_at_execution_paths']=bool(args.bin_root)
+        environment=dict(os.environ,CODEANA_TEST_BIN=str(binaries))
+        for name, script, selector in [('typed_graph', 'java_graph_storage.py', None),
+                                       ('wrong_jdk', 'java_e2e.py', 'test_wrong_jdk')]:
+            command=[os.sys.executable,'-m','unittest','discover','-s','tests','-p',script,'-v']
+            if selector:
+                command += ['-k', selector]
             log=base/(name+'.log')
             with log.open('wb') as stream:
                 result=subprocess.run(command,cwd=alignment.ROOT,env=environment,stdout=stream,
                                       stderr=subprocess.STDOUT,timeout=900)
             report['gates'].append(dict(name=name,exit_code=result.returncode,log_sha256=reference.digest(log)))
         demo=base/'shipped-fixture';demo.mkdir()
-        report['shipped_fixture_steps']=packaged_fixture_smoke(package,demo)
+        report['shipped_fixture_steps']=packaged_fixture_smoke(package,demo,binaries)
         report['gates'].append(dict(name='shipped_fixture_automatic_daemon_index_calls_source',exit_code=0))
         current_package=inventory(package)
         current_inputs=alignment.input_files();current_artifacts=release_artifacts()
@@ -118,10 +162,15 @@ def main():
             if frozen.get(key)!=current_inputs.get(key))
         report['changed_artifacts']=sorted(key for key in artifacts.keys()|current_artifacts.keys()
             if artifacts.get(key)!=current_artifacts.get(key))
-        report['all_ok']=len(report['gates'])==4 and all(g['exit_code']==0 for g in report['gates']) and not any(
+        report['all_ok']=len(report['gates'])==3 and all(g['exit_code']==0 for g in report['gates']) and not any(
             report[key] for key in ('changed_package','changed_inputs','changed_artifacts'))
     except Exception as failure:
         report.update(failure=str(failure),failure_type=type(failure).__name__)
+    finally:
+        for path, saved in original_binaries.items():
+            atomic_binary_copy(saved,path)
+        if original_binaries:
+            report['original_binaries_restored']=all(sha(path)==sha(saved) for path,saved in original_binaries.items())
     report['elapsed_seconds']=round(time.monotonic()-started,3)
     (base/'receipt.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(base/'receipt.json',flush=True)

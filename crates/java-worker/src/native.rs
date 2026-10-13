@@ -24,6 +24,14 @@ fn claim_isolate(gc: &str, history: &AtomicU8) -> Result<()> {
     Ok(())
 }
 
+fn manifest_gc(manifest: &serde_json::Value) -> Result<&str> {
+    let gc = manifest["native_gc"]
+        .as_str()
+        .context("BUNDLE_GC_REQUIRED")?;
+    ensure!(matches!(gc, "serial" | "G1"), "BUNDLE_GC_UNSUPPORTED");
+    Ok(gc)
+}
+
 // graal_isolate.h v5. The build-JDK header's layout is verified by the native acceptance probe.
 #[repr(C)]
 struct IsolateParams {
@@ -69,6 +77,10 @@ impl Native {
     }
     fn create(path: &Path, heap: Option<u64>) -> Result<Self> {
         ensure!(path.is_file(), "NATIVE_LIBRARY_MISSING");
+        let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
+            path.parent().context("BUNDLE_PATH")?.join("manifest.json"),
+        )?)?;
+        let gc = manifest_gc(&manifest)?;
         // SAFETY: loaded only in the isolated worker, after bundle verification by the caller.
         unsafe {
             let library = Library::new(path)?;
@@ -108,10 +120,6 @@ impl Native {
             } else {
                 std::ptr::null()
             };
-            let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
-                path.parent().context("BUNDLE_PATH")?.join("manifest.json"),
-            )?)?;
-            let gc = manifest["native_gc"].as_str().unwrap_or("serial");
             claim_isolate(gc, &ISOLATE_HISTORY)?;
             let status = create(address, &mut isolate, &mut thread);
             ensure!(status == 0, "ISOLATE_CREATE: {status}");
@@ -310,6 +318,7 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
         manifest["os"] == os && manifest["arch"] == arch,
         "BUNDLE_PLATFORM_MISMATCH"
     );
+    manifest_gc(&manifest)?;
     let files = manifest["files"].as_object().context("BUNDLE_FILES")?;
     let library_key = format!(
         "native/{}",

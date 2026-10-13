@@ -115,9 +115,13 @@ test-java-maven:
   python3 tests/java_maven_alignment.py
 
 test-java-native:
-  ./scripts/build-java-native.sh
-  cargo build -p codeana-java-worker --locked
-  python3 tests/java_anatomist_native.py
+  ./scripts/build-java-native.sh --build-only
+  cargo build --workspace --locked
+  python3 scripts/install-java-native.py
+  python3 tests/java_native_manifest_tests.py
+  python3 tests/java_native_lifecycle.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
+  python3 tests/java_native_crash_e2e.py
 
 # Run a freshly built native bundle with the same recorded Java fixture groups.
 test-java-native-probe evidence:
@@ -126,25 +130,28 @@ test-java-native-probe evidence:
 
 test-java-native-product evidence:
   cargo build --workspace --locked
-  python3 tests/java_jvm_product_gate.py --backend native --group product --evidence "{{evidence}}"
+  python3 scripts/install-java-native.py
+  python3 tests/java_jvm_product_gate.py --backend native --group graph --evidence "{{evidence}}"
 
 test-java-native-lifecycle evidence:
   cargo build --workspace --locked
+  python3 scripts/install-java-native.py
   python3 tests/java_jvm_product_gate.py --backend native --group lifecycle --evidence "{{evidence}}"
 
 test-java-e2e:
   cargo build --workspace --locked
-  python3 tests/java_e2e.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
   python3 tests/java_native_crash_e2e.py
 
 package-java:
   ./scripts/package-java.sh
 
 test-java-release:
-  ./scripts/package-java.sh
-  cd "dist/codeana-java-$(uname -s)-$(uname -m)" && shasum -a 256 -c SHA256SUMS
-  CODEANA_TEST_BIN="$PWD/dist/codeana-java-$(uname -s)-$(uname -m)/bin" python3 tests/java_e2e.py
-  CODEANA_TEST_BIN="$PWD/dist/codeana-java-$(uname -s)-$(uname -m)/bin" python3 tests/java_native_crash_e2e.py
+  ./scripts/build-java-native.sh --build-only
+  cargo build --workspace --locked
+  cargo build --release --workspace --locked
+  python3 scripts/install-java-native.py
+  python3 tests/java_release.py --bin-root "$PWD/target/debug" --stage-release
 
 test-java-stress:
   python3 tests/java_stress.py --rounds 20

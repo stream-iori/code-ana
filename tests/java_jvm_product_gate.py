@@ -72,7 +72,7 @@ def main():
     global PROGRESS_FILE, REFERENCE_FILES
     parser = argparse.ArgumentParser()
     parser.add_argument('--evidence', type=pathlib.Path, required=True)
-    parser.add_argument('--group', choices=('probe', 'product', 'lifecycle'), required=True)
+    parser.add_argument('--group', choices=('probe', 'product', 'graph', 'lifecycle'), required=True)
     parser.add_argument('--backend', choices=('jvm', 'native'), default='jvm')
     parser.add_argument('--case', action='append', default=[])
     args = parser.parse_args()
@@ -91,11 +91,14 @@ def main():
     REFERENCE_FILES = [manifest, oracle] + [manifest.parent/'source'/name for name in proof['sources']]
     REFERENCE_FILES += [pathlib.Path(name) for name in proof['toolchain']]
     from java_product_runtime import prepare
-    runtime = prepare(ROOT, output / 'runtime', args.backend)
+    runtime = prepare(ROOT, output / 'runtime', args.backend,
+                      stable_paths=args.backend == 'native' and args.group in ('graph', 'lifecycle'))
     os.environ['CODEANA_TEST_BIN'] = runtime['binary_directory']
     os.environ['CODEANA_TEST_JAVA_BUNDLE'] = str(output / 'runtime/target/lib/java' / args.backend)
+    REFERENCE_FILES += [pathlib.Path(name) for name in runtime.get('application_files', {})]
+    REFERENCE_FILES += [pathlib.Path(name) for name in runtime.get('installed_files', {})]
     module = importlib.import_module(dict(probe='java_anatomist_native',
-        product='java_e2e', lifecycle='java_native_lifecycle')[args.group])
+        product='java_e2e', graph='java_graph_storage', lifecycle='java_native_lifecycle')[args.group])
     suite = unittest.defaultTestLoader.loadTestsFromModule(module)
     all_tests = list(flatten(suite))
     if args.case:

@@ -110,7 +110,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
             accepted=False, failure_type=type(failure).__name__, failure=str(failure),
             sigkill_observed='signal: 9' in evidence or 'SIGKILL' in evidence,
             expected_signal='SIGSEGV', daemon_pid=case.daemon.pid if case.daemon else None,
-            worker_binary=str(case.root/'crash-package/bin/codeana-java-worker')), indent=2)+'\n')
+            worker_binary=str(binary_dir/'codeana-java-worker')), indent=2)+'\n')
         print('Evidence: '+str(directory.relative_to(java_e2e.ROOT)), flush=True)
         raise
     finally:
