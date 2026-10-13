@@ -1,6 +1,8 @@
 import hashlib
 import importlib.util
 import json
+import os
+import subprocess
 import pathlib
 import tempfile
 import unittest
@@ -28,6 +30,14 @@ class NativeBuildPrerequisites(unittest.TestCase):
     def check(self):
         self.receipt.write_text(json.dumps(self.value))
         return gate.check(self.receipt, self.root)
+
+    def test_default_entry_requires_verified_gate_even_when_g1_is_selected(self):
+        environment = dict(os.environ, CODEANA_NATIVE_GC='G1')
+        environment.pop('CODEANA_JVM_ACCEPTANCE_RECEIPT', None)
+        result = subprocess.run([str(ROOT / 'scripts/build-java-native.sh')],
+                                env=environment, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn('CODEANA_JVM_ACCEPTANCE_RECEIPT must identify', result.stderr)
 
     def test_incomplete_gate_cannot_start_native_build(self):
         self.value['jvm_migration_accepted'] = False

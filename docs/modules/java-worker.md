@@ -72,6 +72,10 @@ Java 25 / GraalVM 共享库（同进程）
 | 内部协议 | JDK/桥/模型版本、task/attempt/context、source hash、长度/序号/校验、诊断及终态；缺块、漂移、未知必需能力均拒绝 |
 | 预算 | 单帧、总载荷、解码估算、排队结果和临时磁盘分别设限；stdout/stderr 日志不能污染协议 |
 
+## Native 开发构建
+
+`CODEANA_NATIVE_GC=G1 ./scripts/build-java-native.sh --build-only` 使用同一构建脚本完整执行 Maven 编译/测试、Java 8 编译器桥与 Maven worker 构建、Native Image 链接和 bundle SHA manifest。显式开发构建不要求已封存的完整 JVM 迁移验收回执，manifest 标记 `native_build_mode=build-only`；它不签署迁移或发布验收。默认不带该参数仍先校验 `CODEANA_JVM_ACCEPTANCE_RECEIPT` 及源码/证据 SHA。
+
 ## G1 isolate 生命周期
 
 Oracle GraalVM 的 G1 共享库在本机支持 macOS ARM64，但不能在同一进程创建第二个 isolate，首次 teardown 后重建也会 abort。一个 Rust worker 进程只创建一次 isolate，多次分析创建/关闭 task 并复用该 isolate；取消或错误关闭引擎后退出 worker，后续由 supervisor 启动新进程。

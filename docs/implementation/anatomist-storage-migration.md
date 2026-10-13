@@ -98,3 +98,24 @@ G1 诊断库及回执位于 `target/g1-build-diagnostic`，Serial 安装已归�
 | 进程树峰值 RSS | 1.56 GiB | 2.55 GiB |
 
 该比较包含测量后 overview、增量继承摘要和本次 worker 防护等版本差异，不能把全部变化归因于 GC。单轮没有显示 G1 的性能收益，构建默认仍为 Serial；当前产品测试安装保留 G1 供继续验证。测量命令使用原 `target/debug/codeana-*` 路径，release 构建 SHA 逐文件绑定；旧 dev 二进制及 Serial 库分别归档，没有改名执行。完整结果见 `target/g1-build-diagnostic/regression-receipt.json` 与 `iopengw-single-01/phase/receipt.json`。
+
+## 正常构建及产品链路的 G1 复验
+
+通过 `CODEANA_NATIVE_GC=G1 ./scripts/build-java-native.sh --build-only` 执行同一脚本的 Maven 编译/测试、Java 8 编译器桥、Maven worker、Native Image 链接和 manifest 生成。完整 JVM 迁移回执已有源码漂移，所以显式开发构建标记 `native_build_mode=build-only`；默认构建仍要求完整回执，不签署迁移验收。
+
+本轮 633 项 Java 测试通过，无失败/错误/跳过。构建在启动 Native Image 前暴露 macOS Bash 3.2 的空数组问题：`set -u` 下 `native_monitoring[@]` 报 unbound variable。已改为始终非空的命令数组，仅在指定 JFR 时追加参数；使用已通过且源码未变化的 Java 测试结果，以 `--build-only -DskipTests` 重试后完成 G1 链接，Native Image 用时 55.9 秒。源码 bundle 的 GC 和 SHA 均已校验，并原子安装至原 `target/lib/java/native`。
+
+正常 `CLI → daemon → Rust worker → C ABI → G1 → SQLite` 的 6 项 fixture 全部通过，包含连续任务复用、增量/删除与全量一致、查询、取消、SIGKILL、真实 OOM 后恢复和旧 revision。未采用同一进程反复销毁/创建 isolate 的测试流程。构建默认门禁 6 项、bundle metadata 3 项通过。证据根目录：`target/g1-normal-product-01`。
+
+正常构建产物在冻结 iopengw 上新增一轮完整索引，结果已发布：
+
+| 项目 | 本轮 G1 正常产品流程 |
+|---|---:|
+| 索引命令耗时 | 234.879 秒 |
+| 图库大小 | 606,650,368 字节 |
+| 进程树峰值 RSS | 2.856 GiB |
+| 完整图摘要 | 12 张语义表与 expected graph 一致 |
+| 固定查询 | 6 项通过 |
+| isolate 错误 | 无 |
+
+维持既有 854 个 partial 文件的覆盖结果，没有将其写成完整语义覆盖。输入 SHA 无漂移、查询未修改图库、测量时无其它分析进程。历史 Serial 231.525 秒与本轮相差 +1.45%，历史 G1 248.904 秒也只是另一轮观测；不据这些单点推断稳定 GC 收益。旧 abort 来自同进程反复创建 isolate 的测试，与此正常索引流程不同。

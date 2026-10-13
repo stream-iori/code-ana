@@ -3,9 +3,18 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 native_gc="${CODEANA_NATIVE_GC:-serial}"
 case "$native_gc" in serial|G1) ;; *) echo "CODEANA_NATIVE_GC must be serial or G1" >&2; exit 2;; esac
-native_monitoring=()
-case "${CODEANA_NATIVE_MONITORING:-}" in "") ;; jfr) native_monitoring=(--enable-monitoring=jfr);; *) echo "CODEANA_NATIVE_MONITORING must be empty or jfr" >&2; exit 2;; esac
-python3 "$repo_root/scripts/check-java-jvm-acceptance.py"
+native_monitoring="${CODEANA_NATIVE_MONITORING:-}"
+case "$native_monitoring" in ""|jfr) ;; *) echo "CODEANA_NATIVE_MONITORING must be empty or jfr" >&2; exit 2;; esac
+# Construction can be exercised before complete migration acceptance is sealed.
+# The default still requires the accepted JVM proof; build-only never certifies it.
+if [[ "${1:-}" == --build-only ]]; then
+  shift
+  export CODEANA_NATIVE_BUILD_MODE=build-only
+  echo "Building development Native bundle; complete migration acceptance is not certified."
+else
+  python3 "$repo_root/scripts/check-java-jvm-acceptance.py"
+  export CODEANA_NATIVE_BUILD_MODE=verified-jvm
+fi
 set +u
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 cd "$repo_root/lang-java-adapotr"
@@ -28,13 +37,18 @@ native_temp="$(mktemp -d "$PWD/target/native/.build-XXXXXX")"
 trap 'rm -rf "$native_temp"' EXIT
 export TMPDIR="$native_temp"
 bash "$repo_root/scripts/build-java-completion.sh" "$native_temp"
-"$JAVA_HOME/bin/native-image" --shared "--gc=$native_gc" "${native_monitoring[@]}" -R:MaxHeapSize=256m \
+# Bash 3.2 treats an empty array as unset under set -u. Keep the command
+# nonempty and append optional monitoring only when it is requested.
+native_command=("$JAVA_HOME/bin/native-image" --shared "--gc=$native_gc")
+[[ "$native_monitoring" != jfr ]] || native_command+=(--enable-monitoring=jfr)
+native_command+=(-R:MaxHeapSize=256m \
   "-J-Dcodeana.completion.library=$native_temp" \
   "-J-Djava.io.tmpdir=$native_temp" "-H:TempDirectory=$native_temp" \
   -H:IncludeResources='META-INF/anatomist/javac-worker.jar' \
   --native-compiler-options=-save-temps=obj \
   -cp native-bridge/target/native-bridge-0.1.0.jar \
-  -o "$native_temp/libcodeana_java"
+  -o "$native_temp/libcodeana_java")
+"${native_command[@]}"
 # A running worker may still map the previous signed library. Replace its inode only
 # after linking finishes; overwriting mapped code can terminate a macOS process.
 native_suffix=so
