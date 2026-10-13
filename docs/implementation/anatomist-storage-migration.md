@@ -126,6 +126,13 @@ G1 诊断库及回执位于 `target/g1-build-diagnostic`，Serial 安装已归�
 
 生命周期测试覆盖完整 suite、单个方法和 discovery；用例 ID 在子进程包装前后保持一致，正式回执核对 8/8、无漏测/重复/漂移。Serial 的进程内多 isolate 回归保留。Rust 对缺失/未知 GC 声明拒绝加载，避免错误推断 collector。安装脚本校验/归档/原子替换，并拒绝活跃 worker 期间替换 SDK。
 
-Native 常用入口使用当前类型化图的 6 项产品回归；旧 raw model/AST 的完整迁移门禁仍独立，不能用 G1 fixture 成功关闭。打包元数据改为 graph schema 32 / GRA1 encoding / GC，清理已退役的字段要求；包的二进制和 SDK 完整校验。包副本路径启动 daemon 曾收到 SIGKILL，原路径下逐字节一致的 release 产物验证通过，回执明确记录原执行路径，不将其写成副本路径启动成功。
+Native 常用入口使用当前类型化图的 6 项产品回归；旧 raw model/AST 的完整迁移门禁仍独立，不能用 G1 fixture 成功关闭。打包元数据改为 graph schema 32 / GRA1 encoding / GC，清理已退役的字段要求；包的二进制和 SDK 完整校验。包副本路径启动 daemon 曾收到 SIGKILL，原路径下逐字节一致的 release 产物验证通过；用户通知放行后，同一包副本执行路径的重试也已通过，未改名或替换二进制，历史失败回执保留。
 
-默认切换的回归记录：Native manifest 5 项、默认构建门禁 6 项、安装/回滚/活跃进程保护 3 项、runtime accounting 6 项、稳定路径 3 项和升级回滚 3 项通过；Rust 完整门禁通过；G1 ABI 8 项、Serial ABI 8 项、单方法/discovery 入口及真实 G1 重建防护通过。产品图 6 项、真实 SIGSEGV 回执、打包图/错误 JDK/自动启动索引和查询通过。release 验证以原 `target/debug` 路径暂存 release 字节并自动恢复，无源码/产物/包漂移。包副本及 release 路径的自动启动曾遭 SIGKILL，不把这些失败标成通过。当前规范入口保留原路径及字节校验。完整回执：`target/g1-default-final/receipt.json`。
+默认切换的回归记录：Native manifest 5 项、默认构建门禁 6 项、安装/回滚/活跃进程保护 3 项、runtime accounting 6 项、稳定路径 3 项和升级回滚 3 项通过；Rust 完整门禁通过；G1 ABI 8 项、Serial ABI 8 项、单方法/discovery 入口及真实 G1 重建防护通过。产品图 6 项、真实 SIGSEGV 回执、打包图/错误 JDK/自动启动索引和查询通过。release 验证以原 `target/debug` 路径暂存 release 字节并自动恢复，无源码/产物/包漂移。当前规范入口保留原路径及字节校验。完整回执：`target/g1-default-final/receipt.json`；随后原执行路径重试见下表，历史 SIGKILL 失败回执未覆盖。
+
+| 2026-10-13 原路径重试 | 结果 | 补充回执 |
+|---|---|---|
+| `target/g1-default-release-validation/package/bin` | 类型图 6/6（46.611 秒）、错误 JDK 1/1；包内 fixture 自动启动 daemon 的 index/calls/source 3 步通过（2.412 秒）；全部包文件 SHA 校验通过，执行前后无变化 | `target/g1-default-release-validation/retry-receipt.json` |
+| `target/release` | 同一路径自动启动 daemon 的 index/calls/source 3 步通过（2.349 秒）；二进制、已安装 SDK 与包逐字节一致，执行前后无变化 | `target/g1-default-release-canonical/retry-receipt.json` |
+
+本次只重试已被拦截的执行路径，没有重新构建、改名、替换二进制或增加 iopengw 性能测量；上述结果不替代完整迁移验收。
