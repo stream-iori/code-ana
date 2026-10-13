@@ -43,7 +43,7 @@ Java 封存前仍有屏障，本次不读取 Java 正在写入的 CAF。
 
 | 实验 | 执行入口 | 默认行为 |
 |---|---|---|
-| Serial/G1 | `CODEANA_NATIVE_GC=serial/G1 ./scripts/build-java-native.sh`；同 bytecode 对照另见 `java-native-performance-variant-v2.py --gc` | Serial；G1 必须通过共享库、生命周期、OOM、取消和完整图验证后才考虑采用 |
+| Serial/G1 | `CODEANA_NATIVE_GC=serial/G1 ./scripts/build-java-native.sh`；同 bytecode 对照另见 `java-native-performance-variant-v2.py --gc` | 默认 Serial；G1 已通过构建、进程隔离 ABI、真实 OOM、取消/崩溃恢复和单轮完整图验证，248.90 秒；完整迁移门禁仍未据此关闭。见 Anatomist 存储迁移的 G1 记录 |
 | 分配栈 | 诊断构建 `CODEANA_NATIVE_MONITORING=jfr`，运行 `CODEANA_PROFILE_ALLOCATIONS=1` | 关闭；正式性能对照拒绝开启录制 |
 | 事务批次 | `cargo run -p codeana-storage --release --example dedup_batches -- facts.db scratch_root` | 2,048；8,192/32,768 为实验。唯一身份实验不代表 raw CAF 重复分布或完整索引收益 |
 | 正式测量 | `scripts/java-performance-fresh-rounds.py --variants ... --frozen-project ... --frozen-receipt ... --expected-graph ... --query-plan ... --evidence ...` | 默认一轮；成功整图/查询校验后清理本轮重复库与缓存，保留回执、运行输入和计时 |

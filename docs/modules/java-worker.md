@@ -72,6 +72,14 @@ Java 25 / GraalVM 共享库（同进程）
 | 内部协议 | JDK/桥/模型版本、task/attempt/context、source hash、长度/序号/校验、诊断及终态；缺块、漂移、未知必需能力均拒绝 |
 | 预算 | 单帧、总载荷、解码估算、排队结果和临时磁盘分别设限；stdout/stderr 日志不能污染协议 |
 
+## G1 isolate 生命周期
+
+Oracle GraalVM 的 G1 共享库在本机支持 macOS ARM64，但不能在同一进程创建第二个 isolate，首次 teardown 后重建也会 abort。一个 Rust worker 进程只创建一次 isolate，多次分析创建/关闭 task 并复用该 isolate；取消或错误关闭引擎后退出 worker，后续由 supervisor 启动新进程。
+
+Rust bootstrap 依据已校验 bundle 的 `native_gc` 声明记录进程级 isolate 历史。创建 G1 后再次创建 isolate，或在已有 Serial isolate 的进程切换 G1，返回 `G1_ISOLATE_PROCESS_RESTART_REQUIRED`，在调用 GraalVM 前阻止 abort；该标记不会因 teardown 清除。
+
+`tests/java_native_lifecycle.py` 根据 manifest 选择验证方式：Serial 保留进程内多 isolate 测试；G1 的通用 ABI 用例每项独立进程，并以两个同时持有满额 session 的进程验证隔离。线程 attach/detach 单独验证，多次 task、错误后恢复和取消检查均保留。G1 重建防护另用真实共享库执行 Rust 集成测试。
+
 ## 1. 输入、模型与事实
 
 | 输入 | 输出 |

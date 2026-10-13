@@ -1,6 +1,28 @@
 use anyhow::{Context, Result, ensure};
 use libloading::Library;
-use std::{ffi::c_void, path::Path};
+use std::{
+    ffi::c_void,
+    path::Path,
+    sync::atomic::{AtomicU8, Ordering},
+};
+
+// G1 keeps process-global state after teardown. Once claimed, this process may
+// never create another isolate; recovery must spawn a new worker process.
+static ISOLATE_HISTORY: AtomicU8 = AtomicU8::new(0);
+
+fn claim_isolate(gc: &str, history: &AtomicU8) -> Result<()> {
+    ensure!(matches!(gc, "serial" | "G1"), "NATIVE_GC_UNSUPPORTED");
+    history
+        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |previous| {
+            if gc == "G1" {
+                (previous == 0).then_some(2)
+            } else {
+                (previous != 2).then_some(1)
+            }
+        })
+        .map_err(|_| anyhow::anyhow!("G1_ISOLATE_PROCESS_RESTART_REQUIRED"))?;
+    Ok(())
+}
 
 // graal_isolate.h v5. The build-JDK header's layout is verified by the native acceptance probe.
 #[repr(C)]
@@ -86,6 +108,11 @@ impl Native {
             } else {
                 std::ptr::null()
             };
+            let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
+                path.parent().context("BUNDLE_PATH")?.join("manifest.json"),
+            )?)?;
+            let gc = manifest["native_gc"].as_str().unwrap_or("serial");
+            claim_isolate(gc, &ISOLATE_HISTORY)?;
             let status = create(address, &mut isolate, &mut thread);
             ensure!(status == 0, "ISOLATE_CREATE: {status}");
             let native = Self {
@@ -308,6 +335,47 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
 #[cfg(test)]
 mod bootstrap_tests {
     use super::*;
+    #[test]
+    fn g1_claim_is_process_lifetime_and_serial_cannot_follow_it() {
+        let history = AtomicU8::new(0);
+        claim_isolate("G1", &history).unwrap();
+        assert!(
+            claim_isolate("G1", &history)
+                .unwrap_err()
+                .to_string()
+                .contains("PROCESS_RESTART_REQUIRED")
+        );
+        assert!(claim_isolate("serial", &history).is_err());
+    }
+    #[test]
+    fn serial_can_repeat_but_cannot_switch_to_g1_in_process() {
+        let history = AtomicU8::new(0);
+        claim_isolate("serial", &history).unwrap();
+        claim_isolate("serial", &history).unwrap();
+        assert!(claim_isolate("G1", &history).is_err());
+        let fresh = AtomicU8::new(0);
+        assert!(claim_isolate("unknown", &fresh).is_err());
+        claim_isolate("G1", &fresh).unwrap();
+    }
+    #[test]
+    #[ignore = "requires an explicitly built G1 shared library"]
+    fn real_g1_recreation_returns_error_after_teardown() {
+        let path = std::env::var_os("CODEANA_TEST_G1_LIBRARY")
+            .expect("CODEANA_TEST_G1_LIBRARY is required");
+        let path = Path::new(&path);
+        verify_bundle(path).unwrap();
+        let native = Native::load_with_heap(path, 256 << 20).unwrap();
+        assert_eq!(native.heap_bytes().unwrap(), 256 << 20);
+        drop(native);
+        let error = Native::load_with_heap(path, 256 << 20)
+            .err()
+            .expect("second isolate must fail before calling GraalVM");
+        assert!(
+            error
+                .to_string()
+                .contains("G1_ISOLATE_PROCESS_RESTART_REQUIRED")
+        );
+    }
     #[test]
     fn isolate_params_matches_64_bit_graal_v5_header() {
         assert_eq!(std::mem::size_of::<IsolateParams>(), 56);

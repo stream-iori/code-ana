@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Production typed Anatomist graph regressions; uses the existing executable paths."""
-import contextlib, json, sqlite3, unittest
+import contextlib, json, os, sqlite3, unittest
 from java_e2e import JavaProduct
 
 TABLES=('nodes','edges','annotations','annotation_meta_relations','semantic_annotations',
@@ -28,14 +28,17 @@ class GraphStorage(JavaProduct):
         (self.project/'src/p/Extra.java').write_text('package p; @Deprecated class Extra { String read(Service s){return s.greet("汉字🧪");} }')
         _,first=self.cli('index','--full',timeout=180)
         before=self.canonical(first['revision'])
+        worker=self.java_worker_pid();self.assertIsNotNone(worker)
         self.assertTrue(before['nodes']);self.assertTrue(before['call_sites']);self.assertTrue(before['annotations'])
         rows,_=self.cli('resolve','p.Service');self.assertTrue(rows)
         path=self.project/'src/p/Extra.java'
         path.write_text(path.read_text().replace('s.greet("汉字🧪")','s.identity("汉字🧪")'))
         _,delta=self.cli('index',timeout=180)
         changed=self.canonical(delta['revision'])
+        self.assertEqual(self.java_worker_pid(),worker)
         _,full=self.cli('index','--full',timeout=180)
         self.assertEqual(changed,self.canonical(full['revision']))
+        self.assertEqual(self.java_worker_pid(),worker)
         self.assertEqual(before,self.canonical(first['revision']))
         path.unlink()
         _,delta=self.cli('index',timeout=180)
@@ -78,12 +81,53 @@ class GraphStorage(JavaProduct):
         self.assertEqual(before,self.canonical(next['revision']))
         rows,_=self.cli('resolve','p.Service');self.assertTrue(rows)
 
+    def test_native_heap_exhaustion_preserves_head_and_restarts_worker(self):
+        source=self.project/'src/p/App.java'
+        original=source.read_text()
+        _,first=self.cli('index','--full',timeout=180)
+        graph=self.canonical(first['revision'])
+        config=self.project/'.code-ana/config.toml'
+        previous=config.read_text()
+        config.write_text(previous+'\n[resources.index]\njava_native_heap_bytes=8388608\n')
+        source.write_text('package p; class App {' + ''.join(
+            'int m%d(){return %d;}'%(i,i) for i in range(5000)) + '}')
+        _,failure=self.cli('index','--full',code=1,timeout=180)
+        self.assertIn('NATIVE_HEAP_EXHAUSTED',failure['message'])
+        self.assertEqual(self.cli('overview')[1]['revision'],first['revision'])
+        config.write_text(previous)
+        source.write_text(original)
+        _,recovered=self.cli('index','--full',timeout=180)
+        self.assertEqual(graph,self.canonical(recovered['revision']))
+        self.assertEqual(graph,self.canonical(first['revision']))
+
+    def test_worker_cancel_crash_and_restart_preserves_graph(self):
+        source=self.project/'src/p/App.java'
+        original=source.read_text()
+        # Existing regression observes real javac children before cancellation/crash.
+        JavaProduct.test_cancel_and_crash_preserve_head(self)
+        before=self.cli('overview')[1]['revision']
+        graph=self.canonical(before)
+        self.assertIsNone(self.java_worker_pid())
+        source.write_text(original)
+        _,recovered=self.cli('index','--full',timeout=180)
+        self.assertIsNotNone(self.java_worker_pid())
+        self.assertEqual(graph,self.canonical(recovered['revision']))
+        self.assertEqual(graph,self.canonical(before))
+        worker=self.java_worker_pid()
+        _,next=self.cli('index','--full',timeout=180)
+        self.assertEqual(worker,self.java_worker_pid())
+        self.assertEqual(graph,self.canonical(next['revision']))
+
 # Explicit suite avoids inheriting the legacy capability matrix.
 def load_tests(loader,tests,pattern):
-    return unittest.TestSuite(GraphStorage(name) for name in (
+    names = [
         'test_graph_full_delta_delete_and_old_revision',
         'test_search_calls_source_and_external_resolution',
         'test_xml_resource_identity_and_incremental_equivalence',
-        'test_unchanged_index_preserves_graph_and_fts'))
+        'test_unchanged_index_preserves_graph_and_fts',
+        'test_worker_cancel_crash_and_restart_preserves_graph']
+    if os.environ.get('CODEANA_JAVA_BACKEND', 'native') == 'native':
+        names.append('test_native_heap_exhaustion_preserves_head_and_restarts_worker')
+    return unittest.TestSuite(GraphStorage(name) for name in names)
 
 if __name__=='__main__': unittest.main()

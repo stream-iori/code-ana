@@ -71,3 +71,30 @@ Rust worker → 有界流 / 校验 End → Rust staging → Anatomist schema 32
 同时移除指向已删除 `fact_replay` 示例的 `just replay-java-facts`。保留仍有门禁、导入或能力验收引用的测试；历史验证记录继续保留。
 
 冻结的 Anatomist `dev/replace-parser` 参考索引进程耗时为 **323.604 秒**，回执全流程为 375.907 秒（包含准备和校验，不能当作索引耗时）。证据：`target/implementation-evidence/iopengw-fresh-reference-01/receipt.json` 的 `execution.seconds`。相对当前 code-ana 231.525 秒，索引耗时减少约 **28.45%**；参考使用 JVM，code-ana 使用 Native，因此属于不同后端的观测比较。两者均使用上述冻结 iopengw 提交。
+
+## G1 生命周期修复与验证
+
+2026-10-13：Oracle GraalVM 25.3.4.1 在 macOS ARM64 成功生成 G1 共享库（57.31 秒）。首次直接执行完整 C ABI suite 时，第二次创建 isolate 触发 `GC doesn't support multiple isolates at the moment.`，首次 teardown 后重建也不支持。
+
+修复采用进程级生命周期：Rust 在调用 GraalVM 前检查 isolate 历史，拒绝同一进程再次创建 G1，返回 `G1_ISOLATE_PROCESS_RESTART_REQUIRED`；销毁不清除历史标记。正常任务复用现有 isolate，取消/致命错误退出 worker，由 supervisor 启动新进程。Serial 多 isolate 能力保留。
+
+| G1 验证 | 结果 |
+|---|---|
+| ABI 生命周期 | 8 项通过：7 项单 isolate 用例各自独立进程，另验证两个进程同时持有满额 session；线程 attach/detach 单独检查 |
+| Rust 重建防护 | 真实 G1 库 teardown 后再次 load 返回 Rust 错误，进程正常退出；集成测试显式执行通过 |
+| 产品图 fixture | dev 5 项、release 6 项通过：完整图、修改/删除增量、旧 revision、FTS/调用/源码、XML、未变化图；取消两次及真实 SIGKILL 后重新索引成功 |
+| G1 真实 OOM | 8 MiB native 堆分析 5,000 个方法，返回 NATIVE_HEAP_EXHAUSTED；保留旧 revision，恢复预算后新 worker 索引成功且图一致 |
+| Serial 回归 | 8 项 ABI 通过，仍验证同进程独立 isolate |
+| Rust 门禁 | `just test-rust` 通过；G1 外部库集成测试另行显式执行，不依赖默认测试提供 GraalVM |
+
+G1 诊断库及回执位于 `target/g1-build-diagnostic`，Serial 安装已归档至其 `serial-installation`。用于产品验证的 `target/lib/java/native` 安装 G1；原 `lang-java-adapotr/target/native` 的 Serial 构建产物保留。未绕过完整 JVM 验收前置门禁，`native_accepted` 和 `performance_accepted` 不因这些回归自动设为 true。
+
+仅新增一轮冻结 iopengw 的 G1 release 索引，未重跑三轮，也不区分 Native 冷热。该轮按相同项目配置使用 2 GiB native heap / 512 MiB javac heap。12 张语义表的逐行 multiset 摘要与既有 expected graph 一致（保留 NULL 和重复、规范化 JSON、排除执行路径 provenance）；6 项固定查询通过，输入 SHA 无漂移，查询未改变图库。
+
+| 指标 | 历史 Serial | 本轮 G1 |
+|---|---:|---:|
+| 索引进程耗时 | 231.525 秒 | 248.904 秒（+7.5%） |
+| 图库 | 606,650,368 字节 | 606,650,368 字节 |
+| 进程树峰值 RSS | 1.56 GiB | 2.55 GiB |
+
+该比较包含测量后 overview、增量继承摘要和本次 worker 防护等版本差异，不能把全部变化归因于 GC。单轮没有显示 G1 的性能收益，构建默认仍为 Serial；当前产品测试安装保留 G1 供继续验证。测量命令使用原 `target/debug/codeana-*` 路径，release 构建 SHA 逐文件绑定；旧 dev 二进制及 Serial 库分别归档，没有改名执行。完整结果见 `target/g1-build-diagnostic/regression-receipt.json` 与 `iopengw-single-01/phase/receipt.json`。

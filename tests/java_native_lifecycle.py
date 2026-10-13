@@ -5,6 +5,8 @@ import json
 import os
 import pathlib
 import struct
+import subprocess
+import sys
 import socket
 import tempfile
 import threading
@@ -14,13 +16,21 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
+def bundle_path():
+    return pathlib.Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE',
+        ROOT / 'lang-java-adapotr/target/native')).resolve()
+
+
+def child_environment():
+    return dict(os.environ, CODEANA_NATIVE_LIFECYCLE_CHILD='1')
+
+
 class NativeLifecycle(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='codeana-native-lifecycle-')
         self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
-        bundle = pathlib.Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE',
-            ROOT / 'lang-java-adapotr/target/native')).resolve()
+        bundle = bundle_path()
         manifest = json.loads((bundle / 'manifest.json').read_text())
         self.assertEqual(manifest['backend'], 'native')
         self.assertEqual(manifest['abi'], 4)
@@ -187,6 +197,15 @@ class NativeLifecycle(unittest.TestCase):
         replacement = self.task()
         self.assertNotIn(replacement, tasks)
         self.assertEqual(self.control('session_close', tasks[0]), -2)
+        # Rendezvous keeps both processes' full session tables alive together.
+        barrier = os.environ.get('CODEANA_NATIVE_LIFECYCLE_BARRIER')
+        if barrier:
+            directory = pathlib.Path(barrier)
+            (directory / ('ready-' + str(os.getpid()))).touch()
+            until = time.monotonic() + 30
+            while not (directory / 'release').exists():
+                self.assertLess(time.monotonic(), until, 'process isolation rendezvous timeout')
+                time.sleep(.01)
 
     def test_input_output_and_start_state_boundaries_reject_invalid_requests(self):
         task = self.task()
@@ -223,7 +242,7 @@ class NativeLifecycle(unittest.TestCase):
         task = self.submit()
         self.assertEqual(self.result(task)[0], 1)
 
-    def test_thread_attach_detach_and_independent_isolates(self):
+    def test_thread_attach_detach(self):
         outcomes = []
         def attached():
             thread = ctypes.c_void_p()
@@ -236,6 +255,7 @@ class NativeLifecycle(unittest.TestCase):
         worker.join(timeout=15)
         self.assertFalse(worker.is_alive())
         self.assertEqual(outcomes, [0, 4, 0])
+    def test_independent_isolates(self):
         _, other = self.create_isolate()
         try:
             self.assertEqual(self.library.codeana_java_abi_version(other), 4)
@@ -248,6 +268,68 @@ class NativeLifecycle(unittest.TestCase):
                 self.close(task)
         finally:
             self.assertEqual(self.library.graal_tear_down_isolate(other), 0)
+
+
+class ProcessLifecycle(unittest.TestCase):
+    """A G1 process must never recreate an isolate, including after teardown."""
+    def __init__(self, native_name):
+        super().__init__('runTest')
+        self.native_name = native_name
+
+    def id(self):
+        return 'G1Process.' + self.native_name
+
+    def shortDescription(self):
+        return self.id()
+
+    def runTest(self):
+        result = subprocess.run([sys.executable, str(pathlib.Path(__file__).resolve()),
+                                 'NativeLifecycle.' + self.native_name],
+                                env=child_environment(), capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+
+class IndependentProcesses(unittest.TestCase):
+    def test_session_capacity_is_process_scoped(self):
+        with tempfile.TemporaryDirectory(prefix='codeana-g1-processes-') as temporary:
+            barrier = pathlib.Path(temporary)
+            env = dict(child_environment(), CODEANA_NATIVE_LIFECYCLE_BARRIER=str(barrier))
+            processes = []
+            try:
+                for _ in range(2):
+                    processes.append(subprocess.Popen(
+                        [sys.executable, str(pathlib.Path(__file__).resolve()),
+                         'NativeLifecycle.test_session_capacity_and_closed_handle_are_explicit'],
+                        env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True))
+                until = time.monotonic() + 30
+                while len(list(barrier.glob('ready-*'))) != 2:
+                    for process in processes:
+                        if process.poll() is not None:
+                            output, error = process.communicate()
+                            self.fail('isolation child exited before rendezvous: ' + output + error)
+                    self.assertLess(time.monotonic(), until, 'process isolation rendezvous timeout')
+                    time.sleep(.01)
+                (barrier / 'release').touch()
+                for process in processes:
+                    output, error = process.communicate(timeout=30)
+                    self.assertEqual(process.returncode, 0, output + error)
+            finally:
+                for process in processes:
+                    if process.poll() is None:
+                        process.kill()
+                    process.communicate()
+
+
+def load_tests(loader, tests, pattern):
+    names = loader.getTestCaseNames(NativeLifecycle)
+    gc = json.loads((bundle_path() / 'manifest.json').read_text()).get('native_gc', 'serial')
+    if gc == 'G1' and os.environ.get('CODEANA_NATIVE_LIFECYCLE_CHILD') != '1':
+        # Preserve common ABI assertions; replace only unsupported in-process isolation.
+        suite = unittest.TestSuite(ProcessLifecycle(name) for name in names
+                                   if name != 'test_independent_isolates')
+        suite.addTests(loader.loadTestsFromTestCase(IndependentProcesses))
+        return suite
+    return loader.loadTestsFromTestCase(NativeLifecycle)
 
 
 if __name__ == '__main__':
