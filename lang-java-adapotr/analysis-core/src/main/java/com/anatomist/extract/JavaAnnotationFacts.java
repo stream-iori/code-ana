@@ -18,6 +18,7 @@ public final class JavaAnnotationFacts {
     private final JavaIdentities identities;
     private final Path project;
     private final JavaBinaryRepository binaries;
+    private final AnnotationMetaCache metaCache = new AnnotationMetaCache();
 
     public JavaAnnotationFacts(JavaModel model, Path project, JavaBinaryRepository binaries) {
         this.model = Objects.requireNonNull(model);
@@ -29,6 +30,7 @@ public final class JavaAnnotationFacts {
     public void extract(Path path, ExtractionResult result) {
         JavaUnit unit = model.unit(path);
         model.source(path);
+        Set<AnnotationMetaCache.Origin> emitted = new HashSet<>();
         for (var reference : model.declarations(path)) {
             JavaDeclaration declaration = model.declaration(reference);
             String kind = declaration.symbol().kind();
@@ -90,7 +92,14 @@ public final class JavaAnnotationFacts {
                 coordinates(fact, path, annotation.span());
                 result.annotations.add(fact);
                 if (status.equals("exact"))
-                    meta(fqn, fact.sourceFile, fact.sourceLocation, new HashSet<>(), 0, result);
+                    meta(
+                            fqn,
+                            fact.sourceFile,
+                            fact.sourceLocation,
+                            new HashSet<>(),
+                            0,
+                            emitted,
+                            result);
             }
         }
     }
@@ -101,8 +110,36 @@ public final class JavaAnnotationFacts {
             String location,
             Set<String> active,
             int depth,
+            Set<AnnotationMetaCache.Origin> emitted,
             ExtractionResult result) {
         if (depth >= 16 || !active.add(name)) return;
+        var definition = definition(name);
+        if (definition.source() != null) {
+            source = definition.source();
+            if (definition.location() != null) location = definition.location();
+        }
+        for (String parent : definition.parents()) {
+            if (emitted.add(new AnnotationMetaCache.Origin(name, parent, source))) {
+                AnnotationMetaRelation relation = new AnnotationMetaRelation();
+                relation.annotationFqn = name;
+                relation.metaAnnotationFqn = parent;
+                relation.rawName = parent;
+                relation.resolutionStatus = "exact";
+                relation.sourceFile = source;
+                relation.sourceLocation = location;
+                relation.producerId = ProducerIds.JAVA_CORE;
+                result.annotationMetaRelations.add(relation);
+            }
+            // An edge seen on a deeper path must not suppress a shallower traversal.
+            meta(parent, source, location, new HashSet<>(active), depth + 1, emitted, result);
+        }
+    }
+
+    private AnnotationMetaCache.Definition definition(String name) {
+        var cached = metaCache.get(name);
+        if (cached != null) return cached;
+        String source = null;
+        String location = null;
         List<String> parents = new ArrayList<>();
         var lookup = model.type(name);
         if (lookup instanceof JavaModel.FoundType found) {
@@ -129,18 +166,9 @@ public final class JavaAnnotationFacts {
                                                                             annotation
                                                                                     .descriptor()))));
         }
-        for (String parent : parents) {
-            AnnotationMetaRelation relation = new AnnotationMetaRelation();
-            relation.annotationFqn = name;
-            relation.metaAnnotationFqn = parent;
-            relation.rawName = parent;
-            relation.resolutionStatus = "exact";
-            relation.sourceFile = source;
-            relation.sourceLocation = location;
-            relation.producerId = ProducerIds.JAVA_CORE;
-            result.annotationMetaRelations.add(relation);
-            meta(parent, source, location, new HashSet<>(active), depth + 1, result);
-        }
+        var definition = new AnnotationMetaCache.Definition(source, location, parents);
+        metaCache.put(name, definition);
+        return definition;
     }
 
     private String name(String descriptor) {

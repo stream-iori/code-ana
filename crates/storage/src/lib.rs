@@ -1,6 +1,7 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
 pub mod derived_cache;
 mod graph_calls;
+mod graph_compact;
 mod graph_query;
 pub mod graph_store;
 mod pages;

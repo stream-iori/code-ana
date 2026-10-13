@@ -17,7 +17,7 @@ INSERT OR IGNORE INTO file_dependencies(source_provider_id, source_file,
             AND a.source_file <> tn.source_file
             UNION
             SELECT DISTINCT am.provider_id, am.source_file, tn.provider_id, tn.source_file
-            FROM annotation_meta_relations am
+            FROM annotation_meta_owned am
             JOIN nodes tn ON tn.provider_id = am.provider_id
                          AND tn.qualified_name = am.meta_annotation_fqn
             WHERE am.source_file IS NOT NULL AND tn.source_file IS NOT NULL

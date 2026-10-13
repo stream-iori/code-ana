@@ -26,6 +26,7 @@ smoke:
 
 # Rust product checks; no JDK required.
 test-rust:
+  python3 scripts/generate-compact-schema.py --check
   cargo fmt --all -- --check
   cargo test --workspace --locked
   cargo build --workspace --locked

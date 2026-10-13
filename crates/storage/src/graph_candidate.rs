@@ -167,6 +167,7 @@ impl Store {
             graph_store::restore_bulk(&db, &structures, &check)?;
         }
         rebuild_dependencies(&db, &check)?;
+        crate::graph_compact::seal(&db, &check)?;
         db.execute(
             "INSERT OR REPLACE INTO project_meta VALUES('codeana.revision',?)",
             [&revision.id],
@@ -208,7 +209,7 @@ impl Store {
             "call_sites",
             "call_site_targets",
             "annotations",
-            "annotation_meta_relations",
+            "annotation_meta_owned",
         ] {
             let count: i64 =
                 db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
@@ -354,10 +355,10 @@ fn replace_affected(db: &Connection, files: &BTreeSet<String>) -> Result<()> {
         db.execute("INSERT INTO graph_replaced VALUES(?)", [file])?;
     }
     // Retain matching hash/ordinal pairs exactly as Anatomist incremental promotion does.
-    db.execute_batch("DELETE FROM edges AS e WHERE (e.source_file IN(SELECT source_file FROM graph_replaced) OR e.producer_id='derived-wiring') AND NOT EXISTS(SELECT 1 FROM staged.stage_edges s WHERE s.relation<>'CALLS' AND s.fact_hash=e.fact_hash AND s.fact_ordinal=e.fact_ordinal);
-      DELETE FROM annotations AS a WHERE a.source_file IN(SELECT source_file FROM graph_replaced) AND NOT EXISTS(SELECT 1 FROM staged.stage_annotations s WHERE s.fact_hash=a.fact_hash AND s.fact_ordinal=a.fact_ordinal);
+    db.execute_batch("DELETE FROM edges WHERE (edges.source_file IN(SELECT source_file FROM graph_replaced) OR edges.producer_id='derived-wiring') AND NOT EXISTS(SELECT 1 FROM staged.stage_edges s WHERE s.relation<>'CALLS' AND s.fact_hash=edges.fact_hash AND s.fact_ordinal=edges.fact_ordinal);
+      DELETE FROM annotations WHERE annotations.source_file IN(SELECT source_file FROM graph_replaced) AND NOT EXISTS(SELECT 1 FROM staged.stage_annotations s WHERE s.fact_hash=annotations.fact_hash AND s.fact_ordinal=annotations.fact_ordinal);
       DELETE FROM semantic_annotations WHERE source_file IN(SELECT source_file FROM graph_replaced);
-      DELETE FROM annotation_meta_relations WHERE source_file IN(SELECT source_file FROM graph_replaced);
+      DELETE FROM annotation_meta_owned WHERE source_file IN(SELECT source_file FROM graph_replaced);
       DELETE FROM nodes WHERE source_file IN(SELECT source_file FROM graph_replaced) AND id NOT IN(SELECT id FROM staged.stage_nodes);
       DELETE FROM file_cache WHERE source_file IN(SELECT source_file FROM graph_replaced);
       DELETE FROM analysis_coverage WHERE source_file IN(SELECT source_file FROM graph_replaced);
@@ -391,7 +392,7 @@ fn seed_baseline(
       SELECT e.source_id,e.target_id,e.external_target_fqn,e.external_target_symbol,e.external_target_language,e.external_target_provider_id,e.relation,e.semantic,e.mechanism,e.language,e.provider_id,e.call_kind,e.confidence,e.resolution,e.context,e.is_external,e.source_file,e.source_location,e.begin_line,e.begin_column,e.end_line,e.end_column,e.source_ordinal,e.syntax_target,e.receiver_static_type,e.metadata,n.module,n.scope,1,1,e.source_id,e.target_id,e.producer_id FROM baseline.edges e JOIN baseline.nodes n ON n.id=e.source_id WHERE e.producer_id<>'derived-wiring' AND e.source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_annotations(node_ref,annotation_fqn,raw_name,attributes,target_kind,target_path,language,provider_id,mechanism,resolution_status,source_file,source_location,begin_line,begin_column,end_line,end_column,source_module,source_scope,node_is_key,resolved_node,producer_id)
       SELECT a.node_id,a.annotation_fqn,a.raw_name,a.attributes,a.target_kind,a.target_path,a.language,a.provider_id,a.mechanism,a.resolution_status,a.source_file,a.source_location,a.begin_line,a.begin_column,a.end_line,a.end_column,n.module,n.scope,1,a.node_id,a.producer_id FROM baseline.annotations a JOIN baseline.nodes n ON n.id=a.node_id WHERE a.source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_annotation_meta(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id) SELECT annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id FROM baseline.annotation_meta_relations WHERE source_file NOT IN(SELECT source_file FROM replaced);
+      INSERT INTO stage_annotation_meta(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id) SELECT annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id FROM baseline.annotation_meta_owned WHERE source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_semantic_annotations(node_ref,category,business_label,business_description,domain_context,source,confidence,source_file,source_module,source_scope,node_is_key,resolved_node,producer_id)
       SELECT a.node_id,a.category,a.business_label,a.business_description,a.domain_context,a.source,a.confidence,a.source_file,n.module,n.scope,1,a.node_id,a.producer_id FROM baseline.semantic_annotations a JOIN baseline.nodes n ON n.id=a.node_id WHERE a.source_file IS NULL OR a.source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_file_cache SELECT provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash FROM baseline.file_cache WHERE source_file NOT IN(SELECT source_file FROM replaced);

@@ -9,9 +9,10 @@ def graph(path,ignore_execution_provenance=False):
     result={}
     with sqlite3.connect('file:'+str(path.resolve())+'?mode=ro',uri=True) as db:
         for table in TABLES:
-            cols=[r[1] for r in db.execute('PRAGMA table_info('+table+')')]
+            logical = 'annotation_meta_owned' if table=='annotation_meta_relations' and db.execute("SELECT 1 FROM sqlite_schema WHERE name='annotation_meta_owned'").fetchone() else table
+            cols=[r[1] for r in db.execute('PRAGMA table_info('+logical+')')]
             cols=[c for c in cols if c not in ('fact_hash','created_at') and not(c=='id' and table!='nodes')]
-            rows=db.execute('SELECT '+','.join(cols)+' FROM '+table+' ORDER BY '+','.join(cols))
+            rows=db.execute('SELECT '+','.join(cols)+' FROM '+logical+' ORDER BY '+','.join(cols))
             digest=hashlib.sha256();count=0;records=[]
             for row in rows:
                 values=[]

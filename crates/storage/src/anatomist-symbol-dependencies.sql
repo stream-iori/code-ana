@@ -19,7 +19,7 @@ SELECT source_provider_id,source_file,target_value,dependency_kind FROM (
                   WHERE annotation.source_file IS NOT NULL
                   UNION
                   SELECT relation.provider_id,relation.source_file,target.id,'annotation-meta'
-                  FROM annotation_meta_relations relation JOIN nodes target
+                  FROM annotation_meta_owned relation JOIN nodes target
                     ON target.provider_id=relation.provider_id
                    AND target.qualified_name=relation.meta_annotation_fqn
                   WHERE relation.source_file IS NOT NULL

@@ -1,6 +1,6 @@
 # 总体架构
 
-2026-10-13：Java 输出 Anatomist 类型化 protobuf rows，经 C ABI 4 共享库或显式 JVM 后端交付。Rust 负责 schema 32 staging、SQLite、索引和查询；不再持久化完整 Fact IR / CAF1。实施与未完成验收见[存储迁移](implementation/anatomist-storage-migration.md)。
+2026-10-13：Java 输出 Anatomist 类型化 protobuf rows，经 C ABI 4 共享库或显式 JVM 后端交付。Rust 暂存使用 schema 33 元注解归属设计，正式图库采用独立的紧凑 storage schema 7：整数节点引用、共享路径/外部目标及有界 metadata 共享。逻辑视图还原字符串字段，公开 ID 与 GRA1 列契约保持一致；不再持久化完整 Fact IR / CAF1。实施与未完成验收见[存储迁移](implementation/anatomist-storage-migration.md)。
 
 > 2026-09-29 实现状态：Java 8 真实 native/javac 已接入；结构化类型、ASM 外部声明与 owner 级冷增量见 [Java 实现说明](java-implementation.md)，证据见 [验收记录](implementation/java-validation.md)。本页更广的框架与规模化设计仍为目标。
 

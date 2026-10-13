@@ -346,7 +346,7 @@ impl ReadContext {
                     format!("\"{}\"*", search.replace('"', "\"\""))
                 };
                 sql.push_str(
-                    " AND n.rowid IN(SELECT rowid FROM node_names WHERE node_names MATCH ?)",
+                    " AND n.id IN(SELECT id FROM graph_nodes WHERE node_pk IN(SELECT rowid FROM node_names WHERE node_names MATCH ?))",
                 );
                 values.push(expression);
             }
@@ -398,7 +398,7 @@ impl ReadContext {
                 signature = text(row, "symbol_id")?;
                 attrs.insert("element_kind".into(), json!(text(row, "kind")?));
                 attrs.insert("upstream_id".into(), json!(signature));
-                attrs.insert("schema_version".into(), json!(32));
+                attrs.insert("schema_version".into(), json!(33));
                 for col in ["modifiers", "declared_modifiers", "implicit_modifiers"] {
                     if let Some(JsonValue::String(s)) = attrs.get(col) {
                         attrs.insert(col.into(), serde_json::from_str(s).unwrap_or(json!([])));

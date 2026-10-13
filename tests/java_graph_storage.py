@@ -3,7 +3,7 @@
 import contextlib, json, os, sqlite3, unittest
 from java_e2e import JavaProduct
 
-TABLES=('nodes','edges','annotations','annotation_meta_relations','semantic_annotations',
+TABLES=('nodes','edges','annotations','annotation_meta_owned','semantic_annotations',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
 class GraphStorage(JavaProduct):
@@ -13,7 +13,7 @@ class GraphStorage(JavaProduct):
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(db.execute('PRAGMA page_size').fetchone()[0],4096)
-            self.assertEqual(db.execute("SELECT value FROM project_meta WHERE key='schema_version'").fetchone()[0],'32')
+            self.assertEqual(db.execute("SELECT value FROM project_meta WHERE key='schema_version'").fetchone()[0],'33')
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='facts'").fetchall())
             graph={}
             for table in TABLES:
@@ -46,6 +46,14 @@ class GraphStorage(JavaProduct):
         _,full=self.cli('index','--full',timeout=180)
         self.assertEqual(removed,self.canonical(full['revision']))
         self.assertFalse(any(r[12]=='src/p/Extra.java' for r in removed['nodes']))
+        # The legacy-version guard must reject reads while allowing an explicit
+        # full rebuild to replace the head without trying to read its graph.
+        with contextlib.closing(sqlite3.connect(self.home/'revisions'/full['revision']/'facts.db')) as db:
+            db.execute('PRAGMA user_version=6');db.commit()
+        _,rejected=self.cli('overview','--revision',full['revision'],code=1)
+        self.assertIn('GRAPH_SCHEMA_REBUILD_REQUIRED',rejected['message'])
+        _,rebuilt=self.cli('index','--full',timeout=180)
+        self.assertEqual(removed,self.canonical(rebuilt['revision']))
 
     def test_search_calls_source_and_external_resolution(self):
         _,publication=self.cli('index','--full',timeout=180)
@@ -56,6 +64,7 @@ class GraphStorage(JavaProduct):
         external,_=self.cli('resolve','java.lang.String#trim()');self.assertTrue(external)
         self.assertEqual(external[0]['kind'],'external_symbol')
         found,_=self.cli('resolve','p.Service');self.assertTrue(found)
+        searched,_=self.cli('search-code','Service');self.assertTrue(searched)
         with contextlib.closing(sqlite3.connect(self.home/'revisions'/publication['revision']/'facts.db')) as db:
             self.assertTrue(db.execute("SELECT rowid FROM node_names WHERE node_names MATCH ?",('\"Service\"*',)).fetchall())
 

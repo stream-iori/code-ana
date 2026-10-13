@@ -1,6 +1,8 @@
 # 公共契约：事实、身份与协议
 
-> 2026-10-13 当前存储/传输契约：graph model 2、worker 18、request/result 9、C ABI 4、daemon 3；图库 user_version 6、Anatomist schema 32。下文旧 Fact IR / CAF1 的归档和协议版本属于历史实现，已由 [GRA1 协议](implementation/anatomist-storage-migration.md)替代。查询实体仍可用 Fact 形状表达，但不持久化完整实体 JSON。旧库明确要求 `index --full`，没有双写或旧格式回退。
+> 2026-10-13 当前存储/传输契约：graph model 2、worker 18、request/result 9、C ABI 4、daemon 3；图库 user_version 7、上游逻辑 schema 33、GraphSemantics 26、adapter `anatomist-4a903272-codeana-graph2`。下文旧 Fact IR / CAF1 的归档和协议版本属于历史实现，已由 [GRA1 协议](implementation/anatomist-storage-migration.md)替代。查询实体仍可用 Fact 形状表达，但不持久化完整实体 JSON。旧库明确要求 `index --full`，没有双写或旧格式回退。
+
+紧凑图库的整数节点/文件/外部目标主键只属于当前数据库。公开稳定 ID、事实 hash 和调用点 hash 仍按原逻辑字段计算；增量保留未变节点主键，发布重新映射暂存主键。全局路径 NULL 与空字符串分开，边路径不能从源节点推导。元注解定义与归属分开，保留首次位置、各归属状态与既有无文件身份规则。metadata 仅对 UTF-8 至少 256 字节且出现至少两次的原始相同文本共享；SHA-256 是查找提示，完整内容才是身份，禁止 JSON 重排或碰撞合并。查询只读逻辑投影，内部主键不进入实体输出。
 
 
 > 当前 Java 迁移以 [迁移记录](java-anatomist-migration.md) 为准；以下带日期的旧模型和协议变更保留作历史记录。

@@ -13,8 +13,8 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 6;
-pub const SOURCE_SCHEMA_VERSION: i64 = 32;
+pub const SCHEMA_VERSION: i64 = 7;
+pub const SOURCE_SCHEMA_VERSION: i64 = 33;
 pub const PAGE_SIZE: i64 = 4096;
 
 pub fn initialize(db: &Connection) -> Result<()> {
@@ -25,7 +25,7 @@ pub fn initialize(db: &Connection) -> Result<()> {
     );
     if version == 0 {
         db.pragma_update(None, "page_size", PAGE_SIZE)?;
-        db.execute_batch(include_str!("anatomist-schema.sql"))?;
+        db.execute_batch(include_str!("compact-schema.sql"))?;
         db.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     }
     db.execute(
@@ -37,7 +37,7 @@ pub fn initialize(db: &Connection) -> Result<()> {
 
 /// Match StagedGraphStore's bulk index/FTS suspension. Unique constraints remain active.
 pub fn suspend_bulk(db: &Connection) -> Result<Vec<String>> {
-    let mut query=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND ((type='index' AND tbl_name IN ('nodes','edges','annotations','annotation_meta_relations','semantic_annotations') AND upper(ltrim(sql)) NOT LIKE 'CREATE UNIQUE INDEX%') OR (type='trigger' AND tbl_name='nodes' AND name IN ('nodes_ai','nodes_ad','nodes_au'))) ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END,name")?;
+    let mut query=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND ((type='index' AND tbl_name IN ('graph_nodes','graph_edges','graph_annotations','annotation_meta_relations','graph_semantic_annotations') AND upper(ltrim(sql)) NOT LIKE 'CREATE UNIQUE INDEX%') OR (type='trigger' AND tbl_name='graph_nodes' AND name IN ('nodes_ai','nodes_ad','nodes_au'))) ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END,name")?;
     let structures = query
         .query_map([], |r| {
             Ok((
@@ -296,11 +296,11 @@ pub fn prepare_identities(db: &Connection, check: &dyn Fn() -> Result<()>) -> Re
 
 pub fn promote(db: &Connection) -> Result<()> {
     db.execute_batch(include_str!("anatomist-promote.sql"))?;
-    db.execute_batch("INSERT OR REPLACE INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash) SELECT * FROM staged.stage_file_cache;
+    db.execute_batch("INSERT INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash) SELECT * FROM staged.stage_file_cache;
       INSERT OR IGNORE INTO file_dependencies SELECT * FROM staged.stage_file_dependencies;
       INSERT OR IGNORE INTO symbol_dependencies SELECT * FROM staged.stage_symbol_dependencies;
       INSERT INTO index_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample) SELECT * FROM staged.stage_diagnostics;
-      INSERT OR REPLACE INTO analysis_coverage SELECT * FROM staged.stage_coverage;
+      INSERT INTO analysis_coverage SELECT * FROM staged.stage_coverage;
       INSERT OR REPLACE INTO index_providers SELECT * FROM staged.stage_providers;
       INSERT OR REPLACE INTO project_meta SELECT * FROM staged.stage_meta;")?;
     Ok(())
@@ -315,7 +315,7 @@ mod tests {
         initialize(&db)?;
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-            6
+            7
         );
         assert_eq!(
             db.query_row(

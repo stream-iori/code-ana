@@ -78,7 +78,7 @@ def main():
         row.update(revision=terminal[0]['revision'], terminal=terminal[0], records=records)
         database = args.home / 'revisions' / row['revision'] / 'facts.db'
         start = time.monotonic()
-        if expected.get('graph_encoding')=='anatomist-schema32':
+        if expected.get('graph_encoding') in ('anatomist-schema32','anatomist-logical-rows'):
             spec=importlib.util.spec_from_file_location('graph_storage',ROOT/'scripts/java-graph-storage-acceptance.py')
             graph_storage=importlib.util.module_from_spec(spec);spec.loader.exec_module(graph_storage)
             row['graph']=graph_storage.graph(database,ignore_execution_provenance=True)

@@ -16,7 +16,7 @@ import java.util.*;
 
 /** Task lifetime at the native boundary. All semantics belong to the migrated core. */
 public final class AnalysisSession implements AutoCloseable {
-    public static final String IDENTITY = "anatomist-dff2e395-codeana-graph1";
+    public static final String IDENTITY = "anatomist-4a903272-codeana-graph2";
     private final Map<String, Object> request;
     private final AnalysisLimits limits;
     private final Path taskRoot;

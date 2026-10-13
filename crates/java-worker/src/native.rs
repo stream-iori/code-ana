@@ -298,9 +298,9 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
             && manifest["analysis_request"] == 9
             && manifest["compiler_protocol"] == 2
             && manifest["compiler_batch_protocol"] == 2
-            && manifest["adapter"] == "anatomist-dff2e395-codeana-graph1"
+            && manifest["adapter"] == "anatomist-4a903272-codeana-graph2"
             && manifest["java_model"] == "javac-model-v50"
-            && manifest["graph_schema"] == 32
+            && manifest["graph_schema"] == 33
             && manifest["graph_encoding"] == "GRA1-protobuf-row-v1",
         "BUNDLE_VERSION_MISMATCH"
     );

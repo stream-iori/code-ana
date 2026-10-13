@@ -64,7 +64,7 @@ public final class AnatomistRows {
     public void unit(com.anatomist.extract.JavaModelExtractor.UnitFacts unit) {
         var source=project.source(unit.source());
         for(var diagnostic:unit.diagnostics()) diagnostic(diagnostic);
-        row(GraphRecords.Table.FILE_CACHE,"java-core",source.path(),source.hash(),32,
+        row(GraphRecords.Table.FILE_CACHE,"java-core",source.path(),source.hash(),33,
             unit.facts().nodes.size(),unit.facts().edges.size(),java.nio.file.Path.of(source.file().toString()).toFile().length(),unit.contractHash());
         batch.addFacts(unit.facts());
         if(++files>=32 || batch.factCount()>=10000) flush();

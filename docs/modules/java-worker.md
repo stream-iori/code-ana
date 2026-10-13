@@ -222,4 +222,6 @@ ABI 2 bundle 明确拒绝混装。完整约束见 [契约](../contracts.md)。
 
 Native 构建、bundle manifest 和默认性能变体统一选择 G1；显式 Serial 仍受支持。Java heap 默认仍是 256 MiB，worker RSS 预算保持显式限制。`python3 scripts/install-java-native.py` 校验构建产物和 worker 协议、拒绝活跃进程期间替换、归档旧库并原子安装至原 Cargo 路径。
 
+当前 adapter 为 `anatomist-4a903272-codeana-graph2`，上游逻辑 schema 33、GraphSemantics 26、Rust storage schema 7。Java 只交付原 GRA1 逻辑列，数据库整数主键与字典由 Rust 管理；元注解直接父定义缓存受上下文和 1,024 项/1 MiB 限制。完整紧凑存储、增量与单轮结果见[存储迁移](../implementation/anatomist-storage-migration.md)。
+
 常用 Native 回归入口改跑当前 GRA1/Anatomist 图测试，`test-java-native-product` 的回执组为 `graph`，与历史 raw model/AST 迁移门禁独立。打包保留 graph schema/encoding、GC 和开发构建标记，不再读取已退役的 Fact IR 字段。包内字节可通过 `tests/java_release.py --bin-root /original/binary/directory` 在原执行路径验证，要求全部二进制和 SDK 与包逐字节一致；`--stage-release` 可归档/临时原子安装 release 二进制，结束后恢复，且拒绝活跃进程；回执区分该方式与直接启动包内路径。

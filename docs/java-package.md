@@ -2,6 +2,8 @@
 
 Native 默认采用 G1，worker 进程内复用一个 isolate；显式 `CODEANA_NATIVE_GC=serial` 可构建 Serial。
 
+当前 bundle 为逻辑 schema 33 / adapter `anatomist-4a903272-codeana-graph2`，图库采用紧凑 storage schema 7。旧 schema 6 查询及增量明确要求 `index --full`；保留旧文件，成功全量发布后才切换 head，不进行原地迁移。GRA1 protobuf 行、ABI 4 和 worker 18 保持不变，旧 adapter bundle 拒绝混装。
+
 包内包含 CLI、daemon、Rust worker、GraalVM 共享库、Java 8 编译器桥和 C header。目标 JDK 由本机 SDKMAN 提供，不随包分发。
 
 开发验收可用 `scripts/package-java.sh --from-build --output /new/package/path` 从已冻结产物打包，先检查 native/SDK8 桥 SHA，不重新编译；指定输出目录必须尚不存在。`python3 tests/java_release.py` 检查完整包校验清单，并从包内 bin/lib 执行真实 CLI、daemon、Java worker 的类型化图、增量/删除、XML、取消/崩溃/OOM 恢复及错误 JDK 用例。该门禁不替代全部能力差分和独占容量验收。

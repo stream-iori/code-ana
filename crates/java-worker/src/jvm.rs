@@ -16,7 +16,7 @@ pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
             && manifest["analysis_request"] == 9
             && manifest["worker_protocol"] == codeana_model::WORKER_PROTOCOL_VERSION
             && manifest["fact_ir"] == codeana_model::VERSION
-            && manifest["adapter"] == "anatomist-dff2e395-codeana-graph1"
+            && manifest["adapter"] == "anatomist-4a903272-codeana-graph2"
             && manifest["compiler_batch_protocol"] == 2
             && manifest["java_model"] == "javac-model-v50"
             && manifest["target_java"] == serde_json::json!([8]),
