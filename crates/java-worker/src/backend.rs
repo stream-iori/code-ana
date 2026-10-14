@@ -91,7 +91,7 @@ impl ProductEngine {
             ),
         }
     }
-    pub async fn ready(&mut self) -> Result<i32> {
+    pub async fn ready(&mut self) -> Result<crate::state::RunState> {
         match self {
             Self::Native(n) => n.ready().await,
             Self::Jvm(j) => loop {
@@ -101,7 +101,7 @@ impl ProductEngine {
                     false,
                     || j.poll(),
                 )?;
-                if state != 0 {
+                if state != crate::state::RunState::Running {
                     break Ok(state);
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(20)).await;
@@ -160,7 +160,7 @@ impl Engine {
             Self::Jvm(x) => x.start(bytes),
         }
     }
-    pub fn poll(&self) -> Result<i32> {
+    pub fn poll(&self) -> Result<crate::state::RunState> {
         match self {
             Self::Native(x) => x.poll(),
             Self::Jvm(x) => x.poll(),

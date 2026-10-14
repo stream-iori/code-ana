@@ -86,24 +86,30 @@ impl DerivedCacheSession {
                 && limits.pin_bytes <= 128 << 20
                 && limits.entry_bytes > 0
                 && limits.entry_bytes <= 192 << 20,
-            "DERIVED_CACHE_LIMITS"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheLimits, "")
         );
         let namespaces: BTreeSet<_> = namespaces.iter().map(|s| (*s).to_owned()).collect();
         ensure!(
             !namespaces.is_empty()
                 && namespaces.len() <= 16
                 && namespaces.iter().all(|s| namespace(s)),
-            "DERIVED_CACHE_NAMESPACE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheNamespace, "")
         );
-        let parent = root.parent().context("DERIVED_CACHE_PARENT")?;
+        let parent = root.parent().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::DerivedCacheParent,
+            "",
+        ))?;
         fs::create_dir_all(parent)?;
         // The caller selects the parent. The actual store and every artifact must be link-free.
-        let root = parent
-            .canonicalize()?
-            .join(root.file_name().context("DERIVED_CACHE_ROOT")?);
+        let root = parent.canonicalize()?.join(root.file_name().context(
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheRoot, ""),
+        )?);
         no_link(&root)?;
         fs::create_dir_all(&root)?;
-        ensure!(root.is_dir(), "DERIVED_CACHE_ROOT");
+        ensure!(
+            root.is_dir(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheRoot, "")
+        );
         let task = tempfile::Builder::new()
             .prefix("derived-cache-")
             .tempdir_in(scratch.canonicalize()?)?;
@@ -149,7 +155,10 @@ impl DerivedCacheSession {
         Ok(session)
     }
     pub fn namespace_path(&self, name: &str) -> Result<PathBuf> {
-        ensure!(self.namespaces.contains(name), "DERIVED_CACHE_NAMESPACE");
+        ensure!(
+            self.namespaces.contains(name),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheNamespace, "")
+        );
         Ok(self.task.path().join(name))
     }
     pub fn stats(&self) -> &DerivedCacheStats {
@@ -168,20 +177,28 @@ impl DerivedCacheSession {
             let mut children: Vec<_> = fs::read_dir(&source)?.collect::<std::io::Result<_>>()?;
             children.sort_by_key(|e| e.file_name());
             for child in children {
-                let key = child
-                    .file_name()
-                    .into_string()
-                    .map_err(|_| anyhow::anyhow!("DERIVED_CACHE_KEY"))?;
+                let key = child.file_name().into_string().map_err(|_| {
+                    anyhow::anyhow!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheKey,
+                        ""
+                    ))
+                })?;
                 // Producer-owned unfinished entries are not publishable artifacts.
                 if key.starts_with('.') {
                     continue;
                 }
-                ensure!(valid_key(&key), "DERIVED_CACHE_KEY");
+                ensure!(
+                    valid_key(&key),
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheKey, "")
+                );
                 let record = inventory(&child.path(), &ns, &key, self.limits.entry_bytes)?;
                 let encoded = serde_json::to_vec(&record)?;
                 ensure!(
                     encoded.len() as u64 <= MAX_MANIFEST,
-                    "DERIVED_CACHE_MANIFEST_BUDGET"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheManifestBudget,
+                        ""
+                    )
                 );
                 let incoming =
                     record.files.values().map(|f| f.bytes).sum::<u64>() + encoded.len() as u64;
@@ -210,7 +227,10 @@ impl DerivedCacheSession {
                 }
                 ensure!(
                     incoming <= self.limits.disk_bytes - bytes,
-                    "DERIVED_CACHE_DISK_BUDGET"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheDiskBudget,
+                        ""
+                    )
                 );
                 let parent = self.root.join(&ns);
                 no_link(&parent)?;
@@ -261,7 +281,10 @@ impl DerivedCacheSession {
                 Err(fs::TryLockError::WouldBlock) if Instant::now() < end => {
                     std::thread::sleep(Duration::from_millis(10))
                 }
-                Err(fs::TryLockError::WouldBlock) => bail!("DERIVED_CACHE_LOCK_TIMEOUT"),
+                Err(fs::TryLockError::WouldBlock) => bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DerivedCacheLockTimeout,
+                    ""
+                )),
                 Err(fs::TryLockError::Error(error)) => return Err(error.into()),
             }
         }
@@ -274,28 +297,51 @@ impl DerivedCacheSession {
             if name == ".lock" {
                 continue;
             }
-            let name = name
-                .into_string()
-                .map_err(|_| anyhow::anyhow!("DERIVED_CACHE_NAMESPACE"))?;
-            ensure!(namespace(&name), "DERIVED_CACHE_NAMESPACE");
+            let name = name.into_string().map_err(|_| {
+                anyhow::anyhow!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DerivedCacheNamespace,
+                    ""
+                ))
+            })?;
+            ensure!(
+                namespace(&name),
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DerivedCacheNamespace,
+                    ""
+                )
+            );
             no_link(&group.path())?;
-            ensure!(group.file_type()?.is_dir(), "DERIVED_CACHE_LAYOUT");
+            ensure!(
+                group.file_type()?.is_dir(),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheLayout, "")
+            );
             for row in fs::read_dir(group.path())? {
                 let row = row?;
                 no_link(&row.path())?;
-                let key = row
-                    .file_name()
-                    .into_string()
-                    .map_err(|_| anyhow::anyhow!("DERIVED_CACHE_KEY"))?;
+                let key = row.file_name().into_string().map_err(|_| {
+                    anyhow::anyhow!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheKey,
+                        ""
+                    ))
+                })?;
                 if key.starts_with(".incoming-") {
                     fs::remove_dir_all(row.path())?;
                     continue;
                 }
                 ensure!(
                     valid_key(&key) && row.file_type()?.is_dir(),
-                    "DERIVED_CACHE_LAYOUT"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheLayout,
+                        ""
+                    )
                 );
-                ensure!(result.len() < MAX_ENTRIES, "DERIVED_CACHE_ENTRY_BUDGET");
+                ensure!(
+                    result.len() < MAX_ENTRIES,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheEntryBudget,
+                        ""
+                    )
+                );
                 // Corrupt contents cannot be pinned. A link is an error, not a deletion target.
                 reject_tree_links(&row.path(), 0, &mut 0)?;
                 match read_entry(&row.path(), &name, &key, self.limits.entry_bytes) {
@@ -341,7 +387,10 @@ fn valid_key(value: &str) -> bool {
 }
 fn no_link(path: &Path) -> Result<()> {
     match fs::symlink_metadata(path) {
-        Ok(meta) => ensure!(!meta.file_type().is_symlink(), "DERIVED_CACHE_SYMLINK"),
+        Ok(meta) => ensure!(
+            !meta.file_type().is_symlink(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheSymlink, "")
+        ),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
@@ -349,14 +398,26 @@ fn no_link(path: &Path) -> Result<()> {
 }
 fn reject_tree_links(path: &Path, depth: usize, total: &mut usize) -> Result<()> {
     *total += 1;
-    ensure!(*total <= 256, "DERIVED_CACHE_FILE_COUNT");
-    ensure!(depth <= 8, "DERIVED_CACHE_DEPTH");
+    ensure!(
+        *total <= 256,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheFileCount, "")
+    );
+    ensure!(
+        depth <= 8,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheDepth, "")
+    );
     no_link(path)?;
     if fs::symlink_metadata(path)?.is_dir() {
         let mut count = 0;
         for entry in fs::read_dir(path)? {
             count += 1;
-            ensure!(count <= 64, "DERIVED_CACHE_FILE_COUNT");
+            ensure!(
+                count <= 64,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DerivedCacheFileCount,
+                    ""
+                )
+            );
             reject_tree_links(&entry?.path(), depth + 1, total)?;
         }
     }
@@ -365,10 +426,13 @@ fn reject_tree_links(path: &Path, depth: usize, total: &mut usize) -> Result<()>
 fn digest(path: &Path) -> Result<(u64, String)> {
     ensure!(
         fs::symlink_metadata(path)?.len() <= 192 << 20,
-        "DERIVED_CACHE_ENTRY_BYTES"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheEntryBytes, "")
     );
     no_link(path)?;
-    ensure!(fs::symlink_metadata(path)?.is_file(), "DERIVED_CACHE_FILE");
+    ensure!(
+        fs::symlink_metadata(path)?.is_file(),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheFile, "")
+    );
     let mut file = File::open(path)?;
     let mut hash = Sha256::new();
     let mut bytes = 0_u64;
@@ -380,15 +444,24 @@ fn digest(path: &Path) -> Result<(u64, String)> {
         }
         bytes = bytes
             .checked_add(read as u64)
-            .context("DERIVED_CACHE_BYTES")?;
-        ensure!(bytes <= 192 << 20, "DERIVED_CACHE_ENTRY_BYTES");
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DerivedCacheBytes,
+                "",
+            ))?;
+        ensure!(
+            bytes <= 192 << 20,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheEntryBytes, "")
+        );
         hash.update(&buffer[..read]);
     }
     Ok((bytes, format!("{:x}", hash.finalize())))
 }
 fn inventory(path: &Path, ns: &str, key: &str, budget: u64) -> Result<Receipt> {
     no_link(path)?;
-    ensure!(fs::symlink_metadata(path)?.is_dir(), "DERIVED_CACHE_LAYOUT");
+    ensure!(
+        fs::symlink_metadata(path)?.is_dir(),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheLayout, "")
+    );
     reject_tree_links(path, 0, &mut 0)?;
     let mut files = BTreeMap::new();
     let mut bytes = 0;
@@ -400,28 +473,57 @@ fn inventory(path: &Path, ns: &str, key: &str, budget: u64) -> Result<Receipt> {
         budget: u64,
         depth: usize,
     ) -> Result<()> {
-        ensure!(depth <= 8, "DERIVED_CACHE_DEPTH");
+        ensure!(
+            depth <= 8,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheDepth, "")
+        );
         for entry in fs::read_dir(path)? {
             let entry = entry?;
             no_link(&entry.path())?;
             if entry.file_type()?.is_dir() {
                 visit(root, &entry.path(), files, bytes, budget, depth + 1)?;
             } else {
-                ensure!(files.len() < MAX_FILES, "DERIVED_CACHE_FILE_COUNT");
+                ensure!(
+                    files.len() < MAX_FILES,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheFileCount,
+                        ""
+                    )
+                );
                 ensure!(
                     fs::symlink_metadata(entry.path())?.len() <= budget - *bytes,
-                    "DERIVED_CACHE_ENTRY_BYTES"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheEntryBytes,
+                        ""
+                    )
                 );
                 let (size, sha256) = digest(&entry.path())?;
-                *bytes = bytes.checked_add(size).context("DERIVED_CACHE_BYTES")?;
-                ensure!(*bytes <= budget, "DERIVED_CACHE_ENTRY_BYTES");
+                *bytes = bytes
+                    .checked_add(size)
+                    .context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheBytes,
+                        "",
+                    ))?;
+                ensure!(
+                    *bytes <= budget,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCacheEntryBytes,
+                        ""
+                    )
+                );
                 let name = entry
                     .path()
                     .strip_prefix(root)?
                     .to_str()
-                    .context("DERIVED_CACHE_PATH")?
+                    .context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DerivedCachePath,
+                        "",
+                    ))?
                     .to_owned();
-                ensure!(relative(&name), "DERIVED_CACHE_PATH");
+                ensure!(
+                    relative(&name),
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCachePath, "")
+                );
                 files.insert(
                     name,
                     ArtifactFile {
@@ -434,7 +536,10 @@ fn inventory(path: &Path, ns: &str, key: &str, budget: u64) -> Result<Receipt> {
         Ok(())
     }
     visit(path, path, &mut files, &mut bytes, budget, 0)?;
-    ensure!(!files.is_empty(), "DERIVED_CACHE_EMPTY");
+    ensure!(
+        !files.is_empty(),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheEmpty, "")
+    );
     Ok(Receipt {
         version: FORMAT,
         namespace: ns.to_owned(),
@@ -458,20 +563,23 @@ fn read_entry(path: &Path, ns: &str, key: &str, budget: u64) -> Result<Entry> {
             && children
                 .iter()
                 .all(|c| { c.file_name() == "receipt.json" || c.file_name() == "payload" }),
-        "DERIVED_CACHE_LAYOUT"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheLayout, "")
     );
     let manifest = path.join("receipt.json");
     no_link(&manifest)?;
     let size = fs::metadata(&manifest)?.len();
-    ensure!(size <= MAX_MANIFEST, "DERIVED_CACHE_MANIFEST_BUDGET");
+    ensure!(
+        size <= MAX_MANIFEST,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheManifestBudget, "")
+    );
     let receipt: Receipt = serde_json::from_slice(&fs::read(&manifest)?)?;
     ensure!(
         receipt.version == FORMAT && receipt.namespace == ns && receipt.key == key,
-        "DERIVED_CACHE_IDENTITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheIdentity, "")
     );
     ensure!(
         receipt == inventory(&path.join("payload"), ns, key, budget)?,
-        "DERIVED_CACHE_CHECKSUM"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheChecksum, "")
     );
     let bytes = receipt.files.values().map(|f| f.bytes).sum::<u64>() + size;
     Ok(Entry {
@@ -483,15 +591,21 @@ fn read_entry(path: &Path, ns: &str, key: &str, budget: u64) -> Result<Entry> {
 }
 fn copy_payload(source: &Path, target: &Path, receipt: &Receipt) -> Result<()> {
     for (name, record) in &receipt.files {
-        ensure!(relative(name), "DERIVED_CACHE_PATH");
+        ensure!(
+            relative(name),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCachePath, "")
+        );
         let input = source.join(name);
         let output = target.join(name);
         no_link(&input)?;
-        fs::create_dir_all(output.parent().context("DERIVED_CACHE_PATH")?)?;
+        fs::create_dir_all(output.parent().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::DerivedCachePath,
+            "",
+        ))?)?;
         fs::copy(&input, &output)?;
         ensure!(
             digest(&output)? == (record.bytes, record.sha256.clone()),
-            "DERIVED_CACHE_CHECKSUM"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DerivedCacheChecksum, "")
         );
         File::open(output)?.sync_all()?;
     }

@@ -45,7 +45,13 @@ impl Store {
             for (index, source) in manifest.files.iter().enumerate() {
                 check()?;
                 let bytes = read_source(source)?;
-                ensure!(hash(&bytes) == source.hash, "SOURCE_HASH_MISMATCH");
+                ensure!(
+                    hash(&bytes) == source.hash,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::SourceHashMismatch,
+                        ""
+                    )
+                );
                 let text = std::str::from_utf8(&bytes);
                 let id = index as i64 + 1;
                 transaction.execute(
@@ -67,7 +73,10 @@ impl Store {
         check()?;
         let db = Connection::open_with_flags(&path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?;
         let identity: String = db.query_row("SELECT manifest FROM identity", [], |r| r.get(0))?;
-        ensure!(identity == key, "TEXT_CACHE_IDENTITY");
+        ensure!(
+            identity == key,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::TextCacheIdentity, "")
+        );
         let phrase = format!("\"{}\"", pattern.replace('"', "\"\""));
         let mut query = db.prepare("SELECT world,path FROM sources WHERE invalid=1 OR id IN (SELECT rowid FROM text_fts WHERE text_fts MATCH ?) ORDER BY id")?;
         let rows = query.query_map([phrase], |r| Ok((r.get(0)?, r.get(1)?)))?;
@@ -169,7 +178,7 @@ mod tests {
         assert_eq!(
             store
                 .text_candidates(&manifest, "alphabet", &source, &|| anyhow::bail!(
-                    "CANCELLED"
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
                 ))
                 .unwrap_err()
                 .to_string(),

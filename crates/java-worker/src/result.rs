@@ -1,5 +1,6 @@
 //! Consume sealed Anatomist protobuf rows; no Fact IR conversion or global dedup database.
 use anyhow::{Context, Result, ensure};
+use codeana_contracts::graph_archive::Descriptor;
 #[cfg(test)]
 use codeana_contracts::graph_archive::GraphArchive;
 use codeana_contracts::{
@@ -8,27 +9,15 @@ use codeana_contracts::{
     java::OutputLimits,
 };
 use codeana_model::{Manifest, Owner};
-use serde::{
-    Deserialize,
-    de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor},
-};
+use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 use std::{
     fmt,
     io::{BufReader, Read},
     os::unix::fs::OpenOptionsExt,
-    path::{Path, PathBuf},
+    path::Path,
 };
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Descriptor {
-    format: String,
-    path: PathBuf,
-    count: u64,
-    bytes: u64,
-    sha256: String,
-}
 struct Envelope {
     mode: String,
     replacements: Vec<Owner>,
@@ -119,12 +108,12 @@ fn load_into(
     let d = envelope.archive;
     ensure!(
         d.format == "GRA1" && d.count <= limits.facts && d.bytes >= 4 && d.bytes <= limits.bytes,
-        "NATIVE_ARCHIVE_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveBudget, "")
     );
     let root = root.canonicalize()?;
     ensure!(
         d.path.is_absolute() && d.path.canonicalize()?.starts_with(&root),
-        "NATIVE_ARCHIVE_PATH"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchivePath, "")
     );
     let file = std::fs::OpenOptions::new()
         .read(true)
@@ -132,12 +121,15 @@ fn load_into(
         .open(&d.path)?;
     ensure!(
         file.metadata()?.is_file() && file.metadata()?.len() == d.bytes,
-        "NATIVE_ARCHIVE_SIZE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveSize, "")
     );
     let mut reader = BufReader::new(file);
     let mut magic = [0; 4];
     reader.read_exact(&mut magic)?;
-    ensure!(magic == graph_archive::MAGIC, "GRAPH_ARCHIVE_FORMAT");
+    ensure!(
+        magic == graph_archive::MAGIC,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveFormat, "")
+    );
     let mut digest = Sha256::new();
     digest.update(magic);
     begin(&envelope.mode, &envelope.replacements)?;
@@ -145,20 +137,27 @@ fn load_into(
         if position % 256 == 0 {
             check()?;
         }
-        let row = graph_archive::read_row(&mut reader, &mut digest)?
-            .context("GRAPH_ARCHIVE_TRUNCATED")?;
+        let row = graph_archive::read_row(&mut reader, &mut digest)?.context(
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveTruncated, ""),
+        )?;
         emit(row)?;
     }
     let mut trailing = [0; 1];
-    ensure!(reader.read(&mut trailing)? == 0, "NATIVE_ARCHIVE_EOF");
+    ensure!(
+        reader.read(&mut trailing)? == 0,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveEof, "")
+    );
     ensure!(
         format!("{:x}", digest.finalize()) == d.sha256,
-        "NATIVE_ARCHIVE_IDENTITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveIdentity, "")
     );
     check()?;
     drop(reader);
     if consume {
-        std::fs::remove_file(d.path).context("NATIVE_ARCHIVE_RELEASE")?;
+        std::fs::remove_file(d.path).context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::NativeArchiveRelease,
+            "",
+        ))?;
     }
     Ok((envelope.mode, envelope.replacements))
 }

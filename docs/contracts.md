@@ -1,6 +1,6 @@
 # 公共契约：身份、图记录与协议
 
-现行契约对齐 2026-10-13。版本总表见 [当前实现](current-state.md)；过期 Fact IR / CAF1 契约已删除。
+现行契约对齐 2026-10-14。版本总表见 [当前实现](current-state.md)；过期 Fact IR / CAF1 契约已删除。
 
 ## 1. 身份与版本
 
@@ -17,6 +17,8 @@
 当前 graph model 2、worker 18、analysis request/result 9、C ABI 4、daemon handshake 3；javac-model-v50、compiler batch 2。图库物理 user_version 7，上游逻辑 schema 33、GraphSemantics 26，adapter `anatomist-4a903272-codeana-graph2`。catalog/annotations 均为 2，彼此独立。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
+
+内部 Rust 状态、操作、端点和错误码使用枚举，protobuf 与 JSON 边界显式映射；这些类型不改变线上字段拼写。新冻结记录包含内部类型标签，文本 renderer 保持原公共形状；旧记录只作为呈现数据读取。未知 producer 扩展透传，稳定语义字段类型错误明确拒绝。见 [Rust 改造](implementation/rust-type-refactor.md)。
 
 ## 2. GRA1 图记录
 

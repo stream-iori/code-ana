@@ -1,4 +1,22 @@
 //! Storage- and transport-independent analysis facts and product contracts.
+mod commands;
+pub use commands::*;
+mod identity;
+pub use identity::*;
+mod operations;
+pub use operations::*;
+mod baseline;
+pub use baseline::*;
+mod attributes;
+pub use attributes::*;
+mod reader;
+pub use reader::*;
+mod records;
+pub use records::*;
+mod choices;
+mod error;
+pub use choices::*;
+pub use error::{DomainError, ErrorCode};
 pub mod java_type_graph;
 mod java_xml_configuration;
 
@@ -138,7 +156,7 @@ pub struct Fact {
     #[serde(default)]
     pub declaration_resolved: bool,
     #[serde(default)]
-    pub attributes: BTreeMap<String, serde_json::Value>,
+    pub attributes: FactAttributes,
 }
 impl Fact {
     /// Public configuration nodes are entities even though their authoritative
@@ -221,7 +239,7 @@ pub struct BuildAdvice {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnalysisResult {
-    pub mode: String,
+    pub mode: AnalysisMode,
     pub baseline: String,
     pub manifest: String,
     pub profile: String,
@@ -232,7 +250,7 @@ pub struct AnalysisResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AnalysisHeader {
-    pub mode: String,
+    pub mode: AnalysisMode,
     pub baseline: String,
     pub manifest: String,
     pub profile: String,
@@ -254,6 +272,7 @@ impl<'a> FactValidator<'a> {
         }
     }
     pub fn validate(&self, f: &Fact) -> Result<(), String> {
+        let attributes = f.attributes.wire_map();
         if f.id.is_empty()
             || f.owner.world.is_empty()
             || f.owner.producer.is_empty()
@@ -282,22 +301,20 @@ impl<'a> FactValidator<'a> {
             return Err("UNCONFIRMED_TARGET".into());
         }
         if f.kind == FactKind::CallTarget
-            && f.attributes.contains_key("binding_evidence")
+            && attributes.contains_key("binding_evidence")
             && (f.parent.is_empty()
-                || f.attributes
-                    .get("binding_evidence")
-                    .and_then(|v| v.as_str())
+                || attributes.get("binding_evidence").and_then(|v| v.as_str())
                     != Some(f.parent.as_str()))
         {
             return Err("INVALID_BINDING_EVIDENCE".into());
         }
         java_type_graph::validate(
-            &f.attributes,
+            &attributes,
             f.kind == FactKind::Facet
                 && (f.relation == "java.type"
-                    && f.attributes.get("schema_version") == Some(&serde_json::json!(3))
+                    && attributes.get("schema_version") == Some(&serde_json::json!(3))
                     || f.relation == "java.binding"
-                        && f.attributes.get("schema_version") == Some(&serde_json::json!(4))),
+                        && attributes.get("schema_version") == Some(&serde_json::json!(4))),
         )?;
         java_xml_configuration::validate(f, self.files.get(f.source.as_str()).map(|s| s.size))?;
         if f.kind == FactKind::Facet {
@@ -320,8 +337,7 @@ impl<'a> FactValidator<'a> {
             ) {
                 return Err("UNSUPPORTED_REQUIRED_FACET".into());
             }
-            let schema = f
-                .attributes
+            let schema = attributes
                 .get("schema_version")
                 .and_then(serde_json::Value::as_u64);
             if schema != Some(1)
@@ -339,14 +355,12 @@ impl<'a> FactValidator<'a> {
             if f.relation == "java.binding"
                 && matches!(schema, Some(3 | 4))
                 && (f.parent.is_empty()
-                    || f.attributes.get("evidence_owner").and_then(|v| v.as_str())
+                    || attributes.get("evidence_owner").and_then(|v| v.as_str())
                         != Some(f.parent.as_str())
-                    || !f
-                        .attributes
+                    || !attributes
                         .get("resolved")
                         .is_some_and(serde_json::Value::is_boolean)
-                    || !f
-                        .attributes
+                    || !attributes
                         .get("complete")
                         .is_some_and(serde_json::Value::is_boolean))
             {
@@ -355,7 +369,7 @@ impl<'a> FactValidator<'a> {
             if f.relation == "java.syntax" && schema == Some(2) {
                 let invalid = || "INVALID_SYNTAX_PARTITION".to_string();
                 let source = self.files.get(f.source.as_str()).ok_or_else(invalid)?;
-                let attributes = &f.attributes;
+                let attributes = &attributes;
                 let index = attributes
                     .get("chunk_index")
                     .and_then(|v| v.as_u64())
@@ -414,7 +428,7 @@ impl AnalysisHeader {
 impl AnalysisResult {
     pub fn header(&self) -> AnalysisHeader {
         AnalysisHeader {
-            mode: self.mode.clone(),
+            mode: self.mode,
             baseline: self.baseline.clone(),
             manifest: self.manifest.clone(),
             profile: self.profile.clone(),
@@ -494,13 +508,14 @@ impl AnalysisResult {
             merged.insert(f.id.clone(), f.clone());
         }
         for f in merged.values() {
+            let attributes = f.attributes.wire_map();
             java_type_graph::validate(
-                &f.attributes,
+                &attributes,
                 f.kind == FactKind::Facet
                     && (f.relation == "java.type"
-                        && f.attributes.get("schema_version") == Some(&serde_json::json!(3))
+                        && attributes.get("schema_version") == Some(&serde_json::json!(3))
                         || f.relation == "java.binding"
-                            && f.attributes.get("schema_version") == Some(&serde_json::json!(4))),
+                            && attributes.get("schema_version") == Some(&serde_json::json!(4))),
             )?;
             if !f.parent.is_empty() && !merged.contains_key(&f.parent) {
                 return Err(format!("DANGLING_PARENT: {}", f.id));
@@ -509,15 +524,12 @@ impl AnalysisResult {
                 return Err(format!("DANGLING_TARGET: {}", f.id));
             }
             if f.kind == FactKind::CallTarget
-                && f.attributes.contains_key("binding_evidence")
+                && attributes.contains_key("binding_evidence")
                 && (merged.get(&f.parent).is_none_or(|site| {
                     site.kind != FactKind::CallSite
                         || site.owner != f.owner
                         || site.source != f.source
-                }) || f
-                    .attributes
-                    .get("binding_evidence")
-                    .and_then(|v| v.as_str())
+                }) || attributes.get("binding_evidence").and_then(|v| v.as_str())
                     != Some(f.parent.as_str()))
             {
                 return Err("INVALID_BINDING_EVIDENCE".into());
@@ -525,7 +537,7 @@ impl AnalysisResult {
             if f.kind == FactKind::Facet
                 && f.relation == "java.binding"
                 && matches!(
-                    f.attributes
+                    attributes
                         .get("schema_version")
                         .and_then(serde_json::Value::as_u64),
                     Some(3 | 4)
@@ -534,14 +546,12 @@ impl AnalysisResult {
                     site.kind != FactKind::CallSite
                         || site.owner != f.owner
                         || site.source != f.source
-                }) || f.attributes.get("evidence_owner").and_then(|v| v.as_str())
+                }) || attributes.get("evidence_owner").and_then(|v| v.as_str())
                     != Some(f.parent.as_str())
-                    || !f
-                        .attributes
+                    || !attributes
                         .get("resolved")
                         .is_some_and(serde_json::Value::is_boolean)
-                    || !f
-                        .attributes
+                    || !attributes
                         .get("complete")
                         .is_some_and(serde_json::Value::is_boolean))
             {
@@ -619,38 +629,38 @@ impl Evidence {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Stage {
-    pub operation: String,
+    pub operation: Operation,
     pub selector: String,
-    pub direction: String,
+    pub direction: Direction,
     pub relation: String,
     pub unique: bool,
     pub meta: bool,
-    pub instantiability: String,
+    pub instantiability: Instantiability,
     pub transitive: bool,
-    pub algorithm: String,
-    pub analysis_world: String,
+    pub algorithm: DispatchAlgorithm,
+    pub analysis_world: AnalysisWorld,
     pub depth: u32,
-    pub endpoint: String,
+    pub endpoint: Endpoint,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Request {
-    pub request_id: String,
+    pub request_id: RequestId,
     pub project: String,
-    pub operation: String,
+    pub operation: Operation,
     pub selector: String,
     pub revision: String,
     pub scope: String,
     pub world: String,
     pub module: String,
-    pub direction: String,
+    pub direction: Direction,
     pub relation: String,
     pub unique: bool,
     pub meta: bool,
-    pub instantiability: String,
+    pub instantiability: Instantiability,
     pub transitive: bool,
-    pub algorithm: String,
-    pub analysis_world: String,
+    pub algorithm: DispatchAlgorithm,
+    pub analysis_world: AnalysisWorld,
     pub full: bool,
     pub strict: bool,
     pub execute: bool,
@@ -687,20 +697,20 @@ pub struct Request {
 pub struct Output {
     pub revision: String,
     pub producer: String,
-    pub records: Vec<serde_json::Value>,
+    pub records: Vec<Record>,
     pub evidence: Evidence,
     pub cursor: String,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TaskResult {
-    pub execution: String,
-    pub assessment: String,
-    pub gate: String,
-    pub publication: String,
-    pub report: String,
+    pub execution: ExecutionState,
+    pub assessment: Assessment,
+    pub gate: GateState,
+    pub publication: PublicationState,
+    pub report: ReportState,
     pub revision: String,
     pub producer: String,
-    pub code: String,
+    pub code: ErrorCode,
     pub message: String,
     pub exit_code: i32,
     pub output: Output,
@@ -794,223 +804,9 @@ pub struct FileDependency {
 pub struct AnnotationMetaEdge {
     pub annotation: String,
     pub meta_annotation: String,
-    pub attributes: BTreeMap<String, serde_json::Value>,
+    pub attributes: FactAttributes,
 }
-pub trait GraphReader {
-    /// Source bytes stay outside the semantic graph. SQL implementations map
-    /// upstream line/UTF-16 coordinates against the captured, verified blob.
-    fn source_span(&self, entity: &Fact) -> Result<Option<Span>, String> {
-        Ok(entity.span.clone())
-    }
-    /// Frozen meta catalogue grouping, restricted to up to 500 annotation names.
-    /// SQL readers aggregate duplicate producer facts before applying the budget.
-    fn annotation_meta_edges(&self, names: &[String]) -> Result<Vec<AnnotationMetaEdge>, String> {
-        if names.is_empty() || names.len() > 500 {
-            return Err("ANNOTATION_META_KEY_BUDGET".into());
-        }
-        let mut pairs = BTreeMap::<(String, String), BTreeMap<String, serde_json::Value>>::new();
-        for fact in self.select(&FactFilter {
-            kinds: vec![FactKind::Facet],
-            relation: Some("java.annotation.meta".into()),
-            ..Default::default()
-        })? {
-            let annotation = fact
-                .attributes
-                .get("annotation")
-                .and_then(serde_json::Value::as_str);
-            let meta = fact
-                .attributes
-                .get("meta_annotation")
-                .and_then(serde_json::Value::as_str);
-            let (Some(annotation), Some(meta)) = (annotation, meta) else {
-                continue;
-            };
-            if !names.iter().any(|name| name == annotation) {
-                continue;
-            }
-            let attrs = pairs.entry((annotation.into(), meta.into())).or_default();
-            for key in [
-                "raw_name",
-                "language",
-                "mechanism",
-                "resolution",
-                "upstream_producer",
-            ] {
-                if let Some(value) = fact.attributes.get(key).and_then(serde_json::Value::as_str)
-                    && attrs
-                        .get(key)
-                        .and_then(serde_json::Value::as_str)
-                        .is_none_or(|old| value < old)
-                {
-                    attrs.insert(key.into(), serde_json::json!(value));
-                }
-            }
-        }
-        if pairs.len() > 10000 {
-            return Err("QUERY_WORK_BUDGET".into());
-        }
-        Ok(pairs
-            .into_iter()
-            .map(
-                |((annotation, meta_annotation), attributes)| AnnotationMetaEdge {
-                    annotation,
-                    meta_annotation,
-                    attributes,
-                },
-            )
-            .collect())
-    }
-    /// Group published projections without loading authoritative fact bodies.
-    fn overview_groups(
-        &self,
-        _filter: &FactFilter,
-        _section: &str,
-        _direction: &str,
-        _relations: &[String],
-    ) -> Result<Vec<serde_json::Value>, String> {
-        Err("OVERVIEW_PROJECTION_UNAVAILABLE".into())
-    }
-    /// Exact recorded file dependencies. Unsupported historical projections
-    /// are explicit so the adapter can choose a conservative full analysis.
-    fn reverse_file_dependencies(
-        &self,
-        _targets: &[FileKey],
-        _source_world: Option<&str>,
-        _after: &str,
-        _limit: usize,
-    ) -> Result<Vec<FileDependency>, String> {
-        Err("FILE_DEPENDENCIES_UNAVAILABLE".into())
-    }
-    /// Read only recorded dependency edges. The adapter supplies endpoint IDs;
-    /// storage neither infers dependencies nor chooses an invalidation closure.
-    fn reverse_dependencies(
-        &self,
-        targets: &[String],
-        filter: &FactFilter,
-        after: &str,
-        limit: usize,
-    ) -> Result<Vec<Fact>, String> {
-        if targets.len() > 500 || !(1..=1024).contains(&limit) {
-            return Err("INVALID_DEPENDENCY_BATCH".into());
-        }
-        if targets.is_empty() {
-            return Ok(Vec::new());
-        }
-        if !filter.targets.is_empty() || filter.target.is_some() {
-            return Err("DEPENDENCY_TARGETS_ALREADY_FILTERED".into());
-        }
-        let mut filter = filter.clone();
-        filter.targets = targets.to_vec();
-        if filter.kinds.is_empty() {
-            filter.kinds = vec![
-                FactKind::Dependency,
-                FactKind::Reference,
-                FactKind::Relation,
-                FactKind::CallTarget,
-            ];
-        }
-        self.scan(&filter, after, limit)
-    }
 
-    /// Exact upstream syntax targets, without deriving names from source text.
-    /// Production stores override this with an indexed, bounded read.
-    fn unresolved_consumers(
-        &self,
-        syntax_targets: &[String],
-        filter: &FactFilter,
-        after: &str,
-        limit: usize,
-    ) -> Result<Vec<Fact>, String> {
-        if syntax_targets.len() > 500 || !(1..=1024).contains(&limit) {
-            return Err("INVALID_DEPENDENCY_BATCH".into());
-        }
-        if syntax_targets.is_empty() {
-            return Ok(Vec::new());
-        }
-        let mut filter = filter.clone();
-        filter.kinds = vec![FactKind::CallSite];
-        let mut facts = self.select(&filter)?;
-        facts.retain(|fact| {
-            fact.id.as_str() > after
-                && fact.status == "unresolved"
-                && syntax_targets.contains(&fact.name)
-        });
-        facts.sort_by(|a, b| a.id.cmp(&b.id));
-        facts.truncate(limit);
-        Ok(facts)
-    }
-
-    /// Internal keyset cursor; unrelated to the public frozen result cursor.
-    /// Production stores override this with bounded SQL reads.
-    fn scan(&self, filter: &FactFilter, after: &str, limit: usize) -> Result<Vec<Fact>, String> {
-        if !(1..=1024).contains(&limit) {
-            return Err("INVALID_SCAN_BATCH".into());
-        }
-        let mut facts = self.select(filter)?;
-        facts.retain(|fact| fact.id.as_str() > after);
-        facts.sort_by(|a, b| a.id.cmp(&b.id));
-        facts.truncate(limit);
-        Ok(facts)
-    }
-    fn scan_symbols(
-        &self,
-        text: &str,
-        filter: &FactFilter,
-        after: &str,
-        limit: usize,
-    ) -> Result<Vec<Fact>, String> {
-        if !(1..=1024).contains(&limit) {
-            return Err("INVALID_SCAN_BATCH".into());
-        }
-        let mut facts = self.search_symbols_filtered(text, filter)?;
-        facts.retain(|fact| fact.id.as_str() > after);
-        facts.sort_by(|a, b| a.id.cmp(&b.id));
-        facts.truncate(limit);
-        Ok(facts)
-    }
-    fn search_symbols_filtered(
-        &self,
-        text: &str,
-        filter: &FactFilter,
-    ) -> Result<Vec<Fact>, String> {
-        let mut filter = filter.clone();
-        filter.kinds = vec![
-            FactKind::Declaration,
-            FactKind::ExternalSymbol,
-            FactKind::Facet,
-        ];
-        Ok(self
-            .select(&filter)?
-            .into_iter()
-            .filter(|f| {
-                f.is_public_entity() && (f.name.contains(text) || f.signature.contains(text))
-            })
-            .collect())
-    }
-    /// Aggregate counts without decoding authoritative fact bodies when supported.
-    fn count_by_kind(&self, filter: &FactFilter) -> Result<BTreeMap<String, u64>, String> {
-        let mut counts = BTreeMap::new();
-        for fact in self.select(filter)? {
-            *counts.entry(fact.kind.name().into()).or_default() += 1;
-        }
-        Ok(counts)
-    }
-    /// Literal, case-sensitive substring search. Storage may use an index, but
-    /// must preserve the same name/signature semantics and stable ID order.
-    fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
-        Ok(self
-            .select(&FactFilter {
-                kinds: vec![FactKind::Declaration, FactKind::ExternalSymbol],
-                ..Default::default()
-            })?
-            .into_iter()
-            .filter(|f| f.name.contains(text) || f.signature.contains(text))
-            .collect())
-    }
-    fn select(&self, filter: &FactFilter) -> Result<Vec<Fact>, String>;
-    fn manifest(&self) -> &Manifest;
-    fn revision(&self) -> &Revision;
-}
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Fixture {
@@ -1070,7 +866,7 @@ mod tests {
             result.facts[0].kind = FactKind::CallSite;
             result.facts[1]
                 .attributes
-                .insert("evidence_owner".into(), "other".into());
+                .set_wire_field("evidence_owner".into(), "other".into());
             assert_eq!(
                 validator.validate(&result.facts[1]).unwrap_err(),
                 "INVALID_BINDING_EVIDENCE"
@@ -1089,7 +885,7 @@ mod tests {
             assert!(result.validate(&manifest, &[]).is_ok());
             result.facts[1]
                 .attributes
-                .insert("binding_evidence".into(), "other".into());
+                .set_wire_field("binding_evidence".into(), "other".into());
             assert_eq!(
                 validator.validate(&result.facts[1]).unwrap_err(),
                 "INVALID_BINDING_EVIDENCE"
@@ -1123,7 +919,7 @@ mod tests {
         };
         assert!(result.validate(&manifest, &[]).is_ok());
         fact.attributes
-            .insert("declared".into(), serde_json::json!({"$java_type":[0,1]}));
+            .set_wire_field("declared".into(), serde_json::json!({"$java_type":[0,1]}));
         result.facts[0] = fact.clone();
         assert_eq!(
             validator.validate(&fact).unwrap_err(),

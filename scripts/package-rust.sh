@@ -12,7 +12,25 @@ done
 cp tests/fixtures/mock.json "$package_dir/fixtures/"
 cp -R tests/fixtures/java "$package_dir/fixtures/"
 cp docs/rust-first.md "$package_dir/README.md"
-printf '{"package":"codeana-rust-mock","platform":"%s","architecture":"%s","cli_daemon_protocol":1,"worker_protocol":11,"fact_ir":1,"java_adapter":"mock-fixtures-only"}\n' "$(uname -s)" "$(uname -m)" > "$package_dir/manifest.json"
+python3 - "$repo_root" "$package_dir" "$(uname -s)" "$(uname -m)" <<'PY_MANIFEST'
+import json
+import pathlib
+import re
+import sys
+root, package, platform, architecture = sys.argv[1:]
+source = (pathlib.Path(root) / 'crates/model/src/lib.rs').read_text()
+def version(name):
+    match = re.search(r'pub const ' + re.escape(name) + r': u32 = (\d+);', source)
+    if match is None:
+        raise ValueError('MISSING_PROTOCOL_CONSTANT: ' + name)
+    return int(match.group(1))
+manifest = dict(package='codeana-rust-mock', platform=platform, architecture=architecture,
+                cli_daemon_protocol=version('DAEMON_PROTOCOL_VERSION'),
+                worker_protocol=version('WORKER_PROTOCOL_VERSION'), fact_ir=version('VERSION'),
+                java_adapter='mock-fixtures-only')
+(pathlib.Path(package) / 'manifest.json').write_text(json.dumps(manifest) + '\n')
+PY_MANIFEST
+
 (cd "$package_dir" && {
   shasum -a 256 bin/* manifest.json README.md
   find fixtures -type f -print | LC_ALL=C sort | while IFS= read -r fixture; do

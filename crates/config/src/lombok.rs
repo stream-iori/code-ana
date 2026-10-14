@@ -16,26 +16,50 @@ pub(super) fn capture(
         let mut depth = 0;
         while let Some(path) = directory {
             depth += 1;
-            ensure!(depth <= 256, "LOMBOK_CONFIG_DEPTH_BUDGET");
+            ensure!(
+                depth <= 256,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::LombokConfigDepthBudget,
+                    ""
+                )
+            );
             if !directories.insert(path.to_path_buf()) {
                 break;
             }
-            ensure!(directories.len() <= 200_000, "LOMBOK_CONFIG_ENTRY_BUDGET");
+            ensure!(
+                directories.len() <= 200_000,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::LombokConfigEntryBudget,
+                    ""
+                )
+            );
             directory = path.parent();
         }
     }
     let mut files = Vec::new();
     for directory in directories {
         let path = directory.join("lombok.config");
-        let relative = path.to_str().context("NON_UTF8_LOMBOK_CONFIG")?.to_owned();
+        let relative = path
+            .to_str()
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::NonUtf8LombokConfig,
+                "",
+            ))?
+            .to_owned();
         let physical = root.join(&path);
         if physical.try_exists()? {
-            ensure!(!excludes.is_match(&relative), "LOMBOK_CONFIG_EXCLUDED");
+            ensure!(
+                !excludes.is_match(&relative),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::LombokConfigExcluded, "")
+            );
             files.push((relative, physical));
         }
     }
     for (index, directory) in root.ancestors().skip(1).enumerate() {
-        ensure!(index < 256, "LOMBOK_CONFIG_DEPTH_BUDGET");
+        ensure!(
+            index < 256,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::LombokConfigDepthBudget, "")
+        );
         let physical = directory.join("lombok.config");
         if physical.try_exists()? {
             // Depth 1 is the immediate project parent. Workers only receive sealed bytes.
@@ -45,15 +69,21 @@ pub(super) fn capture(
             ));
         }
     }
-    ensure!(files.len() <= 4096, "LOMBOK_CONFIG_FILE_BUDGET");
+    ensure!(
+        files.len() <= 4096,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::LombokConfigFileBudget, "")
+    );
     let mut configuration_bytes = 0;
     for (relative, physical) in files {
-        ensure!(timing.0.elapsed() < timing.1, "CAPTURE_TIMEOUT");
+        ensure!(
+            timing.0.elapsed() < timing.1,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureTimeout, "")
+        );
         let bytes = bounded_read(&physical, 1024 * 1024)?;
         configuration_bytes += bytes.len();
         ensure!(
             configuration_bytes <= 8 * 1024 * 1024,
-            "LOMBOK_CONFIG_BYTE_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::LombokConfigByteBudget, "")
         );
         add_captured(
             manifest,
@@ -75,7 +105,10 @@ pub(super) fn capture(
             .files
             .iter_mut()
             .find(|s| s.path == relative)
-            .context("LOMBOK_CONFIG_CAPTURE")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::LombokConfigCapture,
+                "",
+            ))?;
         unit.module.clear();
         unit.language.clear();
         unit.scope = "JAVA_CONFIG".into();

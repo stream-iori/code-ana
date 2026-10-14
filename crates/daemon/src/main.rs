@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
 use codeana_application::{Endpoint, Engine, Event, default_home, private_home};
-use codeana_contracts::{convert, terminal, v1::*};
+use codeana_contracts::{map, terminal, v1::*};
 use std::{
     os::fd::AsRawFd,
     path::PathBuf,
@@ -80,7 +80,7 @@ impl task_service_server::TaskService for Service {
         }))
     }
     async fn submit_task(&self, r: Request<TaskRequest>) -> Result<Response<TaskAccepted>, Status> {
-        let request = convert(&r.into_inner()).map_err(failure)?;
+        let request = map(&r.into_inner()).map_err(failure)?;
         let engine = self.0.clone();
         let task_id = tokio::task::spawn_blocking(move || engine.submit(request))
             .await
@@ -103,7 +103,7 @@ impl task_service_server::TaskService for Service {
         }
         let (tx, rx) = tokio::sync::mpsc::channel(8);
         let engine = self.0.clone();
-        let job = engine.jobs.lock().unwrap().get(&r.task_id).cloned();
+        let job = engine.jobs.lock().unwrap().get(r.task_id.as_str()).cloned();
         if let Some(j) = &job {
             j.watchers.fetch_add(1, Ordering::SeqCst);
         }
@@ -187,13 +187,19 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     let default = default_home()?;
     if args.dev_mock_fixtures.is_some() {
-        ensure!(args.home.is_some(), "MOCK_REQUIRES_EXPLICIT_ISOLATED_HOME");
+        ensure!(
+            args.home.is_some(),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MockRequiresExplicitIsolatedHome,
+                ""
+            )
+        );
     }
     let home = private_home(args.home.as_deref().unwrap_or(&default))?;
     if args.dev_mock_fixtures.is_some() {
         ensure!(
             home != default.canonicalize().unwrap_or(default),
-            "MOCK_CANNOT_USE_DEFAULT_HOME"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::MockCannotUseDefaultHome, "")
         );
     }
     let lock = std::fs::OpenOptions::new()
@@ -205,7 +211,7 @@ async fn main() -> Result<()> {
     // SAFETY: the live File owns this descriptor for the daemon lifetime; flock is nonblocking.
     ensure!(
         unsafe { libc::flock(lock.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0,
-        "DAEMON_ALREADY_RUNNING"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DaemonAlreadyRunning, "")
     );
     let fixture = args
         .dev_mock_fixtures
@@ -220,7 +226,7 @@ async fn main() -> Result<()> {
     if mode_path.exists() {
         ensure!(
             std::fs::read_to_string(&mode_path)? == mode,
-            "HOME_MODE_MISMATCH"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::HomeModeMismatch, "")
         );
     } else {
         codeana_storage::durable_write(&mode_path, mode.as_bytes())?;
@@ -283,7 +289,10 @@ async fn main() -> Result<()> {
     {
         let _ = std::fs::remove_file(home.join("endpoint.json"));
     }
-    served.context("GRPC_SERVER")?;
+    served.context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::GrpcServer,
+        "",
+    ))?;
     drop(lock);
     Ok(())
 }

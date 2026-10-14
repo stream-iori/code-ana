@@ -10,6 +10,10 @@ fn text(row: &Row<'_>, column: &str) -> rusqlite::Result<String> {
 fn attributes(row: &Row<'_>) -> Result<BTreeMap<String, JsonValue>> {
     let mut values = BTreeMap::new();
     for column in row.as_ref().column_names() {
+        // These are physical dictionary/row identities, never public graph attributes.
+        if column.ends_with("_pk") {
+            continue;
+        }
         let value = match row.get_ref(column)? {
             ValueRef::Null => JsonValue::Null,
             ValueRef::Text(s) => json!(std::str::from_utf8(s)?),
@@ -250,7 +254,10 @@ impl ReadContext {
             (p.source, &f.sources),
         ] {
             if !ids.is_empty() {
-                ensure!(ids.len() <= 1000, "SELECTOR_BUDGET");
+                ensure!(
+                    ids.len() <= 1000,
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::SelectorBudget, "")
+                );
                 sql.push_str(&format!(
                     " AND {column} IN({})",
                     vec!["?"; ids.len()].join(",")
@@ -523,7 +530,7 @@ impl ReadContext {
             origin: "anatomist".into(),
             evidence_complete: complete,
             declaration_resolved: resolved,
-            attributes: attrs,
+            attributes: FactAttributes::from_wire_map(attrs)?,
         })
     }
     fn graph_scan(
@@ -533,12 +540,18 @@ impl ReadContext {
         limit: usize,
         search: Option<&str>,
     ) -> Result<Vec<Fact>> {
-        ensure!(limit > 0 && limit <= MAX_FACTS + 1, "INVALID_SCAN_BATCH");
+        ensure!(
+            limit > 0 && limit <= MAX_FACTS + 1,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidScanBatch, "")
+        );
         if f.relation
             .as_deref()
             .is_some_and(|r| matches!(r, "java.type" | "java.binding" | "java.syntax"))
         {
-            anyhow::bail!("UNSUPPORTED_CAPABILITY: raw Java model persistence removed");
+            anyhow::bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::UnsupportedCapability,
+                "raw Java model persistence removed".to_string()
+            ));
         }
         let mut result = Vec::new();
         for p in projections(f) {
@@ -580,7 +593,7 @@ impl ReadContext {
         result.truncate(limit);
         Ok(result)
     }
-    pub fn baseline_summary(&self) -> Result<JsonValue> {
+    pub fn baseline_summary(&self) -> Result<BaselineSummary> {
         let mut contexts = BTreeMap::new();
         let mut statement = self.connection.prepare(
             "SELECT substr(key,17),value FROM project_meta WHERE key LIKE 'codeana.context.%'",
@@ -608,7 +621,16 @@ impl ReadContext {
         })? {
             let (id, symbol, kind, module, scope, source, metadata) = row?;
             let owner = self.owner_for(&source, &module, &scope);
-            nodes.push(json!({"id":id,"symbol_id":symbol,"kind":kind,"module":module,"scope":scope,"source_file":source,"metadata":metadata,"world":owner.world}));
+            nodes.push(BaselineNode {
+                id,
+                symbol_id: symbol,
+                kind,
+                module,
+                scope,
+                source_file: source,
+                metadata,
+                world: owner.world,
+            });
         }
         let mut relations = Vec::new();
         let mut statement=self.connection.prepare("SELECT n.symbol_id,coalesce(t.symbol_id,e.external_target_fqn),e.relation,n.source_file FROM edges e JOIN nodes n ON n.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id WHERE e.relation IN('INHERITS','IMPLEMENTS') ORDER BY e.source_id,e.relation,e.target_id,e.external_target_fqn")?;
@@ -622,14 +644,23 @@ impl ReadContext {
         })? {
             let (source, target, relation, file) = row?;
             if let Some(target) = target {
-                relations.push(json!({"source_symbol":source,"target_symbol":target,"relation":relation,"source_file":file}));
+                relations.push(BaselineRelation {
+                    source_symbol: source,
+                    target_symbol: target,
+                    relation,
+                    source_file: file,
+                });
             }
         }
-        Ok(
-            json!({"contexts":contexts,"nodes":nodes,"type_relations":relations,"files":self.revision.manifest.files}),
-        )
+        Ok(BaselineSummary {
+            contexts,
+            nodes,
+            type_relations: relations,
+            files: self.revision.manifest.files.clone(),
+            changed_sources: None,
+        })
     }
-    pub fn baseline_summary_for(&self, next: &Manifest) -> Result<JsonValue> {
+    pub fn baseline_summary_for(&self, next: &Manifest) -> Result<BaselineSummary> {
         let before: BTreeMap<_, _> = self
             .revision
             .manifest
@@ -689,104 +720,39 @@ impl ReadContext {
             }
         }
         let mut summary = self.baseline_summary()?;
-        summary["changed_sources"] = json!(changed);
+        summary.changed_sources = Some(changed);
         Ok(summary)
     }
 }
 
-impl GraphReader for ReadContext {
-    fn reverse_file_dependencies(
-        &self,
-        targets: &[FileKey],
-        source_world: Option<&str>,
-        after: &str,
-        limit: usize,
-    ) -> std::result::Result<Vec<FileDependency>, String> {
-        (||->Result<_>{
-            ensure!(targets.len()<=500 && (1..=1024).contains(&limit),"INVALID_DEPENDENCY_BATCH");
-            if targets.is_empty(){return Ok(vec![]);}
-            let paths:Vec<_>=targets.iter().map(|t|&t.path).collect();
-            let sql=format!("SELECT source_file,depends_on_file FROM file_dependencies WHERE depends_on_file IN({}) ORDER BY source_file,depends_on_file",vec!["?";paths.len()].join(","));
-            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(paths))?;let mut output=BTreeMap::new();
-            while let Some(row)=rows.next()?{
-                let source:String=row.get(0)?;let target:String=row.get(1)?;
-                let source=self.revision.manifest.files.iter().find(|s|s.path==source).context("DEPENDENCY_SOURCE_NOT_CAPTURED")?;
-                let target=self.revision.manifest.files.iter().find(|s|s.path==target).context("DEPENDENCY_TARGET_NOT_CAPTURED")?;
-                if source_world.is_some_and(|w|w!=source.world) || !targets.iter().any(|k|k.path==target.path && k.world==target.world){continue;}
-                let id=key("file-dependency",&[&source.world,&source.path,&target.world,&target.path]);
-                if id.as_str()>after{output.insert(id.clone(),FileDependency{id,source_world:source.world.clone(),source_file:source.path.clone(),target_world:target.world.clone(),target_file:target.path.clone()});}
-            }
-            Ok(output.into_values().take(limit).collect())
-        })().map_err(|e|e.to_string())
-    }
-    fn source_span(&self, entity: &Fact) -> std::result::Result<Option<Span>, String> {
-        (|| -> Result<_> {
-            if entity.span.is_some() {
-                return Ok(entity.span.clone());
-            }
-            let Some(range) = entity.attributes.get("source_range") else {
-                return Ok(None);
-            };
-            let coordinates = ["begin_line", "begin_column", "end_line", "end_column"]
-                .map(|k| range.get(k).and_then(JsonValue::as_u64));
-            let [Some(bl), Some(bc), Some(el), Some(ec)] = coordinates else {
-                return Ok(None);
-            };
-            let source = self
-                .sources
-                .get(&entity.source)
-                .map(|index| &self.revision.manifest.files[*index])
-                .context("SOURCE_UNAVAILABLE")?;
-            let bytes = std::fs::read(self.home.join("blobs").join(&source.hash))?;
-            ensure!(hash(&bytes) == source.hash, "BLOB_HASH_MISMATCH");
-            let text = std::str::from_utf8(&bytes)?;
-            let offset = |line: u64, column: u64| -> Result<u64> {
-                ensure!(line > 0 && column > 0, "SOURCE_RANGE_INVALID");
-                let mut start = 0usize;
-                for _ in 1..line {
-                    start += text[start..].find('\n').context("SOURCE_RANGE_LINE")? + 1;
-                }
-                let mut units = 0u64;
-                let wanted = column - 1;
-                for (index, c) in text[start..].char_indices() {
-                    if units == wanted {
-                        return Ok((start + index) as u64);
-                    }
-                    ensure!(units < wanted && c != '\n', "SOURCE_RANGE_COLUMN");
-                    units += c.len_utf16() as u64;
-                }
-                ensure!(units == wanted, "SOURCE_RANGE_COLUMN");
-                Ok(bytes.len() as u64)
-            };
-            let start = offset(bl, bc)?;
-            let end = offset(el, ec)?;
-            ensure!(start <= end, "SOURCE_RANGE_INVALID");
-            Ok(Some(Span { start, end }))
-        })()
-        .map_err(|e| e.to_string())
-    }
+impl SourceContext for ReadContext {
     fn manifest(&self) -> &Manifest {
         &self.revision.manifest
     }
     fn revision(&self) -> &Revision {
         &self.revision
     }
-    fn select(&self, f: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
+}
+impl GraphAccess for ReadContext {
+    fn select(&self, f: &FactFilter) -> std::result::Result<Vec<Fact>, DomainError> {
         self.graph_scan(f, "", MAX_FACTS + 1, None)
             .and_then(|rows| {
-                ensure!(rows.len() <= MAX_FACTS, "QUERY_WORK_BUDGET");
+                ensure!(
+                    rows.len() <= MAX_FACTS,
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::QueryWorkBudget, "")
+                );
                 Ok(rows)
             })
-            .map_err(|e| e.to_string())
+            .map_err(codeana_contracts::read_error)
     }
     fn scan(
         &self,
         f: &FactFilter,
         after: &str,
         limit: usize,
-    ) -> std::result::Result<Vec<Fact>, String> {
+    ) -> std::result::Result<Vec<Fact>, DomainError> {
         self.graph_scan(f, after, limit, None)
-            .map_err(|e| e.to_string())
+            .map_err(codeana_contracts::read_error)
     }
     fn scan_symbols(
         &self,
@@ -794,23 +760,127 @@ impl GraphReader for ReadContext {
         f: &FactFilter,
         after: &str,
         limit: usize,
-    ) -> std::result::Result<Vec<Fact>, String> {
+    ) -> std::result::Result<Vec<Fact>, DomainError> {
         let mut f = f.clone();
         f.kinds = vec![FactKind::Declaration];
         self.graph_scan(&f, after, limit, Some(text))
-            .map_err(|e| e.to_string())
+            .map_err(codeana_contracts::read_error)
     }
-    fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, String> {
+    fn search_symbols(&self, text: &str) -> std::result::Result<Vec<Fact>, DomainError> {
         self.search_symbols_filtered(text, &FactFilter::default())
     }
     fn search_symbols_filtered(
         &self,
         text: &str,
         f: &FactFilter,
-    ) -> std::result::Result<Vec<Fact>, String> {
+    ) -> std::result::Result<Vec<Fact>, DomainError> {
         self.scan_symbols(text, f, "", MAX_FACTS)
     }
-    fn count_by_kind(&self, f: &FactFilter) -> std::result::Result<BTreeMap<String, u64>, String> {
+}
+impl SourceLocator for ReadContext {
+    fn source_span(&self, entity: &Fact) -> std::result::Result<Option<Span>, DomainError> {
+        (|| -> Result<_> {
+            if entity.span.is_some() {
+                return Ok(entity.span.clone());
+            }
+            let Some(range) = entity.attributes.source_range.as_ref() else {
+                return Ok(None);
+            };
+            let coordinates = [
+                range.begin_line,
+                range.begin_column,
+                range.end_line,
+                range.end_column,
+            ]
+            .map(|value| value.and_then(|v| u64::try_from(v).ok()));
+            let [Some(bl), Some(bc), Some(el), Some(ec)] = coordinates else {
+                return Ok(None);
+            };
+            let source = self
+                .sources
+                .get(&entity.source)
+                .map(|index| &self.revision.manifest.files[*index])
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::SourceUnavailable,
+                    "",
+                ))?;
+            let bytes = std::fs::read(self.home.join("blobs").join(&source.hash))?;
+            ensure!(
+                hash(&bytes) == source.hash,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::BlobHashMismatch, "")
+            );
+            let text = std::str::from_utf8(&bytes)?;
+            let offset = |line: u64, column: u64| -> Result<u64> {
+                ensure!(
+                    line > 0 && column > 0,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::SourceRangeInvalid,
+                        ""
+                    )
+                );
+                let mut start = 0usize;
+                for _ in 1..line {
+                    start += text[start..]
+                        .find('\n')
+                        .context(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::SourceRangeLine,
+                            "",
+                        ))?
+                        + 1;
+                }
+                let mut units = 0u64;
+                let wanted = column - 1;
+                for (index, c) in text[start..].char_indices() {
+                    if units == wanted {
+                        return Ok((start + index) as u64);
+                    }
+                    ensure!(
+                        units < wanted && c != '\n',
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::SourceRangeColumn,
+                            ""
+                        )
+                    );
+                    units += c.len_utf16() as u64;
+                }
+                ensure!(
+                    units == wanted,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::SourceRangeColumn,
+                        ""
+                    )
+                );
+                Ok(bytes.len() as u64)
+            };
+            let start = offset(bl, bc)?;
+            let end = offset(el, ec)?;
+            ensure!(
+                start <= end,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::SourceRangeInvalid, "")
+            );
+            Ok(Some(Span { start, end }))
+        })()
+        .map_err(codeana_contracts::read_error)
+    }
+}
+impl AnnotationReader for ReadContext {
+    fn annotation_meta_edges(
+        &self,
+        names: &[String],
+    ) -> std::result::Result<Vec<AnnotationMetaEdge>, DomainError> {
+        (||->Result<_>{ensure!(names.len()<=500, codeana_model::DomainError::new(codeana_model::ErrorCode::AnnotationMetaKeyBudget, ""));if names.is_empty(){return Ok(vec![]);}
+            let sql=format!("SELECT annotation_fqn,meta_annotation_fqn,min(raw_name),min(language),min(mechanism),min(resolution_status),min(producer_id) FROM annotation_meta_relations WHERE annotation_fqn IN({}) AND meta_annotation_fqn IS NOT NULL GROUP BY annotation_fqn,meta_annotation_fqn LIMIT 10001",vec!["?";names.len()].join(","));
+            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(names))?;let mut output=Vec::new();
+            while let Some(row)=rows.next()?{ensure!(output.len()<10000, codeana_model::DomainError::new(codeana_model::ErrorCode::QueryWorkBudget, ""));let mut attrs=BTreeMap::new();for(i,k)in["raw_name","language","mechanism","resolution","upstream_producer"].iter().enumerate(){if let Some(v)=row.get::<_,Option<String>>(i+2)?{attrs.insert((*k).into(),json!(v));}}
+                output.push(AnnotationMetaEdge{annotation:row.get(0)?,meta_annotation:row.get(1)?,attributes:FactAttributes::from_wire_map(attrs)?});}Ok(output)
+        })().map_err(codeana_contracts::read_error)
+    }
+}
+impl OverviewReader for ReadContext {
+    fn count_by_kind(
+        &self,
+        f: &FactFilter,
+    ) -> std::result::Result<BTreeMap<String, u64>, DomainError> {
         (|| -> Result<_> {
             let cached: Option<String> = self
                 .connection
@@ -855,36 +925,7 @@ impl GraphReader for ReadContext {
             }
             Ok(counts)
         })()
-        .map_err(|e| e.to_string())
-    }
-    fn annotation_meta_edges(
-        &self,
-        names: &[String],
-    ) -> std::result::Result<Vec<AnnotationMetaEdge>, String> {
-        (||->Result<_>{ensure!(names.len()<=500,"ANNOTATION_META_KEY_BUDGET");if names.is_empty(){return Ok(vec![]);}
-            let sql=format!("SELECT annotation_fqn,meta_annotation_fqn,min(raw_name),min(language),min(mechanism),min(resolution_status),min(producer_id) FROM annotation_meta_relations WHERE annotation_fqn IN({}) AND meta_annotation_fqn IS NOT NULL GROUP BY annotation_fqn,meta_annotation_fqn LIMIT 10001",vec!["?";names.len()].join(","));
-            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(names))?;let mut output=Vec::new();
-            while let Some(row)=rows.next()?{ensure!(output.len()<10000,"QUERY_WORK_BUDGET");let mut attrs=BTreeMap::new();for(i,k)in["raw_name","language","mechanism","resolution","upstream_producer"].iter().enumerate(){if let Some(v)=row.get::<_,Option<String>>(i+2)?{attrs.insert((*k).into(),json!(v));}}
-                output.push(AnnotationMetaEdge{annotation:row.get(0)?,meta_annotation:row.get(1)?,attributes:attrs});}Ok(output)
-        })().map_err(|e|e.to_string())
-    }
-    fn unresolved_consumers(
-        &self,
-        targets: &[String],
-        filter: &FactFilter,
-        after: &str,
-        limit: usize,
-    ) -> std::result::Result<Vec<Fact>, String> {
-        (||->Result<_>{
-            ensure!(targets.len()<=500 && (1..=1024).contains(&limit),"INVALID_DEPENDENCY_BATCH");
-            if targets.is_empty(){return Ok(vec![]);}
-            let p=projections(&FactFilter{kinds:vec![FactKind::CallSite],..Default::default()}).remove(0);
-            let(predicate,mut values)=self.predicate(&p,filter,after,None)?;
-            values.push(serde_json::to_string(targets)?);values.push(limit.to_string());
-            let sql=format!("SELECT c.*,{} AS display_id,{} AS display_parent,{} AS display_target,{} AS display_source,{} AS display_module,{} AS display_scope,{} AS display_name,{} AS display_relation FROM {} WHERE {predicate} AND c.resolution_status='unresolved' AND c.syntax_target IN(SELECT value FROM json_each(?)) ORDER BY {} LIMIT ?",p.id,p.parent,p.target,p.source,p.module,p.scope,p.name,p.relation,p.from,p.id);
-            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(values))?;let mut output=Vec::new();
-            while let Some(row)=rows.next()?{output.push(self.display(&p,row)?);}Ok(output)
-        })().map_err(|e|e.to_string())
+        .map_err(codeana_contracts::read_error)
     }
     fn overview_groups(
         &self,
@@ -892,7 +933,7 @@ impl GraphReader for ReadContext {
         section: &str,
         direction: &str,
         relations: &[String],
-    ) -> std::result::Result<Vec<JsonValue>, String> {
+    ) -> std::result::Result<Vec<OverviewGroup>, DomainError> {
         (||->Result<_>{
             let p=projections(&FactFilter{ kinds:vec![FactKind::Declaration],..Default::default()}).remove(0);
             let (predicate,mut values)=self.predicate(&p,f,"",None)?;
@@ -904,7 +945,81 @@ impl GraphReader for ReadContext {
                     format!("SELECT package,target_package,relation,sum(count) FROM (SELECT coalesce(n.package,'') AS package,coalesce(t.package,'') AS target_package,e.relation,count(*) AS count FROM edges e JOIN nodes n ON n.id=e.source_id JOIN nodes t ON t.id=e.target_id WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation UNION ALL SELECT coalesce(n.package,''),coalesce(t.package,''),e.relation,count(*) FROM edges e JOIN nodes n ON n.id=e.target_id JOIN nodes t ON t.id=e.source_id WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation) GROUP BY package,target_package,relation ORDER BY package,target_package,relation LIMIT 10001")
                 } else {format!("SELECT coalesce(n.package,''),coalesce(t.package,''),e.relation,count(*) FROM edges e JOIN nodes n ON n.id={near} JOIN nodes t ON t.id={far} WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation ORDER BY n.package,t.package,e.relation LIMIT 10001")}
             }else{let column=if section=="modules"{"n.module"}else{"coalesce(n.package,'')"};format!("SELECT {column},count(*) FROM nodes n WHERE {predicate} GROUP BY {column} ORDER BY {column} LIMIT 10001")};
-            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(values))?;let mut output=Vec::new();while let Some(row)=rows.next()?{ensure!(output.len()<10000,"OVERVIEW_GROUP_BUDGET");output.push(if section=="dependencies"{json!({"package":row.get::<_,String>(0)?,"target_package":row.get::<_,String>(1)?,"relation":relation(&row.get::<_,String>(2)?),"count":row.get::<_,i64>(3)?})}else{json!({if section=="modules"{"module"}else{"package"}:row.get::<_,String>(0)?,"count":row.get::<_,i64>(1)?})});}Ok(output)
-        })().map_err(|e|e.to_string())
+            let mut statement = self.connection.prepare(&sql)?;
+            let mut rows = statement.query(rusqlite::params_from_iter(values))?;
+            let mut output = Vec::new();
+            while let Some(row) = rows.next()? {
+                ensure!(output.len() < 10000, codeana_model::DomainError::new(codeana_model::ErrorCode::OverviewGroupBudget, ""));
+                output.push(if section == "dependencies" {
+                    OverviewGroup { package: Some(row.get(0)?), target_package: Some(row.get(1)?),
+                        relation: Some(relation(&row.get::<_, String>(2)?)), count: u64::try_from(row.get::<_, i64>(3)?).context(codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidOverviewCount, ""))?, ..Default::default() }
+                } else {
+                    let name = row.get::<_, String>(0)?;
+                    OverviewGroup { module: (section == "modules").then(|| name.clone()),
+                        package: (section != "modules").then_some(name), count: u64::try_from(row.get::<_, i64>(1)?).context(codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidOverviewCount, ""))?, ..Default::default() }
+                });
+            }
+            Ok(output)
+        })().map_err(codeana_contracts::read_error)
+    }
+}
+impl DependencyReader for ReadContext {
+    fn reverse_file_dependencies(
+        &self,
+        targets: &[FileKey],
+        source_world: Option<&str>,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<FileDependency>, DomainError> {
+        (||->Result<_>{
+            ensure!(targets.len()<=500 && (1..=1024).contains(&limit), codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDependencyBatch, ""));
+            if targets.is_empty(){return Ok(vec![]);}
+            let paths:Vec<_>=targets.iter().map(|t|&t.path).collect();
+            let sql=format!("SELECT source_file,depends_on_file FROM file_dependencies WHERE depends_on_file IN({}) ORDER BY source_file,depends_on_file",vec!["?";paths.len()].join(","));
+            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(paths))?;let mut output=BTreeMap::new();
+            while let Some(row)=rows.next()?{
+                let source:String=row.get(0)?;let target:String=row.get(1)?;
+                let source=self.revision.manifest.files.iter().find(|s|s.path==source).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencySourceNotCaptured, ""))?;
+                let target=self.revision.manifest.files.iter().find(|s|s.path==target).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencyTargetNotCaptured, ""))?;
+                if source_world.is_some_and(|w|w!=source.world) || !targets.iter().any(|k|k.path==target.path && k.world==target.world){continue;}
+                let id=key("file-dependency",&[&source.world,&source.path,&target.world,&target.path]);
+                if id.as_str()>after{output.insert(id.clone(),FileDependency{id,source_world:source.world.clone(),source_file:source.path.clone(),target_world:target.world.clone(),target_file:target.path.clone()});}
+            }
+            Ok(output.into_values().take(limit).collect())
+        })().map_err(codeana_contracts::read_error)
+    }
+    fn unresolved_consumers(
+        &self,
+        targets: &[String],
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> std::result::Result<Vec<Fact>, DomainError> {
+        (||->Result<_>{
+            ensure!(targets.len()<=500 && (1..=1024).contains(&limit), codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDependencyBatch, ""));
+            if targets.is_empty(){return Ok(vec![]);}
+            let p=projections(&FactFilter{kinds:vec![FactKind::CallSite],..Default::default()}).remove(0);
+            let(predicate,mut values)=self.predicate(&p,filter,after,None)?;
+            values.push(serde_json::to_string(targets)?);values.push(limit.to_string());
+            let sql=format!("SELECT c.*,{} AS display_id,{} AS display_parent,{} AS display_target,{} AS display_source,{} AS display_module,{} AS display_scope,{} AS display_name,{} AS display_relation FROM {} WHERE {predicate} AND c.resolution_status='unresolved' AND c.syntax_target IN(SELECT value FROM json_each(?)) ORDER BY {} LIMIT ?",p.id,p.parent,p.target,p.source,p.module,p.scope,p.name,p.relation,p.from,p.id);
+            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(values))?;let mut output=Vec::new();
+            while let Some(row)=rows.next()?{output.push(self.display(&p,row)?);}Ok(output)
+        })().map_err(codeana_contracts::read_error)
+    }
+}
+
+#[cfg(test)]
+mod projection_tests {
+    use super::*;
+    #[test]
+    fn physical_primary_keys_never_become_public_attributes() {
+        let database = Connection::open_in_memory().unwrap();
+        let attrs=database.query_row("SELECT 17 AS site_pk,23 AS owner_pk,'public-id' AS id,'{\"producer_extension\":{\"n\":7}}' AS metadata",[],|row| {
+            Ok(attributes(row).unwrap())
+        }).unwrap();
+        assert!(!attrs.contains_key("site_pk"));
+        assert!(!attrs.contains_key("owner_pk"));
+        assert_eq!(attrs["id"], "public-id");
+        assert_eq!(attrs["producer_extension"], json!({"n":7}));
     }
 }

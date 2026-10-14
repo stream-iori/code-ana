@@ -2,8 +2,14 @@
 use super::*;
 
 pub(crate) fn text_matcher(req: &Request) -> Result<Option<regex::Regex>> {
-    ensure!(!req.selector.is_empty(), "TEXT_PATTERN_REQUIRED");
-    ensure!(req.selector.len() <= 16384, "TEXT_PATTERN_BUDGET");
+    ensure!(
+        !req.selector.is_empty(),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::TextPatternRequired, "")
+    );
+    ensure!(
+        req.selector.len() <= 16384,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::TextPatternBudget, "")
+    );
     if !req.text_regex && !req.text_ignore_case {
         return Ok(None);
     }
@@ -17,7 +23,12 @@ pub(crate) fn text_matcher(req: &Request) -> Result<Option<regex::Regex>> {
             .case_insensitive(req.text_ignore_case)
             .size_limit(4 * 1024 * 1024)
             .build()
-            .map_err(|e| anyhow::anyhow!("TEXT_REGEX_INVALID: {e}"))?,
+            .map_err(|e| {
+                anyhow::anyhow!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::TextRegexInvalid,
+                    format!("{e}")
+                ))
+            })?,
     ))
 }
 
@@ -26,11 +37,11 @@ fn lines(
     source: &SourceUnit,
     req: &Request,
     matcher: Option<&regex::Regex>,
-    sink: &mut dyn FnMut(Vec<Value>) -> Result<()>,
+    sink: &mut dyn FnMut(Vec<Record>) -> Result<()>,
 ) -> Result<()> {
     let mut incoming = text.lines().enumerate();
     let mut following = VecDeque::new();
-    let mut previous = VecDeque::new();
+    let mut previous: VecDeque<(usize, &str)> = VecDeque::new();
     let context = req.text_context as usize;
     for _ in 0..=context {
         if let Some(line) = incoming.next() {
@@ -41,25 +52,36 @@ fn lines(
     let mut batch_bytes = 0;
     while let Some(&(index, line)) = following.front() {
         if matcher.map_or_else(|| line.contains(&req.selector), |m| m.is_match(line)) {
-            let mut record =
-                json!({"path":source.path,"line":index+1,"text":line,"hash":source.hash});
-            if context > 0 {
-                record["context_before"] = json!(
+            let record = Record::Text(TextMatch {
+                path: source.path.clone(),
+                line: index + 1,
+                text: line.to_owned(),
+                hash: source.hash.clone(),
+                context_before: (context > 0).then(|| {
                     previous
                         .iter()
-                        .map(|&(i, t)| json!({"line":i+1,"text":t}))
-                        .collect::<Vec<_>>()
-                );
-                record["context_after"] = json!(
+                        .map(|&(i, t)| TextLine {
+                            line: i + 1,
+                            text: t.to_owned(),
+                        })
+                        .collect()
+                }),
+                context_after: (context > 0).then(|| {
                     following
                         .iter()
                         .skip(1)
-                        .map(|&(i, t)| json!({"line":i+1,"text":t}))
-                        .collect::<Vec<_>>()
-                );
-            }
-            let size = serde_json::to_vec(&record)?.len();
-            ensure!(size <= 8 * 1024 * 1024, "OUTPUT_RECORD_BUDGET");
+                        .map(|&(i, t)| TextLine {
+                            line: i + 1,
+                            text: t.to_owned(),
+                        })
+                        .collect()
+                }),
+            });
+            let size = serde_json::to_vec(&record.wire()?)?.len();
+            ensure!(
+                size <= 8 * 1024 * 1024,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::OutputRecordBudget, "")
+            );
             if !batch.is_empty() && batch_bytes + size > 1024 * 1024 {
                 sink(std::mem::take(&mut batch))?;
                 batch_bytes = 0;
@@ -91,26 +113,26 @@ fn lines(
     Ok(())
 }
 
-pub fn stream_text(
-    reader: &dyn GraphReader,
+fn stream_text_query(
+    reader: &dyn SourceContext,
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
-    sink: &mut dyn FnMut(Vec<Value>) -> Result<()>,
+    sink: &mut dyn FnMut(Vec<Record>) -> Result<()>,
 ) -> Result<Output> {
-    stream_text_candidates(reader, req, read_source, None, sink)
+    stream_text_candidates_query(reader, req, read_source, None, sink)
 }
 
-pub fn stream_text_candidates(
-    reader: &dyn GraphReader,
+fn stream_text_candidates_query(
+    reader: &dyn SourceContext,
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
     candidates: Option<&BTreeSet<(String, String)>>,
-    sink: &mut dyn FnMut(Vec<Value>) -> Result<()>,
+    sink: &mut dyn FnMut(Vec<Record>) -> Result<()>,
 ) -> Result<Output> {
-    preflight(req)?;
+    preflight_query(req)?;
     ensure!(
         req.operation == "search-text",
-        "STREAM_TEXT_OPERATION_REQUIRED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::StreamTextOperationRequired, "")
     );
     let matcher = text_matcher(req)?;
     let mut paths = globset::GlobSetBuilder::new();
@@ -123,7 +145,7 @@ pub fn stream_text_candidates(
         );
     }
     let paths = paths.build()?;
-    let mut evidence = coverage(reader, req)?;
+    let mut evidence = selection_evidence(reader, req);
     for source in &reader.manifest().files {
         if (!req.scope.is_empty() && req.scope != "ALL" && req.scope != source.scope)
             || (!req.module.is_empty() && req.module != source.module)
@@ -137,7 +159,10 @@ pub fn stream_text_candidates(
             continue;
         }
         let bytes = read_source(source)?;
-        ensure!(hash(&bytes) == source.hash, "SOURCE_HASH_MISMATCH");
+        ensure!(
+            hash(&bytes) == source.hash,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::SourceHashMismatch, "")
+        );
         match std::str::from_utf8(&bytes) {
             Ok(text) => lines(text, source, req, matcher.as_ref(), sink)?,
             Err(_) => {
@@ -155,6 +180,30 @@ pub fn stream_text_candidates(
         evidence,
         ..Default::default()
     })
+}
+
+pub fn stream_text<'a, R>(
+    reader: &dyn SourceContext,
+    request: &'a R,
+    source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+    sink: &mut dyn FnMut(Vec<Record>) -> Result<()>,
+) -> Result<Output>
+where
+    Request: From<&'a R>,
+{
+    stream_text_query(reader, &Request::from(request), source, sink)
+}
+pub fn stream_text_candidates<'a, R>(
+    reader: &dyn SourceContext,
+    request: &'a R,
+    source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+    candidates: Option<&BTreeSet<(String, String)>>,
+    sink: &mut dyn FnMut(Vec<Record>) -> Result<()>,
+) -> Result<Output>
+where
+    Request: From<&'a R>,
+{
+    stream_text_candidates_query(reader, &Request::from(request), source, candidates, sink)
 }
 
 #[cfg(test)]
@@ -197,14 +246,17 @@ mod tests {
         )
         .unwrap();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0]["path"], "a:b 空格.java");
-        assert_eq!(rows[0]["line"], 2);
-        assert_eq!(rows[0]["text"], "中文.* 中文.*");
+        assert_eq!(rows[0].wire().unwrap()["path"], "a:b 空格.java");
+        assert_eq!(rows[0].wire().unwrap()["line"], 2);
+        assert_eq!(rows[0].wire().unwrap()["text"], "中文.* 中文.*");
         assert_eq!(
-            rows[0]["context_before"],
+            rows[0].wire().unwrap()["context_before"],
             json!([{"line":1,"text":"before"}])
         );
-        assert_eq!(rows[0]["context_after"], json!([{"line":3,"text":"after"}]));
+        assert_eq!(
+            rows[0].wire().unwrap()["context_after"],
+            json!([{"line":3,"text":"after"}])
+        );
         req.text_context = 0;
         rows.clear();
         lines(text, &source, &req, None, &mut |batch| {
@@ -212,9 +264,9 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        assert!(rows[0].get("context_before").is_none());
-        assert!(rows[0].get("context_after").is_none());
-        assert_eq!(rows[0]["hash"], source.hash);
+        assert!(rows[0].wire().unwrap().get("context_before").is_none());
+        assert!(rows[0].wire().unwrap().get("context_after").is_none());
+        assert_eq!(rows[0].wire().unwrap()["hash"], source.hash);
     }
 
     #[test]
@@ -293,7 +345,7 @@ mod tests {
             assert!(batch.len() <= 512);
             count += batch.len();
             if let Some(row) = batch.last() {
-                last = row.clone();
+                last = row.wire().unwrap();
             }
             Ok(())
         })

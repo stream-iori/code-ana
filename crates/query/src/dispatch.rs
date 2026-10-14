@@ -5,40 +5,41 @@ use super::*;
 pub(super) fn options(operation: &str, algorithm: &str, world: &str) -> Result<()> {
     ensure!(
         algorithm.is_empty() || operation == "dispatch",
-        "ALGORITHM_REQUIRES_DISPATCH"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::AlgorithmRequiresDispatch, "")
     );
     ensure!(
         matches!(algorithm, "" | "auto" | "exact" | "cha"),
-        "INVALID_DISPATCH_ALGORITHM"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDispatchAlgorithm, "")
     );
     ensure!(
         world.is_empty() || matches!(operation, "dispatch" | "runtime-implementations"),
-        "ANALYSIS_WORLD_REQUIRES_JAVA_CANDIDATES"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::AnalysisWorldRequiresJavaCandidates,
+            ""
+        )
     );
     ensure!(
         matches!(
             world,
             "" | "workspace-open" | "workspace-closed" | "classpath-open"
         ),
-        "INVALID_ANALYSIS_WORLD"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidAnalysisWorld, "")
     );
     Ok(())
 }
 
 fn kind(fact: &Fact) -> &str {
     fact.attributes
-        .get("element_kind")
-        .and_then(Value::as_str)
+        .element_kind
+        .as_ref()
+        .map(String::as_str)
         .unwrap_or("")
 }
 fn modifier(fact: &Fact, name: &str) -> bool {
-    fact.attributes
-        .get("modifiers")
-        .and_then(Value::as_array)
-        .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(name)))
+    fact.attributes.has_modifier(name)
 }
 fn load(
-    reader: &dyn GraphReader,
+    reader: &dyn GraphAccess,
     ids: &[String],
     cache: &mut BTreeMap<String, Fact>,
 ) -> Result<()> {
@@ -57,7 +58,13 @@ fn load(
         )? {
             cache.insert(fact.id.clone(), fact);
         }
-        ensure!(cache.len() <= 10000, "DISPATCH_DECLARATION_WORK_BUDGET");
+        ensure!(
+            cache.len() <= 10000,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DispatchDeclarationWorkBudget,
+                ""
+            )
+        );
     }
     Ok(())
 }
@@ -72,7 +79,7 @@ struct Traversal {
 type Graph = BTreeMap<(bool, bool, String), Vec<Fact>>;
 
 fn adjacent_cached(
-    reader: &dyn GraphReader,
+    reader: &dyn GraphAccess,
     ids: &[String],
     traversal: Traversal,
     graph: &mut Graph,
@@ -109,7 +116,7 @@ fn adjacent_cached(
 }
 
 fn walk(
-    reader: &dyn GraphReader,
+    reader: &dyn GraphAccess,
     seed: &str,
     traversal: Traversal,
     evidence: &mut Evidence,
@@ -194,13 +201,13 @@ fn walk(
 }
 
 pub(super) fn candidates(
-    reader: &dyn GraphReader,
+    reader: &dyn GraphAccess,
     req: &Request,
     site: &Fact,
     binding: &Fact,
     target: Option<&Fact>,
     evidence: &mut Evidence,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Record>> {
     let Some(target) = target.filter(|fact| fact.kind == FactKind::Declaration) else {
         return Ok(vec![]);
     };
@@ -211,9 +218,10 @@ pub(super) fn candidates(
     load(reader, std::slice::from_ref(&target.parent), &mut cache)?;
     let receiver_name = site
         .attributes
-        .get("receiver_static_type")
-        .or_else(|| binding.attributes.get("receiver_static_type"))
-        .and_then(Value::as_str);
+        .receiver_static_type
+        .as_ref()
+        .or(binding.attributes.receiver_static_type.as_ref())
+        .map(String::as_str);
     let mut receiver = target.parent.clone();
     if let Some(name) = receiver_name.filter(|name| !name.is_empty()) {
         let name = name.split('<').next().unwrap();
@@ -284,7 +292,10 @@ pub(super) fn candidates(
         }
         let edges = adjacent_cached(reader, &frontier, upward, &mut graph)?;
         work += frontier.len() + edges.len();
-        ensure!(work <= 100000, "DISPATCH_WORK_BUDGET");
+        ensure!(
+            work <= 100000,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
+        );
         let endpoints = edges
             .iter()
             .map(|edge| edge.target.clone())
@@ -311,12 +322,21 @@ pub(super) fn candidates(
             },
         )?;
         work += methods.len();
-        ensure!(work <= 100000, "DISPATCH_WORK_BUDGET");
+        ensure!(
+            work <= 100000,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
+        );
         for method in methods.into_iter().filter(|fact| kind(fact) == "METHOD") {
             cache.insert(method.id.clone(), method);
         }
         method_owners.extend(batch.iter().cloned());
-        ensure!(cache.len() <= 10000, "DISPATCH_DECLARATION_WORK_BUDGET");
+        ensure!(
+            cache.len() <= 10000,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DispatchDeclarationWorkBudget,
+                ""
+            )
+        );
     }
     let mut output = BTreeMap::new();
     for (runtime_id, runtime_proof) in runtime {
@@ -354,12 +374,21 @@ pub(super) fn candidates(
                 },
             )?;
             work += methods.len();
-            ensure!(work <= 100000, "DISPATCH_WORK_BUDGET");
+            ensure!(
+                work <= 100000,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
+            );
             for method in methods.into_iter().filter(|fact| kind(fact) == "METHOD") {
                 cache.insert(method.id.clone(), method);
             }
             method_owners.extend(batch.iter().cloned());
-            ensure!(cache.len() <= 10000, "DISPATCH_DECLARATION_WORK_BUDGET");
+            ensure!(
+                cache.len() <= 10000,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DispatchDeclarationWorkBudget,
+                    ""
+                )
+            );
         }
         let slot = target.signature.rsplit_once('#').map(|(_, slot)| slot);
         let matching = cache
@@ -443,13 +472,207 @@ pub(super) fn candidates(
             type_proof.extend(ancestry[&implementation.parent].clone());
             let mut unique = BTreeSet::new();
             type_proof.retain(|edge| unique.insert(edge.clone()));
-            output.entry(implementation.id.clone()).or_insert(json!({
-                "call_site":site.id,"target":implementation.id,"proof":proof,"type_proof":type_proof,
-                "possible":true,"candidate":"possible","executable":true,"algorithm":"CHA",
-                "analysis_world":if req.analysis_world.is_empty() {"workspace-open"} else {&req.analysis_world},
-                "world":implementation.owner.world
-            }));
+            output
+                .entry(implementation.id.clone())
+                .or_insert(Record::Dispatch(DispatchCandidate {
+                    call_site: site.id.clone(),
+                    target: Some(implementation.id.clone()),
+                    proof,
+                    type_proof: Some(type_proof),
+                    possible: true,
+                    candidate: Some("possible".into()),
+                    executable: Some(true),
+                    algorithm: Some("CHA".into()),
+                    analysis_world: Some(if req.analysis_world.is_empty() {
+                        "workspace-open".into()
+                    } else {
+                        req.analysis_world.to_string()
+                    }),
+                    world: implementation.owner.world.clone(),
+                    ..Default::default()
+                }));
         }
     }
     Ok(output.into_values().collect())
+}
+
+pub(super) fn run(
+    r: &dyn GraphAccess,
+    req: &Request,
+    evidence: &mut Evidence,
+) -> Result<Vec<Record>> {
+    let mut records = Vec::new();
+    let roots = resolve_scoped(r, req)?;
+    for root in roots {
+        if req.operation == "dispatch" {
+            ensure!(
+                root.kind == FactKind::CallSite,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DispatchRequiresCallSite,
+                    ""
+                )
+            );
+            let targets = select(
+                r,
+                FactFilter {
+                    kinds: vec![FactKind::CallTarget],
+                    parent: Some(root.id.clone()),
+                    ..Default::default()
+                },
+            )?;
+            if targets.is_empty() {
+                evidence.semantic = false;
+                evidence
+                    .reasons
+                    .push(format!("missing_dispatch_targets:{}", root.id));
+            }
+            for t in targets {
+                if t.status == "possible" && !t.target.is_empty() {
+                    evidence.semantic = false;
+                    let reason = if t.origin == "reflection_model" {
+                        "reflection_lookup_candidate"
+                    } else {
+                        "modeled_binding"
+                    };
+                    evidence.reasons.push(format!("{reason}:{}", t.id));
+                    let basis = if t.origin == "reflection_model" {
+                        t.attributes
+                            .call_kind
+                            .as_ref()
+                            .or(t.attributes.via.as_ref())
+                    } else {
+                        t.attributes
+                            .via
+                            .as_ref()
+                            .or(t.attributes.recovery_input.as_ref())
+                    };
+                    records.push(Record::Dispatch(DispatchCandidate {
+                        call_site: root.id.clone(),
+                        target: Some(t.target.clone()),
+                        binding: Some(t.status.clone()),
+                        binding_origin: Some(t.origin.clone()),
+                        modeled: Some(ModeledBinding {
+                            operation: t
+                                .attributes
+                                .operation
+                                .as_ref()
+                                .map(String::as_str)
+                                .map(str::to_owned),
+                            basis: basis.cloned(),
+                            recovery_phase: t.attributes.recovery_phase.as_ref().copied(),
+                        }),
+                        proof: vec![t.id],
+                        possible: true,
+                        world: t.owner.world,
+                        ..Default::default()
+                    }));
+                    continue;
+                }
+                if t.status != "resolved" || !t.declaration_resolved || t.target.is_empty() {
+                    evidence.semantic = false;
+                    evidence
+                        .reasons
+                        .push(format!("unresolved_binding:{}", t.id));
+                    records.push(Record::Dispatch(DispatchCandidate {
+                        call_site: root.id.clone(),
+                        binding: Some(t.status),
+                        proof: vec![t.id],
+                        possible: false,
+                        world: t.owner.world,
+                        ..Default::default()
+                    }));
+                    continue;
+                }
+                if !t.evidence_complete {
+                    evidence.semantic = false;
+                    evidence.reasons.push(format!("binding:{}", t.id));
+                }
+                let declaration = select(
+                    r,
+                    FactFilter {
+                        ids: vec![t.target.clone()],
+                        ..Default::default()
+                    },
+                )?
+                .into_iter()
+                .next();
+                let modifiers = declaration
+                    .as_ref()
+                    .and_then(|fact| fact.attributes.modifiers.as_ref());
+                let has_modifier = |name: &str| {
+                    modifiers.is_some_and(|items| items.iter().any(|item| item == name))
+                };
+                let class_final = if let Some(parent) =
+                    declaration.as_ref().filter(|fact| !fact.parent.is_empty())
+                {
+                    select(
+                        r,
+                        FactFilter {
+                            ids: vec![parent.parent.clone()],
+                            ..Default::default()
+                        },
+                    )?
+                    .into_iter()
+                    .next()
+                    .is_some_and(|owner| owner.attributes.has_modifier("final"))
+                } else {
+                    declaration
+                        .as_ref()
+                        .and_then(|fact| fact.attributes.binary_class.as_ref())
+                        .and_then(|class| class.access)
+                        .is_some_and(|access| access & 0x0010 != 0)
+                };
+                let mechanism = root
+                    .attributes
+                    .mechanism
+                    .as_ref()
+                    .map(String::as_str)
+                    .unwrap_or("");
+                let exact = req.algorithm == "exact"
+                    || mechanism == "constructor"
+                    || root.attributes.reference_mode.as_ref().map(String::as_str) == Some("NEW")
+                    || root.name.starts_with("super.")
+                    || has_modifier("static")
+                    || has_modifier("private")
+                    || has_modifier("final")
+                    || class_final;
+                records.push(Record::Dispatch(DispatchCandidate {
+                    call_site: root.id.clone(),
+                    target: Some(t.target.clone()),
+                    binding: Some(t.status.clone()),
+                    proof: vec![t.id.clone()],
+                    possible: !exact,
+                    world: t.owner.world.clone(),
+                    candidate: Some("resolved".into()),
+                    algorithm: Some(if exact { "exact" } else { "CHA" }.into()),
+                    executable: declaration
+                        .as_ref()
+                        .filter(|d| d.kind == FactKind::Declaration)
+                        .map(|_| !has_modifier("abstract")),
+                    analysis_world: Some(if req.analysis_world.is_empty() {
+                        "workspace-open".into()
+                    } else {
+                        req.analysis_world.to_string()
+                    }),
+                    ..Default::default()
+                }));
+                if exact {
+                    continue;
+                }
+                records.extend(dispatch::candidates(
+                    r,
+                    req,
+                    &root,
+                    &t,
+                    declaration.as_ref(),
+                    evidence,
+                )?);
+                if req.analysis_world != "workspace-closed" {
+                    evidence.semantic = false;
+                    evidence.reasons.push("open_world_dispatch".into());
+                }
+            }
+        }
+    }
+    Ok(records)
 }

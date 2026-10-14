@@ -9,7 +9,7 @@ pub struct PerformanceTimings {
     directory: PathBuf,
     scratch: PathBuf,
     started: Instant,
-    phases: Vec<serde_json::Value>,
+    phases: Vec<codeana_contracts::performance::PhaseTiming>,
     pub capture: codeana_contracts::performance::Capture,
 }
 impl PerformanceTimings {
@@ -20,7 +20,10 @@ impl PerformanceTimings {
         std::fs::create_dir_all(&root)?;
         let root = std::fs::canonicalize(root)?;
         let scratch = scratch.canonicalize()?;
-        anyhow::ensure!(!root.starts_with(&scratch), "TIMING_CAPTURE_RECURSION");
+        anyhow::ensure!(
+            !root.starts_with(&scratch),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::TimingCaptureRecursion, "")
+        );
         let directory = tempfile::Builder::new()
             .prefix("worker-")
             .tempdir_in(root)?
@@ -34,9 +37,11 @@ impl PerformanceTimings {
         }))
     }
     pub fn phase(&mut self, name: &str) {
-        self.phases.push(
-            serde_json::json!({"phase":name,"elapsed_ms":self.started.elapsed().as_millis()}),
-        );
+        self.phases
+            .push(codeana_contracts::performance::PhaseTiming {
+                phase: name.into(),
+                elapsed_ms: self.started.elapsed().as_millis(),
+            });
     }
 }
 impl Drop for PerformanceTimings {

@@ -2,7 +2,7 @@
 use super::*;
 
 pub(super) fn expand(
-    reader: &dyn GraphReader,
+    reader: &dyn AnnotationQueryReader,
     direct: Vec<Fact>,
     evidence: &mut Evidence,
 ) -> Result<Vec<Fact>> {
@@ -11,9 +11,10 @@ pub(super) fn expand(
     for direct in direct {
         let name = direct
             .attributes
-            .get("annotation")
-            .and_then(Value::as_str)
-            .or_else(|| direct.attributes.get("raw_name").and_then(Value::as_str))
+            .annotation
+            .as_ref()
+            .map(String::as_str)
+            .or_else(|| direct.attributes.raw_name.as_ref().map(String::as_str))
             .unwrap_or("")
             .to_owned();
         let mut queue = VecDeque::from([(direct.clone(), vec![name], 0_u32)]);
@@ -23,15 +24,15 @@ pub(super) fn expand(
                 evidence.limits.push("work".into());
                 return Ok(output);
             }
-            fact.attributes.insert("direct".into(), json!(depth == 0));
-            fact.attributes.insert("meta_depth".into(), json!(depth));
-            fact.attributes.insert("via".into(), json!(path.join(">")));
+            fact.attributes.direct = (depth == 0).into();
+            fact.attributes.meta_depth = depth.into();
+            fact.attributes.via = path.join(">").into();
             output.push(fact);
             let annotation = path.last().unwrap();
             if !catalogue.contains_key(annotation) {
                 let edges = reader
                     .annotation_meta_edges(std::slice::from_ref(annotation))
-                    .map_err(anyhow::Error::msg)?;
+                    .map_err(anyhow::Error::new)?;
                 catalogue.insert(annotation.clone(), edges);
             }
             for edge in &catalogue[annotation] {
@@ -57,16 +58,15 @@ pub(super) fn expand(
                     "annotation-meta-{}",
                     hash(format!("{}\n{}", direct.id, next_path.join(">")).as_bytes())
                 );
-                next.attributes.extend(attributes.clone());
-                next.attributes.insert("annotation".into(), json!(meta));
-                next.attributes.insert("values".into(), Value::Null);
-                next.attributes.remove("resolved_type");
-                let resolved =
-                    attributes.get("resolution").and_then(Value::as_str) == Some("exact");
+                next.attributes.merge_annotation_meta(attributes);
+                next.attributes.annotation = meta.clone().into();
+                next.attributes.values = Field::Null;
+                next.attributes.resolved_type = Field::Missing;
+                let resolved = attributes.resolution.as_ref().map(String::as_str) == Some("exact");
                 next.evidence_complete &= resolved;
                 next.status = if resolved { "complete" } else { "possible" }.into();
                 if resolved {
-                    next.attributes.insert("resolved_type".into(), json!(meta));
+                    next.attributes.resolved_type = meta.clone().into();
                 } else {
                     evidence.semantic = false;
                     evidence

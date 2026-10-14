@@ -23,6 +23,34 @@ const MANY: &[&str] = &[
 ];
 const MAX_NODES: usize = 100_000;
 
+macro_rules! edges {
+    ($name:ident, $($variant:ident=$field:literal),* $(,)?) => {
+        #[derive(Debug,Clone,Copy)] pub enum $name {$($variant,)*}
+        impl $name {pub fn as_str(self)->&'static str {match self {$ (Self::$variant=>$field,)*}}}
+        impl std::str::FromStr for $name {type Err=String;fn from_str(value:&str)->Result<Self,String> {match value {$($field=>Ok(Self::$variant),)* _=>Err(invalid())}}}
+    }
+}
+edges!(
+    SingleEdge,
+    Enclosing = "enclosing",
+    Component = "component",
+    Extends = "extends",
+    Super = "super",
+    Upper = "upper",
+    Lower = "lower",
+    Return = "return",
+    Receiver = "receiver"
+);
+edges!(
+    ManyEdge,
+    Arguments = "arguments",
+    Bounds = "bounds",
+    Alternatives = "alternatives",
+    Parameters = "parameters",
+    Throws = "throws",
+    TypeVariables = "type_variables"
+);
+
 fn invalid() -> String {
     "INVALID_JAVA_TYPE_GRAPH".into()
 }
@@ -61,10 +89,8 @@ impl<'a> JavaTypeNode<'a> {
     pub fn reference(&self) -> usize {
         self.index
     }
-    pub fn child(&self, field: &str) -> Result<Option<Self>, String> {
-        if !SINGLE.contains(&field) {
-            return Err(invalid());
-        }
+    pub fn child(&self, field: SingleEdge) -> Result<Option<Self>, String> {
+        let field = field.as_str();
         self.attributes()
             .get(field)
             .map(|value| {
@@ -77,10 +103,8 @@ impl<'a> JavaTypeNode<'a> {
             })
             .unwrap_or(Ok(None))
     }
-    pub fn children(&self, field: &str) -> Result<Vec<Self>, String> {
-        if !MANY.contains(&field) {
-            return Err(invalid());
-        }
+    pub fn children(&self, field: ManyEdge) -> Result<Vec<Self>, String> {
+        let field = field.as_str();
         self.attributes()
             .get(field)
             .map(|value| {
@@ -314,13 +338,13 @@ mod tests {
         );
         let graphs = JavaTypeGraphs::new(&attrs).unwrap();
         let root = graphs.resolve(&attrs["declared"]).unwrap();
-        let parent = root.child("upper").unwrap().unwrap();
+        let parent = root.child(SingleEdge::Upper).unwrap().unwrap();
         assert_eq!(parent.attributes()["element"], "Comparable");
         assert_eq!(
-            parent.children("arguments").unwrap()[0].reference(),
+            parent.children(ManyEdge::Arguments).unwrap()[0].reference(),
             root.reference()
         );
-        assert!(root.child("not-an-edge").is_err());
+        assert!("not-an-edge".parse::<SingleEdge>().is_err());
     }
     #[test]
     fn corrupt_references_shapes_completeness_and_versions_are_rejected() {
@@ -364,7 +388,7 @@ mod tests {
         let graphs = JavaTypeGraphs::new(&attrs).unwrap();
         let mut node = graphs.resolve(&attrs["declared"]).unwrap();
         for _ in 0..10_000 {
-            node = node.child("component").unwrap().unwrap();
+            node = node.child(SingleEdge::Component).unwrap().unwrap();
         }
         assert_eq!(node.attributes()["kind"], "INT");
     }

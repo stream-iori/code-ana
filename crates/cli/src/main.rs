@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Args, Parser, Subcommand};
 use codeana_application::{Endpoint, default_home, private_home};
-use codeana_contracts::{convert, v1 as p};
+use codeana_contracts::{map, v1 as p};
 use codeana_model::{Request, Stage, new_id};
 use p::task_service_client::TaskServiceClient;
 use std::os::unix::process::CommandExt;
@@ -201,7 +201,7 @@ async fn try_connect(home: &Path) -> Result<(TaskServiceClient<Channel>, Endpoin
     let endpoint: Endpoint = serde_json::from_slice(&std::fs::read(home.join("endpoint.json"))?)?;
     ensure!(
         endpoint.address.starts_with("http://127.0.0.1:"),
-        "INVALID_LOCAL_ENDPOINT"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidLocalEndpoint, "")
     );
     let mut client = TaskServiceClient::connect(endpoint.address.clone()).await?;
     let hello = client
@@ -217,7 +217,7 @@ async fn try_connect(home: &Path) -> Result<(TaskServiceClient<Channel>, Endpoin
         hello.protocol == codeana_model::DAEMON_PROTOCOL_VERSION
             && hello.generation == endpoint.generation
             && hello.mock == endpoint.mock,
-        "STALE_ENDPOINT"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::StaleEndpoint, "")
     );
     Ok((client, endpoint))
 }
@@ -225,10 +225,16 @@ async fn connect(home: &Path, start: bool) -> Result<(TaskServiceClient<Channel>
     if let Ok(c) = try_connect(home).await {
         return Ok(c);
     }
-    ensure!(start, "DAEMON_UNAVAILABLE");
+    ensure!(
+        start,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DaemonUnavailable, "")
+    );
     ensure!(
         !std::fs::read_to_string(home.join("mode")).is_ok_and(|s| s == "mock-v1"),
-        "MOCK_DAEMON_STOPPED: restart explicitly with --dev-mock-fixtures"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::MockDaemonStopped,
+            "restart explicitly with --dev-mock-fixtures".to_string()
+        )
     );
     let binary = std::env::current_exe()?.with_file_name("codeana-daemon");
     let log = std::fs::OpenOptions::new()
@@ -243,7 +249,10 @@ async fn connect(home: &Path, start: bool) -> Result<(TaskServiceClient<Channel>
         .stdout(log.try_clone()?)
         .stderr(log)
         .spawn()
-        .context("DAEMON_NOT_INSTALLED")?;
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::DaemonNotInstalled,
+            "",
+        ))?;
     for _ in 0..100 {
         if let Ok(c) = try_connect(home).await {
             return Ok(c);
@@ -256,14 +265,17 @@ async fn connect(home: &Path, start: bool) -> Result<(TaskServiceClient<Channel>
             if let Ok(c) = try_connect(home).await {
                 return Ok(c);
             }
-            bail!(
-                "DAEMON_START_FAILED: exit={status}; see {}/daemon.log",
-                home.display()
-            );
+            bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DaemonStartFailed,
+                format!("exit={status}; see {}/daemon.log", home.display())
+            ));
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
-    bail!("DAEMON_START_TIMEOUT")
+    bail!(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::DaemonStartTimeout,
+        ""
+    ))
 }
 async fn watch(
     client: &mut TaskServiceClient<Channel>,
@@ -298,7 +310,7 @@ async fn watch(
                 if export.is_some() {
                     ensure!(
                         saved.len() + chunk.data.len() <= 8 * 1024 * 1024,
-                        "EXPORT_BUDGET"
+                        codeana_model::DomainError::new(codeana_model::ErrorCode::ExportBudget, "")
                     );
                     saved.extend(chunk.data);
                 } else {
@@ -309,7 +321,10 @@ async fn watch(
                 terminal = Some(t);
                 break;
             }
-            None => bail!("EMPTY_TASK_EVENT"),
+            None => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::EmptyTaskEvent,
+                ""
+            )),
         }
     }
     let t = if let Some(t) = terminal {
@@ -327,7 +342,10 @@ async fn watch(
             .write(true)
             .create_new(true)
             .open(path)
-            .context("EXPORT_PATH_EXISTS_OR_UNAVAILABLE")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::ExportPathExistsOrUnavailable,
+                "",
+            ))?;
         output.write_all(&saved)?;
         output.sync_all()?;
         eprintln!("exported {} bytes to {}", saved.len(), path.display());
@@ -383,7 +401,7 @@ async fn run() -> Result<i32> {
         };
         println!(
             "{}",
-            serde_json::json!({"manifest":args.output,"modules":result["modules"].as_array().map_or(0,Vec::len)})
+            serde_json::json!({"manifest":args.output,"modules":result.modules.len()})
         );
         return Ok(0);
     }
@@ -425,7 +443,13 @@ async fn run() -> Result<i32> {
         }
         Command::Daemon { action } => {
             if action == "restart" {
-                ensure!(!e.mock, "MOCK_RESTART_REQUIRES_EXPLICIT_FIXTURE");
+                ensure!(
+                    !e.mock,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::MockRestartRequiresExplicitFixture,
+                        ""
+                    )
+                );
                 client
                     .manage(authenticated(
                         p::ManageRequest {
@@ -442,7 +466,10 @@ async fn run() -> Result<i32> {
                     }
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
-                bail!("DRAIN_PENDING");
+                bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DrainPending,
+                    ""
+                ));
             }
             let r = client
                 .manage(authenticated(p::ManageRequest { action }, &e)?)
@@ -500,7 +527,10 @@ async fn run() -> Result<i32> {
     };
     let stages = if operation == "pipeline" {
         let bytes = std::fs::read(&a.selector)?;
-        ensure!(bytes.len() <= 1024 * 1024, "PIPELINE_SPEC_BUDGET");
+        ensure!(
+            bytes.len() <= 1024 * 1024,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::PipelineSpecBudget, "")
+        );
         serde_json::from_slice::<Vec<Stage>>(&bytes)?
     } else {
         vec![]
@@ -522,10 +552,13 @@ async fn run() -> Result<i32> {
         text_regex: a.regex,
         text_ignore_case: a.ignore_case,
         text_context: a.context,
-        request_id: a.request_id.unwrap_or_else(|| new_id("request")),
+        request_id: a.request_id.unwrap_or_else(|| new_id("request")).into(),
         project: codeana_application::project_path(&cli.project)?
             .to_str()
-            .context("NON_UTF8_PROJECT")?
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::NonUtf8Project,
+                "",
+            ))?
             .into(),
         operation: operation.into(),
         selector: if operation == "pipeline" {
@@ -537,21 +570,24 @@ async fn run() -> Result<i32> {
         scope: a.scope,
         world: a.world,
         module: a.module,
-        direction: a.direction.unwrap_or_else(|| {
-            if operation == "references" {
-                "in"
-            } else {
-                "out"
-            }
-            .into()
-        }),
+        direction: a
+            .direction
+            .unwrap_or_else(|| {
+                if operation == "references" {
+                    "in"
+                } else {
+                    "out"
+                }
+                .into()
+            })
+            .parse()?,
         relation: a.relation,
         unique: a.unique,
         meta: a.meta,
-        instantiability: a.instantiability,
+        instantiability: a.instantiability.parse()?,
         transitive: a.transitive,
-        algorithm: a.algorithm,
-        analysis_world: a.analysis_world,
+        algorithm: a.algorithm.parse()?,
+        analysis_world: a.analysis_world.parse()?,
         full: a.full,
         strict: a.strict,
         execute: a.execute,
@@ -599,7 +635,10 @@ async fn run() -> Result<i32> {
         ] {
             ensure!(
                 !required || hello.capabilities.iter().any(|item| item == capability),
-                "DAEMON_QUERY_CAPABILITY_UNSUPPORTED: {capability}"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DaemonQueryCapabilityUnsupported,
+                    capability.to_string()
+                )
             );
         }
     }
@@ -618,7 +657,10 @@ async fn run() -> Result<i32> {
                 .capabilities
                 .iter()
                 .any(|capability| capability == "annotations-meta-v1"),
-            "DAEMON_ANNOTATIONS_META_UNSUPPORTED"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DaemonAnnotationsMetaUnsupported,
+                ""
+            )
         );
     }
     if reference_options {
@@ -636,7 +678,10 @@ async fn run() -> Result<i32> {
                 .capabilities
                 .iter()
                 .any(|capability| capability == "reference-options-v1"),
-            "DAEMON_REFERENCE_OPTIONS_UNSUPPORTED"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DaemonReferenceOptionsUnsupported,
+                ""
+            )
         );
     }
     if !req.overview_section.is_empty() || req.overview_depth > 0 {
@@ -654,7 +699,10 @@ async fn run() -> Result<i32> {
                 .capabilities
                 .iter()
                 .any(|c| c == "overview-sections-v1"),
-            "DAEMON_OVERVIEW_SECTIONS_UNSUPPORTED"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DaemonOverviewSectionsUnsupported,
+                ""
+            )
         );
     }
     if req.text_regex || req.text_ignore_case || req.text_context > 0 {
@@ -672,10 +720,13 @@ async fn run() -> Result<i32> {
                 .capabilities
                 .iter()
                 .any(|c| c == "text-search-options-v1"),
-            "DAEMON_TEXT_OPTIONS_UNSUPPORTED"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DaemonTextOptionsUnsupported,
+                ""
+            )
         );
     }
-    let request: p::TaskRequest = convert(&req)?;
+    let request: p::TaskRequest = map(&req)?;
     let accepted = client
         .submit_task(authenticated(request, &e)?)
         .await?

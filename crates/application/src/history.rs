@@ -1,5 +1,70 @@
 use super::*;
 use std::collections::BTreeSet;
+
+#[derive(Clone, Serialize)]
+struct SemanticFact {
+    kind: FactKind,
+    world: String,
+    name: String,
+    signature: String,
+    parent: String,
+    target: String,
+    relation: String,
+    status: String,
+    origin: String,
+    evidence_complete: bool,
+    declaration_resolved: bool,
+    attributes: FactAttributes,
+}
+impl From<&Fact> for SemanticFact {
+    fn from(f: &Fact) -> Self {
+        Self {
+            kind: f.kind,
+            world: f.owner.world.clone(),
+            name: f.name.clone(),
+            signature: f.signature.clone(),
+            parent: f.parent.clone(),
+            target: f.target.clone(),
+            relation: f.relation.clone(),
+            status: f.status.clone(),
+            origin: f.origin.clone(),
+            evidence_complete: f.evidence_complete,
+            declaration_resolved: f.declaration_resolved,
+            attributes: f.attributes.clone(),
+        }
+    }
+}
+fn semantic_hash(f: &SemanticFact) -> String {
+    digest(&serde_json::to_value(f).expect("semantic identity encoding"))
+}
+#[derive(Serialize)]
+#[serde(untagged)]
+enum DiffRecord {
+    File(FileChange),
+    Fact(Box<FactChange>),
+    Impact(ImpactRecord),
+}
+#[derive(Serialize)]
+struct FileChange {
+    path: String,
+    base: Option<String>,
+    target: Option<String>,
+    change: String,
+}
+#[derive(Serialize)]
+struct FactChange {
+    fact: SemanticFact,
+    base_count: i64,
+    target_count: i64,
+}
+#[derive(Serialize)]
+struct ImpactRecord {
+    side: String,
+    changed: String,
+    edge: CallRelation,
+    possible: bool,
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct Snapshot {
     pub id: String,
@@ -60,8 +125,17 @@ impl Engine {
             let cancellation = cancel.clone();
             let (capture, commit) =
                 tokio::task::spawn_blocking(move || -> Result<(Capture, String)> {
-                    ensure!(!cancellation.is_cancelled(), "CANCELLED");
-                    ensure!(!request.target.starts_with('-'), "INVALID_GIT_SELECTOR");
+                    ensure!(
+                        !cancellation.is_cancelled(),
+                        codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
+                    );
+                    ensure!(
+                        !request.target.starts_with('-'),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::InvalidGitSelector,
+                            ""
+                        )
+                    );
                     let commit = String::from_utf8(git_output(
                         &root,
                         &[
@@ -72,23 +146,52 @@ impl Engine {
                     )?)?
                     .trim()
                     .to_owned();
-                    ensure!(commit.len() == 40 || commit.len() == 64, "INVALID_COMMIT");
+                    ensure!(
+                        commit.len() == 40 || commit.len() == 64,
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::InvalidCommit,
+                            ""
+                        )
+                    );
                     let temp = tempfile::tempdir()?;
                     let paths =
                         git_output(&root, &["ls-tree", "-r", "-z", "--name-only", &commit])?;
                     let mut total = 0usize;
                     for path in paths.split(|b| *b == 0).filter(|b| !b.is_empty()) {
-                        ensure!(!cancellation.is_cancelled(), "CANCELLED");
+                        ensure!(
+                            !cancellation.is_cancelled(),
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::Cancelled,
+                                ""
+                            )
+                        );
                         let path = std::str::from_utf8(path)?;
-                        ensure!(safe_path(path), "UNSAFE_GIT_PATH");
+                        ensure!(
+                            safe_path(path),
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::UnsafeGitPath,
+                                ""
+                            )
+                        );
                         if path.starts_with(".git/") {
                             continue;
                         }
                         let bytes = git_output(&root, &["show", &format!("{commit}:{path}")])?;
                         total += bytes.len();
-                        ensure!(total <= MAX_RESULT, "GIT_CAPTURE_BUDGET");
+                        ensure!(
+                            total <= MAX_RESULT,
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::GitCaptureBudget,
+                                ""
+                            )
+                        );
                         let target = temp.path().join(path);
-                        std::fs::create_dir_all(target.parent().context("GIT_PATH_PARENT")?)?;
+                        std::fs::create_dir_all(target.parent().context(
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::GitPathParent,
+                                "",
+                            ),
+                        )?)?;
                         std::fs::write(target, bytes)?;
                     }
                     let mut c = codeana_config::capture(temp.path(), &request)?;
@@ -116,13 +219,16 @@ impl Engine {
         };
         ensure!(
             matches!(kind, "files" | "analysis"),
-            "INVALID_SNAPSHOT_KIND"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidSnapshotKind, "")
         );
         let mut t = if kind == "analysis" {
-            let t = self.index(id, req, c, cancel).await?;
+            let t = self.index(id, &IndexCommand::from(req), c, cancel).await?;
             ensure!(
                 t.publication == "published",
-                "SNAPSHOT_ANALYSIS_NOT_PUBLISHED"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::SnapshotAnalysisNotPublished,
+                    ""
+                )
             );
             revision = t.revision.clone();
             let r = self.store.read(&revision)?;
@@ -141,7 +247,7 @@ impl Engine {
         } else {
             ensure!(
                 safe_path(&req.selector) && !req.selector.contains('/'),
-                "INVALID_SNAPSHOT_NAME"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidSnapshotName, "")
             );
             req.selector.clone()
         };
@@ -169,7 +275,7 @@ impl Engine {
             store.put_object("snapshot", &saved_id, &saved_project, &saved, &refs)
         })
         .await??;
-        t.output.records = vec![serde_json::to_value(&s)?];
+        t.output.records = vec![Record::display(&s)?];
         Ok(t)
     }
     pub(crate) fn diff(&self, req: &Request, project: &str) -> Result<Output> {
@@ -185,10 +291,10 @@ impl Engine {
         };
         ensure!(
             matches!(section, "files" | "declarations" | "relations" | "impact"),
-            "INVALID_DIFF_SECTION"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDiffSection, "")
         );
         let mut evidence = Evidence::complete();
-        let mut rows = Vec::new();
+        let mut rows = Vec::<DiffRecord>::new();
         let mut refs = Vec::new();
         if section == "files" {
             let a: BTreeMap<_, _> = base
@@ -206,13 +312,28 @@ impl Engine {
             let paths: BTreeSet<_> = a.keys().chain(b.keys()).copied().collect();
             for p in paths {
                 if a.get(p) != b.get(p) {
-                    rows.push(json!({"path":p,"base":a.get(p),"target":b.get(p),"change":if !a.contains_key(p){"added"}else if !b.contains_key(p){"deleted"}else{"modified"}}));
+                    rows.push(DiffRecord::File(FileChange {
+                        path: p.into(),
+                        base: a.get(p).map(|v| (*v).clone()),
+                        target: b.get(p).map(|v| (*v).clone()),
+                        change: if !a.contains_key(p) {
+                            "added"
+                        } else if !b.contains_key(p) {
+                            "deleted"
+                        } else {
+                            "modified"
+                        }
+                        .into(),
+                    }));
                 }
             }
         } else {
             ensure!(
                 !base.revision.is_empty() && !target.revision.is_empty(),
-                "ANALYSIS_SNAPSHOTS_REQUIRED"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::AnalysisSnapshotsRequired,
+                    ""
+                )
             );
             let a = self.store.read(&base.revision)?;
             let b = self.store.read(&target.revision)?;
@@ -244,31 +365,34 @@ impl Engine {
                 })
                 .map_err(anyhow::Error::msg)?;
             // Compare semantic multisets, ignoring occurrence IDs and byte movement but preserving multiplicity and binding evidence.
-            fn canonical(f: &Fact) -> Value {
-                json!({"kind":f.kind,"world":f.owner.world,"name":f.name,"signature":f.signature,"parent":f.parent,"target":f.target,"relation":f.relation,"status":f.status,"origin":f.origin,"evidence_complete":f.evidence_complete,"declaration_resolved":f.declaration_resolved,"attributes":f.attributes})
-            }
-            let mut ac = BTreeMap::<String, (Value, i64)>::new();
-            let mut bc = BTreeMap::<String, (Value, i64)>::new();
+            let mut ac = BTreeMap::<String, (SemanticFact, i64)>::new();
+            let mut bc = BTreeMap::<String, (SemanticFact, i64)>::new();
             for (facts, map) in [(&af, &mut ac), (&bf, &mut bc)] {
                 for f in facts {
-                    let v = canonical(f);
-                    map.entry(digest(&v)).or_insert((v, 0)).1 += 1;
+                    let v = SemanticFact::from(f);
+                    map.entry(semantic_hash(&v)).or_insert((v, 0)).1 += 1;
                 }
             }
+            let mut changed_facts = BTreeSet::new();
             for key in ac.keys().chain(bc.keys()).collect::<BTreeSet<_>>() {
                 let av = ac.get(key);
                 let bv = bc.get(key);
                 let n = av.map(|x| x.1).unwrap_or(0);
                 let m = bv.map(|x| x.1).unwrap_or(0);
                 if n != m {
-                    rows.push(json!({"fact":av.or(bv).unwrap().0,"base_count":n,"target_count":m}));
+                    changed_facts.insert(key.clone());
+                    rows.push(DiffRecord::Fact(Box::new(FactChange {
+                        fact: av.or(bv).unwrap().0.clone(),
+                        base_count: n,
+                        target_count: m,
+                    })));
                 }
             }
             if section == "impact" {
                 let changed: BTreeSet<String> = af
                     .iter()
                     .chain(bf.iter())
-                    .filter(|f| rows.iter().any(|v| v["fact"] == canonical(f)))
+                    .filter(|f| changed_facts.contains(&semantic_hash(&SemanticFact::from(*f))))
                     .flat_map(|f| [f.parent.clone(), f.target.clone()])
                     .filter(|s| !s.is_empty())
                     .collect();
@@ -287,7 +411,14 @@ impl Engine {
                         {
                             evidence.merge(&out.evidence);
                             for edge in out.records {
-                                impact.push(json!({"side":side,"changed":symbol,"edge":edge,"possible":true}));
+                                if let Record::Call(edge) = edge {
+                                    impact.push(DiffRecord::Impact(ImpactRecord {
+                                        side: side.into(),
+                                        changed: symbol.clone(),
+                                        edge,
+                                        possible: true,
+                                    }));
+                                }
                             }
                         }
                     }
@@ -312,7 +443,7 @@ impl Engine {
             }
         }
         let output = Output {
-            records: rows,
+            records: rows.iter().map(Record::display).collect::<Result<_, _>>()?,
             evidence,
             producer: "rust-diff-v1".into(),
             ..Default::default()
@@ -343,16 +474,22 @@ impl Engine {
     ) -> Result<TaskResult> {
         let mut spool = self.store.page_spool()?;
         let output = codeana_query::stream_search(reader, req, &mut |batch| {
-            ensure!(!cancel.is_cancelled(), "CANCELLED");
+            ensure!(
+                !cancel.is_cancelled(),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
+            );
             spool.append(&batch)
         })?;
-        ensure!(!cancel.is_cancelled(), "CANCELLED");
+        ensure!(
+            !cancel.is_cancelled(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
+        );
         self.freeze_page(req, project, output, refs, spool)
     }
     pub(crate) fn text_page(
         &self,
         req: &Request,
-        reader: &dyn GraphReader,
+        reader: &dyn SourceContext,
         source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
         refs: Vec<String>,
         cancel: &CancellationToken,
@@ -362,13 +499,20 @@ impl Engine {
             match self
                 .store
                 .text_candidates(reader.manifest(), &req.selector, source, &|| {
-                    ensure!(!cancel.is_cancelled(), "CANCELLED");
+                    ensure!(
+                        !cancel.is_cancelled(),
+                        codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
+                    );
                     Ok(())
                 }) {
                 Ok(candidates) => candidates,
                 Err(error)
-                    if error.to_string().contains("CANCELLED")
-                        || error.to_string().contains("SOURCE_HASH_MISMATCH") =>
+                    if error.downcast_ref::<DomainError>().is_some_and(|error| {
+                        matches!(
+                            error.code,
+                            ErrorCode::Cancelled | ErrorCode::SourceHashMismatch
+                        )
+                    }) =>
                 {
                     return Err(error);
                 }
@@ -386,7 +530,10 @@ impl Engine {
             source,
             candidates.as_ref(),
             &mut |batch| {
-                ensure!(!cancel.is_cancelled(), "CANCELLED");
+                ensure!(
+                    !cancel.is_cancelled(),
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
+                );
                 if batch.is_empty() {
                     Ok(())
                 } else {
@@ -394,7 +541,10 @@ impl Engine {
                 }
             },
         )?;
-        ensure!(!cancel.is_cancelled(), "CANCELLED");
+        ensure!(
+            !cancel.is_cancelled(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
+        );
         self.freeze_page(req, &reader.revision().project, output, refs, spool)
     }
     fn freeze_page(
@@ -405,7 +555,13 @@ impl Engine {
         refs: Vec<String>,
         spool: codeana_storage::PageSpool,
     ) -> Result<TaskResult> {
-        ensure!(output.records.is_empty(), "PAGE_METADATA_CONTAINS_RECORDS");
+        ensure!(
+            output.records.is_empty(),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::PageMetadataContainsRecords,
+                ""
+            )
+        );
         let id = new_id("page");
         let page = Page {
             output,
@@ -418,10 +574,22 @@ impl Engine {
         self.slice_page(req, project, &id, page, 0)
     }
     pub(crate) fn continue_page(&self, req: &Request, project: &str) -> Result<TaskResult> {
-        let (id, offset) = req.cursor.rsplit_once(':').context("INVALID_CURSOR")?;
+        let (id, offset) = req
+            .cursor
+            .rsplit_once(':')
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::InvalidCursor,
+                "",
+            ))?;
         let page: Page = self.store.object("page", id, project)?;
-        ensure!(page.options == options(req), "CURSOR_OPTIONS_MISMATCH");
-        ensure!(now().saturating_sub(page.created) < 86400, "CURSOR_EXPIRED");
+        ensure!(
+            page.options == options(req),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CursorOptionsMismatch, "")
+        );
+        ensure!(
+            now().saturating_sub(page.created) < 86400,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CursorExpired, "")
+        );
         self.slice_page(req, project, id, page, offset.parse()?)
     }
     fn slice_page(
@@ -434,18 +602,24 @@ impl Engine {
     ) -> Result<TaskResult> {
         let mut output = page.output;
         let total = page.total.unwrap_or(output.records.len());
-        ensure!(offset <= total, "INVALID_CURSOR_OFFSET");
+        ensure!(
+            offset <= total,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidCursorOffset, "")
+        );
         let limit = if req.max_records == 0 {
             100
         } else {
             req.max_records as usize
         };
-        ensure!((1..=10000).contains(&limit), "RECORD_BUDGET");
+        ensure!(
+            (1..=10000).contains(&limit),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::RecordBudget, "")
+        );
         if page.spooled {
             output.records = self.store.page_records(id, project, offset, limit)?;
             ensure!(
                 output.records.len() == (total - offset).min(limit),
-                "INCOMPLETE_FROZEN_PAGE"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::IncompleteFrozenPage, "")
             );
         } else {
             output.records = output
@@ -460,11 +634,14 @@ impl Engine {
         } else {
             req.max_output_bytes as usize
         };
-        ensure!(bytes_limit >= 2048, "OUTPUT_BUDGET_TOO_SMALL");
+        ensure!(
+            bytes_limit >= 2048,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::OutputBudgetTooSmall, "")
+        );
         let mut size = 1536;
         let mut count = 0;
         for row in &output.records {
-            let n = serde_json::to_vec(row)?.len() + 8;
+            let n = serde_json::to_vec(&row.wire()?)?.len() + 8;
             if size + n > bytes_limit {
                 break;
             }
@@ -473,7 +650,10 @@ impl Engine {
         }
         ensure!(
             count > 0 || offset == total,
-            "RECORD_EXCEEDS_OUTPUT_BUDGET: increase --max-output-bytes"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::RecordExceedsOutputBudget,
+                "increase --max-output-bytes".to_string()
+            )
         );
         let end = offset + count;
         output.records.truncate(count);
@@ -501,15 +681,24 @@ fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
     child
         .stdout
         .take()
-        .context("GIT_STDOUT")?
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GitStdout,
+            "",
+        ))?
         .take(MAX_RESULT as u64 + 1)
         .read_to_end(&mut bytes)?;
     if bytes.len() > MAX_RESULT {
         let _ = child.kill();
         let _ = child.wait();
-        bail!("GIT_OUTPUT_BUDGET");
+        bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GitOutputBudget,
+            ""
+        ));
     }
-    ensure!(child.wait()?.success(), "GIT_READ_FAILED");
+    ensure!(
+        child.wait()?.success(),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GitReadFailed, "")
+    );
     Ok(bytes)
 }
 
@@ -535,7 +724,10 @@ mod tests {
                 &request,
                 "project",
                 Output {
-                    records: records.clone(),
+                    records: records
+                        .iter()
+                        .map(|r| Record::display(r).unwrap())
+                        .collect(),
                     evidence: Evidence::complete(),
                     ..Default::default()
                 },
@@ -553,7 +745,10 @@ mod tests {
             actual.extend(next.output.records);
             request.cursor = next.output.cursor;
         }
-        assert_eq!(actual, records);
+        assert_eq!(
+            actual.iter().map(|r| r.wire().unwrap()).collect::<Vec<_>>(),
+            records
+        );
         request.cursor = format!("{id}:0");
         request.selector = "different".into();
         assert!(

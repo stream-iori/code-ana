@@ -23,7 +23,7 @@ pub fn write_row(writer: &mut impl Write, row: &Row, digest: &mut Sha256) -> Res
     let bytes = row.encode_to_vec();
     ensure!(
         !bytes.is_empty() && bytes.len() <= RECORD_LIMIT,
-        "GRAPH_RECORD_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphRecordBudget, "")
     );
     writer.write_all(&(bytes.len() as u32).to_be_bytes())?;
     writer.write_all(&bytes)?;
@@ -38,16 +38,28 @@ pub fn read_row(reader: &mut impl Read, digest: &mut Sha256) -> Result<Option<Ro
     }
     reader
         .read_exact(&mut length[1..])
-        .context("GRAPH_TRUNCATED_LENGTH")?;
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphTruncatedLength,
+            "",
+        ))?;
     let size = u32::from_be_bytes(length) as usize;
-    ensure!(size > 0 && size <= RECORD_LIMIT, "GRAPH_RECORD_BUDGET");
+    ensure!(
+        size > 0 && size <= RECORD_LIMIT,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphRecordBudget, "")
+    );
     let mut bytes = vec![0; size];
     reader
         .read_exact(&mut bytes)
-        .context("GRAPH_TRUNCATED_RECORD")?;
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphTruncatedRecord,
+            "",
+        ))?;
     crate::validate_graph_row_wire(&bytes)?;
     let row = Row::decode(bytes.as_slice())?;
-    ensure!(row.table != 0, "GRAPH_TABLE_REQUIRED");
+    ensure!(
+        row.table != 0,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphTableRequired, "")
+    );
     update_digest(digest, &bytes);
     Ok(Some(row))
 }
@@ -99,7 +111,7 @@ impl Builder {
         ensure!(
             self.archive.count < self.max_rows
                 && self.archive.bytes + size as u64 <= self.max_bytes,
-            "GRAPH_ARCHIVE_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveBudget, "")
         );
         write_row(&mut self.writer, row, &mut self.digest)?;
         self.archive.count += 1;
@@ -139,7 +151,10 @@ impl Iterator for Records {
                 self.ended = true;
                 let actual = format!("{:x}", self.digest.clone().finalize());
                 if self.count != self.expected_count || actual != self.expected_digest {
-                    Some(Err(anyhow::anyhow!("GRAPH_ARCHIVE_CHECKSUM")))
+                    Some(Err(anyhow::anyhow!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GraphArchiveChecksum,
+                        ""
+                    ))))
                 } else {
                     None
                 }
@@ -159,7 +174,10 @@ impl GraphArchive {
         let mut reader = BufReader::new(File::open(&self.path)?);
         let mut magic = [0; 4];
         reader.read_exact(&mut magic)?;
-        ensure!(magic == MAGIC, "GRAPH_ARCHIVE_FORMAT");
+        ensure!(
+            magic == MAGIC,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveFormat, "")
+        );
         let mut digest = Sha256::new();
         digest.update(MAGIC);
         Ok(Records {
@@ -203,4 +221,15 @@ mod tests {
         assert!(read_row(&mut [].as_slice(), &mut Sha256::new())?.is_none());
         Ok(())
     }
+}
+
+/// Sealed graph descriptor shared by result admission and diagnostic copies.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Descriptor {
+    pub format: String,
+    pub path: PathBuf,
+    pub count: u64,
+    pub bytes: u64,
+    pub sha256: String,
 }

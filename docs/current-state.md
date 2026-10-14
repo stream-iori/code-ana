@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-10-13。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-10-14。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -13,6 +13,12 @@
 | 紧凑布局 | 整数引用、路径/外部目标字典、重复大 metadata 共享、元注解定义/归属分离 | `crates/storage/src/compact-schema.sql`、`compact-meta.sql` |
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 仍为后续设计；mock 只回放冻结 fixture，不分析任意 Rust 源码 | [Rust worker](modules/rust-worker.md) |
+
+## Rust 结构改造
+
+2026-10-14 已落地请求/状态/错误枚举、显式 protobuf 映射、类型化查询记录与稳定属性、按能力拆分的读接口、索引阶段和任务/发布端口。运维、Maven/Java 控制结构有明确 DTO；FILES 不实现语义图，内部整数主键不进入查询属性。公开协议、图身份和存储版本保持。详见 [实现与验证边界](implementation/rust-type-refactor.md)。
+
+本次改造已通过 Rust 完整门禁（含图 13 项、文本 2 项、标注 4 项及 clippy）、Java fixture、Native manifest/ABI/图/环境/真实崩溃、显式 JVM 图 5 项以及 Rust/Java 分发回归。Native 首次安装因活跃 JVM 被保护逻辑拒绝，等待退出后完成剩余门禁；详见 [验证记录](implementation/rust-type-refactor.md#验证)。以下 2026-10-13 真实项目单轮仍按原产物解释，不作为改造后的容量或稳定性能结论。
 
 ## 版本
 

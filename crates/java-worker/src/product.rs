@@ -1,10 +1,10 @@
 use crate::backend::{Backend, ProductEngine, verify_bundle};
 use anyhow::{Context, Result, bail, ensure};
 use codeana_contracts::performance::{Metric, measure};
-use codeana_contracts::{convert, envelope, worker as w, worker::envelope::Body, write_frame};
+use codeana_contracts::{envelope, map, worker as w, worker::envelope::Body, write_frame};
 use codeana_model::*;
 use codeana_storage::derived_cache::{DerivedCacheLimits, DerivedCacheSession};
-use serde_json::json;
+
 use std::{
     os::fd::FromRawFd,
     path::{Path, PathBuf},
@@ -12,7 +12,10 @@ use std::{
 use tokio::net::UnixStream;
 
 pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
-    ensure!(fd >= 3, "DEDICATED_FD_REQUIRED");
+    ensure!(
+        fd >= 3,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DedicatedFdRequired, "")
+    );
     let bridge = {
         let diagnostics = codeana_contracts::performance::Report::new("worker-bootstrap");
         diagnostics
@@ -38,23 +41,23 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
         let attempt = frame.attempt;
         let mut cancelled = false;
         let outcome: Result<()> = async {
-            match frame.body.context("EMPTY_FRAME")? {
+            match frame.body.context(codeana_model::DomainError::new(codeana_model::ErrorCode::EmptyFrame, ""))? {
                 Body::Hello(h) => {
-                    ensure!(!hello && h.protocol==WORKER_PROTOCOL_VERSION && h.fact_ir==VERSION,"WORKER_VERSION_MISMATCH");
+                    ensure!(!hello && h.protocol==WORKER_PROTOCOL_VERSION && h.fact_ir==VERSION, codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerVersionMismatch, ""));
                     hello = true;
                     write_frame(&mut ipc,&envelope(&attempt,Body::Hello(w::Hello {protocol:WORKER_PROTOCOL_VERSION,fact_ir:VERSION,producer:"javac-java8-v1".into()}))).await?;
                 }
                 Body::Discover(d) => {
-                    ensure!(hello && config.is_none() && !awaiting_ack,"DISCOVER_STATE");
-                    let c = d.java.context("JAVA_CONFIG_REQUIRED")?;
-                    ensure!(Path::new(&c.bridge).canonicalize()?==bridge,"BRIDGE_BUNDLE_MISMATCH");
+                    ensure!(hello && config.is_none() && !awaiting_ack, codeana_model::DomainError::new(codeana_model::ErrorCode::DiscoverState, ""));
+                    let c = d.java.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaConfigRequired, ""))?;
+                    ensure!(Path::new(&c.bridge).canonicalize()?==bridge, codeana_model::DomainError::new(codeana_model::ErrorCode::BridgeBundleMismatch, ""));
                     codeana_contracts::java::validate(&c)?;
                     if c.compact_inputs {
-                        let manifest = d.manifest.as_ref().context("MANIFEST_REQUIRED")?;
+                        let manifest = d.manifest.as_ref().context(codeana_model::DomainError::new(codeana_model::ErrorCode::ManifestRequired, ""))?;
                         let units: std::collections::BTreeMap<_,_> = manifest.files.iter().map(|u| (u.path.as_str(),u)).collect();
                         for input in &c.input_table {
-                            let unit = input.unit.as_ref().context("JAVA_INPUT_UNIT")?;
-                            ensure!(units.get(unit.path.as_str()).is_some_and(|captured| *captured==unit),"JAVA_UNCAPTURED_INPUT_TABLE");
+                            let unit = input.unit.as_ref().context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputUnit, ""))?;
+                            ensure!(units.get(unit.path.as_str()).is_some_and(|captured| *captured==unit), codeana_model::DomainError::new(codeana_model::ErrorCode::JavaUncapturedInputTable, ""));
                         }
                     }
                     let context = w::BuildContext {language:"java".into(),modules:c.contexts.iter().map(|m|m.id.clone()).collect(),source_version:"8".into(),classpath:vec![],producer:"javac-java8-v1".into(),capabilities:vec!["declarations".into(),"calls".into(),"references".into(),"relations".into(),format!("toolchain:{}",c.toolchain_digest),format!("adapter:{}",c.semantic_identity)]};
@@ -63,22 +66,9 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     write_frame(&mut ipc,&envelope(&attempt,Body::Context(context))).await?;
                 }
                 Body::Analyze(a) => {
-                    ensure!(!awaiting_ack,"BASELINE_NOT_SEALED");
-                    let c=config.as_ref().context("DISCOVER_REQUIRED")?;
-                    let manifest: Manifest=convert(&a.manifest.context("MANIFEST_REQUIRED")?)?;
-                    let contexts=c.contexts.iter().map(|ctx| {
-                        let sources=ctx.sources.iter().map(|s| {
-                            let u=s.unit.as_ref().context("SOURCE_UNIT_REQUIRED")?;
-                            Ok(json!({"path":u.path,"hash":u.hash,"module":u.module,"world":u.world,"scope":u.scope,"auxiliary":u.auxiliary,"input":s.input,"publish":s.publish}))
-                        }).collect::<Result<Vec<_>>>()?;
-                        Ok(json!({"version":9,"type_graph":true,"context":ctx.id,"module":ctx.module,"world":ctx.world,"scope":ctx.scope,"prerequisite":ctx.prerequisite,"dependency_modules":ctx.dependency_modules,"source_roots":ctx.source_roots,"sources":sources,"classpath":ctx.classpath,"digest":ctx.digest,"lombok":ctx.lombok,"lombok_strict":ctx.lombok_strict,"external_policy_configured":ctx.external_policy_configured,"external_exclude_patterns":ctx.external_exclude_patterns,"spring":ctx.spring,"spring_xml":ctx.spring_xml,"sofa":ctx.sofa,
-                            "model_decode_bytes":if ctx.model_decode_bytes==0 {512*1024*1024} else {ctx.model_decode_bytes},
-                            "model_archive_bytes":if ctx.model_archive_bytes==0 {64*1024*1024} else {ctx.model_archive_bytes},
-                            "model_record_limit":if ctx.model_record_limit==0 {100000} else {ctx.model_record_limit},
-                            "resources":ctx.resources.iter().map(|r|json!({"unit":r.unit,"input":r.input})).collect::<Vec<_>>(),
-                            "source_indices":ctx.source_indices,"publish_indices":ctx.publish_indices,
-                            "classpath_indices":ctx.classpath_indices,"resource_indices":ctx.resource_indices}))
-                    }).collect::<Result<Vec<_>>>()?;
+                    ensure!(!awaiting_ack, codeana_model::DomainError::new(codeana_model::ErrorCode::BaselineNotSealed, ""));
+                    let c=config.as_ref().context(codeana_model::DomainError::new(codeana_model::ErrorCode::DiscoverRequired, ""))?;
+                    let manifest: Manifest=map(a.manifest.as_ref().context(codeana_model::DomainError::new(codeana_model::ErrorCode::ManifestRequired, ""))?)?;
                     let limits=codeana_contracts::java::OutputLimits::from_config(c)?;
                     derived_cache = if c.signature_cache {
                         let root = Path::new(&c.cache_root).with_extension("managed-v1");
@@ -89,7 +79,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                         }
                     } else { None };
                     let cache_root = derived_cache.as_ref().map(|cache| cache.namespace_path("anatomist-signatures-v50-reloc2")).transpose()?;
-                    let request=json!({"version":9,"compact_inputs":c.compact_inputs,"input_table":c.input_table,"classpath_table":c.classpath_table,"facts":true,"java_home":c.java_home,"bridge":c.bridge,"scratch":c.scratch,"contexts":contexts,"parallelism":c.parallelism,"full":a.full,"baseline_summary":if a.baseline_summary_json.is_empty(){json!({})}else{serde_json::from_slice::<serde_json::Value>(&a.baseline_summary_json)?},"profile":a.profile,"cache_root":cache_root,"signature_cache":derived_cache.is_some(),"signature_pin_bytes":if derived_cache.is_some() {128_u64<<20} else {256_u64<<20},"result_bytes":limits.bytes,"fact_limit":limits.facts,"compiler_heap_bytes":c.compiler_heap_bytes,"compiler_timeout_seconds":if c.compiler_timeout_seconds==0 {120} else {c.compiler_timeout_seconds}});
+                    let request=codeana_contracts::engine_request::EngineRequest::new(c,&a,cache_root)?;
                     let heap=if c.native_heap_bytes==0 {256*1024*1024} else {c.native_heap_bytes};
                     let mut timings=crate::timings::PerformanceTimings::start(Path::new(&c.scratch))?;
                     let capture=timings.as_ref().map(|t|t.capture.clone()).unwrap_or_default();
@@ -100,39 +90,39 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     if native.is_none() {
                         let loaded = tokio::select! {
                             biased;
-                            frame=&mut control => { ensure!(matches!(frame?.body,Some(Body::Cancel(_))),"UNEXPECTED_DURING_ANALYSIS"); cancelled=true; return Ok(()); },
+                            frame=&mut control => { ensure!(matches!(frame?.body,Some(Body::Cancel(_))), codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedDuringAnalysis, "")); cancelled=true; return Ok(()); },
                             loaded=ProductEngine::load(library,heap,backend,capture.clone()) => loaded?,
                         };
                         native=Some(loaded);
                     }
-                    let lib=native.as_mut().context("NATIVE_REQUIRED")?;
+                    let lib=native.as_mut().context(codeana_model::DomainError::new(codeana_model::ErrorCode::NativeRequired, ""))?;
                     lib.set_capture(capture.clone());
                     let computation = async {
-                        ensure!(lib.heap_bytes().await?==heap,"WARM_NATIVE_HEAP_MISMATCH");
-                        lib.start(serde_json::to_vec(&request)?).await.context("JAVA_ENGINE_START")?;
+                        ensure!(lib.heap_bytes().await?==heap, codeana_model::DomainError::new(codeana_model::ErrorCode::WarmNativeHeapMismatch, ""));
+                        lib.start(serde_json::to_vec(&request)?).await.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaEngineStart, ""))?;
                         if let Some(e)=evidence.as_mut() {e.phase(backend.started_phase());}
                         if let Some(t)=timings.as_mut() {t.phase(backend.started_phase());}
                         let state = lib.ready().await?;
-                        let output=lib.result_file(limits.bytes.min(64<<20),Path::new(&c.scratch)).await.context("JAVA_DESCRIPTOR_READ")?;
+                        let output=lib.result_file(limits.bytes.min(64<<20),Path::new(&c.scratch)).await.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaDescriptorRead, ""))?;
                         Ok::<_,anyhow::Error>((state,output))
                     };
-                    enum Wake { Control(Box<Result<w::Envelope>>), Finished(Result<(i32,tempfile::NamedTempFile)>) }
+                    enum Wake { Control(Box<Result<w::Envelope>>), Finished(Result<(crate::state::RunState,tempfile::NamedTempFile)>) }
                     let completed = tokio::select! {
                         biased;
                         frame=&mut control => Wake::Control(Box::new(frame)),
                         result=computation => Wake::Finished(result),
                     };
                     let (state,output)= match completed {
-                        Wake::Control(frame) => { ensure!(matches!((*frame)?.body,Some(Body::Cancel(_))),"UNEXPECTED_DURING_ANALYSIS"); lib.cancel()?; cancelled=true; return Ok(()); },
+                        Wake::Control(frame) => { ensure!(matches!((*frame)?.body,Some(Body::Cancel(_))), codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedDuringAnalysis, "")); lib.cancel()?; cancelled=true; return Ok(()); },
                         Wake::Finished(result) => result?,
                     };
                     measure(Metric::DescriptorBytes, output.as_file().metadata()?.len(), true, || ());
                     if let Some(e)=evidence.as_mut() {e.phase(backend.finished_phase());}
                     if let Some(t)=timings.as_mut() {t.phase(backend.finished_phase());}
-                    if state!=1 {
-                        ensure!(output.as_file().metadata()?.len()<=64*1024,"NATIVE_FAILURE_BUDGET");
+                    if state!=crate::state::RunState::Complete {
+                        ensure!(output.as_file().metadata()?.len()<=64*1024, codeana_model::DomainError::new(codeana_model::ErrorCode::NativeFailureBudget, ""));
                         let error=std::fs::read(output.path())?;
-                        bail!("JAVA_ANALYSIS: {}",String::from_utf8_lossy(&error));
+                        bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaAnalysis, format!("{}", String::from_utf8_lossy(&error))));
                     }
                     if let Some(e)=evidence.as_ref() {e.sealed_descriptor(output.path())?;}
                     let (tx, mut rx) = tokio::sync::mpsc::channel(4);
@@ -144,13 +134,13 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     let reader = tokio::task::spawn_blocking(move || {
                         capture_reader.sync(|| {
                             let mut encoder = crate::delivery::Encoder::new(tx.clone(), limits);
-                            crate::result::read_owned_stream(std::io::BufReader::new(output.reopen().context("JAVA_DESCRIPTOR_REOPEN")?),
+                            crate::result::read_owned_stream(std::io::BufReader::new(output.reopen().context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaDescriptorReopen, ""))?),
                                 &reader_manifest, limits, &root,
                                 |mode, replacements| tx.blocking_send(crate::delivery::Event::Begin {
                                     mode: mode.into(), replacements: replacements.to_vec(),
-                                }).context("DELIVERY_CANCELLED"),
+                                }).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DeliveryCancelled, "")),
                                 |fact| encoder.push(fact),
-                                || { ensure!(!reader_cancel.load(std::sync::atomic::Ordering::Relaxed), "CANCELLED"); Ok(()) })?;
+                                || { ensure!(!reader_cancel.load(std::sync::atomic::Ordering::Relaxed), codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")); Ok(()) })?;
                             encoder.finish()
                         })
                     });
@@ -162,29 +152,29 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                             let event = tokio::select! {
                                 biased;
                                 frame = &mut control => {
-                                    ensure!(matches!(frame?.body, Some(Body::Cancel(_))), "UNEXPECTED_DURING_DELIVERY");
+                                    ensure!(matches!(frame?.body, Some(Body::Cancel(_))), codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedDuringDelivery, ""));
                                     lib.cancel()?; cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
-                                    anyhow::bail!("CANCELLED");
+                                    anyhow::bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""));
                                 },
                                 event = rx.recv() => match event { Some(event) => event, None => break },
                             };
                             let body = match event {
                                 crate::delivery::Event::Begin { mode, replacements } => {
-                                    ensure!(!begun, "DUPLICATE_RESULT_BEGIN"); begun = true;
-                                    let r = AnalysisHeader { mode, baseline: a.baseline.clone(), manifest: manifest.id(),
+                                    ensure!(!begun, codeana_model::DomainError::new(codeana_model::ErrorCode::DuplicateResultBegin, "")); begun = true;
+                                    let r = AnalysisHeader { mode:mode.parse()?, baseline: a.baseline.clone(), manifest: manifest.id(),
                                         profile: a.profile.clone(), producer: "javac-java8-v1".into(), replacements };
                                     r.validate(&manifest).map_err(anyhow::Error::msg)?;
-                                    Body::Begin(w::Begin { mode:r.mode, baseline:r.baseline, manifest:r.manifest,
+                                    Body::Begin(w::Begin { mode:r.mode.to_string(), baseline:r.baseline, manifest:r.manifest,
                                         profile:r.profile, producer:r.producer,
-                                        replacements:r.replacements.iter().map(convert).collect::<Result<_>>()? })
+                                        replacements:r.replacements.iter().map(map).collect::<Result<_>>()? })
                                 },
                                 crate::delivery::Event::Chunk(facts) => {
-                                    ensure!(begun && !verified, "DELIVERY_STATE");
+                                    ensure!(begun && !verified, codeana_model::DomainError::new(codeana_model::ErrorCode::DeliveryState, ""));
                                     // Sequence is counted here as messages are sent.
                                     Body::Chunk(w::Chunk { seq: delivery_seq,  rows:facts })
                                 },
                                 crate::delivery::Event::End { chunks, count, checksum } => {
-                                    ensure!(begun && !verified && chunks == delivery_seq, "DELIVERY_STATE");
+                                    ensure!(begun && !verified && chunks == delivery_seq, codeana_model::DomainError::new(codeana_model::ErrorCode::DeliveryState, ""));
                                     verified = true;
                                     if let Some(e)=evidence.as_mut() {e.phase("archive_validated_and_deduplicated");}
                                     if let Some(t)=timings.as_mut() {t.phase("archive_validated_and_deduplicated");}
@@ -196,15 +186,15 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                             tokio::select! {
                                 biased;
                                 request = &mut control => {
-                                    ensure!(matches!(request?.body, Some(Body::Cancel(_))), "UNEXPECTED_DURING_DELIVERY");
-                                    lib.cancel()?; anyhow::bail!("CANCELLED");
+                                    ensure!(matches!(request?.body, Some(Body::Cancel(_))), codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedDuringDelivery, ""));
+                                    lib.cancel()?; anyhow::bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""));
                                 },
                                 written = write_frame(&mut outgoing, &frame) => written?,
                             }
                             if is_chunk { delivery_seq += 1; }
                             if verified { break; }
                         }
-                        ensure!(verified, "UNVERIFIED_NATIVE_DELIVERY");
+                        ensure!(verified, codeana_model::DomainError::new(codeana_model::ErrorCode::UnverifiedNativeDelivery, ""));
                         Ok(())
                     }.await;
                     cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -218,8 +208,8 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     }).await?;
                 }
                 Body::Ack(ack)=> {
-                    ensure!(awaiting_ack && !ack.revision.is_empty(),"PUBLISH_ACK_STATE");
-                    let lib=native.as_mut().context("NATIVE_REQUIRED")?;
+                    ensure!(awaiting_ack && !ack.revision.is_empty(), codeana_model::DomainError::new(codeana_model::ErrorCode::PublishAckState, ""));
+                    let lib=native.as_mut().context(codeana_model::DomainError::new(codeana_model::ErrorCode::NativeRequired, ""))?;
                     lib.ack().await?;
                     lib.finish().await?;
                     if let Some(mut cache) = derived_cache.take() {
@@ -237,7 +227,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     cancelled = true;
                     return Ok(());
                 }
-                _=>bail!("UNEXPECTED_WORKER_MESSAGE")
+                _=>bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedWorkerMessage, ""))
             }
             Ok(())
         }.await;

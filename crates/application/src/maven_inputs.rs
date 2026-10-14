@@ -1,8 +1,10 @@
 //! Explicit Maven discovery. Indexing only consumes the resulting immutable manifest.
 use anyhow::{Context, Result, bail, ensure};
+use codeana_config::java_inputs::{
+    Artifact, DependencyInput, ExportReceipt, InputModule, InputRoot, JavaInputs,
+};
 use codeana_model::{hash, hash_file};
 use roxmltree::{Document, Node, ParsingOptions};
-use serde_json::{Value, json};
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
     fs,
@@ -44,16 +46,26 @@ fn resolve(path: &Path) -> Result<PathBuf> {
     if absolute.exists() {
         return Ok(absolute.canonicalize()?);
     }
-    let parent = absolute.parent().context("MAVEN_INPUT_PATH")?;
-    let name = absolute.file_name().context("MAVEN_INPUT_PATH")?;
+    let parent = absolute.parent().context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::MavenInputPath,
+        "",
+    ))?;
+    let name = absolute
+        .file_name()
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::MavenInputPath,
+            "",
+        ))?;
     Ok(resolve(parent)?.join(name))
 }
 fn inside(root: &Path, value: &str) -> Result<PathBuf> {
     let path = resolve(Path::new(value))?;
     ensure!(
         path.starts_with(root),
-        "MAVEN_INPUT_OUTSIDE_PROJECT: {}",
-        path.display()
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::MavenInputOutsideProject,
+            format!("{}", path.display())
+        )
     );
     Ok(path)
 }
@@ -99,7 +111,7 @@ fn parse(text: &str) -> Result<Document<'_>> {
     ensure!(
         !text.to_ascii_uppercase().contains("<!DOCTYPE")
             && !text.to_ascii_uppercase().contains("<!ENTITY"),
-        "MAVEN_RESPONSE_ENTITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MavenResponseEntity, "")
     );
     Ok(Document::parse_with_options(
         text,
@@ -125,7 +137,10 @@ fn response(directory: &Path, name: &str, nonce: &str) -> Result<(String, String
             && fs::metadata(&path)?.len() <= MAX_RESPONSE
             && receipt.is_file()
             && fs::metadata(&receipt)?.len() <= 128,
-        "MAVEN_RECEIPT_MISSING_OR_OVERSIZED"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::MavenReceiptMissingOrOversized,
+            ""
+        )
     );
     let mut data = Vec::new();
     fs::File::open(path)?
@@ -133,12 +148,15 @@ fn response(directory: &Path, name: &str, nonce: &str) -> Result<(String, String
         .read_to_end(&mut data)?;
     ensure!(
         data.len() as u64 <= MAX_RESPONSE,
-        "MAVEN_RECEIPT_MISSING_OR_OVERSIZED"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::MavenReceiptMissingOrOversized,
+            ""
+        )
     );
     let digest = hash(&data);
     ensure!(
         fs::read_to_string(receipt)?.trim() == digest,
-        "MAVEN_RECEIPT_CHECKSUM"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MavenReceiptChecksum, "")
     );
     let text = String::from_utf8(data)?;
     let document = parse(&text)?;
@@ -147,7 +165,7 @@ fn response(directory: &Path, name: &str, nonce: &str) -> Result<(String, String
         root.has_tag_name("maven-inputs")
             && root.attribute("format") == Some("maven-inputs-v1")
             && root.attribute("nonce") == Some(nonce),
-        "MAVEN_RECEIPT_IDENTITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MavenReceiptIdentity, "")
     );
     Ok((text, digest))
 }
@@ -187,12 +205,15 @@ fn prerequisite_modules(
         let directory = inside(root, attr(node, "directory")?)?;
         ensure!(
             names.contains_key(&directory) && modules.insert(directory, node).is_none(),
-            "MAVEN_MODULE_INVENTORY_CHANGED"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenModuleInventoryChanged,
+                ""
+            )
         );
     }
     ensure!(
         modules.len() == names.len(),
-        "MAVEN_MODULE_INVENTORY_CHANGED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MavenModuleInventoryChanged, "")
     );
     let mut queue: VecDeque<_> = selected.iter().cloned().collect();
     let mut visited = BTreeSet::new();
@@ -203,11 +224,17 @@ fn prerequisite_modules(
         }
         let node = *modules
             .get(&directory)
-            .context("MAVEN_PREREQUISITE_MODULE")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenPrerequisiteModule,
+                "",
+            ))?;
         if node.attribute("resolved") != Some("true") {
             ensure!(
                 !selected.contains(&directory),
-                "MAVEN_SELECTED_CLASSPATH_REQUIRED"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::MavenSelectedClasspathRequired,
+                    ""
+                )
             );
             pending.insert(directory);
             continue;
@@ -219,7 +246,13 @@ fn prerequisite_modules(
             if let Some(section) = children(node, tag).next() {
                 for dependency in children(section, "reactor") {
                     let parent = inside(root, attr(dependency, "directory")?)?;
-                    ensure!(modules.contains_key(&parent), "MAVEN_PREREQUISITE_MODULE");
+                    ensure!(
+                        modules.contains_key(&parent),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::MavenPrerequisiteModule,
+                            ""
+                        )
+                    );
                     queue.push_back(parent);
                 }
             }
@@ -246,8 +279,10 @@ impl Logs {
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
         ensure!(
             flags >= 0 && unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } >= 0,
-            "MAVEN_LOG_PIPE: {}",
-            std::io::Error::last_os_error()
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenLogPipe,
+                format!("{}", std::io::Error::last_os_error())
+            )
         );
         Ok(thread::spawn(move || {
             let mut buffer = [0; 4096];
@@ -310,19 +345,31 @@ struct Session {
 }
 impl Session {
     fn selection(&mut self, bytes: &[u8], cancel: &AtomicBool) -> Result<()> {
-        let mut input = self.child.stdin.take().context("MAVEN_STDIN")?;
+        let mut input = self
+            .child
+            .stdin
+            .take()
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenStdin,
+                "",
+            ))?;
         let fd = input.as_raw_fd();
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
         ensure!(
             flags >= 0 && unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } >= 0,
-            "MAVEN_SELECTION_PIPE: {}",
-            std::io::Error::last_os_error()
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenSelectionPipe,
+                format!("{}", std::io::Error::last_os_error())
+            )
         );
         let mut written = 0;
         while written < bytes.len() {
             self.check(cancel)?;
             match input.write(&bytes[written..]) {
-                Ok(0) => bail!("MAVEN_SELECTION_PIPE_CLOSED"),
+                Ok(0) => bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::MavenSelectionPipeClosed,
+                    ""
+                )),
                 Ok(count) => written += count,
                 Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
                     thread::sleep(Duration::from_millis(25))
@@ -354,23 +401,47 @@ impl Session {
             readers: Vec::new(),
             deadline: Instant::now() + Duration::from_secs(timeout),
         };
-        session.readers.push(session.logs.clone().drain(
-            session.child.stdout.take().context("MAVEN_STDOUT")?,
-            nonce.into(),
-        )?);
-        session.readers.push(session.logs.clone().drain(
-            session.child.stderr.take().context("MAVEN_STDERR")?,
-            nonce.into(),
-        )?);
+        session.readers.push(
+            session.logs.clone().drain(
+                session
+                    .child
+                    .stdout
+                    .take()
+                    .context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::MavenStdout,
+                        "",
+                    ))?,
+                nonce.into(),
+            )?,
+        );
+        session.readers.push(
+            session.logs.clone().drain(
+                session
+                    .child
+                    .stderr
+                    .take()
+                    .context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::MavenStderr,
+                        "",
+                    ))?,
+                nonce.into(),
+            )?,
+        );
         Ok(session)
     }
     fn check(&self, cancel: &AtomicBool) -> Result<()> {
-        ensure!(!cancel.load(Ordering::Acquire), "MAVEN_INPUTS_CANCELLED");
+        ensure!(
+            !cancel.load(Ordering::Acquire),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::MavenInputsCancelled, "")
+        );
         ensure!(
             self.logs.total.load(Ordering::Relaxed) <= MAX_LOG,
-            "MAVEN_LOG_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::MavenLogBudget, "")
         );
-        ensure!(Instant::now() < self.deadline, "MAVEN_INPUTS_TIMEOUT");
+        ensure!(
+            Instant::now() < self.deadline,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::MavenInputsTimeout, "")
+        );
         Ok(())
     }
     fn ready(&mut self, cancel: &AtomicBool) -> Result<()> {
@@ -479,7 +550,10 @@ fn extension(options: &ExportOptions) -> Result<PathBuf> {
         return Ok(p.canonicalize()?);
     }
     let exe = std::env::current_exe()?;
-    let base = exe.parent().context("MAVEN_EXTENSION")?;
+    let base = exe.parent().context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::MavenExtension,
+        "",
+    ))?;
     for p in [
         base.join("lib/java/maven-input-worker.jar"),
         base.join("../lib/java/maven-input-worker.jar"),
@@ -493,7 +567,7 @@ fn extension(options: &ExportOptions) -> Result<PathBuf> {
     bail!("Maven extension missing; run scripts/build-java-maven.sh")
 }
 
-pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
+pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs> {
     let root = options.project.canonicalize()?;
     let output = resolve(&options.output)?;
     ensure!(!output.exists(), "output must not exist");
@@ -541,9 +615,15 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
         settings.clone(),
         maven
             .parent()
-            .context("MAVEN_HOME")?
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenHome,
+                "",
+            ))?
             .parent()
-            .context("MAVEN_HOME")?
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenHome,
+                "",
+            ))?
             .join("conf/settings.xml"),
     ] {
         if p.is_file() {
@@ -603,7 +683,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
     let inventory: Vec<_> = children(meta.root_element(), "module").collect();
     ensure!(
         !inventory.is_empty() && inventory.len() <= 256,
-        "MAVEN_MODULE_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MavenModuleBudget, "")
     );
     let mut names = BTreeMap::new();
     for node in &inventory {
@@ -613,14 +693,20 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
             attr(*node, "coordinate")?
                 .split(':')
                 .nth(1)
-                .context("MAVEN_COORDINATE")?
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::MavenCoordinate,
+                    "",
+                ))?
                 .into()
         } else {
             rel
         };
         ensure!(
             names.insert(path, name).is_none(),
-            "MAVEN_DUPLICATE_MODULE_DIRECTORY"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenDuplicateModuleDirectory,
+                ""
+            )
         );
     }
     let mut selected = BTreeSet::new();
@@ -629,7 +715,13 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
             .iter()
             .filter(|(p, n)| label == *n || relative(&root, p).is_ok_and(|s| &s == label))
             .collect();
-        ensure!(found.len() == 1, "MAVEN_MODULE_SELECTION: {label}");
+        ensure!(
+            found.len() == 1,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenModuleSelection,
+                label.to_string()
+            )
+        );
         selected.insert(found[0].0.clone());
     }
     if options.modules.is_empty() {
@@ -662,7 +754,13 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
         if pending.is_empty() {
             break;
         }
-        ensure!(round < 256, "MAVEN_PREREQUISITE_ROUND_BUDGET");
+        ensure!(
+            round < 256,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenPrerequisiteRoundBudget,
+                ""
+            )
+        );
         classpath_rounds += 1;
     }
     session.finish(cancel)?;
@@ -671,7 +769,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
     let inventory: Vec<_> = children(doc.root_element(), "module").collect();
     ensure!(
         inventory.len() == names.len(),
-        "MAVEN_MODULE_INVENTORY_CHANGED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MavenModuleInventoryChanged, "")
     );
     let mut observed = BTreeSet::new();
     let mut records = Vec::new();
@@ -683,16 +781,25 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
         let directory = inside(&root, attr(node, "directory")?)?;
         ensure!(
             observed.insert(directory.clone()),
-            "MAVEN_MODULE_INVENTORY_CHANGED"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenModuleInventoryChanged,
+                ""
+            )
         );
         let module = names
             .get(&directory)
-            .context("MAVEN_MODULE_INVENTORY_CHANGED")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenModuleInventoryChanged,
+                "",
+            ))?;
         let physical = relative(&root, &directory)?;
         let model = children(node, "effective-model")
             .next()
             .and_then(|n| n.text())
-            .context("MAVEN_EFFECTIVE_MODEL_MISSING")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenEffectiveModelMissing,
+                "",
+            ))?;
         let parsed = parse(model)?;
         let packaging = children(parsed.root_element(), "packaging")
             .next()
@@ -707,8 +814,10 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
             let expected = attr(item, "sha256")?;
             ensure!(
                 p.is_file() && hash_file(&p)? == expected,
-                "MAVEN_MODEL_CHANGED: {}",
-                p.display()
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::MavenModelChanged,
+                    format!("{}", p.display())
+                )
             );
             if p.starts_with(&root) {
                 control.insert(relative(&root, &p)?, expected.into());
@@ -731,11 +840,22 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
                 continue;
             }
             for item in children(node, tag) {
-                let path = inside(&root, item.text().context("MAVEN_ROOT_PATH")?)?;
+                let path = inside(
+                    &root,
+                    item.text().context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::MavenRootPath,
+                        "",
+                    ))?,
+                )?;
                 if generated && !path.exists() {
                     continue;
                 }
-                let mut record = json!({"path":relative_root(&directory,&path),"scope":scope});
+                let mut record = InputRoot {
+                    path: relative_root(&directory, &path),
+                    scope: scope.into(),
+                    generated: false,
+                    generated_from: BTreeMap::new(),
+                };
                 if generated {
                     let mut proof = BTreeMap::new();
                     for entry in walkdir::WalkDir::new(&directory)
@@ -753,8 +873,8 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
                     if let Some(value) = control.get(&pom) {
                         proof.insert(pom, value.clone());
                     }
-                    record["generated"] = json!(true);
-                    record["generated_from"] = json!(proof);
+                    record.generated = true;
+                    record.generated_from = proof;
                 }
                 let dest = if resource {
                     &mut resource_roots
@@ -769,7 +889,13 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
         for item in children(node, "output-root") {
             outputs.push(relative_root(
                 &directory,
-                &inside(&root, item.text().context("MAVEN_OUTPUT_ROOT")?)?,
+                &inside(
+                    &root,
+                    item.text().context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::MavenOutputRoot,
+                        "",
+                    ))?,
+                )?,
             ));
         }
         let mut dependencies = BTreeMap::new();
@@ -787,16 +913,33 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
                     match item.tag_name().name() {
                         "reactor" => {
                             let path = inside(&root, attr(item, "directory")?)?;
-                            let target = names.get(&path).context("MAVEN_REACTOR_MODULE")?.clone();
+                            let target = names
+                                .get(&path)
+                                .context(codeana_model::DomainError::new(
+                                    codeana_model::ErrorCode::MavenReactorModule,
+                                    "",
+                                ))?
+                                .clone();
                             if !deps.contains(&target) {
                                 deps.push(target.clone());
                             }
-                            sequence.push(json!({"kind":"reactor","module":target,"coordinate":attr(item,"coordinate")?,"classifier":attr(item,"classifier")?,"extension":attr(item,"extension")?}));
+                            sequence.push(DependencyInput::Reactor {
+                                module: target,
+                                coordinate: attr(item, "coordinate")?.into(),
+                                classifier: attr(item, "classifier")?.into(),
+                                extension: attr(item, "extension")?.into(),
+                            });
                         }
                         "external" => {
                             session.check(cancel)?;
                             let path = resolve(Path::new(attr(item, "path")?))?;
-                            ensure!(path.is_file(), "MAVEN_ARTIFACT_MISSING: {}", path.display());
+                            ensure!(
+                                path.is_file(),
+                                codeana_model::DomainError::new(
+                                    codeana_model::ErrorCode::MavenArtifactMissing,
+                                    format!("{}", path.display())
+                                )
+                            );
                             let digest = if let Some(digest) = artifact_hashes.get(&path) {
                                 digest.clone()
                             } else {
@@ -804,55 +947,108 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<Value> {
                                 artifact_hashes.insert(path.clone(), digest.clone());
                                 digest
                             };
-                            cp.push(json!({"path":path,"sha256":digest,"coordinate":attr(item,"coordinate")?,"classifier":attr(item,"classifier")?,"extension":attr(item,"extension")?}));
-                            sequence.push(json!({"kind":"classpath","index":cp.len()-1}));
+                            cp.push(Artifact {
+                                path: path.to_string_lossy().into_owned(),
+                                sha256: digest,
+                                coordinate: attr(item, "coordinate")?.into(),
+                                classifier: attr(item, "classifier")?.into(),
+                                extension: attr(item, "extension")?.into(),
+                            });
+                            sequence.push(DependencyInput::Classpath {
+                                index: cp.len() - 1,
+                            });
                         }
-                        _ => bail!("MAVEN_DEPENDENCY_KIND"),
+                        _ => bail!(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::MavenDependencyKind,
+                            ""
+                        )),
                     }
                 }
             }
-            dependencies.insert(scope, deps);
-            classpath.insert(scope, cp);
-            order.insert(scope, sequence);
+            dependencies.insert(scope.into(), deps);
+            classpath.insert(scope.into(), cp);
+            order.insert(scope.into(), sequence);
         }
         let model_hash = hash(model.as_bytes());
-        model_hashes.push(json!([physical, model_hash]));
-        active.push(json!([
-            physical,
+        model_hashes.push((physical.clone(), model_hash.clone()));
+        active.push((
+            physical.clone(),
             children(node, "active-profile")
                 .map(|n| n.text().unwrap_or(""))
-                .collect::<Vec<_>>()
-        ]));
-        records.push(json!({"id":module,"physical_id":physical,"root":physical,"coordinate":attr(node,"coordinate")?,"source_version":"8","packaging":packaging,"selected":selected.contains(&directory),"resolved_classpath":node.attribute("resolved")==Some("true"),"source_roots":source_roots,"resource_roots":resource_roots,"output_roots":outputs,"dependencies":dependencies,"classpath":classpath,"dependency_order":order,"effective_model_sha256":model_hash}));
+                .collect::<Vec<_>>(),
+        ));
+        records.push(InputModule {
+            id: module.clone(),
+            physical_id: physical.clone(),
+            root: physical,
+            coordinate: attr(node, "coordinate")?.into(),
+            source_version: "8".into(),
+            packaging: packaging.into(),
+            selected: selected.contains(&directory),
+            resolved_classpath: node.attribute("resolved") == Some("true"),
+            source_roots,
+            resource_roots,
+            output_roots: outputs,
+            dependencies,
+            classpath,
+            dependency_order: order,
+            effective_model_sha256: model_hash,
+        });
     }
     for (name, digest) in &control {
         session.check(cancel)?;
         ensure!(
             hash_file(&root.join(name))? == *digest,
-            "MAVEN_CONTROL_CHANGED: {name}"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenControlChanged,
+                name.to_string()
+            )
         );
     }
     for (name, digest) in &external {
         session.check(cancel)?;
         ensure!(
             hash_file(Path::new(name))? == *digest,
-            "MAVEN_EXTERNAL_CONTROL_CHANGED: {name}"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenExternalControlChanged,
+                name.to_string()
+            )
         );
     }
     for (path, digest) in &artifact_hashes {
         session.check(cancel)?;
         ensure!(
             hash_file(path)? == *digest,
-            "MAVEN_ARTIFACT_CHANGED: {}",
-            path.display()
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::MavenArtifactChanged,
+                format!("{}", path.display())
+            )
         );
     }
-    let result = json!({"schema_version":3,"controls":control,"external_controls":external,"effective_model_sha256":hash(serde_json::to_vec(&model_hashes)?),"active_profiles_sha256":hash(serde_json::to_vec(&active)?),"selected_profiles":profiles,"scopes":scopes,"resolved_classpath":!options.source_only,"receipt":{"nonce":nonce,"metadata_sha256":metadata_hash,"inputs_sha256":inputs_hash,"extension_sha256":hash_file(&extension)?,"maven_processes":1,"prerequisite_classpath_rounds":classpath_rounds},"modules":records});
+    let result = JavaInputs {
+        schema_version: 3,
+        controls: control,
+        external_controls: external,
+        effective_model_sha256: hash(serde_json::to_vec(&model_hashes)?),
+        active_profiles_sha256: hash(serde_json::to_vec(&active)?),
+        selected_profiles: profiles,
+        scopes,
+        resolved_classpath: !options.source_only,
+        receipt: Some(ExportReceipt {
+            nonce,
+            metadata_sha256: metadata_hash,
+            inputs_sha256: inputs_hash,
+            extension_sha256: hash_file(&extension)?,
+            maven_processes: 1,
+            prerequisite_classpath_rounds: classpath_rounds,
+        }),
+        modules: records,
+    };
     let mut encoded = serde_json::to_vec_pretty(&result)?;
     encoded.push(b'\n');
     ensure!(
         encoded.len() as u64 <= MAX_RESPONSE,
-        "MAVEN_MANIFEST_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MavenManifestBudget, "")
     );
     if let Some(p) = output.parent() {
         fs::create_dir_all(p)?;

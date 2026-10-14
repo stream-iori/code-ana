@@ -20,7 +20,10 @@ fn main() -> Result<(), String> {
         validator.validate(fact)?;
     }
     let result = AnalysisResult {
-        mode: input.mode,
+        mode: input
+            .mode
+            .parse::<codeana_model::AnalysisMode>()
+            .map_err(|e| e.to_string())?,
         baseline: "fixture-baseline".into(),
         manifest: input.manifest.id(),
         profile: "graph-fixture".into(),

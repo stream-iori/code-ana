@@ -1,12 +1,14 @@
 # 查询与 typed pipeline
 
-> 对齐 2026-10-13。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
+> 对齐 2026-10-14。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 当前调用与声明遍历按相邻 ID 分批查询 SQLite，最多保留 10,000 条查询记录并报告工作/深度截断。search-code 按公开 ID 递增、每批 512 条定向读取，完整结果流入 SQLite 冻结页库；不受上述遍历记录上限截断。续页以固定 page ID/offset 读取有界记录，参数与 revision 固定，页大小可变；引用和 TTL 随 catalog 管理。其他操作仍先计算有界结果，再冻结到同一页库。dispatch 从已发布的 call-target/overrides 事实扩展静态可能目标，披露开放世界；完整 Java 正确性仍待门禁。本轮不扩展 diff 查询。
 
 **查询从固定版本取事实，输出关系及其证据边界。下游成功不能洗掉上游缺口。**
 
-当前 query 通过 FactReader 端口读取 Anatomist 逻辑投影；CLI/pipeline 使用本项目输出契约。类型/方法关系与 CHA 已有固定图回归，不在查询时重跑 javac。
+当前 query 经 `GraphAccess` 等窄接口读取 Anatomist 逻辑投影；CLI/pipeline 使用本项目输出契约。类型/方法关系与 CHA 已有固定图回归，不在查询时重跑 javac。
+
+`QueryRequest` 与 `Record` 是核心参数/结果；pipeline 使用枚举端点，扫描必须显式实现。FILES 文本/源码只需 `SourceContext`。稳定属性由 `FactAttributes` 表达，Map 保留索引/分组用途。实现与历史页兼容见 [Rust 改造](../implementation/rust-type-refactor.md)。
 
 ## 1. 查询上下文
 

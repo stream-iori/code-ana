@@ -86,7 +86,7 @@ pub enum DependencyInput {
         extension: String,
     },
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InputRoot {
     pub path: String,
@@ -116,8 +116,14 @@ pub fn root_path(module: &str, path: &str) -> Result<PathBuf> {
         match part {
             std::path::Component::Normal(p) => result.push(p),
             std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => ensure!(result.pop(), "JAVA_INPUT_ROOT_ESCAPE"),
-            _ => anyhow::bail!("JAVA_INPUT_ROOT_ABSOLUTE"),
+            std::path::Component::ParentDir => ensure!(
+                result.pop(),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputRootEscape, "")
+            ),
+            _ => anyhow::bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaInputRootAbsolute,
+                ""
+            )),
         }
     }
     Ok(result)
@@ -126,16 +132,22 @@ impl JavaInputs {
     pub fn read(root: &Path, path: &str) -> Result<Self> {
         let canonical_root = root.canonicalize()?;
         let root = canonical_root.as_path();
-        ensure!(safe_path(path), "JAVA_INPUTS_PATH");
+        ensure!(
+            safe_path(path),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputsPath, "")
+        );
         ensure!(
             root.join(path).canonicalize()?.starts_with(root),
-            "JAVA_METADATA_PATH_ESCAPE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaMetadataPathEscape, "")
         );
         let value: Self =
             serde_json::from_slice(&bounded_read(&root.join(path), 32 * 1024 * 1024)?)?;
         ensure!(
             value.schema_version == 3 && !value.modules.is_empty() && value.modules.len() <= 256,
-            "JAVA_INPUTS_SCHEMA: regenerate inputs with the schema 3 exporter"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaInputsSchema,
+                "regenerate inputs with the schema 3 exporter".to_string()
+            )
         );
         if let Some(receipt) = &value.receipt {
             ensure!(
@@ -149,10 +161,16 @@ impl JavaInputs {
                     ]
                     .iter()
                     .all(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())),
-                "JAVA_MAVEN_RECEIPT"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaMavenReceipt, "")
             );
         }
-        ensure!(!value.controls.is_empty(), "JAVA_INPUTS_CONTROLS_REQUIRED");
+        ensure!(
+            !value.controls.is_empty(),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaInputsControlsRequired,
+                ""
+            )
+        );
         ensure!(
             value.effective_model_sha256.len() == 64
                 && value
@@ -168,16 +186,22 @@ impl JavaInputs {
                     .selected_profiles
                     .iter()
                     .all(|p| !p.is_empty() && !p.contains(',')),
-            "JAVA_EFFECTIVE_MODEL_IDENTITY"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaEffectiveModelIdentity,
+                ""
+            )
         );
         for (path, expected) in &value.controls {
             ensure!(
                 safe_path(path) && root.join(path).canonicalize()?.starts_with(root),
-                "JAVA_CONTROL_PATH"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaControlPath, "")
             );
             ensure!(
                 hash(bounded_read(&root.join(path), MAX_FRAME)?) == *expected,
-                "JAVA_METADATA_STALE: {path}"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaMetadataStale,
+                    path.to_string()
+                )
             );
         }
         for (path, expected) in &value.external_controls {
@@ -185,21 +209,33 @@ impl JavaInputs {
                 Path::new(path).is_absolute()
                     && expected.len() == 64
                     && expected.bytes().all(|b| b.is_ascii_hexdigit()),
-                "JAVA_EXTERNAL_CONTROL_PATH"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaExternalControlPath,
+                    ""
+                )
             );
             ensure!(
                 hash(bounded_read(Path::new(path), MAX_FRAME)?) == *expected,
-                "JAVA_METADATA_STALE: {path}"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaMetadataStale,
+                    path.to_string()
+                )
             );
         }
         let ids: BTreeSet<_> = value.modules.iter().map(|m| m.id.as_str()).collect();
-        ensure!(ids.len() == value.modules.len(), "JAVA_DUPLICATE_MODULE");
+        ensure!(
+            ids.len() == value.modules.len(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaDuplicateModule, "")
+        );
         for m in &value.modules {
             ensure!(
                 relative(&m.root)
                     && m.source_version == "8"
                     && (m.physical_id.is_empty() || m.physical_id == m.root),
-                "JAVA_MODULE_UNSUPPORTED"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaModuleUnsupported,
+                    ""
+                )
             );
             for output in &m.output_roots {
                 root_path(&m.root, output)?;
@@ -208,16 +244,22 @@ impl JavaInputs {
                 root_path(&m.root, &r.path)?;
                 ensure!(
                     !r.path.is_empty() && matches!(r.scope.as_str(), "MAIN" | "TEST"),
-                    "JAVA_INPUT_ROOT"
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputRoot, "")
                 );
                 ensure!(
                     !r.generated || !r.generated_from.is_empty(),
-                    "GENERATED_INPUT_PROOF_REQUIRED"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GeneratedInputProofRequired,
+                        ""
+                    )
                 );
                 for (p, h) in &r.generated_from {
                     ensure!(
                         safe_path(p) && hash(bounded_read(&root.join(p), MAX_FRAME)?) == *h,
-                        "GENERATED_INPUT_STALE"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::GeneratedInputStale,
+                            ""
+                        )
                     );
                 }
             }
@@ -225,27 +267,39 @@ impl JavaInputs {
                 ensure!(
                     matches!(scope.as_str(), "MAIN" | "TEST")
                         && deps.iter().all(|d| ids.contains(d.as_str())),
-                    "JAVA_DEPENDENCY_MODULE"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaDependencyModule,
+                        ""
+                    )
                 );
             }
             for (scope, artifacts) in &m.classpath {
                 ensure!(
                     matches!(scope.as_str(), "MAIN" | "TEST"),
-                    "JAVA_CLASSPATH_SCOPE"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaClasspathScope,
+                        ""
+                    )
                 );
                 for a in artifacts {
                     ensure!(
                         a.sha256.len() == 64
                             && a.sha256.bytes().all(|b| b.is_ascii_hexdigit())
                             && (Path::new(&a.path).is_absolute() || safe_path(&a.path)),
-                        "JAVA_ARTIFACT_IDENTITY"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::JavaArtifactIdentity,
+                            ""
+                        )
                     );
                 }
             }
             for (scope, order) in &m.dependency_order {
                 ensure!(
                     matches!(scope.as_str(), "MAIN" | "TEST"),
-                    "JAVA_CLASSPATH_SCOPE"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaClasspathScope,
+                        ""
+                    )
                 );
                 let reactor: Vec<_> = order
                     .iter()
@@ -265,12 +319,18 @@ impl JavaInputs {
                         .all(|(id, classifier, extension)| ids.contains(id.as_str())
                             && classifier.is_empty()
                             && extension.as_str() == "jar"),
-                    "JAVA_REACTOR_ARTIFACT_UNSUPPORTED"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaReactorArtifactUnsupported,
+                        ""
+                    )
                 );
                 let emitted: Vec<_> = reactor.iter().map(|(id, _, _)| (*id).clone()).collect();
                 ensure!(
                     emitted == m.dependencies.get(scope).cloned().unwrap_or_default(),
-                    "JAVA_DEPENDENCY_ORDER_MISMATCH"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaDependencyOrderMismatch,
+                        ""
+                    )
                 );
                 let mut next_external = 0;
                 let external: Vec<_> = order
@@ -333,7 +393,13 @@ impl JavaInputs {
                         )
                     })
                     .collect();
-                ensure!(external == cp, "JAVA_CLASSPATH_ORDER_MISMATCH");
+                ensure!(
+                    external == cp,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaClasspathOrderMismatch,
+                        ""
+                    )
+                );
             }
         }
         // A cycle has no supported javac compilation plan.
@@ -344,13 +410,20 @@ impl JavaInputs {
                 if !visited.insert(id.clone()) {
                     continue;
                 }
-                let module = value
-                    .modules
-                    .iter()
-                    .find(|m| m.id == id)
-                    .context("JAVA_MODULE_MISSING")?;
+                let module = value.modules.iter().find(|m| m.id == id).context(
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaModuleMissing,
+                        "",
+                    ),
+                )?;
                 for dep in module.dependencies.values().flatten() {
-                    ensure!(dep != &m.id, "JAVA_MODULE_CYCLE");
+                    ensure!(
+                        dep != &m.id,
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::JavaModuleCycle,
+                            ""
+                        )
+                    );
                     pending.push(dep.clone());
                 }
             }
@@ -370,10 +443,12 @@ pub fn missing_inputs(root: &Path, path: &str, suggestions: bool) -> anyhow::Err
         retry: "Submit a new index task after preparing the input".into(),
         ..Default::default()
     };
-    anyhow::anyhow!(
-        "BUILD_INPUT_REQUIRED: {}",
-        serde_json::to_string(&advice).expect("build advice serialization")
-    )
+    anyhow::anyhow!(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::BuildInputRequired,
+        serde_json::to_string(&advice)
+            .expect("build advice serialization")
+            .to_string()
+    ))
 }
 
 #[cfg(test)]

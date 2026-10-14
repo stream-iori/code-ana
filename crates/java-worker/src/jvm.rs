@@ -1,6 +1,6 @@
 //! Explicit JVM host. Shares GRA1 validation/publication with the native backend.
 use anyhow::{Context, Result, ensure};
-use serde_json::Value;
+
 use std::{
     cell::RefCell,
     path::{Path, PathBuf},
@@ -8,23 +8,30 @@ use std::{
 };
 
 pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
-    let root = runner.parent().context("JVM_BUNDLE_PATH")?.canonicalize()?;
-    let manifest: Value = serde_json::from_slice(&std::fs::read(root.join("manifest.json"))?)?;
+    let root = runner
+        .parent()
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::JvmBundlePath,
+            "",
+        ))?
+        .canonicalize()?;
+    let manifest: codeana_contracts::bundle::BundleManifest =
+        serde_json::from_slice(&std::fs::read(root.join("manifest.json"))?)?;
     ensure!(
-        manifest["version"] == 1
-            && manifest["backend"] == "jvm"
-            && manifest["analysis_request"] == 9
-            && manifest["worker_protocol"] == codeana_model::WORKER_PROTOCOL_VERSION
-            && manifest["fact_ir"] == codeana_model::VERSION
-            && manifest["adapter"] == "anatomist-4a903272-codeana-graph2"
-            && manifest["compiler_batch_protocol"] == 2
-            && manifest["java_model"] == "javac-model-v50"
-            && manifest["target_java"] == serde_json::json!([8]),
-        "JVM_BUNDLE_VERSION_MISMATCH"
+        manifest.version == 1
+            && manifest.backend == "jvm"
+            && manifest.analysis_request == 9
+            && manifest.worker_protocol == codeana_model::WORKER_PROTOCOL_VERSION
+            && manifest.fact_ir == codeana_model::VERSION
+            && manifest.adapter == "anatomist-4a903272-codeana-graph2"
+            && manifest.compiler_batch_protocol == 2
+            && manifest.java_model == "javac-model-v50"
+            && manifest.target_java == [8],
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleVersionMismatch, "")
     );
-    let files = manifest["files"].as_object().context("JVM_BUNDLE_FILES")?;
+    let files = &manifest.files;
     ensure!(
-        manifest["os"]
+        manifest.os
             == if cfg!(target_os = "macos") {
                 "Darwin"
             } else if cfg!(target_os = "linux") {
@@ -32,35 +39,41 @@ pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
             } else {
                 "unsupported"
             }
-            && manifest["arch"]
+            && manifest.arch
                 == if cfg!(target_arch = "aarch64") {
                     "arm64"
                 } else {
                     "x86_64"
                 },
-        "JVM_BUNDLE_PLATFORM_MISMATCH"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundlePlatformMismatch, "")
     );
     ensure!(
         files.contains_key("runner.jar")
             && files.contains_key("compiler-bridge.jar")
             && files.contains_key("maven-input-worker.jar"),
-        "JVM_BUNDLE_FILES_REQUIRED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleFilesRequired, "")
     );
     ensure!(
         runner.canonicalize()? == root.join("runner.jar"),
-        "JVM_RUNNER_IDENTITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmRunnerIdentity, "")
     );
     for (name, expected) in files {
-        ensure!(codeana_model::safe_path(name), "JVM_BUNDLE_UNSAFE_PATH");
+        ensure!(
+            codeana_model::safe_path(name),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleUnsafePath, "")
+        );
         let path = root.join(name);
         ensure!(
             !std::fs::symlink_metadata(&path)?.file_type().is_symlink()
                 && path.canonicalize()?.starts_with(&root),
-            "JVM_BUNDLE_UNSAFE_PATH"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleUnsafePath, "")
         );
         ensure!(
-            codeana_model::hash_file(&path)? == expected.as_str().context("JVM_BUNDLE_HASH")?,
-            "JVM_BUNDLE_HASH_MISMATCH: {name}"
+            codeana_model::hash_file(&path)? == expected.as_str(),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JvmBundleHashMismatch,
+                name.to_string()
+            )
         );
     }
     Ok(root.join("compiler-bridge.jar"))
@@ -77,7 +90,7 @@ impl Jvm {
         verify_bundle(runner)?;
         ensure!(
             (8 << 20..=2_u64 << 30).contains(&heap) && heap.is_multiple_of(1 << 20),
-            "JVM_HEAP_RANGE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JvmHeapRange, "")
         );
         Ok(Self {
             runner: runner.canonicalize()?,
@@ -92,26 +105,27 @@ impl Jvm {
     pub fn start(&mut self, request: &[u8]) -> Result<()> {
         ensure!(
             self.task.is_none() && request.len() <= codeana_model::MAX_RESULT,
-            "JVM_TASK_STATE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JvmTaskState, "")
         );
-        let mut value: Value = serde_json::from_slice(request)?;
-        let scratch = Path::new(value["scratch"].as_str().context("JVM_SCRATCH")?);
+        let mut value: codeana_contracts::engine_request::EngineRequest =
+            serde_json::from_slice(request)?;
+        let scratch = value.scratch.clone();
         let task = tempfile::Builder::new()
             .prefix("jvm-host-")
-            .tempdir_in(scratch)?;
+            .tempdir_in(&scratch)?;
         let task_scratch = task.path().join("scratch");
         std::fs::create_dir(&task_scratch)?;
-        if let Some(path) = value["baseline_summary"]["path"].as_str() {
-            let source = Path::new(path).canonicalize()?;
+        if let codeana_model::BaselineInput::File(file) = &mut value.baseline_summary {
+            let source = file.path.canonicalize()?;
             ensure!(
                 source.starts_with(scratch.canonicalize()?),
-                "GRAPH_BASELINE_PATH"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::GraphBaselinePath, "")
             );
             let destination = task_scratch.join("baseline-summary.json");
             std::fs::copy(source, &destination)?;
-            value["baseline_summary"]["path"] = serde_json::json!(destination);
+            file.path = destination;
         }
-        value["scratch"] = serde_json::json!(task_scratch);
+        value.scratch = task_scratch;
         std::fs::write(
             task.path().join("request.json"),
             serde_json::to_vec(&value)?,
@@ -131,13 +145,20 @@ impl Jvm {
         self.task = Some(task);
         Ok(())
     }
-    pub fn poll(&self) -> Result<i32> {
+    pub fn poll(&self) -> Result<crate::state::RunState> {
         let mut child = self.child.borrow_mut();
         Ok(
-            match child.as_mut().context("JVM_TASK_REQUIRED")?.try_wait()? {
-                None => 0,
-                Some(status) if status.success() => 1,
-                Some(_) => -1,
+            match child
+                .as_mut()
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JvmTaskRequired,
+                    "",
+                ))?
+                .try_wait()?
+            {
+                None => crate::state::RunState::Running,
+                Some(status) if status.success() => crate::state::RunState::Complete,
+                Some(_) => crate::state::RunState::Failed,
             },
         )
     }
@@ -156,7 +177,10 @@ impl Jvm {
         let result = self
             .task
             .as_ref()
-            .context("JVM_TASK_REQUIRED")?
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JvmTaskRequired,
+                "",
+            ))?
             .path()
             .join("result.json");
         ensure!(
@@ -164,7 +188,7 @@ impl Jvm {
                 .with_context(|| format!("JVM_RESULT_MISSING: {}", result.display()))?
                 .len()
                 <= max,
-            "JVM_RESULT_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JvmResultBudget, "")
         );
         let output = match directory {
             Some(path) => tempfile::NamedTempFile::new_in(path)
@@ -182,7 +206,10 @@ impl Jvm {
             let scratch = self
                 .task
                 .as_ref()
-                .context("JVM_TASK_REQUIRED")?
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JvmTaskRequired,
+                    "",
+                ))?
                 .path()
                 .join("scratch");
             if let Some(directory) = directory {
@@ -208,7 +235,10 @@ impl Jvm {
         )?)
     }
     pub fn ack(&self) -> Result<()> {
-        ensure!(self.poll()? == 1, "JVM_ACK_STATE");
+        ensure!(
+            self.poll()? == crate::state::RunState::Complete,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JvmAckState, "")
+        );
         Ok(())
     }
     pub fn finish(&mut self) -> Result<()> {

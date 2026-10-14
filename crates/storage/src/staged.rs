@@ -46,7 +46,7 @@ pub struct StagedSummary {
     pub diagnostic_samples: Vec<Fact>,
     pub evidence: Evidence,
 }
-#[derive(Clone, Default, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CandidateStatistics {
     pub analyzed_indexes: u64,
     pub elapsed_ms: u64,
@@ -96,7 +96,7 @@ impl Store {
         let revision = &candidate.revision;
         ensure!(
             self.head(&revision.target)? == candidate.expected,
-            "HEAD_CONFLICT"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::HeadConflict, "")
         );
         use codeana_contracts::performance::{Metric, measure};
         measure(Metric::PublishBlobCheck, 0, false, || -> Result<()> {
@@ -132,7 +132,10 @@ impl Store {
             )
             .optional()?
             .unwrap_or_default();
-        ensure!(actual == candidate.expected, "HEAD_CONFLICT");
+        ensure!(
+            actual == candidate.expected,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::HeadConflict, "")
+        );
         tx.execute(
             "INSERT INTO revisions VALUES(?,?,?,?)",
             params![

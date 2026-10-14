@@ -1,12 +1,14 @@
 # 诊断、报告与人工标注
 
-> 对齐 2026-10-13。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
+> 对齐 2026-10-14。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 当前 `doctor` 返回生效 generation、字段来源与能力；报告支持 off/basic/full、诊断计数/分组/样例上限、可比指标差值，导出只写新路径。标注库单独迁移并保存 annotation revision 与事实锚点；list 固定一次标注读取和指定图 revision。真实 javac 诊断已进入图与报告，包含当前冻结项目的 partial 结果；标注进入 typed pipeline、完整诊断/迁移覆盖仍待完成。
 
 **执行、质量、门禁、发布和报告是五个独立结果；人工内容不属于可重建分析事实。**
 
 当前独立 annotations.db 保存正文/版本/锚点；list 固定一次标注读取与所选图 revision，graph 重建不删除正文。
+
+类型化控制、阶段及职责拆分见 [Rust 改造](../implementation/rust-type-refactor.md)。
 
 ## 1. 状态模型
 

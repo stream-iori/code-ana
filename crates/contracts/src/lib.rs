@@ -15,37 +15,48 @@ pub mod protobuf {
     }
 }
 pub use protobuf::{graph::v1 as graph, worker::v1 as worker};
+pub mod bundle;
+pub mod engine_request;
 pub mod fixture_graph;
 pub mod graph_archive;
 pub mod java;
+mod mapping;
 pub mod performance;
 pub mod stream;
 use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-pub fn convert<A: serde::Serialize, B: serde::de::DeserializeOwned>(a: &A) -> Result<B> {
-    Ok(serde_json::from_value(serde_json::to_value(a)?)?)
+/// Only explicitly implemented domain/protobuf conversions are accepted.
+pub fn map<'a, A, B>(value: &'a A) -> Result<B>
+where
+    B: TryFrom<&'a A>,
+    B::Error: std::error::Error + Send + Sync + 'static,
+{
+    B::try_from(value).map_err(anyhow::Error::new)
 }
 pub fn terminal(r: &m::TaskResult) -> v1::Terminal {
     v1::Terminal {
-        execution: r.execution.clone(),
-        assessment: r.assessment.clone(),
-        gate: r.gate.clone(),
-        publication: r.publication.clone(),
-        report: r.report.clone(),
+        execution: r.execution.to_string(),
+        assessment: r.assessment.to_string(),
+        gate: r.gate.to_string(),
+        publication: r.publication.to_string(),
+        report: r.report.to_string(),
         revision: r.revision.clone(),
         producer: r.producer.clone(),
-        code: r.code.clone(),
+        code: r.code.to_string(),
         message: r.message.clone(),
         exit_code: r.exit_code,
-        evidence: Some(convert(&r.output.evidence).expect("evidence mapping")),
+        evidence: Some(map(&r.output.evidence).expect("evidence mapping")),
         cursor: r.output.cursor.clone(),
     }
 }
 pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, e: &worker::Envelope) -> Result<()> {
     if e.encoded_len() > m::MAX_FRAME {
-        bail!("FRAME_BUDGET");
+        bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::FrameBudget,
+            ""
+        ));
     }
     let b = performance::measure(
         performance::Metric::FrameEncode,
@@ -67,7 +78,10 @@ pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<worker::Envel
     let timer = performance::Timer::start(performance::Metric::FrameReadWait, 0, false);
     let n = r.read_u32().await? as usize;
     if n == 0 || n > m::MAX_FRAME {
-        bail!("INVALID_FRAME_LENGTH");
+        bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::InvalidFrameLength,
+            ""
+        ));
     }
     let mut b = vec![0; n];
     r.read_exact(&mut b).await?;
@@ -100,17 +114,26 @@ impl FrameReader {
         let timer = performance::Timer::start(performance::Metric::FrameReadWait, 0, false);
         while self.prefix_read < 4 {
             let n = input.read(&mut self.prefix[self.prefix_read..]).await?;
-            ensure!(n != 0, "CONTROL_FRAME_EOF");
+            ensure!(
+                n != 0,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::ControlFrameEof, "")
+            );
             self.prefix_read += n;
         }
         if self.body.is_empty() {
             let length = u32::from_be_bytes(self.prefix) as usize;
-            ensure!(length > 0 && length <= m::MAX_FRAME, "INVALID_FRAME_LENGTH");
+            ensure!(
+                length > 0 && length <= m::MAX_FRAME,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidFrameLength, "")
+            );
             self.body.resize(length, 0);
         }
         while self.body_read < self.body.len() {
             let n = input.read(&mut self.body[self.body_read..]).await?;
-            ensure!(n != 0, "CONTROL_FRAME_EOF");
+            ensure!(
+                n != 0,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::ControlFrameEof, "")
+            );
             self.body_read += n;
         }
         drop(timer);
@@ -130,29 +153,44 @@ fn wire_fields(mut bytes: &[u8], mut visit: impl FnMut(u64, &[u8]) -> Result<()>
     fn varint(bytes: &mut &[u8]) -> Result<u64> {
         let mut value = 0;
         for shift in (0..70).step_by(7) {
-            let (&b, rest) = bytes
-                .split_first()
-                .ok_or_else(|| anyhow::anyhow!("INVALID_PROTOBUF"))?;
+            let (&b, rest) = bytes.split_first().ok_or_else(|| {
+                anyhow::anyhow!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::InvalidProtobuf,
+                    ""
+                ))
+            })?;
             *bytes = rest;
             if shift == 63 && b > 1 {
-                bail!("INVALID_VARINT");
+                bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::InvalidVarint,
+                    ""
+                ));
             }
             value |= ((b & 127) as u64) << shift;
             if b < 128 {
                 return Ok(value);
             }
         }
-        bail!("INVALID_VARINT")
+        bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::InvalidVarint,
+            ""
+        ))
     }
     let mut count = 0;
     while !bytes.is_empty() {
         count += 1;
         if count > m::MAX_FACTS + 32 {
-            bail!("DECODE_FIELD_BUDGET");
+            bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DecodeFieldBudget,
+                ""
+            ));
         }
         let tag = varint(&mut bytes)?;
         if tag >> 3 == 0 {
-            bail!("INVALID_PROTOBUF_TAG");
+            bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::InvalidProtobufTag,
+                ""
+            ));
         }
         let len = match tag & 7 {
             0 => {
@@ -162,10 +200,16 @@ fn wire_fields(mut bytes: &[u8], mut visit: impl FnMut(u64, &[u8]) -> Result<()>
             1 => 8,
             2 => usize::try_from(varint(&mut bytes)?)?,
             5 => 4,
-            _ => bail!("UNSUPPORTED_PROTOBUF_WIRE"),
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::UnsupportedProtobufWire,
+                ""
+            )),
         };
         if len > bytes.len() {
-            bail!("INVALID_PROTOBUF_LENGTH");
+            bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::InvalidProtobufLength,
+                ""
+            ));
         }
         let (value, rest) = bytes.split_at(len);
         visit(tag >> 3, value)?;
@@ -183,14 +227,20 @@ fn packed_count(bytes: &[u8]) -> Result<usize> {
     for &value in bytes {
         width += 1;
         if width > 5 || (width == 5 && value > 15) {
-            bail!("JAVA_INDEX_VARINT");
+            bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaIndexVarint,
+                ""
+            ));
         }
         if value < 128 {
             count += 1;
             width = 0;
         }
     }
-    ensure!(width == 0, "JAVA_INDEX_VARINT");
+    ensure!(
+        width == 0,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaIndexVarint, "")
+    );
     Ok(count)
 }
 fn validate_java_config(bytes: &[u8]) -> Result<()> {
@@ -203,19 +253,28 @@ fn validate_java_config(bytes: &[u8]) -> Result<()> {
             table += 1;
             ensure!(
                 table <= 20000 && !value.is_empty(),
-                "JAVA_INPUT_TABLE_DECODE_BUDGET"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaInputTableDecodeBudget,
+                    ""
+                )
             );
         }
         if field == 5 {
             contexts += 1;
-            ensure!(contexts <= 256, "JAVA_CONTEXT_BUDGET");
+            ensure!(
+                contexts <= 256,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaContextBudget, "")
+            );
             let mut context_indices = [0usize; 4];
             wire_fields(value, |field, value| {
                 if matches!(field, 5 | 6 | 12) {
                     inputs += 1;
                     ensure!(
                         inputs <= 10000 && !value.is_empty(),
-                        "JAVA_INPUT_DECODE_BUDGET"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::JavaInputDecodeBudget,
+                            ""
+                        )
                     );
                 }
                 if (14..=17).contains(&field) {
@@ -224,7 +283,10 @@ fn validate_java_config(bytes: &[u8]) -> Result<()> {
                     context_indices[(field - 14) as usize] += count;
                     ensure!(
                         indices <= 1000000 && context_indices[(field - 14) as usize] <= 10000,
-                        "JAVA_INDEX_DECODE_BUDGET"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::JavaIndexDecodeBudget,
+                            ""
+                        )
                     );
                 }
                 Ok(())
@@ -240,24 +302,54 @@ pub(crate) fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
         match tag {
             1 => {
                 tables += 1;
-                ensure!(tables == 1, "GRAPH_TABLE_DUPLICATE");
+                ensure!(
+                    tables == 1,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GraphTableDuplicate,
+                        ""
+                    )
+                );
             }
             2 => {
                 columns += 1;
-                ensure!(columns <= 34, "GRAPH_COLUMN_BUDGET");
+                ensure!(
+                    columns <= 34,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GraphColumnBudget,
+                        ""
+                    )
+                );
                 let mut alternatives = 0;
                 wire_fields(value, |tag, _| {
-                    ensure!((1..=3).contains(&tag), "GRAPH_CELL_FIELD");
+                    ensure!(
+                        (1..=3).contains(&tag),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::GraphCellField,
+                            ""
+                        )
+                    );
                     alternatives += 1;
-                    ensure!(alternatives == 1, "GRAPH_CELL_AMBIGUOUS");
+                    ensure!(
+                        alternatives == 1,
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::GraphCellAmbiguous,
+                            ""
+                        )
+                    );
                     Ok(())
                 })?;
             }
-            _ => bail!("GRAPH_ROW_FIELD"),
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::GraphRowField,
+                ""
+            )),
         }
         Ok(())
     })?;
-    ensure!(tables == 1, "GRAPH_TABLE_REQUIRED");
+    ensure!(
+        tables == 1,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphTableRequired, "")
+    );
     Ok(())
 }
 fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
@@ -272,7 +364,10 @@ fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
             wire_fields(body, |field, value| {
                 ensure!(
                     !matches!((tag, field), (5, 5) | (7, 2)),
-                    "LEGACY_FACT_IR_REJECTED"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::LegacyFactIrRejected,
+                        ""
+                    )
                 );
                 if tag == 7 && field == 3 {
                     validate_graph_row_wire(value)?;
@@ -291,21 +386,33 @@ fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
                 if limit > 0 {
                     repeated += 1;
                     if repeated > limit {
-                        bail!("DECODE_REPEATED_BUDGET");
+                        bail!(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::DecodeRepeatedBudget,
+                            ""
+                        ));
                     }
                     if matches!((tag, field), (7, 3)) && value.len() < 2 {
-                        bail!("EMPTY_FACT_MESSAGE");
+                        bail!(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::EmptyFactMessage,
+                            ""
+                        ));
                     }
                 }
                 Ok(())
             })?;
         } else {
-            bail!("UNSUPPORTED_ENVELOPE_FIELD");
+            bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::UnsupportedEnvelopeField,
+                ""
+            ));
         }
         Ok(())
     })?;
     if bodies != 1 || attempts != 1 {
-        bail!("AMBIGUOUS_ENVELOPE");
+        bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::AmbiguousEnvelope,
+            ""
+        ));
     }
     Ok(())
 }
@@ -383,12 +490,9 @@ mod tests {
             suggestions: Some(false),
             ..Default::default()
         };
-        let w: v1::TaskRequest = convert(&r).unwrap();
+        let w: v1::TaskRequest = map(&r).unwrap();
         assert_eq!(w.suggestions, Some(false));
-        assert_eq!(
-            convert::<_, m::Request>(&w).unwrap().suggestions,
-            Some(false)
-        );
+        assert_eq!(map::<_, m::Request>(&w).unwrap().suggestions, Some(false));
     }
     #[test]
     fn repeated_fact_allocation_and_duplicate_body_rejected() {
@@ -470,9 +574,9 @@ mod query_option_tests {
             }],
             ..Default::default()
         };
-        let wire: v1::TaskRequest = convert(&request).unwrap();
+        let wire: v1::TaskRequest = map(&request).unwrap();
         let decoded = v1::TaskRequest::decode(wire.encode_to_vec().as_slice()).unwrap();
-        let restored: m::Request = convert(&decoded).unwrap();
+        let restored: m::Request = map(&decoded).unwrap();
         assert_eq!(restored.instantiability, "unknown");
         assert!(restored.transitive);
         assert_eq!(restored.algorithm, "exact");
@@ -497,12 +601,21 @@ mod query_option_tests {
             }],
             ..Default::default()
         };
-        let wire: v1::TaskRequest = convert(&request).unwrap();
+        let wire: v1::TaskRequest = map(&request).unwrap();
         let decoded = v1::TaskRequest::decode(wire.encode_to_vec().as_slice()).unwrap();
-        let restored: m::Request = convert(&decoded).unwrap();
+        let restored: m::Request = map(&decoded).unwrap();
         assert!(restored.meta);
         assert!(restored.stages[0].meta);
         let legacy = v1::TaskRequest::decode(&[][..]).unwrap();
         assert!(!legacy.meta);
     }
+}
+
+/// Keep stable identity when a storage/read boundary adds infrastructure context.
+pub fn read_error(error: anyhow::Error) -> m::DomainError {
+    let code = error
+        .downcast_ref::<m::DomainError>()
+        .map(|e| e.code.clone())
+        .unwrap_or(m::ErrorCode::Failed);
+    m::DomainError::new(code, format!("{error:#}"))
 }

@@ -6,6 +6,7 @@ mod jvm;
 mod native;
 mod product;
 mod result;
+mod state;
 mod timings;
 use anyhow::{Result, ensure};
 use clap::Parser;
@@ -39,21 +40,27 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     if args.runtime_info {
         backend::verify_bundle(&args.library, args.backend)?;
-        let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
-            args.library
-                .parent()
-                .ok_or_else(|| anyhow::anyhow!("BUNDLE_PATH"))?
-                .join("manifest.json"),
-        )?)?;
+        let manifest: codeana_contracts::bundle::BundleManifest =
+            serde_json::from_slice(&std::fs::read(
+                args.library
+                    .parent()
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::BundlePath,
+                            ""
+                        ))
+                    })?
+                    .join("manifest.json"),
+            )?)?;
         println!(
             "{}",
             serde_json::json!({
                 "worker_protocol": codeana_model::WORKER_PROTOCOL_VERSION,
                 "fact_ir": codeana_model::VERSION,
-                "adapter": manifest["adapter"],
-                "analysis_request": manifest["analysis_request"],
-                "abi": manifest["abi"],
-                "backend": manifest["backend"],
+                "adapter": manifest.adapter,
+                "analysis_request": manifest.analysis_request,
+                "abi": manifest.abi,
+                "backend": manifest.backend,
             })
         );
         return Ok(());
@@ -78,18 +85,15 @@ async fn main() -> Result<()> {
     }
     if let Some(request) = args.probe {
         let request_bytes = std::fs::read(request)?;
-        let request_value: serde_json::Value = serde_json::from_slice(&request_bytes)?;
-        let scratch = std::path::Path::new(
-            request_value["scratch"]
-                .as_str()
-                .ok_or_else(|| anyhow::anyhow!("PROBE_SCRATCH"))?,
-        );
+        let request_value: codeana_contracts::engine_request::EngineRequest =
+            serde_json::from_slice(&request_bytes)?;
+        let scratch = request_value.scratch.as_path();
         library.start(&request_bytes)?;
         let started = std::time::Instant::now();
         let deadline =
             started + std::time::Duration::from_secs(args.probe_timeout_seconds.unwrap_or(130));
         let mut cancelled = false;
-        while library.poll()? == 0 {
+        while library.poll()? == crate::state::RunState::Running {
             if !cancelled
                 && args
                     .cancel_after_ms
@@ -106,19 +110,23 @@ async fn main() -> Result<()> {
         }
         let result = library.result()?;
         ensure!(
-            library.poll()? == 1,
+            library.poll()? == crate::state::RunState::Complete,
             "{}: {}",
             args.backend.analysis_code(),
             String::from_utf8_lossy(&result)
         );
         if let Some(destination) = args.probe_archive {
             let limits = codeana_contracts::java::OutputLimits {
-                bytes: request_value["result_bytes"]
-                    .as_u64()
-                    .unwrap_or(codeana_model::MAX_RESULT as u64),
-                facts: request_value["fact_limit"]
-                    .as_u64()
-                    .unwrap_or(codeana_model::MAX_FACTS as u64),
+                bytes: if request_value.result_bytes == 0 {
+                    codeana_model::MAX_RESULT as u64
+                } else {
+                    request_value.result_bytes
+                },
+                facts: if request_value.fact_limit == 0 {
+                    codeana_model::MAX_FACTS as u64
+                } else {
+                    request_value.fact_limit
+                },
             };
             println!(
                 "{}",
@@ -133,7 +141,10 @@ async fn main() -> Result<()> {
             backend::Engine::Native(ref native) => {
                 println!("Hello from Java 25 via FFI: {}", native.hello()?)
             }
-            backend::Engine::Jvm(_) => anyhow::bail!("JVM_PROBE_REQUIRED"),
+            backend::Engine::Jvm(_) => anyhow::bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JvmProbeRequired,
+                ""
+            )),
         }
     }
     Ok(())

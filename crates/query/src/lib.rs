@@ -1,16 +1,23 @@
 //! Query semantics operate on a fixed read port, independent of SQLite and RPC.
 use anyhow::{Result, bail, ensure};
 mod annotations;
+mod calls;
 mod dispatch;
 mod hierarchy;
+mod navigation;
+mod overview;
+mod pipeline;
+mod source;
 mod text;
+use codeana_model::QueryRequest as Request;
 use codeana_model::*;
+#[cfg(test)]
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use text::text_matcher;
 pub use text::{stream_text, stream_text_candidates};
-fn select(r: &dyn GraphReader, f: FactFilter) -> Result<Vec<Fact>> {
-    r.select(&f).map_err(anyhow::Error::msg)
+fn select(r: &dyn GraphAccess, f: FactFilter) -> Result<Vec<Fact>> {
+    r.select(&f).map_err(anyhow::Error::new)
 }
 pub const OPERATIONS: &[&str] = &[
     "resolve",
@@ -82,7 +89,10 @@ fn overview_relations(value: &str) -> Result<Vec<String>> {
                 selected.insert(item.to_owned());
                 continue;
             }
-            _ => bail!("OVERVIEW_RELATION_INVALID: {item}"),
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::OverviewRelationInvalid,
+                item.to_string()
+            )),
         };
         selected.extend(relations.iter().map(|relation| (*relation).to_owned()));
     }
@@ -91,19 +101,25 @@ fn overview_relations(value: &str) -> Result<Vec<String>> {
 fn hierarchy_options(operation: &str, instantiability: &str, transitive: bool) -> Result<()> {
     ensure!(
         instantiability.is_empty() || operation == "runtime-implementations",
-        "INSTANTIABILITY_REQUIRES_RUNTIME_IMPLEMENTATIONS"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::InstantiabilityRequiresRuntimeImplementations,
+            ""
+        )
     );
     ensure!(
         matches!(instantiability, "" | "yes" | "unknown" | "all"),
-        "INVALID_INSTANTIABILITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidInstantiability, "")
     );
     ensure!(
         !transitive || matches!(operation, "type-relations" | "callable-relations"),
-        "TRANSITIVE_REQUIRES_HIERARCHY_RELATIONS"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::TransitiveRequiresHierarchyRelations,
+            ""
+        )
     );
     Ok(())
 }
-pub fn preflight(request: &Request) -> Result<()> {
+fn preflight_query(request: &Request) -> Result<()> {
     dispatch::options(
         &request.operation,
         &request.algorithm,
@@ -116,7 +132,7 @@ pub fn preflight(request: &Request) -> Result<()> {
     )?;
     ensure!(
         !request.meta || request.operation == "annotations",
-        "META_REQUIRES_ANNOTATIONS"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MetaRequiresAnnotations, "")
     );
     if request.operation == "references" && !request.relation.is_empty() {
         let relations = overview_relations(&request.relation)?;
@@ -124,7 +140,7 @@ pub fn preflight(request: &Request) -> Result<()> {
             relations
                 .iter()
                 .all(|r| !matches!(r.as_str(), "calls" | "extends" | "implements")),
-            "REFERENCE_RELATION_INVALID"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::ReferenceRelationInvalid, "")
         );
     }
     if request.operation == "overview" && request.overview_section == "dependencies" {
@@ -133,20 +149,26 @@ pub fn preflight(request: &Request) -> Result<()> {
     if !request.overview_section.is_empty() || request.overview_depth > 0 {
         ensure!(
             request.operation == "overview",
-            "OVERVIEW_SECTION_OPERATION"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::OverviewSectionOperation, "")
         );
         ensure!(
             matches!(
                 request.overview_section.as_str(),
                 "" | "project" | "modules" | "packages" | "dependencies"
             ),
-            "OVERVIEW_SECTION_INVALID"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::OverviewSectionInvalid, "")
         );
-        ensure!(request.overview_depth <= 128, "OVERVIEW_DEPTH_BUDGET");
+        ensure!(
+            request.overview_depth <= 128,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::OverviewDepthBudget, "")
+        );
     }
     ensure!(
         request.text_context <= 100,
-        "TEXT_CONTEXT_BUDGET: maximum 100"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::TextContextBudget,
+            "maximum 100".to_string()
+        )
     );
     if request.text_regex || request.text_ignore_case || request.text_context > 0 {
         ensure!(
@@ -156,7 +178,10 @@ pub fn preflight(request: &Request) -> Result<()> {
                         .stages
                         .first()
                         .is_some_and(|s| s.operation == "search-text")),
-            "TEXT_OPTIONS_REQUIRE_SEARCH_TEXT"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::TextOptionsRequireSearchText,
+                ""
+            )
         );
     }
     if request.operation == "search-text" {
@@ -164,15 +189,18 @@ pub fn preflight(request: &Request) -> Result<()> {
     }
     ensure!(
         request.package.is_empty() || request.package_prefix.is_empty(),
-        "PACKAGE_FILTER_CONFLICT"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::PackageFilterConflict, "")
     );
-    ensure!(request.paths.len() <= 64, "PATH_FILTER_BUDGET");
+    ensure!(
+        request.paths.len() <= 64,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::PathFilterBudget, "")
+    );
     for path in &request.paths {
         ensure!(
             !path.starts_with('/')
                 && !path.contains('\\')
                 && path.split('/').all(|part| !matches!(part, "" | "." | "..")),
-            "INVALID_PATH_FILTER"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidPathFilter, "")
         );
         globset::GlobBuilder::new(path)
             .literal_separator(true)
@@ -185,32 +213,56 @@ pub fn preflight(request: &Request) -> Result<()> {
                 request.visibility.as_str(),
                 "public" | "protected" | "private" | "package" | "package-private"
             ),
-        "INVALID_VISIBILITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidVisibility, "")
     );
-    ensure!(request.depth <= 32, "DEPTH_BUDGET: maximum 32");
-    ensure!(request.max_records <= 10000, "RECORD_BUDGET: maximum 10000");
-    ensure!(request.stages.len() <= 16, "PIPELINE_STAGE_BUDGET");
+    ensure!(
+        request.depth <= 32,
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::DepthBudget,
+            "maximum 32".to_string()
+        )
+    );
+    ensure!(
+        request.max_records <= 10000,
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::RecordBudget,
+            "maximum 10000".to_string()
+        )
+    );
+    ensure!(
+        request.stages.len() <= 16,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::PipelineStageBudget, "")
+    );
     ensure!(
         request.direction.is_empty()
             || matches!(request.direction.as_str(), "in" | "out")
             || (request.operation == "overview" && request.direction == "both"),
-        "INVALID_DIRECTION"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDirection, "")
     );
     if request.operation == "pipeline" {
-        ensure!(!request.stages.is_empty(), "PIPELINE_REQUIRED");
-        let mut ty = "start";
+        ensure!(
+            !request.stages.is_empty(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::PipelineRequired, "")
+        );
+        let mut ty = StageRecordType::Start;
         for (i, s) in request.stages.iter().enumerate() {
             dispatch::options(&s.operation, &s.algorithm, &s.analysis_world)?;
             hierarchy_options(&s.operation, &s.instantiability, s.transitive)?;
             ensure!(
                 !s.meta || s.operation == "annotations",
-                "META_REQUIRES_ANNOTATIONS"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::MetaRequiresAnnotations,
+                    ""
+                )
             );
             ensure!(
                 s.direction.is_empty()
                     || matches!(s.direction.as_str(), "in" | "out")
                     || (s.operation == "overview" && s.direction == "both"),
-                "INVALID_STAGE_DIRECTION"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::InvalidStageDirection,
+                    ""
+                )
             );
             if s.operation == "references" && !s.relation.is_empty() {
                 let selected = overview_relations(&s.relation)?;
@@ -218,14 +270,22 @@ pub fn preflight(request: &Request) -> Result<()> {
                     selected
                         .iter()
                         .all(|r| !matches!(r.as_str(), "calls" | "extends" | "implements")),
-                    "REFERENCE_RELATION_INVALID"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::ReferenceRelationInvalid,
+                        ""
+                    )
                 );
             }
-            ensure!(s.depth <= 32, "DEPTH_BUDGET");
+            ensure!(
+                s.depth <= 32,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::DepthBudget, "")
+            );
             ensure!(
                 OPERATIONS.contains(&s.operation.as_str()) && s.operation != "pipeline",
-                "UNSUPPORTED_STAGE: {}",
-                s.operation
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::UnsupportedStage,
+                    format!("{}", s.operation)
+                )
             );
             if i > 0 {
                 ensure!(
@@ -233,37 +293,57 @@ pub fn preflight(request: &Request) -> Result<()> {
                         s.operation.as_str(),
                         "search-code" | "overview" | "search-text"
                     ),
-                    "PIPELINE_STAGE_DOES_NOT_CONSUME_INPUT"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::PipelineStageDoesNotConsumeInput,
+                        ""
+                    )
                 );
                 ensure!(
-                    matches!(ty, "entity" | "site") || (ty == "edge" && !s.endpoint.is_empty()),
-                    "PIPELINE_TYPE_MISMATCH: {ty} -> {}",
-                    s.operation
+                    matches!(ty, StageRecordType::Entity | StageRecordType::Site)
+                        || (ty == StageRecordType::Edge && !s.endpoint.is_empty()),
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::PipelineTypeMismatch,
+                        format!("{ty} -> {}", s.operation)
+                    )
                 );
-                ensure!(s.selector.is_empty(), "PIPELINE_SELECTOR_OVERRIDES_INPUT");
+                ensure!(
+                    s.selector.is_empty(),
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::PipelineSelectorOverridesInput,
+                        ""
+                    )
+                );
             }
             ensure!(
                 s.endpoint.is_empty()
                     || (i > 0
-                        && matches!(ty, "edge" | "site")
+                        && matches!(ty, StageRecordType::Edge | StageRecordType::Site)
                         && matches!(
                             s.endpoint.as_str(),
                             "caller" | "callee" | "parent" | "target" | "site"
                         )),
-                "PIPELINE_INVALID_ENDPOINT"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::PipelineInvalidEndpoint,
+                    ""
+                )
             );
             ty = match s.operation.as_str() {
-                "source" | "search-text" => "text",
-                "calls" | "type-relations" | "callable-relations" | "trace" => "edge",
-                "call-sites" | "references" => "site",
-                _ => "entity",
+                "source" | "search-text" => StageRecordType::Text,
+                "calls" | "type-relations" | "callable-relations" | "trace" => {
+                    StageRecordType::Edge
+                }
+                "call-sites" | "references" => StageRecordType::Site,
+                _ => StageRecordType::Entity,
             };
         }
     }
     Ok(())
 }
-pub fn resolve(r: &dyn GraphReader, selector: &str, unique: bool) -> Result<Vec<Fact>> {
-    ensure!(!selector.is_empty(), "SELECTOR_REQUIRED");
+pub fn resolve(r: &dyn GraphAccess, selector: &str, unique: bool) -> Result<Vec<Fact>> {
+    ensure!(
+        !selector.is_empty(),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::SelectorRequired, "")
+    );
     let exact = select(
         r,
         FactFilter {
@@ -290,10 +370,19 @@ pub fn resolve(r: &dyn GraphReader, selector: &str, unique: bool) -> Result<Vec<
     } else {
         exact
     };
-    ensure!(!facts.is_empty(), "SYMBOL_NOT_FOUND: {selector}");
+    ensure!(
+        !facts.is_empty(),
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::SymbolNotFound,
+            selector.to_string()
+        )
+    );
     ensure!(
         !unique || facts.len() == 1,
-        "AMBIGUOUS_SELECTOR: {selector}"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::AmbiguousSelector,
+            selector.to_string()
+        )
     );
     Ok(facts)
 }
@@ -305,7 +394,7 @@ fn scope_filter(req: &Request) -> FactFilter {
         ..Default::default()
     }
 }
-fn selector_filter(r: &dyn GraphReader, req: &Request) -> Result<FactFilter> {
+fn selector_filter(r: &dyn GraphAccess, req: &Request) -> Result<FactFilter> {
     let mut filter = scope_filter(req);
     filter.name = (!req.name.is_empty()).then(|| req.name.clone());
     filter.signature = (!req.signature.is_empty()).then(|| req.signature.clone());
@@ -346,10 +435,10 @@ fn selector_filter(r: &dyn GraphReader, req: &Request) -> Result<FactFilter> {
     }
     Ok(filter)
 }
-fn resolve_scoped(r: &dyn GraphReader, req: &Request) -> Result<Vec<Fact>> {
+fn resolve_scoped(r: &dyn GraphAccess, req: &Request) -> Result<Vec<Fact>> {
     ensure!(
         !req.selector.is_empty() || !req.signature.is_empty(),
-        "SELECTOR_REQUIRED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::SelectorRequired, "")
     );
     let selector = if req.selector.is_empty() {
         &req.signature
@@ -380,7 +469,13 @@ fn resolve_scoped(r: &dyn GraphReader, req: &Request) -> Result<Vec<Fact>> {
                 .collect();
         }
     }
-    ensure!(!facts.is_empty(), "SYMBOL_NOT_FOUND: {}", req.selector);
+    ensure!(
+        !facts.is_empty(),
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::SymbolNotFound,
+            req.selector.to_string()
+        )
+    );
     let internal = facts
         .iter()
         .any(|fact| fact.is_public_entity() && fact.kind != FactKind::ExternalSymbol);
@@ -389,12 +484,14 @@ fn resolve_scoped(r: &dyn GraphReader, req: &Request) -> Result<Vec<Fact>> {
     }
     ensure!(
         !req.unique || facts.len() == 1,
-        "AMBIGUOUS_SELECTOR: {}",
-        req.selector
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::AmbiguousSelector,
+            req.selector.to_string()
+        )
     );
     Ok(facts)
 }
-fn coverage(r: &dyn GraphReader, req: &Request) -> Result<Evidence> {
+fn selection_evidence(r: &dyn SourceContext, req: &Request) -> Evidence {
     let mut e = Evidence::complete();
     if (!req.scope.is_empty()
         && req.scope != "ALL"
@@ -407,6 +504,10 @@ fn coverage(r: &dyn GraphReader, req: &Request) -> Result<Evidence> {
         e.reasons.push("selection_not_captured".into());
     }
 
+    e
+}
+fn coverage(r: &dyn GraphAccess, req: &Request) -> Result<Evidence> {
+    let mut e = selection_evidence(r, req);
     let mut filter = scope_filter(req);
     filter.kinds = vec![FactKind::Coverage];
     // Incoming callers can originate in any captured module. Their coverage matters too.
@@ -436,7 +537,7 @@ fn coverage(r: &dyn GraphReader, req: &Request) -> Result<Evidence> {
     }
     Ok(e)
 }
-fn allowed(r: &dyn GraphReader, req: &Request, f: &Fact) -> bool {
+fn allowed(r: &dyn GraphAccess, req: &Request, f: &Fact) -> bool {
     if !req.world.is_empty() && f.owner.world != req.world {
         return false;
     }
@@ -449,8 +550,8 @@ fn allowed(r: &dyn GraphReader, req: &Request, f: &Fact) -> bool {
             && (req.scope.is_empty() || req.scope == "ALL" || s.scope == req.scope)
     })
 }
-fn fact_source(r: &dyn GraphReader, f: &Fact) -> Result<(SourceUnit, Option<Span>)> {
-    if f.attributes.get("source_available") != Some(&json!(false)) {
+fn fact_source(r: &dyn SourceQueryReader, f: &Fact) -> Result<(SourceUnit, Option<Span>)> {
+    if f.attributes.source_available.as_ref() != Some(&false) {
         return r
             .manifest()
             .files
@@ -460,36 +561,51 @@ fn fact_source(r: &dyn GraphReader, f: &Fact) -> Result<(SourceUnit, Option<Span
             .map(|s| {
                 r.source_span(f)
                     .map(|span| (s, span))
-                    .map_err(anyhow::Error::msg)
+                    .map_err(anyhow::Error::new)
             })
             .transpose()?
-            .ok_or_else(|| anyhow::anyhow!("SOURCE_UNAVAILABLE: {} origin={}", f.id, f.origin));
+            .ok_or_else(|| {
+                anyhow::anyhow!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::SourceUnavailable,
+                    format!("{} origin={}", f.id, f.origin)
+                ))
+            });
     }
     ensure!(
         f.kind == FactKind::ExternalSymbol && f.source.is_empty(),
-        "SOURCE_UNAVAILABLE: {}",
-        f.id
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::SourceUnavailable,
+            f.id.to_string()
+        )
     );
-    let origin = f
-        .attributes
-        .get("source_origin")
-        .and_then(Value::as_object)
-        .ok_or_else(|| anyhow::anyhow!("SOURCE_UNAVAILABLE: {}", f.id))?;
-    let text = |key: &str| origin.get(key).and_then(Value::as_str).unwrap_or("");
+    let origin = f.attributes.source_origin.as_ref().ok_or_else(|| {
+        anyhow::anyhow!(DomainError::new(ErrorCode::SourceUnavailable, f.id.clone()))
+    })?;
     let source = r
         .manifest()
         .files
         .iter()
         .find(|s| {
-            s.path == text("path")
-                && s.hash == text("hash")
-                && s.world == text("world")
-                && s.module == text("module")
-                && s.scope == text("scope")
+            s.path == origin.path
+                && s.hash == origin.hash
+                && s.world == origin.world
+                && s.module == origin.module
+                && s.scope == origin.scope
         })
         .cloned()
-        .ok_or_else(|| anyhow::anyhow!("SOURCE_ORIGIN_MISMATCH: {}", f.id))?;
-    ensure!(!f.signature.is_empty(), "SOURCE_UNAVAILABLE: {}", f.id);
+        .ok_or_else(|| {
+            anyhow::anyhow!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::SourceOriginMismatch,
+                f.id.to_string()
+            ))
+        })?;
+    ensure!(
+        !f.signature.is_empty(),
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::SourceUnavailable,
+            f.id.to_string()
+        )
+    );
     // Navigate a captured SOURCE declaration; never substitute its binding world or target ID.
     let candidates = select(
         r,
@@ -505,26 +621,24 @@ fn fact_source(r: &dyn GraphReader, f: &Fact) -> Result<(SourceUnit, Option<Span
         d.signature == f.signature
             && d.origin == "javac"
             && d.span.is_some()
-            && d.attributes.get("source_available") != Some(&json!(false))
+            && d.attributes.source_available.as_ref() != Some(&false)
     })
     .collect::<Vec<_>>();
     ensure!(
         candidates.len() == 1,
-        "SOURCE_UNAVAILABLE: {} candidates={}",
-        f.id,
-        candidates.len()
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::SourceUnavailable,
+            format!("{} candidates={}", f.id, candidates.len())
+        )
     );
     Ok((source, candidates[0].span.clone()))
 }
 
-fn values(facts: impl IntoIterator<Item = Fact>) -> Vec<Value> {
-    facts
-        .into_iter()
-        .map(|f| serde_json::to_value(f).unwrap())
-        .collect()
+fn values(facts: impl IntoIterator<Item = Fact>) -> Vec<Record> {
+    facts.into_iter().map(Record::from).collect()
 }
 fn call_edges_many(
-    r: &dyn GraphReader,
+    r: &dyn GraphAccess,
     ids: &[String],
     incoming: bool,
     evidence: &mut Evidence,
@@ -627,15 +741,18 @@ fn call_edges_many(
     Ok(edges)
 }
 /// Freeze a search in bounded batches; IDs are the stable, unique sort key.
-pub fn stream_search(
+fn stream_search_query(
     r: &dyn GraphReader,
     req: &Request,
-    sink: &mut dyn FnMut(Vec<Value>) -> Result<()>,
+    sink: &mut dyn FnMut(Vec<Record>) -> Result<()>,
 ) -> Result<Output> {
-    preflight(req)?;
+    preflight_query(req)?;
     ensure!(
         req.operation == "search-code",
-        "STREAM_SEARCH_OPERATION_REQUIRED"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::StreamSearchOperationRequired,
+            ""
+        )
     );
     let evidence = coverage(r, req)?;
     let filter = selector_filter(r, req)?;
@@ -643,13 +760,19 @@ pub fn stream_search(
     loop {
         let batch = r
             .scan_symbols(&req.selector, &filter, &after, 512)
-            .map_err(anyhow::Error::msg)?;
-        ensure!(batch.len() <= 512, "INVALID_SCAN_BATCH_RESULT");
+            .map_err(anyhow::Error::new)?;
+        ensure!(
+            batch.len() <= 512,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidScanBatchResult, "")
+        );
         if batch.is_empty() {
             break;
         }
         for fact in &batch {
-            ensure!(fact.id > after, "UNORDERED_SCAN_RESULT");
+            ensure!(
+                fact.id > after,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::UnorderedScanResult, "")
+            );
             after.clone_from(&fact.id);
         }
         let complete = batch.len() < 512;
@@ -665,7 +788,7 @@ pub fn stream_search(
         ..Default::default()
     })
 }
-pub fn run(
+fn run_query(
     r: &dyn GraphReader,
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
@@ -673,7 +796,10 @@ pub fn run(
     if req.operation == "search-text" {
         let mut records = Vec::new();
         let mut output = stream_text(r, req, read_source, &mut |batch| {
-            ensure!(records.len() + batch.len() <= MAX_FACTS, "TEXT_WORK_BUDGET");
+            ensure!(
+                records.len() + batch.len() <= MAX_FACTS,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::TextWorkBudget, "")
+            );
             records.extend(batch);
             Ok(())
         })?;
@@ -682,443 +808,47 @@ pub fn run(
     }
     if req.operation == "search-code" {
         let mut records = Vec::new();
-        let mut output = stream_search(r, req, &mut |batch| {
+        let mut output = stream_search_query(r, req, &mut |batch| {
             records.extend(batch);
             Ok(())
         })?;
         output.records = records;
         return Ok(output);
     }
-    preflight(req)?;
+    preflight_query(req)?;
     let mut evidence = coverage(r, req)?;
-    let mut records = Vec::new();
+    let mut records;
     if req.operation == "pipeline" {
-        let mut input: Vec<Value> = Vec::new();
-        for (i, stage) in req.stages.iter().enumerate() {
-            let mut s = req.clone();
-            s.operation = stage.operation.clone();
-            s.direction = stage.direction.clone();
-            s.relation = stage.relation.clone();
-            s.depth = stage.depth;
-            s.meta = stage.meta;
-            s.instantiability = stage.instantiability.clone();
-            s.transitive = stage.transitive;
-            s.algorithm = stage.algorithm.clone();
-            s.analysis_world = stage.analysis_world.clone();
-            s.unique = stage.unique;
-            s.stages.clear();
-            s.max_records = 10000;
-            let selectors = if i == 0 {
-                vec![stage.selector.clone()]
-            } else {
-                let mut selectors = BTreeSet::new();
-                for record in &input {
-                    if stage.endpoint == "site" {
-                        let sites = record["sites"].as_array().ok_or_else(|| {
-                            anyhow::anyhow!("PIPELINE_ENDPOINT_UNAVAILABLE: site")
-                        })?;
-                        for site in sites {
-                            selectors.insert(
-                                site.as_str()
-                                    .ok_or_else(|| anyhow::anyhow!("PIPELINE_INVALID_SITE"))?
-                                    .to_owned(),
-                            );
-                        }
-                    } else {
-                        let keys: &[&str] = match stage.endpoint.as_str() {
-                            "callee" | "target" => &["to", "target"],
-                            "caller" | "parent" => &["from", "parent"],
-                            "" => &["id"],
-                            _ => bail!("PIPELINE_INVALID_ENDPOINT"),
-                        };
-                        let value = keys
-                            .iter()
-                            .find_map(|key| record[*key].as_str().filter(|s| !s.is_empty()))
-                            .ok_or_else(|| {
-                                anyhow::anyhow!("PIPELINE_ENDPOINT_UNAVAILABLE: {}", stage.endpoint)
-                            })?;
-                        selectors.insert(value.to_owned());
-                    }
-                }
-                selectors.into_iter().collect()
-            };
-            records.clear();
-            for selector in selectors {
-                s.selector = selector;
-                let out = run(r, &s, read_source)?;
-                evidence.merge(&out.evidence);
-                records.extend(out.records);
-                ensure!(records.len() <= 10000, "PIPELINE_WORK_BUDGET");
-            }
-            input = records.clone();
-        }
+        records = pipeline::run(r, req, read_source, &mut evidence)?;
     } else {
         match req.operation.as_str() {
             "resolve" => {
-                records = values(resolve_scoped(r, req)?);
+                records = navigation::resolve(r, req, &mut evidence)?;
             }
             "search-code" => {
                 records = values(
                     r.search_symbols_filtered(&req.selector, &selector_filter(r, req)?)
-                        .map_err(anyhow::Error::msg)?,
+                        .map_err(anyhow::Error::new)?,
                 );
             }
             "overview" => {
-                if matches!(
-                    req.overview_section.as_str(),
-                    "modules" | "packages" | "dependencies"
-                ) {
-                    let filter = selector_filter(r, req)?;
-                    let relations = overview_relations(&req.relation)?;
-                    records = r
-                        .overview_groups(&filter, &req.overview_section, &req.direction, &relations)
-                        .map_err(anyhow::Error::msg)?;
-                    if req.overview_depth > 0 && req.overview_section != "modules" {
-                        let mut groups = BTreeMap::<(String, String, String), u64>::new();
-                        for row in records {
-                            let package = |key| {
-                                row[key]
-                                    .as_str()
-                                    .unwrap_or("")
-                                    .split('.')
-                                    .take(req.overview_depth as usize)
-                                    .collect::<Vec<_>>()
-                                    .join(".")
-                            };
-                            let key = (
-                                package("package"),
-                                package("target_package"),
-                                row["relation"].as_str().unwrap_or("").to_owned(),
-                            );
-                            *groups.entry(key).or_default() += row["count"].as_u64().unwrap_or(0);
-                        }
-                        records = groups.into_iter().map(|((package,target,relation),count)| {
-                            if req.overview_section == "dependencies" { json!({"package":package,"target_package":target,"relation":relation,"count":count}) }
-                            else { json!({"package":package,"count":count}) }
-                        }).collect();
-                    }
-                } else {
-                    let counts = r
-                        .count_by_kind(&scope_filter(req))
-                        .map_err(anyhow::Error::msg)?;
-                    let sources = r
-                        .manifest()
-                        .files
-                        .iter()
-                        .filter(|source| {
-                            !source.auxiliary
-                                && (req.module.is_empty() || source.module == req.module)
-                                && (req.scope.is_empty()
-                                    || req.scope == "ALL"
-                                    || source.scope == req.scope)
-                                && (req.world.is_empty() || source.world == req.world)
-                        })
-                        .count();
-                    records.push(
-                        json!({"counts":counts,"sources":sources,"profile":r.revision().profile}),
-                    );
-                }
+                records = overview::run(r, req, &mut evidence)?;
             }
             "source" => {
-                let sources =
-                    if let Some(s) = r.manifest().files.iter().find(|s| s.path == req.selector) {
-                        vec![(s.clone(), None)]
-                    } else {
-                        resolve_scoped(r, req)?
-                            .into_iter()
-                            .map(|f| fact_source(r, &f))
-                            .collect::<Result<Vec<_>>>()?
-                    };
-                for (s, span) in sources {
-                    let bytes = read_source(&s)?;
-                    ensure!(hash(&bytes) == s.hash, "SOURCE_HASH_MISMATCH");
-                    let range = span.unwrap_or(Span {
-                        start: 0,
-                        end: bytes.len() as u64,
-                    });
-                    let bytes = bytes
-                        .get(range.start as usize..range.end as usize)
-                        .ok_or_else(|| anyhow::anyhow!("INVALID_SOURCE_SPAN"))?;
-                    let text = std::str::from_utf8(bytes)?;
-                    let chunk_limit = if req.max_output_bytes == 0 {
-                        4096
-                    } else {
-                        (req.max_output_bytes as usize)
-                            .saturating_sub(1800)
-                            .clamp(64, 4096)
-                    };
-                    if text.is_empty() {
-                        records.push(json!({"path":s.path,"hash":s.hash,"span":range,"text":""}));
-                    }
-                    let mut offset = 0;
-                    while offset < text.len() {
-                        let mut end = (offset + chunk_limit).min(text.len());
-                        while !text.is_char_boundary(end) {
-                            end -= 1;
-                        }
-                        records.push(json!({"path":s.path,"hash":s.hash,"span":{"start":range.start+offset as u64,"end":range.start+end as u64},"text":&text[offset..end]}));
-                        offset = end;
-                    }
-                }
+                records = source::run(r, req, &mut evidence, read_source)?;
             }
             "search-text" => unreachable!("text search returns from streaming entry"),
             "structure" => {
-                let roots = resolve_scoped(r, req)?;
-                let mut queue: VecDeque<_> = roots.into_iter().map(|f| (f, 0)).collect();
-                let mut seen = BTreeSet::new();
-                while !queue.is_empty() {
-                    let mut frontier = Vec::new();
-                    for _ in 0..500 {
-                        let Some((fact, depth)) = queue.pop_front() else {
-                            break;
-                        };
-                        if !seen.insert(fact.id.clone()) {
-                            continue;
-                        }
-                        if allowed(r, req, &fact) {
-                            records.push(serde_json::to_value(&fact)?);
-                        }
-                        frontier.push((fact.id, depth));
-                    }
-                    if seen.len() > 10000 || records.len() > 10000 {
-                        evidence.enumeration = false;
-                        evidence.limits.push("work".into());
-                        break;
-                    }
-                    if frontier.is_empty() {
-                        continue;
-                    }
-                    let depth_by_id: BTreeMap<_, _> = frontier.into_iter().collect();
-                    let children = select(
-                        r,
-                        FactFilter {
-                            kinds: vec![FactKind::Declaration, FactKind::Facet],
-                            parents: depth_by_id.keys().cloned().collect(),
-                            ..Default::default()
-                        },
-                    )?;
-                    for child in children.into_iter().filter(Fact::is_public_entity) {
-                        let depth = *depth_by_id.get(&child.parent).unwrap_or(&0);
-                        if depth >= req.depth.max(1) {
-                            evidence.enumeration = false;
-                            evidence.limits.push("depth".into());
-                        } else {
-                            queue.push_back((child, depth + 1));
-                        }
-                    }
-                }
+                records = navigation::structure(r, req, &mut evidence)?;
             }
             "references" | "call-sites" | "annotations" => {
-                let roots = resolve_scoped(r, req)?;
-                let mut seen = BTreeSet::new();
-                for f in roots {
-                    let hits = match req.operation.as_str() {
-                        "references" => {
-                            let outgoing = req.direction == "out";
-                            let base = FactFilter {
-                                kinds: if req.relation.is_empty() {
-                                    vec![FactKind::Reference]
-                                } else {
-                                    vec![FactKind::Reference, FactKind::Relation]
-                                },
-                                parent: outgoing.then(|| f.id.clone()),
-                                target: (!outgoing).then(|| f.id.clone()),
-                                ..Default::default()
-                            };
-                            if req.relation.is_empty() {
-                                select(r, base)?
-                            } else {
-                                let mut hits = Vec::new();
-                                for relation in overview_relations(&req.relation)? {
-                                    hits.extend(select(
-                                        r,
-                                        FactFilter {
-                                            relation: Some(relation),
-                                            ..base.clone()
-                                        },
-                                    )?);
-                                }
-                                hits
-                            }
-                        }
-                        "annotations" => {
-                            let direct = select(
-                                r,
-                                FactFilter {
-                                    kinds: vec![FactKind::Facet],
-                                    parent: Some(f.id),
-                                    relation: Some("java.annotation".into()),
-                                    ..Default::default()
-                                },
-                            )?;
-                            if req.meta {
-                                annotations::expand(r, direct, &mut evidence)?
-                            } else {
-                                direct
-                            }
-                        }
-                        _ => {
-                            if req.direction == "in" {
-                                let targets = select(
-                                    r,
-                                    FactFilter {
-                                        kinds: vec![FactKind::CallTarget],
-                                        target: Some(f.id),
-                                        ..Default::default()
-                                    },
-                                )?;
-                                let mut sites = Vec::new();
-                                for chunk in targets.chunks(500) {
-                                    sites.extend(select(
-                                        r,
-                                        FactFilter {
-                                            kinds: vec![FactKind::CallSite],
-                                            ids: chunk.iter().map(|t| t.parent.clone()).collect(),
-                                            ..Default::default()
-                                        },
-                                    )?);
-                                }
-                                sites
-                            } else {
-                                select(
-                                    r,
-                                    FactFilter {
-                                        kinds: vec![FactKind::CallSite],
-                                        parent: Some(f.id),
-                                        ..Default::default()
-                                    },
-                                )?
-                            }
-                        }
-                    };
-                    for f in hits {
-                        if seen.insert(f.id.clone())
-                            && ((req.direction == "in"
-                                || (req.operation == "references" && req.direction.is_empty()))
-                                || allowed(r, req, &f))
-                        {
-                            records.push(serde_json::to_value(f)?);
-                        }
-                    }
-                }
+                records = navigation::occurrences(r, req, &mut evidence)?;
             }
             "trace" => {
-                ensure!(!req.target.is_empty(), "TRACE_TARGET_REQUIRED");
-                let roots = resolve_scoped(r, req)?;
-                ensure!(roots.len() == 1, "TRACE_UNIQUE_START_REQUIRED");
-                let mut target_request = req.clone();
-                target_request.selector = req.target.clone();
-                target_request.module.clear();
-                target_request.scope.clear();
-                target_request.world.clear();
-                let targets = resolve_scoped(r, &target_request)?;
-                ensure!(targets.len() == 1, "TRACE_UNIQUE_TARGET_REQUIRED");
-                let start = roots[0].id.clone();
-                let target = targets[0].id.clone();
-                let mut visited = BTreeSet::from([start.clone()]);
-                let mut predecessor: BTreeMap<String, (String, Value)> = BTreeMap::new();
-                let mut frontier = vec![start.clone()];
-                let mut reached = start == target;
-                let mut work = 0usize;
-                for depth in 0..=req.depth.max(1) {
-                    if reached || frontier.is_empty() {
-                        break;
-                    }
-                    let mut next = BTreeSet::new();
-                    for batch in frontier.chunks(500) {
-                        let edges =
-                            call_edges_many(r, batch, req.direction == "in", &mut evidence)?;
-                        work += batch.len() + edges.len();
-                        if work > 100000 {
-                            evidence.enumeration = false;
-                            evidence.limits.push("work".into());
-                            break;
-                        }
-                        for ((from, to), sites) in edges {
-                            let (previous, node) = if req.direction == "in" {
-                                (&to, &from)
-                            } else {
-                                (&from, &to)
-                            };
-                            if visited.contains(node) {
-                                continue;
-                            }
-                            if depth == req.depth.max(1) {
-                                evidence.enumeration = false;
-                                evidence.limits.push("depth".into());
-                                continue;
-                            }
-                            if visited.len() >= 10000 {
-                                evidence.enumeration = false;
-                                evidence.limits.push("nodes".into());
-                                continue;
-                            }
-                            visited.insert(node.clone());
-                            predecessor.insert(node.clone(),(previous.clone(),json!({"from":from,"to":to,"sites":sites,"kind":"resolved_call"})));
-                            if node == &target {
-                                reached = true;
-                            }
-                            next.insert(node.clone());
-                        }
-                    }
-                    frontier = next.into_iter().collect();
-                    if work > 100000 {
-                        break;
-                    }
-                }
-                if reached {
-                    let mut nodes = vec![target.clone()];
-                    let mut hops = Vec::new();
-                    let mut cursor = target.clone();
-                    while cursor != start {
-                        let (previous, hop) = predecessor
-                            .get(&cursor)
-                            .ok_or_else(|| anyhow::anyhow!("TRACE_PATH_STATE"))?;
-                        hops.push(hop.clone());
-                        nodes.push(previous.clone());
-                        cursor = previous.clone();
-                    }
-                    nodes.reverse();
-                    hops.reverse();
-                    records.push(json!({"from":start,"to":target,"nodes":nodes,"hops":hops}));
-                }
+                records = calls::trace(r, req, &mut evidence)?;
             }
             "calls" => {
-                let roots = resolve_scoped(r, req)?;
-                let mut visited = BTreeSet::new();
-                let mut emitted = BTreeSet::new();
-                let mut frontier: Vec<_> = roots.into_iter().map(|f| f.id).collect();
-                let mut work = 0;
-                'layers: for depth in 0..req.depth.max(1) {
-                    frontier.retain(|id| visited.insert(id.clone()));
-                    if frontier.is_empty() {
-                        break;
-                    }
-                    let mut next = BTreeSet::new();
-                    for batch in frontier.chunks(500) {
-                        let edges =
-                            call_edges_many(r, batch, req.direction == "in", &mut evidence)?;
-                        work += batch.len() + edges.len();
-                        if work > 100000 || visited.len() > 10000 || records.len() > 10000 {
-                            evidence.enumeration = false;
-                            evidence.limits.push("work".into());
-                            break 'layers;
-                        }
-                        for ((from, to), sites) in edges {
-                            if depth + 1 < req.depth.max(1) {
-                                next.insert(if req.direction == "in" {
-                                    from.clone()
-                                } else {
-                                    to.clone()
-                                });
-                            }
-                            if emitted.insert((from.clone(), to.clone())) {
-                                records.push(json!({"from":from,"to":to,"sites":sites,"kind":"resolved_call","depth":depth+1}));
-                            }
-                        }
-                    }
-                    frontier = next.into_iter().collect();
-                }
+                records = calls::run(r, req, &mut evidence)?;
             }
             "runtime-implementations" => {
                 records = hierarchy::runtime(r, req, resolve_scoped(r, req)?, &mut evidence)?;
@@ -1127,161 +857,19 @@ pub fn run(
                 records = hierarchy::relations(r, req, resolve_scoped(r, req)?, &mut evidence)?;
             }
             "dispatch" => {
-                let roots = resolve_scoped(r, req)?;
-                for root in roots {
-                    if req.operation == "dispatch" {
-                        ensure!(
-                            root.kind == FactKind::CallSite,
-                            "DISPATCH_REQUIRES_CALL_SITE"
-                        );
-                        let targets = select(
-                            r,
-                            FactFilter {
-                                kinds: vec![FactKind::CallTarget],
-                                parent: Some(root.id.clone()),
-                                ..Default::default()
-                            },
-                        )?;
-                        if targets.is_empty() {
-                            evidence.semantic = false;
-                            evidence
-                                .reasons
-                                .push(format!("missing_dispatch_targets:{}", root.id));
-                        }
-                        for t in targets {
-                            if t.status == "possible" && !t.target.is_empty() {
-                                evidence.semantic = false;
-                                let reason = if t.origin == "reflection_model" {
-                                    "reflection_lookup_candidate"
-                                } else {
-                                    "modeled_binding"
-                                };
-                                evidence.reasons.push(format!("{reason}:{}", t.id));
-                                let basis = if t.origin == "reflection_model" {
-                                    t.attributes
-                                        .get("call_kind")
-                                        .or_else(|| t.attributes.get("via"))
-                                } else {
-                                    t.attributes
-                                        .get("via")
-                                        .or_else(|| t.attributes.get("recovery_input"))
-                                };
-                                records.push(json!({"call_site":root.id,"target":t.target,"binding":t.status,"binding_origin":t.origin,
-                                    "operation":t.attributes.get("operation"),"basis":basis,
-                                    "recovery_phase":t.attributes.get("recovery_phase"),
-                                    "proof":[t.id],"possible":true,"world":t.owner.world}));
-                                continue;
-                            }
-                            if t.status != "resolved"
-                                || !t.declaration_resolved
-                                || t.target.is_empty()
-                            {
-                                evidence.semantic = false;
-                                evidence
-                                    .reasons
-                                    .push(format!("unresolved_binding:{}", t.id));
-                                records.push(json!({"call_site":root.id,"binding":t.status,"proof":[t.id],"possible":false,"world":t.owner.world}));
-                                continue;
-                            }
-                            if !t.evidence_complete {
-                                evidence.semantic = false;
-                                evidence.reasons.push(format!("binding:{}", t.id));
-                            }
-                            let declaration = select(
-                                r,
-                                FactFilter {
-                                    ids: vec![t.target.clone()],
-                                    ..Default::default()
-                                },
-                            )?
-                            .into_iter()
-                            .next();
-                            let modifiers = declaration
-                                .as_ref()
-                                .and_then(|fact| fact.attributes.get("modifiers"))
-                                .and_then(Value::as_array);
-                            let has_modifier = |name: &str| {
-                                modifiers.is_some_and(|items| {
-                                    items.iter().any(|item| item.as_str() == Some(name))
-                                })
-                            };
-                            let class_final = if let Some(parent) =
-                                declaration.as_ref().filter(|fact| !fact.parent.is_empty())
-                            {
-                                select(
-                                    r,
-                                    FactFilter {
-                                        ids: vec![parent.parent.clone()],
-                                        ..Default::default()
-                                    },
-                                )?
-                                .into_iter()
-                                .next()
-                                .and_then(|owner| owner.attributes.get("modifiers").cloned())
-                                .and_then(|value| value.as_array().cloned())
-                                .is_some_and(|items| {
-                                    items.iter().any(|item| item.as_str() == Some("final"))
-                                })
-                            } else {
-                                declaration
-                                    .as_ref()
-                                    .and_then(|fact| fact.attributes.get("binary_class"))
-                                    .and_then(|class| class.get("access"))
-                                    .and_then(Value::as_i64)
-                                    .is_some_and(|access| access & 0x0010 != 0)
-                            };
-                            let mechanism = root
-                                .attributes
-                                .get("mechanism")
-                                .and_then(Value::as_str)
-                                .unwrap_or("");
-                            let exact = req.algorithm == "exact"
-                                || mechanism == "constructor"
-                                || root
-                                    .attributes
-                                    .get("reference_mode")
-                                    .and_then(Value::as_str)
-                                    == Some("NEW")
-                                || root.name.starts_with("super.")
-                                || has_modifier("static")
-                                || has_modifier("private")
-                                || has_modifier("final")
-                                || class_final;
-                            records.push(json!({"call_site":root.id,"target":t.target,"binding":t.status,"proof":[t.id],"possible":!exact,"world":t.owner.world,
-                                "candidate":"resolved","algorithm":if exact {"exact"} else {"CHA"},
-                                "executable":declaration.as_ref().filter(|d| d.kind == FactKind::Declaration).map(|_| !has_modifier("abstract")),
-                                "analysis_world":if req.analysis_world.is_empty() {"workspace-open"} else {&req.analysis_world}}));
-                            if exact {
-                                continue;
-                            }
-                            records.extend(dispatch::candidates(
-                                r,
-                                req,
-                                &root,
-                                &t,
-                                declaration.as_ref(),
-                                &mut evidence,
-                            )?);
-                            if req.analysis_world != "workspace-closed" {
-                                evidence.semantic = false;
-                                evidence.reasons.push("open_world_dispatch".into());
-                            }
-                        }
-                    }
-                }
+                records = dispatch::run(r, req, &mut evidence)?;
             }
-            _ => bail!("UNSUPPORTED_OPERATION: {}", req.operation),
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::UnsupportedOperation,
+                format!("{}", req.operation)
+            )),
         }
     }
     if req.operation == "source" || req.stages.last().is_some_and(|s| s.operation == "source") {
-        records.sort_by_cached_key(|v| {
-            (
-                v["path"].as_str().unwrap_or("").to_owned(),
-                v["span"]["start"].as_u64().unwrap_or(0),
-            )
-        });
+        records
+            .sort_by_cached_key(|v| v.source_key().map(|(path, start)| (path.to_owned(), start)));
     } else {
-        records.sort_by_cached_key(|v| v.to_string());
+        records.sort_by_cached_key(|v| v.wire().expect("record serialization").to_string());
     }
     if records.len() > 10000 {
         records.truncate(10000);
@@ -1300,6 +888,65 @@ pub fn run(
         cursor: String::new(),
     })
 }
+
+/// Transport DTOs and typed domain requests share the same checked query entry.
+pub fn preflight<'a, R>(request: &'a R) -> Result<()>
+where
+    Request: From<&'a R>,
+{
+    preflight_query(&Request::from(request))
+}
+pub fn run<'a, R>(
+    reader: &dyn GraphReader,
+    request: &'a R,
+    source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+) -> Result<Output>
+where
+    Request: From<&'a R>,
+{
+    run_query(reader, &Request::from(request), source)
+}
+pub fn stream_search<'a, R>(
+    reader: &dyn GraphReader,
+    request: &'a R,
+    sink: &mut dyn FnMut(Vec<Record>) -> Result<()>,
+) -> Result<Output>
+where
+    Request: From<&'a R>,
+{
+    stream_search_query(reader, &Request::from(request), sink)
+}
+
+/// FILES snapshots expose captured bytes without implementing a semantic graph port.
+pub fn run_files<'a, R>(
+    reader: &dyn SourceContext,
+    request: &'a R,
+    source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+) -> Result<Output>
+where
+    Request: From<&'a R>,
+{
+    let request = Request::from(request);
+    preflight_query(&request)?;
+    ensure!(
+        request.operation == Operation::Source,
+        DomainError::new(ErrorCode::AnalysisSnapshotRequired, "")
+    );
+    let file = reader
+        .manifest()
+        .files
+        .iter()
+        .find(|s| s.path == request.selector)
+        .ok_or_else(|| DomainError::new(ErrorCode::SourceUnavailable, request.selector.clone()))?;
+    let records = source::snippets(&request, vec![(file.clone(), None)], source)?;
+    Ok(Output {
+        revision: reader.revision().id.clone(),
+        producer: reader.revision().producer.clone(),
+        records,
+        evidence: selection_evidence(reader, &request),
+        cursor: String::new(),
+    })
+}
 #[cfg(test)]
 mod tests {
     #[test]
@@ -1309,8 +956,35 @@ mod tests {
             inner: MemoryReader,
             reads: Cell<usize>,
         }
-        impl GraphReader for Counted {
-            fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
+        impl SourceContext for Counted {
+            fn manifest(&self) -> &Manifest {
+                self.inner.manifest()
+            }
+            fn revision(&self) -> &Revision {
+                self.inner.revision()
+            }
+        }
+        impl GraphAccess for Counted {
+            fn scan(
+                &self,
+                filter: &FactFilter,
+                after: &str,
+                limit: usize,
+            ) -> std::result::Result<Vec<Fact>, DomainError> {
+                self.inner.scan(filter, after, limit)
+            }
+
+            fn scan_symbols(
+                &self,
+                text: &str,
+                filter: &FactFilter,
+                after: &str,
+                limit: usize,
+            ) -> std::result::Result<Vec<Fact>, DomainError> {
+                self.inner.scan_symbols(text, filter, after, limit)
+            }
+
+            fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, DomainError> {
                 assert!(
                     filter.ids.len() <= 500
                         && filter.parents.len() <= 500
@@ -1319,13 +993,11 @@ mod tests {
                 self.reads.set(self.reads.get() + 1);
                 self.inner.select(filter)
             }
-            fn manifest(&self) -> &Manifest {
-                self.inner.manifest()
-            }
-            fn revision(&self) -> &Revision {
-                self.inner.revision()
-            }
         }
+        impl SourceLocator for Counted {}
+        impl AnnotationReader for Counted {}
+        impl OverviewReader for Counted {}
+        impl DependencyReader for Counted {}
         let mut inner = hierarchy_fixture();
         inner.facts.retain(|fact| fact.id == "api");
         let template = inner.facts[0].clone();
@@ -1347,7 +1019,9 @@ mod tests {
             method.id = format!("{}#run()", class.id);
             method.signature = method.id.clone();
             method.parent = class.id.clone();
-            method.attributes.insert("modifiers".into(), json!([]));
+            method
+                .attributes
+                .set_wire_field("modifiers".into(), json!([]));
             let mut type_edge = class.clone();
             type_edge.id = format!("type{number}");
             type_edge.kind = FactKind::Relation;
@@ -1412,11 +1086,11 @@ mod tests {
             method.parent = owner.into();
             method
                 .attributes
-                .insert("element_kind".into(), json!("METHOD"));
+                .set_wire_field("element_kind".into(), json!("METHOD"));
             method
                 .attributes
-                .insert("entity_kind".into(), json!("callable"));
-            method.attributes.insert(
+                .set_wire_field("entity_kind".into(), json!("callable"));
+            method.attributes.set_wire_field(
                 "modifiers".into(),
                 if matches!(owner, "api" | "abstract") {
                     json!(["abstract"])
@@ -1443,8 +1117,9 @@ mod tests {
         site.id = "runtime-site".into();
         site.kind = FactKind::CallSite;
         site.attributes
-            .insert("receiver_static_type".into(), json!("final"));
-        site.attributes.insert("mechanism".into(), json!("invoke"));
+            .set_wire_field("receiver_static_type".into(), json!("final"));
+        site.attributes
+            .set_wire_field("mechanism".into(), json!("invoke"));
         reader.facts.push(site.clone());
         site.id = "runtime-binding".into();
         site.kind = FactKind::CallTarget;
@@ -1466,19 +1141,19 @@ mod tests {
             result
                 .records
                 .iter()
-                .map(|row| row["target"].as_str().unwrap())
+                .map(|row| row.wire().unwrap()["target"].as_str().unwrap().to_owned())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["api#run()", "final#run()"])
+            BTreeSet::from(["api#run()".to_owned(), "final#run()".to_owned()])
         );
         let candidate = result
             .records
             .iter()
-            .find(|row| row["target"] == "final#run()")
+            .find(|row| row.wire().unwrap()["target"] == "final#run()")
             .unwrap();
-        assert_eq!(candidate["possible"], true);
-        assert_eq!(candidate["algorithm"], "CHA");
+        assert_eq!(candidate.wire().unwrap()["possible"], true);
+        assert_eq!(candidate.wire().unwrap()["algorithm"], "CHA");
         assert_eq!(
-            candidate["proof"],
+            candidate.wire().unwrap()["proof"],
             json!([
                 "runtime-binding",
                 "override:abstract",
@@ -1486,7 +1161,7 @@ mod tests {
                 "override:final"
             ])
         );
-        assert_eq!(candidate["type_proof"], json!([]));
+        assert_eq!(candidate.wire().unwrap()["type_proof"], json!([]));
     }
     fn hierarchy_fixture() -> MemoryReader {
         let mut reader = navigation_fixture();
@@ -1545,16 +1220,23 @@ mod tests {
             result
                 .records
                 .iter()
-                .map(|r| r["id"].as_str().unwrap())
+                .map(|r| r.wire().unwrap()["id"].as_str().unwrap().to_owned())
                 .collect::<BTreeSet<_>>(),
-            BTreeSet::from(["concrete", "final"])
+            BTreeSet::from(["concrete".to_owned(), "final".to_owned()])
         );
-        let leaf = result.records.iter().find(|r| r["id"] == "final").unwrap();
+        let leaf = result
+            .records
+            .iter()
+            .find(|r| r.wire().unwrap()["id"] == "final")
+            .unwrap();
         assert_eq!(
-            leaf["runtime_implementation"]["proof"],
+            leaf.wire().unwrap()["runtime_implementation"]["proof"],
             json!(["e1", "e2", "e3"])
         );
-        assert_eq!(leaf["runtime_implementation"]["reason"], "java.final_class");
+        assert_eq!(
+            leaf.wire().unwrap()["runtime_implementation"]["reason"],
+            "java.final_class"
+        );
         assert!(result.evidence.enumeration);
         assert!(!result.evidence.semantic);
         let limited = run(
@@ -1605,7 +1287,7 @@ mod tests {
         };
         let result = run(&reader, &request, &|_| bail!("no source")).unwrap();
         assert_eq!(result.records.len(), 1);
-        assert_eq!(result.records[0]["id"], "unknown");
+        assert_eq!(result.records[0].wire().unwrap()["id"], "unknown");
         let all = run(
             &reader,
             &Request {
@@ -1616,8 +1298,12 @@ mod tests {
         )
         .unwrap();
         assert_eq!(all.records.len(), 4);
-        assert!(all.records.iter().any(|row| row["id"] == "abstract"
-            && row["runtime_implementation"]["instantiability"] == "no"));
+        assert!(
+            all.records
+                .iter()
+                .any(|row| row.wire().unwrap()["id"] == "abstract"
+                    && row.wire().unwrap()["runtime_implementation"]["instantiability"] == "no")
+        );
         let mut incomplete = reader.facts[1].clone();
         incomplete.id = "coverage-b".into();
         incomplete.kind = FactKind::Coverage;
@@ -1632,13 +1318,7 @@ mod tests {
                 .iter()
                 .any(|reason| reason.starts_with("coverage:b/"))
         );
-        assert!(
-            preflight(&Request {
-                instantiability: "no".into(),
-                ..request.clone()
-            })
-            .is_err()
-        );
+        assert!("no".parse::<Instantiability>().is_err());
         assert!(
             preflight(&Request {
                 operation: "resolve".into(),
@@ -1660,7 +1340,12 @@ mod tests {
         };
         let direct = run(&reader, &request, &|_| bail!("no source")).unwrap();
         assert_eq!(direct.records.len(), 2);
-        assert!(direct.records.iter().all(|row| row.get("depth").is_none()));
+        assert!(
+            direct
+                .records
+                .iter()
+                .all(|row| row.wire().unwrap().get("depth").is_none())
+        );
         let all = run(
             &reader,
             &Request {
@@ -1749,7 +1434,12 @@ mod tests {
         };
         let result = run(&reader, &request, &|_| bail!("no source")).unwrap();
         assert_eq!(result.records.len(), 2);
-        assert!(result.records.iter().all(|row| row["relation"] == "reads"));
+        assert!(
+            result
+                .records
+                .iter()
+                .all(|row| row.wire().unwrap()["relation"] == "reads")
+        );
         let incoming = run(
             &reader,
             &Request {
@@ -1766,7 +1456,7 @@ mod tests {
             incoming
                 .records
                 .iter()
-                .all(|row| row["source"] == "a/Api.java")
+                .all(|row| row.wire().unwrap()["source"] == "a/Api.java")
         );
     }
     #[test]
@@ -1877,7 +1567,9 @@ mod tests {
         direct.kind = FactKind::Facet;
         direct.parent = "caller".into();
         direct.relation = "java.annotation".into();
-        direct.attributes.insert("annotation".into(), json!("A0"));
+        direct
+            .attributes
+            .set_wire_field("annotation".into(), json!("A0"));
         reader.facts.push(direct);
         for index in 0..18 {
             let mut meta = reader.facts[0].clone();
@@ -1885,15 +1577,18 @@ mod tests {
             meta.kind = FactKind::Facet;
             meta.relation = "java.annotation.meta".into();
             meta.attributes
-                .insert("annotation".into(), json!(format!("A{index}")));
+                .set_wire_field("annotation".into(), json!(format!("A{index}")));
             meta.attributes
-                .insert("meta_annotation".into(), json!(format!("A{}", index + 1)));
-            meta.attributes.insert("raw_name".into(), json!("z"));
+                .set_wire_field("meta_annotation".into(), json!(format!("A{}", index + 1)));
+            meta.attributes
+                .set_wire_field("raw_name".into(), json!("z"));
             reader.facts.push(meta);
         }
         let mut duplicate = reader.facts[reader.facts.len() - 18].clone();
         duplicate.id = "duplicate-producer".into();
-        duplicate.attributes.insert("raw_name".into(), json!("a"));
+        duplicate
+            .attributes
+            .set_wire_field("raw_name".into(), json!("a"));
         reader.facts.push(duplicate);
         let request: Request = serde_json::from_value(
             json!({"operation":"annotations","selector":"caller","meta":true}),
@@ -1907,7 +1602,9 @@ mod tests {
             output
                 .records
                 .iter()
-                .find(|row| row["attributes"]["annotation"] == "A1")
+                .find(|row| row.wire().unwrap()["attributes"]["annotation"] == "A1")
+                .unwrap()
+                .wire()
                 .unwrap()["attributes"]["raw_name"],
             "a"
         );
@@ -1930,9 +1627,9 @@ mod tests {
             fact.parent = parent.into();
             fact.relation = relation.into();
             fact.attributes
-                .insert("annotation".into(), json!(annotation));
+                .set_wire_field("annotation".into(), json!(annotation));
             fact.attributes
-                .insert("meta_annotation".into(), json!(meta));
+                .set_wire_field("meta_annotation".into(), json!(meta));
             reader.facts.push(fact);
         }
         let req: Request = serde_json::from_value(
@@ -1943,7 +1640,12 @@ mod tests {
         let mut paths = out
             .records
             .iter()
-            .map(|r| r["attributes"]["via"].as_str().unwrap())
+            .map(|r| {
+                r.wire().unwrap()["attributes"]["via"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
             .collect::<Vec<_>>();
         paths.sort();
         assert_eq!(
@@ -2007,7 +1709,7 @@ mod tests {
                 output
                     .records
                     .iter()
-                    .map(|row| row["id"].as_str().unwrap())
+                    .map(|row| row.wire().unwrap()["id"].as_str().unwrap().to_owned())
                     .collect::<Vec<_>>(),
                 ["bean", "property"]
             );
@@ -2044,7 +1746,7 @@ mod tests {
             output
                 .records
                 .iter()
-                .map(|r| r["id"].as_str().unwrap())
+                .map(|r| r.wire().unwrap()["id"].as_str().unwrap().to_owned())
                 .collect::<Vec<_>>(),
             ["site1"]
         );
@@ -2055,8 +1757,8 @@ mod tests {
         let request:Request=serde_json::from_value(json!({"operation":"pipeline","stages":[{"operation":"calls","selector":"caller"},{"operation":"resolve","endpoint":"callee"},{"operation":"source"}]})).unwrap();
         let output = run(&reader, &request, &|_| Ok(b"class Api {}".to_vec())).unwrap();
         assert_eq!(output.records.len(), 1);
-        assert_eq!(output.records[0]["path"], "b/Api.java");
-        assert_eq!(output.records[0]["text"], "class Api {}");
+        assert_eq!(output.records[0].wire().unwrap()["path"], "b/Api.java");
+        assert_eq!(output.records[0].wire().unwrap()["text"], "class Api {}");
     }
     #[test]
     fn trace_returns_a_bounded_start_to_target_path() {
@@ -2075,10 +1777,13 @@ mod tests {
         .unwrap();
         assert_eq!(output.records.len(), 1);
         assert_eq!(
-            output.records[0]["nodes"],
+            output.records[0].wire().unwrap()["nodes"],
             json!(["caller", "callee", "end"])
         );
-        assert_eq!(output.records[0]["hops"][0]["sites"], json!(["site1"]));
+        assert_eq!(
+            output.records[0].wire().unwrap()["hops"][0]["sites"],
+            json!(["site1"])
+        );
         let unreachable = run(
             &reader,
             &Request {
@@ -2113,8 +1818,43 @@ mod tests {
         revision: Revision,
         facts: Vec<Fact>,
     }
-    impl GraphReader for MemoryReader {
-        fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, String> {
+    impl SourceContext for MemoryReader {
+        fn manifest(&self) -> &Manifest {
+            &self.revision.manifest
+        }
+        fn revision(&self) -> &Revision {
+            &self.revision
+        }
+    }
+    impl GraphAccess for MemoryReader {
+        fn scan(
+            &self,
+            filter: &FactFilter,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<Fact>, DomainError> {
+            let mut facts = self.select(filter)?;
+            facts.retain(|f| f.id.as_str() > after);
+            facts.sort_by(|a, b| a.id.cmp(&b.id));
+            facts.truncate(limit);
+            Ok(facts)
+        }
+
+        fn scan_symbols(
+            &self,
+            text: &str,
+            filter: &FactFilter,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<Fact>, DomainError> {
+            let mut facts = self.search_symbols_filtered(text, filter)?;
+            facts.retain(|f| f.id.as_str() > after);
+            facts.sort_by(|a, b| a.id.cmp(&b.id));
+            facts.truncate(limit);
+            Ok(facts)
+        }
+
+        fn select(&self, filter: &FactFilter) -> std::result::Result<Vec<Fact>, DomainError> {
             Ok(self
                 .facts
                 .iter()
@@ -2141,13 +1881,11 @@ mod tests {
                 .cloned()
                 .collect())
         }
-        fn manifest(&self) -> &Manifest {
-            &self.revision.manifest
-        }
-        fn revision(&self) -> &Revision {
-            &self.revision
-        }
     }
+    impl SourceLocator for MemoryReader {}
+    impl AnnotationReader for MemoryReader {}
+    impl OverviewReader for MemoryReader {}
+    impl DependencyReader for MemoryReader {}
     #[test]
     fn resolve_unique_is_checked_inside_selected_module() {
         let units = ["a", "b"].map(|module| SourceUnit {
@@ -2192,7 +1930,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(result.records.len(), 1);
-        assert_eq!(result.records[0]["id"], "b");
+        assert_eq!(result.records[0].wire().unwrap()["id"], "b");
     }
     #[test]
     fn auxiliary_source_navigation_uses_captured_declaration_without_rebinding() {
@@ -2249,10 +1987,10 @@ mod tests {
         .unwrap();
         assert_eq!(output.records.len(), 1);
         assert_eq!(
-            output.records[0]["text"],
+            output.records[0].wire().unwrap()["text"],
             &text[start as usize..end as usize]
         );
-        assert_eq!(output.records[0]["path"], source.path);
+        assert_eq!(output.records[0].wire().unwrap()["path"], source.path);
         assert_eq!(resolve(&reader, &auxiliary.id, true).unwrap()[0], auxiliary);
         assert!(
             run(&reader, &request, &|_| Ok(b"changed".to_vec()))
@@ -2279,24 +2017,32 @@ mod tests {
                 "stale-hash" => {
                     altered.facts[1]
                         .attributes
-                        .get_mut("source_origin")
-                        .unwrap()["hash"] = json!("stale")
+                        .source_origin
+                        .as_mut()
+                        .unwrap()
+                        .hash = "stale".into()
                 }
                 "wrong-module" => {
                     altered.facts[1]
                         .attributes
-                        .get_mut("source_origin")
-                        .unwrap()["module"] = json!("other")
+                        .source_origin
+                        .as_mut()
+                        .unwrap()
+                        .module = "other".into()
                 }
                 "wrong-scope" => {
                     altered.facts[1]
                         .attributes
-                        .get_mut("source_origin")
-                        .unwrap()["scope"] = json!("TEST")
+                        .source_origin
+                        .as_mut()
+                        .unwrap()
+                        .scope = "TEST".into()
                 }
                 "wrong-world" => altered.facts[0].owner.world = "other-world".into(),
                 "binary-only" => {
-                    altered.facts[1].attributes.remove("source_origin");
+                    altered.facts[1]
+                        .attributes
+                        .remove_wire_field("source_origin");
                 }
                 "missing-producer" => {
                     altered.facts.remove(0);
@@ -2363,7 +2109,7 @@ mod tests {
             &|_| bail!("no source"),
         )
         .unwrap();
-        assert_eq!(dispatch.records[0]["possible"], false);
+        assert_eq!(dispatch.records[0].wire().unwrap()["possible"], false);
         assert!(!dispatch.evidence.semantic);
     }
     #[test]
@@ -2419,10 +2165,16 @@ mod tests {
         )
         .unwrap();
         assert_eq!(dispatch.records.len(), 1);
-        assert_eq!(dispatch.records[0]["binding_origin"], "reflection_model");
-        assert_eq!(dispatch.records[0]["basis"], "REFLECTION");
-        assert_eq!(dispatch.records[0]["operation"], "METHOD_INVOKE");
-        assert_eq!(dispatch.records[0]["possible"], true);
+        assert_eq!(
+            dispatch.records[0].wire().unwrap()["binding_origin"],
+            "reflection_model"
+        );
+        assert_eq!(dispatch.records[0].wire().unwrap()["basis"], "REFLECTION");
+        assert_eq!(
+            dispatch.records[0].wire().unwrap()["operation"],
+            "METHOD_INVOKE"
+        );
+        assert_eq!(dispatch.records[0].wire().unwrap()["possible"], true);
         assert!(
             dispatch
                 .evidence
@@ -2459,10 +2211,16 @@ mod tests {
                 &|_| bail!("no source"),
             )
             .unwrap();
-            assert_eq!(dispatch.records[0]["binding_origin"], origin);
-            assert_eq!(dispatch.records[0]["basis"], "modeled_expression");
-            assert_eq!(dispatch.records[0]["recovery_phase"], 1);
-            assert_eq!(dispatch.records[0]["possible"], true);
+            assert_eq!(
+                dispatch.records[0].wire().unwrap()["binding_origin"],
+                origin
+            );
+            assert_eq!(
+                dispatch.records[0].wire().unwrap()["basis"],
+                "modeled_expression"
+            );
+            assert_eq!(dispatch.records[0].wire().unwrap()["recovery_phase"], 1);
+            assert_eq!(dispatch.records[0].wire().unwrap()["possible"], true);
             assert!(!dispatch.evidence.semantic);
         }
     }
@@ -2521,9 +2279,11 @@ mod tests {
         )
         .unwrap();
         assert_eq!(exact.records.len(), 1);
-        assert_eq!(exact.records[0]["possible"], false);
+        assert_eq!(exact.records[0].wire().unwrap()["possible"], false);
         assert!(exact.evidence.semantic);
-        facts[2].attributes.insert("modifiers".into(), json!([]));
+        facts[2]
+            .attributes
+            .set_wire_field("modifiers".into(), json!([]));
         let virtual_call = run(&MemoryReader { revision, facts }, &request, &|_| {
             bail!("no source")
         })
@@ -2533,7 +2293,7 @@ mod tests {
             virtual_call
                 .records
                 .iter()
-                .all(|record| record["possible"] == true)
+                .all(|record| record.wire().unwrap()["possible"] == true)
         );
         assert!(!virtual_call.evidence.semantic);
     }

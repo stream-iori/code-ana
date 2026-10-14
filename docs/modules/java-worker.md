@@ -1,6 +1,6 @@
 # Java 适配器与 worker
 
-对齐 2026-10-13。默认 Native/G1，javac 唯一后端，目标 Java 8；版本见 [当前实现](../current-state.md)，接口见 [公共契约](../contracts.md)。
+对齐 2026-10-14。默认 Native/G1，javac 唯一后端，目标 Java 8；版本见 [当前实现](../current-state.md)，接口见 [公共契约](../contracts.md)。
 
 ```text
 daemon ── worker protocol 18 ──► Rust Java worker（独立进程）
@@ -14,6 +14,8 @@ daemon ── worker protocol 18 ──► Rust Java worker（独立进程）
 ```
 
 显式 JVM 后端供开发/诊断，使用同一模型和行交付；无自动 fallback。Java 8 桥字节码与 Java 25 共享库分开构建，禁止 JNI、JavaParser/SymbolSolver、注解处理器和业务字节码生成。
+
+类型化控制、阶段及职责拆分见 [Rust 改造](../implementation/rust-type-refactor.md)。
 
 ## 1. 输入与模型
 

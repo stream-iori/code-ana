@@ -1,7 +1,7 @@
 //! Prepare a Java task from the captured bytes and the daemon's frozen user generation.
 use anyhow::{Context, Result, ensure};
 use codeana_config::{Capture, UserConfig};
-use codeana_contracts::{convert, worker as w};
+use codeana_contracts::{map, worker as w};
 use codeana_model::*;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
@@ -142,13 +142,20 @@ impl DiskBudget {
                 Err(error) => return Err(error.into()),
             };
             if metadata.file_type().is_symlink() {
-                anyhow::bail!("TASK_SCRATCH_SYMLINK");
+                anyhow::bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::TaskScratchSymlink,
+                    ""
+                ));
             }
             if metadata.is_file() {
                 entries.remove(&path);
-                total = total
-                    .checked_add(metadata.len())
-                    .context("TASK_SCRATCH_OVERFLOW")?;
+                total =
+                    total
+                        .checked_add(metadata.len())
+                        .context(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::TaskScratchOverflow,
+                            "",
+                        ))?;
             } else if metadata.is_dir() {
                 visited.insert(path.clone());
                 let names = entries.names(&path, &metadata)?;
@@ -182,7 +189,10 @@ impl DiskBudget {
             .and_then(|n| n.checked_add(self.reserve_bytes))
             .and_then(|n| n.checked_add(dynamic))
             .and_then(|n| n.checked_add(staged))
-            .context("TASK_SCRATCH_OVERFLOW")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::TaskScratchOverflow,
+                "",
+            ))?;
         ensure!(
             total <= self.max_bytes,
             "JAVA_SCRATCH_BUDGET bytes={total} limit={}",
@@ -197,8 +207,10 @@ impl PreparedJava {
         for (path, expected) in &self.toolchain {
             ensure!(
                 hash_file(path)? == *expected,
-                "TOOLCHAIN_INPUT_DRIFT: {}",
-                path.display()
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::ToolchainInputDrift,
+                    format!("{}", path.display())
+                )
             );
         }
         Ok(())
@@ -206,11 +218,14 @@ impl PreparedJava {
 }
 pub fn installed_library() -> Result<PathBuf> {
     let exe = std::env::current_exe()?;
-    let bin = exe.parent().context("BINARY_DIRECTORY")?;
+    let bin = exe.parent().context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::BinaryDirectory,
+        "",
+    ))?;
     let backend = std::env::var("CODEANA_JAVA_BACKEND").unwrap_or_else(|_| "native".into());
     ensure!(
         matches!(backend.as_str(), "native" | "jvm"),
-        "JAVA_BACKEND_UNSUPPORTED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaBackendUnsupported, "")
     );
     if backend == "jvm" {
         let installed = bin.join("../lib/java/jvm/runner.jar");
@@ -224,7 +239,10 @@ pub fn installed_library() -> Result<PathBuf> {
                 return Ok(dev.canonicalize()?);
             }
         }
-        anyhow::bail!("UNSUPPORTED_ADAPTER: explicit Java JVM bundle is not installed");
+        anyhow::bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::UnsupportedAdapter,
+            "explicit Java JVM bundle is not installed".to_string()
+        ));
     }
     let name = if cfg!(target_os = "macos") {
         "libcodeana_java.dylib"
@@ -243,7 +261,10 @@ pub fn installed_library() -> Result<PathBuf> {
             return Ok(dev.canonicalize()?);
         }
     }
-    anyhow::bail!("UNSUPPORTED_ADAPTER: Java native bundle is not installed")
+    anyhow::bail!(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::UnsupportedAdapter,
+        "Java native bundle is not installed".to_string()
+    ))
 }
 
 fn host_toolchain_inputs(home: &Path) -> Result<(String, Vec<(PathBuf, String)>)> {
@@ -279,12 +300,18 @@ fn compiler_parallelism(
     let mib = 1024 * 1024;
     let host = native_heap + 256 * mib;
     if let Some(count) = requested {
-        ensure!((1..=8).contains(&count), "JAVA_PARALLELISM_RANGE");
+        ensure!(
+            (1..=8).contains(&count),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaParallelismRange, "")
+        );
         // Reserve native host/model space and per-JVM non-heap space. RSS monitoring
         // remains authoritative; a reservation is not a capacity guarantee.
         ensure!(
             memory >= host + u64::from(count) * (heap + 64 * mib),
-            "JAVA_PARALLELISM_MEMORY_BUDGET"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaParallelismMemoryBudget,
+                ""
+            )
         );
         return Ok(count);
     }
@@ -322,20 +349,26 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
     } else {
         "native"
     };
-    let parent = library.parent().context("BUNDLE_ROOT")?;
+    let parent = library.parent().context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::BundleRoot,
+        "",
+    ))?;
     let bundle = if backend == "jvm" {
         parent
     } else {
-        parent.parent().context("BUNDLE_ROOT")?
+        parent.parent().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::BundleRoot,
+            "",
+        ))?
     };
     let scratch = tempfile::Builder::new().prefix("codeana-java-").tempdir()?;
     let captured_bytes = c
         .blobs
         .values()
         .try_fold(0u64, |total, blob| -> Result<u64> {
-            total
-                .checked_add(blob.as_ref().metadata()?.len())
-                .context("TASK_SCRATCH_OVERFLOW")
+            total.checked_add(blob.as_ref().metadata()?.len()).context(
+                codeana_model::DomainError::new(codeana_model::ErrorCode::TaskScratchOverflow, ""),
+            )
         })?;
     let largest_blob = c
         .blobs
@@ -368,17 +401,35 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
     let input = scratch.path().join("input");
     std::fs::create_dir(&input)?;
     for unit in &c.manifest.files {
-        ensure!(safe_path(&unit.path), "UNSAFE_CAPTURE_PATH");
-        let bytes = c.blobs.get(&unit.hash).context("CAPTURE_BLOB_MISSING")?;
+        ensure!(
+            safe_path(&unit.path),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::UnsafeCapturePath, "")
+        );
+        let bytes = c
+            .blobs
+            .get(&unit.hash)
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::CaptureBlobMissing,
+                "",
+            ))?;
         let path = input.join(&unit.path);
-        std::fs::create_dir_all(path.parent().context("INPUT_PARENT")?)?;
+        std::fs::create_dir_all(path.parent().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::InputParent,
+            "",
+        ))?)?;
         disk_budget.input_bytes = disk_budget
             .input_bytes
             .checked_add(bytes.as_ref().metadata()?.len())
-            .context("TASK_SCRATCH_OVERFLOW")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::TaskScratchOverflow,
+                "",
+            ))?;
         disk_budget.check()?;
         std::fs::copy(bytes.as_ref(), &path)?;
-        ensure!(hash_file(&path)? == unit.hash, "CAPTURE_BLOB_HASH");
+        ensure!(
+            hash_file(&path)? == unit.hash,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureBlobHash, "")
+        );
     }
     let modules: Vec<_> = c
         .effective
@@ -391,7 +442,10 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
     for module in &modules {
         ensure!(
             module.analysis.source_version.as_deref() == Some("8"),
-            "SOURCE_VERSION_UNSUPPORTED: Java 8 must be explicit"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::SourceVersionUnsupported,
+                "Java 8 must be explicit".to_string()
+            )
         );
         let alias = module.analysis.toolchain.as_deref().unwrap_or("auto");
         let candidates: Vec<_> = user
@@ -405,18 +459,27 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             .collect();
         ensure!(
             candidates.len() == 1,
-            "TARGET_JDK_REQUIRED: register one Java 8 SDKMAN home or select an explicit alias"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::TargetJdkRequired,
+                "register one Java 8 SDKMAN home or select an explicit alias".to_string()
+            )
         );
         homes.push(PathBuf::from(&candidates[0].1.home).canonicalize()?);
     }
-    let home = homes.first().context("JAVA_MODULE_REQUIRED")?.clone();
+    let home = homes
+        .first()
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::JavaModuleRequired,
+            "",
+        ))?
+        .clone();
     ensure!(
         homes.iter().all(|p| p == &home),
-        "MIXED_TOOLCHAIN_UNSUPPORTED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::MixedToolchainUnsupported, "")
     );
     ensure!(
         home.join("lib/tools.jar").is_file(),
-        "JDK8_COMPILER_REQUIRED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::Jdk8CompilerRequired, "")
     );
     let mut toolchain = Vec::new();
     // Hash the actual SDK execution/compiler/platform inputs, preserving relative identities.
@@ -534,7 +597,10 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             }
             ensure!(
                 matches!(scope.as_str(), "MAIN" | "TEST"),
-                "GENERATED_SCOPE_REQUIRES_METADATA"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::GeneratedScopeRequiresMetadata,
+                    ""
+                )
             );
             let mut dependencies = std::collections::BTreeSet::new();
             dependencies.insert(module.id.clone());
@@ -543,7 +609,10 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                     .modules
                     .iter()
                     .find(|m| m.id == module.id)
-                    .context("JAVA_METADATA_MODULE")?;
+                    .context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaMetadataModule,
+                        "",
+                    ))?;
                 // Schema 3 carries Maven's complete mediated scope inputs, not direct edges.
                 // Recursing through another module would reintroduce optional/excluded artifacts.
                 dependencies.extend(m.dependencies.get(&scope).into_iter().flatten().cloned());
@@ -565,7 +634,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 .iter()
                 .map(|s| {
                     Ok(w::JavaSource {
-                        unit: Some(convert(*s)?),
+                        unit: Some(map(*s)?),
                         input: input.join(&s.path).to_string_lossy().into_owned(),
                         publish: s.world == world && !s.auxiliary,
                     })
@@ -592,7 +661,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 })
                 .map(|s| {
                     Ok(w::JavaSource {
-                        unit: Some(convert(s)?),
+                        unit: Some(map(s)?),
                         input: input.join(&s.path).to_string_lossy().into_owned(),
                         publish: true,
                     })
@@ -607,7 +676,10 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                     .modules
                     .iter()
                     .find(|m| m.id == module.id)
-                    .context("JAVA_METADATA_MODULE")?;
+                    .context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaMetadataModule,
+                        "",
+                    ))?;
                 let cp = m.classpath.get(&scope).or_else(|| m.classpath.get("MAIN"));
                 for a in cp.into_iter().flatten() {
                     let rel = format!(".code-ana/inputs/{}.jar", a.sha256);
@@ -616,7 +688,10 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                             .files
                             .iter()
                             .any(|u| u.path == rel && u.hash == a.sha256),
-                        "CAPTURED_CLASSPATH_REQUIRED"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::CapturedClasspathRequired,
+                            ""
+                        )
                     );
                     classpath.push(input.join(rel).to_string_lossy().into_owned());
                     classpath_identity.push(a.sha256.clone());

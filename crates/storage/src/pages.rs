@@ -22,13 +22,19 @@ impl PageSpool {
     pub fn count(&self) -> usize {
         self.count
     }
-    pub fn append(&mut self, records: &[Value]) -> Result<()> {
-        ensure!(records.len() <= 1024, "PAGE_BATCH_BUDGET");
+    pub fn append(&mut self, records: &[Record]) -> Result<()> {
+        ensure!(
+            records.len() <= 1024,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::PageBatchBudget, "")
+        );
         let _guard = self.coord.lock().unwrap();
         let transaction = self
             .connection
             .as_mut()
-            .context("PAGE_SPOOL_CLOSED")?
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::PageSpoolClosed,
+                "",
+            ))?
             .transaction()?;
         {
             let mut statement = transaction.prepare("INSERT INTO records VALUES(?,?)")?;
@@ -50,7 +56,10 @@ impl Store {
         let token = file
             .path()
             .file_name()
-            .context("PAGE_SPOOL_NAME")?
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::PageSpoolName,
+                "",
+            ))?
             .to_string_lossy()
             .into_owned();
         let connection = Connection::open(file.path())?;
@@ -70,7 +79,7 @@ impl Store {
                 && id
                     .bytes()
                     .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'),
-            "INVALID_PAGE_ID"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidPageId, "")
         );
         Ok(self.home.join("pages").join(format!("{id}.db")))
     }
@@ -83,9 +92,18 @@ impl Store {
         mut spool: PageSpool,
     ) -> Result<()> {
         let body = json(metadata)?;
-        let connection = spool.connection.take().context("PAGE_SPOOL_CLOSED")?;
+        let connection = spool
+            .connection
+            .take()
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::PageSpoolClosed,
+                "",
+            ))?;
         connection.close().map_err(|(_, error)| error)?;
-        let file = spool.file.take().context("PAGE_SPOOL_CLOSED")?;
+        let file = spool.file.take().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::PageSpoolClosed,
+            "",
+        ))?;
         file.as_file().sync_all()?;
         let _guard = self.coord.lock().unwrap();
         let path = self.page_path(id)?;
@@ -119,8 +137,11 @@ impl Store {
         project: &str,
         offset: usize,
         limit: usize,
-    ) -> Result<Vec<Value>> {
-        ensure!((1..=10000).contains(&limit), "INVALID_PAGE_LIMIT");
+    ) -> Result<Vec<Record>> {
+        ensure!(
+            (1..=10000).contains(&limit),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidPageLimit, "")
+        );
         let _guard = self.coord.lock().unwrap();
         let _: Value = self.object("page", id, project)?;
         let connection = Connection::open_with_flags(

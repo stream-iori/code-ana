@@ -1,6 +1,8 @@
 # 存储与原子发布
 
-对齐 2026-10-13：图库物理 `user_version=7`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs)、[graph_compact.rs](../../crates/storage/src/graph_compact.rs) 和 [实施记录](../implementation/anatomist-storage-migration.md)。
+对齐 2026-10-14：图库物理 `user_version=7`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs)、[graph_compact.rs](../../crates/storage/src/graph_compact.rs) 和 [实施记录](../implementation/anatomist-storage-migration.md)。
+
+类型化控制、阶段及职责拆分见 [Rust 改造](../implementation/rust-type-refactor.md)。
 
 ## 1. 布局
 

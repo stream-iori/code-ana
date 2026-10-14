@@ -85,7 +85,7 @@ pub fn seal(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
         "DELETE FROM source_files WHERE file_pk NOT IN({});",
         references.join(" UNION ")
     ))?;
-    ensure!(!db.prepare("SELECT 1 FROM edges WHERE NOT ((is_external=0 AND target_id IS NOT NULL AND external_target_fqn IS NULL) OR (is_external=1 AND target_id IS NULL AND external_target_fqn IS NOT NULL)) LIMIT 1")?.exists([])?,"GRAPH_TARGET_SHAPE");
+    ensure!(!db.prepare("SELECT 1 FROM edges WHERE NOT ((is_external=0 AND target_id IS NOT NULL AND external_target_fqn IS NULL) OR (is_external=1 AND target_id IS NULL AND external_target_fqn IS NOT NULL)) LIMIT 1")?.exists([])?, codeana_model::DomainError::new(codeana_model::ErrorCode::GraphTargetShape, ""));
     check()?;
     Ok(())
 }

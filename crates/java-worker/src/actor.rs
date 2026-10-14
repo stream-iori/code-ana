@@ -49,22 +49,36 @@ impl<T: 'static> Owner<T> {
             stopped,
             ended: Some(ended),
         };
-        loaded.await.context("FFI_OWNER_START")??;
+        loaded.await.context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::FfiOwnerStart,
+            "",
+        ))??;
         Ok(owner)
     }
     async fn call<R: Send + 'static>(
         &self,
         work: impl FnOnce(&mut T) -> Result<R> + Send + 'static,
     ) -> Result<R> {
-        ensure!(!self.stopped.load(Ordering::Acquire), "FFI_OWNER_STOPPED");
+        ensure!(
+            !self.stopped.load(Ordering::Acquire),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::FfiOwnerStopped, "")
+        );
         let (reply, result) = oneshot::channel();
         self.sender
             .send(Box::new(move |value| {
                 let _ = reply.send(work(value));
             }))
             .await
-            .map_err(|_| anyhow::anyhow!("FFI_OWNER_STOPPED"))?;
-        result.await.context("FFI_OWNER_STOPPED")?
+            .map_err(|_| {
+                anyhow::anyhow!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::FfiOwnerStopped,
+                    ""
+                ))
+            })?;
+        result.await.context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::FfiOwnerStopped,
+            "",
+        ))?
     }
     fn stop(&self) {
         self.stopped.store(true, Ordering::Release);
@@ -76,8 +90,14 @@ impl<T: 'static> Owner<T> {
         if let Some(ended) = self.ended.take() {
             tokio::time::timeout(std::time::Duration::from_secs(2), ended)
                 .await
-                .context("FFI_OWNER_CLOSE_TIMEOUT")?
-                .context("FFI_OWNER_CLOSE")?;
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::FfiOwnerCloseTimeout,
+                    "",
+                ))?
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::FfiOwnerClose,
+                    "",
+                ))?;
         }
         Ok(())
     }
@@ -120,7 +140,10 @@ impl NativeActor {
     }
     pub async fn start(&mut self, request: Vec<u8>) -> Result<()> {
         use std::os::fd::AsRawFd;
-        ensure!(self.notification.is_none(), "NATIVE_NOTIFICATION_STATE");
+        ensure!(
+            self.notification.is_none(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::NativeNotificationState, "")
+        );
         let (reader, writer) = std::os::unix::net::UnixStream::pair()?;
         reader.set_nonblocking(true)?;
         writer.set_nonblocking(true)?;
@@ -136,18 +159,30 @@ impl NativeActor {
             })
             .await
     }
-    pub async fn ready(&mut self) -> Result<i32> {
+    pub async fn ready(&mut self) -> Result<crate::state::RunState> {
         use tokio::io::AsyncReadExt;
         let mut reader = self
             .notification
             .take()
-            .context("NATIVE_NOTIFICATION_NOT_REGISTERED")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::NativeNotificationNotRegistered,
+                "",
+            ))?;
         let mut token = [0];
         reader
             .read_exact(&mut token)
             .await
-            .context("NATIVE_NOTIFICATION_INCOMPLETE")?;
-        ensure!(token[0] == 1, "NATIVE_NOTIFICATION_PROTOCOL");
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::NativeNotificationIncomplete,
+                "",
+            ))?;
+        ensure!(
+            token[0] == 1,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::NativeNotificationProtocol,
+                ""
+            )
+        );
         let trace = self.capture.clone();
         let state = self
             .owner
@@ -155,7 +190,16 @@ impl NativeActor {
                 trace.sync(|| measure(Metric::EnginePoll, 0, false, || native.poll()))
             })
             .await?;
-        ensure!(matches!(state, -1 | 1), "NATIVE_NOTIFICATION_NOT_TERMINAL");
+        ensure!(
+            matches!(
+                state,
+                crate::state::RunState::Failed | crate::state::RunState::Complete
+            ),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::NativeNotificationNotTerminal,
+                ""
+            )
+        );
         Ok(state)
     }
     pub async fn result_file(

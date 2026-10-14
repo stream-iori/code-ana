@@ -42,7 +42,10 @@ impl Iterator for GraphStream {
                 }
                 None => {
                     self.ended = true;
-                    return Some(Err(anyhow!("GRAPH_STREAM_INCOMPLETE")));
+                    return Some(Err(anyhow!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GraphStreamIncomplete,
+                        ""
+                    ))));
                 }
             }
         }

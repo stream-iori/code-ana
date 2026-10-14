@@ -1,18 +1,23 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
+mod annotations;
+mod blobs;
 pub mod derived_cache;
 mod graph_calls;
 mod graph_compact;
 mod graph_query;
 pub mod graph_store;
+mod maintenance;
+mod objects;
 mod pages;
 mod staged;
+mod tasks;
 mod text_search;
 use anyhow::{Context, Result, ensure};
 use codeana_model::*;
 pub use pages::PageSpool;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
-pub use staged::{StagedCandidate, StagedSummary};
+pub use staged::{CandidateStatistics, StagedCandidate, StagedSummary};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -33,12 +38,12 @@ pub struct Store {
 }
 pub struct AnnotationCommand<'a> {
     pub project: &'a str,
-    pub action: &'a str,
+    pub action: AnnotationAction,
     pub id: &'a str,
     pub symbol: &'a str,
     pub text: &'a str,
     pub version: &'a str,
-    pub anchor: Option<&'a serde_json::Value>,
+    pub anchor: Option<&'a AnnotationAnchor>,
 }
 pub struct ReadContext {
     connection: Connection,
@@ -63,7 +68,10 @@ fn json<T: Serialize>(x: &T) -> Result<String> {
 }
 pub fn durable_write(path: &Path, bytes: &[u8]) -> Result<()> {
     use std::io::Write;
-    let parent = path.parent().context("PATH_PARENT")?;
+    let parent = path.parent().context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::PathParent,
+        "",
+    ))?;
     std::fs::create_dir_all(parent)?;
     let temp = parent.join(new_id("write"));
     let mut f = std::fs::OpenOptions::new()
@@ -96,7 +104,10 @@ pub fn test_fault(home: &Path, point: &str) -> Result<()> {
             std::process::exit(75);
         }
         if spec == format!("error:{point}") {
-            anyhow::bail!("TEST_FAULT:{point}");
+            anyhow::bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::TestFault,
+                point.to_string()
+            ));
         }
         if spec == format!("pause:{point}") {
             durable_write(&home.join("test-fault-reached"), point.as_bytes())?;
@@ -104,7 +115,10 @@ pub fn test_fault(home: &Path, point: &str) -> Result<()> {
             while !home.join("test-fault-release").exists() {
                 ensure!(
                     std::time::Instant::now() < until,
-                    "TEST_FAULT_TIMEOUT:{point}"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::TestFaultTimeout,
+                        point.to_string()
+                    )
                 );
                 std::thread::sleep(Duration::from_millis(10));
             }
@@ -125,7 +139,10 @@ impl Store {
         };
         let c = s.catalog()?;
         let schema: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        ensure!(schema <= 2, "UNSUPPORTED_CATALOG_SCHEMA");
+        ensure!(
+            schema <= 2,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::UnsupportedCatalogSchema, "")
+        );
         c.execute_batch("PRAGMA journal_mode=WAL; BEGIN IMMEDIATE;
  CREATE TABLE IF NOT EXISTS project_paths(path TEXT PRIMARY KEY,project TEXT NOT NULL,checkout TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS revisions(id TEXT PRIMARY KEY,target TEXT NOT NULL,project TEXT NOT NULL,body TEXT NOT NULL);
@@ -139,7 +156,13 @@ impl Store {
  PRAGMA user_version=2; COMMIT;")?;
         let a = Connection::open(home.join("annotations.db"))?;
         let annotation_schema: i64 = a.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        ensure!(annotation_schema <= 2, "UNSUPPORTED_ANNOTATION_SCHEMA");
+        ensure!(
+            annotation_schema <= 2,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::UnsupportedAnnotationSchema,
+                ""
+            )
+        );
         a.execute_batch("BEGIN IMMEDIATE; CREATE TABLE IF NOT EXISTS annotations(id TEXT PRIMARY KEY,project TEXT NOT NULL,symbol TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL,anchor TEXT NOT NULL DEFAULT '');")?;
         if annotation_schema == 1 {
             a.execute_batch("ALTER TABLE annotations ADD COLUMN anchor TEXT NOT NULL DEFAULT '';")?;
@@ -168,109 +191,12 @@ impl Store {
                 [path],
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
-            .context("PROJECT_NOT_REGISTERED")
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::ProjectNotRegistered,
+                "",
+            ))
     }
-    pub fn put_blobs(&self, blobs: &BTreeMap<String, Vec<u8>>) -> Result<()> {
-        let mut guard = self.coord.lock().unwrap();
-        guard
-            .staged_blobs
-            .extend(blobs.keys().cloned().map(|h| (h, now())));
-        for (h, b) in blobs {
-            ensure!(hash(b) == *h, "BLOB_HASH_MISMATCH");
-            let p = self.home.join("blobs").join(h);
-            if p.exists() {
-                ensure!(hash(std::fs::read(p)?) == *h, "CORRUPT_BLOB");
-            } else {
-                durable_write(&p, b)?;
-            }
-        }
-        // Reused files may have been renamed by a failed file-backed batch.
-        if !blobs.is_empty() {
-            sync_dir(&self.home.join("blobs"))?;
-        }
-        Ok(())
-    }
-    /// Persist captured input files without materializing dependency archives in memory.
-    pub fn put_blob_files<T: AsRef<Path>>(&self, blobs: &BTreeMap<String, T>) -> Result<()> {
-        let mut guard = self.coord.lock().unwrap();
-        guard
-            .staged_blobs
-            .extend(blobs.keys().cloned().map(|h| (h, now())));
-        for (hash, source) in blobs {
-            ensure!(
-                hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_hexdigit()),
-                "INVALID_BLOB_ID"
-            );
-            let destination = self.home.join("blobs").join(hash);
-            if destination.exists() {
-                ensure!(
-                    codeana_contracts::performance::measure(
-                        codeana_contracts::performance::Metric::BlobHash,
-                        std::fs::metadata(&destination)?.len(),
-                        false,
-                        || hash_file(&destination)
-                    )? == *hash,
-                    "CORRUPT_BLOB"
-                );
-                ensure!(
-                    codeana_contracts::performance::measure(
-                        codeana_contracts::performance::Metric::BlobHash,
-                        std::fs::metadata(source.as_ref())?.len(),
-                        false,
-                        || hash_file(source.as_ref())
-                    )? == *hash,
-                    "BLOB_HASH_MISMATCH"
-                );
-                continue;
-            }
-            let temporary = destination.with_file_name(new_id("write"));
-            let result = (|| -> Result<()> {
-                let mut input = std::fs::File::open(source.as_ref())?;
-                let mut output = std::fs::OpenOptions::new()
-                    .create_new(true)
-                    .write(true)
-                    .open(&temporary)?;
-                use codeana_contracts::performance::{Metric, measure};
-                measure(Metric::BlobCopy, input.metadata()?.len(), false, || {
-                    std::io::copy(&mut input, &mut output)
-                })?;
-                measure(
-                    Metric::BlobFileSync,
-                    output.metadata()?.len(),
-                    false,
-                    || output.sync_all(),
-                )?;
-                ensure!(
-                    measure(Metric::BlobHash, output.metadata()?.len(), false, || {
-                        hash_file(&temporary)
-                    })? == *hash,
-                    "BLOB_HASH_MISMATCH"
-                );
-                std::fs::rename(&temporary, &destination)?;
-                Ok(())
-            })();
-            if result.is_err() {
-                let _ = std::fs::remove_file(&temporary);
-            }
-            result?;
-        }
-        // Every file is durable before rename; persist the batch's directory
-        // entries before a caller can publish references. Also sync on reuse:
-        // an earlier failed batch may have left renamed, unreferenced files.
-        if !blobs.is_empty() {
-            sync_dir(&self.home.join("blobs"))?;
-        }
-        Ok(())
-    }
-    pub fn blob(&self, h: &str) -> Result<Vec<u8>> {
-        ensure!(
-            h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()),
-            "INVALID_BLOB_ID"
-        );
-        let b = std::fs::read(self.home.join("blobs").join(h))?;
-        ensure!(hash(&b) == h, "CORRUPT_BLOB");
-        Ok(b)
-    }
+
     pub fn head(&self, target: &str) -> Result<String> {
         Ok(self
             .catalog()?
@@ -289,13 +215,19 @@ impl Store {
                 return Ok(r.id);
             }
         }
-        anyhow::bail!("NO_INDEX")
+        anyhow::bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::NoIndex,
+            ""
+        ))
     }
     fn revision_unlocked(&self, id: &str) -> Result<Revision> {
         let body: String = self
             .catalog()?
             .query_row("SELECT body FROM revisions WHERE id=?", [id], |r| r.get(0))
-            .context("REVISION_NOT_FOUND")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::RevisionNotFound,
+                "",
+            ))?;
         Ok(serde_json::from_str(&body)?)
     }
     pub fn read(&self, id: &str) -> Result<ReadContext> {
@@ -308,15 +240,23 @@ impl Store {
         let schema_version: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         ensure!(
             schema_version == graph_store::SCHEMA_VERSION,
-            "GRAPH_SCHEMA_REBUILD_REQUIRED: expected={} actual={schema_version}; run index --full",
-            graph_store::SCHEMA_VERSION
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::GraphSchemaRebuildRequired,
+                format!(
+                    "expected={} actual={schema_version}; run index --full",
+                    graph_store::SCHEMA_VERSION
+                )
+            )
         );
         let identity: String = c.query_row(
             "SELECT value FROM project_meta WHERE key='codeana.revision'",
             [],
             |r| r.get(0),
         )?;
-        ensure!(identity == r.id, "GRAPH_IDENTITY_MISMATCH");
+        ensure!(
+            identity == r.id,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphIdentityMismatch, "")
+        );
         *lock.readers.entry(id.into()).or_default() += 1;
         let sources = r
             .manifest
@@ -343,7 +283,7 @@ impl Store {
     ) -> Result<Revision> {
         ensure!(
             revision.producer.starts_with("mock"),
-            "MOCK_FIXTURE_REQUIRED"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::MockFixtureRequired, "")
         );
         let rows = codeana_contracts::fixture_graph::rows(&revision.manifest, &result.facts);
         let candidate = self.stage_graph_records(
@@ -355,554 +295,6 @@ impl Store {
             |_| Ok(()),
         )?;
         self.publish_staged(candidate, task)
-    }
-    pub fn put_object<T: Serialize>(
-        &self,
-        kind: &str,
-        id: &str,
-        project: &str,
-        value: &T,
-        revisions: &[String],
-    ) -> Result<()> {
-        let mut guard = self.coord.lock().unwrap();
-        let mut c = self.catalog()?;
-        let tx = c.transaction()?;
-        for r in revisions {
-            self.revision_unlocked(r)?;
-        }
-        tx.execute(
-            "INSERT OR REPLACE INTO objects VALUES(?,?,?,?)",
-            params![kind, id, project, json(value)?],
-        )?;
-        tx.execute("DELETE FROM refs WHERE kind=? AND id=?", params![kind, id])?;
-        for r in revisions {
-            tx.execute("INSERT INTO refs VALUES(?,?,?)", params![kind, id, r])?;
-        }
-        tx.commit()?;
-        if let Some(files) = serde_json::to_value(value)?
-            .get("manifest")
-            .and_then(|m| m.get("files"))
-            .and_then(|f| f.as_array())
-        {
-            for source in files {
-                if let Some(h) = source["hash"].as_str() {
-                    guard.staged_blobs.remove(h);
-                }
-            }
-        }
-        Ok(())
-    }
-    pub fn object<T: DeserializeOwned>(&self, kind: &str, id: &str, project: &str) -> Result<T> {
-        let s: String = self
-            .catalog()?
-            .query_row(
-                "SELECT body FROM objects WHERE kind=? AND id=? AND project=?",
-                params![kind, id, project],
-                |r| r.get(0),
-            )
-            .context("OBJECT_NOT_FOUND_OR_EXPIRED")?;
-        Ok(serde_json::from_str(&s)?)
-    }
-    pub fn objects(&self, kind: &str, project: &str) -> Result<Vec<serde_json::Value>> {
-        let c = self.catalog()?;
-        let mut s = c.prepare("SELECT body FROM objects WHERE kind=? AND project=? ORDER BY id")?;
-        let mut out = Vec::new();
-        for r in s.query_map(params![kind, project], |r| r.get::<_, String>(0))? {
-            out.push(serde_json::from_str(&r?)?);
-        }
-        Ok(out)
-    }
-    pub fn delete_object(&self, kind: &str, id: &str, project: &str) -> Result<()> {
-        let _guard = self.coord.lock().unwrap();
-        let mut c = self.catalog()?;
-        let tx = c.transaction()?;
-        let n = tx.execute(
-            "DELETE FROM objects WHERE kind=? AND id=? AND project=?",
-            params![kind, id, project],
-        )?;
-        ensure!(n == 1, "OBJECT_NOT_FOUND");
-        tx.execute("DELETE FROM refs WHERE kind=? AND id=?", params![kind, id])?;
-        tx.commit()?;
-        if kind == "page" {
-            self.remove_page(id)?;
-        }
-        Ok(())
-    }
-    pub fn register_task(&self, id: &str, r: &Request) -> Result<(String, bool)> {
-        let mut normalized = r.clone();
-        normalized.request_id.clear();
-        let h = digest(&normalized);
-        let c = self.catalog()?;
-        c.execute(
-            "INSERT OR IGNORE INTO tasks VALUES(?,?,?,?,'queued',NULL,?)",
-            params![id, r.request_id, h, json(r)?, now() as i64],
-        )?;
-        let (existing, old): (String, String) = c.query_row(
-            "SELECT id,request_hash FROM tasks WHERE request_id=?",
-            [&r.request_id],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )?;
-        ensure!(h == old, "REQUEST_ID_CONFLICT");
-        Ok((existing.clone(), existing == id))
-    }
-    pub fn task(&self, id: &str) -> Result<(String, Option<TaskResult>, u64)> {
-        let c = self.catalog()?;
-        let (state, result): (String, Option<String>) = c
-            .query_row("SELECT state,result FROM tasks WHERE id=?", [id], |r| {
-                Ok((r.get(0)?, r.get(1)?))
-            })
-            .context("TASK_NOT_FOUND")?;
-        let seq: i64 = c.query_row(
-            "SELECT COALESCE(MAX(seq),0) FROM events WHERE task=?",
-            [id],
-            |r| r.get(0),
-        )?;
-        Ok((
-            state,
-            result.map(|r| serde_json::from_str(&r)).transpose()?,
-            seq as u64,
-        ))
-    }
-    pub fn running(&self, id: &str) -> Result<()> {
-        self.catalog()?.execute(
-            "UPDATE tasks SET state='running' WHERE id=? AND state='queued'",
-            [id],
-        )?;
-        Ok(())
-    }
-    pub fn event<T: Serialize>(&self, id: &str, event: &T) -> Result<u64> {
-        self.event_batch(id, std::iter::once(event))?
-            .context("EMPTY_EVENT_BATCH")
-    }
-    /// Persist one already-rendered output in a single durable transaction.
-    /// Serialization or insertion failure rolls back the complete batch.
-    pub fn event_batch<T: Serialize>(
-        &self,
-        id: &str,
-        events: impl IntoIterator<Item = T>,
-    ) -> Result<Option<u64>> {
-        let mut events = events.into_iter().peekable();
-        if events.peek().is_none() {
-            return Ok(None);
-        }
-        let mut c = self.catalog()?;
-        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let mut seq: i64 = tx.query_row(
-            "SELECT COALESCE(MAX(seq),0)+1 FROM events WHERE task=?",
-            [id],
-            |r| r.get(0),
-        )?;
-        let mut last = None;
-        {
-            let mut insert = tx.prepare("INSERT INTO events VALUES(?,?,?)")?;
-            for event in events {
-                insert.execute(params![id, seq, json(&event)?])?;
-                last = Some(u64::try_from(seq)?);
-                seq = seq.checked_add(1).context("EVENT_SEQUENCE_OVERFLOW")?;
-            }
-        }
-        tx.commit()?;
-        Ok(last)
-    }
-    pub fn events<T: DeserializeOwned>(&self, id: &str, after: u64) -> Result<Vec<(u64, T)>> {
-        let c = self.catalog()?;
-        let mut q =
-            c.prepare("SELECT seq,body FROM events WHERE task=? AND seq>? ORDER BY seq LIMIT 64")?;
-        let rows = q.query_map(params![id, i64::try_from(after)?], |r| {
-            Ok((r.get::<_, i64>(0)? as u64, r.get::<_, String>(1)?))
-        })?;
-        let mut out = Vec::new();
-        for r in rows {
-            let (s, b) = r?;
-            out.push((s, serde_json::from_str(&b)?));
-        }
-        Ok(out)
-    }
-    pub fn finish<T: Serialize>(&self, id: &str, result: &TaskResult, event: &T) -> Result<()> {
-        let mut c = self.catalog()?;
-        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let seq: i64 = tx.query_row(
-            "SELECT COALESCE(MAX(seq),0)+1 FROM events WHERE task=?",
-            [id],
-            |r| r.get(0),
-        )?;
-        tx.execute(
-            "UPDATE tasks SET state='terminal',result=? WHERE id=?",
-            params![json(result)?, id],
-        )?;
-        tx.execute(
-            "INSERT INTO events VALUES(?,?,?)",
-            params![id, seq, json(event)?],
-        )?;
-        tx.commit()?;
-        Ok(())
-    }
-    pub fn committed(&self, task: &str) -> Result<Option<String>> {
-        Ok(self
-            .catalog()?
-            .query_row("SELECT revision FROM commits WHERE task=?", [task], |r| {
-                r.get(0)
-            })
-            .optional()?)
-    }
-    pub fn unfinished(&self) -> Result<Vec<(String, Option<String>)>> {
-        let c = self.catalog()?;
-        let mut q=c.prepare("SELECT t.id,c.revision FROM tasks t LEFT JOIN commits c ON c.task=t.id WHERE state NOT IN ('terminal','expired')")?;
-        Ok(q.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
-            .collect::<std::result::Result<_, _>>()?)
-    }
-    pub fn annotation(&self, command: AnnotationCommand<'_>) -> Result<serde_json::Value> {
-        let AnnotationCommand {
-            project,
-            action,
-            id,
-            symbol,
-            text,
-            version,
-            anchor,
-        } = command;
-        let mut c = Connection::open(self.home.join("annotations.db"))?;
-        let tx = c.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        match action {
-            "add" => {
-                ensure!(
-                    !text.is_empty() && !symbol.is_empty() && text.len() <= 64 * 1024,
-                    "ANNOTATION_CONTENT_REQUIRED"
-                );
-                let id = new_id("note");
-                let anchor = anchor.context("ANNOTATION_ANCHOR_REQUIRED")?;
-                tx.execute(
-                    "INSERT INTO annotations(id,project,symbol,body,version,anchor) VALUES(?,?,?,?,1,?)",
-                    params![id, project, symbol, text, json(anchor)?],
-                )?;
-                tx.execute("INSERT INTO annotation_revisions(project,revision) VALUES(?,1) ON CONFLICT(project) DO UPDATE SET revision=revision+1", [project])?;
-                let annotation_revision: i64 = tx.query_row(
-                    "SELECT revision FROM annotation_revisions WHERE project=?",
-                    [project],
-                    |r| r.get(0),
-                )?;
-                tx.commit()?;
-                Ok(
-                    serde_json::json!({"id":id,"symbol":symbol,"text":text,"version":1,"annotation_revision":annotation_revision,"anchor":anchor,"binding":"bound"}),
-                )
-            }
-            "update" | "remove" => {
-                if action == "update" {
-                    ensure!(text.len() <= 64 * 1024, "ANNOTATION_CONTENT_BUDGET");
-                }
-                let expected = version
-                    .parse::<i64>()
-                    .context("ANNOTATION_VERSION_REQUIRED")?;
-                let n = if action == "update" {
-                    tx.execute("UPDATE annotations SET body=?,version=version+1 WHERE id=? AND project=? AND version=?",params![text,id,project,expected])?
-                } else {
-                    tx.execute(
-                        "DELETE FROM annotations WHERE id=? AND project=? AND version=?",
-                        params![id, project, expected],
-                    )?
-                };
-                ensure!(n == 1, "ANNOTATION_CONFLICT");
-                tx.execute("INSERT INTO annotation_revisions(project,revision) VALUES(?,1) ON CONFLICT(project) DO UPDATE SET revision=revision+1", [project])?;
-                let annotation_revision: i64 = tx.query_row(
-                    "SELECT revision FROM annotation_revisions WHERE project=?",
-                    [project],
-                    |r| r.get(0),
-                )?;
-                tx.commit()?;
-                Ok(
-                    serde_json::json!({"id":id,"version":expected+1,"annotation_revision":annotation_revision,"action":action}),
-                )
-            }
-            "list" => {
-                let revision: i64 = tx
-                    .query_row(
-                        "SELECT revision FROM annotation_revisions WHERE project=?",
-                        [project],
-                        |r| r.get(0),
-                    )
-                    .optional()?
-                    .unwrap_or(0);
-                let mut q = tx.prepare(
-                    "SELECT id,symbol,body,version,anchor FROM annotations WHERE project=? ORDER BY id LIMIT 10001",
-                )?;
-                let rows = q
-                    .query_map([project], |r| {
-                        Ok((
-                            r.get::<_, String>(0)?,
-                            r.get::<_, String>(1)?,
-                            r.get::<_, String>(2)?,
-                            r.get::<_, i64>(3)?,
-                            r.get::<_, String>(4)?,
-                        ))
-                    })?
-                    .collect::<std::result::Result<Vec<_>, _>>()?;
-                drop(q);
-                ensure!(rows.len() <= 10000, "ANNOTATION_LIST_BUDGET");
-                let rows = rows.into_iter().map(|(id,symbol,text,version,anchor)|{
-                    let anchor = if anchor.is_empty(){serde_json::Value::Null}else{serde_json::from_str(&anchor)?};
-                    Ok(serde_json::json!({"id":id,"symbol":symbol,"text":text,"version":version,"annotation_revision":revision,"anchor":anchor}))
-                }).collect::<Result<Vec<_>>>()?;
-                tx.commit()?;
-                Ok(serde_json::Value::Array(rows))
-            }
-            _ => anyhow::bail!("INVALID_ANNOTATION_ACTION"),
-        }
-    }
-    pub fn gc(&self, execute: bool) -> Result<serde_json::Value> {
-        self.gc_policy(execute, None, 0, 0, 0)
-    }
-    pub fn gc_policy(
-        &self,
-        execute: bool,
-        project: Option<&str>,
-        keep: usize,
-        max_age_days: u64,
-        max_bytes: u64,
-    ) -> Result<serde_json::Value> {
-        let mut guard = self.coord.lock().unwrap();
-        // A task may take up to one hour. Keep its staged bytes for another hour,
-        // then let ordinary reachability reclaim abandoned captures.
-        guard
-            .staged_blobs
-            .retain(|_, at| now().saturating_sub(*at) < 7200);
-        let mut c = self.catalog()?;
-        let mut protected: BTreeSet<String> = guard.readers.keys().cloned().collect();
-        let mut q = c.prepare("SELECT id,body FROM revisions ORDER BY rowid DESC")?;
-        let all = q
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        drop(q);
-        let mut policies = BTreeMap::<String, usize>::new();
-        let mut size = 0u64;
-        let mut sizes = BTreeMap::new();
-        let mut recent = Vec::new();
-        for (id, body) in &all {
-            let r: Revision = serde_json::from_str(body)?;
-            let bytes =
-                std::fs::metadata(self.home.join("revisions").join(id).join("facts.db"))?.len();
-            sizes.insert(id.clone(), bytes);
-            if project.is_some_and(|p| p != r.project) {
-                protected.insert(id.clone());
-                continue;
-            }
-            size += bytes;
-            let rank = policies.entry(r.target.clone()).or_default();
-            if *rank < keep {
-                protected.insert(id.clone());
-            } else if max_age_days > 0
-                && now().saturating_sub(r.created) < max_age_days.saturating_mul(86400)
-            {
-                recent.push(id.clone());
-            }
-            *rank += 1;
-        }
-        let mut expired = BTreeSet::new();
-        let mut q =
-            c.prepare("SELECT kind,id,project,body FROM objects WHERE kind IN ('page','report')")?;
-        for row in q.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-            ))
-        })? {
-            let (kind, id, p, body) = row?;
-            if project.is_some_and(|selected| selected != p) {
-                continue;
-            }
-            let value: serde_json::Value = serde_json::from_str(&body)?;
-            let created = value["created"].as_u64().unwrap_or(now());
-            let ttl = if kind == "page" {
-                86400
-            } else {
-                max_age_days.max(30).saturating_mul(86400)
-            };
-            if now().saturating_sub(created) >= ttl {
-                expired.insert((kind, id));
-            }
-        }
-        drop(q);
-        for sql in [
-            "SELECT revision FROM heads",
-            "SELECT revision FROM commits JOIN tasks ON commits.task=tasks.id WHERE tasks.state!='terminal' AND tasks.state!='expired'",
-        ] {
-            let mut q = c.prepare(sql)?;
-            for r in q.query_map([], |r| r.get::<_, String>(0))? {
-                protected.insert(r?);
-            }
-        }
-        let mut q = c.prepare("SELECT kind,id,revision FROM refs")?;
-        for row in q.query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-            ))
-        })? {
-            let (k, id, r) = row?;
-            if !expired.contains(&(k, id)) {
-                protected.insert(r);
-            }
-        }
-        drop(q);
-        let mut soft: BTreeSet<_> = recent.into_iter().collect();
-        if max_bytes > 0 && size > max_bytes {
-            for (id, _) in all.iter().rev() {
-                if size <= max_bytes {
-                    break;
-                }
-                if !protected.contains(id) {
-                    soft.remove(id);
-                    size = size.saturating_sub(*sizes.get(id).unwrap_or(&0));
-                }
-            }
-        }
-        protected.extend(soft);
-        let removals: Vec<_> = all
-            .iter()
-            .map(|(id, _)| id.clone())
-            .filter(|id| !protected.contains(id))
-            .collect();
-        let retained_bytes: u64 = all
-            .iter()
-            .filter(|(id, _)| protected.contains(id))
-            .filter_map(|(id, body)| {
-                let r: Revision = serde_json::from_str(body).ok()?;
-                if project.is_none_or(|p| p == r.project) {
-                    sizes.get(id).copied()
-                } else {
-                    None
-                }
-            })
-            .sum();
-        if execute {
-            let tx = c.transaction()?;
-            for (k, id) in &expired {
-                tx.execute("DELETE FROM refs WHERE kind=? AND id=?", params![k, id])?;
-                tx.execute("DELETE FROM objects WHERE kind=? AND id=?", params![k, id])?;
-            }
-            // Task identities and terminal decisions remain; only replay payloads expire.
-            let cutoff = now().saturating_sub(86400) as i64;
-            tx.execute("DELETE FROM events WHERE task IN (SELECT id FROM tasks WHERE state='terminal' AND created<?)",[cutoff])?;
-            tx.execute(
-                "UPDATE tasks SET state='expired' WHERE state='terminal' AND created<?",
-                [cutoff],
-            )?;
-            tx.commit()?;
-            for (kind, id) in &expired {
-                if kind == "page" {
-                    self.remove_page(id)?;
-                }
-            }
-            self.remove_orphan_pages(&c)?;
-        }
-        let mut blob_roots: BTreeSet<String> = guard.staged_blobs.keys().cloned().collect();
-        for id in &protected {
-            if let Ok(r) = self.revision_unlocked(id) {
-                blob_roots.extend(r.manifest.files.into_iter().map(|s| s.hash));
-            }
-        }
-        let mut q = c.prepare("SELECT body FROM objects WHERE kind='snapshot'")?;
-        for row in q.query_map([], |r| r.get::<_, String>(0))? {
-            let v: serde_json::Value = serde_json::from_str(&row?)?;
-            if let Some(files) = v["manifest"]["files"].as_array() {
-                for s in files {
-                    if let Some(h) = s["hash"].as_str() {
-                        blob_roots.insert(h.into());
-                    }
-                }
-            }
-        }
-        drop(q);
-        let mut blobs = Vec::new();
-        for entry in std::fs::read_dir(self.home.join("blobs"))? {
-            let e = entry?;
-            let h = e.file_name().to_string_lossy().into_owned();
-            if h.len() == 64 && !blob_roots.contains(&h) {
-                blobs.push(h);
-            }
-        }
-        blobs.sort();
-        if execute {
-            for id in &removals {
-                let tx = c.transaction()?;
-                tx.execute(
-                    "INSERT OR IGNORE INTO cleanup_pending(kind,id,created) VALUES('revision',?,?)",
-                    params![id, now() as i64],
-                )?;
-                tx.execute("DELETE FROM revisions WHERE id=?", [id])?;
-                tx.commit()?;
-                let p = self.home.join("revisions").join(id);
-                if p.exists() {
-                    std::fs::remove_dir_all(p)?;
-                }
-                c.execute(
-                    "DELETE FROM cleanup_pending WHERE kind='revision' AND id=?",
-                    [id],
-                )?;
-            }
-            for h in &blobs {
-                std::fs::remove_file(self.home.join("blobs").join(h))?;
-            }
-        }
-        Ok(
-            serde_json::json!({"execute":execute,"protected":protected,"revisions":removals,"blobs":blobs,"expired_objects":expired,"retained_graph_bytes":retained_bytes,"budget_unmet":max_bytes>0&&retained_bytes>max_bytes}),
-        )
-    }
-
-    pub fn recover(&self, execute: bool) -> Result<serde_json::Value> {
-        let _guard = self.coord.lock().unwrap();
-        let c = self.catalog()?;
-        let mut orphan = Vec::new();
-        let mut pending = Vec::new();
-        let mut q =
-            c.prepare("SELECT id FROM cleanup_pending WHERE kind='revision' ORDER BY id")?;
-        for row in q.query_map([], |r| r.get::<_, String>(0))? {
-            let id = row?;
-            ensure!(
-                id.starts_with("rev_") && safe_path(&id),
-                "INVALID_CLEANUP_ID"
-            );
-            pending.push(id.clone());
-            if execute {
-                let path = self.home.join("revisions").join(&id);
-                if path.exists() {
-                    std::fs::remove_dir_all(path)?;
-                }
-                c.execute(
-                    "DELETE FROM cleanup_pending WHERE kind='revision' AND id=?",
-                    [id],
-                )?;
-            }
-        }
-        drop(q);
-        for dir in ["candidates", "revisions"] {
-            for e in std::fs::read_dir(self.home.join(dir))? {
-                let e = e?;
-                let id = e.file_name().to_string_lossy().into_owned();
-                if !(id.starts_with("rev_") || dir == "candidates" && id.starts_with("page-spool-"))
-                    || dir == "candidates" && _guard.staged_candidates.contains(&id)
-                {
-                    continue;
-                }
-                let known = dir == "revisions"
-                    && c.query_row("SELECT 1 FROM revisions WHERE id=?", [&id], |_| Ok(()))
-                        .optional()?
-                        .is_some();
-                if !known {
-                    orphan.push(format!("{dir}/{id}"));
-                    if execute {
-                        if e.file_type()?.is_dir() {
-                            std::fs::remove_dir_all(e.path())?;
-                        } else {
-                            std::fs::remove_file(e.path())?;
-                        }
-                    }
-                }
-            }
-        }
-        Ok(serde_json::json!({"execute":execute,"orphans":orphan,"pending":pending}))
     }
 }
 #[cfg(test)]
@@ -1284,9 +676,13 @@ mod tests {
         let store = Store::open(directory.path()).unwrap();
         let first = store.publish(revision(), &result(), "", "first").unwrap();
         let mut spool = store.page_spool().unwrap();
-        spool.append(&[serde_json::json!({"id":"saved"})]).unwrap();
+        spool
+            .append(&[Record::display(&serde_json::json!({"id":"saved"})).unwrap()])
+            .unwrap();
         store.recover(true).unwrap();
-        spool.append(&[serde_json::json!({"id":"second"})]).unwrap();
+        spool
+            .append(&[Record::display(&serde_json::json!({"id":"second"})).unwrap()])
+            .unwrap();
         let id = "page_saved";
         store
             .freeze_page(
@@ -1303,7 +699,9 @@ mod tests {
         store.gc(true).unwrap();
         assert!(store.read(&first.id).is_ok());
         assert_eq!(
-            store.page_records(id, "p", 1, 1).unwrap()[0]["id"],
+            store.page_records(id, "p", 1, 1).unwrap()[0]
+                .wire()
+                .unwrap()["id"],
             "second"
         );
         assert!(store.page_records(id, "different-project", 0, 1).is_err());
@@ -1325,7 +723,7 @@ mod tests {
         {
             let mut abandoned = store.page_spool().unwrap();
             abandoned
-                .append(&[serde_json::json!({"id":"cancelled"})])
+                .append(&[Record::display(&serde_json::json!({"id":"cancelled"})).unwrap()])
                 .unwrap();
         }
         assert_eq!(
@@ -1367,7 +765,7 @@ mod tests {
         let rows = store
             .annotation(AnnotationCommand {
                 project: "p",
-                action: "list",
+                action: AnnotationAction::List,
                 id: "",
                 symbol: "",
                 text: "",
@@ -1375,9 +773,9 @@ mod tests {
                 anchor: None,
             })
             .unwrap();
-        assert_eq!(rows[0]["text"], "saved");
-        assert!(rows[0]["anchor"].is_null());
-        assert_eq!(rows[0]["version"], 3);
+        assert_eq!(serde_json::to_value(&rows).unwrap()[0]["text"], "saved");
+        assert!(serde_json::to_value(&rows).unwrap()[0]["anchor"].is_null());
+        assert_eq!(serde_json::to_value(&rows).unwrap()[0]["version"], 3);
         Store::open(dir.path()).unwrap();
         let future = Connection::open(dir.path().join("annotations.db")).unwrap();
         future.execute_batch("PRAGMA user_version=99;").unwrap();
@@ -1395,12 +793,15 @@ mod tests {
             .unwrap()
             .execute("INSERT INTO cleanup_pending VALUES('revision',?,0)", [id])
             .unwrap();
-        assert_eq!(store.recover(false).unwrap()["pending"][0], id);
+        assert_eq!(
+            serde_json::to_value(store.recover(false).unwrap()).unwrap()["pending"][0],
+            id
+        );
         assert!(folder.exists());
         store.recover(true).unwrap();
         assert!(!folder.exists());
         assert!(
-            store.recover(false).unwrap()["pending"]
+            serde_json::to_value(store.recover(false).unwrap()).unwrap()["pending"]
                 .as_array()
                 .unwrap()
                 .is_empty()
@@ -1430,7 +831,7 @@ mod tests {
                 ..Default::default()
             })
             .unwrap_err();
-        assert!(error.contains("UNSUPPORTED_CAPABILITY"));
+        assert!(error.to_string().contains("UNSUPPORTED_CAPABILITY"));
         assert_eq!(store.head("t").unwrap(), graph.id);
     }
     #[test]
@@ -1505,11 +906,11 @@ mod tests {
         s.catalog().unwrap().execute_batch("CREATE TRIGGER fail_publish BEFORE INSERT ON heads BEGIN SELECT RAISE(ABORT,'injected catalog failure'); END;").unwrap();
         assert!(s.publish(revision(), &result(), &first.id, "b").is_err());
         assert_eq!(s.head("t").unwrap(), first.id);
-        let preview = s.recover(false).unwrap();
+        let preview = serde_json::to_value(s.recover(false).unwrap()).unwrap();
         assert_eq!(preview["orphans"].as_array().unwrap().len(), 1);
         s.recover(true).unwrap();
         assert!(
-            s.recover(false).unwrap()["orphans"]
+            serde_json::to_value(s.recover(false).unwrap()).unwrap()["orphans"]
                 .as_array()
                 .unwrap()
                 .is_empty()
@@ -1553,7 +954,7 @@ mod tests {
         other.target = "other".into();
         let other = s.publish(other, &result(), "", "c").unwrap();
         let read = s.read(&first.id).unwrap();
-        let plan = s.gc_policy(true, Some("p"), 0, 0, 1).unwrap();
+        let plan = serde_json::to_value(s.gc_policy(true, Some("p"), 0, 0, 1).unwrap()).unwrap();
         assert_eq!(plan["budget_unmet"], true);
         assert!(s.read(&first.id).is_ok());
         drop(read);
@@ -1576,7 +977,8 @@ mod tests {
         )
         .unwrap();
         s.publish(revision(), &result(), &first.id, "b").unwrap();
-        let preview = s.gc_policy(false, Some("p"), 0, 0, 0).unwrap();
+        let preview =
+            serde_json::to_value(s.gc_policy(false, Some("p"), 0, 0, 0).unwrap()).unwrap();
         assert_eq!(preview["expired_objects"].as_array().unwrap().len(), 1);
         assert!(s.read(&first.id).is_ok());
         s.gc_policy(true, Some("p"), 0, 0, 0).unwrap();

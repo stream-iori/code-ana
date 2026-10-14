@@ -5,7 +5,7 @@ pub struct SpooledAnalysis {
     pub records: GraphArchive,
 }
 use codeana_contracts::{
-    convert, envelope, read_frame, worker as w, worker::envelope::Body, write_frame,
+    envelope, map, read_frame, worker as w, worker::envelope::Body, write_frame,
 };
 use codeana_model::*;
 use std::{os::fd::AsRawFd, path::Path, time::Duration};
@@ -26,13 +26,22 @@ async fn receive_ack(
     timeout: Duration,
 ) -> Result<()> {
     let frame = tokio::time::timeout(timeout, read_frame(ipc)).await??;
-    ensure!(frame.attempt == attempt, "ACK_ATTEMPT_MISMATCH");
+    ensure!(
+        frame.attempt == attempt,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::AckAttemptMismatch, "")
+    );
     match frame.body {
         Some(Body::Acked(acked)) => {
-            ensure!(acked.revision == revision, "ACK_REVISION_MISMATCH");
+            ensure!(
+                acked.revision == revision,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::AckRevisionMismatch, "")
+            );
         }
-        Some(Body::Failure(failure)) => bail!("{}: {}", failure.code, failure.message),
-        _ => bail!("EXPECTED_ACKED"),
+        Some(Body::Failure(failure)) => bail!(DomainError::adapter(failure.code, failure.message)),
+        _ => bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::ExpectedAcked,
+            ""
+        )),
     }
     Ok(())
 }
@@ -112,8 +121,17 @@ impl Worker {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
         )?;
-        let mut child = cmd.spawn().context("WORKER_NOT_INSTALLED")?;
-        let mut stderr = child.stderr.take().context("WORKER_STDERR")?;
+        let mut child = cmd.spawn().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::WorkerNotInstalled,
+            "",
+        ))?;
+        let mut stderr = child
+            .stderr
+            .take()
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::WorkerStderr,
+                "",
+            ))?;
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let captured = logs.clone();
         let log_task = tokio::spawn(async move {
@@ -129,7 +147,10 @@ impl Worker {
                 tail.drain(..excess);
             }
         });
-        let pid = child.id().context("WORKER_PID_REQUIRED")?;
+        let pid = child.id().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::WorkerPidRequired,
+            "",
+        ))?;
         let memory_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let exceeded = memory_exceeded.clone();
         let scratch =
@@ -224,47 +245,74 @@ impl Worker {
                         } else {
                             "javac-java8-v1"
                         },
-                "WORKER_VERSION_MISMATCH"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::WorkerVersionMismatch,
+                    ""
+                )
             ),
-            _ => bail!("EXPECTED_HELLO"),
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::ExpectedHello,
+                ""
+            )),
         };
         worker
             .send(Body::Discover(w::Discover {
-                manifest: Some(convert(manifest)?),
+                manifest: Some(map(manifest)?),
                 java: java.map(|j| j.config.clone()),
             }))
             .await?;
         worker.context = match worker.receive(cancel).await? {
-            Body::Context(c) => convert(&c)?,
+            Body::Context(c) => map(&c)?,
             Body::Advice(a) => {
-                let mut advice: BuildAdvice = convert(&a)?;
-                ensure!(!advice.missing.is_empty(), "EMPTY_BUILD_ADVICE");
+                let mut advice: BuildAdvice = map(&a)?;
+                ensure!(
+                    !advice.missing.is_empty(),
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::EmptyBuildAdvice, "")
+                );
                 advice.capture = manifest.id();
                 advice.cwd = if advice.cwd == "." {
                     checkout.to_string_lossy().into_owned()
                 } else if Path::new(&advice.cwd).is_absolute() {
                     advice.cwd
                 } else {
-                    ensure!(safe_path(&advice.cwd), "INVALID_BUILD_ADVICE_CWD");
+                    ensure!(
+                        safe_path(&advice.cwd),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::InvalidBuildAdviceCwd,
+                            ""
+                        )
+                    );
                     checkout.join(&advice.cwd).to_string_lossy().into_owned()
                 };
-                let relative = Path::new(&advice.cwd)
-                    .strip_prefix(checkout)
-                    .context("BUILD_ADVICE_OUTSIDE_CHECKOUT")?;
+                let relative = Path::new(&advice.cwd).strip_prefix(checkout).context(
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::BuildAdviceOutsideCheckout,
+                        "",
+                    ),
+                )?;
                 ensure!(
                     relative.as_os_str().is_empty()
                         || relative
                             .components()
                             .all(|c| matches!(c, std::path::Component::Normal(_))),
-                    "INVALID_BUILD_ADVICE_CWD"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::InvalidBuildAdviceCwd,
+                        ""
+                    )
                 );
-                bail!("BUILD_INPUT_REQUIRED: {}", serde_json::to_string(&advice)?);
+                bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::BuildInputRequired,
+                    serde_json::to_string(&advice)?.to_string()
+                ));
             }
-            _ => bail!("EXPECTED_BUILD_CONTEXT"),
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::ExpectedBuildContext,
+                ""
+            )),
         };
         ensure!(
             fixtures.is_none() || worker.context.producer.starts_with("mock-"),
-            "MOCK_PROVENANCE_REQUIRED"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::MockProvenanceRequired, "")
         );
         Ok(worker)
     }
@@ -284,22 +332,28 @@ impl Worker {
                     let status=tokio::time::timeout(Duration::from_millis(100),self.child.wait()).await;
                     tokio::task::yield_now().await;
                     let logs=String::from_utf8_lossy(&self.logs.lock().unwrap()).into_owned();
-                    if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!("JAVA_SCRATCH_BUDGET");}
-                    if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!("WORKER_MEMORY_BUDGET");}
+                    if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaScratchBudget, ""));}
+                    if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerMemoryBudget, ""));}
                     let status=match status {Ok(Ok(s))=>s.to_string(),Ok(Err(e))=>e.to_string(),Err(_)=>"still running".into()};
-                    bail!("WORKER_PROTOCOL: {error}; pid={}; command={}; exit={status}; stderr={logs}",self.process_group,self.command);
+                    bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerProtocol, format!("{error}; pid={}; command={}; exit={status}; stderr={logs}", self.process_group,self.command)));
                 }
             },
             _=cancel.cancelled()=>{
                 let deadline=tokio::time::Instant::now()+Duration::from_secs(2);
                 let _=tokio::time::timeout_at(deadline,self.send(Body::Cancel(w::Cancel{}))).await;
                 let _=tokio::time::timeout_at(deadline,self.child.wait()).await;
-                bail!("CANCELLED")
+                bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""))
             }
         };
-        ensure!(frame.attempt == self.attempt, "ATTEMPT_MISMATCH");
-        match frame.body.context("EMPTY_FRAME")? {
-            Body::Failure(f) => bail!("{}: {}", f.code, f.message),
+        ensure!(
+            frame.attempt == self.attempt,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::AttemptMismatch, "")
+        );
+        match frame.body.context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::EmptyFrame,
+            "",
+        ))? {
+            Body::Failure(f) => bail!(DomainError::adapter(f.code, f.message)),
             b => Ok(b),
         }
     }
@@ -308,7 +362,7 @@ impl Worker {
         manifest: &Manifest,
         profile: &str,
         baseline: &str,
-        old: Option<&serde_json::Value>,
+        old: Option<&BaselineInput>,
         full: bool,
         cancel: &CancellationToken,
     ) -> Result<SpooledAnalysis> {
@@ -326,7 +380,7 @@ impl Worker {
                     };
                     self.send(Body::Analyze(w::Analyze {
                         baseline_summary_json,
-                        manifest: Some(convert(manifest)?),
+                        manifest: Some(map(manifest)?),
                         profile: profile.into(),
                         baseline: baseline.into(),
                         full,
@@ -338,16 +392,28 @@ impl Worker {
                             full = true;
                             continue;
                         }
-                        _ => bail!("EXPECTED_RESULT_BEGIN"),
+                        _ => bail!(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::ExpectedResultBegin,
+                            ""
+                        )),
                     };
                     ensure!(
                         begin.manifest == manifest.id()
                             && begin.profile == profile
                             && begin.baseline == baseline
                             && begin.producer == self.context.producer,
-                        "RESULT_IDENTITY_MISMATCH"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::ResultIdentityMismatch,
+                            ""
+                        )
                     );
-                    ensure!(!full || begin.mode == "full", "EXPECTED_FULL_RESULT");
+                    ensure!(
+                        !full || begin.mode == "full",
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::ExpectedFullResult,
+                            ""
+                        )
+                    );
                     let root = self
                         .scratch
                         .lock()
@@ -363,7 +429,13 @@ impl Worker {
                     let archive = loop {
                         match self.receive(cancel).await? {
                             Body::Chunk(chunk) => {
-                                ensure!(chunk.seq == seq, "CHUNK_SEQUENCE_MISMATCH");
+                                ensure!(
+                                    chunk.seq == seq,
+                                    codeana_model::DomainError::new(
+                                        codeana_model::ErrorCode::ChunkSequenceMismatch,
+                                        ""
+                                    )
+                                );
                                 seq += 1;
                                 for row in chunk.rows {
                                     facts.push(&row)?;
@@ -372,29 +444,34 @@ impl Worker {
                             Body::End(end) => {
                                 ensure!(
                                     end.chunks == seq && end.count == facts.count(),
-                                    "RESULT_CHECKSUM_MISMATCH"
+                                    codeana_model::DomainError::new(
+                                        codeana_model::ErrorCode::ResultChecksumMismatch,
+                                        ""
+                                    )
                                 );
                                 let sealed = facts.seal()?;
                                 ensure!(
                                     end.checksum == sealed.checksum,
-                                    "RESULT_CHECKSUM_MISMATCH"
+                                    codeana_model::DomainError::new(
+                                        codeana_model::ErrorCode::ResultChecksumMismatch,
+                                        ""
+                                    )
                                 );
                                 break sealed;
                             }
-                            _ => bail!("UNEXPECTED_RESULT_MESSAGE"),
+                            _ => bail!(codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::UnexpectedResultMessage,
+                                ""
+                            )),
                         }
                     };
                     let r = AnalysisHeader {
-                        mode: begin.mode,
+                        mode: begin.mode.parse()?,
                         baseline: begin.baseline,
                         manifest: begin.manifest,
                         profile: begin.profile,
                         producer: begin.producer,
-                        replacements: begin
-                            .replacements
-                            .iter()
-                            .map(convert)
-                            .collect::<Result<_>>()?,
+                        replacements: begin.replacements.iter().map(map).collect::<Result<_>>()?,
                     };
                     r.validate(manifest).map_err(anyhow::Error::msg)?;
                     return Ok(SpooledAnalysis {
@@ -402,7 +479,10 @@ impl Worker {
                         records: archive,
                     });
                 }
-                bail!("REPLAN_BUDGET")
+                bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::ReplanBudget,
+                    ""
+                ))
             })
             .await
     }
@@ -412,7 +492,7 @@ impl Worker {
         manifest: &Manifest,
         profile: &str,
         baseline: &str,
-        old: Option<&serde_json::Value>,
+        old: Option<&BaselineInput>,
         full: bool,
         cancel: &CancellationToken,
         mut begin_sink: impl FnMut(
@@ -431,7 +511,7 @@ impl Worker {
                     let baseline_summary_json=if full { Vec::new() } else { old.map(serde_json::to_vec).transpose()?.unwrap_or_default() };
                     self.send(Body::Analyze(w::Analyze {
                         baseline_summary_json,
-                        manifest: Some(convert(manifest)?),
+                        manifest: Some(map(manifest)?),
                         profile: profile.into(),
                         baseline: baseline.into(),
                         full,
@@ -443,20 +523,18 @@ impl Worker {
                             full = true;
                             continue;
                         }
-                        _ => bail!("EXPECTED_RESULT_BEGIN"),
+                        _ => bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::ExpectedResultBegin, "")),
                     };
                     ensure!(
                         begin.manifest == manifest.id()
                             && begin.profile == profile
                             && begin.baseline == baseline
-                            && begin.producer == self.context.producer,
-                        "RESULT_IDENTITY_MISMATCH"
-                    );
-                    ensure!(!full || begin.mode == "full", "EXPECTED_FULL_RESULT");
+                            && begin.producer == self.context.producer, codeana_model::DomainError::new(codeana_model::ErrorCode::ResultIdentityMismatch, ""));
+                    ensure!(!full || begin.mode == "full", codeana_model::DomainError::new(codeana_model::ErrorCode::ExpectedFullResult, ""));
                     let r = AnalysisHeader {
-                        mode: begin.mode, baseline: begin.baseline, manifest: begin.manifest,
+                        mode: begin.mode.parse()?, baseline: begin.baseline, manifest: begin.manifest,
                         profile: begin.profile, producer: begin.producer,
-                        replacements: begin.replacements.iter().map(convert).collect::<Result<_>>()?,
+                        replacements: begin.replacements.iter().map(map).collect::<Result<_>>()?,
                     };
                     r.validate(manifest).map_err(anyhow::Error::msg)?;
                     let sink = begin_sink(&r)?;
@@ -469,36 +547,36 @@ impl Worker {
                     loop {
                         match self.receive(cancel).await? {
                             Body::Chunk(chunk) => {
-                                ensure!(!chunk.rows.is_empty() && chunk.rows.len() <= 64, "FACT_CHUNK_BUDGET");
-                                ensure!(chunk.seq == seq, "CHUNK_SEQUENCE_MISMATCH");
+                                ensure!(!chunk.rows.is_empty() && chunk.rows.len() <= 64, codeana_model::DomainError::new(codeana_model::ErrorCode::FactChunkBudget, ""));
+                                ensure!(chunk.seq == seq, codeana_model::DomainError::new(codeana_model::ErrorCode::ChunkSequenceMismatch, ""));
                                 seq += 1;
                                 let mut batch = Vec::new();
                                 for record in chunk.rows {
                                     use prost::Message;
                                     let encoded=record.encode_to_vec();let size=encoded.len();
-                                    ensure!(count<self.output_limits.facts && bytes+size as u64+4<=self.output_limits.bytes,"GRAPH_ARCHIVE_BUDGET");
+                                    ensure!(count<self.output_limits.facts && bytes+size as u64+4<=self.output_limits.bytes, codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveBudget, ""));
                                     codeana_contracts::graph_archive::update_digest(&mut checksum,&encoded);count+=1;bytes+=size as u64+4;
                                     batch.push(record);
                                 }
                                 if !batch.is_empty() {
                                     tokio::select! {
-                                        _ = cancel.cancelled() => bail!("CANCELLED"),
-                                        sent = sink.send(codeana_contracts::stream::GraphStreamEvent::Batch(batch)) => sent.map_err(|_| anyhow::anyhow!("CANDIDATE_STREAM_CLOSED"))?,
+                                        _ = cancel.cancelled() => bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")),
+                                        sent = sink.send(codeana_contracts::stream::GraphStreamEvent::Batch(batch)) => sent.map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed, "")))?,
                                     }
                                 }
                             }
                             Body::End(end) => {
-                                ensure!(end.chunks == seq && end.count == count, "RESULT_CHECKSUM_MISMATCH");
-                                ensure!(end.checksum == format!("{:x}", checksum.finalize()), "RESULT_CHECKSUM_MISMATCH");
+                                ensure!(end.chunks == seq && end.count == count, codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
+                                ensure!(end.checksum == format!("{:x}", checksum.finalize()), codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
                                 sink.send(codeana_contracts::stream::GraphStreamEvent::VerifiedEnd).await
-                                    .map_err(|_| anyhow::anyhow!("CANDIDATE_STREAM_CLOSED"))?;
+                                    .map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed, "")))?;
                                 return Ok(r);
                             }
-                            _ => bail!("UNEXPECTED_RESULT_MESSAGE"),
+                            _ => bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedResultMessage, "")),
                         }
                     };
                 }
-                bail!("REPLAN_BUDGET")
+                bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::ReplanBudget, ""))
             })
             .await
     }
@@ -506,7 +584,13 @@ impl Worker {
     pub async fn retire_unused(&mut self) -> Result<()> {
         self.send(Body::Cancel(w::Cancel {})).await?;
         let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
-        ensure!(status.success(), "WORKER_EXIT_AFTER_UNUSED_CANCEL");
+        ensure!(
+            status.success(),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::WorkerExitAfterUnusedCancel,
+                ""
+            )
+        );
         Ok(())
     }
 
@@ -517,7 +601,10 @@ impl Worker {
         .await?;
         if self.context.producer.starts_with("mock-") {
             let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
-            ensure!(status.success(), "WORKER_EXIT_AFTER_ACK");
+            ensure!(
+                status.success(),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerExitAfterAck, "")
+            );
         } else {
             receive_ack(&mut self.ipc, &self.attempt, revision, JAVA_ACK_TIMEOUT).await?;
         }
@@ -540,20 +627,29 @@ impl Worker {
         manifest: &Manifest,
         cancel: &CancellationToken,
     ) -> Result<()> {
-        ensure!(self.alive()?, "WARM_WORKER_EXITED");
+        ensure!(
+            self.alive()?,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::WarmWorkerExited, "")
+        );
         *self.scratch.lock().unwrap() = Some(java.disk_budget.clone());
         self.output_limits = codeana_contracts::java::OutputLimits::from_config(&java.config)?;
         self.attempt = new_id("attempt");
         self.send(Body::Discover(w::Discover {
-            manifest: Some(convert(manifest)?),
+            manifest: Some(map(manifest)?),
             java: Some(java.config.clone()),
         }))
         .await?;
         self.context = match self.receive(cancel).await? {
-            Body::Context(context) => convert(&context)?,
-            _ => bail!("EXPECTED_BUILD_CONTEXT"),
+            Body::Context(context) => map(&context)?,
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::ExpectedBuildContext,
+                ""
+            )),
         };
-        ensure!(self.context.language == "java", "WORKER_LANGUAGE_MISMATCH");
+        ensure!(
+            self.context.language == "java",
+            codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerLanguageMismatch, "")
+        );
         Ok(())
     }
 }

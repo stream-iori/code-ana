@@ -11,17 +11,22 @@ pub fn jvm_host_home() -> Result<std::path::PathBuf> {
             std::path::PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
                 .join(".sdkman/candidates/java/25.3.4+1.r25-graal")
         });
-    let home = home.canonicalize().context("JVM_HOST_HOME_REQUIRED")?;
+    let home = home
+        .canonicalize()
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::JvmHostHomeRequired,
+            "",
+        ))?;
     let release = std::fs::read_to_string(home.join("release"))?;
     ensure!(
         release
             .lines()
             .any(|line| line.starts_with("JAVA_VERSION=\"25")),
-        "JVM_HOST_JDK25_REQUIRED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmHostJdk25Required, "")
     );
     ensure!(
         home.join("bin/java").is_file(),
-        "JVM_HOST_LAUNCHER_REQUIRED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmHostLauncherRequired, "")
     );
     Ok(home)
 }
@@ -32,12 +37,26 @@ fn input(
     known: &mut BTreeMap<String, u32>,
 ) -> Result<u32> {
     value.publish = false;
-    let path = value.unit.as_ref().context("JAVA_INPUT_UNIT")?.path.clone();
+    let path = value
+        .unit
+        .as_ref()
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::JavaInputUnit,
+            "",
+        ))?
+        .path
+        .clone();
     if let Some(&slot) = known.get(&path) {
-        ensure!(table[slot as usize] == value, "JAVA_INPUT_TABLE_IDENTITY");
+        ensure!(
+            table[slot as usize] == value,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableIdentity, "")
+        );
         return Ok(slot);
     }
-    ensure!(table.len() < 10000, "JAVA_INPUT_TABLE_BUDGET");
+    ensure!(
+        table.len() < 10000,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableBudget, "")
+    );
     let slot = table.len() as u32;
     known.insert(path, slot);
     table.push(value);
@@ -49,7 +68,7 @@ pub fn compact(config: &mut w::JavaConfig) -> Result<()> {
         !config.compact_inputs
             && config.input_table.is_empty()
             && config.classpath_table.is_empty(),
-        "JAVA_INPUT_TABLE_STATE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableState, "")
     );
     let mut inputs = BTreeMap::new();
     let mut classpath = BTreeMap::new();
@@ -59,7 +78,7 @@ pub fn compact(config: &mut w::JavaConfig) -> Result<()> {
                 && context.publish_indices.is_empty()
                 && context.resource_indices.is_empty()
                 && context.classpath_indices.is_empty(),
-            "JAVA_INPUT_TABLE_STATE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableState, "")
         );
         for source in std::mem::take(&mut context.sources) {
             let publish = source.publish;
@@ -80,7 +99,10 @@ pub fn compact(config: &mut w::JavaConfig) -> Result<()> {
             } else {
                 ensure!(
                     config.classpath_table.len() < 10000,
-                    "JAVA_CLASSPATH_TABLE_BUDGET"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaClasspathTableBudget,
+                        ""
+                    )
                 );
                 let slot = config.classpath_table.len() as u32;
                 classpath.insert(path.clone(), slot);
@@ -124,11 +146,11 @@ impl OutputLimits {
         };
         ensure!(
             (64 * 1024..=codeana_model::MAX_JAVA_RESULT_BYTES).contains(&limits.bytes),
-            "JAVA_RESULT_BYTES_RANGE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaResultBytesRange, "")
         );
         ensure!(
             (1..=5000000).contains(&limits.facts),
-            "JAVA_FACT_LIMIT_RANGE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFactLimitRange, "")
         );
         Ok(limits)
     }
@@ -141,14 +163,14 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
                 || (context.scope == "MAIN"
                     && context.publish_indices.is_empty()
                     && context.sources.iter().all(|s| !s.publish)),
-            "JAVA_AUXILIARY_PUBLICATION"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaAuxiliaryPublication, "")
         );
         ensure!(
             context
                 .sources
                 .iter()
                 .all(|s| !s.publish || s.unit.as_ref().is_some_and(|u| !u.auxiliary)),
-            "JAVA_AUXILIARY_PUBLICATION"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaAuxiliaryPublication, "")
         );
     }
     ensure!(
@@ -156,7 +178,7 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             .contexts
             .iter()
             .all(|context| context.model_record_limit <= 5000000),
-        "JAVA_MODEL_RECORD_LIMIT_RANGE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaModelRecordLimitRange, "")
     );
     ensure!(
         config
@@ -164,7 +186,7 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             .iter()
             .all(|context| context.model_archive_bytes == 0
                 || (64 * 1024..=1024 * 1024 * 1024).contains(&context.model_archive_bytes)),
-        "JAVA_MODEL_ARCHIVE_BYTES_RANGE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaModelArchiveBytesRange, "")
     );
     ensure!(
         config
@@ -172,17 +194,17 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             .iter()
             .all(|context| context.model_decode_bytes == 0
                 || (64 * 1024..=2 * 1024 * 1024 * 1024).contains(&context.model_decode_bytes)),
-        "JAVA_MODEL_DECODE_BYTES_RANGE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaModelDecodeBytesRange, "")
     );
     ensure!(
         config.native_heap_bytes == 0
             || ((8 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&config.native_heap_bytes)
                 && config.native_heap_bytes.is_multiple_of(1024 * 1024)),
-        "JAVA_NATIVE_HEAP_RANGE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaNativeHeapRange, "")
     );
     ensure!(
         config.compiler_timeout_seconds <= 3600,
-        "COMPILER_TIMEOUT_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::CompilerTimeoutBudget, "")
     );
     if !config.compact_inputs {
         ensure!(
@@ -192,7 +214,7 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
                     && c.publish_indices.is_empty()
                     && c.classpath_indices.is_empty()
                     && c.resource_indices.is_empty()),
-            "JAVA_INPUT_TABLE_STATE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableState, "")
         );
         return Ok(());
     }
@@ -200,22 +222,28 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
         config.contexts.len() <= 256
             && config.input_table.len() <= 10000
             && config.classpath_table.len() <= 10000,
-        "JAVA_INPUT_TABLE_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableBudget, "")
     );
     let mut paths = BTreeSet::new();
     for value in &config.input_table {
-        let unit = value.unit.as_ref().context("JAVA_INPUT_UNIT")?;
+        let unit = value
+            .unit
+            .as_ref()
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaInputUnit,
+                "",
+            ))?;
         ensure!(
             !value.publish
                 && !value.input.is_empty()
                 && !unit.path.is_empty()
                 && paths.insert(&unit.path),
-            "JAVA_INPUT_TABLE_IDENTITY"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableIdentity, "")
         );
     }
     ensure!(
         config.classpath_table.iter().all(|p| !p.is_empty()),
-        "JAVA_CLASSPATH_TABLE_IDENTITY"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaClasspathTableIdentity, "")
     );
     let mut references = 0usize;
     for context in &config.contexts {
@@ -223,7 +251,7 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             context.sources.is_empty()
                 && context.resources.is_empty()
                 && context.classpath.is_empty(),
-            "JAVA_INPUT_TABLE_STATE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputTableState, "")
         );
         for slots in [
             &context.source_indices,
@@ -234,7 +262,7 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             references += slots.len();
             ensure!(
                 slots.len() <= 10000 && references <= 1000000,
-                "JAVA_INDEX_BUDGET"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaIndexBudget, "")
             );
         }
         let mut sources = BTreeSet::new();
@@ -242,31 +270,39 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             let unit = config
                 .input_table
                 .get(slot as usize)
-                .context("JAVA_INPUT_INDEX")?
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaInputIndex,
+                    "",
+                ))?
                 .unit
                 .as_ref()
-                .context("JAVA_INPUT_UNIT")?;
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaInputUnit,
+                    "",
+                ))?;
             ensure!(
                 unit.language == "java" && sources.insert(slot),
-                "JAVA_SOURCE_INDEX_IDENTITY"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaSourceIndexIdentity,
+                    ""
+                )
             );
         }
         let mut published = BTreeSet::new();
         for &slot in &context.publish_indices {
             ensure!(
                 sources.contains(&slot) && published.insert(slot),
-                "JAVA_PUBLICATION_INDEX"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaPublicationIndex, "")
             );
-            let unit = config.input_table[slot as usize]
-                .unit
-                .as_ref()
-                .context("JAVA_INPUT_UNIT")?;
+            let unit = config.input_table[slot as usize].unit.as_ref().context(
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaInputUnit, ""),
+            )?;
             ensure!(
                 !unit.auxiliary
                     && !context.prerequisite
                     && unit.world == context.world
                     && unit.scope == context.scope,
-                "JAVA_PUBLICATION_WORLD"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaPublicationWorld, "")
             );
         }
         let mut resources = BTreeSet::new();
@@ -274,13 +310,22 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
             let unit = config
                 .input_table
                 .get(slot as usize)
-                .context("JAVA_INPUT_INDEX")?
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaInputIndex,
+                    "",
+                ))?
                 .unit
                 .as_ref()
-                .context("JAVA_INPUT_UNIT")?;
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaInputUnit,
+                    "",
+                ))?;
             ensure!(
                 unit.language != "java" && resources.insert(slot),
-                "JAVA_RESOURCE_INDEX_IDENTITY"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaResourceIndexIdentity,
+                    ""
+                )
             );
         }
         ensure!(
@@ -288,7 +333,7 @@ pub fn validate(config: &w::JavaConfig) -> Result<()> {
                 .classpath_indices
                 .iter()
                 .all(|&slot| (slot as usize) < config.classpath_table.len()),
-            "JAVA_CLASSPATH_INDEX"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaClasspathIndex, "")
         );
     }
     Ok(())
@@ -359,10 +404,9 @@ mod tests {
     fn auxiliary_sources_roundtrip_and_cannot_be_published() {
         let mut source = source();
         source.unit.as_mut().unwrap().auxiliary = true;
-        let model: codeana_model::SourceUnit =
-            crate::convert(source.unit.as_ref().unwrap()).unwrap();
+        let model: codeana_model::SourceUnit = crate::map(source.unit.as_ref().unwrap()).unwrap();
         assert!(model.auxiliary);
-        let restored: w::SourceUnit = crate::convert(&model).unwrap();
+        let restored: w::SourceUnit = crate::map(&model).unwrap();
         assert_eq!(restored, source.unit.clone().unwrap());
         let mut config = fixture();
         config.contexts[0].sources[0] = source;
@@ -378,7 +422,7 @@ mod tests {
         model.auxiliary = false;
         let old_json = serde_json::to_value(&model).unwrap();
         assert!(old_json.get("auxiliary").is_none());
-        let restored: w::SourceUnit = crate::convert(&model).unwrap();
+        let restored: w::SourceUnit = crate::map(&model).unwrap();
         assert!(!restored.auxiliary);
     }
     #[test]

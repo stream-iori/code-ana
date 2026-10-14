@@ -92,7 +92,7 @@ const NAMES: [&str; 39] = [
     "bundle_verify",
 ];
 #[derive(Clone, Copy, Default, Serialize)]
-struct Counter {
+pub struct Counter {
     calls: u64,
     bytes: u64,
     samples: u64,
@@ -138,15 +138,31 @@ impl Capture {
         let _restore = Restore(SYNC.with(|c| c.replace(self.0.clone())));
         f()
     }
-    pub fn snapshot(&self) -> serde_json::Value {
-        let Some(c) = &self.0 else {
-            return serde_json::Value::Null;
-        };
-        let counters = c.lock().unwrap_or_else(|p| p.into_inner());
-        let metrics: std::collections::BTreeMap<_, _> = NAMES.iter().zip(counters.iter()).collect();
-        serde_json::json!({"schema_version":1,"sample_stride":1024,"metrics":metrics,
-            "scope":"task-local intervals; sampled timings and nested intervals must not be summed as phase totals"})
+    pub fn snapshot(&self) -> Option<PerformanceSnapshot> {
+        let counters = self.0.as_ref()?.lock().unwrap_or_else(|p| p.into_inner());
+        Some(PerformanceSnapshot {
+            schema_version: 1,
+            sample_stride: 1024,
+            metrics: NAMES
+                .iter()
+                .zip(counters.iter())
+                .map(|(name, value)| ((*name).to_owned(), *value))
+                .collect(),
+            scope: "task-local intervals; sampled timings and nested intervals must not be summed as phase totals",
+        })
     }
+}
+#[derive(Serialize)]
+pub struct PerformanceSnapshot {
+    pub schema_version: u32,
+    pub sample_stride: u32,
+    pub metrics: std::collections::BTreeMap<String, Counter>,
+    pub scope: &'static str,
+}
+#[derive(Clone, serde::Serialize)]
+pub struct PhaseTiming {
+    pub phase: String,
+    pub elapsed_ms: u128,
 }
 pub struct Timer {
     counter: Option<Counters>,
@@ -282,7 +298,7 @@ mod tests {
                 .unwrap();
             })
             .await;
-        let value = capture.snapshot();
+        let value = serde_json::to_value(capture.snapshot()).unwrap();
         assert_eq!(value["metrics"]["raw_decode"]["calls"], 1025);
         assert_eq!(value["metrics"]["raw_decode"]["bytes"], 7175);
         assert_eq!(value["metrics"]["raw_decode"]["samples"], 2);
@@ -300,8 +316,14 @@ mod tests {
             });
             measure(Metric::RawRead, 13, false, || ());
         });
-        assert_eq!(outer.snapshot()["metrics"]["raw_read"]["bytes"], 13);
-        assert_eq!(inner.snapshot()["metrics"]["raw_read"]["bytes"], 11);
-        assert!(Capture::default().snapshot().is_null());
+        assert_eq!(
+            serde_json::to_value(outer.snapshot()).unwrap()["metrics"]["raw_read"]["bytes"],
+            13
+        );
+        assert_eq!(
+            serde_json::to_value(inner.snapshot()).unwrap()["metrics"]["raw_read"]["bytes"],
+            11
+        );
+        assert!(Capture::default().snapshot().is_none());
     }
 }

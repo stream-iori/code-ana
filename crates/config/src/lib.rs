@@ -1,66 +1,16 @@
 //! Strict project configuration and bounded, immutable source capture.
 pub mod java_inputs;
 mod lombok;
+mod schema;
 use anyhow::{Context, Result, bail, ensure};
 use codeana_model::*;
 use java_inputs::JavaInputs;
+pub use schema::*;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
-macro_rules! schema { ($name:ident {$($field:ident:$ty:ty),* $(,)?}) => { #[derive(Debug,Clone,Default,Serialize,Deserialize)] #[serde(default,deny_unknown_fields)] pub struct $name { $(pub $field:$ty),* } }; }
-schema!(ProjectConfig {schema_version:u32,kind:String,project:Project,discovery:Discovery,scan:Scan,build:Build,index:Index,resources:Resources,query:Query,observability:Observability,languages:Languages,modules:Vec<Module>,versions:Versions,search:Search});
-schema!(Project { name: String });
-schema!(Discovery {
-    mode: String,
-    build_system: String,
-    inputs_manifest: Option<String>
-});
-schema!(Scan {scopes:Vec<String>,include:Vec<String>,exclude:Vec<String>,text_only:Vec<String>});
-schema!(Build {suggestions:Option<bool>});
-schema!(Index { mode: String });
-schema!(Resources {
-    index: IndexResources,
-    query: QueryResources
-});
-schema!(IndexResources {worker_memory_bytes:Option<u64>,java_compiler_heap_bytes:Option<u64>,java_parallelism:Option<u32>,java_model_record_limit:Option<u32>,java_model_archive_bytes:Option<u64>,java_model_decode_bytes:Option<u64>,java_compiler_timeout_seconds:Option<u32>,java_native_heap_bytes:Option<u64>,java_result_bytes:Option<u64>,java_fact_limit:Option<u32>,java_scratch_bytes:Option<u64>});
-schema!(QueryResources {diff_spill_bytes:Option<u64>});
-schema!(Query {scopes:Vec<String>,max_output_bytes:Option<u64>});
-schema!(Observability { mode: String });
-schema!(Languages {java:Option<Language>,rust:Option<Language>});
-schema!(Language {enabled:Option<bool>,mode:String,discovery:Discovery,analysis:Analysis,lombok:Lombok,extensions:Extensions,external:External});
-schema!(Analysis {source_version:Option<String>,toolchain:Option<String>,classpath:Option<String>,vm_classpath:Option<bool>,edition:Option<String>});
-schema!(Lombok {mode:Option<String>,strict:Option<bool>});
-schema!(Extensions {
-    spring: Spring,
-    sofa: Sofa
-});
-schema!(Spring {enabled:Option<bool>,xml:Option<bool>});
-schema!(Sofa {enabled:Option<bool>});
-schema!(External {exclude_patterns:Option<Vec<String>>});
-schema!(Module {id:String,language:String,root:String,manifest:Option<String>,source_roots:Vec<SourceRoot>,analysis:Analysis,lombok:Lombok,extensions:Extensions,external:External,scan:Scan,worlds:Vec<World>});
-schema!(SourceRoot {
-    path: String,
-    scope: String,
-    label: Option<String>
-});
-schema!(World {id:String,target:String,default_features:Option<bool>,features:Vec<String>,cfg:Vec<String>});
-schema!(Versions {
-    capture: CapturePolicy,
-    gc: GcPolicy
-});
-schema!(CapturePolicy {include_ignored:Vec<String>});
-schema!(GcPolicy {auto:Option<bool>,keep:Option<u32>,max_bytes:Option<u64>,max_age_days:Option<u32>,include_caches:Option<bool>});
-schema!(Search { text: TextSearch });
-schema!(TextSearch {backend:String,include:Vec<String>});
-schema!(UserConfig {schema_version:u32,kind:String,daemon:DaemonPolicy,limits:Limits,toolchains:BTreeMap<String,Toolchain>});
-schema!(DaemonPolicy {idle_timeout_seconds:Option<u64>,java_warm_workers:Option<bool>,java_signature_cache:Option<bool>});
-schema!(Limits {max_workers:Option<usize>,max_worker_memory_bytes:Option<u64>,max_total_worker_memory_bytes:Option<u64>});
-schema!(Toolchain {
-    language: String,
-    home: String
-});
 /// Immutable task-owned capture; clones pin its private spool until all consumers finish.
 #[derive(Debug, Clone)]
 pub struct CapturedBlob {
@@ -94,7 +44,7 @@ impl CapturedBlob {
         use std::io::Read;
         ensure!(
             source.metadata()?.len() <= limit as u64,
-            "JAVA_ARTIFACT_BYTE_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaArtifactByteBudget, "")
         );
         let temporary = tempfile::NamedTempFile::new_in(spool.path())?;
         let mut output = temporary.reopen()?;
@@ -102,7 +52,10 @@ impl CapturedBlob {
             &mut std::fs::File::open(source)?.take(limit as u64 + 1),
             &mut output,
         )?;
-        ensure!(size <= limit as u64, "JAVA_ARTIFACT_BYTE_BUDGET");
+        ensure!(
+            size <= limit as u64,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaArtifactByteBudget, "")
+        );
         let digest = hash_file(temporary.path())?;
         let path = spool.path().join(&digest);
         if !path.exists() {
@@ -148,7 +101,7 @@ pub fn load_user(home: &Path) -> Result<UserConfig> {
             toml::from_str(std::str::from_utf8(&bounded_read(&path, 1024 * 1024)?)?)?;
         ensure!(
             u.schema_version == 1 && u.kind == "user",
-            "INVALID_USER_CONFIG"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidUserConfig, "")
         );
         u
     } else {
@@ -159,11 +112,17 @@ pub fn load_user(home: &Path) -> Result<UserConfig> {
         }
     };
     let workers = u.limits.max_workers.get_or_insert(2);
-    ensure!((1..=8).contains(workers), "INVALID_WORKER_LIMIT");
+    ensure!(
+        (1..=8).contains(workers),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidWorkerLimit, "")
+    );
     for t in u.toolchains.values() {
         ensure!(
             Path::new(&t.home).is_absolute(),
-            "TOOLCHAIN_HOME_MUST_BE_ABSOLUTE"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::ToolchainHomeMustBeAbsolute,
+                ""
+            )
         );
     }
     Ok(u)
@@ -186,14 +145,23 @@ pub fn resolve_files(root: &Path, request: &Request) -> Result<Effective> {
 }
 fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Result<Effective> {
     let path = root.join(".code-ana/config.toml");
-    ensure!(path.canonicalize()?.starts_with(root), "CONFIG_PATH_ESCAPE");
+    ensure!(
+        path.canonicalize()?.starts_with(root),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::ConfigPathEscape, "")
+    );
     let config_bytes = bounded_read(&path, 1024 * 1024)
         .context("PROJECT_CONFIG_REQUIRED: .code-ana/config.toml")?;
-    let text = std::str::from_utf8(&config_bytes).context("INVALID_PROJECT_CONFIG_ENCODING")?;
-    let mut c: ProjectConfig = toml::from_str(text).context("INVALID_PROJECT_CONFIG")?;
+    let text = std::str::from_utf8(&config_bytes).context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::InvalidProjectConfigEncoding,
+        "",
+    ))?;
+    let mut c: ProjectConfig = toml::from_str(text).context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::InvalidProjectConfig,
+        "",
+    ))?;
     ensure!(
         c.schema_version == 1 && c.kind == "project",
-        "UNSUPPORTED_CONFIG_SCHEMA"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::UnsupportedConfigSchema, "")
     );
     let mut origins = BTreeMap::new();
     let value: toml::Value = toml::from_str(text)?;
@@ -221,7 +189,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     }
     ensure!(
         matches!(c.discovery.mode.as_str(), "explicit" | "auto"),
-        "INVALID_DISCOVERY_MODE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDiscoveryMode, "")
     );
     if c.scan.scopes.is_empty() {
         c.scan.scopes = vec!["MAIN".into()];
@@ -229,7 +197,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     for s in &c.scan.scopes {
         ensure!(
             matches!(s.as_str(), "MAIN" | "TEST" | "GENERATED"),
-            "INVALID_SCOPE: {s}"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidScope, s.to_string())
         );
     }
     if c.scan.include.is_empty() {
@@ -237,7 +205,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     }
     ensure!(
         c.index.mode.is_empty() || matches!(c.index.mode.as_str(), "auto" | "full"),
-        "INVALID_INDEX_MODE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidIndexMode, "")
     );
     ensure!(
         c.observability.mode.is_empty()
@@ -245,58 +213,76 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
                 c.observability.mode.as_str(),
                 "off" | "basic" | "full" | "detailed"
             ),
-        "INVALID_OBSERVABILITY_MODE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidObservabilityMode, "")
     );
     if let Some(heap) = c.resources.index.java_compiler_heap_bytes {
         ensure!(
             (8 * 1024 * 1024..=512 * 1024 * 1024).contains(&heap) && heap % (1024 * 1024) == 0,
-            "INVALID_JAVA_COMPILER_HEAP"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidJavaCompilerHeap, "")
         );
     }
     if let Some(parallelism) = c.resources.index.java_parallelism {
-        ensure!((1..=8).contains(&parallelism), "JAVA_PARALLELISM_RANGE");
+        ensure!(
+            (1..=8).contains(&parallelism),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaParallelismRange, "")
+        );
     }
     if let Some(limit) = c.resources.index.java_model_record_limit {
         ensure!(
             (1..=5000000).contains(&limit),
-            "JAVA_MODEL_RECORD_LIMIT_RANGE"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaModelRecordLimitRange,
+                ""
+            )
         );
     }
     if let Some(bytes) = c.resources.index.java_model_decode_bytes {
         ensure!(
             (64 * 1024..=2 * 1024 * 1024 * 1024).contains(&bytes),
-            "JAVA_MODEL_DECODE_BYTES_RANGE"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaModelDecodeBytesRange,
+                ""
+            )
         );
     }
     if let Some(bytes) = c.resources.index.java_model_archive_bytes {
         ensure!(
             (64 * 1024..=1024 * 1024 * 1024).contains(&bytes),
-            "JAVA_MODEL_ARCHIVE_BYTES_RANGE"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaModelArchiveBytesRange,
+                ""
+            )
         );
     }
     if let Some(bytes) = c.resources.index.java_scratch_bytes {
         ensure!(
             (64 * 1024..=codeana_model::MAX_JAVA_SCRATCH_BYTES).contains(&bytes),
-            "JAVA_SCRATCH_BYTES_RANGE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaScratchBytesRange, "")
         );
     }
     if let Some(bytes) = c.resources.index.java_result_bytes {
         ensure!(
             (64 * 1024..=codeana_model::MAX_JAVA_RESULT_BYTES).contains(&bytes),
-            "JAVA_RESULT_BYTES_RANGE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaResultBytesRange, "")
         );
     }
     if let Some(count) = c.resources.index.java_fact_limit {
-        ensure!((1..=5000000).contains(&count), "JAVA_FACT_LIMIT_RANGE");
+        ensure!(
+            (1..=5000000).contains(&count),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFactLimitRange, "")
+        );
     }
     if let Some(heap) = c.resources.index.java_native_heap_bytes {
         ensure!(
             (8 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&heap) && heap % (1024 * 1024) == 0,
-            "JAVA_NATIVE_HEAP_RANGE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaNativeHeapRange, "")
         );
     }
     if let Some(seconds) = c.resources.index.java_compiler_timeout_seconds {
-        ensure!((1..=3600).contains(&seconds), "COMPILER_TIMEOUT_BUDGET");
+        ensure!(
+            (1..=3600).contains(&seconds),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CompilerTimeoutBudget, "")
+        );
     }
     if let Some(v) = request.suggestions {
         c.build.suggestions = Some(v);
@@ -312,18 +298,27 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
                 .rust
                 .as_ref()
                 .is_some_and(|l| l.enabled == Some(true)),
-        "NO_ENABLED_LANGUAGE"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::NoEnabledLanguage, "")
     );
     for (name, language) in [
         ("java", &mut c.languages.java),
         ("rust", &mut c.languages.rust),
     ] {
         if let Some(l) = language {
-            ensure!(l.enabled.is_some(), "LANGUAGE_ENABLED_REQUIRED: {name}");
+            ensure!(
+                l.enabled.is_some(),
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::LanguageEnabledRequired,
+                    name.to_string()
+                )
+            );
             if name == "java" {
                 ensure!(
                     l.mode.is_empty() || l.mode == "semantic",
-                    "JAVA_REQUIRES_SEMANTIC"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaRequiresSemantic,
+                        ""
+                    )
                 );
                 if l.mode.is_empty() {
                     l.mode = "semantic".into();
@@ -337,17 +332,29 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
                 l.extensions.spring.enabled.get_or_insert(true);
                 l.extensions.spring.xml.get_or_insert(false);
                 l.extensions.sofa.enabled.get_or_insert(true);
-                ensure!(l.analysis.edition.is_none(), "JAVA_EDITION_INVALID");
+                ensure!(
+                    l.analysis.edition.is_none(),
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaEditionInvalid,
+                        ""
+                    )
+                );
                 ensure!(
                     l.analysis.vm_classpath != Some(false),
-                    "VM_CLASSPATH_REQUIRED"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::VmClasspathRequired,
+                        ""
+                    )
                 );
                 ensure!(
                     l.lombok
                         .mode
                         .as_deref()
                         .is_none_or(|v| matches!(v, "off" | "model")),
-                    "INVALID_LOMBOK_MODE"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::InvalidLombokMode,
+                        ""
+                    )
                 );
                 if let Some(v) = &request.source_version {
                     l.analysis.source_version = Some(v.clone());
@@ -363,7 +370,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             } else {
                 ensure!(
                     l.analysis.source_version.is_none() && l.lombok.mode.is_none(),
-                    "JAVA_FIELD_IN_RUST"
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFieldInRust, "")
                 );
             }
         }
@@ -424,12 +431,15 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     for m in &mut c.modules {
         ensure!(
             !m.id.is_empty() && ids.insert(m.id.clone()),
-            "DUPLICATE_MODULE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DuplicateModule, "")
         );
-        ensure!(relative(&m.root), "INVALID_MODULE_PATH");
+        ensure!(
+            relative(&m.root),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidModulePath, "")
+        );
         ensure!(
             entries.insert((m.language.clone(), m.root.clone(), m.manifest.clone())),
-            "DUPLICATE_MODULE_ENTRY"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DuplicateModuleEntry, "")
         );
         let l = match m.language.as_str() {
             "java" => c.languages.java.as_ref(),
@@ -438,19 +448,25 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         };
         ensure!(
             l.is_some_and(|l| l.enabled == Some(true)),
-            "MODULE_LANGUAGE_NOT_ENABLED"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::ModuleLanguageNotEnabled, "")
         );
         if let Some(p) = &m.manifest {
-            ensure!(safe_path(p), "INVALID_MANIFEST_PATH");
+            ensure!(
+                safe_path(p),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidManifestPath, "")
+            );
         }
         if m.language == "rust" {
             ensure!(
                 m.lombok.mode.is_none() && m.analysis.source_version.is_none(),
-                "JAVA_FIELD_IN_RUST"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFieldInRust, "")
             );
         }
         if m.language == "java" {
-            let defaults = l.context("MODULE_LANGUAGE_NOT_ENABLED")?;
+            let defaults = l.context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::ModuleLanguageNotEnabled,
+                "",
+            ))?;
             macro_rules! inherit {
                 ($field:ident) => {
                     if m.analysis.$field.is_none() {
@@ -477,7 +493,10 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
                                         !prefix.is_empty() && !prefix.contains('*')
                                     }))
                     }),
-                    "INVALID_EXTERNAL_EXCLUDE_PATTERN"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::InvalidExternalExcludePattern,
+                        ""
+                    )
                 );
             }
             if m.lombok.mode.is_none() {
@@ -497,16 +516,25 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             }
             ensure!(
                 m.analysis.vm_classpath != Some(false) && m.analysis.edition.is_none(),
-                "INVALID_JAVA_MODULE_ANALYSIS"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::InvalidJavaModuleAnalysis,
+                    ""
+                )
             );
             ensure!(
                 m.lombok
                     .mode
                     .as_deref()
                     .is_some_and(|v| matches!(v, "off" | "model")),
-                "INVALID_LOMBOK_MODE"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidLombokMode, "")
             );
-            ensure!(m.worlds.is_empty(), "JAVA_WORLDS_DERIVED_FROM_SOURCE_ROOTS");
+            ensure!(
+                m.worlds.is_empty(),
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaWorldsDerivedFromSourceRoots,
+                    ""
+                )
+            );
         }
         if let Some(v) = &request.source_version
             && m.language == "java"
@@ -520,28 +548,46 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         }
         let mut worlds = BTreeSet::new();
         for w in &m.worlds {
-            ensure!(!w.id.is_empty() && worlds.insert(&w.id), "DUPLICATE_WORLD");
+            ensure!(
+                !w.id.is_empty() && worlds.insert(&w.id),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::DuplicateWorld, "")
+            );
         }
         for s in &m.source_roots {
             if m.language == "java" && java_inputs.is_some() {
                 java_inputs::root_path(&m.root, &s.path)?;
             } else {
-                ensure!(relative(&s.path), "INVALID_SOURCE_ROOT");
+                ensure!(
+                    relative(&s.path),
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::InvalidSourceRoot,
+                        ""
+                    )
+                );
             }
             ensure!(
                 c.scan.scopes.contains(&s.scope)
                     || (m.language == "java"
                         && s.scope == "MAIN"
                         && c.scan.scopes.iter().any(|scope| scope == "TEST")),
-                "SOURCE_SCOPE_EXCLUDED"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::SourceScopeExcluded, "")
             );
             if let Some(label) = &s.label {
-                ensure!(m.language == "java", "SOURCE_LABEL_REQUIRES_JAVA");
+                ensure!(
+                    m.language == "java",
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::SourceLabelRequiresJava,
+                        ""
+                    )
+                );
                 ensure!(
                     !label.trim().is_empty()
                         && label.len() <= 256
                         && !label.chars().any(char::is_control),
-                    "INVALID_SOURCE_LABEL"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::InvalidSourceLabel,
+                        ""
+                    )
                 );
             }
         }
@@ -677,7 +723,13 @@ fn source_ownership(
         owners.sort();
         owners.dedup();
     }
-    ensure!(owners.len() <= 1, "AMBIGUOUS_SOURCE_OWNER: {path}");
+    ensure!(
+        owners.len() <= 1,
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::AmbiguousSourceOwner,
+            path.to_string()
+        )
+    );
     Ok(owners
         .pop()
         .map(|(_, module, scope, language, physical)| (module, scope, language, physical)))
@@ -696,7 +748,10 @@ fn add_captured(
     if let Some(existing) = manifest.files.iter_mut().find(|s| s.path == path) {
         ensure!(
             existing.hash == hash(&bytes),
-            "JAVA_INPUT_CHANGED_DURING_CAPTURE"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaInputChangedDuringCapture,
+                ""
+            )
         );
         if !module.is_empty() {
             ensure!(
@@ -704,7 +759,7 @@ fn add_captured(
                     || (existing.module == module
                         && existing.scope == scope
                         && existing.world == key("world", &[&physical_module, &scope])),
-                "AMBIGUOUS_SOURCE_OWNER"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::AmbiguousSourceOwner, "")
             );
             existing.world = key("world", &[&physical_module, &scope]);
             existing.module = module;
@@ -718,7 +773,7 @@ fn add_captured(
         *total <= MAX_CAPTURE_BYTES
             && bytes.len() <= 32 * 1024 * 1024
             && manifest.files.len() < 10000,
-        "JAVA_CAPTURE_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaCaptureBudget, "")
     );
     let h = hash(&bytes);
     let world = if module.is_empty() {
@@ -780,7 +835,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
     let in_git = git(&root, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true");
     ensure!(
         !in_git || ignored_output.is_some(),
-        "GIT_IGNORED_ENUMERATION_FAILED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GitIgnoredEnumerationFailed, "")
     );
     let ignored: BTreeSet<String> = ignored_output
         .unwrap_or_default()
@@ -801,8 +856,14 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
         })
     {
         scanned += 1;
-        ensure!(scanned <= 100_000, "SCAN_ENTRY_BUDGET");
-        ensure!(started.elapsed() < deadline, "CAPTURE_TIMEOUT");
+        ensure!(
+            scanned <= 100_000,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::ScanEntryBudget, "")
+        );
+        ensure!(
+            started.elapsed() < deadline,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureTimeout, "")
+        );
         let entry = entry?;
         if entry.depth() == 0 || entry.file_type().is_dir() {
             continue;
@@ -811,9 +872,15 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             .path()
             .strip_prefix(&root)?
             .to_str()
-            .context("NON_UTF8_PATH")?
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::NonUtf8Path,
+                "",
+            ))?
             .to_owned();
-        ensure!(safe_path(&p), "UNSAFE_PATH");
+        ensure!(
+            safe_path(&p),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::UnsafePath, "")
+        );
         if excludes.is_match(&p)
             || (text_search
                 && if c.search.text.include.is_empty() {
@@ -828,7 +895,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
         }
         ensure!(
             !entry.file_type().is_symlink(),
-            "SYMLINK_SOURCE_UNSUPPORTED: {p}"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::SymlinkSourceUnsupported,
+                p.to_string()
+            )
         );
         if !entry.file_type().is_file() {
             continue;
@@ -842,15 +912,18 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             ));
         ensure!(
             entry.metadata()?.len() <= MAX_FRAME as u64,
-            "CAPTURE_FILE_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureFileBudget, "")
         );
         let bytes = bounded_read(entry.path(), MAX_FRAME)?;
         total += bytes.len();
         ensure!(
             bytes.len() <= MAX_FRAME && total <= MAX_CAPTURE_BYTES,
-            "CAPTURE_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureBudget, "")
         );
-        ensure!(manifest.files.len() < 10_000, "CAPTURE_FILE_BUDGET");
+        ensure!(
+            manifest.files.len() < 10_000,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureFileBudget, "")
+        );
         let h = hash(&bytes);
         let world = if module.is_empty() {
             "files".into()
@@ -875,12 +948,18 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             .java
             .as_ref()
             .and_then(|l| l.discovery.inputs_manifest.as_deref())
-            .context("JAVA_METADATA_PATH")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaMetadataPath,
+                "",
+            ))?;
         let metadata = bounded_read(&root.join(metadata_path), 32 * 1024 * 1024)?;
         let reparsed: JavaInputs = serde_json::from_slice(&metadata)?;
         ensure!(
             digest(&reparsed) == digest(inputs),
-            "JAVA_METADATA_CHANGED_DURING_CAPTURE"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaMetadataChangedDuringCapture,
+                ""
+            )
         );
         add_captured(
             &mut manifest,
@@ -897,9 +976,15 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             ),
         )?;
         for (path, expected) in &inputs.controls {
-            ensure!(!excludes.is_match(path), "JAVA_CONTROL_EXCLUDED");
+            ensure!(
+                !excludes.is_match(path),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaControlExcluded, "")
+            );
             let bytes = bounded_read(&root.join(path), MAX_FRAME)?;
-            ensure!(hash(&bytes) == *expected, "JAVA_METADATA_STALE");
+            ensure!(
+                hash(&bytes) == *expected,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::JavaMetadataStale, "")
+            );
             add_captured(
                 &mut manifest,
                 &mut blobs,
@@ -920,17 +1005,30 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
         for (path, expected) in &inputs.external_controls {
             ensure!(
                 hash(&bounded_read(Path::new(path), MAX_FRAME)?) == *expected,
-                "JAVA_METADATA_STALE: {path}"
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaMetadataStale,
+                    path.to_string()
+                )
             );
         }
         for m in &inputs.modules {
-            ensure!(started.elapsed() < deadline, "CAPTURE_TIMEOUT");
-            let config = c
-                .modules
-                .iter()
-                .find(|v| v.id == m.id)
-                .context("JAVA_MODULE_CONFIG_REQUIRED")?;
-            ensure!(config.root == m.root, "JAVA_MODULE_ROOT_MISMATCH");
+            ensure!(
+                started.elapsed() < deadline,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureTimeout, "")
+            );
+            let config = c.modules.iter().find(|v| v.id == m.id).context(
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaModuleConfigRequired,
+                    "",
+                ),
+            )?;
+            ensure!(
+                config.root == m.root,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::JavaModuleRootMismatch,
+                    ""
+                )
+            );
             let module_include = glob(&config.scan.include)?;
             let module_exclude = glob(&config.scan.exclude)?;
             for (r, is_source) in m
@@ -948,9 +1046,21 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                     continue;
                 }
                 for (proof, expected) in &r.generated_from {
-                    ensure!(!excludes.is_match(proof), "JAVA_GENERATED_PROOF_EXCLUDED");
+                    ensure!(
+                        !excludes.is_match(proof),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::JavaGeneratedProofExcluded,
+                            ""
+                        )
+                    );
                     let bytes = bounded_read(&root.join(proof), MAX_FRAME)?;
-                    ensure!(hash(&bytes) == *expected, "GENERATED_INPUT_STALE");
+                    ensure!(
+                        hash(&bytes) == *expected,
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::GeneratedInputStale,
+                            ""
+                        )
+                    );
                     add_captured(
                         &mut manifest,
                         &mut blobs,
@@ -970,28 +1080,55 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                 if !dir.exists() {
                     ensure!(
                         !r.generated,
-                        "BUILD_INPUT_REQUIRED: generated source root is missing"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::BuildInputRequired,
+                            "generated source root is missing".to_string()
+                        )
                     );
                     continue;
                 }
                 ensure!(
                     dir.canonicalize()?.starts_with(&root),
-                    "JAVA_INPUT_OUTSIDE_PROJECT"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaInputOutsideProject,
+                        ""
+                    )
                 );
                 for entry in walkdir::WalkDir::new(&dir).follow_links(false) {
                     let entry = entry?;
-                    ensure!(started.elapsed() < deadline, "CAPTURE_TIMEOUT");
+                    ensure!(
+                        started.elapsed() < deadline,
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::CaptureTimeout,
+                            ""
+                        )
+                    );
                     if entry.file_type().is_dir() {
                         continue;
                     }
-                    ensure!(entry.file_type().is_file(), "JAVA_INPUT_SYMLINK");
+                    ensure!(
+                        entry.file_type().is_file(),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::JavaInputSymlink,
+                            ""
+                        )
+                    );
                     scanned += 1;
-                    ensure!(scanned <= 100000, "SCAN_ENTRY_BUDGET");
+                    ensure!(
+                        scanned <= 100000,
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::ScanEntryBudget,
+                            ""
+                        )
+                    );
                     let path = entry
                         .path()
                         .strip_prefix(&root)?
                         .to_str()
-                        .context("NON_UTF8_PATH")?
+                        .context(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::NonUtf8Path,
+                            "",
+                        ))?
                         .to_owned();
                     if excludes.is_match(&path)
                         || text_only.is_match(&path)
@@ -1013,7 +1150,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                         ));
                         ensure!(
                             owner.3 == m.id && owner.1 == r.scope,
-                            "AMBIGUOUS_SOURCE_OWNER: {path}"
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::AmbiguousSourceOwner,
+                                path.to_string()
+                            )
                         );
                         owner
                     } else {
@@ -1034,7 +1174,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                 continue;
             }
             for artifact in m.classpath.values().flatten() {
-                ensure!(started.elapsed() < deadline, "CAPTURE_TIMEOUT");
+                ensure!(
+                    started.elapsed() < deadline,
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureTimeout, "")
+                );
                 let path = if Path::new(&artifact.path).is_absolute() {
                     PathBuf::from(&artifact.path)
                 } else {
@@ -1048,11 +1191,20 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                 }
                 let (blob, h, size) = CapturedBlob::file(&spool, &path, MAX_ARTIFACT_BYTES)
                     .context("BUILD_INPUT_REQUIRED: dependency artifact")?;
-                ensure!(h == artifact.sha256, "JAVA_ARTIFACT_STALE");
+                ensure!(
+                    h == artifact.sha256,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaArtifactStale,
+                        ""
+                    )
+                );
                 total += size;
                 ensure!(
                     total <= MAX_CAPTURE_BYTES && manifest.files.len() < 10000,
-                    "JAVA_CAPTURE_BUDGET"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::JavaCaptureBudget,
+                        ""
+                    )
                 );
                 manifest.files.push(SourceUnit {
                     auxiliary: false,
@@ -1088,14 +1240,20 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
     // current text search only exposes paths selected by its own include policy.
     ensure!(
         !excludes.is_match(".code-ana/config.toml"),
-        "CONTROL_INPUT_EXCLUDED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::ControlInputExcluded, "")
     );
     let bytes = bounded_read(&root.join(".code-ana/config.toml"), 1024 * 1024)?;
     let h = hash(&bytes);
-    ensure!(h == effective.input_hash, "CONFIG_CHANGED_DURING_CAPTURE");
+    ensure!(
+        h == effective.input_hash,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::ConfigChangedDuringCapture, "")
+    );
     if !text_search {
         total += bytes.len();
-        ensure!(total <= MAX_CAPTURE_BYTES, "CAPTURE_BUDGET");
+        ensure!(
+            total <= MAX_CAPTURE_BYTES,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureBudget, "")
+        );
         manifest.files.push(SourceUnit {
             auxiliary: false,
             path: ".code-ana/config.toml".into(),
@@ -1147,7 +1305,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
 pub fn require_java(c: &Capture) -> Result<()> {
     ensure!(
         c.effective.config.discovery.mode == "explicit" || c.effective.java_inputs.is_some(),
-        "UNSUPPORTED_DISCOVERY_MODE: auto requires an adapter discovery provider"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::UnsupportedDiscoveryMode,
+            "auto requires an adapter discovery provider".to_string()
+        )
     );
     if c.effective
         .config
@@ -1156,7 +1317,10 @@ pub fn require_java(c: &Capture) -> Result<()> {
         .as_ref()
         .is_some_and(|l| l.enabled == Some(true))
     {
-        bail!("UNSUPPORTED_LANGUAGE: Rust source analysis is P3");
+        bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::UnsupportedLanguage,
+            "Rust source analysis is P3".to_string()
+        ));
     }
     ensure!(
         c.manifest.files.iter().any(|s| s.language == "java")
@@ -1165,7 +1329,10 @@ pub fn require_java(c: &Capture) -> Result<()> {
                 .modules
                 .iter()
                 .any(|m| m.language == "java"),
-        "NO_JAVA_MODULE: explicit modules or exported inputs required"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::NoJavaModule,
+            "explicit modules or exported inputs required".to_string()
+        )
     );
     Ok(())
 }
@@ -1174,12 +1341,15 @@ pub fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     use std::io::Read;
     ensure!(
         !std::fs::symlink_metadata(path)?.file_type().is_symlink(),
-        "SYMLINK_INPUT_UNSUPPORTED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::SymlinkInputUnsupported, "")
     );
     let file = std::fs::File::open(path)?;
     let mut bytes = Vec::new();
     file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
-    ensure!(bytes.len() <= limit, "INPUT_BYTE_BUDGET");
+    ensure!(
+        bytes.len() <= limit,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InputByteBudget, "")
+    );
     Ok(bytes)
 }
 #[cfg(test)]

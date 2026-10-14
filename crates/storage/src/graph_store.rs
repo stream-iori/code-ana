@@ -21,7 +21,10 @@ pub fn initialize(db: &Connection) -> Result<()> {
     let version: i64 = db.query_row("PRAGMA user_version", [], |r| r.get(0))?;
     ensure!(
         version == 0 || version == SCHEMA_VERSION,
-        "GRAPH_SCHEMA_REBUILD_REQUIRED: expected={SCHEMA_VERSION} actual={version}; run index --full"
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphSchemaRebuildRequired,
+            format!("expected={SCHEMA_VERSION} actual={version}; run index --full")
+        )
     );
     if version == 0 {
         db.pragma_update(None, "page_size", PAGE_SIZE)?;
@@ -89,7 +92,10 @@ pub fn initialize_stage(db: &Connection) -> Result<()> {
 }
 
 pub fn insert(db: &Connection, row: &Row) -> Result<()> {
-    let table = Table::try_from(row.table).context("GRAPH_TABLE_UNKNOWN")?;
+    let table = Table::try_from(row.table).context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::GraphTableUnknown,
+        "",
+    ))?;
     let sql = match table {
         Table::Node => inserts::NODE_INSERT,
         Table::Edge => inserts::EDGE_INSERT,
@@ -107,7 +113,10 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Table::Coverage => "INSERT INTO stage_coverage VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
         Table::Provider => "INSERT INTO stage_providers VALUES(?,?,?,?,?,?)",
         Table::ProjectMeta => "INSERT OR REPLACE INTO stage_meta VALUES(?,?)",
-        Table::Unspecified => anyhow::bail!("GRAPH_TABLE_REQUIRED"),
+        Table::Unspecified => anyhow::bail!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphTableRequired,
+            ""
+        )),
     };
     let integer_columns: &[usize] = match table {
         Table::Node => &[14, 15, 16, 17, 18],
@@ -130,15 +139,26 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
             } else {
                 matches!(value, cell::Value::Text(_))
             };
-            ensure!(valid, "GRAPH_COLUMN_TYPE: table={table:?} column={index}");
+            ensure!(
+                valid,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::GraphColumnType,
+                    format!("table={table:?} column={index}")
+                )
+            );
         }
     }
     let mut statement = db.prepare_cached(sql)?;
     ensure!(
         statement.parameter_count() == row.cells.len(),
-        "GRAPH_COLUMN_COUNT: table={table:?} expected={} actual={}",
-        statement.parameter_count(),
-        row.cells.len()
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphColumnCount,
+            format!(
+                "table={table:?} expected={} actual={}",
+                statement.parameter_count(),
+                row.cells.len()
+            )
+        )
     );
     let values = row.cells.iter().map(|c| match &c.value {
         None => Value::Null,
@@ -261,7 +281,10 @@ fn hash_rows(
                         ValueRef::Text(s) => std::str::from_utf8(s)?.to_owned(),
                         ValueRef::Integer(n) => n.to_string(),
                         ValueRef::Real(n) => n.to_string(),
-                        ValueRef::Blob(_) => anyhow::bail!("GRAPH_CANONICAL_BLOB_UNEXPECTED"),
+                        ValueRef::Blob(_) => anyhow::bail!(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::GraphCanonicalBlobUnexpected,
+                            ""
+                        )),
                     })
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -279,7 +302,7 @@ fn hash_rows(
     Ok(())
 }
 pub fn prepare_identities(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
-    ensure!(!db.prepare("SELECT d.symbol_id FROM stage_declarations d LEFT JOIN stage_nodes n ON n.provider_id=d.provider_id AND n.symbol_id=d.symbol_id AND n.module=d.module AND n.scope=d.scope AND n.source_file=d.source_file AND n.producer_id=d.producer_id GROUP BY d.seq HAVING count(n.id)<>1 LIMIT 1")?.exists([])?,"DECLARATION_NODE_MISSING");
+    ensure!(!db.prepare("SELECT d.symbol_id FROM stage_declarations d LEFT JOIN stage_nodes n ON n.provider_id=d.provider_id AND n.symbol_id=d.symbol_id AND n.module=d.module AND n.scope=d.scope AND n.source_file=d.source_file AND n.producer_id=d.producer_id GROUP BY d.seq HAVING count(n.id)<>1 LIMIT 1")?.exists([])?, codeana_model::DomainError::new(codeana_model::ErrorCode::DeclarationNodeMissing, ""));
     hash_rows(db, "stage_nodes", hashes::NODE_HASH, check)?;
     hash_rows(db, "stage_edges", hashes::EDGE_HASH, check)?;
     hash_rows(db, "stage_annotations", hashes::ANNOTATION_HASH, check)?;

@@ -42,7 +42,7 @@ fn terminal_line(result: &TaskResult, budget: usize) -> Result<(Vec<u8>, bool)> 
     let (reasons, limits) = evidence.map_or((0, 0), |e| (e.reasons.len(), e.limits.len()));
     ensure!(
         projected(&value, 0, 0)?.len() <= budget,
-        "TERMINAL_OUTPUT_BUDGET"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::TerminalOutputBudget, "")
     );
     // Keep complete strings. JSON escaping and UTF-8 bytes are measured, not estimated.
     let mut kept_limits = 0;
@@ -91,14 +91,20 @@ pub(crate) fn render(request: &Request, result: &mut TaskResult) -> Result<Vec<u
     } else {
         request.max_output_bytes as usize
     };
-    ensure!(limit >= 2048, "OUTPUT_BUDGET_TOO_SMALL: minimum 2048");
+    ensure!(
+        limit >= 2048,
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::OutputBudgetTooSmall,
+            "minimum 2048".to_string()
+        )
+    );
     let available = limit - HEADER.len();
     let (initial, _) =
         terminal_line(result, available.min(8192)).or_else(|_| terminal_line(result, available))?;
     let mut bytes = HEADER.to_vec();
     let mut ends = Vec::new();
     for record in &result.output.records {
-        let line = format!("record {}\n", serde_json::to_string(record)?);
+        let line = format!("record {}\n", serde_json::to_string(&record.wire()?)?);
         if bytes.len() + line.len() + initial.len() > limit {
             break;
         }
@@ -142,6 +148,7 @@ pub(crate) fn render(request: &Request, result: &mut TaskResult) -> Result<Vec<u
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codeana_model::Record;
     use codeana_model::{Evidence, Output};
     use serde_json::json;
 
@@ -167,7 +174,9 @@ mod tests {
         let mut result = TaskResult::success(Output {
             revision: "rev-real".into(),
             producer: "javac-java8-v1".into(),
-            records: vec![json!({"files": 2857, "revision": "rev-real"})],
+            records: vec![
+                Record::display(&json!({"files": 2857, "revision": "rev-real"})).unwrap(),
+            ],
             evidence: Evidence {
                 enumeration: true,
                 semantic: false,
@@ -202,7 +211,15 @@ mod tests {
             .unwrap();
             assert!(bytes.len() <= limit as usize);
             let (records, terminal) = decode(&bytes);
-            assert_eq!(records, result.output.records);
+            assert_eq!(
+                records,
+                result
+                    .output
+                    .records
+                    .iter()
+                    .map(|r| r.wire().unwrap())
+                    .collect::<Vec<_>>()
+            );
             assert_eq!(terminal.publication, "published");
             assert_eq!(terminal.revision, "rev-real");
             assert_eq!(terminal.exit_code, 0);
@@ -255,7 +272,7 @@ mod tests {
         for strict in [false, true] {
             let mut result = TaskResult::success(Output {
                 records: (0..100)
-                    .map(|n| json!({"n": n, "body": "字😀".repeat(100)}))
+                    .map(|n| Record::display(&json!({"n": n, "body": "字😀".repeat(100)})).unwrap())
                     .collect(),
                 evidence: Evidence::complete(),
                 ..Default::default()
@@ -290,7 +307,7 @@ mod tests {
             ..Default::default()
         };
         let mut result = TaskResult::success(Output {
-            records: vec![json!({"n":1})],
+            records: vec![Record::display(&json!({"n":1})).unwrap()],
             evidence: Evidence::complete(),
             ..Default::default()
         });

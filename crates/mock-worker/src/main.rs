@@ -2,7 +2,7 @@
 use anyhow::{Result, bail, ensure};
 use clap::Parser;
 use codeana_contracts::{
-    convert, envelope, read_frame, worker as w, worker::envelope::Body, write_frame,
+    envelope, map, read_frame, worker as w, worker::envelope::Body, write_frame,
 };
 use codeana_model::*;
 use std::{collections::BTreeSet, os::fd::FromRawFd, path::PathBuf};
@@ -17,11 +17,20 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
-    ensure!(args.fd >= 3, "DEDICATED_FD_REQUIRED");
+    ensure!(
+        args.fd >= 3,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::DedicatedFdRequired, "")
+    );
     let bytes = std::fs::read(args.fixtures)?;
-    ensure!(bytes.len() <= MAX_RESULT, "FIXTURE_BUDGET");
+    ensure!(
+        bytes.len() <= MAX_RESULT,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::FixtureBudget, "")
+    );
     let fixture: Fixture = serde_json::from_slice(&bytes)?;
-    ensure!(fixture.schema_version == 1, "FIXTURE_SCHEMA");
+    ensure!(
+        fixture.schema_version == 1,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::FixtureSchema, "")
+    );
     // SAFETY: daemon exclusively transfers this inherited socket descriptor to the worker.
     let socket = unsafe { std::os::unix::net::UnixStream::from_raw_fd(args.fd) };
     socket.set_nonblocking(true)?;
@@ -34,7 +43,10 @@ async fn main() -> Result<()> {
             Some(Body::Hello(h)) => {
                 ensure!(
                     h.protocol == WORKER_PROTOCOL_VERSION && h.fact_ir == VERSION,
-                    "UNSUPPORTED_PROTOCOL"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::UnsupportedProtocol,
+                        ""
+                    )
                 );
                 write_frame(
                     &mut ipc,
@@ -50,10 +62,12 @@ async fn main() -> Result<()> {
                 .await?;
             }
             Some(Body::Discover(d)) => {
-                let manifest: Manifest = convert(
-                    &d.manifest
-                        .ok_or_else(|| anyhow::anyhow!("MANIFEST_REQUIRED"))?,
-                )?;
+                let manifest: Manifest = map(&d.manifest.ok_or_else(|| {
+                    anyhow::anyhow!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::ManifestRequired,
+                        ""
+                    ))
+                })?)?;
                 selected = fixture
                     .states
                     .iter()
@@ -61,20 +75,20 @@ async fn main() -> Result<()> {
                     .cloned();
                 if let Some(s) = &selected {
                     if let Some(advice) = &s.advice {
-                        write_frame(
-                            &mut ipc,
-                            &envelope(&attempt, Body::Advice(convert(advice)?)),
-                        )
-                        .await?;
+                        write_frame(&mut ipc, &envelope(&attempt, Body::Advice(map(advice)?)))
+                            .await?;
                         continue;
                     }
                     ensure!(
                         s.context.producer.starts_with("mock-"),
-                        "MOCK_PROVENANCE_REQUIRED"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::MockProvenanceRequired,
+                            ""
+                        )
                     );
                     write_frame(
                         &mut ipc,
-                        &envelope(&attempt, Body::Context(convert(&s.context)?)),
+                        &envelope(&attempt, Body::Context(map(&s.context)?)),
                     )
                     .await?;
                 } else {
@@ -92,14 +106,22 @@ async fn main() -> Result<()> {
                 }
             }
             Some(Body::Analyze(a)) => {
-                let s = selected
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("DISCOVER_REQUIRED"))?;
-                let manifest: Manifest = convert(
-                    &a.manifest
-                        .ok_or_else(|| anyhow::anyhow!("MANIFEST_REQUIRED"))?,
-                )?;
-                ensure!(manifest.content_digest() == s.content_digest, "INPUT_DRIFT");
+                let s = selected.as_ref().ok_or_else(|| {
+                    anyhow::anyhow!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::DiscoverRequired,
+                        ""
+                    ))
+                })?;
+                let manifest: Manifest = map(&a.manifest.ok_or_else(|| {
+                    anyhow::anyhow!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::ManifestRequired,
+                        ""
+                    ))
+                })?)?;
+                ensure!(
+                    manifest.content_digest() == s.content_digest,
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::InputDrift, "")
+                );
                 if s.behavior == "crash" {
                     std::process::exit(17);
                 }
@@ -109,7 +131,7 @@ async fn main() -> Result<()> {
                     } else {
                         s.delay_ms
                     };
-                    tokio::select! {_ = tokio::time::sleep(std::time::Duration::from_millis(duration))=>{},v=read_frame(&mut ipc)=>{if matches!(v?.body,Some(Body::Cancel(_))){return Ok(());}bail!("UNEXPECTED_WHILE_ANALYZING");}}
+                    tokio::select! {_ = tokio::time::sleep(std::time::Duration::from_millis(duration))=>{},v=read_frame(&mut ipc)=>{if matches!(v?.body,Some(Body::Cancel(_))){return Ok(());}bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedWhileAnalyzing, ""));}}
                 }
                 if s.behavior == "replan" && !a.full {
                     write_frame(
@@ -124,8 +146,8 @@ async fn main() -> Result<()> {
                     .await?;
                     continue;
                 }
-                let summary: serde_json::Value = if a.baseline_summary_json.is_empty() {
-                    serde_json::json!({})
+                let summary: BaselineSummary = if a.baseline_summary_json.is_empty() {
+                    BaselineSummary::default()
                 } else {
                     serde_json::from_slice(&a.baseline_summary_json)?
                 };
@@ -139,13 +161,13 @@ async fn main() -> Result<()> {
                         id: f.path.clone(),
                     })
                     .collect();
-                if let Some(files) = summary["files"].as_array() {
-                    for f in files {
+                {
+                    for f in &summary.files {
                         replacements.insert(Owner {
-                            world: f["world"].as_str().unwrap_or_default().into(),
+                            world: f.world.clone(),
                             producer: s.context.producer.clone(),
                             kind: "source".into(),
-                            id: f["path"].as_str().unwrap_or_default().into(),
+                            id: f.path.clone(),
                         });
                     }
                 }
@@ -155,7 +177,7 @@ async fn main() -> Result<()> {
                     manifest: manifest.id(),
                     profile: a.profile,
                     producer: s.context.producer.clone(),
-                    replacements: replacements.iter().map(convert).collect::<Result<_>>()?,
+                    replacements: replacements.iter().map(map).collect::<Result<_>>()?,
                 };
                 write_frame(&mut ipc, &envelope(&attempt, Body::Begin(begin))).await?;
                 if s.behavior == "oversize" {
@@ -212,7 +234,10 @@ async fn main() -> Result<()> {
                 .await?;
             }
             Some(Body::Ack(_)) | Some(Body::Cancel(_)) => return Ok(()),
-            _ => bail!("UNEXPECTED_WORKER_MESSAGE"),
+            _ => bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::UnexpectedWorkerMessage,
+                ""
+            )),
         }
     }
 }

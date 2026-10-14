@@ -1,6 +1,6 @@
 //! Explicit local replay capture, outside the worker's disposable task directory.
 use anyhow::{Result, ensure};
-use serde_json::Value;
+
 use std::{
     path::{Path, PathBuf},
     time::Instant,
@@ -10,10 +10,14 @@ pub struct ReplayEvidence {
     directory: PathBuf,
     scratch: PathBuf,
     started: Instant,
-    phases: Vec<Value>,
+    phases: Vec<codeana_contracts::performance::PhaseTiming>,
 }
 impl ReplayEvidence {
-    pub fn start(request: &Value, scratch: &Path, library: &Path) -> Result<Option<Self>> {
+    pub fn start(
+        request: &codeana_contracts::engine_request::EngineRequest,
+        scratch: &Path,
+        library: &Path,
+    ) -> Result<Option<Self>> {
         let Some(root) = std::env::var_os("CODEANA_JAVA_DIAGNOSTICS_DIR") else {
             return Ok(None);
         };
@@ -21,7 +25,13 @@ impl ReplayEvidence {
         std::fs::create_dir_all(&root)?;
         let root = root.canonicalize()?;
         let scratch = scratch.canonicalize()?;
-        ensure!(!root.starts_with(&scratch), "DIAGNOSTIC_CAPTURE_RECURSION");
+        ensure!(
+            !root.starts_with(&scratch),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DiagnosticCaptureRecursion,
+                ""
+            )
+        );
         let directory = tempfile::Builder::new()
             .prefix("java-replay-")
             .tempdir_in(root)?
@@ -33,14 +43,15 @@ impl ReplayEvidence {
             serde_json::to_vec_pretty(request)?,
         )?;
         let mut replay = request.clone();
-        rebase(&mut replay, &scratch, &directory.join("snapshot"));
+        replay.rebase(&scratch, &directory.join("snapshot"));
         std::fs::write(
             directory.join("replay-request.json"),
             serde_json::to_vec_pretty(&replay)?,
         )?;
         let manifest_path = library.parent().unwrap().join("manifest.json");
-        let manifest: Value = serde_json::from_slice(&std::fs::read(&manifest_path)?)?;
-        let jvm = manifest["backend"] == "jvm";
+        let manifest: codeana_contracts::bundle::BundleManifest =
+            serde_json::from_slice(&std::fs::read(&manifest_path)?)?;
+        let jvm = manifest.backend == "jvm";
         let manifest_name = if jvm {
             "jvm-manifest.json"
         } else {
@@ -54,24 +65,23 @@ impl ReplayEvidence {
         };
         let runtime = directory.join("runtime");
         std::fs::create_dir(&runtime)?;
-        for (relative, expected) in manifest["files"]
-            .as_object()
-            .ok_or_else(|| anyhow::anyhow!("NATIVE_MANIFEST_FILES"))?
-        {
+        for (relative, expected) in &manifest.files {
             let relative = Path::new(relative);
             ensure!(
                 !relative.is_absolute()
                     && !relative
                         .components()
                         .any(|p| matches!(p, std::path::Component::ParentDir)),
-                "NATIVE_MANIFEST_PATH"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::NativeManifestPath, "")
             );
             let target = runtime.join(relative);
             std::fs::create_dir_all(target.parent().unwrap())?;
             ensure!(
-                codeana_model::hash_file(&bundle.join(relative))?
-                    == expected.as_str().unwrap_or(""),
-                "NATIVE_MANIFEST_IDENTITY"
+                codeana_model::hash_file(&bundle.join(relative))? == expected.as_str(),
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::NativeManifestIdentity,
+                    ""
+                )
             );
             std::fs::copy(bundle.join(relative), target)?;
         }
@@ -101,34 +111,41 @@ impl ReplayEvidence {
             phases: Vec::new(),
         }))
     }
-    /// Keep one sealed raw CAF for duplicate/layout diagnostics, outside formal measurements.
+    /// Preserve the sealed GRA1 graph for explicit replay, outside formal measurements.
     pub fn sealed_descriptor(&self, path: &Path) -> Result<()> {
-        let mut value: Value = serde_json::from_slice(&std::fs::read(path)?)?;
-        let archive = &mut value["facts_archive"];
-        let source = PathBuf::from(
-            archive["path"]
-                .as_str()
-                .ok_or_else(|| anyhow::anyhow!("CAF_PATH"))?,
-        )
-        .canonicalize()?;
-        ensure!(source.starts_with(&self.scratch), "DIAGNOSTIC_ARCHIVE_PATH");
-        let target = self.directory.join("facts.caf");
-        std::fs::copy(&source, &target)?;
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct SealedResult {
+            version: u32,
+            mode: codeana_model::AnalysisMode,
+            replacements: Vec<codeana_model::Owner>,
+            graph_archive: codeana_contracts::graph_archive::Descriptor,
+        }
+        let mut descriptor: SealedResult = serde_json::from_slice(&std::fs::read(path)?)?;
+        let archive = &mut descriptor.graph_archive;
+        let source = archive.path.canonicalize()?;
         ensure!(
-            codeana_model::hash_file(&target)? == archive["sha256"].as_str().unwrap_or(""),
-            "DIAGNOSTIC_ARCHIVE_SHA"
+            source.starts_with(&self.scratch),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DiagnosticArchivePath, "")
         );
-        archive["path"] = target.to_string_lossy().into_owned().into();
+        let target = self.directory.join("graph.rows");
+        std::fs::copy(source, &target)?;
+        ensure!(
+            codeana_model::hash_file(&target)? == archive.sha256,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DiagnosticArchiveSha, "")
+        );
+        archive.path = target;
         std::fs::write(
             self.directory.join("descriptor.json"),
-            serde_json::to_vec_pretty(&value)?,
+            serde_json::to_vec_pretty(&descriptor)?,
         )?;
         Ok(())
     }
     pub fn phase(&mut self, phase: &str) {
-        self.phases.push(
-            serde_json::json!({"phase":phase,"elapsed_ms":self.started.elapsed().as_millis()}),
-        );
+        self.phases
+            .push(codeana_contracts::performance::PhaseTiming {
+                phase: phase.into(),
+                elapsed_ms: self.started.elapsed().as_millis(),
+            });
     }
 }
 impl Drop for ReplayEvidence {
@@ -153,7 +170,10 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     for entry in std::fs::read_dir(source)? {
         let entry = entry?;
         let kind = entry.file_type()?;
-        ensure!(!kind.is_symlink(), "DIAGNOSTIC_CAPTURE_SYMLINK");
+        ensure!(
+            !kind.is_symlink(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::DiagnosticCaptureSymlink, "")
+        );
         let target = destination.join(entry.file_name());
         if kind.is_dir() {
             copy_tree(&entry.path(), &target)?;
@@ -163,37 +183,10 @@ fn copy_tree(source: &Path, destination: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn rebase(value: &mut Value, source: &Path, destination: &Path) {
-    match value {
-        Value::String(text) => {
-            let path = Path::new(text);
-            // macOS /var is an alias of /private/var. The captured scratch is
-            // canonical, while request paths can still use the lexical alias.
-            let canonical = if path.is_absolute() {
-                path.canonicalize().ok()
-            } else {
-                None
-            };
-            if let Ok(relative) = path
-                .strip_prefix(source)
-                .or_else(|_| canonical.as_deref().unwrap_or(path).strip_prefix(source))
-            {
-                *text = destination.join(relative).to_string_lossy().into_owned();
-            }
-        }
-        Value::Array(values) => values
-            .iter_mut()
-            .for_each(|v| rebase(v, source, destination)),
-        Value::Object(values) => values
-            .values_mut()
-            .for_each(|v| rebase(v, source, destination)),
-        _ => {}
-    }
-}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
     #[test]
     fn replay_rebases_aliases_and_keeps_external_inputs() {
         let temporary = tempfile::tempdir().unwrap();
@@ -205,14 +198,28 @@ mod tests {
         let destination = temporary.path().join("snapshot");
         let external = temporary.path().join("external.jar");
         std::fs::write(&external, "external").unwrap();
-        let mut value = serde_json::json!({"inputs":[alias.join("A.java"), source.join("A.java"), external],"hash":"unchanged"});
-        rebase(&mut value, &source.canonicalize().unwrap(), &destination);
+        let mut request = codeana_contracts::engine_request::EngineRequest {
+            input_table: vec![
+                alias.join("A.java"),
+                source.join("A.java"),
+                external.clone(),
+            ]
+            .into_iter()
+            .map(|p| codeana_contracts::worker::JavaSource {
+                input: p.to_string_lossy().into_owned(),
+                ..Default::default()
+            })
+            .collect(),
+            profile: "unchanged".into(),
+            ..Default::default()
+        };
+        request.rebase(&source.canonicalize().unwrap(), &destination);
         assert_eq!(
-            value["inputs"][0],
-            destination.join("A.java").to_string_lossy().as_ref()
+            request.input_table[0].input,
+            destination.join("A.java").to_string_lossy()
         );
-        assert_eq!(value["inputs"][1], value["inputs"][0]);
-        assert_eq!(value["inputs"][2], external.to_string_lossy().as_ref());
-        assert_eq!(value["hash"], "unchanged");
+        assert_eq!(request.input_table[1].input, request.input_table[0].input);
+        assert_eq!(request.input_table[2].input, external.to_string_lossy());
+        assert_eq!(request.profile, "unchanged");
     }
 }

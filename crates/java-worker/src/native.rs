@@ -11,7 +11,10 @@ use std::{
 static ISOLATE_HISTORY: AtomicU8 = AtomicU8::new(0);
 
 fn claim_isolate(gc: &str, history: &AtomicU8) -> Result<()> {
-    ensure!(matches!(gc, "serial" | "G1"), "NATIVE_GC_UNSUPPORTED");
+    ensure!(
+        matches!(gc, "serial" | "G1"),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeGcUnsupported, "")
+    );
     history
         .fetch_update(Ordering::AcqRel, Ordering::Acquire, |previous| {
             if gc == "G1" {
@@ -20,15 +23,27 @@ fn claim_isolate(gc: &str, history: &AtomicU8) -> Result<()> {
                 (previous != 2).then_some(1)
             }
         })
-        .map_err(|_| anyhow::anyhow!("G1_ISOLATE_PROCESS_RESTART_REQUIRED"))?;
+        .map_err(|_| {
+            anyhow::anyhow!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::G1IsolateProcessRestartRequired,
+                ""
+            ))
+        })?;
     Ok(())
 }
 
-fn manifest_gc(manifest: &serde_json::Value) -> Result<&str> {
-    let gc = manifest["native_gc"]
-        .as_str()
-        .context("BUNDLE_GC_REQUIRED")?;
-    ensure!(matches!(gc, "serial" | "G1"), "BUNDLE_GC_UNSUPPORTED");
+fn manifest_gc(manifest: &codeana_contracts::bundle::BundleManifest) -> Result<&str> {
+    let gc = manifest
+        .native_gc
+        .as_deref()
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::BundleGcRequired,
+            "",
+        ))?;
+    ensure!(
+        matches!(gc, "serial" | "G1"),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::BundleGcUnsupported, "")
+    );
     Ok(gc)
 }
 
@@ -71,15 +86,24 @@ impl Native {
         ensure!(
             (8 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&heap)
                 && heap.is_multiple_of(1024 * 1024),
-            "JAVA_NATIVE_HEAP_RANGE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaNativeHeapRange, "")
         );
         Self::create(path, Some(heap))
     }
     fn create(path: &Path, heap: Option<u64>) -> Result<Self> {
-        ensure!(path.is_file(), "NATIVE_LIBRARY_MISSING");
-        let manifest: serde_json::Value = serde_json::from_slice(&std::fs::read(
-            path.parent().context("BUNDLE_PATH")?.join("manifest.json"),
-        )?)?;
+        ensure!(
+            path.is_file(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::NativeLibraryMissing, "")
+        );
+        let manifest: codeana_contracts::bundle::BundleManifest =
+            serde_json::from_slice(&std::fs::read(
+                path.parent()
+                    .context(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::BundlePath,
+                        "",
+                    ))?
+                    .join("manifest.json"),
+            )?)?;
         let gc = manifest_gc(&manifest)?;
         // SAFETY: loaded only in the isolated worker, after bundle verification by the caller.
         unsafe {
@@ -100,10 +124,19 @@ impl Native {
             let performance_temp = std::env::var_os("CODEANA_PERFORMANCE_TMPDIR")
                 .map(|value| -> Result<_> {
                     let path = std::fs::canonicalize(value)?;
-                    ensure!(path.is_dir(), "PERFORMANCE_TMPDIR_REQUIRED");
+                    ensure!(
+                        path.is_dir(),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::PerformanceTmpdirRequired,
+                            ""
+                        )
+                    );
                     Ok(std::ffi::CString::new(format!(
                         "-Djava.io.tmpdir={}",
-                        path.to_str().context("PERFORMANCE_TMPDIR_UTF8_REQUIRED")?
+                        path.to_str().context(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::PerformanceTmpdirUtf8Required,
+                            ""
+                        ))?
                     ))?)
                 })
                 .transpose()?;
@@ -122,14 +155,23 @@ impl Native {
             };
             claim_isolate(gc, &ISOLATE_HISTORY)?;
             let status = create(address, &mut isolate, &mut thread);
-            ensure!(status == 0, "ISOLATE_CREATE: {status}");
+            ensure!(
+                status == 0,
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::IsolateCreate,
+                    format!("{status}")
+                )
+            );
             let native = Self {
                 library,
                 thread,
                 task: 0,
                 _not_send: std::marker::PhantomData,
             };
-            ensure!(version(thread) == 4, "ABI_VERSION_MISMATCH");
+            ensure!(
+                version(thread) == 4,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::AbiVersionMismatch, "")
+            );
             let _ = native
                 .library
                 .get::<Completion>(b"codeana_java_set_completion_fd")?;
@@ -163,13 +205,16 @@ impl Native {
     fn start_inner(&mut self, request: &[u8], notification: Option<i32>) -> Result<()> {
         ensure!(
             self.task == 0 && request.len() <= codeana_model::MAX_RESULT,
-            "NATIVE_INPUT_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::NativeInputBudget, "")
         );
         unsafe {
             self.task =
                 self.library
                     .get::<Session>(b"codeana_java_session_create")?(self.thread);
-            ensure!(self.task != 0, "SESSION_CREATE");
+            ensure!(
+                self.task != 0,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::SessionCreate, "")
+            );
             if let Some(fd) = notification {
                 ensure!(
                     self.library
@@ -178,29 +223,38 @@ impl Native {
                         self.task,
                         fd
                     ) == 0,
-                    "COMPLETION_FD_REGISTER"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::CompletionFdRegister,
+                        ""
+                    )
                 );
             }
             let input = self.library.get::<Input>(b"codeana_java_input_chunk")?;
             for chunk in request.chunks(1024 * 1024) {
                 ensure!(
                     input(self.thread, self.task, chunk.as_ptr(), chunk.len() as i32) == 0,
-                    "INPUT_CHUNK"
+                    codeana_model::DomainError::new(codeana_model::ErrorCode::InputChunk, "")
                 );
             }
         }
-        ensure!(self.control(b"codeana_java_seal_input")? == 0, "SEAL_INPUT");
+        ensure!(
+            self.control(b"codeana_java_seal_input")? == 0,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::SealInput, "")
+        );
         ensure!(
             self.control(b"codeana_java_analyze_start")? == 0,
-            "ANALYZE_START"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::AnalyzeStart, "")
         );
         Ok(())
     }
-    pub fn poll(&self) -> Result<i32> {
-        self.control(b"codeana_java_poll_event")
+    pub fn poll(&self) -> Result<crate::state::RunState> {
+        crate::state::decode(self.control(b"codeana_java_poll_event")?)
     }
     pub fn cancel(&self) -> Result<()> {
-        ensure!(self.control(b"codeana_java_cancel")? == 0, "CANCEL");
+        ensure!(
+            self.control(b"codeana_java_cancel")? == 0,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::Cancel, "")
+        );
         Ok(())
     }
     pub fn result_file(&self) -> Result<tempfile::NamedTempFile> {
@@ -229,13 +283,16 @@ impl Native {
                     buffer.len() as i32,
                 )
             };
-            ensure!(n >= 0 && n as usize <= buffer.len(), "NATIVE_READ");
+            ensure!(
+                n >= 0 && n as usize <= buffer.len(),
+                codeana_model::DomainError::new(codeana_model::ErrorCode::NativeRead, "")
+            );
             if n == 0 {
                 break;
             }
             ensure!(
                 offset as u64 + n as u64 <= max_bytes,
-                "NATIVE_RESULT_BUDGET"
+                codeana_model::DomainError::new(codeana_model::ErrorCode::NativeResultBudget, "")
             );
             out.write_all(&buffer[..n as usize])?;
             offset += n as usize;
@@ -250,15 +307,18 @@ impl Native {
     pub fn ack(&self) -> Result<()> {
         ensure!(
             self.control(b"codeana_java_publish_ack")? == 0,
-            "PUBLISH_ACK"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::PublishAck, "")
         );
         Ok(())
     }
     pub fn finish(&mut self) -> Result<()> {
-        ensure!(self.task != 0, "SESSION_NOT_STARTED");
+        ensure!(
+            self.task != 0,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::SessionNotStarted, "")
+        );
         ensure!(
             self.control(b"codeana_java_session_close")? == 0,
-            "SESSION_CLOSE"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::SessionClose, "")
         );
         self.task = 0;
         Ok(())
@@ -285,24 +345,30 @@ impl Drop for Native {
     }
 }
 pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
-    let parent = path.parent().context("BUNDLE_PATH")?;
-    let root = parent.parent().context("BUNDLE_ROOT")?;
-    let manifest: serde_json::Value =
+    let parent = path.parent().context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::BundlePath,
+        "",
+    ))?;
+    let root = parent.parent().context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::BundleRoot,
+        "",
+    ))?;
+    let manifest: codeana_contracts::bundle::BundleManifest =
         serde_json::from_slice(&std::fs::read(parent.join("manifest.json"))?)?;
     ensure!(
-        manifest["version"] == 2
-            && manifest["backend"] == "native"
-            && manifest["worker_protocol"] == codeana_model::WORKER_PROTOCOL_VERSION
-            && manifest["fact_ir"] == codeana_model::VERSION
-            && manifest["abi"] == 4
-            && manifest["analysis_request"] == 9
-            && manifest["compiler_protocol"] == 2
-            && manifest["compiler_batch_protocol"] == 2
-            && manifest["adapter"] == "anatomist-4a903272-codeana-graph2"
-            && manifest["java_model"] == "javac-model-v50"
-            && manifest["graph_schema"] == 33
-            && manifest["graph_encoding"] == "GRA1-protobuf-row-v1",
-        "BUNDLE_VERSION_MISMATCH"
+        manifest.version == 2
+            && manifest.backend == "native"
+            && manifest.worker_protocol == codeana_model::WORKER_PROTOCOL_VERSION
+            && manifest.fact_ir == codeana_model::VERSION
+            && manifest.abi == 4
+            && manifest.analysis_request == 9
+            && manifest.compiler_protocol == 2
+            && manifest.compiler_batch_protocol == 2
+            && manifest.adapter == "anatomist-4a903272-codeana-graph2"
+            && manifest.java_model == "javac-model-v50"
+            && manifest.graph_schema == 33
+            && manifest.graph_encoding == "GRA1-protobuf-row-v1",
+        codeana_model::DomainError::new(codeana_model::ErrorCode::BundleVersionMismatch, "")
     );
     let os = if cfg!(target_os = "macos") {
         "Darwin"
@@ -315,27 +381,37 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
         "x86_64"
     };
     ensure!(
-        manifest["os"] == os && manifest["arch"] == arch,
-        "BUNDLE_PLATFORM_MISMATCH"
+        manifest.os == os && manifest.arch == arch,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::BundlePlatformMismatch, "")
     );
     manifest_gc(&manifest)?;
-    let files = manifest["files"].as_object().context("BUNDLE_FILES")?;
+    let files = &manifest.files;
     let library_key = format!(
         "native/{}",
-        path.file_name().context("LIBRARY_NAME")?.to_string_lossy()
+        path.file_name()
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::LibraryName,
+                ""
+            ))?
+            .to_string_lossy()
     );
     ensure!(
         files.contains_key(&library_key)
             && files.contains_key("compiler-bridge.jar")
             && files.contains_key("maven-input-worker.jar"),
-        "BUNDLE_FILES_REQUIRED"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::BundleFilesRequired, "")
     );
     for (name, expected) in files {
-        ensure!(codeana_model::safe_path(name), "BUNDLE_UNSAFE_PATH");
         ensure!(
-            codeana_model::hash(std::fs::read(root.join(name))?)
-                == expected.as_str().context("BUNDLE_HASH")?,
-            "BUNDLE_HASH_MISMATCH: {name}"
+            codeana_model::safe_path(name),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::BundleUnsafePath, "")
+        );
+        ensure!(
+            codeana_model::hash(std::fs::read(root.join(name))?) == expected.as_str(),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::BundleHashMismatch,
+                name.to_string()
+            )
         );
     }
     Ok(root.join("compiler-bridge.jar"))

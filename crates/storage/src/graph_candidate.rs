@@ -19,13 +19,22 @@ impl Store {
             .map_err(anyhow::Error::msg)?;
         ensure!(
             header.profile == revision.profile && header.producer == revision.producer,
-            "RESULT_IDENTITY_MISMATCH"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::ResultIdentityMismatch, "")
         );
-        ensure!(self.head(&revision.target)? == expected, "HEAD_CONFLICT");
+        ensure!(
+            self.head(&revision.target)? == expected,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::HeadConflict, "")
+        );
         let baseline = if header.mode == "delta" {
-            ensure!(header.baseline == expected, "BASELINE_MISMATCH");
+            ensure!(
+                header.baseline == expected,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::BaselineMismatch, "")
+            );
             let r = self.read(expected)?;
-            ensure!(r.revision.profile == revision.profile, "PROFILE_MISMATCH");
+            ensure!(
+                r.revision.profile == revision.profile,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::ProfileMismatch, "")
+            );
             Some(r)
         } else {
             None
@@ -40,7 +49,10 @@ impl Store {
             let id = directory
                 .path()
                 .file_name()
-                .context("CANDIDATE_NAME")?
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::CandidateName,
+                    "",
+                ))?
                 .to_string_lossy()
                 .into_owned();
             lock.staged_candidates.insert(id.clone());
@@ -70,7 +82,10 @@ impl Store {
                     rusqlite::backup::StepResult::Busy | rusqlite::backup::StepResult::Locked => {
                         std::thread::sleep(Duration::from_millis(1))
                     }
-                    _ => anyhow::bail!("SQLITE_BACKUP_STEP"),
+                    _ => anyhow::bail!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::SqliteBackupStep,
+                        ""
+                    )),
                 }
             }
         }
@@ -180,8 +195,9 @@ impl Store {
             "INSERT OR REPLACE INTO project_meta VALUES('codeana.dropped_dangling',?)",
             [dropped.to_string()],
         )?;
-        db.execute_batch("COMMIT;DETACH DATABASE staged;")
-            .context("GRAPH_PROMOTION_DETACH")?;
+        db.execute_batch("COMMIT;DETACH DATABASE staged;").context(
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphPromotionDetach, ""),
+        )?;
         std::fs::remove_file(stage_path)?;
         phase_ms.insert(
             "promotion_calls_wiring".into(),
@@ -190,10 +206,13 @@ impl Store {
         started = std::time::Instant::now();
         check()?;
         let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
-        ensure!(integrity == "ok", "CORRUPT_CANDIDATE");
+        ensure!(
+            integrity == "ok",
+            codeana_model::DomainError::new(codeana_model::ErrorCode::CorruptCandidate, "")
+        );
         ensure!(
             !db.prepare("PRAGMA foreign_key_check")?.exists([])?,
-            "GRAPH_FOREIGN_KEY_CHECK"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphForeignKeyCheck, "")
         );
         db.execute(
             "INSERT INTO node_names(node_names) VALUES('integrity-check')",
@@ -257,7 +276,10 @@ impl Store {
         db.execute_batch(
             "PRAGMA journal_mode=WAL;PRAGMA synchronous=NORMAL;PRAGMA wal_checkpoint(TRUNCATE);",
         )
-        .context("GRAPH_FINALIZE_DURABILITY")?;
+        .context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphFinalizeDurability,
+            "",
+        ))?;
         phase_ms.insert(
             "statistics_finalize".into(),
             started.elapsed().as_millis() as u64,
@@ -282,12 +304,18 @@ fn validate_record(
     delta: bool,
 ) -> Result<()> {
     use codeana_contracts::graph::{Table, cell};
-    let table = Table::try_from(row.table).context("GRAPH_TABLE_UNKNOWN")?;
+    let table = Table::try_from(row.table).context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::GraphTableUnknown,
+        "",
+    ))?;
     let text = |index: usize| -> Result<Option<&str>> {
         match row.cells.get(index).and_then(|c| c.value.as_ref()) {
             None => Ok(None),
             Some(cell::Value::Text(v)) => Ok(Some(v)),
-            _ => anyhow::bail!("GRAPH_TEXT_COLUMN: {table:?}:{index}"),
+            _ => anyhow::bail!(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::GraphTextColumn,
+                format!("{table:?}:{index}")
+            )),
         }
     };
     let columns = match table {
@@ -306,16 +334,27 @@ fn validate_record(
     if let Some((source, identity)) = columns
         && let Some(path) = text(source)?.filter(|p| !p.is_empty() && *p != "*")
     {
-        ensure!(safe_path(path), "GRAPH_SOURCE_UNSAFE");
-        let unit = sources.get(path).context("GRAPH_SOURCE_NOT_CAPTURED")?;
+        ensure!(
+            safe_path(path),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphSourceUnsafe, "")
+        );
+        let unit = sources.get(path).context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphSourceNotCaptured,
+            "",
+        ))?;
         if let Some((module, scope)) = identity {
             if let Some(module) = text(module)? {
                 ensure!(
                     module == unit.module
                         || unit.module.is_empty() && unit.language.is_empty()
                         || module == "*" && matches!(table, Table::Diagnostic | Table::Coverage),
-                    "GRAPH_MODULE_MISMATCH: table={table:?} path={path} expected={} actual={module}",
-                    unit.module
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GraphModuleMismatch,
+                        format!(
+                            "table={table:?} path={path} expected={} actual={module}",
+                            unit.module
+                        )
+                    )
                 );
             }
             // Resource records inherit the owning compilation scope.
@@ -324,12 +363,21 @@ fn validate_record(
                     scope == unit.scope
                         || scope == "*" && matches!(table, Table::Diagnostic | Table::Coverage)
                         || unit.scope == "RESOURCE" && matches!(scope, "MAIN" | "TEST"),
-                    "GRAPH_SCOPE_MISMATCH"
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GraphScopeMismatch,
+                        ""
+                    )
                 );
             }
         }
         if delta {
-            ensure!(replaced.contains(path), "GRAPH_SOURCE_NOT_REPLACED");
+            ensure!(
+                replaced.contains(path),
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::GraphSourceNotReplaced,
+                    ""
+                )
+            );
         }
     }
     if table == Table::ProjectMeta
@@ -343,7 +391,7 @@ fn validate_record(
                     | "codeana.profile"
                     | "codeana.overview_counts"
             ),
-            "GRAPH_META_RESERVED"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphMetaReserved, "")
         );
     }
     Ok(())
@@ -376,11 +424,20 @@ fn seed_baseline(
 ) -> Result<()> {
     stage.execute(
         "ATTACH DATABASE ? AS baseline",
-        [db.path().context("BASELINE_DATABASE_PATH")?],
+        [db.path().context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::BaselineDatabasePath,
+            "",
+        ))?],
     )?;
     stage.execute_batch("CREATE TEMP TABLE replaced(source_file TEXT PRIMARY KEY);")?;
     for owner in &header.replacements {
-        ensure!(owner.kind == "source", "GRAPH_REPLACEMENT_SOURCE_REQUIRED");
+        ensure!(
+            owner.kind == "source",
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::GraphReplacementSourceRequired,
+                ""
+            )
+        );
         stage.execute("INSERT OR IGNORE INTO replaced VALUES(?)", [&owner.id])?;
     }
     check()?;
@@ -546,7 +603,10 @@ mod tests {
                     .into_iter()
                     .map(Ok)
                     .chain(std::iter::once(Err(anyhow::anyhow!(
-                        "GRAPH_STREAM_INCOMPLETE"
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::GraphStreamIncomplete,
+                            ""
+                        )
                     )))),
                 &first.id,
                 || Ok(()),
@@ -592,7 +652,10 @@ mod tests {
                 "",
                 || {
                     count.set(count.get() + 1);
-                    ensure!(count.get() < 3, "CANCELLED");
+                    ensure!(
+                        count.get() < 3,
+                        codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
+                    );
                     Ok(())
                 },
                 |_| Ok(()),

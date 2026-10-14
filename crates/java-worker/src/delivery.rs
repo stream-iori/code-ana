@@ -47,17 +47,23 @@ impl Encoder {
     }
     pub fn push(&mut self, fact: Row) -> Result<()> {
         let bytes = fact.encode_to_vec();
-        ensure!(bytes.len() <= MAX_FRAME, "FACT_FRAME_BUDGET");
+        ensure!(
+            bytes.len() <= MAX_FRAME,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::FactFrameBudget, "")
+        );
         ensure!(
             self.count < self.limits.facts
                 && self.bytes + bytes.len() as u64 + 4 <= self.limits.bytes,
-            "FACT_ARCHIVE_BUDGET"
+            codeana_model::DomainError::new(codeana_model::ErrorCode::FactArchiveBudget, "")
         );
         self.bytes += bytes.len() as u64 + 4;
         graph_archive::update_digest(&mut self.checksum, &bytes);
         self.count += 1;
         let size = fact.encoded_len() + 10;
-        ensure!(size <= MAX_FRAME - 4096, "FACT_FRAME_BUDGET");
+        ensure!(
+            size <= MAX_FRAME - 4096,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::FactFrameBudget, "")
+        );
         if self.batch.len() == 64 || self.batch_bytes + size > MAX_FRAME - 4096 {
             self.flush()?;
         }
@@ -69,7 +75,10 @@ impl Encoder {
         if !self.batch.is_empty() {
             self.sender
                 .blocking_send(Event::Chunk(std::mem::take(&mut self.batch)))
-                .context("DELIVERY_CANCELLED")?;
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::DeliveryCancelled,
+                    "",
+                ))?;
             self.batch_bytes = 0;
             self.chunks += 1;
         }
@@ -84,7 +93,10 @@ impl Encoder {
                 count: self.count,
                 checksum: format!("{:x}", self.checksum.finalize()),
             })
-            .context("DELIVERY_CANCELLED")?;
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::DeliveryCancelled,
+                "",
+            ))?;
         Ok(())
     }
 }

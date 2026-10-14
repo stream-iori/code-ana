@@ -21,7 +21,7 @@ pub fn row(table: Table, values: Vec<Value>) -> Row {
     }
 }
 fn attr(f: &Fact, key: &str, default: Value) -> Value {
-    f.attributes.get(key).cloned().unwrap_or(default)
+    f.attributes.wire_map().get(key).cloned().unwrap_or(default)
 }
 pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
     let mut output = Vec::new();
@@ -78,7 +78,7 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
         let scope = source.map(|s| s.scope.as_str()).unwrap_or("MAIN");
         match f.kind {
             FactKind::Declaration | FactKind::ExternalSymbol => {
-                let mut metadata = f.attributes.clone();
+                let mut metadata = f.attributes.wire_map();
                 if let Some(span) = &f.span {
                     metadata.insert("fixture_span".into(), json!(span));
                 }
@@ -158,7 +158,7 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
                 ));
             }
             FactKind::CallSite => {
-                let mut metadata = f.attributes.clone();
+                let mut metadata = f.attributes.wire_map();
                 if let Some(span) = &f.span {
                     metadata.insert("fixture_span".into(), json!(span));
                 }
@@ -200,7 +200,7 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
                     target.cells[22] = Cell {
                         value: Some(cell::Value::Integer(position as i64)),
                     };
-                    let mut metadata = site.attributes.clone();
+                    let mut metadata = site.attributes.wire_map();
                     if let Some(span) = &site.span {
                         metadata.insert("fixture_span".into(), json!(span));
                     }

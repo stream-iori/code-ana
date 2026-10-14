@@ -3,7 +3,7 @@
 use super::*;
 
 pub(super) fn adjacent(
-    reader: &dyn GraphReader,
+    reader: &dyn GraphAccess,
     ids: &[String],
     incoming: bool,
     kinds: &[&str],
@@ -21,7 +21,10 @@ pub(super) fn adjacent(
                     ..Default::default()
                 },
             )?);
-            ensure!(output.len() <= 100000, "HIERARCHY_WORK_BUDGET");
+            ensure!(
+                output.len() <= 100000,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::HierarchyWorkBudget, "")
+            );
         }
     }
     output.sort_by(|a, b| a.id.cmp(&b.id));
@@ -36,14 +39,15 @@ fn limit(evidence: &mut Evidence, name: &str) {
 pub(super) fn instantiability(fact: &Fact) -> (&'static str, &'static str) {
     let modifier = |name| {
         fact.attributes
-            .get("modifiers")
-            .and_then(Value::as_array)
-            .is_some_and(|items| items.iter().any(|item| item.as_str() == Some(name)))
+            .modifiers
+            .as_ref()
+            .is_some_and(|items| items.iter().any(|item| item == name))
     };
     match fact
         .attributes
-        .get("element_kind")
-        .and_then(Value::as_str)
+        .element_kind
+        .as_ref()
+        .map(String::as_str)
         .unwrap_or("")
     {
         "INTERFACE" => ("no", "java.interface"),
@@ -59,11 +63,11 @@ pub(super) fn instantiability(fact: &Fact) -> (&'static str, &'static str) {
 }
 
 pub(super) fn runtime(
-    reader: &dyn GraphReader,
+    reader: &dyn GraphAccess,
     req: &Request,
     roots: Vec<Fact>,
     evidence: &mut Evidence,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Record>> {
     let mut output = BTreeMap::new();
     let mut work = 0usize;
     let filter = if req.instantiability.is_empty() {
@@ -71,7 +75,10 @@ pub(super) fn runtime(
     } else {
         &req.instantiability
     };
-    ensure!(req.relation.is_empty(), "RUNTIME_RELATION_NOT_SUPPORTED");
+    ensure!(
+        req.relation.is_empty(),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::RuntimeRelationNotSupported, "")
+    );
     let world = if req.analysis_world.is_empty() {
         "workspace-open"
     } else {
@@ -84,9 +91,9 @@ pub(super) fn runtime(
     for root in roots {
         ensure!(
             root.is_public_entity()
-                && (root.attributes.get("entity_kind").and_then(Value::as_str) == Some("type")
+                && (root.attributes.entity_kind.as_ref().map(String::as_str) == Some("type")
                     || matches!(
-                        root.attributes.get("element_kind").and_then(Value::as_str),
+                        root.attributes.element_kind.as_ref().map(String::as_str),
                         Some(
                             "CLASS"
                                 | "INTERFACE"
@@ -97,7 +104,10 @@ pub(super) fn runtime(
                                 | "ANONYMOUS_CLASS"
                         )
                     )),
-            "RUNTIME_IMPLEMENTATIONS_REQUIRES_TYPE"
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::RuntimeImplementationsRequiresType,
+                ""
+            )
         );
         let mut visited = BTreeSet::from([root.id.clone()]);
         let mut frontier = BTreeMap::from([(root.id, Vec::<String>::new())]);
@@ -142,10 +152,19 @@ pub(super) fn runtime(
                     if filter != "all" && filter != state {
                         continue;
                     }
-                    let mut record = serde_json::to_value(&fact)?;
-                    record["runtime_implementation"] = json!({"instantiability":state,
-                        "reason":reason,"world":world,"proof":next[&fact.id],"depth":depth});
-                    output.entry(fact.id).or_insert(record);
+                    let id = fact.id.clone();
+                    let record = Record::Fact(Box::new(FactRecord {
+                        fact,
+                        depth: None,
+                        runtime_implementation: Some(RuntimeImplementation {
+                            instantiability: state.into(),
+                            reason: reason.into(),
+                            world: world.into(),
+                            proof: next[&id].clone(),
+                            depth,
+                        }),
+                    }));
+                    output.entry(id).or_insert(record);
                 }
             }
             frontier = next;
@@ -164,11 +183,11 @@ pub(super) fn runtime(
 }
 
 pub(super) fn relations(
-    reader: &dyn GraphReader,
+    reader: &dyn GraphAccess,
     req: &Request,
     roots: Vec<Fact>,
     evidence: &mut Evidence,
-) -> Result<Vec<Value>> {
+) -> Result<Vec<Record>> {
     let kinds: &[&str] = match req.operation.as_str() {
         "type-relations" if req.relation == "wires_possible" => &["wires_possible"],
         "type-relations" => &["extends", "implements"],
@@ -176,7 +195,7 @@ pub(super) fn relations(
     };
     ensure!(
         req.relation.is_empty() || kinds.contains(&req.relation.as_str()),
-        "HIERARCHY_RELATION_INVALID"
+        codeana_model::DomainError::new(codeana_model::ErrorCode::HierarchyRelationInvalid, "")
     );
     let selected = if req.relation.is_empty() {
         kinds.to_vec()
@@ -218,7 +237,7 @@ pub(super) fn relations(
             if edge.relation == "wires_possible" {
                 evidence.semantic = false;
                 evidence.reasons.push(
-                    if edge.attributes.get("via").and_then(Value::as_str)
+                    if edge.attributes.via.as_ref().map(String::as_str)
                         == Some("xml_configuration")
                     {
                         "static_xml_configuration_open_world"
@@ -232,11 +251,13 @@ pub(super) fn relations(
                 evidence.semantic = false;
                 evidence.reasons.push(format!("relation:{}", edge.id));
             }
-            let mut record = serde_json::to_value(&edge)?;
-            if req.transitive {
-                record["depth"] = json!(depth);
-            }
-            output.entry(edge.id).or_insert(record);
+            let id = edge.id.clone();
+            let record = Record::Fact(Box::new(FactRecord {
+                fact: edge,
+                depth: req.transitive.then_some(depth),
+                runtime_implementation: None,
+            }));
+            output.entry(id).or_insert(record);
         }
         frontier = next;
     }

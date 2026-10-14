@@ -5,13 +5,14 @@ use serde_json::Value;
 const ERROR: &str = "INVALID_JAVA_XML_CONFIGURATION";
 
 pub(crate) fn validate(fact: &Fact, size: Option<u64>) -> Result<(), String> {
-    let Some(model) = fact.attributes.get("xml_configuration_model") else {
+    let attributes = fact.attributes.wire_map();
+    let Some(model) = attributes.get("xml_configuration_model") else {
         return Ok(());
     };
     let fail = || ERROR.to_string();
     if fact.kind != FactKind::Facet
         || fact.relation != "java.bean"
-        || fact.attributes.get("kind").and_then(Value::as_str) != Some("xml_bean")
+        || attributes.get("kind").and_then(Value::as_str) != Some("xml_bean")
         || fact.owner.kind != "resource"
         || size.is_none()
         || model.get("version").and_then(Value::as_u64) != Some(1)
@@ -209,11 +210,13 @@ mod tests {
             ("/nodes/1/metadata/xmlKind", json!("type")),
         ] {
             let mut bad = good.clone();
-            *bad.attributes
+            let mut attrs = bad.attributes.wire_map();
+            *attrs
                 .get_mut("xml_configuration_model")
                 .unwrap()
                 .pointer_mut(path)
                 .unwrap() = value;
+            bad.attributes = crate::FactAttributes::from_wire_map(attrs).unwrap();
             assert_eq!(validate(&bad, Some(100)), Err(ERROR.into()), "{path}");
         }
         let mut bad = good;

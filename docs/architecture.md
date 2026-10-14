@@ -1,6 +1,6 @@
 # 总体架构
 
-对齐 2026-10-13。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
+对齐 2026-10-14。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
 CLI
@@ -46,6 +46,8 @@ CLI
 | lang-java-adapotr/java-bridge | 捕获输入、编译器桥、行输出和 Maven metadata 桥 | Java 8 编译器桥独立构建 |
 | lang-java-adapotr/native-bridge、jvm-runner | Native C 入口 / 显式 JVM 执行入口 | Java 25 构建环境与目标 Java 8 分开 |
 | tests、scripts | fixture、故障/产品回归、构建/打包 | 开发可显式编译 fixture，不授予产品自动构建权限 |
+
+Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使用 `IndexCommand` / `QueryRequest`。查询消费按能力拆分的读接口并输出 `Record`；未知语言 metadata 仅透传。索引阶段持有 worker/candidate，任务与发布接入窄端口，提交后的报告/确认不改变发布事实。结构与兼容细节见 [Rust 类型改造](implementation/rust-type-refactor.md)。
 
 `lang-adaptor/` 已删除。rust-analyzer 适配器仍为 [后续设计](modules/rust-worker.md)，不存在已交付的 Rust 语言 worker。
 
