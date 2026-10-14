@@ -27,7 +27,7 @@ class NativeInstallation(unittest.TestCase):
             (self.bin/name).write_bytes(b'original application')
         library = 'native/libcodeana_java.' + ('dylib' if install.os.uname().sysname=='Darwin' else 'so')
         self.names = [library,'compiler-bridge.jar','maven-input-worker.jar']
-        self.versions = dict(backend='native',worker_protocol=18,fact_ir=2,adapter='fixture',analysis_request=9,abi=4)
+        self.versions = dict(backend='native',worker_protocol=19,fact_ir=2,adapter='fixture',analysis_request=10,abi=4)
         for directory, prefix, gc in ((self.source,'new-','G1'),(self.target,'old-','serial')):
             for name in self.names:
                 p=directory/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(prefix+name)

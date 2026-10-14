@@ -43,7 +43,7 @@ class NativeLifecycle(unittest.TestCase):
         self.gc = manifest['native_gc']
         self.assertEqual(manifest['backend'], 'native')
         self.assertEqual(manifest['abi'], 4)
-        self.assertEqual(manifest['analysis_request'], 9)
+        self.assertEqual(manifest['analysis_request'], 10)
         for name, expected in manifest['files'].items():
             path = bundle.parent / name
             self.assertTrue(path.resolve().is_relative_to(bundle.parent))
@@ -70,7 +70,7 @@ class NativeLifecycle(unittest.TestCase):
         source.write_text('class A {String value="中文😀"; void run(){target();} void target(){}}')
         unit = dict(path='src/A.java', input=str(source), hash=hashlib.sha256(source.read_bytes()).hexdigest(),
                     module='.', world='main', scope='MAIN', publish=True)
-        self.request = dict(version=9, full=True, facts=True,
+        self.request = dict(version=10, full=True, facts=True,
             java_home=str(pathlib.Path.home() / '.sdkman/candidates/java/8.0.492-zulu'),
             scratch=str(self.root), compiler_timeout_seconds=30,
             contexts=[dict(context='.@MAIN', module='.', world='main', scope='MAIN',

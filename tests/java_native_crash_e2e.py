@@ -15,7 +15,18 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def require_stopped_runtime(binary_dir):
+    """Fault injection replaces a shared installed bundle; require exclusive use."""
+    prefix = str(binary_dir.resolve()) + '/codeana-'
+    active = subprocess.check_output(['ps', '-axo', 'pid=,comm='], text=True)
+    for line in active.splitlines():
+        fields = line.strip().split(None, 1)
+        if len(fields) == 2 and fields[1].startswith(prefix):
+            raise RuntimeError('STOP_RUNTIME_BEFORE_NATIVE_FAULT_TEST: ' + fields[0])
+
+
 def main():
+    require_stopped_runtime(product_support.BIN)
     case = product_support.JavaProductHarness()
     case.setUp()
     previous_bin = product_support.BIN
@@ -23,6 +34,7 @@ def main():
     try:
         good = case.cli('index', timeout=150)[1]['revision']
         case.stop()
+        require_stopped_runtime(previous_bin)
         # Keep the already authorized executable and bundle paths. Only this
         # stopped test uses the temporary fault library, restored in finally.
         binary_dir=previous_bin

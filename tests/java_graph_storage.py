@@ -1,12 +1,120 @@
 #!/usr/bin/env python3
 """Production typed Anatomist graph regressions; uses the existing executable paths."""
-import contextlib, json, os, sqlite3, unittest
-from product_support import JavaProductHarness
+import contextlib, json, os, sqlite3, unittest, subprocess, zipfile
+from product_support import JavaProductHarness, ROOT, BIN, JDK
 
 TABLES=('nodes','edges','annotations','annotation_meta_owned','semantic_annotations',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
 class GraphStorage(JavaProductHarness):
+    def test_maven_fallback_transitions_preserve_source_and_strict_head(self):
+        repo=self.root/'repository';repo.mkdir()
+        settings=self.root/'settings.xml'
+        settings.write_text('<settings><localRepository>'+str(repo)+'</localRepository></settings>')
+        dependency=self.root/'External.java'
+        dependency.write_text('package dep; public class External {public static void work(){}}')
+        classes=self.root/'classes';classes.mkdir()
+        subprocess.run([str(JDK/'bin/javac'),'-d',str(classes),str(dependency)],check=True,capture_output=True)
+        artifact=repo/'fixture/external/1';artifact.mkdir(parents=True)
+        (artifact/'external-1.pom').write_text('<project><modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>external</artifactId><version>1</version></project>')
+        jar=artifact/'external-1.jar'
+        with zipfile.ZipFile(jar,'w') as out:out.write(classes/'dep/External.class','dep/External.class')
+        original=jar.read_bytes()
+        (self.project/'pom.xml').write_text('''<project><modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>parent</artifactId><version>1</version><packaging>pom</packaging><properties><maven.compiler.source>1.8</maven.compiler.source><maven.compiler.target>1.8</maven.compiler.target></properties><modules><module>lib</module><module>app</module></modules></project>''')
+        parent='<parent><groupId>fixture</groupId><artifactId>parent</artifactId><version>1</version></parent>'
+        for module in ('lib','app'):
+            base=self.project/module;(base/'src/main/java'/module).mkdir(parents=True)
+            deps='' if module=='lib' else '<dependencies><dependency><groupId>fixture</groupId><artifactId>lib</artifactId><version>1</version></dependency><dependency><groupId>fixture</groupId><artifactId>external</artifactId><version>1</version></dependency></dependencies>'
+            (base/'pom.xml').write_text('<project><modelVersion>4.0.0</modelVersion>'+parent+'<artifactId>'+module+'</artifactId>'+deps+'</project>')
+        library=self.project/'lib/src/main/java/lib/Library.java'
+        library.write_text('package lib; public class Library {public static void work(){}}')
+        caller=self.project/'app/src/main/java/app/App.java'
+        caller.write_text('package app; class App {void run(){lib.Library.work();dep.External.work();"ok".trim();}}')
+        (self.project/'.code-ana/config.toml').write_text('''schema_version=1
+kind="project"
+[scan]
+scopes=["MAIN"]
+[languages.java]
+enabled=true
+[languages.java.discovery]
+build_system="maven"
+inputs_manifest=".code-ana/inputs.json"
+[languages.java.analysis]
+source_version="8"
+toolchain="java8"
+[languages.java.extensions.spring]
+enabled=false
+[languages.java.extensions.sofa]
+enabled=false
+''')
+        def export(selected=False):
+            output=self.project/'.code-ana/next-inputs.json'
+            args=[str(BIN/'codeana-cli'),'--project',str(self.project),'java-inputs','export','--output',str(output),'--settings',str(settings),'--offline','--scope','MAIN']
+            if bundle:=os.environ.get('CODEANA_TEST_JAVA_BUNDLE'):
+                # JVM's descriptor names its bundle directory; Native's names native/.
+                extension=os.path.join(bundle,'..' if os.environ.get('CODEANA_JAVA_BACKEND')=='native' else '.', 'maven-input-worker.jar')
+                self.assertTrue(os.path.isfile(extension),'sealed Maven extension missing: '+extension)
+                args+=['--extension',extension]
+            if selected:args+=['--module','app']
+            process=subprocess.run(args,capture_output=True,text=True,timeout=90)
+            self.assertEqual(process.returncode,0,process.stdout+process.stderr)
+            manifest=json.loads(output.read_text())
+            output.replace(self.project/'.code-ana/inputs.json')
+            return manifest
+        def targets(revision):
+            with contextlib.closing(sqlite3.connect(self.home/'revisions'/revision/'facts.db')) as db:
+                return {r[0] for r in db.execute('SELECT coalesce(n.symbol_id,t.external_target_symbol) FROM call_site_targets t LEFT JOIN nodes n ON n.id=t.target_id')}
+        export();_,first=self.cli('index','--full',timeout=180)
+        self.assertIn('dep.External#work()',targets(first['revision']))
+        jar.rename(jar.with_suffix('.unavailable'))
+        manifest=export()
+        self.assertEqual(manifest['dependency_mode'],'source_only_fallback')
+        records,degraded=self.cli('index',timeout=180)
+        self.assertEqual(records[0]['mode'],'full')
+        self.assertEqual(records[0]['analysis_mode'],'source_only')
+        self.assertFalse(degraded['evidence']['semantic'])
+        self.assertIn('CLASSPATH_UNAVAILABLE',degraded['evidence']['reasons'])
+        report=self.cli('report',degraded['report'])[0][0]
+        self.assertEqual(report['summary']['analysis_mode'],'source_only')
+        self.assertEqual(report['summary']['classpath_status'],'unavailable')
+        self.assertIn('lib.Library#work()',targets(degraded['revision']))
+        self.assertNotIn('dep.External#work()',targets(degraded['revision']))
+        with contextlib.closing(sqlite3.connect(self.home/'revisions'/degraded['revision']/'facts.db')) as db:
+            self.assertGreater(db.execute("SELECT count(*) FROM index_diagnostics WHERE code='CLASSPATH_UNAVAILABLE'").fetchone()[0],0)
+        methods,_=self.cli('resolve','app.App#run()')
+        self.assertTrue(methods)
+        self.assertTrue(self.cli('source',methods[0]['id'])[0])
+        self.assertTrue(self.cli('search-code','Library')[0])
+        _,strict=self.cli('index','--strict',code=3,timeout=180)
+        self.assertEqual(strict['publication'],'retained')
+        self.assertEqual(self.cli('overview')[1]['revision'],degraded['revision'])
+        # Delta and no-change paths retain exactly the same global warning counts.
+        caller.write_text(caller.read_text().replace('"ok"','"changed"'))
+        _,delta=self.cli('index',timeout=180)
+        _,fresh=self.cli('index','--full',timeout=180)
+        self.assertEqual(self.canonical(delta['revision']),self.canonical(fresh['revision']))
+        records,unchanged=self.cli('index',timeout=180)
+        self.assertEqual(records[0]['analysis_mode'],'source_only')
+        self.assertFalse(unchanged['evidence']['semantic'])
+        jar.write_bytes(original);export()
+        records,recovered=self.cli('index',timeout=180)
+        self.assertEqual(records[0]['mode'],'full')
+        self.assertIn('dep.External#work()',targets(recovered['revision']))
+        old_report=self.cli('report',degraded['report'])[0][0]
+        self.assertEqual(old_report['summary']['analysis_mode'],'source_only')
+        self.assertFalse(old_report['summary']['evidence']['semantic'])
+        _,fresh=self.cli('index','--full',timeout=180)
+        self.assertEqual(self.canonical(recovered['revision']),self.canonical(fresh['revision']))
+        # Selected=false prerequisites remain semantic inputs in source-only mode.
+        jar.rename(jar.with_suffix('.missing'));export(selected=True)
+        _,selected=self.cli('index',timeout=180)
+        self.assertIn('lib.Library#work()',targets(selected['revision']))
+        with contextlib.closing(sqlite3.connect(self.home/'revisions'/selected['revision']/'facts.db')) as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM nodes WHERE source_file LIKE 'lib/%'").fetchone()[0],0)
+        # Missing unused dependencies still fail the strict quality gate.
+        caller.write_text('package app; class App {void run(){lib.Library.work();}}')
+        self.cli('index','--strict',code=3,timeout=180)
+
     # Shared fixture helpers never contain legacy acceptance cases.
     def canonical(self,revision):
         with contextlib.closing(sqlite3.connect(self.home/'revisions'/revision/'facts.db')) as db:
@@ -22,7 +130,16 @@ class GraphStorage(JavaProductHarness):
                 graph[table]=sorted(db.execute('SELECT '+','.join(cols)+' FROM '+table).fetchall(),key=repr)
             graph['call_sites']=sorted(db.execute('''SELECT hex(c.stable_hash),o.caller_id,o.source_file,c.begin_line,c.begin_column,c.end_line,c.end_column,c.ordinal,c.context,c.syntax_target,c.receiver_static_type,c.dispatch_kind,c.metadata,c.origin,c.resolution_status,c.producer_id,c.language,c.provider_id FROM call_sites c JOIN call_site_owners o USING(owner_pk)''').fetchall(),key=repr)
             graph['call_site_targets']=sorted(db.execute('''SELECT hex(c.stable_hash),t.target_id,t.external_target_fqn,t.external_target_symbol,t.external_target_language,t.external_target_provider_id,t.resolution_status,t.confidence,t.producer_id FROM call_site_targets t JOIN call_sites c ON c.site_pk=t.call_site_pk''').fetchall(),key=repr)
-            return graph
+            # Compare structured JSON by value. javac diagnostic sample_details can
+            # serialize maps in a different key order in distinct compiler processes;
+            # production storage still retains the original bytes unchanged.
+            def canonical_cell(value):
+                if isinstance(value,str) and value.startswith(('{','[')):
+                    try:return json.dumps(json.loads(value),sort_keys=True,ensure_ascii=False)
+                    except ValueError:pass
+                return value
+            return {table:sorted([tuple(canonical_cell(v) for v in row) for row in rows],key=repr)
+                    for table,rows in graph.items()}
 
     def test_graph_full_delta_delete_and_old_revision(self):
         (self.project/'src/p/Extra.java').write_text('package p; @Deprecated class Extra { String read(Service s){return s.greet("汉字🧪");} }')
@@ -130,6 +247,7 @@ class GraphStorage(JavaProductHarness):
 # Explicit suite avoids inheriting the legacy capability matrix.
 def load_tests(loader,tests,pattern):
     names = [
+        'test_maven_fallback_transitions_preserve_source_and_strict_head',
         'test_graph_full_delta_delete_and_old_revision',
         'test_search_calls_source_and_external_resolution',
         'test_xml_resource_identity_and_incremental_equivalence',

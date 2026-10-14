@@ -25,10 +25,10 @@ class StableRuntimeTests(unittest.TestCase):
             for name in (runtime,'compiler-bridge.jar','maven-input-worker.jar'):
                 p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(backend+name);files[name]=stable.sha256(p)
             manifest=source/('manifest.json' if backend=='jvm' else 'native/manifest.json')
-            manifest.write_text(json.dumps(dict(files=files,worker_protocol=18,adapter='test',abi=4 if backend=='native' else None,fact_ir=2,analysis_request=9,native_gc='G1' if backend=='native' else None)))
+            manifest.write_text(json.dumps(dict(files=files,worker_protocol=19,adapter='test',abi=4 if backend=='native' else None,fact_ir=2,analysis_request=10,native_gc='G1' if backend=='native' else None)))
         def probe(command,**kwargs):
             backend=command[command.index('--backend')+1]
-            info=dict(backend=backend,worker_protocol=18,fact_ir=2,adapter='test',analysis_request=9)
+            info=dict(backend=backend,worker_protocol=19,fact_ir=2,adapter='test',analysis_request=10)
             info['abi']=4 if backend=='native' else None
             self.assertEqual(Path(command[0]),self.bins/'codeana-java-worker')
             return SimpleNamespace(returncode=0,stdout=json.dumps(info),stderr='')

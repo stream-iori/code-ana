@@ -15,7 +15,7 @@ class JvmBundleTests(unittest.TestCase):
     def test_manifest_binds_current_jvm_artifacts(self):
         manifest = json.loads((BUNDLE / 'manifest.json').read_text())
         self.assertEqual(manifest['backend'], 'jvm')
-        self.assertEqual(manifest['analysis_request'], 9)
+        self.assertEqual(manifest['analysis_request'], 10)
         self.assertEqual(manifest['target_java'], [8])
         self.assertIn('runner.jar', manifest['files'])
         self.assertIn('compiler-bridge.jar', manifest['files'])

@@ -73,7 +73,7 @@ class MavenAlignment(unittest.TestCase):
 
     def export(self, **options):
         output = self.project / ('out-' + str(len(list(self.project.glob('out-*')))) + '.json')
-        return EXPORTER.export(self.project, output, 'mvn', settings=self.settings, offline=True, **options)
+        return EXPORTER.export(self.project, output, 'mvn', settings=self.settings, offline=True, extension=ROOT / 'lang-java-adapotr/target/maven-input-worker.jar', **options)
 
     def app(self, result):
         return next(m for m in result['modules'] if m['id'] == 'app')
@@ -92,7 +92,7 @@ class MavenAlignment(unittest.TestCase):
         self.assertEqual(self.artifacts(app, 'MAIN'), {'fixture.external:comp:2', 'fixture.external:profile:1'})
         self.assertEqual(self.artifacts(app, 'TEST'), {'fixture.external:comp:2', 'fixture.external:profile:1',
                                                      'fixture.external:test:1', 'fixture.external:runtime:1'})
-        self.assertEqual(app['source_roots'], [{'path': 'code', 'scope': 'MAIN'}, {'path': 'checks', 'scope': 'TEST'}])
+        self.assertEqual(app['source_roots'], [{'path': 'code', 'scope': 'MAIN', 'generated': False, 'generated_from': {}}, {'path': 'checks', 'scope': 'TEST', 'generated': False, 'generated_from': {}}])
         self.assertFalse(list(self.project.rglob('*.class')))
         self.assertFalse((self.project / 'app/custom/out').exists())
 
@@ -103,8 +103,9 @@ class MavenAlignment(unittest.TestCase):
         app = self.app(result)
         self.assertEqual(set(app['classpath']), {'MAIN'})
         self.assertFalse(next(m for m in result['modules'] if m['id'] == 'lib')['selected'])
-        with self.assertRaisesRegex(ValueError, 'MAVEN_INPUTS_FAILED'):
-            self.export(modules=('app',), scopes=('MAIN', 'TEST'))
+        failed = self.export(modules=('app',), scopes=('MAIN', 'TEST'))
+        self.assertEqual(failed['dependency_mode'], 'source_only_fallback')
+        self.assertFalse(failed['resolved_classpath'])
 
     def test_selected_consumer_preserves_provider_own_provided_and_optional_classpath(self):
         result = self.export(modules=('app',), scopes=('MAIN',))
@@ -170,11 +171,51 @@ class MavenAlignment(unittest.TestCase):
         self.assertEqual(result['receipt']['prerequisite_classpath_rounds'], 2)
         self.assertFalse(list(self.project.rglob('*.class')))
 
+    def test_dependency_failure_discards_all_successful_classpaths(self):
+        # lib resolves first; a missing app archive must discard lib's successful jars.
+        pom = self.project / 'app/pom.xml'
+        pom.write_text(pom.read_text().replace('</dependencies>', dependency('missing-app') + '</dependencies>'))
+        result = self.export(scopes=('MAIN',))
+        self.assertEqual(result['dependency_mode'], 'source_only_fallback')
+        self.assertEqual(result['dependency_failure']['module'], 'app')
+        self.assertEqual(result['dependency_failure']['pom'], 'app/pom.xml')
+        self.assertEqual(result['dependency_failure']['round'], 0)
+        self.assertIn('missing-app', result['dependency_failure']['coordinate'])
+        self.assertEqual(len(result['receipt']['dependency_failure_sha256']), 64)
+        self.assertEqual(result['receipt']['inputs_sha256'], result['receipt']['metadata_sha256'])
+        self.assertEqual(self.app(result)['dependencies']['MAIN'], ['lib'])
+        for module in result['modules']:
+            self.assertFalse(module['resolved_classpath'])
+            self.assertTrue(all(not jars for jars in module['classpath'].values()))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
+    def test_prerequisite_failure_uses_verified_original_topology(self):
+        # provided is invisible to the consumer, so failure occurs in round 1.
+        (self.repo / 'fixture/external/provided/1/provided-1.jar').unlink()
+        result = self.export(modules=('app',), scopes=('MAIN',))
+        self.assertEqual(result['dependency_mode'], 'source_only_fallback')
+        self.assertEqual(result['dependency_failure']['module'], 'lib')
+        self.assertEqual(result['dependency_failure']['pom'], 'lib/pom.xml')
+        self.assertEqual(result['dependency_failure']['round'], 1)
+        self.assertEqual(result['receipt']['prerequisite_classpath_rounds'], 1)
+        self.assertEqual(self.app(result)['dependencies']['MAIN'], ['lib'])
+        self.assertTrue(all(not jars for m in result['modules'] for jars in m['classpath'].values()))
+        self.assertEqual(result['receipt']['maven_processes'], 1)
+
+    def test_model_failure_does_not_degrade_or_create_output(self):
+        self.write('app/pom.xml', '<project>broken')
+        before = set(self.project.glob('out-*'))
+        with self.assertRaisesRegex(ValueError, 'MAVEN_INPUTS_FAILED'):
+            self.export()
+        self.assertEqual(set(self.project.glob('out-*')), before)
+
     def test_source_only_needs_no_external_archives(self):
         import shutil
         shutil.rmtree(self.repo)
         result = self.export(source_only=True, scopes=('MAIN',))
         self.assertFalse(result['resolved_classpath'])
+        self.assertEqual(result['dependency_mode'], 'source_only_requested')
+        self.assertIsNone(result['dependency_failure'])
         self.assertEqual(self.app(result)['dependencies']['MAIN'], ['lib'])
         self.assertEqual(self.app(result)['classpath']['MAIN'], [])
 
@@ -182,7 +223,7 @@ class MavenAlignment(unittest.TestCase):
         result = self.export(modules=('app',), scopes=('TEST',))
         app = self.app(result)
         self.assertEqual(result['scopes'], ['TEST'])
-        self.assertEqual(app['source_roots'], [{'path':'code','scope':'MAIN'}, {'path':'checks','scope':'TEST'}])
+        self.assertEqual(app['source_roots'], [{'path':'code','scope':'MAIN','generated':False,'generated_from':{}}, {'path':'checks','scope':'TEST','generated':False,'generated_from':{}}])
         self.assertEqual(app['dependencies'], {'MAIN':['lib'], 'TEST':['lib']})
         self.assertEqual(self.artifacts(app,'MAIN'), {'fixture.external:comp:2'})
         self.assertEqual(self.artifacts(app,'TEST'), {'fixture.external:comp:2','fixture.external:test:1','fixture.external:runtime:1'})
