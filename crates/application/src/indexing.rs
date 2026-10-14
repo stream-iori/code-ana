@@ -24,6 +24,10 @@ struct AnalyzedCandidate {
 struct IndexReceipt<'a> {
     revision: &'a str,
     mode: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    analysis_mode: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    classpath_status: Option<&'a str>,
     facts: u64,
     manifest: String,
     profile: &'a str,
@@ -628,6 +632,8 @@ impl Engine {
             records: vec![Record::display(&IndexReceipt {
                 revision: &revision.id,
                 mode: result_mode.as_str(),
+                analysis_mode: summary.analysis_mode.as_deref(),
+                classpath_status: summary.classpath_status.as_deref(),
                 facts: summary.fact_count,
                 manifest: revision.manifest.id(),
                 profile: &revision.profile,
@@ -641,6 +647,8 @@ impl Engine {
         if c.effective.config.observability.mode != "off" {
             t.report = id.into();
             let report_summary = ReportSummary {
+                analysis_mode: summary.analysis_mode.clone(),
+                classpath_status: summary.classpath_status.clone(),
                 facts: summary.fact_count,
                 files: revision.manifest.files.len(),
                 counts: summary.counts.clone(),

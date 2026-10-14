@@ -20,6 +20,10 @@ pub(super) struct ReportDiagnostics {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct ReportSummary {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classpath_status: Option<String>,
     pub facts: u64,
     pub files: usize,
     pub counts: BTreeMap<String, u64>,

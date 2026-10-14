@@ -1441,7 +1441,7 @@ mod tests {
         std::fs::write(root.join("tests/Check.java"), "class Check { App app; }").unwrap();
         std::fs::write(root.join("lib/src/Api.java"), "class Api {}").unwrap();
         std::fs::write(root.join("pom.xml"), "<project/>").unwrap();
-        let metadata = serde_json::json!({"schema_version":3,"controls":{"pom.xml":hash(b"<project/>")},
+        let metadata = serde_json::json!({"schema_version":4,"resolved_classpath":true,"dependency_mode":"resolved","controls":{"pom.xml":hash(b"<project/>")},
             "effective_model_sha256":hash(b"model"),"active_profiles_sha256":hash(b"profiles"),"scopes":["TEST"],
             "modules":[{"id":"app","root":".","source_version":"8","source_roots":[{"path":"src","scope":"MAIN"},{"path":"tests","scope":"TEST"}],"dependencies":{"MAIN":["lib"],"TEST":["lib"]}},
               {"id":"lib","root":"lib","source_version":"8","selected":false,"source_roots":[{"path":"src","scope":"MAIN"}]}]});
@@ -1499,7 +1499,7 @@ mod tests {
         let bytes = vec![7u8; MAX_FRAME + 1024];
         std::fs::write(&archive, &bytes).unwrap();
         let expected = hash(&bytes);
-        let metadata = serde_json::json!({"schema_version":3,
+        let metadata = serde_json::json!({"schema_version":4,"resolved_classpath":true,"dependency_mode":"resolved",
             "controls":{"pom.xml":hash(b"<project/>")},
             "effective_model_sha256":hash(b"model"), "active_profiles_sha256":hash(b"profiles"),
             "modules":[{"id":"app","root":".","source_version":"8",
@@ -1622,7 +1622,7 @@ inputs_manifest=".code-ana/inputs.json"
             std::fs::write(file, "class Fixture {}").unwrap();
         }
         std::fs::write(root.join("pom.xml"), "<project/>").unwrap();
-        let metadata = serde_json::json!({"schema_version":3,
+        let metadata = serde_json::json!({"schema_version":4,"resolved_classpath":true,"dependency_mode":"resolved",
             "controls":{"pom.xml":hash(b"<project/>")},
             "effective_model_sha256":hash(b"model"), "active_profiles_sha256":hash(b"profiles"),
             "modules":[{"id":"physical","root":".","source_version":"8",

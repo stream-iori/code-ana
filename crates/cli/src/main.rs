@@ -399,9 +399,15 @@ async fn run() -> Result<i32> {
             _ = tokio::signal::ctrl_c() => { cancel.store(true, Ordering::Release); task.await?? },
             _ = term.recv() => { cancel.store(true, Ordering::Release); task.await?? },
         };
+        if let Some(failure) = &result.dependency_failure {
+            eprintln!(
+                "WARNING: CLASSPATH_UNAVAILABLE module={} pom={} dependency={}: {}; continuing source analysis without external classpath; type and call relationships may be incomplete",
+                failure.module, failure.pom, failure.coordinate, failure.reason
+            );
+        }
         println!(
             "{}",
-            serde_json::json!({"manifest":args.output,"modules":result.modules.len()})
+            serde_json::json!({"manifest":args.output,"modules":result.modules.len(), "analysis_mode":if result.resolved_classpath { "semantic" } else { "source_only" }, "classpath_status":if result.resolved_classpath { "available" } else { "unavailable" }, "dependency_mode":result.dependency_mode})
         );
         return Ok(0);
     }

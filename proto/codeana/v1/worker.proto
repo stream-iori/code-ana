@@ -23,6 +23,10 @@ message JavaContext {
  bool external_policy_configured = 24;
  uint64 model_decode_bytes = 25;
 }
+enum JavaDependencyMode { RESOLVED = 0; SOURCE_ONLY_REQUESTED = 1; SOURCE_ONLY_FALLBACK = 2; }
+message MavenDependencyFailure {
+ string module = 1; string pom = 2; string coordinate = 3; string reason = 4; uint32 round = 5;
+}
 message JavaConfig {
  string java_home = 1; string toolchain_digest = 2; string bridge = 3;
  string scratch = 4; repeated JavaContext contexts = 5; string semantic_identity = 6;
@@ -34,10 +38,12 @@ message JavaConfig {
  uint64 native_heap_bytes = 15;
  uint64 result_bytes = 16;
  uint32 fact_limit = 17;
+ JavaDependencyMode dependency_mode = 18;
+ MavenDependencyFailure dependency_failure = 19;
 }
 message Discover { Manifest manifest = 1; JavaConfig java = 2; }
 message Analyze { Manifest manifest = 1; string profile = 2; string baseline = 3; bool full = 4; reserved 5; bytes baseline_summary_json = 6; }
-// Protocol 18: Begin/Chunk are provisional. Only a verified End permits candidate finalization.
+// Protocol 19: Begin/Chunk are provisional. Only a verified End permits candidate finalization.
 message Begin { string mode = 1; string baseline = 2; string manifest = 3; string profile = 4; string producer = 5; repeated Owner replacements = 6; }
 message Chunk { uint64 seq = 1; reserved 2; repeated codeana.graph.v1.Row rows = 3; }
 message End { uint64 chunks = 1; uint64 count = 2; string checksum = 3; }

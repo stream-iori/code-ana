@@ -157,6 +157,32 @@ impl OutputLimits {
 }
 pub fn validate(config: &w::JavaConfig) -> Result<()> {
     OutputLimits::from_config(config)?;
+    let mode =
+        w::JavaDependencyMode::try_from(config.dependency_mode).context("JAVA_DEPENDENCY_MODE")?;
+    ensure!(
+        config.dependency_failure.is_some() == (mode == w::JavaDependencyMode::SourceOnlyFallback),
+        "JAVA_DEPENDENCY_FAILURE"
+    );
+    if mode != w::JavaDependencyMode::Resolved {
+        ensure!(
+            config.classpath_table.is_empty()
+                && config
+                    .contexts
+                    .iter()
+                    .all(|c| c.classpath.is_empty() && c.classpath_indices.is_empty()),
+            "JAVA_SOURCE_ONLY_CLASSPATH"
+        );
+    }
+    if let Some(failure) = &config.dependency_failure {
+        ensure!(
+            !failure.module.is_empty()
+                && !failure.pom.is_empty()
+                && failure.reason.len() <= 4096
+                && failure.coordinate.len() <= 4096
+                && failure.round <= 256,
+            "JAVA_DEPENDENCY_FAILURE"
+        );
+    }
     for context in &config.contexts {
         ensure!(
             !context.prerequisite

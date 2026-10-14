@@ -20,10 +20,10 @@ pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
     ensure!(
         manifest.version == 1
             && manifest.backend == "jvm"
-            && manifest.analysis_request == 9
+            && manifest.analysis_request == 10
             && manifest.worker_protocol == codeana_model::WORKER_PROTOCOL_VERSION
             && manifest.fact_ir == codeana_model::VERSION
-            && manifest.adapter == "anatomist-4a903272-codeana-graph2"
+            && manifest.adapter == "anatomist-4a903272-codeana-graph2-maven-fallback1"
             && manifest.compiler_batch_protocol == 2
             && manifest.java_model == "javac-model-v50"
             && manifest.target_java == [8],

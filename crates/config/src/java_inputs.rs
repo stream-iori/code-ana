@@ -18,6 +18,11 @@ pub struct JavaInputs {
     pub scopes: Vec<String>,
     #[serde(default)]
     pub resolved_classpath: bool,
+    /// Default is only for historical report snapshots; live inputs require schema 4 and this field.
+    #[serde(default)]
+    pub dependency_mode: DependencyMode,
+    #[serde(default)]
+    pub dependency_failure: Option<DependencyFailure>,
     #[serde(default)]
     pub receipt: Option<ExportReceipt>,
     pub modules: Vec<InputModule>,
@@ -32,6 +37,25 @@ pub struct ExportReceipt {
     pub maven_processes: u32,
     #[serde(default)]
     pub prerequisite_classpath_rounds: u32,
+    #[serde(default)]
+    pub dependency_failure_sha256: Option<String>,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DependencyMode {
+    #[default]
+    Resolved,
+    SourceOnlyRequested,
+    SourceOnlyFallback,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DependencyFailure {
+    pub module: String,
+    pub pom: String,
+    pub coordinate: String,
+    pub reason: String,
+    pub round: u32,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -140,16 +164,83 @@ impl JavaInputs {
             root.join(path).canonicalize()?.starts_with(root),
             codeana_model::DomainError::new(codeana_model::ErrorCode::JavaMetadataPathEscape, "")
         );
-        let value: Self =
+        let raw: serde_json::Value =
             serde_json::from_slice(&bounded_read(&root.join(path), 32 * 1024 * 1024)?)?;
         ensure!(
-            value.schema_version == 3 && !value.modules.is_empty() && value.modules.len() <= 256,
+            raw.get("schema_version").and_then(|v| v.as_u64()) == Some(4),
             codeana_model::DomainError::new(
                 codeana_model::ErrorCode::JavaInputsSchema,
-                "regenerate inputs with the schema 3 exporter".to_string()
+                "regenerate inputs with the schema 4 exporter"
             )
         );
+        ensure!(
+            raw.get("dependency_mode").is_some(),
+            "JAVA_DEPENDENCY_MODE_REQUIRED"
+        );
+        let value: Self = serde_json::from_value(raw)?;
+        ensure!(
+            value.schema_version == 4 && !value.modules.is_empty() && value.modules.len() <= 256,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::JavaInputsSchema,
+                "regenerate inputs with the schema 4 exporter".to_string()
+            )
+        );
+        ensure!(
+            value.resolved_classpath == (value.dependency_mode == DependencyMode::Resolved)
+                && value.dependency_failure.is_some()
+                    == (value.dependency_mode == DependencyMode::SourceOnlyFallback),
+            "JAVA_DEPENDENCY_MODE"
+        );
+        if value.dependency_mode == DependencyMode::Resolved {
+            ensure!(
+                value
+                    .modules
+                    .iter()
+                    .filter(|m| m.selected)
+                    .all(|m| m.resolved_classpath),
+                "JAVA_SELECTED_CLASSPATH_REQUIRED"
+            );
+        }
+        if value.dependency_mode != DependencyMode::Resolved {
+            ensure!(
+                value.modules.iter().all(|m| !m.resolved_classpath
+                    && m.classpath.values().all(Vec::is_empty)
+                    && m.dependency_order
+                        .values()
+                        .flatten()
+                        .all(|d| matches!(d, DependencyInput::Reactor { .. }))),
+                "JAVA_SOURCE_ONLY_CLASSPATH"
+            );
+        }
+        if let Some(failure) = &value.dependency_failure {
+            ensure!(
+                value.modules.iter().any(|m| m.id == failure.module)
+                    && safe_path(&failure.pom)
+                    && value.controls.contains_key(&failure.pom)
+                    && failure.round <= 256
+                    && failure.reason.len() <= 4096
+                    && failure.coordinate.len() <= 4096,
+                "JAVA_DEPENDENCY_FAILURE"
+            );
+        }
+        let failure_hash = value
+            .receipt
+            .as_ref()
+            .and_then(|r| r.dependency_failure_sha256.as_ref());
+        ensure!(
+            failure_hash.is_some() == value.dependency_failure.is_some()
+                && failure_hash
+                    .is_none_or(|h| h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit())),
+            "JAVA_DEPENDENCY_FAILURE_RECEIPT"
+        );
         if let Some(receipt) = &value.receipt {
+            if let Some(failure) = &value.dependency_failure {
+                ensure!(
+                    receipt.inputs_sha256 == receipt.metadata_sha256
+                        && receipt.prerequisite_classpath_rounds == failure.round,
+                    "JAVA_DEPENDENCY_FAILURE_RECEIPT"
+                );
+            }
             ensure!(
                 receipt.maven_processes == 1
                     && receipt.prerequisite_classpath_rounds <= 256
@@ -456,7 +547,75 @@ mod tests {
     use super::*;
     fn input(root: &Path) -> serde_json::Value {
         std::fs::write(root.join("pom.xml"), b"<project/>").unwrap();
-        serde_json::json!({"schema_version":3,"controls":{"pom.xml":hash(b"<project/>")},"effective_model_sha256":hash(b"effective"),"active_profiles_sha256":hash(b"profiles"),"modules":[{"id":"app","root":".","source_version":"8","source_roots":[{"path":"src","scope":"MAIN"}]}]})
+        serde_json::json!({"schema_version":4,"resolved_classpath":true,"dependency_mode":"resolved","controls":{"pom.xml":hash(b"<project/>")},"effective_model_sha256":hash(b"effective"),"active_profiles_sha256":hash(b"profiles"),"modules":[{"id":"app","root":".","source_version":"8","source_roots":[{"path":"src","scope":"MAIN"}]}]})
+    }
+    #[test]
+    fn source_only_state_rejects_partial_jars_and_requires_failure_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let mut value = input(root.path());
+        value["resolved_classpath"] = serde_json::json!(false);
+        value["dependency_mode"] = serde_json::json!("source_only_requested");
+        value["modules"][0]["resolved_classpath"] = serde_json::json!(false);
+        let check = |value: &serde_json::Value| {
+            std::fs::write(
+                root.path().join("inputs.json"),
+                serde_json::to_vec(value).unwrap(),
+            )
+            .unwrap();
+            JavaInputs::read(root.path(), "inputs.json")
+        };
+        assert!(check(&value).is_ok());
+        value["modules"][0]["classpath"] =
+            serde_json::json!({"MAIN":[{"path":"old.jar","sha256":hash(b"old")}]});
+        assert!(
+            check(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("JAVA_SOURCE_ONLY_CLASSPATH")
+        );
+        value["modules"][0]["classpath"] = serde_json::json!({});
+        value["dependency_mode"] = serde_json::json!("source_only_fallback");
+        assert!(check(&value).is_err());
+        value["dependency_failure"] = serde_json::json!({"module":"app","pom":"pom.xml","coordinate":"fixture:missing:1","reason":"offline","round":0});
+        assert!(
+            check(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("JAVA_DEPENDENCY_FAILURE_RECEIPT")
+        );
+        value["receipt"] = serde_json::json!({"nonce":"n".repeat(36),"maven_processes":1,"metadata_sha256":hash(b"m"),"inputs_sha256":hash(b"m"),"extension_sha256":hash(b"e"),"dependency_failure_sha256":hash(b"f")});
+        assert!(check(&value).is_ok());
+        value["dependency_failure"]["pom"] = serde_json::json!("unknown.xml");
+        assert!(check(&value).is_err());
+        value["schema_version"] = serde_json::json!(3);
+        value.as_object_mut().unwrap().remove("dependency_mode");
+        assert!(
+            check(&value)
+                .unwrap_err()
+                .to_string()
+                .contains("schema 4 exporter")
+        );
+    }
+    #[test]
+    fn historical_report_inputs_remain_readable_but_live_inputs_require_explicit_mode() {
+        let root = tempfile::tempdir().unwrap();
+        let mut value = input(root.path());
+        value.as_object_mut().unwrap().remove("dependency_mode");
+        std::fs::write(
+            root.path().join("inputs.json"),
+            serde_json::to_vec(&value).unwrap(),
+        )
+        .unwrap();
+        assert!(
+            JavaInputs::read(root.path(), "inputs.json")
+                .unwrap_err()
+                .to_string()
+                .contains("MODE_REQUIRED")
+        );
+        value["schema_version"] = serde_json::json!(3);
+        let historical: JavaInputs = serde_json::from_value(value).unwrap();
+        assert_eq!(historical.schema_version, 3);
+        assert_eq!(historical.dependency_mode, DependencyMode::Resolved);
     }
     #[test]
     fn compact_classpath_order_rejects_duplicate_missing_and_reordered_slots() {

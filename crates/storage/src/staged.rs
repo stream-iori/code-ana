@@ -45,6 +45,8 @@ pub struct StagedSummary {
     pub diagnostic_groups_omitted: u64,
     pub diagnostic_samples: Vec<Fact>,
     pub evidence: Evidence,
+    pub analysis_mode: Option<String>,
+    pub classpath_status: Option<String>,
 }
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct CandidateStatistics {

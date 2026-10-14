@@ -78,7 +78,7 @@ impl<'de> Visitor<'de> for EnvelopeSeed {
                 }
             }
         }
-        if version != Some(9) {
+        if version != Some(10) {
             return Err(de::Error::custom("JAVA_MODEL_VERSION_MISMATCH"));
         }
         let mode = mode.ok_or_else(|| de::Error::missing_field("mode"))?;
@@ -207,7 +207,7 @@ pub fn probe(bytes: &[u8], root: &Path) -> Result<Vec<u8>> {
         || Ok(()),
     )?;
     Ok(serde_json::to_vec(
-        &serde_json::json!({"version":9,"mode":mode,"replacements":replacements,"rows":rows}),
+        &serde_json::json!({"version":10,"mode":mode,"replacements":replacements,"rows":rows}),
     )?)
 }
 pub fn probe_archive(
@@ -229,7 +229,7 @@ pub fn probe_archive(
     let sealed = archive.seal()?;
     std::fs::copy(sealed.path(), destination)?;
     Ok(serde_json::to_string(
-        &serde_json::json!({"version":9,"mode":mode,"replacements":replacements,"graph_archive":{"format":"GRA1","path":destination,"count":sealed.count,"bytes":sealed.bytes,"sha256":sealed.checksum}}),
+        &serde_json::json!({"version":10,"mode":mode,"replacements":replacements,"graph_archive":{"format":"GRA1","path":destination,"count":sealed.count,"bytes":sealed.bytes,"sha256":sealed.checksum}}),
     )?)
 }
 #[cfg(test)]
@@ -248,7 +248,7 @@ mod tests {
             ],
         })?;
         let archive = builder.seal()?;
-        let value = serde_json::json!({"version":9,"mode":"full","replacements":[],"graph_archive":{"format":"GRA1","path":archive.path(),"count":archive.count,"bytes":archive.bytes,"sha256":archive.checksum}});
+        let value = serde_json::json!({"version":10,"mode":"full","replacements":[],"graph_archive":{"format":"GRA1","path":archive.path(),"count":archive.count,"bytes":archive.bytes,"sha256":archive.checksum}});
         Ok((archive, value))
     }
     #[test]

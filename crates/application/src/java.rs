@@ -541,7 +541,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             if let Some(module) = inputs
                 .modules
                 .iter()
-                .find(|m| m.id == id && m.resolved_classpath)
+                .find(|m| m.id == id && (m.resolved_classpath || !inputs.resolved_classpath))
             {
                 pending.extend(
                     module
@@ -563,14 +563,13 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 .any(|m| m.id == module.id && !m.selected)
         });
         // A captured MAIN prerequisite may supply module-local Java evidence only
-        // when the external Maven receipt provides that module's own classpath.
+        // when the receipt provides its classpath or a validated source-only topology.
         let upstream = !selected
             && prerequisites.contains(&module.id)
             && c.effective.java_inputs.as_ref().is_some_and(|inputs| {
-                inputs
-                    .modules
-                    .iter()
-                    .any(|m| m.id == module.id && m.resolved_classpath)
+                inputs.modules.iter().any(|m| {
+                    m.id == module.id && (m.resolved_classpath || !inputs.resolved_classpath)
+                })
             });
         if !selected && !upstream {
             continue;
@@ -613,7 +612,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                         codeana_model::ErrorCode::JavaMetadataModule,
                         "",
                     ))?;
-                // Schema 3 carries Maven's complete mediated scope inputs, not direct edges.
+                // Schema 4 carries Maven's complete mediated scope inputs, not direct edges.
                 // Recursing through another module would reintroduce optional/excluded artifacts.
                 dependencies.extend(m.dependencies.get(&scope).into_iter().flatten().cloned());
             }
@@ -716,6 +715,10 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
                 scope,
                 digest: digest(&(
                     &units,
+                    c.effective
+                        .java_inputs
+                        .as_ref()
+                        .map(|inputs| inputs.dependency_mode),
                     classpath_identity,
                     resource_identity,
                     &module.lombok,
@@ -848,6 +851,32 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             .index
             .java_compiler_heap_bytes
             .unwrap_or(128 * 1024 * 1024),
+        dependency_mode: c.effective.java_inputs.as_ref().map_or(
+            w::JavaDependencyMode::Resolved,
+            |inputs| match inputs.dependency_mode {
+                codeana_config::java_inputs::DependencyMode::Resolved => {
+                    w::JavaDependencyMode::Resolved
+                }
+                codeana_config::java_inputs::DependencyMode::SourceOnlyRequested => {
+                    w::JavaDependencyMode::SourceOnlyRequested
+                }
+                codeana_config::java_inputs::DependencyMode::SourceOnlyFallback => {
+                    w::JavaDependencyMode::SourceOnlyFallback
+                }
+            },
+        ) as i32,
+        dependency_failure: c
+            .effective
+            .java_inputs
+            .as_ref()
+            .and_then(|inputs| inputs.dependency_failure.as_ref())
+            .map(|f| w::MavenDependencyFailure {
+                module: f.module.clone(),
+                pom: f.pom.clone(),
+                coordinate: f.coordinate.clone(),
+                reason: f.reason.clone(),
+                round: f.round,
+            }),
         contexts,
         ..Default::default()
     };

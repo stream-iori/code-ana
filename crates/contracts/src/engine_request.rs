@@ -4,6 +4,14 @@ use anyhow::{Context, Result};
 use codeana_model::{BaselineInput, DomainError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EngineDependencyMode {
+    #[default]
+    Resolved,
+    SourceOnlyRequested,
+    SourceOnlyFallback,
+}
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct EngineRequest {
@@ -27,6 +35,8 @@ pub struct EngineRequest {
     pub fact_limit: u64,
     pub compiler_heap_bytes: u64,
     pub compiler_timeout_seconds: u32,
+    pub dependency_mode: EngineDependencyMode,
+    pub dependency_failure: Option<w::MavenDependencyFailure>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
@@ -83,7 +93,7 @@ impl EngineRequest {
     ) -> Result<Self> {
         let limits = OutputLimits::from_config(config)?;
         Ok(Self {
-            version: 9,
+            version: 10,
             compact_inputs: config.compact_inputs,
             input_table: config.input_table.clone(),
             classpath_table: config.classpath_table.clone(),
@@ -119,6 +129,18 @@ impl EngineRequest {
             } else {
                 config.compiler_timeout_seconds
             },
+            dependency_mode: match w::JavaDependencyMode::try_from(config.dependency_mode)
+                .context("JAVA_DEPENDENCY_MODE")?
+            {
+                w::JavaDependencyMode::Resolved => EngineDependencyMode::Resolved,
+                w::JavaDependencyMode::SourceOnlyRequested => {
+                    EngineDependencyMode::SourceOnlyRequested
+                }
+                w::JavaDependencyMode::SourceOnlyFallback => {
+                    EngineDependencyMode::SourceOnlyFallback
+                }
+            },
+            dependency_failure: config.dependency_failure.clone(),
         })
     }
     pub fn rebase(&mut self, before: &std::path::Path, after: &std::path::Path) {
@@ -181,7 +203,7 @@ impl TryFrom<&w::JavaContext> for EngineContext {
             })
             .collect::<Result<_>>()?;
         Ok(Self {
-            version: 9,
+            version: 10,
             type_graph: true,
             context: c.id.clone(),
             module: c.module.clone(),

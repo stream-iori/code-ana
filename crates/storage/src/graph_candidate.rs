@@ -241,7 +241,7 @@ impl Store {
             [serde_json::to_string(&counts)?],
         )?;
         let incomplete: i64 = db.query_row(
-            "SELECT count(DISTINCT source_file) FROM analysis_coverage WHERE status<>'complete'",
+            "SELECT count(DISTINCT source_file) FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') NOT IN ('','*')",
             [],
             |r| r.get(0),
         )?;
@@ -251,6 +251,38 @@ impl Store {
                 .evidence
                 .reasons
                 .push(format!("coverage:partial_files:{incomplete}"));
+        }
+        let incomplete_contexts: i64 = db.query_row(
+            "SELECT count(*) FROM (SELECT DISTINCT module,scope,language,provider_id FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') IN ('','*'))",
+            [], |r| r.get(0))?;
+        if incomplete_contexts > 0 {
+            summary.evidence.semantic = false;
+            summary
+                .evidence
+                .reasons
+                .push(format!("coverage:partial_contexts:{incomplete_contexts}"));
+        }
+        summary.analysis_mode = db
+            .query_row(
+                "SELECT value FROM project_meta WHERE key='analysis_mode'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        summary.classpath_status = db
+            .query_row(
+                "SELECT value FROM project_meta WHERE key='classpath_status'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let fallback: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM project_meta WHERE key='dependency_mode' AND value='source_only_fallback')", [], |r| r.get(0))?;
+        if fallback {
+            summary.evidence.semantic = false;
+            summary
+                .evidence
+                .reasons
+                .push("CLASSPATH_UNAVAILABLE".into());
         }
         summary.diagnostic_rows =
             db.query_row("SELECT count(*) FROM index_diagnostics", [], |r| {
@@ -410,6 +442,7 @@ fn replace_affected(db: &Connection, files: &BTreeSet<String>) -> Result<()> {
       DELETE FROM nodes WHERE source_file IN(SELECT source_file FROM graph_replaced) AND id NOT IN(SELECT id FROM staged.stage_nodes);
       DELETE FROM file_cache WHERE source_file IN(SELECT source_file FROM graph_replaced);
       DELETE FROM analysis_coverage WHERE source_file IN(SELECT source_file FROM graph_replaced);
+      DELETE FROM analysis_coverage WHERE coalesce(source_file,'') IN ('','*') AND EXISTS(SELECT 1 FROM staged.stage_coverage s WHERE coalesce(s.source_file,'') IN ('','*') AND s.module IS analysis_coverage.module AND s.scope IS analysis_coverage.scope AND s.provider_id IS analysis_coverage.provider_id AND s.capability=analysis_coverage.capability);
       DELETE FROM index_diagnostics;
       DELETE FROM index_providers;
       DELETE FROM project_meta WHERE key LIKE 'codeana.context.%' AND EXISTS(SELECT 1 FROM staged.stage_meta WHERE key LIKE 'codeana.context.%') AND key NOT IN(SELECT key FROM staged.stage_meta);")?;
@@ -453,8 +486,8 @@ fn seed_baseline(
       INSERT INTO stage_semantic_annotations(node_ref,category,business_label,business_description,domain_context,source,confidence,source_file,source_module,source_scope,node_is_key,resolved_node,producer_id)
       SELECT a.node_id,a.category,a.business_label,a.business_description,a.domain_context,a.source,a.confidence,a.source_file,n.module,n.scope,1,a.node_id,a.producer_id FROM baseline.semantic_annotations a JOIN baseline.nodes n ON n.id=a.node_id WHERE a.source_file IS NULL OR a.source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_file_cache SELECT provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash FROM baseline.file_cache WHERE source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_coverage SELECT * FROM baseline.analysis_coverage WHERE source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_diagnostics SELECT severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample FROM baseline.index_diagnostics WHERE source_file NOT IN(SELECT source_file FROM replaced);
+      INSERT INTO stage_coverage SELECT * FROM baseline.analysis_coverage WHERE source_file NOT IN(SELECT source_file FROM replaced) AND NOT (coalesce(source_file,'') IN ('','*') AND codes LIKE '%CLASSPATH_UNAVAILABLE%');
+      INSERT INTO stage_diagnostics SELECT severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample FROM baseline.index_diagnostics WHERE code<>'CLASSPATH_UNAVAILABLE' AND source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_providers SELECT * FROM baseline.index_providers;")?;
     // Persisted call sites are the canonical source; seed their exact range and
     // targets, including unresolved sites, without manufacturing method CALLS.
@@ -557,6 +590,49 @@ mod tests {
         result.facts.push(serde_json::from_value(serde_json::json!({"id":"a","signature":"A","kind":"declaration","source":"A.java","owner":{"world":"main","producer":"mock","kind":"source","id":"A.java"},"origin":"mock"})).unwrap());
         let rows = fixture_graph::rows(&revision.manifest, &result.facts);
         (revision, result.header(), rows)
+    }
+    #[test]
+    fn context_only_coverage_prevents_semantic_completeness() -> Result<()> {
+        for source in [serde_json::json!("*"), serde_json::json!("")] {
+            let directory = tempfile::tempdir()?;
+            let store = Store::open(directory.path())?;
+            let (rev, header, mut rows) = captured(&store);
+            rows.push(fixture_graph::row(
+                Table::Coverage,
+                vec![
+                    source,
+                    serde_json::json!("app"),
+                    serde_json::json!("MAIN"),
+                    serde_json::json!("java"),
+                    serde_json::json!("java-core"),
+                    serde_json::json!("AGGREGATE"),
+                    serde_json::json!("partial"),
+                    serde_json::json!(1),
+                    serde_json::json!(1),
+                    serde_json::json!("[\"CLASSPATH_UNAVAILABLE\"]"),
+                    serde_json::json!("{\"CLASSPATH_UNAVAILABLE\":1}"),
+                    serde_json::json!(0),
+                ],
+            ));
+            let candidate = store.stage_graph_records(
+                rev,
+                &header,
+                rows.into_iter().map(Ok),
+                "",
+                || Ok(()),
+                |_| Ok(()),
+            )?;
+            assert!(!candidate.summary.evidence.semantic);
+            assert!(
+                candidate
+                    .summary
+                    .evidence
+                    .reasons
+                    .iter()
+                    .any(|r| r == "coverage:partial_contexts:1")
+            );
+        }
+        Ok(())
     }
     #[test]
     fn malformed_or_unsealed_rows_never_change_head() -> Result<()> {

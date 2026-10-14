@@ -1,7 +1,8 @@
 //! Explicit Maven discovery. Indexing only consumes the resulting immutable manifest.
 use anyhow::{Context, Result, bail, ensure};
 use codeana_config::java_inputs::{
-    Artifact, DependencyInput, ExportReceipt, InputModule, InputRoot, JavaInputs,
+    Artifact, DependencyFailure, DependencyInput, DependencyMode, ExportReceipt, InputModule,
+    InputRoot, JavaInputs,
 };
 use codeana_model::{hash, hash_file};
 use roxmltree::{Document, Node, ParsingOptions};
@@ -162,8 +163,11 @@ fn response(directory: &Path, name: &str, nonce: &str) -> Result<(String, String
     let document = parse(&text)?;
     let root = document.root_element();
     ensure!(
-        root.has_tag_name("maven-inputs")
-            && root.attribute("format") == Some("maven-inputs-v1")
+        root.has_tag_name(if name == "dependency-failure" {
+            "maven-dependency-failure"
+        } else {
+            "maven-inputs"
+        }) && root.attribute("format") == Some("maven-inputs-v2")
             && root.attribute("nonce") == Some(nonce),
         codeana_model::DomainError::new(codeana_model::ErrorCode::MavenReceiptIdentity, "")
     );
@@ -266,6 +270,8 @@ struct Logs {
     total: AtomicUsize,
     ready: AtomicBool,
     classpath_ready: AtomicUsize,
+    dependency_failed: AtomicUsize,
+    protocol_error: AtomicBool,
     complete: AtomicBool,
     closed: AtomicBool,
 }
@@ -311,21 +317,56 @@ impl Logs {
                 if pending.len() > 65536 {
                     pending.drain(..pending.len() - 65536);
                 }
-                let s = String::from_utf8_lossy(&pending);
-                if s.contains(&format!("CODEANA_MAVEN_INPUTS_READY:{nonce}")) {
-                    self.ready.store(true, Ordering::Release);
-                }
-                let marker = format!("CODEANA_MAVEN_CLASSPATH_READY:{nonce}:");
-                for suffix in s.split(&marker).skip(1) {
-                    if let Some((line, _)) = suffix.split_once('\n')
-                        && let Ok(round) = line.trim().parse::<usize>()
-                        && round <= 256
+                while let Some(end) = pending.iter().position(|b| *b == b'\n') {
+                    let line: Vec<_> = pending.drain(..=end).collect();
+                    let s = String::from_utf8_lossy(&line);
+                    let s = s.trim();
+                    if s == format!("CODEANA_MAVEN_INPUTS_READY:{nonce}")
+                        && self.ready.swap(true, Ordering::AcqRel)
                     {
-                        self.classpath_ready.fetch_max(round + 1, Ordering::Release);
+                        self.protocol_error.store(true, Ordering::Release);
                     }
-                }
-                if s.contains("CODEANA_MAVEN_INPUTS_COMPLETE") {
-                    self.complete.store(true, Ordering::Release);
+                    for (name, failed) in [("CLASSPATH_READY", false), ("DEPENDENCY_FAILED", true)]
+                    {
+                        if let Some(suffix) =
+                            s.strip_prefix(&format!("CODEANA_MAVEN_{name}:{nonce}:"))
+                        {
+                            let round = suffix.parse::<usize>().ok().filter(|r| *r <= 256);
+                            let valid = if let Some(round) = round {
+                                if failed {
+                                    self.classpath_ready.load(Ordering::Acquire) == round
+                                        && self
+                                            .dependency_failed
+                                            .compare_exchange(
+                                                0,
+                                                round + 1,
+                                                Ordering::AcqRel,
+                                                Ordering::Acquire,
+                                            )
+                                            .is_ok()
+                                } else {
+                                    self.dependency_failed.load(Ordering::Acquire) == 0
+                                        && self
+                                            .classpath_ready
+                                            .compare_exchange(
+                                                round,
+                                                round + 1,
+                                                Ordering::AcqRel,
+                                                Ordering::Acquire,
+                                            )
+                                            .is_ok()
+                                }
+                            } else {
+                                false
+                            };
+                            if !valid {
+                                self.protocol_error.store(true, Ordering::Release);
+                            }
+                        }
+                    }
+                    if s.contains("CODEANA_MAVEN_INPUTS_COMPLETE") {
+                        self.complete.store(true, Ordering::Release);
+                    }
                 }
             }
         }))
@@ -392,6 +433,8 @@ impl Session {
             total: AtomicUsize::new(0),
             ready: AtomicBool::new(false),
             classpath_ready: AtomicUsize::new(0),
+            dependency_failed: AtomicUsize::new(0),
+            protocol_error: AtomicBool::new(false),
             complete: AtomicBool::new(false),
             closed: AtomicBool::new(false),
         });
@@ -431,6 +474,10 @@ impl Session {
     }
     fn check(&self, cancel: &AtomicBool) -> Result<()> {
         ensure!(
+            !self.logs.protocol_error.load(Ordering::Acquire),
+            "MAVEN_RESPONSE_SEQUENCE"
+        );
+        ensure!(
             !cancel.load(Ordering::Acquire),
             codeana_model::DomainError::new(codeana_model::ErrorCode::MavenInputsCancelled, "")
         );
@@ -452,19 +499,34 @@ impl Session {
             }
             if let Some(status) = self.child.try_wait()? {
                 self.join();
+                self.check(cancel)?;
+                if self.logs.ready.load(Ordering::Acquire) {
+                    return Ok(());
+                }
                 bail!("MAVEN_INPUTS_FAILED status={status}: {}", self.logs.text());
             }
             thread::sleep(Duration::from_millis(25));
         }
     }
-    fn classpath_ready(&mut self, round: usize, cancel: &AtomicBool) -> Result<()> {
+    fn classpath_ready(&mut self, round: usize, cancel: &AtomicBool) -> Result<bool> {
         loop {
             self.check(cancel)?;
             if self.logs.classpath_ready.load(Ordering::Acquire) > round {
-                return Ok(());
+                return Ok(true);
+            }
+            if self.logs.dependency_failed.load(Ordering::Acquire) == round + 1 {
+                return Ok(false);
             }
             if let Some(status) = self.child.try_wait()? {
                 self.join();
+                self.check(cancel)?;
+                // The process can exit before a reader observes its final marker.
+                if self.logs.classpath_ready.load(Ordering::Acquire) > round {
+                    return Ok(true);
+                }
+                if self.logs.dependency_failed.load(Ordering::Acquire) == round + 1 {
+                    return Ok(false);
+                }
                 bail!("MAVEN_INPUTS_FAILED status={status}: {}", self.logs.text());
             }
             thread::sleep(Duration::from_millis(25));
@@ -476,6 +538,10 @@ impl Session {
             if let Some(status) = self.child.try_wait()? {
                 self.join();
                 self.check(cancel)?;
+                ensure!(
+                    !self.logs.closed.load(Ordering::Acquire),
+                    "MAVEN_CLEANUP_INCOMPLETE"
+                );
                 ensure!(
                     status.code() == Some(1) && self.logs.complete.load(Ordering::Acquire),
                     "MAVEN_INPUTS_FAILED status={status}: {}",
@@ -532,6 +598,121 @@ fn unique(values: &[String]) -> Vec<String> {
         .filter(|s| seen.insert((*s).clone()))
         .cloned()
         .collect()
+}
+
+/// Keep bounded actionable text without repository URLs or JVM option echoes.
+fn failure_details(text: &str) -> String {
+    let mut plain = String::new();
+    let mut escape = false;
+    for c in text.chars() {
+        if c == '\u{1b}' {
+            escape = true;
+            continue;
+        }
+        if escape {
+            if c.is_ascii_alphabetic() {
+                escape = false;
+            }
+            continue;
+        }
+        plain.push(c);
+    }
+    let mut result = plain
+        .lines()
+        .filter(|line| {
+            let line = line.trim().trim_start_matches("[ERROR]").trim();
+            !line.is_empty()
+                && ![
+                    "To see the full stack trace",
+                    "Re-run Maven using",
+                    "For more information",
+                    "[Help ",
+                    "NOTE: Picked up ",
+                    "Picked up ",
+                ]
+                .iter()
+                .any(|prefix| line.starts_with(prefix))
+        })
+        .map(|line| {
+            line.split_whitespace()
+                .map(|word| {
+                    if ["http://", "https://", "file://"]
+                        .iter()
+                        .any(|prefix| word.to_ascii_lowercase().contains(prefix))
+                    {
+                        "<repository>"
+                    } else {
+                        word
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ")
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut end = result.len().min(4096);
+    while !result.is_char_boundary(end) {
+        end -= 1;
+    }
+    result.truncate(end);
+    result
+}
+
+#[allow(clippy::too_many_arguments)] // Receipt identity spans the immutable export attempt and its current selection.
+fn dependency_failure(
+    directory: &Path,
+    nonce: &str,
+    round: usize,
+    metadata_hash: &str,
+    root: &Path,
+    names: &BTreeMap<PathBuf, String>,
+    attempted: &BTreeSet<PathBuf>,
+) -> Result<(DependencyFailure, String)> {
+    let (text, digest) = response(directory, "dependency-failure", nonce)?;
+    let document = parse(&text)?;
+    let node = document.root_element();
+    ensure!(
+        attr(node, "round")?.parse::<usize>()? == round
+            && attr(node, "metadata-sha256")? == metadata_hash,
+        "MAVEN_FAILURE_IDENTITY"
+    );
+    let (metadata, current_hash) = response(directory, "metadata", nonce)?;
+    ensure!(current_hash == metadata_hash, "MAVEN_METADATA_CHANGED");
+    let path = inside(root, attr(node, "directory")?)?;
+    ensure!(attempted.contains(&path), "MAVEN_FAILURE_MODULE");
+    let module = names.get(&path).context("MAVEN_FAILURE_MODULE")?.clone();
+    let pom = inside(root, attr(node, "pom")?)?;
+    let model = parse(&metadata)?;
+    let owner = children(model.root_element(), "module")
+        .find(|m| m.attribute("directory") == path.to_str())
+        .context("MAVEN_FAILURE_MODULE")?;
+    ensure!(owner.attribute("pom") == pom.to_str(), "MAVEN_FAILURE_POM");
+    // Do not assume the effective POM is literally <module>/pom.xml.
+    ensure!(
+        children(owner, "model-input").any(|i| i.attribute("path") == pom.to_str()),
+        "MAVEN_FAILURE_POM"
+    );
+    if directory.join("inputs.xml").exists() {
+        let (inputs, _) = response(directory, "inputs", nonce)?;
+        let inputs = parse(&inputs)?;
+        ensure!(
+            attr(inputs.root_element(), "round")?
+                .parse::<usize>()?
+                .checked_add(1)
+                == Some(round),
+            "MAVEN_CONFLICTING_TERMINAL"
+        );
+    }
+    Ok((
+        DependencyFailure {
+            module,
+            pom: relative(root, &pom)?,
+            coordinate: failure_details(attr(node, "coordinate")?),
+            reason: failure_details(node.text().unwrap_or_default()),
+            round: round as u32,
+        },
+        digest,
+    ))
 }
 fn controls(root: &Path) -> Result<BTreeMap<String, String>> {
     let mut out = BTreeMap::new();
@@ -736,9 +917,27 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
     }
     session.selection(&selection, cancel)?;
     let mut classpath_rounds = 0;
+    let mut attempted = selected.clone();
+    let mut failed = None;
     for round in 0..=256 {
-        session.classpath_ready(round, cancel)?;
+        if !session.classpath_ready(round, cancel)? {
+            ensure!(!options.source_only, "MAVEN_UNEXPECTED_DEPENDENCY_FAILURE");
+            failed = Some(dependency_failure(
+                tmp.path(),
+                &nonce,
+                round,
+                &metadata_hash,
+                &root,
+                &names,
+                &attempted,
+            )?);
+            break;
+        }
         let (candidate, _) = response(tmp.path(), "inputs", &nonce)?;
+        ensure!(
+            attr(parse(&candidate)?.root_element(), "round")?.parse::<usize>()? == round,
+            "MAVEN_RESPONSE_ROUND"
+        );
         let pending = if options.source_only {
             BTreeSet::new()
         } else {
@@ -750,6 +949,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         for directory in &pending {
             write_utf(&mut frame, &directory.to_string_lossy())?;
         }
+        attempted.extend(pending.iter().cloned());
         session.selection(&frame, cancel)?;
         if pending.is_empty() {
             break;
@@ -764,7 +964,38 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         classpath_rounds += 1;
     }
     session.finish(cancel)?;
-    let (inputs, inputs_hash) = response(tmp.path(), "inputs", &nonce)?;
+    ensure!(
+        failed.is_some() || !tmp.path().join("dependency-failure.xml").exists(),
+        "MAVEN_UNEXPECTED_DEPENDENCY_FAILURE"
+    );
+    if let Some((failure, digest)) = &failed {
+        let (confirmed, confirmed_digest) = dependency_failure(
+            tmp.path(),
+            &nonce,
+            failure.round as usize,
+            &metadata_hash,
+            &root,
+            &names,
+            &attempted,
+        )?;
+        ensure!(
+            confirmed_digest == *digest
+                && serde_json::to_vec(&confirmed)? == serde_json::to_vec(failure)?,
+            "MAVEN_FAILURE_CHANGED"
+        );
+    }
+    let (inputs, inputs_hash) = response(
+        tmp.path(),
+        if failed.is_some() {
+            "metadata"
+        } else {
+            "inputs"
+        },
+        &nonce,
+    )?;
+    if failed.is_some() {
+        ensure!(inputs_hash == metadata_hash, "MAVEN_METADATA_CHANGED");
+    }
     let doc = parse(&inputs)?;
     let inventory: Vec<_> = children(doc.root_element(), "module").collect();
     ensure!(
@@ -1026,14 +1257,22 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         );
     }
     let result = JavaInputs {
-        schema_version: 3,
+        schema_version: 4,
         controls: control,
         external_controls: external,
         effective_model_sha256: hash(serde_json::to_vec(&model_hashes)?),
         active_profiles_sha256: hash(serde_json::to_vec(&active)?),
         selected_profiles: profiles,
         scopes,
-        resolved_classpath: !options.source_only,
+        resolved_classpath: !options.source_only && failed.is_none(),
+        dependency_mode: if options.source_only {
+            DependencyMode::SourceOnlyRequested
+        } else if failed.is_some() {
+            DependencyMode::SourceOnlyFallback
+        } else {
+            DependencyMode::Resolved
+        },
+        dependency_failure: failed.as_ref().map(|(failure, _)| failure.clone()),
         receipt: Some(ExportReceipt {
             nonce,
             metadata_sha256: metadata_hash,
@@ -1041,6 +1280,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
             extension_sha256: hash_file(&extension)?,
             maven_processes: 1,
             prerequisite_classpath_rounds: classpath_rounds,
+            dependency_failure_sha256: failed.map(|(_, digest)| digest),
         }),
         modules: records,
     };
@@ -1068,6 +1308,184 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn dependency_receipt_requires_current_model_scope_and_round() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().canonicalize().unwrap();
+        let directory = root.join("receipt");
+        fs::create_dir(&directory).unwrap();
+        let pom = root.join("pom.xml");
+        fs::write(&pom, "<project/>").unwrap();
+        let metadata = format!(
+            "<maven-inputs format=\"maven-inputs-v2\" nonce=\"ok\"><module directory=\"{}\" pom=\"{1}\"><model-input path=\"{}\"/></module></maven-inputs>",
+            root.display(),
+            pom.display()
+        );
+        let write = |name: &str, text: &str| {
+            fs::write(directory.join(format!("{name}.xml")), text).unwrap();
+            fs::write(directory.join(format!("{name}.sha256")), hash(text)).unwrap();
+        };
+        write("metadata", &metadata);
+        let receipt = format!(
+            "<maven-dependency-failure format=\"maven-inputs-v2\" nonce=\"ok\" round=\"1\" metadata-sha256=\"{}\" directory=\"{}\" pom=\"{}\" coordinate=\"fixture:missing:1\">offline</maven-dependency-failure>",
+            hash(&metadata),
+            root.display(),
+            pom.display()
+        );
+        let names = BTreeMap::from([(root.clone(), "app".into())]);
+        let attempted = BTreeSet::from([root.clone()]);
+        write("dependency-failure", &receipt);
+        write(
+            "inputs",
+            "<maven-inputs format=\"maven-inputs-v2\" nonce=\"ok\" round=\"0\"/>",
+        );
+        assert_eq!(
+            dependency_failure(
+                &directory,
+                "ok",
+                1,
+                &hash(&metadata),
+                &root,
+                &names,
+                &attempted
+            )
+            .unwrap()
+            .0
+            .module,
+            "app"
+        );
+        for changed in [
+            receipt.replace("nonce=\"ok\"", "nonce=\"wrong\""),
+            receipt.replace("round=\"1\"", "round=\"0\""),
+            receipt.replace(&hash(&metadata), &"0".repeat(64)),
+            receipt.replace("pom.xml", "other.xml"),
+        ] {
+            write("dependency-failure", &changed);
+            assert!(
+                dependency_failure(
+                    &directory,
+                    "ok",
+                    1,
+                    &hash(&metadata),
+                    &root,
+                    &names,
+                    &attempted
+                )
+                .is_err()
+            );
+        }
+        write("dependency-failure", &receipt);
+        assert!(
+            dependency_failure(
+                &directory,
+                "ok",
+                1,
+                &hash(&metadata),
+                &root,
+                &names,
+                &BTreeSet::new()
+            )
+            .is_err()
+        );
+        write(
+            "inputs",
+            "<maven-inputs format=\"maven-inputs-v2\" nonce=\"ok\" round=\"1\"/>",
+        );
+        assert!(
+            dependency_failure(
+                &directory,
+                "ok",
+                1,
+                &hash(&metadata),
+                &root,
+                &names,
+                &attempted
+            )
+            .is_err()
+        );
+        write(
+            "metadata",
+            &metadata.replace("module directory", "module changed=\"true\" directory"),
+        );
+        assert!(
+            dependency_failure(
+                &directory,
+                "ok",
+                1,
+                &hash(&metadata),
+                &root,
+                &names,
+                &attempted
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn dependency_failure_text_is_bounded_and_sanitized() {
+        let value = failure_details(&format!(
+            "\u{1b}[31moffline https://user:secret@repo/path\u{1b}[0m\nPicked up JAVA_TOOL_OPTIONS: secret\n[ERROR] Re-run Maven using -X\n{}",
+            "汉".repeat(5000)
+        ));
+        assert!(value.starts_with("offline <repository>"));
+        assert!(!value.contains("secret") && !value.contains("-X") && value.len() <= 4096);
+    }
+
+    #[test]
+    fn terminal_markers_reject_duplicates_conflicts_and_out_of_order_rounds() {
+        for events in [
+            "CODEANA_MAVEN_INPUTS_READY:nonce\nCODEANA_MAVEN_INPUTS_READY:nonce\n",
+            "CODEANA_MAVEN_INPUTS_READY:nonce\nCODEANA_MAVEN_CLASSPATH_READY:nonce:1\n",
+            "CODEANA_MAVEN_INPUTS_READY:nonce\nCODEANA_MAVEN_CLASSPATH_READY:nonce:0\nCODEANA_MAVEN_DEPENDENCY_FAILED:nonce:0\n",
+            "CODEANA_MAVEN_INPUTS_READY:nonce\nCODEANA_MAVEN_DEPENDENCY_FAILED:nonce:0\nCODEANA_MAVEN_DEPENDENCY_FAILED:nonce:0\n",
+        ] {
+            let mut command = Command::new("python3");
+            command.args(["-c", "import sys; print(sys.argv[1],end='',flush=True); print('CODEANA_MAVEN_INPUTS_COMPLETE',flush=True); sys.exit(1)", events]);
+            let mut session = Session::start(&mut command, "nonce", 5).unwrap();
+            let cancel = AtomicBool::new(false);
+            let result = session
+                .ready(&cancel)
+                .and_then(|_| session.classpath_ready(0, &cancel))
+                .and_then(|_| session.finish(&cancel));
+            assert!(
+                result
+                    .unwrap_err()
+                    .to_string()
+                    .contains("MAVEN_RESPONSE_SEQUENCE")
+            );
+        }
+    }
+
+    #[test]
+    fn dependency_terminal_remains_visible_after_process_exit() {
+        let mut command = Command::new("python3");
+        command.args(["-c", "import sys; print('CODEANA_MAVEN_INPUTS_READY:nonce',flush=True); print('CODEANA_MAVEN_DEPENDENCY_FAILED:nonce:0',flush=True); print('CODEANA_MAVEN_INPUTS_COMPLETE',flush=True); sys.exit(1)"]);
+        let mut session = Session::start(&mut command, "nonce", 5).unwrap();
+        session.child.wait().unwrap();
+        let cancel = AtomicBool::new(false);
+        session.ready(&cancel).unwrap();
+        assert!(!session.classpath_ready(0, &cancel).unwrap());
+        session.finish(&cancel).unwrap();
+    }
+
+    #[test]
+    fn timeout_after_metadata_never_becomes_source_only() {
+        let mut command = Command::new("python3");
+        command.args([
+            "-c",
+            "import time; print('CODEANA_MAVEN_INPUTS_READY:nonce',flush=True); time.sleep(30)",
+        ]);
+        let mut session = Session::start(&mut command, "nonce", 1).unwrap();
+        let cancel = AtomicBool::new(false);
+        session.ready(&cancel).unwrap();
+        assert!(
+            session
+                .classpath_ready(0, &cancel)
+                .unwrap_err()
+                .to_string()
+                .contains("TIMEOUT")
+        );
+    }
     #[test]
     fn modified_utf8_handles_nul_and_supplementary_paths() {
         let mut bytes = Vec::new();
@@ -1115,7 +1533,7 @@ mod tests {
     #[test]
     fn response_rejects_drift_identity_and_entities() {
         let tmp = tempfile::tempdir().unwrap();
-        let raw = b"<maven-inputs format=\"maven-inputs-v1\" nonce=\"ok\"/>";
+        let raw = b"<maven-inputs format=\"maven-inputs-v2\" nonce=\"ok\"/>";
         fs::write(tmp.path().join("inputs.xml"), raw).unwrap();
         fs::write(tmp.path().join("inputs.sha256"), hash(raw)).unwrap();
         assert!(response(tmp.path(), "inputs", "ok").is_ok());
@@ -1179,7 +1597,13 @@ mod tests {
         session.ready(&cancel).unwrap();
         let _fixture = FixtureChild(fs::read_to_string(pid_file).unwrap().parse().unwrap());
         let started = Instant::now();
-        session.finish(&cancel).unwrap();
+        assert!(
+            session
+                .finish(&cancel)
+                .unwrap_err()
+                .to_string()
+                .contains("MAVEN_CLEANUP_INCOMPLETE")
+        );
         assert!(started.elapsed() < Duration::from_secs(3));
         assert!(session.readers.is_empty());
     }
