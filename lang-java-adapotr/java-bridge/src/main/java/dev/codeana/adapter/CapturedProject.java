@@ -37,12 +37,21 @@ public final class CapturedProject {
     public final Path root;
     public final Path diagnosticRoot;
     public final boolean deferFactDedup;
+    public final String dependencyMode;
+    public final Map<String, Object> dependencyFailure;
     public final Map<String, Source> sources = new LinkedHashMap<>();
     private final Map<Path, Source> physicalSources = new HashMap<>();
     public final List<Context> contexts;
     private final List<SourceRoot> sourceRoots;
 
     public CapturedProject(Map<String, Object> request) throws IOException {
+        dependencyMode = Objects.toString(request.get("dependency_mode"), "resolved");
+        if (!Set.of("resolved", "source_only_requested", "source_only_fallback").contains(dependencyMode))
+            throw new IllegalArgumentException("JAVA_DEPENDENCY_MODE");
+        dependencyFailure = request.get("dependency_failure") instanceof Map<?, ?>
+                ? Json.map(request.get("dependency_failure")) : Map.of();
+        if (dependencyMode.equals("source_only_fallback") != !dependencyFailure.isEmpty())
+            throw new IllegalArgumentException("JAVA_DEPENDENCY_FAILURE");
         root =
                 Files.createDirectory(
                         Path.of(Json.string(request, "scratch")).resolve("anatomist-inputs"));
@@ -85,6 +94,8 @@ public final class CapturedProject {
                     list(c.get("classpath")).stream()
                             .map(v -> Path.of((String) v).toAbsolutePath().normalize())
                             .toList();
+            if (!dependencyMode.equals("resolved") && !cp.isEmpty())
+                throw new IllegalArgumentException("JAVA_SOURCE_ONLY_CLASSPATH");
             Set<String> dependencies = new LinkedHashSet<>();
             for (Object d : list(c.get("dependency_modules"))) dependencies.add((String) d);
             dependencies.remove(Json.string(c, "module"));
@@ -290,8 +301,10 @@ public final class CapturedProject {
                 out,
                 Map.of(),
                 Json.key(
-                        "captured-modules",
+                        "captured-modules-" + dependencyMode,
                         contexts.stream().map(Context::digest).toArray(String[]::new)),
+                // The captured topology and ordered context inputs are complete. This flag
+                // selects module-aware planning; external availability is dependencyMode.
                 true);
     }
 

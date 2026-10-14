@@ -59,7 +59,7 @@ class AnalysisSessionTest {
                         List.of());
         return Json.object(
                 "version",
-                9,
+                10,
                 "scratch",
                 scratch.toString(),
                 "java_home",
@@ -130,7 +130,7 @@ class AnalysisSessionTest {
         try(var session=new AnalysisSession(req)){assertThrows(java.io.IOException.class,session::analyze);}
     }
     @Test void oldRequestVersionIsExplicitlyRejected() throws Exception {
-        var req=request("class A {}");req.put("version",8);
+        var req=request("class A {}");req.put("version",9);
         try(var session=new AnalysisSession(req)){assertThrows(IllegalArgumentException.class,session::analyze);}
     }
     @Test void archiveRetainsFileCacheAndProviderWithoutInventingCoverage() throws Exception {
@@ -138,5 +138,26 @@ class AnalysisSessionTest {
         assertTrue(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.FILE_CACHE && text(r,1).equals("src/A.java")));
         assertTrue(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.PROVIDER && text(r,0).equals("java-core")));
         assertFalse(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.COVERAGE && text(r,5).equals("SEMANTIC")));
+    }
+    @Test void dependencyFallbackDisclosesGapEvenWithoutMissingSymbols() throws Exception {
+        var req=request("class A { String value(){return \"ok\".trim();} }");
+        req.put("dependency_mode", "source_only_fallback");
+        req.put("dependency_failure", Json.object("module", ".", "pom", "pom.xml",
+                "coordinate", "fixture:missing:1", "reason", "offline", "round", 0));
+        var rows=run(req);
+        assertTrue(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.PROJECT_META
+                && text(r,0).equals("analysis_mode") && text(r,1).equals("source_only")));
+        assertTrue(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.DIAGNOSTIC
+                && text(r,1).equals("CLASSPATH_UNAVAILABLE") && text(r,13).contains("pom.xml")));
+        assertTrue(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.COVERAGE
+                && text(r,0).equals("*") && text(r,1).equals(".") && text(r,2).equals("MAIN") && text(r,6).equals("partial")));
+        assertTrue(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.EDGE
+                && text(r,3).equals("java.lang.String#trim()")));
+    }
+    @Test void requestedSourceOnlyDoesNotInventDependencyFailure() throws Exception {
+        var req=request("class A {}");req.put("dependency_mode", "source_only_requested");
+        var rows=run(req);
+        assertFalse(rows.stream().anyMatch(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.DIAGNOSTIC
+                && text(r,1).equals("CLASSPATH_UNAVAILABLE")));
     }
 }

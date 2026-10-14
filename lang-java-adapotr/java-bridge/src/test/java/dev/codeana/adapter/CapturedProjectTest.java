@@ -73,6 +73,21 @@ class CapturedProjectTest {
     }
 
     @Test
+    void dependencyModesSeparateSignatureIdentityWithoutChangingTopologyAvailability() throws Exception {
+        Set<String> fingerprints = new HashSet<>();
+        for (String mode : List.of("resolved", "source_only_requested", "source_only_fallback")) {
+            var req = request("module/src/main/java");
+            req.put("dependency_mode", mode);
+            if (mode.equals("source_only_fallback")) req.put("dependency_failure", Json.object(
+                    "module", "module", "pom", "module/pom.xml", "coordinate", "fixture:missing:1", "reason", "offline", "round", 0));
+            var project = new CapturedProject(req);
+            assertTrue(project.moduleInputs().resolvedClasspath(), "captured module topology remains usable");
+            fingerprints.add(project.moduleInputs().fingerprint());
+        }
+        assertEquals(3, fingerprints.size());
+    }
+
+    @Test
     void escapedAndIncorrectRootsAreRejected() throws Exception {
         assertThrows(
                 IllegalArgumentException.class, () -> new CapturedProject(request("../escape")));

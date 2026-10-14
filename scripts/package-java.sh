@@ -35,7 +35,7 @@ worker=root.parent.parent/'target/release/codeana-java-worker'
 versions=json.loads(subprocess.check_output([str(worker),str(root/'native/libcodeana_java.dylib'),
                                             '--runtime-info'],text=True,timeout=15))
 assert versions==dict(worker_protocol=manifest['worker_protocol'],fact_ir=2,adapter=manifest['adapter'],
-                      analysis_request=9,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
+                      analysis_request=10,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
 VERIFY
 if [[ "$custom_output" == true && -e "$package_dir" ]]; then
   echo "Package output already exists: $package_dir" >&2; exit 2

@@ -152,7 +152,7 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                         false,
                         includeTests,
                         null,
-                        prerequisites);
+                        prerequisites, -1);
                 System.out.println("CODEANA_MAVEN_INPUTS_READY:" + nonce);
                 System.out.flush();
                 selection = new DataInputStream(new BufferedInputStream(System.in));
@@ -172,37 +172,46 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                         throw new IOException("invalid Maven module selection");
                 }
             }
-            writeResponse(
-                    output,
-                    "inputs",
-                    nonce,
-                    projects,
-                    reactor,
-                    repository,
-                    resolve,
-                    includeTests,
-                    selected,
-                    prerequisites);
-            if (interactive) {
-                Set<String> allowed = new HashSet<String>();
-                for (MavenProject project : projects) allowed.add(project.getBasedir().getCanonicalPath());
-                for (int round = 0; round <= 256; round++) {
-                    System.out.println("CODEANA_MAVEN_CLASSPATH_READY:" + nonce + ":" + round);
-                    System.out.flush();
-                    if (selection.readInt() != 0x414d5031 || !nonce.equals(selection.readUTF()))
-                        throw new IOException("invalid Maven prerequisite identity");
-                    int count = selection.readInt();
-                    if (count < 0 || count > 10000) throw new IOException("Maven prerequisite exceeds budget");
-                    if (count == 0) break;
-                    if (!resolve || round == 256) throw new IOException("Maven prerequisite resolution budget");
-                    for (int i = 0; i < count; i++) {
-                        String module = selection.readUTF();
-                        if (!allowed.contains(module) || selected.contains(module) || !prerequisites.add(module))
-                            throw new IOException("invalid Maven prerequisite module");
+            int round = 0;
+            try {
+                writeResponse(
+                        output,
+                        "inputs",
+                        nonce,
+                        projects,
+                        reactor,
+                        repository,
+                        resolve,
+                        includeTests,
+                        selected,
+                        prerequisites, round);
+                if (interactive) {
+                    Set<String> allowed = new HashSet<String>();
+                    for (MavenProject project : projects) allowed.add(project.getBasedir().getCanonicalPath());
+                    for (; round <= 256;) {
+                        System.out.println("CODEANA_MAVEN_CLASSPATH_READY:" + nonce + ":" + round);
+                        System.out.flush();
+                        if (selection.readInt() != 0x414d5031 || !nonce.equals(selection.readUTF()))
+                            throw new IOException("invalid Maven prerequisite identity");
+                        int count = selection.readInt();
+                        if (count < 0 || count > 10000) throw new IOException("Maven prerequisite exceeds budget");
+                        if (count == 0) break;
+                        if (!resolve || round == 256) throw new IOException("Maven prerequisite resolution budget");
+                        for (int i = 0; i < count; i++) {
+                            String module = selection.readUTF();
+                            if (!allowed.contains(module) || selected.contains(module) || !prerequisites.add(module))
+                                throw new IOException("invalid Maven prerequisite module");
+                        }
+                        round++;
+                        writeResponse(output, "inputs", nonce, projects, reactor, repository,
+                                resolve, includeTests, selected, prerequisites, round);
                     }
-                    writeResponse(output, "inputs", nonce, projects, reactor, repository,
-                            resolve, includeTests, selected, prerequisites);
                 }
+            } catch (DependencyInputFailure failure) {
+                if (!resolve || !interactive) throw failure;
+                writeDependencyFailure(output, nonce, failure, round);
+                System.out.println("CODEANA_MAVEN_DEPENDENCY_FAILED:" + nonce + ":" + round);
+                System.out.flush();
             }
         } catch (Exception failure) {
             throw new MavenExecutionException(
@@ -222,7 +231,7 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
             DefaultRepositorySystemSession repository,
             boolean resolve,
             boolean includeTests,
-            Set<String> selected, Set<String> prerequisites)
+            Set<String> selected, Set<String> prerequisites, int round)
             throws Exception {
         Path pending = output.resolve(name + ".xml.part");
         try (OutputStream bytes =
@@ -233,21 +242,32 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
             try {
                 xml.writeStartDocument("UTF-8", "1.0");
                 xml.writeStartElement("maven-inputs");
-                xml.writeAttribute("format", "maven-inputs-v1");
+                xml.writeAttribute("format", "maven-inputs-v2");
                 xml.writeAttribute("nonce", nonce);
                 xml.writeAttribute("resolved", Boolean.toString(resolve));
-                for (MavenProject project : projects)
-                    module(
-                            xml,
-                            project,
-                            reactor,
-                            repository,
-                            resolve
-                                    && (selected == null
-                                            || selected.contains(
-                                                    project.getBasedir().getAbsolutePath())
-                                            || prerequisites.contains(project.getBasedir().getAbsolutePath())),
-                            includeTests && (selected == null || selected.contains(project.getBasedir().getAbsolutePath())));
+                xml.writeAttribute("round", Integer.toString(round));
+                for (MavenProject project : projects) {
+                    try {
+                        module(
+                                xml,
+                                project,
+                                reactor,
+                                repository,
+                                resolve
+                                        && (selected == null
+                                                || selected.contains(
+                                                        project.getBasedir().getAbsolutePath())
+                                                || prerequisites.contains(project.getBasedir().getAbsolutePath())),
+                                includeTests && (selected == null || selected.contains(project.getBasedir().getAbsolutePath())));
+                    } catch (DependencyResolutionException failure) {
+                        String coordinate = "";
+                        if (failure.getResult() != null && !failure.getResult().getUnresolvedDependencies().isEmpty())
+                            coordinate = failure.getResult().getUnresolvedDependencies().get(0).getArtifact().toString();
+                        throw new DependencyInputFailure(project, coordinate, failure);
+                    } catch (MissingExternalArtifact failure) {
+                        throw new DependencyInputFailure(project, failure.coordinate, failure);
+                    }
+                }
                 xml.writeEndElement();
                 xml.writeEndDocument();
                 xml.flush();
@@ -267,6 +287,57 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
                 hash(output.resolve(name + ".xml")).getBytes(StandardCharsets.US_ASCII));
     }
 
+    // Borrowed from Anatomist e8a940557c9365084cdd5318ed2be3d147697113;
+    // code-ana additionally identifies the prerequisite round and metadata snapshot.
+    private static final class MissingExternalArtifact extends IOException {
+        final String coordinate;
+        MissingExternalArtifact(String coordinate) {
+            super("unresolved external artifact: " + coordinate);
+            this.coordinate = coordinate;
+        }
+    }
+
+    private static final class DependencyInputFailure extends Exception {
+        final MavenProject project;
+        final String coordinate;
+        DependencyInputFailure(MavenProject project, String coordinate, Exception cause) {
+            super(cause.getMessage(), cause);
+            this.project = project;
+            this.coordinate = coordinate;
+        }
+    }
+
+    private void writeDependencyFailure(Path output, String nonce, DependencyInputFailure failure, int round)
+            throws Exception {
+        for (Map.Entry<Path, String> snapshot : snapshots.entrySet())
+            if (!snapshot.getValue().equals(hash(snapshot.getKey())))
+                throw new IOException("Maven model changed during resolution: " + snapshot.getKey());
+        Path pending = output.resolve("dependency-failure.xml.part");
+        try (OutputStream bytes = new BoundedOutput(Files.newOutputStream(pending))) {
+            XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(bytes, "UTF-8");
+            try {
+                xml.writeStartDocument("UTF-8", "1.0");
+                xml.writeStartElement("maven-dependency-failure");
+                xml.writeAttribute("format", "maven-inputs-v2");
+                xml.writeAttribute("nonce", nonce);
+                xml.writeAttribute("round", Integer.toString(round));
+                xml.writeAttribute("metadata-sha256", hash(output.resolve("metadata.xml")));
+                xml.writeAttribute("directory", failure.project.getBasedir().getCanonicalPath());
+                xml.writeAttribute("pom", pomPath(failure.project));
+                xml.writeAttribute("coordinate", failure.coordinate);
+                String reason = String.valueOf(failure.getMessage())
+                        .replaceAll("\\u001B\\[[;\\d]*m", "")
+                        .replaceAll("(?i)(https?|file)://\\S+", "<repository>");
+                xml.writeCharacters(reason.substring(0, Math.min(4096, reason.length())));
+                xml.writeEndElement();
+                xml.writeEndDocument();
+            } finally { xml.close(); }
+        }
+        Path response = output.resolve("dependency-failure.xml");
+        Files.move(pending, response, StandardCopyOption.ATOMIC_MOVE);
+        Files.write(output.resolve("dependency-failure.sha256"), hash(response).getBytes(StandardCharsets.US_ASCII));
+    }
+
     private void module(
             XMLStreamWriter xml,
             MavenProject project,
@@ -278,6 +349,7 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
         xml.writeStartElement("module");
         xml.writeAttribute("directory", project.getBasedir().getCanonicalPath());
         xml.writeAttribute("coordinate", coordinate(project));
+        xml.writeAttribute("pom", pomPath(project));
         xml.writeAttribute("release", release(project));
         xml.writeAttribute("resolved", Boolean.toString(resolve));
         for (org.apache.maven.model.Profile profile : project.getActiveProfiles())
@@ -401,7 +473,7 @@ public final class MavenInputsWorker extends AbstractMavenLifecycleParticipant {
             xml.writeAttribute("directory", target.getBasedir().getCanonicalPath());
         } else {
             if (artifact.getFile() == null || !artifact.getFile().isFile())
-                throw new IOException("unresolved external artifact: " + artifact);
+                throw new MissingExternalArtifact(artifact.toString());
             xml.writeAttribute("path", artifact.getFile().getCanonicalPath());
         }
     }

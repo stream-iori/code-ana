@@ -8779,5 +8779,36 @@
       "disposition": "copied",
       "destination": "tests/scenarios/H5-missing-exact-method/pipeline.json"
     }
+  ],
+  "supplemental_coverage": [
+    {
+      "commit": "e8a940557c9365084cdd5318ed2be3d147697113",
+      "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacMavenFallbackIT.java",
+      "sha256": "79eebd2ee7132c7cad6f8008b0c35f6fc3160d5b571f6c687fa91e2047099f6e",
+      "disposition": "adapted",
+      "replacement_sources": [
+        "tests/java_maven_alignment.py",
+        "tests/java_graph_storage.py",
+        "crates/application/src/maven_inputs.rs",
+        "crates/config/src/java_inputs.rs",
+        "crates/storage/src/graph_candidate.rs",
+        "lang-java-adapotr/java-bridge/src/test/java/dev/codeana/adapter/AnalysisSessionTest.java",
+        "lang-java-adapotr/java-bridge/src/test/java/dev/codeana/adapter/CapturedProjectTest.java"
+      ],
+      "covered_scenarios": [
+        "dependency-only failures after verified metadata",
+        "initial and prerequisite round failures discard all external jars",
+        "reactor source visibility without prerequisite publication",
+        "full/source-only transitions with unchanged POM",
+        "source, search, calls, strict head retention and unused-dependency evidence",
+        "receipt identity, checksum, conflicting terminal and model drift rejection",
+        "dependency mode separates signature cache identity even when both classpaths are empty"
+      ],
+      "excluded_scenarios": [
+        "Java 17/25 product acceptance",
+        "timeout fallback",
+        "Anatomist CLI and historical-worktree protocol compatibility"
+      ]
+    }
   ]
 }

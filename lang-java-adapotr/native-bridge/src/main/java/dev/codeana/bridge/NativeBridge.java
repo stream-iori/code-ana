@@ -77,7 +77,7 @@ public final class NativeBridge {
                 Map<String, Object> request = Json.map(Json.parse(input.toByteArray()));
                 input.reset();
                 long version = Json.number(request, "version");
-                if (version != 9) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+                if (version != 10) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
                 request.put("defer_fact_dedup", true);
                 AnalysisLimits limits = new AnalysisLimits(request);
                 telemetryPath =

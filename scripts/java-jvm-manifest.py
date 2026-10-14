@@ -21,7 +21,7 @@ for source, name in [
 adapter = project / 'java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java'
 protocol_source = (project.parent / 'crates/model/src/lib.rs').read_text()
 protocol = int(re.search(r'WORKER_PROTOCOL_VERSION: u32 = (\d+)', protocol_source)[1])
-manifest = dict(version=1, backend='jvm', analysis_request=9, worker_protocol=protocol, fact_ir=2,
+manifest = dict(version=1, backend='jvm', analysis_request=10, worker_protocol=protocol, fact_ir=2,
                 adapter=re.search(r'IDENTITY\s*=\s*"([^"]+)"', adapter.read_text())[1],
                 compiler_batch_protocol=2, java_model='javac-model-v50', target_java=[8],
                 os=platform.system(), arch={'aarch64':'arm64', 'AMD64':'x86_64'}.get(platform.machine(), platform.machine()),

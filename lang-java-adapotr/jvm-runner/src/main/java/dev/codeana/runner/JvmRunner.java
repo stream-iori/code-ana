@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-/** Explicit JVM development entry: request/result 9, task-owned GRA1 output. */
+/** Explicit JVM development entry: request/result 10, task-owned GRA1 output. */
 public final class JvmRunner {
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("request.json result.json required");

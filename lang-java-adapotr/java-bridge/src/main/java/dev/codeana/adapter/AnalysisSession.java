@@ -16,7 +16,7 @@ import java.util.*;
 
 /** Task lifetime at the native boundary. All semantics belong to the migrated core. */
 public final class AnalysisSession implements AutoCloseable {
-    public static final String IDENTITY = "anatomist-4a903272-codeana-graph2";
+    public static final String IDENTITY = "anatomist-4a903272-codeana-graph2-maven-fallback1";
     private final Map<String, Object> request;
     private final AnalysisLimits limits;
     private final Path taskRoot;
@@ -61,7 +61,7 @@ public final class AnalysisSession implements AutoCloseable {
     private Map<String, Object> analyzeCaptured() throws Exception {
         executing = Thread.currentThread();
         check();
-        if (Json.number(request, "version") != 9)
+        if (Json.number(request, "version") != 10)
             throw new IllegalArgumentException("ABI_REQUEST_VERSION");
         observer.phase("capture", "", true);
         CapturedProject project = new CapturedProject(request);
@@ -89,6 +89,21 @@ public final class AnalysisSession implements AutoCloseable {
         if(!dirty.isEmpty()) for(var c:project.contexts) if(!c.resources().isEmpty()) dirty.add(c.world());
         output = new GraphArchive(Path.of(Json.string(request,"scratch")).resolve("anatomist-rows.bin"),limits.bytes,limits.facts);
         AnatomistRows projection = new AnatomistRows(project,output);
+        projection.row(dev.codeana.graph.GraphRecords.Table.PROJECT_META, "analysis_mode",
+                project.dependencyMode.equals("resolved") ? "semantic" : "source_only");
+        projection.row(dev.codeana.graph.GraphRecords.Table.PROJECT_META, "classpath_status",
+                project.dependencyMode.equals("resolved") ? "available" : "unavailable");
+        projection.row(dev.codeana.graph.GraphRecords.Table.PROJECT_META, "dependency_mode", project.dependencyMode);
+        if (project.dependencyMode.equals("source_only_fallback")) {
+            var failure = project.dependencyFailure;
+            String sample = "Maven external dependency resolution failed; continuing source analysis without external classpath. "
+                    + "Type and call relationships may be incomplete. Module: " + Json.string(failure, "module")
+                    + "; POM: " + Json.string(failure, "pom") + "; dependency: " + Json.string(failure, "coordinate")
+                    + "; " + Json.string(failure, "reason");
+            for (var c : project.contexts)
+                projection.diagnostic(new IndexDiagnostic("warning", "CLASSPATH_UNAVAILABLE", "CLASSPATH",
+                        null, c.module(), c.scope().name(), Json.string(failure, "coordinate"), 1, sample));
+        }
         ProjectView view = new ProjectView(project);
         for(var c:project.contexts) {
             if(dirty.contains(c.world())) {
@@ -334,7 +349,7 @@ public final class AnalysisSession implements AutoCloseable {
         check();
         return Json.object(
                 "version",
-                9,
+                10,
                 "mode",
                 full ? "full" : "delta",
                 "replacements",

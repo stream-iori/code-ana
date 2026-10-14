@@ -443,7 +443,7 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "sha256": "6290581902cb59f869e72e215a5e015b02b4f02e222e7a3a4f49acefb52fc67d",
       "migrated_sha256": "64fe348521d833bb53d5a09feaed0c085bf937d3613228a9bed5b46000b6e737",
-      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB\u20132 GiB decode admission does not change semantic rules or fingerprints.",
+      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB–2 GiB decode admission does not change semantic rules or fingerprints.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -3316,6 +3316,30 @@
       "migrated_sha256": "858d77814ec9402442e92dde7f7a6b40bb10acd17690e9e93db0527e4938b19b",
       "origin": "codeana",
       "reason": "Code-ana compact-storage implementation 9b0008e: bounded direct-parent cache and independent limit/immutability regression, in the core package for package-private access."
+    }
+  ],
+  "supplemental_references": [
+    {
+      "commit": "e8a940557c9365084cdd5318ed2be3d147697113",
+      "files": [
+        {
+          "source": "anatomist-core/src/maven-worker/java/com/anatomist/maven/MavenInputsWorker.java",
+          "sha256": "e1211b0b51e1912fc94fdafeadf328711a22e04f8b4a3027990d3b774913dbab"
+        },
+        {
+          "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacMavenInputs.java",
+          "sha256": "7d2a01b377450399e5a4fea22dedd9c28a7c31e94f8813d8df9da8079d0914ec"
+        },
+        {
+          "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacMavenFallbackIT.java",
+          "sha256": "79eebd2ee7132c7cad6f8008b0c35f6fc3160d5b571f6c687fa91e2047099f6e"
+        }
+      ],
+      "implementation": [
+        "java-bridge/src/maven-worker/java/dev/codeana/maven/MavenInputsWorker.java",
+        "../crates/application/src/maven_inputs.rs"
+      ],
+      "adaptation": "Selective behavioral adaptation: dependency-only terminal receipt, verified model reuse, whole-export source-only fallback. Rust owns orchestration and schema 4; prerequisite rounds retained. Upstream CLI, automatic Maven indexing and timeout fallback are not adopted; vendored source baselines remain unchanged."
     }
   ]
 }
