@@ -19,14 +19,13 @@
 | [版本与源码](modules/versioning.md) / [诊断与标注](modules/operations.md) | 冻结历史、diff、引用保护和用户内容 |
 | [决策登记](design-review.md) / [实施与验收](delivery.md) | 已落实决策、剩余门禁与实际测试入口 |
 | [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |
-| [Rust 类型与职责改造](implementation/rust-type-refactor.md) | 强类型、窄接口、编排阶段、兼容与验证边界 |
-| [存储实施记录](implementation/anatomist-storage-migration.md) | GRA1 与紧凑布局的实现、单轮测量、原失败及修复回执 |
 
 ## 维护约定
 
 | 规则 | 做法 |
 |---|---|
 | 现行文档 | 改代码时同步版本、能力、命令和失败处理；代码常量/DDL/.proto 为依据 |
+| 内容归属 | 设计约定归架构/契约/模块，已执行验证与测量归当前实现；改造过程由 Git 历史保留，不另建实施记录目录 |
 | 清理 | 过期方案与测试直接删除；共享工具先拆出，修正门禁/导入/打包/覆盖映射；测量不重标产物 |
 | 参考仓库 | 记录固定 commit、文件 SHA 和改动；同级 Anatomist 链接是研究线索，不能当作当前分支快照 |
 | 性能 | Native 不分冷热；本次只测一轮，写清输入、缓存状态、产物与预算 |

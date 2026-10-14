@@ -3,7 +3,7 @@
 对齐 2026-10-14。默认 Native/G1，javac 唯一后端，目标 Java 8；版本见 [当前实现](../current-state.md)，接口见 [公共契约](../contracts.md)。
 
 ```text
-daemon ── worker protocol 18 ──► Rust Java worker（独立进程）
+daemon ── worker protocol 19 ──► Rust Java worker（独立进程）
                                       │ C ABI 4 / FFI
                                       ▼
                                GraalVM Java 25 / G1
@@ -15,7 +15,7 @@ daemon ── worker protocol 18 ──► Rust Java worker（独立进程）
 
 显式 JVM 后端供开发/诊断，使用同一模型和行交付；无自动 fallback。Java 8 桥字节码与 Java 25 共享库分开构建，禁止 JNI、JavaParser/SymbolSolver、注解处理器和业务字节码生成。
 
-类型化控制、阶段及职责拆分见 [Rust 改造](../implementation/rust-type-refactor.md)。
+FFI 整数状态在边界解码为 `RunState`。Java engine request、bundle manifest、baseline 和 graph descriptor 使用明确 DTO；JVM 重定位只修改已知路径字段，外部输入保持原路径。Maven export 直接构造 `JavaInputs`，计时使用 `PhaseTiming`。sealed descriptor 的诊断副本读取当前 `graph_archive` / GRA1 并复制为 `graph.rows`。
 
 ## 1. 输入与模型
 
@@ -61,7 +61,7 @@ Maven `selected=false` 模块只保留输入/依赖身份，不作为独立分�
 
 | 边界 | 当前行为 |
 |---|---|
-| 产物 | GRA1 + typed protobuf Row，analysis request/result 9；不生成完整项目 Fact JSON / CAF1 |
+| 产物 | GRA1 + typed protobuf Row，analysis request/result 10；不生成完整项目 Fact JSON / CAF1 |
 | worker | 流式读取/校验原归档，直接交付有界 rows；不运行 Fact JSON 转换或事实去重数据库 |
 | 发布 | Begin/Chunk provisional；完整长度、EOF、SHA、行预算通过才发 End；daemon 再校验并发布 |
 | 编码 | 固定逻辑列与 NULL/text/int64/bytes，metadata JSON 保留原始文本；减少重复投影/编码与拷贝 |
@@ -95,4 +95,6 @@ isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任�
 
 执行文件沿用原 Cargo 路径。`tests/java_release.py --bin-root "$PWD/target/debug" --stage-release` 先检查无活跃进程，归档并原子安装 release 字节，运行后恢复；包与执行路径 SDK/二进制必须逐字节一致。
 
-最新正确性、单轮 iopengw 和未完成验收见 [存储实施记录](../implementation/anatomist-storage-migration.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。
+最新正确性、单轮 iopengw 和未完成验收见 [当前实现](../current-state.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。
+
+Maven 源码模式通过 worker 19 / analysis request 10 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。

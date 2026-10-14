@@ -47,7 +47,16 @@ CLI
 | lang-java-adapotr/native-bridge、jvm-runner | Native C 入口 / 显式 JVM 执行入口 | Java 25 构建环境与目标 Java 8 分开 |
 | tests、scripts | fixture、故障/产品回归、构建/打包 | 开发可显式编译 fixture，不授予产品自动构建权限 |
 
-Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使用 `IndexCommand` / `QueryRequest`。查询消费按能力拆分的读接口并输出 `Record`；未知语言 metadata 仅透传。索引阶段持有 worker/candidate，任务与发布接入窄端口，提交后的报告/确认不改变发布事实。结构与兼容细节见 [Rust 类型改造](implementation/rust-type-refactor.md)。
+Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使用 `IndexCommand` / `QueryRequest`。查询消费按能力拆分的读接口并输出 `Record`；未知语言 metadata 仅透传。索引阶段持有 worker/candidate，任务与发布接入窄端口，提交后的报告/确认不改变发布事实。编码与历史兼容见 [公共契约](contracts.md)。
+
+| Rust 数据边界 | 约定 |
+|---|---|
+| 身份与状态 | 身份 newtype 保留字符串编码；操作、方向、端点、算法、分析世界、任务状态、错误码、分析模式和阶段记录族使用枚举 |
+| 请求与协议 | `Request` 用于接入、配置捕获及持久化；领域/protobuf 逐字段映射，不经通用 JSON 中转 |
+| 业务结果 | 稳定实体字段使用 struct / enum；索引、缓存、分组及按名称组织的集合使用 Map |
+| JSON | 限于传输/持久化编解码、公共展示、原始协议验证和不解释的 producer 扩展；核心业务不得通过 `wire_map` / `Record::wire` 按键读取字段 |
+
+语言模型原始 wire arena 继续有界验证；类型图通过节点句柄及 `SingleEdge` / `ManyEdge` 遍历，不展开循环。
 
 `lang-adaptor/` 已删除。rust-analyzer 适配器仍为 [后续设计](modules/rust-worker.md)，不存在已交付的 Rust 语言 worker。
 
@@ -57,7 +66,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 |---|---|
 | 配置 | 用户服务/工具链 + 项目公共策略 + 语言/module/world + 显式 CLI 覆盖；校验后冻结 |
 | 捕获 | Git commit 或工作区清单，复制并校验源码/资源/依赖；工作区捕获不是 OS 全目录原子快照 |
-| 发现 | plain 显式根；Maven 从外部 inputs_manifest 读取有效模块/依赖。缺输入返回 BuildAdvice |
+| 发现 | plain 显式根；Maven 从外部 inputs_manifest 读取有效模块/依赖。缺有效模型返回 BuildAdvice；依赖失败可使用带证据的源码模式 |
 | 分析 | 物理模块 × MAIN/TEST；语义输入可以多于 publication sources；目标 JDK javac parse/analyze |
 | 增量 | adapter 决定声明契约/绑定/失败查找/资源依赖失效；Rust 固定基线、检查替换范围 |
 | 输出 | 封存 GRA1；worker 流式校验并发送行，daemon 同时写私有候选，End 前不可发布 |
@@ -105,4 +114,6 @@ graph/catalog/人工标注分别版本化。源码 blobs、分页结果、snapsh
 
 当前 macOS ARM64 / Java 8 的 fixture、故障、紧凑存储和冻结 iopengw 单轮已验证。Linux、Java 17/25、Rust 语言分析、完整框架覆盖、当前 raw model/AST 迁移与容量/稳定性能门禁仍待完成；Hello 或 build-only 不代表正式放行。
 
-现行 [契约](contracts.md)、[模块](README.md)、[验证入口](delivery.md) 与 [存储实施记录](implementation/anatomist-storage-migration.md) 分别说明协议、行为和已执行证据。
+现行 [契约](contracts.md)、[模块](README.md)、[验证入口](delivery.md) 与 [当前实现](current-state.md) 分别说明协议、行为、验证要求和已执行证据。
+
+Maven 外部准备借鉴 Anatomist `e8a940557c9365084cdd5318ed2be3d147697113` 的依赖失败回执；仅迁入行为，不改整体上游基线。有效模型与依赖可用性分离，源码降级仍走同一 javac / GRA1 / candidate / CAS 链路。索引不启动 Maven，超时不降级。详见 [配置](configuration.md#maven-依赖失败与源码模式)。

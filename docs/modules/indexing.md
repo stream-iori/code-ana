@@ -8,7 +8,7 @@
 
 当前使用固定基线、归属替换、私有 candidate 和 CAS；语言失效在 adapter，引用/交付/发布校验在 Rust，关联 D05/D07/D09/D11。
 
-类型化控制、阶段及职责拆分见 [Rust 改造](../implementation/rust-type-refactor.md)。
+索引核心只接收 `IndexCommand`。编排分为 setup、analysis、publication、post-processing；`IndexSetup`、`AnalyzedCandidate`、`PublishedIndex` 持有各阶段所需状态和 worker/candidate。任务通过 `TaskRepository`，head 与候选发布通过 `PublicationRepository` 接入；已发布结果与后处理分离，报告/确认失败不能撤销提交。
 
 ## 1. 端口与状态
 
@@ -132,6 +132,8 @@ daemon 不自行实现 Java 名称求解或 Rust 宏失效。adapter 负责解�
 
 ## 当前交付与存储边界
 
-Java 封存 GRA1/protobuf rows，worker 18 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 7，查询以逻辑 schema 33 读取；不再经过 CAF1 / Fact JSON 去重数据库。
+Java 封存 GRA1/protobuf rows，worker 19 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 7，查询以逻辑 schema 33 读取；不再经过 CAF1 / Fact JSON 去重数据库。
 
 增量对兼容基线使用 SQLite backup，保持未变节点整数主键并重映射新暂存引用，封存时回收孤立字典/元注解定义并重建索引/FTS。旧格式 delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 只固定旧 head 的 CAS 身份，建新库成功后切入口。G1 worker 复用健康 isolate，失败恢复换进程。
+
+Maven manifest schema 4 记录外部依赖三态。自动源码降级仍通过候选完整性检查；模块级 coverage 参与严格门禁，失败保留旧 head。模式改变使 Java 语义身份变化并全量重建，恢复后补齐关系、再次失效时清旧绑定；无变更不自动运行 Maven。详见 [配置](../configuration.md#maven-依赖失败与源码模式)。

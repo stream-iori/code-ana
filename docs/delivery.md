@@ -1,6 +1,6 @@
 # 实施与验收
 
-对齐 2026-10-13：先 Java fixture，再冻结真实项目；开发构建、产品回归、真实项目观测与正式验收分开。最新范围见 [当前实现](current-state.md)，原回执见 [存储实施记录](implementation/anatomist-storage-migration.md)。
+对齐 2026-10-14：先 Java fixture，再冻结真实项目；开发构建、产品回归、真实项目观测与正式验收分开。已执行范围、测量口径及原回执路径见 [当前实现](current-state.md)。
 
 ## 1. 当前状态
 
@@ -81,3 +81,5 @@ Native 没有冷热分类。应用缓存状态与 worker 复用是独立条件�
 | 证据 | 历史数字/失败不重写；已通过范围与未完成门禁分开 |
 
 只修改文档时运行相关校验，不因文档同步重跑大型索引或 Native 构建。
+
+Maven schema 4 的导出协议与 Resolver fixture 走 `just test-java-maven`；图产品套件覆盖依赖失效/恢复、源码模式、严格门禁和增量/全量一致。真实 SIGSEGV 测试会临时替换已安装库，必须与其他产品测试串行；启动和替换前检查 `STOP_RUNTIME_BEFORE_NATIVE_FAULT_TEST`，禁止带活跃 runtime 注入。

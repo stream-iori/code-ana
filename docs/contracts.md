@@ -14,11 +14,19 @@
 | profile / 输入 digest | 包含实际工具链、依赖顺序、adapter/模型/规则及语义配置；执行预算另记录 |
 | replacement owners | 源文件/资源/producer 的替换范围包含删除和零输出，避免留下旧事实 |
 
-当前 graph model 2、worker 18、analysis request/result 9、C ABI 4、daemon handshake 3；javac-model-v50、compiler batch 2。图库物理 user_version 7，上游逻辑 schema 33、GraphSemantics 26，adapter `anatomist-4a903272-codeana-graph2`。catalog/annotations 均为 2，彼此独立。
+当前 graph model 2、worker 19、analysis request/result 10、C ABI 4、daemon handshake 3；javac-model-v50、compiler batch 2。图库物理 user_version 7，上游逻辑 schema 33、GraphSemantics 26，adapter `anatomist-4a903272-codeana-graph2-maven-fallback1`。catalog/annotations 均为 2，彼此独立。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
 
-内部 Rust 状态、操作、端点和错误码使用枚举，protobuf 与 JSON 边界显式映射；这些类型不改变线上字段拼写。新冻结记录包含内部类型标签，文本 renderer 保持原公共形状；旧记录只作为呈现数据读取。未知 producer 扩展透传，稳定语义字段类型错误明确拒绝。见 [Rust 改造](implementation/rust-type-refactor.md)。
+内部 Rust 状态、操作、端点和错误码使用枚举，protobuf 与 JSON 边界显式映射；这些类型不改变线上字段拼写。未知 producer 扩展透传，稳定语义字段类型错误明确拒绝。
+
+| 内部编码 | 兼容约束 |
+|---|---|
+| `FactAttributes` | 稳定语义字段有明确类型；`Field<T>` 区分缺失、null 和具体值；未知字段由 `OpaqueMetadata` 透传 |
+| 冻结页与任务记录 | 新记录带 `record_type`；旧无标签记录作为 `Record::Display` 保持重放/续页，不作为新 pipeline 的语义输入；renderer 不输出内部标签 |
+| `Record::Display` | 仅承载已呈现运维/历史数据，不提供语义端点访问 |
+| 图身份与 profile | 公开 ID、hash/ordinal、输入摘要及 profile 编码保持；既有命名盐不表示现行协议版本 |
+| `DomainError` | 错误码独立于上下文和文案；类型化 cause 保持读取/取消身份；外部 producer 代码显式保留，故障注入文本保持原拼写 |
 
 ## 2. GRA1 图记录
 
@@ -102,3 +110,11 @@ G1 的 heap 不是 RSS 上限。预算按同一时刻 host/原生库与 javac �
 文本输出为 `codeana-text-v1`，record/terminal 后为单行 JSON；RPC 终态是类型化 protobuf。stdout 放数据，stderr 放进度。退出码 0 成功、1 错误、2 参数错误、3 strict 拒绝、124 超时、130 取消。
 
 pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续页不重新读取当前工作区。普通 source 验证当前源码 hash，显式历史 source 读捕获 blob。兼容图历史查询无需 JDK；旧物理格式仍要求重建。人工标注独立保存，重建不删除正文。
+
+## 7. Maven 外部输入
+
+导出 XML `maven-inputs-v2`、manifest schema 4；旧 schema 3 要求重新导出。三态 `resolved` / `source_only_requested` / `source_only_fallback` 与 `resolved_classpath` 一致，源码模式不允许外部 classpath。失败模式必须包含模块、实际 POM、坐标、原因、轮次及失败回执 SHA。schema 4 的 inputs SHA 在降级时指向本次已验证 metadata；失败回执另有独立 SHA。
+
+worker 19 的 JavaConfig 与 analysis request/result 10 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。C ABI 4、graph model 2、图库 schema 7、compiler batch 2 不变。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
+
+全局 coverage 使用 `*` 来源；模块级缺口同样影响 semantic evidence，不计作真实源码文件。SQL NULL 来源仍受现有图库 NOT NULL 约束拒绝。增量替换全局降级覆盖与诊断，不随任务次数重复累加；模式切换全量重建。报告新增可选 `analysis_mode/classpath_status`，旧报告缺字段仍可读取。

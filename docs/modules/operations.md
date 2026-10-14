@@ -8,7 +8,7 @@
 
 当前独立 annotations.db 保存正文/版本/锚点；list 固定一次标注读取与所选图 revision，graph 重建不删除正文。
 
-类型化控制、阶段及职责拆分见 [Rust 改造](../implementation/rust-type-refactor.md)。
+报告、diff、doctor、标注绑定分别使用结构化参数和结果，不根据 JSON 字段推断业务状态。标注绑定只依赖所需图读能力；GC/recovery 返回类型化结果。人工正文、版本、锚点与 snapshot 不因图重建删除。
 
 ## 1. 状态模型
 
@@ -95,3 +95,5 @@ Annotation（独立正文与用户来源）
 | full rebuild / schema migration | 人工正文与 ID 保留 |
 | 符号删除/重命名/多 world 歧义 | 绑定失效可见，不丢内容、不乱绑 |
 | 标注 list 与编辑并发 | list 固定一次标注读取；标注接入 pipeline 仍未实现 |
+
+Maven 自动降级时，导出 warning 与索引/报告的 `analysis_mode=source_only`、`classpath_status=unavailable` 对齐，图中的 `CLASSPATH_UNAVAILABLE` 保留模块、POM、可用坐标和脱敏原因。模块级来源 `*` 的缺口影响 semantic evidence；`--strict` 拒绝保留旧 head，普通发布不代表完整语义。

@@ -70,4 +70,4 @@ Rust、daemon、SQLite 都是实现选择；正确性首先由输入捕获、事
 | Rust/跨语言 | 真实 adapter + 已声明能力矩阵；不得用 mock 冒充解析器 |
 | 查询/运维限制 | 单条 SQLite 语句取消、调度公平性、标注 pipeline 等按实际代码逐项补齐 |
 
-当前直接依据为 [公共契约](contracts.md)、[Java worker](modules/java-worker.md)、[存储](modules/storage.md) 和 [实施回执](implementation/anatomist-storage-migration.md)。
+当前直接依据为 [公共契约](contracts.md)、[Java worker](modules/java-worker.md)、[存储](modules/storage.md) 和 [当前实现与验证边界](current-state.md)。

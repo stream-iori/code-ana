@@ -8,7 +8,9 @@
 
 当前 query 经 `GraphAccess` 等窄接口读取 Anatomist 逻辑投影；CLI/pipeline 使用本项目输出契约。类型/方法关系与 CHA 已有固定图回归，不在查询时重跑 javac。
 
-`QueryRequest` 与 `Record` 是核心参数/结果；pipeline 使用枚举端点，扫描必须显式实现。FILES 文本/源码只需 `SourceContext`。稳定属性由 `FactAttributes` 表达，Map 保留索引/分组用途。实现与历史页兼容见 [Rust 改造](../implementation/rust-type-refactor.md)。
+`QueryRequest` 与 `Record` 是核心参数/结果；pipeline 使用枚举端点取输入，转移上阶段记录集，不复制完整向量或按 JSON 键取字段。`Record` 区分事实、调用、派发、路径、源码、文本和聚合。稳定属性由 `FactAttributes` 表达，Map 保留索引/分组用途；历史页兼容见 [公共契约](../contracts.md)。
+
+读能力分为 `SourceContext`、`GraphAccess`、`SourceLocator`、`AnnotationReader`、`OverviewReader` 和 `DependencyReader`。扫描方法必须显式实现，生产读取使用有界 SQL；FILES 文本/源码只需 `SourceContext`，不实现语义图能力。
 
 ## 1. 查询上下文
 

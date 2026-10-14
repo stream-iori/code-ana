@@ -18,7 +18,7 @@ Rust 私有候选 → schema 7 紧凑图 → 校验 / catalog CAS → 不可变 
 | just test-java-release | 成套打包、原执行路径验证与恢复 |
 | python3 scripts/check-java-migration.py | 源码来源清单与 SHA 核对 |
 
-当前 daemon 3、worker 18、graph model 2、analysis request/result 9、C ABI 4、compiler batch 2 / javac-model-v50。物理 storage schema 7、逻辑 schema 33 / GraphSemantics 26；详见 [现行说明](../docs/current-state.md) 和 [Java worker](../docs/modules/java-worker.md)。
+当前 daemon 3、worker 19、graph model 2、analysis request/result 10、C ABI 4、compiler batch 2 / javac-model-v50。物理 storage schema 7、逻辑 schema 33 / GraphSemantics 26；详见 [现行说明](../docs/current-state.md) 和 [Java worker](../docs/modules/java-worker.md)。
 
 G1 一个进程只创建一次 isolate，健康任务复用；失败/取消恢复换进程。显式 Serial 支持。Oracle GraalVM 固定在 .sdkmanrc；目标 JDK 由本机 SDKMAN Java 8 配置选择。只进行禁用处理器的 javac parse/analyze，不执行目标构建、处理器或业务代码，无 JNI。
 

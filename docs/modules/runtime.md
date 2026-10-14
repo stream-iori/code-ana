@@ -10,7 +10,7 @@
 
 D01/D02 已落地：每用户一个 daemon，tonic gRPC/HTTP/2 + protobuf，handshake 3；有界调度与进程树 RSS 采样。协议见 [contracts](../contracts.md)，正式容量阈值仍待验收。
 
-类型化控制、阶段及职责拆分见 [Rust 改造](../implementation/rust-type-refactor.md)。
+接入 `Request` 经显式映射成为 `TaskCommand`，调度依据命令判断分析与写入许可。任务登记、事件、终态和提交恢复通过 `TaskRepository`；该端口不暴露 SQL 或连接。状态及错误使用枚举，错误分类读取类型化 cause，不拆分错误文案。
 
 ## 1. 输入、输出与内部组件
 

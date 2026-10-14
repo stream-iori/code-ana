@@ -316,6 +316,23 @@ EffectiveConfig + 捕获源码/依赖/工具链 + adapter/model/compiler-bridge/
 
 javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使用封存输入时属于索引分析，不属于目标项目构建。Maven 有效模型读取仍只消费已有 metadata；独立 codeana-export-java-inputs 命令显式启动 Maven，通过 core extension 在生命周期前退出并导出 metadata，可能下载依赖；该外部准备不同于索引只读发现。签名缓存是工具内部派生数据，不作为“目标项目已构建”的证明。
 
+### Maven 依赖失败与源码模式
+
+独立 `java-inputs export` / `codeana-export-java-inputs` 使用 `maven-inputs-v2`，生成 schema 4 manifest。schema 3 必须重新导出。索引不运行 Maven；依赖恢复后需再次显式导出并提交新索引任务。导出仍拒绝覆盖已有文件，应先导出到新路径，确认成功后替换项目配置指向的 manifest。
+
+| dependency_mode | 行为 |
+|---|---|
+| `resolved` | 使用本次解析并封存的模块级依赖；未选中无关模块仍可未解析 |
+| `source_only_requested` | `--source-only` 主动关闭外部依赖解析，不伪造失败诊断 |
+| `source_only_fallback` | 有效模型已交付，外部依赖解析失败或 jar 缺失；丢弃整次外部 classpath，保留已验证模型中的源码根、资源根、reactor 和 MAIN/TEST |
+
+自动降级默认启用，初始解析和 prerequisite 后续轮次都适用。失败回执绑定 nonce、轮次、metadata SHA、模块及实际 POM，记录可用坐标、受限且脱敏的原因；manifest 收录失败回执 SHA。未知退出、模型失败/变化、回执损坏、超时、取消和清理失败仍中止，不消费部分 inputs 或旧 classpath。
+
+降级导出返回 0，并输出 warning；索引回执与报告包含 `analysis_mode=source_only`、`classpath_status=unavailable`，图中持久保存依赖模式和 `CLASSPATH_UNAVAILABLE`。声明、源码、平台类型及可确认关系仍可用，外部关系可能缺失。即使源码未引用缺失依赖，自动降级也令 `evidence.semantic=false`；普通索引可发布，`--strict` 返回 3 并保留旧 head。主动源码模式按既有解析缺口评估。
+
+源码模式为必要的未选中上游模块建立 MAIN prerequisite 上下文，只供分析，不发布其事实。模式进入语义身份与签名缓存上下文；完整与源码模式切换触发全量重建，无变更复用和历史报告保留原降级证据。超时降级不在首版范围内。
+
+
 ## 11. 验收
 
 | 场景 | 必须验证 |
@@ -344,7 +361,7 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 | daemon.java_warm_workers | 健康 worker/isolate 复用开关；名字不表示 Native 有冷/热执行模式 |
 | Native GC | 构建默认 G1；不在项目 TOML 运行时切 GC，切换需成套构建/安装 |
 
-当前 Native heap 为 8–2048 MiB，必须按 MiB 对齐；同进程 G1 isolate 不重建。开发 G1 验证与单轮性能见 [实施记录](implementation/anatomist-storage-migration.md)。
+当前 Native heap 为 8–2048 MiB，必须按 MiB 对齐；同进程 G1 isolate 不重建。开发 G1 验证与单轮性能见 [当前实现](current-state.md)。
 
 ### 仅解析、尚未执行的字段
 
