@@ -30,11 +30,13 @@ struct Coordination {
     readers: BTreeMap<String, usize>,
     staged_blobs: BTreeMap<String, u64>,
     staged_candidates: BTreeSet<String>,
+    active_blobs: BTreeMap<String, usize>,
 }
 #[derive(Clone)]
 pub struct Store {
     pub home: PathBuf,
     coord: Arc<Mutex<Coordination>>,
+    blob_io: Arc<blobs::IoLimit>,
 }
 pub struct AnnotationCommand<'a> {
     pub project: &'a str,
@@ -136,6 +138,7 @@ impl Store {
         let s = Self {
             home: home.to_owned(),
             coord: Arc::default(),
+            blob_io: Arc::default(),
         };
         let c = s.catalog()?;
         let schema: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;

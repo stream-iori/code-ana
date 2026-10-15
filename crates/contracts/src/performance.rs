@@ -110,6 +110,16 @@ std::thread_local! { static SYNC: std::cell::RefCell<Option<Counters>> = const {
 #[derive(Clone, Default)]
 pub struct Capture(Option<Counters>);
 impl Capture {
+    /// Propagate the current task/CPU-thread diagnostics into bounded child workers.
+    pub fn current() -> Self {
+        Self(
+            CURRENT
+                .try_with(Clone::clone)
+                .ok()
+                .or_else(|| SYNC.with(|c| c.borrow().clone())),
+        )
+    }
+
     pub fn from_env() -> Self {
         if std::env::var_os("CODEANA_PERFORMANCE_TIMINGS_DIR").is_some() {
             Self::enabled()

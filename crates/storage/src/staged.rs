@@ -94,8 +94,8 @@ fn prepare_statistics(
 }
 impl Store {
     pub fn publish_staged(&self, candidate: StagedCandidate, task: &str) -> Result<Revision> {
-        let mut lock = self.coord.lock().unwrap();
         let revision = &candidate.revision;
+        let _pins = self.pin_blobs(revision.manifest.files.iter().map(|s| &s.hash));
         ensure!(
             self.head(&revision.target)? == candidate.expected,
             codeana_model::DomainError::new(codeana_model::ErrorCode::HeadConflict, "")
@@ -103,7 +103,10 @@ impl Store {
         use codeana_contracts::performance::{Metric, measure};
         measure(Metric::PublishBlobCheck, 0, false, || -> Result<()> {
             for source in &revision.manifest.files {
-                self.blob(&source.hash)?;
+                ensure!(
+                    hash_file(&self.home.join("blobs").join(&source.hash))? == source.hash,
+                    DomainError::new(ErrorCode::CorruptBlob, "")
+                );
             }
             Ok(())
         })?;
@@ -116,6 +119,11 @@ impl Store {
         )?;
         sync_dir(candidate.directory.path())?;
         test_fault(&self.home, "candidate_synced")?;
+        let mut lock = self.coord.lock().unwrap();
+        ensure!(
+            self.head(&revision.target)? == candidate.expected,
+            DomainError::new(ErrorCode::HeadConflict, "")
+        );
         measure(Metric::PublishMove, 0, false, || {
             std::fs::rename(
                 candidate.directory.path(),

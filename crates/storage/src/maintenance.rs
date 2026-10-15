@@ -154,7 +154,12 @@ impl Store {
             }
             self.remove_orphan_pages(&c)?;
         }
-        let mut blob_roots: BTreeSet<String> = guard.staged_blobs.keys().cloned().collect();
+        let mut blob_roots: BTreeSet<String> = guard
+            .staged_blobs
+            .keys()
+            .chain(guard.active_blobs.keys())
+            .cloned()
+            .collect();
         for id in &protected {
             if let Ok(r) = self.revision_unlocked(id) {
                 blob_roots.extend(r.manifest.files.into_iter().map(|s| s.hash));

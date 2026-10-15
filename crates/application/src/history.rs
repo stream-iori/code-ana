@@ -221,6 +221,7 @@ impl Engine {
             matches!(kind, "files" | "analysis"),
             codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidSnapshotKind, "")
         );
+        let _blob_pins = self.store.pin_blobs(c.blobs.keys());
         let mut t = if kind == "analysis" {
             let t = self.index(id, &IndexCommand::from(req), c, cancel).await?;
             ensure!(
