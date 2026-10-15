@@ -31,6 +31,9 @@ test-rust:
   cargo test --workspace --locked
   cargo build --workspace --locked
   python3 tests/rust_graph_e2e.py
+  python3 tests/rust_language_e2e.py
+  python3 tests/rust_dogfood_tests.py
+  python3 tests/java_bundle_manifest_tests.py
   python3 tests/rust_upstream_text_search.py
   python3 tests/rust_upstream_annotations.py
   cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -39,6 +42,7 @@ test-rust-release:
   ./scripts/package-rust.sh
   cd "dist/codeana-rust-$(uname -s)-$(uname -m)" && shasum -a 256 -c SHA256SUMS
   CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_graph_e2e.py
+  CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_language_e2e.py
 
 demo-rust:
   ./scripts/demo-rust.sh
