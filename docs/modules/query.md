@@ -1,6 +1,6 @@
 # 查询与 typed pipeline
 
-> 对齐 2026-10-14。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
+> 对齐 2026-10-15。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 当前调用与声明遍历按相邻 ID 分批查询 SQLite，最多保留 10,000 条查询记录并报告工作/深度截断。search-code 按公开 ID 递增、每批 512 条定向读取，完整结果流入 SQLite 冻结页库；不受上述遍历记录上限截断。续页以固定 page ID/offset 读取有界记录，参数与 revision 固定，页大小可变；引用和 TTL 随 catalog 管理。其他操作仍先计算有界结果，再冻结到同一页库。dispatch 从已发布的 call-target/overrides 事实扩展静态可能目标，披露开放世界；完整 Java 正确性仍待门禁。本轮不扩展 diff 查询。
 
@@ -94,6 +94,8 @@ calls -------- call_relation -> resolve       导航到另一端方法
 | 稳定排序 | 使用公共身份与明确位置排序，不依赖 rowid / hash map 遍历顺序 |
 | 部分输出 | returned 只计实际完整输出；元数据超预算返回明确的本项目错误 |
 | 续页 | query/stage/subject/page 身份与 replacement 语义由本项目契约冻结 |
+
+非流式结果使用 `Record::query_cmp` 比较各记录族的业务键，不使用展示 JSON 排序。具体键和历史页 `order_policy` 兼容见 [公共契约](../contracts.md#6-输出证据与历史)。实体身份与 world 使用不同 newtype；producer 未知状态原样保留，不按未知字符串猜测已解析。
 
 当枚举完成、语义充分、计算和输出未限制且操作允许时，空结果才支持所选静态模型内的否定结论。不能将其升级为运行时行为不存在。
 

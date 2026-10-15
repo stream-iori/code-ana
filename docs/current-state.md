@@ -14,6 +14,29 @@
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 
+## Rust 可维护性重构（2026-10-15）
+
+| 改动 | 保持的边界 |
+|---|---|
+| Rust/fixture 图行改用具名结构，关键身份与状态改用 newtype / enum | 列顺序、NULL/空值、metadata 原文、公开 ID 和协议版本不变；Java 原始行不重编码 |
+| 拆分配置与捕获、Java 准备、Maven 导出、HIR 采集和 Rust 索引分支 | 原路径/文件名、临时资源寿命、取消、增量和一次 CAS 发布保持 |
+| `TaskRepository` / `IndexRepository` 收窄访问；Engine 状态私有 | 候选和基线使用关联类型；报告/历史/维护仍依赖具体存储，不宣称应用层完全解耦 |
+| 结果按业务字段稳定排序，冻结页保存可选排序策略 | 新首页顺序允许变化；相同键不去重，旧页按保存顺序重放 |
+| Java 分发同时携带 Rust 语言 worker 和输入导出器 | 混合语言使用同套产物，release 在原 Cargo 路径暂存并恢复 |
+
+本轮按用户要求不做 iopengw 验收，不更新历史性能结论。验证证据位于 `target/rust-maintainability/`；具体排序和数据边界见 [契约](contracts.md)，职责与端口见 [架构](architecture.md)。
+
+| 重构回归 | 已执行结果 |
+|---|---|
+| Rust | workspace 181 项通过、1 项需 G1 的测试跳过；图 13、真实 Rust 5、文本 2、标注 4，以及 fmt / DDL / clippy 通过 |
+| 基线等价 | 12 个逻辑表和 5 类查询内容无差异；新查询顺序按业务键变化，旧冻结页兼容测试通过 |
+| Java / Maven | `just test-java`、Maven 导出 fixture 与 21 项对齐通过；Java 源码无改动 |
+| 显式 JVM | 图 7 项通过，含真实 Java/Rust 混合 full/delta 等价、两种语言保留及 strict 失败保旧 head；用例与产物无漂移 |
+| Native | G1 开发构建、manifest 5 项、ABI 生命周期 8 项、图 8 项、错误 JDK 及独占真实 SIGSEGV 恢复通过；不签正式 Native 或性能放行 |
+| 分发 | release workspace、完整包 checksum、原路径图 8 项、错误 JDK、随包 fixture 自动启动/index/calls/source 通过；包与源码无漂移，原 debug 字节已恢复 |
+
+最终汇总：`target/rust-maintainability/validation.json`；完整 JVM 图、最终混合复验和分发证据分别为该目录的 `jvm-graph-complete`、`jvm-mixed-verified`、`release`。Native 完整命令日志为 `native-gate.log`，最终 Rust 门禁为 `rust-gate-verified.log`。基线比较保留图 hash/重复次数，查询按记录多重集比较；旧页兼容由应用层回归覆盖。准备过程的序列化、路径和用例登记问题保留在 `preparation-failures.json`，未将首次六项 JVM 回执当作七项通过。
+
 ## Rust 存储压缩与有界流水线（schema 9）
 
 Rust 单语言已直接复用 GraphStream：blocking HIR/记录生成 → 4 批 / 8 MiB 队列 → async IPC → 有界队列 → blocking SQLite。独立控制读取保留半帧，满队列/写阻塞仍可取消；只有 VerifiedEnd 后才能封存。混合语言继续采用已验证归档合并。活动 blob pin 使用引用计数，文件 I/O 共享并发上限 2，复制/校验/文件同步移出全局锁，最终持久化和 CAS 屏障保留。

@@ -1,6 +1,6 @@
 # CLI 与 daemon
 
-> 对齐 2026-10-14。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
+> 对齐 2026-10-15。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 当前 daemon 把提交时捕获、定向查询、Git 读取和发布存储工作放入阻塞线程；每项目一项分析、同目标写入串行，只读查询可并发。取消在查询选择器和源码读取边界生效；单条正在执行的 SQLite 语句、硬 RSS 隔离与严格项目间公平性仍需规模化验证。
 
@@ -11,6 +11,8 @@
 D01/D02 已落地：每用户一个 daemon，tonic gRPC/HTTP/2 + protobuf，handshake 3；有界调度与进程树 RSS 采样。协议见 [contracts](../contracts.md)，正式容量阈值仍待验收。
 
 接入 `Request` 经显式映射成为 `TaskCommand`，调度依据命令判断分析与写入许可。任务登记、事件、终态和提交恢复通过 `TaskRepository`；该端口不暴露 SQL 或连接。状态及错误使用枚举，错误分类读取类型化 cause，不拆分错误文案。
+
+`Engine` 的存储、任务集合及生命周期字段私有；daemon 使用 `task`、`task_events`、`watch_task` 和 drain/cancel 方法。`TaskWatch` 用 RAII 维护 watcher 计数，断连释放订阅。`IndexService<R>` 通过 `IndexRepository` 管理关联候选类型，取消在进入持久化前、适配器写对象前及 CAS 前检查；提交后失败不回滚 revision。
 
 ## 1. 输入、输出与内部组件
 

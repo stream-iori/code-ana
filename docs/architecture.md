@@ -1,6 +1,6 @@
 # 总体架构
 
-对齐 2026-10-14。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
+对齐 2026-10-15。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
 CLI
@@ -50,12 +50,18 @@ CLI
 
 Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使用 `IndexCommand` / `QueryRequest`。查询消费按能力拆分的读接口并输出 `Record`；未知语言 metadata 仅透传。索引阶段持有 worker/candidate，任务与发布接入窄端口，提交后的报告/确认不改变发布事实。编码与历史兼容见 [公共契约](contracts.md)。
 
+`Engine` 私有保存存储、任务和生命周期状态；daemon 通过任务读取、事件和 `TaskWatch` 访问，订阅释放时自动回收 watcher。索引策略依赖 `IndexRepository` / `IndexBaselineReader`，`IndexService<R>` 持有实现关联的候选和基线类型；SQLite、候选持久化与 CAS 位于存储适配器。提交后的报告、历史和维护仍使用具体存储实现。
+
 | Rust 数据边界 | 约定 |
 |---|---|
 | 身份与状态 | 身份 newtype 保留字符串编码；操作、方向、端点、算法、分析世界、任务状态、错误码、分析模式和阶段记录族使用枚举 |
 | 请求与协议 | `Request` 用于接入、配置捕获及持久化；领域/protobuf 逐字段映射，不经通用 JSON 中转 |
 | 业务结果 | 稳定实体字段使用 struct / enum；索引、缓存、分组及按名称组织的集合使用 Map |
 | JSON | 限于传输/持久化编解码、公共展示、原始协议验证和不解释的 producer 扩展；核心业务不得通过 `wire_map` / `Record::wire` 按键读取字段 |
+
+`Fact.id`、所属 world、标注锚点和 expected revision 使用各自身份 newtype。封闭选项通过 `TryFrom` / `FromStr` 拒绝非法值；producer 状态使用 `FactStatus::Other(String)` 保留未来扩展。Rust 声明种类、可见性、关系、解析状态和分析模式使用封闭枚举。Rust/fixture 通过具名行结构构造 GRA1，Java 原始 protobuf 行继续按原契约验证和交付。
+
+配置解析与输入捕获、Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。Rust 索引明确区分未变基线复用、单语言记录流与混合语言归档合并，各分支仍共享一次校验和原子发布。
 
 语言模型原始 wire arena 继续有界验证；类型图通过节点句柄及 `SingleEdge` / `ManyEdge` 遍历，不展开循环。
 

@@ -1,6 +1,6 @@
 # 公共契约：身份、图记录与协议
 
-现行契约对齐 2026-10-14。版本总表见 [当前实现](current-state.md)；过期 Fact IR / CAF1 契约已删除。
+现行契约对齐 2026-10-15。版本总表见 [当前实现](current-state.md)；过期 Fact IR / CAF1 契约已删除。
 
 ## 1. 身份与版本
 
@@ -47,6 +47,8 @@ GRA1 | u32be(record_length) | protobuf Row | ... | EOF
 | 缺块 / 截断 / 错序 / 错摘要 | 任务失败，候选不发布 |
 
 表族为 NODE、EDGE、DECLARATION、ANNOTATION、ANNOTATION_META、SEMANTIC_ANNOTATION、UNRESOLVED_CALL、FILE_CACHE、FILE_DEPENDENCY、SYMBOL_DEPENDENCY、DIAGNOSTIC、COVERAGE、PROVIDER、PROJECT_META。数据库物理布局可变，GRA1 逻辑列不携带紧凑库整数主键。
+
+Rust 和 fixture producer 使用 `contracts::graph_rows` 中的具名行结构，通过 `GraphRow::into_row` 集中编码逻辑列。整数转换检查范围，`Option` 区分 NULL 与空字符串，metadata 保留原始文本。此构造边界不改变 GRA1 列顺序、字节编码、hash/ordinal、协议或数据库版本；Java producer 原始行不经这些结构重编码。
 
 ## 3. CLI-daemon 与 worker
 
@@ -110,6 +112,20 @@ G1 的 heap 不是 RSS 上限。预算按同一时刻 host/原生库与 javac �
 文本输出为 `codeana-text-v1`，record/terminal 后为单行 JSON；RPC 终态是类型化 protobuf。stdout 放数据，stderr 放进度。退出码 0 成功、1 错误、2 参数错误、3 strict 拒绝、124 超时、130 取消。
 
 pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续页不重新读取当前工作区。普通 source 验证当前源码 hash，显式历史 source 读捕获 blob。兼容图历史查询无需 JDK；旧物理格式仍要求重建。人工标注独立保存，重建不删除正文。
+
+新查询按业务字段稳定排序，不将整条记录序列化为 JSON 比较。跨记录族顺序为 Fact、Call、Trace、Dispatch、Source、Text、Project、Group、Display；同键保留原顺序与重复次数，可选字段 None 在 Some 之前。
+
+| 记录族 | 排序键（从左到右） |
+|---|---|
+| Fact | world、公开 ID |
+| Call | from、to、kind、depth、调用点列表 |
+| Trace | from、to、节点列表、逐跳调用关系 |
+| Dispatch | world、call_site、target、binding、candidate、algorithm |
+| Source / Text | path、start、end / path、line |
+| Group | module、package、target_package、relation |
+| Project / Display | 保持输入顺序 |
+
+流式 search-code 保持公开 ID 顺序，search-text 保持文件/行顺序。新冻结页记录可选 `order_policy`；旧页缺此字段仍按已保存顺序续页，不重新排序。新查询首页可能与旧 JSON 排序不同，记录内容及身份保持不变。
 
 ## 7. Maven 外部输入
 
