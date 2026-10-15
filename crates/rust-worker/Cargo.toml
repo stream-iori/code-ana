@@ -1,0 +1,20 @@
+[package]
+name = "codeana-rust-worker"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+tokio.workspace = true
+serde_json.workspace = true
+prost.workspace = true
+sha2.workspace = true
+codeana-config = { path = "../config" }
+codeana-model = { path = "../model" }
+codeana-contracts = { path = "../contracts" }
+codeana-rust-adaptor = { path = "../../lang-rust-adaptor" }
+
+[dev-dependencies]
+tempfile.workspace = true

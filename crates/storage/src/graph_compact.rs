@@ -62,6 +62,7 @@ pub fn seal(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
       DELETE FROM external_targets WHERE external_pk NOT IN(
         SELECT external_pk FROM graph_edges WHERE external_pk IS NOT NULL UNION
         SELECT external_pk FROM graph_call_site_targets WHERE external_pk IS NOT NULL);")?;
+    db.execute_batch("DELETE FROM rust_strings WHERE string_pk NOT IN(SELECT world FROM graph_rust_source_states UNION SELECT world FROM graph_rust_analysis_dependencies UNION SELECT target_world FROM graph_rust_analysis_dependencies UNION SELECT target_key FROM graph_rust_analysis_dependencies)")?;
     let mut references = Vec::new();
     for table in [
         "graph_nodes",
@@ -75,6 +76,7 @@ pub fn seal(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
         "graph_index_diagnostics",
         "graph_analysis_coverage",
         "annotation_meta_sources",
+        "graph_rust_source_states",
     ] {
         references.push(format!(
             "SELECT source_file FROM {table} WHERE source_file IS NOT NULL"

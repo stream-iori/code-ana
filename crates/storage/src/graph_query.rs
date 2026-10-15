@@ -60,6 +60,8 @@ fn upstream_relation(raw: &str) -> String {
 
 struct Projection {
     kind: FactKind,
+    world: &'static str,
+    producer: &'static str,
     from: &'static str,
     id: &'static str,
     parent: &'static str,
@@ -74,6 +76,8 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
     let mut output = vec![
         Projection {
             kind: FactKind::Declaration,
+            world: "n.world",
+            producer: "n.producer_id",
             from: "nodes n",
             id: "n.id",
             parent: "coalesce((SELECT source_id FROM edges WHERE relation='CONTAINS' AND target_id=n.id ORDER BY id LIMIT 1),'')",
@@ -86,6 +90,8 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::ExternalSymbol,
+            world: "''",
+            producer: "x.external_target_provider_id",
             from: "(SELECT external_target_fqn,external_target_language,external_target_provider_id FROM edges WHERE is_external=1 UNION SELECT external_target_fqn,external_target_language,external_target_provider_id FROM call_site_targets WHERE external_target_fqn IS NOT NULL) x",
             id: "'external:'||x.external_target_fqn",
             parent: "''",
@@ -98,6 +104,8 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::Relation,
+            world: "n.world",
+            producer: "e.producer_id",
             from: "edges e JOIN nodes n ON n.id=e.source_id",
             id: "'edge:'||CASE WHEN e.fact_hash IS NOT NULL THEN lower(hex(e.fact_hash)) ELSE hex(e.source_id)||':'||hex(coalesce(e.target_id,e.external_target_fqn))||':'||hex(e.relation)||':'||hex(coalesce(e.source_location,'')) END||':'||e.fact_ordinal",
             parent: "e.source_id",
@@ -110,6 +118,8 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::CallSite,
+            world: "n.world",
+            producer: "c.producer_id",
             from: "call_sites c JOIN call_site_owners o USING(owner_pk) JOIN nodes n ON n.id=o.caller_id",
             id: "'call-site:'||lower(hex(c.stable_hash))",
             parent: "o.caller_id",
@@ -122,6 +132,8 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::CallTarget,
+            world: "n.world",
+            producer: "c.producer_id",
             from: "call_site_targets t JOIN call_sites c ON c.site_pk=t.call_site_pk JOIN call_site_owners o USING(owner_pk) JOIN nodes n ON n.id=o.caller_id",
             id: "'call-target:'||lower(hex(c.stable_hash))||':'||hex(coalesce(t.target_id,''))||':'||hex(coalesce(t.external_target_provider_id,''))||':'||hex(coalesce(t.external_target_fqn,''))",
             parent: "'call-site:'||lower(hex(c.stable_hash))",
@@ -134,6 +146,8 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::Facet,
+            world: "n.world",
+            producer: "a.producer_id",
             from: "annotations a JOIN nodes n ON n.id=a.node_id",
             id: "'annotation:'||lower(hex(a.fact_hash))||':'||a.fact_ordinal",
             parent: "a.node_id",
@@ -146,8 +160,10 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::Coverage,
+            world: "v.world",
+            producer: "v.provider_id",
             from: "analysis_coverage v",
-            id: "'coverage:'||v.provider_id||':'||v.source_file||':'||v.capability",
+            id: "'coverage:'||v.provider_id||':'||v.source_file||':'||v.capability||CASE WHEN v.world='' THEN '' ELSE ':'||v.world END",
             parent: "''",
             target: "''",
             source: "v.source_file",
@@ -158,6 +174,8 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::Diagnostic,
+            world: "d.world",
+            producer: "d.provider_id",
             from: "index_diagnostics d",
             id: "'diagnostic:'||d.id",
             parent: "''",
@@ -266,6 +284,8 @@ impl ReadContext {
             }
         }
         if let Some(world) = &f.world {
+            sql.push_str(&format!(" AND ({}='' OR {}=?)", p.world, p.world));
+            values.push(world.clone());
             let sources: Vec<_> = self
                 .revision
                 .manifest
@@ -518,7 +538,18 @@ impl ReadContext {
         Ok(Fact {
             id,
             kind,
-            owner: self.owner_for(&source, &module, &scope),
+            owner: {
+                let mut owner = self.owner_for(&source, &module, &scope);
+                let world = text(row, "display_world")?;
+                if !world.is_empty() {
+                    owner.world = world;
+                }
+                let producer = text(row, "display_producer")?;
+                if !producer.is_empty() {
+                    owner.producer = producer;
+                }
+                owner
+            },
             source,
             span,
             name,
@@ -527,7 +558,12 @@ impl ReadContext {
             target: text(row, "display_target")?,
             relation: relation_name,
             status,
-            origin: "anatomist".into(),
+            origin: if text(row, "display_producer")? == "rust-core" {
+                "rust-analyzer"
+            } else {
+                "anatomist"
+            }
+            .into(),
             evidence_complete: complete,
             declaration_resolved: resolved,
             attributes: FactAttributes::from_wire_map(attrs)?,
@@ -570,7 +606,7 @@ impl ReadContext {
                 _ => unreachable!(),
             };
             let sql = format!(
-                "SELECT {columns},{} AS display_id,{} AS display_parent,{} AS display_target,{} AS display_source,{} AS display_module,{} AS display_scope,{} AS display_name,{} AS display_relation FROM {} WHERE {predicate} ORDER BY {} LIMIT ?",
+                "SELECT {columns},{} AS display_id,{} AS display_parent,{} AS display_target,{} AS display_source,{} AS display_module,{} AS display_scope,{} AS display_name,{} AS display_relation,{} AS display_world,{} AS display_producer FROM {} WHERE {predicate} ORDER BY {} LIMIT ?",
                 p.id,
                 p.parent,
                 p.target,
@@ -579,6 +615,8 @@ impl ReadContext {
                 p.scope,
                 p.name,
                 p.relation,
+                p.world,
+                p.producer,
                 p.from,
                 p.id
             );
@@ -652,12 +690,86 @@ impl ReadContext {
                 });
             }
         }
+        let rust_states = self.read_rust_states()?;
         Ok(BaselineSummary {
+            rust_states,
             contexts,
             nodes,
             type_relations: relations,
             files: self.revision.manifest.files.clone(),
             changed_sources: None,
+        })
+    }
+    fn read_rust_states(&self) -> Result<Vec<rust::SourceState>> {
+        let mut states = BTreeMap::new();
+        let mut query = self.connection.prepare(
+            "SELECT source_file,world,state FROM rust_source_states ORDER BY world,source_file",
+        )?;
+        for row in query.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })? {
+            let (file, world, text) = row?;
+            #[derive(serde::Deserialize)]
+            #[serde(deny_unknown_fields)]
+            struct Metadata {
+                file: String,
+                world: String,
+                source_hash: String,
+                interface_hash: String,
+                names: Vec<String>,
+            }
+            let metadata: Metadata = serde_json::from_str(&text)?;
+            ensure!(
+                metadata.file == file && metadata.world == world,
+                "RUST_STATE_IDENTITY"
+            );
+            let state = rust::SourceState {
+                file: metadata.file,
+                world: metadata.world,
+                source_hash: metadata.source_hash,
+                interface_hash: metadata.interface_hash,
+                names: metadata.names,
+                dependencies: vec![],
+            };
+            states.insert((world, file), state);
+        }
+        let mut query = self.connection.prepare("SELECT source_file,world,kind,target_world,target_key FROM rust_analysis_dependencies ORDER BY world,source_file,kind,target_world,target_key")?;
+        for row in query.query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+            ))
+        })? {
+            let (file, world, kind, target_world, key) = row?;
+            let state = states
+                .get_mut(&(world, file))
+                .context("RUST_DEPENDENCY_OWNER_MISSING")?;
+            state.dependencies.push(rust::Dependency {
+                kind: serde_json::from_value(serde_json::Value::String(kind))?,
+                world: target_world,
+                key,
+            });
+        }
+        let mut result = states.into_values().collect::<Vec<_>>();
+        for state in &mut result {
+            state.dependencies.sort();
+            state.dependencies.dedup();
+        }
+        Ok(result)
+    }
+    pub fn rust_baseline_summary(&self) -> Result<BaselineSummary> {
+        let rust_states = self.read_rust_states()?;
+        Ok(BaselineSummary {
+            rust_states,
+            files: self.revision.manifest.files.clone(),
+            ..Default::default()
         })
     }
     pub fn baseline_summary_for(&self, next: &Manifest) -> Result<BaselineSummary> {
@@ -1001,7 +1113,7 @@ impl DependencyReader for ReadContext {
             let p=projections(&FactFilter{kinds:vec![FactKind::CallSite],..Default::default()}).remove(0);
             let(predicate,mut values)=self.predicate(&p,filter,after,None)?;
             values.push(serde_json::to_string(targets)?);values.push(limit.to_string());
-            let sql=format!("SELECT c.*,{} AS display_id,{} AS display_parent,{} AS display_target,{} AS display_source,{} AS display_module,{} AS display_scope,{} AS display_name,{} AS display_relation FROM {} WHERE {predicate} AND c.resolution_status='unresolved' AND c.syntax_target IN(SELECT value FROM json_each(?)) ORDER BY {} LIMIT ?",p.id,p.parent,p.target,p.source,p.module,p.scope,p.name,p.relation,p.from,p.id);
+            let sql=format!("SELECT c.*,{} AS display_id,{} AS display_parent,{} AS display_target,{} AS display_source,{} AS display_module,{} AS display_scope,{} AS display_name,{} AS display_relation,{} AS display_world,{} AS display_producer FROM {} WHERE {predicate} AND c.resolution_status='unresolved' AND c.syntax_target IN(SELECT value FROM json_each(?)) ORDER BY {} LIMIT ?",p.id,p.parent,p.target,p.source,p.module,p.scope,p.name,p.relation,p.world,p.producer,p.from,p.id);
             let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(values))?;let mut output=Vec::new();
             while let Some(row)=rows.next()?{output.push(self.display(&p,row)?);}Ok(output)
         })().map_err(codeana_contracts::read_error)

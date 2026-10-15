@@ -35,16 +35,16 @@ struct IndexReceipt<'a> {
     ack_warning: Option<&'a str>,
     statistics: &'a codeana_storage::CandidateStatistics,
 }
-struct PublishedIndex {
-    revision: Revision,
-    result_mode: AnalysisMode,
-    summary: StagedSummary,
-    evidence: Evidence,
-    ack: Option<String>,
-    worker_context: BuildContext,
-    analyze_ms: u64,
-    publish_ms: u64,
-    index_elapsed_ms: u64,
+pub(super) struct PublishedIndex {
+    pub(super) revision: Revision,
+    pub(super) result_mode: AnalysisMode,
+    pub(super) summary: StagedSummary,
+    pub(super) evidence: Evidence,
+    pub(super) ack: Option<String>,
+    pub(super) worker_context: BuildContext,
+    pub(super) analyze_ms: u64,
+    pub(super) publish_ms: u64,
+    pub(super) index_elapsed_ms: u64,
 }
 impl Engine {
     pub(super) async fn index(
@@ -54,6 +54,9 @@ impl Engine {
         mut c: Capture,
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
+        if c.effective.rust_inputs.is_some() {
+            return self.index_rust(id, req, c, cancel).await;
+        }
         let started = Instant::now();
         let mut timings = timings::IndexTimings::start(id);
         let mut setup = self.setup_index(id, req, &c, cancel, &mut timings).await?;
@@ -121,6 +124,7 @@ impl Engine {
                     codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
                 );
                 codeana_storage::test_fault(&store.home, "before_publish")?;
+                let _pins = store.pin_blobs(blobs.keys());
                 store.put_blob_files(&blobs)?;
                 ensure!(
                     !cancellation.is_cancelled(),
@@ -608,7 +612,7 @@ impl Engine {
             analyze_ms,
         })
     }
-    async fn finish_index(
+    pub(super) async fn finish_index(
         &self,
         id: &str,
         c: &Capture,

@@ -6,6 +6,8 @@ use std::path::PathBuf;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct BaselineSummary {
     #[serde(default)]
+    pub rust_states: Vec<crate::rust::SourceState>,
+    #[serde(default)]
     pub contexts: BTreeMap<String, String>,
     #[serde(default)]
     pub nodes: Vec<BaselineNode>,

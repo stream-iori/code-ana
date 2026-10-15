@@ -33,10 +33,10 @@ class UpgradeTests(unittest.TestCase):
             (self.source / name).write_text('new-' + name)
             (self.installed / name).write_text('old-' + name)
         for directory in (self.source, self.installed):
-            manifest = dict(worker_protocol=19, fact_ir=2, analysis_request=10, abi=None, adapter='example', files={name: upgrade.sha256(directory / name) for name in files})
+            manifest = dict(worker_protocol=20, fact_ir=3, analysis_request=10, abi=None, adapter='example', files={name: upgrade.sha256(directory / name) for name in files})
             (directory / 'manifest.json').write_text(json.dumps(manifest))
         self.previous = upgrade.sha256(self.installed / 'manifest.json')
-        self.versions = dict(backend='jvm', worker_protocol=19, fact_ir=2, adapter='example', analysis_request=10, abi=None)
+        self.versions = dict(backend='jvm', worker_protocol=20, fact_ir=3, adapter='example', analysis_request=10, abi=None)
         self.metadata = self.stable / 'runtime-jvm.json'
         value = dict(binary_directory=str(self.binaries), versions=self.versions, stable_runtime=str(self.stable), relocated_binaries=False,
                      installed_files={str(self.installed / name): upgrade.sha256(self.installed / name) for name in (*files, 'manifest.json')})

@@ -198,6 +198,7 @@ mod tests {
     #[test]
     fn null_empty_and_unicode_are_distinct_and_truncation_is_rejected() -> Result<()> {
         let row = Row {
+            world: String::new(),
             table: Table::Node as i32,
             cells: vec![
                 Cell { value: None },
@@ -232,4 +233,18 @@ pub struct Descriptor {
     pub count: u64,
     pub bytes: u64,
     pub sha256: String,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct OutputLimits {
+    pub bytes: u64,
+    pub facts: u64,
+}
+impl Default for OutputLimits {
+    fn default() -> Self {
+        Self {
+            bytes: codeana_model::MAX_RESULT as u64,
+            facts: codeana_model::MAX_FACTS as u64,
+        }
+    }
 }

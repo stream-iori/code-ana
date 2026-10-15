@@ -239,6 +239,7 @@ mod tests {
     fn archive(root: &Path) -> Result<(GraphArchive, serde_json::Value)> {
         let mut builder = Builder::new(Some(root), 1 << 20, 100)?;
         builder.push(&Row {
+            world: String::new(),
             table: Table::ProjectMeta as i32,
             cells: vec![
                 Cell {

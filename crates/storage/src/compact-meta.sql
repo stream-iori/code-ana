@@ -37,3 +37,61 @@ CREATE TRIGGER annotation_meta_owned_delete INSTEAD OF DELETE ON annotation_meta
  DELETE FROM annotation_meta_owners WHERE relation_id=OLD.id AND source_id IN
  (SELECT s.id FROM annotation_meta_sources s LEFT JOIN source_files f ON f.file_pk=s.source_file WHERE f.path IS OLD.source_file);
 END;
+
+-- Rust incremental metadata: strings are interned, dependencies have one canonical copy.
+CREATE TABLE rust_strings(string_pk INTEGER PRIMARY KEY,value TEXT NOT NULL UNIQUE);
+CREATE TABLE graph_rust_source_states(
+ source_file INTEGER NOT NULL REFERENCES source_files(file_pk),
+ world INTEGER NOT NULL REFERENCES rust_strings(string_pk),state TEXT NOT NULL,
+ PRIMARY KEY(source_file,world)) WITHOUT ROWID;
+CREATE TABLE graph_rust_analysis_dependencies(
+ source_file INTEGER NOT NULL REFERENCES source_files(file_pk),
+ world INTEGER NOT NULL REFERENCES rust_strings(string_pk),
+ kind INTEGER NOT NULL CHECK(kind BETWEEN 0 AND 4),
+ target_world INTEGER NOT NULL REFERENCES rust_strings(string_pk),
+ target_key INTEGER NOT NULL REFERENCES rust_strings(string_pk),
+ PRIMARY KEY(source_file,world,kind,target_world,target_key),
+ FOREIGN KEY(source_file,world) REFERENCES graph_rust_source_states(source_file,world)) WITHOUT ROWID;
+CREATE VIEW rust_source_states AS SELECT f.path AS source_file,w.value AS world,s.state
+ FROM graph_rust_source_states s JOIN source_files f ON f.file_pk=s.source_file
+ JOIN rust_strings w ON w.string_pk=s.world;
+CREATE VIEW rust_analysis_dependencies AS SELECT f.path AS source_file,w.value AS world,
+ CASE d.kind WHEN 0 THEN 'file' WHEN 1 THEN 'symbol' WHEN 2 THEN 'lookup' WHEN 3 THEN 'macro' WHEN 4 THEN 'impl_set' END AS kind,
+ t.value AS target_world,k.value AS target_key
+ FROM graph_rust_analysis_dependencies d JOIN source_files f ON f.file_pk=d.source_file
+ JOIN rust_strings w ON w.string_pk=d.world JOIN rust_strings t ON t.string_pk=d.target_world
+ JOIN rust_strings k ON k.string_pk=d.target_key;
+CREATE TRIGGER compact_rust_state_insert INSTEAD OF INSERT ON rust_source_states BEGIN
+ INSERT INTO source_files(path) SELECT NEW.source_file WHERE NOT EXISTS(SELECT 1 FROM source_files WHERE path=NEW.source_file);
+ INSERT INTO rust_strings(value) SELECT NEW.world WHERE NOT EXISTS(SELECT 1 FROM rust_strings WHERE value=NEW.world);
+ INSERT INTO graph_rust_source_states VALUES(
+ (SELECT file_pk FROM source_files WHERE path=NEW.source_file),
+ (SELECT string_pk FROM rust_strings WHERE value=NEW.world),json_remove(NEW.state,'$.dependencies'))
+ ON CONFLICT(source_file,world) DO UPDATE SET state=excluded.state;
+END;
+CREATE TRIGGER compact_rust_dependency_insert INSTEAD OF INSERT ON rust_analysis_dependencies BEGIN
+ INSERT OR IGNORE INTO rust_strings(value) VALUES(NEW.target_world);
+ INSERT OR IGNORE INTO rust_strings(value) VALUES(NEW.target_key);
+ INSERT INTO graph_rust_analysis_dependencies VALUES(
+ (SELECT file_pk FROM source_files WHERE path=NEW.source_file),
+ (SELECT string_pk FROM rust_strings WHERE value=NEW.world),
+ CASE NEW.kind WHEN 'file' THEN 0 WHEN 'symbol' THEN 1 WHEN 'lookup' THEN 2 WHEN 'macro' THEN 3 WHEN 'impl_set' THEN 4 END,
+ (SELECT string_pk FROM rust_strings WHERE value=NEW.target_world),
+ (SELECT string_pk FROM rust_strings WHERE value=NEW.target_key)) ON CONFLICT(source_file,world,kind,target_world,target_key) DO NOTHING;
+END;
+CREATE TRIGGER compact_rust_dependency_delete INSTEAD OF DELETE ON rust_analysis_dependencies BEGIN
+ DELETE FROM graph_rust_analysis_dependencies WHERE
+ source_file=(SELECT file_pk FROM source_files WHERE path=OLD.source_file)
+ AND world=(SELECT string_pk FROM rust_strings WHERE value=OLD.world)
+ AND kind=CASE OLD.kind WHEN 'file' THEN 0 WHEN 'symbol' THEN 1 WHEN 'lookup' THEN 2 WHEN 'macro' THEN 3 WHEN 'impl_set' THEN 4 END
+ AND target_world=(SELECT string_pk FROM rust_strings WHERE value=OLD.target_world)
+ AND target_key=(SELECT string_pk FROM rust_strings WHERE value=OLD.target_key);
+END;
+CREATE TRIGGER compact_rust_state_delete INSTEAD OF DELETE ON rust_source_states BEGIN
+ DELETE FROM graph_rust_analysis_dependencies WHERE
+ source_file=(SELECT file_pk FROM source_files WHERE path=OLD.source_file)
+ AND world=(SELECT string_pk FROM rust_strings WHERE value=OLD.world);
+ DELETE FROM graph_rust_source_states WHERE
+ source_file=(SELECT file_pk FROM source_files WHERE path=OLD.source_file)
+ AND world=(SELECT string_pk FROM rust_strings WHERE value=OLD.world);
+END;

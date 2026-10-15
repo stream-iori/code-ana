@@ -29,6 +29,9 @@ enum Table {
   COVERAGE = 12;
   PROVIDER = 13;
   PROJECT_META = 14;
+  SOURCE_STATE = 15;
+  ANALYSIS_DEPENDENCY = 16;
 }
-message Row { Table table = 1; repeated Cell cells = 2; }
+// World is explicit for Rust. Empty preserves Java's module/scope-derived identity.
+message Row { Table table = 1; repeated Cell cells = 2; string world = 3; }
 message Batch { uint64 seq = 1; repeated Row rows = 2; }

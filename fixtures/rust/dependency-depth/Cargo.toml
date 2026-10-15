@@ -1,0 +1,4 @@
+[workspace]
+members=["app"]
+exclude=["deps/a","deps/b","deps/c"]
+resolver="2"

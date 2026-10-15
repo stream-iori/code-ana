@@ -67,7 +67,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
         probe=subprocess.run([str(root/'target/debug/codeana-java-worker'),str(source/'runner.jar'),'--backend','jvm','--runtime-info'],capture_output=True,text=True,timeout=15)
         if probe.returncode:raise ValueError('JVM_RUNTIME_WORKER_NOT_CURRENT: '+probe.stderr)
         versions=json.loads(probe.stdout)
-        if versions['backend']!='jvm' or versions['worker_protocol']!=manifest['worker_protocol'] or versions['adapter']!=manifest['adapter'] or versions['analysis_request']!=10 or versions['fact_ir']!=2:raise ValueError('JVM_RUNTIME_PROTOCOL_MISMATCH')
+        if versions['backend']!='jvm' or versions['worker_protocol']!=manifest['worker_protocol'] or versions['adapter']!=manifest['adapter'] or versions['analysis_request']!=10 or versions['fact_ir']!=manifest['fact_ir']:raise ValueError('JVM_RUNTIME_PROTOCOL_MISMATCH')
         installed_files = {}
         if stable_paths:
             install_jvm(root, source, destination.parent/'jvm-install')
@@ -111,7 +111,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
     if probe.returncode:
         raise ValueError('JAVA_RUNTIME_WORKER_NOT_CURRENT: rebuild Rust binaries; ' + probe.stderr.strip())
     versions = json.loads(probe.stdout)
-    expected_versions = dict(worker_protocol=manifest['worker_protocol'], fact_ir=2,
+    expected_versions = dict(worker_protocol=manifest['worker_protocol'], fact_ir=manifest['fact_ir'],
                              adapter=manifest['adapter'], analysis_request=10, abi=4, backend='native')
     if versions != expected_versions:
         raise ValueError('JAVA_RUNTIME_PROTOCOL_MISMATCH: ' + json.dumps(versions))

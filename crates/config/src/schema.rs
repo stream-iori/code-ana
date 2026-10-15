@@ -59,6 +59,8 @@ pub struct Resources {
 #[serde(default, deny_unknown_fields)]
 pub struct IndexResources {
     pub worker_memory_bytes: Option<u64>,
+    pub rust_result_bytes: Option<u64>,
+    pub rust_fact_limit: Option<u64>,
     pub java_compiler_heap_bytes: Option<u64>,
     pub java_parallelism: Option<u32>,
     pub java_model_record_limit: Option<u32>,
@@ -102,6 +104,13 @@ pub struct Language {
     pub lombok: Lombok,
     pub extensions: Extensions,
     pub external: External,
+    pub dependencies: Option<RustDependencyScan>,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RustDependencyScan {
+    pub include: Vec<String>,
+    pub exclude: Vec<String>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]

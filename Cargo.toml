@@ -4,12 +4,14 @@ members = [
     "crates/cli",
     "crates/daemon",
     "crates/java-worker",
+    "crates/rust-worker",
     "crates/model",
     "crates/config",
     "crates/storage",
     "crates/query",
     "crates/application",
     "crates/mock-worker",
+    "lang-rust-adaptor",
 ]
 resolver = "2"
 
@@ -40,6 +42,16 @@ globset = "0.4"
 regex = "1"
 walkdir = "2"
 tempfile = "3"
+
+# rust-analyzer's internal crates must be upgraded as one tested set.
+ra_ap_hir = "=0.0.349"
+ra_ap_ide_db = "=0.0.349"
+ra_ap_base_db = "=0.0.349"
+ra_ap_syntax = "=0.0.349"
+ra_ap_vfs = "=0.0.349"
+ra_ap_cfg = "=0.0.349"
+ra_ap_intern = "=0.0.349"
+ra_ap_span = "=0.0.349"
 
 # SDK content verification hashes hundreds of MiB even in development gates.
 [profile.dev.package.sha2]

@@ -25,6 +25,8 @@ struct DoctorRecord<'a> {
     java_backend: Option<&'a str>,
     java_bundle: &'a Option<codeana_contracts::bundle::BundleManifest>,
     worker_memory_enforcement: &'a str,
+    worker_memory_cap_bytes: u64,
+    rust_worker_memory_bytes: Option<u64>,
 }
 impl Engine {
     pub(super) fn doctor(&self, root: &Path, req: &Request) -> Result<Output> {
@@ -87,7 +89,7 @@ impl Engine {
                     } else {
                         "unavailable"
                     },
-                    rust_source_analysis: "unavailable",
+                    rust_source_analysis: "rust-analyzer-0.0.349; schema 2 frozen inputs; direct dependencies; no explicit macro expansion",
                     diff: "existing_behavior",
                 },
                 java_adapter: if self.mock.is_some() {
@@ -98,6 +100,21 @@ impl Engine {
                 java_backend: backend,
                 java_bundle: &bundle,
                 worker_memory_enforcement: "process_group_rss_sample_100ms",
+                worker_memory_cap_bytes: self.worker_memory,
+                rust_worker_memory_bytes: effective
+                    .config
+                    .languages
+                    .rust
+                    .as_ref()
+                    .filter(|l| l.enabled == Some(true))
+                    .map(|_| {
+                        effective
+                            .config
+                            .resources
+                            .index
+                            .worker_memory_bytes
+                            .unwrap_or(codeana_model::rust::DEFAULT_WORKER_MEMORY)
+                    }),
             })?],
             evidence: Evidence::complete(),
             ..Default::default()

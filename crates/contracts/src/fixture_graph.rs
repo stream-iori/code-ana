@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 pub fn row(table: Table, values: Vec<Value>) -> Row {
     Row {
+        world: String::new(),
         table: table as i32,
         cells: values
             .into_iter()

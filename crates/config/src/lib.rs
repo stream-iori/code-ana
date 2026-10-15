@@ -1,8 +1,9 @@
 //! Strict project configuration and bounded, immutable source capture.
 pub mod java_inputs;
 mod lombok;
+pub mod rust_inputs;
 mod schema;
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use codeana_model::*;
 use java_inputs::JavaInputs;
 pub use schema::*;
@@ -83,6 +84,8 @@ pub struct Effective {
     pub capture_digest: String,
     #[serde(default)]
     pub java_inputs: Option<JavaInputs>,
+    #[serde(default)]
+    pub rust_inputs: Option<codeana_model::rust::Inputs>,
 }
 #[derive(Debug, Clone)]
 pub struct Capture {
@@ -159,10 +162,23 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         codeana_model::ErrorCode::InvalidProjectConfig,
         "",
     ))?;
+    let rust_policy = c
+        .languages
+        .rust
+        .as_ref()
+        .filter(|l| l.enabled == Some(true))
+        .map(|_| rust_inputs::policy(&c))
+        .transpose()?;
+    if let Some(java) = &c.languages.java {
+        ensure!(java.dependencies.is_none(), "RUST_DEPENDENCIES_IN_JAVA");
+    }
     ensure!(
         c.schema_version == 1 && c.kind == "project",
         codeana_model::DomainError::new(codeana_model::ErrorCode::UnsupportedConfigSchema, "")
     );
+    if c.languages.rust.is_some() {
+        rust_inputs::InputFilter::new(&c)?;
+    }
     let mut origins = BTreeMap::new();
     let value: toml::Value = toml::from_str(text)?;
     fn origins_walk(v: &toml::Value, p: String, m: &mut BTreeMap<String, String>) {
@@ -215,6 +231,12 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             ),
         codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidObservabilityMode, "")
     );
+    if let Some(memory) = c.resources.index.worker_memory_bytes {
+        ensure!(
+            (16 * 1024 * 1024..=4 * 1024 * 1024 * 1024).contains(&memory),
+            "PROJECT_WORKER_MEMORY_LIMIT"
+        );
+    }
     if let Some(heap) = c.resources.index.java_compiler_heap_bytes {
         ensure!(
             (8 * 1024 * 1024..=512 * 1024 * 1024).contains(&heap) && heap % (1024 * 1024) == 0,
@@ -368,6 +390,13 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
                     origins.insert("languages.java.analysis.toolchain".into(), "CLI".into());
                 }
             } else {
+                if l.mode.is_empty() {
+                    l.mode = "semantic".into();
+                }
+                ensure!(
+                    matches!(l.mode.as_str(), "syntax" | "semantic"),
+                    "RUST_ANALYSIS_MODE"
+                );
                 ensure!(
                     l.analysis.source_version.is_none() && l.lombok.mode.is_none(),
                     codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFieldInRust, "")
@@ -386,35 +415,37 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
                     return Err(java_inputs::missing_inputs(root, path, suggestions));
                 }
                 let inputs = JavaInputs::read(root, path)?;
-                if c.modules.is_empty() {
-                    c.modules = inputs
-                        .modules
-                        .iter()
-                        .map(|m| Module {
-                            id: m.id.clone(),
-                            language: "java".into(),
-                            root: m.root.clone(),
-                            source_roots: m
-                                .source_roots
-                                .iter()
-                                .filter(|r| {
-                                    c.scan.scopes.contains(&r.scope)
-                                        || (r.scope == "MAIN"
-                                            && c.scan.scopes.iter().any(|s| s == "TEST"))
-                                })
-                                .map(|r| SourceRoot {
-                                    path: r.path.clone(),
-                                    scope: r.scope.clone(),
-                                    label: None,
-                                })
-                                .collect(),
-                            analysis: Analysis {
-                                source_version: Some(m.source_version.clone()),
+                if !c.modules.iter().any(|m| m.language == "java") {
+                    c.modules.extend(
+                        inputs
+                            .modules
+                            .iter()
+                            .map(|m| Module {
+                                id: m.id.clone(),
+                                language: "java".into(),
+                                root: m.root.clone(),
+                                source_roots: m
+                                    .source_roots
+                                    .iter()
+                                    .filter(|r| {
+                                        c.scan.scopes.contains(&r.scope)
+                                            || (r.scope == "MAIN"
+                                                && c.scan.scopes.iter().any(|s| s == "TEST"))
+                                    })
+                                    .map(|r| SourceRoot {
+                                        path: r.path.clone(),
+                                        scope: r.scope.clone(),
+                                        label: None,
+                                    })
+                                    .collect(),
+                                analysis: Analysis {
+                                    source_version: Some(m.source_version.clone()),
+                                    ..Default::default()
+                                },
                                 ..Default::default()
-                            },
-                            ..Default::default()
-                        })
-                        .collect();
+                            })
+                            .collect::<Vec<_>>(),
+                    );
                 }
                 Some(inputs)
             } else {
@@ -423,6 +454,30 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         } else {
             None
         }
+    } else {
+        None
+    };
+    let rust_inputs = if language_required
+        && c.languages
+            .rust
+            .as_ref()
+            .is_some_and(|r| r.enabled == Some(true))
+    {
+        let path = c
+            .languages
+            .rust
+            .as_ref()
+            .and_then(|r| r.discovery.inputs_manifest.as_deref())
+            .unwrap_or(".code-ana/rust-inputs.json")
+            .to_owned();
+        let inputs = rust_inputs::read(root, &path)?;
+        ensure!(
+            Some(&inputs.policy) == rust_policy.as_ref(),
+            "RUST_INPUTS_STALE: selection policy changed; re-export Rust inputs"
+        );
+        c.languages.rust.as_mut().unwrap().discovery.inputs_manifest = Some(path);
+        rust_inputs::discover(&mut c, &inputs);
+        Some(inputs)
     } else {
         None
     };
@@ -642,6 +697,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         semantic_digest,
         capture_digest,
         java_inputs,
+        rust_inputs,
     })
 }
 fn git(root: &Path, args: &[&str]) -> Option<String> {
@@ -892,6 +948,9 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             || (ignored.contains(&p) && !include_ignored.is_match(&p))
         {
             continue;
+        }
+        if !files_only && effective.rust_inputs.is_some() && p.ends_with(".rs") {
+            continue; // Rust capture applies its filters before reading any source bytes.
         }
         ensure!(
             !entry.file_type().is_symlink(),
@@ -1289,7 +1348,19 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             });
         }
     }
-    manifest.files.sort_by(|a, b| a.path.cmp(&b.path));
+    if !files_only {
+        rust_inputs::capture(
+            &root,
+            &effective,
+            &mut manifest,
+            &mut blobs,
+            &mut total,
+            &spool,
+        )?;
+    }
+    manifest
+        .files
+        .sort_by(|a, b| (&a.path, &a.world).cmp(&(&b.path, &b.world)));
     let (project, checkout) = identity(&root);
     let target = key("target", &[&project, &checkout, &effective.capture_digest]);
     Ok(Capture {
@@ -1310,18 +1381,6 @@ pub fn require_java(c: &Capture) -> Result<()> {
             "auto requires an adapter discovery provider".to_string()
         )
     );
-    if c.effective
-        .config
-        .languages
-        .rust
-        .as_ref()
-        .is_some_and(|l| l.enabled == Some(true))
-    {
-        bail!(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::UnsupportedLanguage,
-            "Rust source analysis is P3".to_string()
-        ));
-    }
     ensure!(
         c.manifest.files.iter().any(|s| s.language == "java")
             || c.effective

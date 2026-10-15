@@ -116,19 +116,7 @@ pub fn compact(config: &mut w::JavaConfig) -> Result<()> {
     validate(config)
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct OutputLimits {
-    pub bytes: u64,
-    pub facts: u64,
-}
-impl Default for OutputLimits {
-    fn default() -> Self {
-        Self {
-            bytes: codeana_model::MAX_RESULT as u64,
-            facts: codeana_model::MAX_FACTS as u64,
-        }
-    }
-}
+pub use crate::graph_archive::OutputLimits;
 impl OutputLimits {
     pub fn from_config(config: &w::JavaConfig) -> Result<Self> {
         let defaults = Self::default();
@@ -529,6 +517,7 @@ mod tests {
         let frame = crate::envelope(
             "a",
             w::envelope::Body::Discover(w::Discover {
+                rust: None,
                 java: Some(config),
                 manifest: None,
             }),

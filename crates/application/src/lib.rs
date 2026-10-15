@@ -8,6 +8,7 @@ pub mod maven_inputs;
 mod output;
 pub mod ports;
 mod reports;
+mod rust_indexing;
 use ports::{PublicationRepository, TaskRepository};
 mod timings;
 mod worker;

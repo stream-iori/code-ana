@@ -298,6 +298,7 @@ fn validate_java_config(bytes: &[u8]) -> Result<()> {
 pub(crate) fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
     let mut columns = 0;
     let mut tables = 0;
+    let mut worlds = 0;
     wire_fields(bytes, |tag, value| {
         match tag {
             1 => {
@@ -338,6 +339,13 @@ pub(crate) fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
                     );
                     Ok(())
                 })?;
+            }
+            3 => {
+                worlds += 1;
+                ensure!(
+                    worlds == 1 && value.len() <= 256 && std::str::from_utf8(value).is_ok(),
+                    "GRAPH_WORLD_INVALID"
+                );
             }
             _ => bail!(codeana_model::DomainError::new(
                 codeana_model::ErrorCode::GraphRowField,
@@ -519,6 +527,7 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                rust: None,
                 manifest: None,
                 java: Some(config),
             }),
@@ -542,6 +551,7 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                rust: None,
                 manifest: None,
                 java: Some(java),
             }),

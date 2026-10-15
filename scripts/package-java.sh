@@ -34,7 +34,7 @@ for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','maven-input-w
 worker=root.parent.parent/'target/release/codeana-java-worker'
 versions=json.loads(subprocess.check_output([str(worker),str(root/'native/libcodeana_java.dylib'),
                                             '--runtime-info'],text=True,timeout=15))
-assert versions==dict(worker_protocol=manifest['worker_protocol'],fact_ir=2,adapter=manifest['adapter'],
+assert versions==dict(worker_protocol=manifest['worker_protocol'],fact_ir=manifest['fact_ir'],adapter=manifest['adapter'],
                       analysis_request=10,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
 VERIFY
 if [[ "$custom_output" == true && -e "$package_dir" ]]; then
@@ -71,7 +71,7 @@ root=pathlib.Path(sys.argv[1])
 native=json.loads((root/'lib/java/native/manifest.json').read_text())
 metadata={key:native[key] for key in ('abi','analysis_request','compiler_protocol','java_model',
     'graph_schema','graph_encoding','native_gc','native_build_mode','target_java')}
-metadata.update(package='codeana-java8',worker_protocol=native['worker_protocol'],fact_ir=2,backend='native',
+metadata.update(package='codeana-java8',worker_protocol=native['worker_protocol'],fact_ir=native['fact_ir'],backend='native',
     toolchain='externally registered SDKMAN Java 8')
 (root/'manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
 files=sorted(p for p in root.rglob('*') if p.is_file() and p.name!='SHA256SUMS')

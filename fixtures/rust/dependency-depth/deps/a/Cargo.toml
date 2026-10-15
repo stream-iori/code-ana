@@ -1,0 +1,6 @@
+[package]
+name="depth-a"
+version="0.1.0"
+edition="2024"
+[dependencies]
+dep_b={package="depth-b",path="../b"}

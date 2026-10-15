@@ -13,7 +13,7 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 7;
+pub const SCHEMA_VERSION: i64 = 9;
 pub const SOURCE_SCHEMA_VERSION: i64 = 33;
 pub const PAGE_SIZE: i64 = 4096;
 
@@ -84,10 +84,12 @@ pub fn initialize_stage(db: &Connection) -> Result<()> {
     db.execute_batch("CREATE TABLE stage_file_cache(provider_id TEXT,source_file TEXT,hash TEXT,schema_version INTEGER,node_count INTEGER,edge_count INTEGER,file_size INTEGER,contract_hash TEXT);
       CREATE TABLE stage_file_dependencies(source_provider_id TEXT,source_file TEXT,depends_on_provider_id TEXT,depends_on_file TEXT);
       CREATE TABLE stage_symbol_dependencies(target_key BLOB,source_file TEXT);
-      CREATE TABLE stage_diagnostics(severity TEXT,code TEXT,phase TEXT,source_file TEXT,module TEXT,scope TEXT,symbol TEXT,language TEXT,provider_id TEXT,provider_reason TEXT,reason_code TEXT,sample_details TEXT,occurrence_count INTEGER,sample TEXT);
-      CREATE TABLE stage_coverage(source_file TEXT,module TEXT,scope TEXT,language TEXT,provider_id TEXT,capability TEXT,status TEXT,occurrences INTEGER,groups_count INTEGER,codes TEXT,code_counts TEXT,details_truncated INTEGER);
+      CREATE TABLE stage_diagnostics(severity TEXT,code TEXT,phase TEXT,source_file TEXT,module TEXT,scope TEXT,symbol TEXT,language TEXT,provider_id TEXT,provider_reason TEXT,reason_code TEXT,sample_details TEXT,occurrence_count INTEGER,sample TEXT,world TEXT NOT NULL DEFAULT '');
+      CREATE TABLE stage_coverage(source_file TEXT,module TEXT,scope TEXT,language TEXT,provider_id TEXT,capability TEXT,status TEXT,occurrences INTEGER,groups_count INTEGER,codes TEXT,code_counts TEXT,details_truncated INTEGER,world TEXT NOT NULL DEFAULT '');
       CREATE TABLE stage_providers(provider_id TEXT,language TEXT,provider_version TEXT,operations TEXT,limitations TEXT,profile_hash TEXT);
-      CREATE TABLE stage_meta(key TEXT PRIMARY KEY,value TEXT);")?;
+      CREATE TABLE stage_meta(key TEXT PRIMARY KEY,value TEXT);
+      CREATE TABLE stage_rust_source_states(source_file TEXT,world TEXT,state TEXT,PRIMARY KEY(source_file,world));
+      CREATE TABLE stage_rust_dependencies(source_file TEXT,world TEXT,kind TEXT,target_world TEXT,target_key TEXT);")?;
     Ok(())
 }
 
@@ -109,9 +111,17 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Table::FileCache => "INSERT INTO stage_file_cache VALUES(?,?,?,?,?,?,?,?)",
         Table::FileDependency => "INSERT INTO stage_file_dependencies VALUES(?,?,?,?)",
         Table::SymbolDependency => "INSERT INTO stage_symbol_dependencies VALUES(?,?)",
-        Table::Diagnostic => "INSERT INTO stage_diagnostics VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        Table::Coverage => "INSERT INTO stage_coverage VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+        Table::Diagnostic => {
+            "INSERT INTO stage_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        }
+        Table::Coverage => {
+            "INSERT INTO stage_coverage(source_file,module,scope,language,provider_id,capability,status,occurrences,groups_count,codes,code_counts,details_truncated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+        }
         Table::Provider => "INSERT INTO stage_providers VALUES(?,?,?,?,?,?)",
+        Table::SourceState => {
+            "INSERT OR REPLACE INTO stage_rust_source_states VALUES(?,?,json_remove(?,'$.dependencies'))"
+        }
+        Table::AnalysisDependency => "INSERT INTO stage_rust_dependencies VALUES(?,?,?,?,?)",
         Table::ProjectMeta => "INSERT OR REPLACE INTO stage_meta VALUES(?,?)",
         Table::Unspecified => anyhow::bail!(codeana_model::DomainError::new(
             codeana_model::ErrorCode::GraphTableRequired,
@@ -167,6 +177,35 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Some(cell::Value::Blob(b)) => Value::Blob(b.clone()),
     });
     statement.execute(params_from_iter(values))?;
+    if !row.world.is_empty() {
+        match table {
+            Table::Node => {
+                db.execute(
+                    "UPDATE stage_nodes SET world=? WHERE id=?",
+                    params![
+                        row.world,
+                        match &row.cells[0].value {
+                            Some(cell::Value::Text(id)) => id,
+                            _ => anyhow::bail!("RUST_NODE_ID"),
+                        }
+                    ],
+                )?;
+            }
+            Table::Coverage => {
+                db.execute(
+                    "UPDATE stage_coverage SET world=? WHERE rowid=last_insert_rowid()",
+                    [&row.world],
+                )?;
+            }
+            Table::Diagnostic => {
+                db.execute(
+                    "UPDATE stage_diagnostics SET world=? WHERE rowid=last_insert_rowid()",
+                    [&row.world],
+                )?;
+            }
+            _ => {}
+        }
+    }
     Ok(())
 }
 
@@ -322,10 +361,12 @@ pub fn promote(db: &Connection) -> Result<()> {
     db.execute_batch("INSERT INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash) SELECT * FROM staged.stage_file_cache;
       INSERT OR IGNORE INTO file_dependencies SELECT * FROM staged.stage_file_dependencies;
       INSERT OR IGNORE INTO symbol_dependencies SELECT * FROM staged.stage_symbol_dependencies;
-      INSERT INTO index_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample) SELECT * FROM staged.stage_diagnostics;
+      INSERT INTO index_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world) SELECT * FROM staged.stage_diagnostics;
       INSERT INTO analysis_coverage SELECT * FROM staged.stage_coverage;
       INSERT OR REPLACE INTO index_providers SELECT * FROM staged.stage_providers;
-      INSERT OR REPLACE INTO project_meta SELECT * FROM staged.stage_meta;")?;
+      INSERT OR REPLACE INTO project_meta SELECT * FROM staged.stage_meta;
+      INSERT INTO rust_source_states SELECT * FROM staged.stage_rust_source_states;
+      INSERT INTO rust_analysis_dependencies SELECT * FROM staged.stage_rust_dependencies;")?;
     Ok(())
 }
 
@@ -333,12 +374,62 @@ pub fn promote(db: &Connection) -> Result<()> {
 mod tests {
     use super::*;
     #[test]
+    fn rust_metadata_is_normalized_and_old_schema_requires_full_rebuild() -> Result<()> {
+        let db = Connection::open_in_memory()?;
+        db.pragma_update(None, "user_version", 8)?;
+        assert!(
+            initialize(&db)
+                .unwrap_err()
+                .to_string()
+                .contains("run index --full")
+        );
+        assert_eq!(
+            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            8
+        );
+        db.pragma_update(None, "user_version", 0)?;
+        initialize(&db)?;
+        db.execute_batch("PRAGMA foreign_keys=ON")?;
+        for world in ["one", "two"] {
+            let text=serde_json::json!({"file":"src/lib.rs","world":world,"source_hash":"source","interface_hash":"interface","names":["name"],"dependencies":[{"kind":"lookup","world":"dependency","key":"missing"}]}).to_string();
+            db.execute(
+                "INSERT INTO rust_source_states VALUES(?,?,?)",
+                params!["src/lib.rs", world, text],
+            )?;
+            for kind in ["file", "symbol", "lookup", "macro", "impl_set"] {
+                db.execute(
+                    "INSERT INTO rust_analysis_dependencies VALUES(?,?,?,?,?)",
+                    params!["src/lib.rs", world, kind, "dependency", "missing"],
+                )?;
+            }
+        }
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM rust_analysis_dependencies", [], |r| r
+                .get::<_, i64>(0))?,
+            10
+        );
+        assert_eq!(db.query_row("SELECT count(*) FROM rust_source_states WHERE json_type(state,'$.dependencies') IS NOT NULL",[],|r|r.get::<_,i64>(0))?,0);
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM rust_strings", [], |r| r
+                .get::<_, i64>(0))?,
+            4
+        );
+        db.execute("DELETE FROM rust_source_states WHERE world='one'", [])?;
+        assert_eq!(
+            db.query_row("SELECT count(*) FROM rust_analysis_dependencies", [], |r| r
+                .get::<_, i64>(0))?,
+            5
+        );
+        assert!(db.execute("INSERT INTO rust_analysis_dependencies VALUES('missing','two','lookup','dependency','missing')",[]).is_err());
+        Ok(())
+    }
+    #[test]
     fn upstream_layout_and_utf16_hash_are_preserved() -> Result<()> {
         let db = Connection::open_in_memory()?;
         initialize(&db)?;
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-            7
+            SCHEMA_VERSION
         );
         assert_eq!(
             db.query_row(
@@ -356,6 +447,7 @@ mod tests {
             insert(
                 &stage,
                 &Row {
+                    world: String::new(),
                     table: Table::Node as i32,
                     cells: vec![]
                 }

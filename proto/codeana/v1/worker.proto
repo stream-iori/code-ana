@@ -41,7 +41,8 @@ message JavaConfig {
  JavaDependencyMode dependency_mode = 18;
  MavenDependencyFailure dependency_failure = 19;
 }
-message Discover { Manifest manifest = 1; JavaConfig java = 2; }
+message RustConfig { string input = 1; string sha256 = 2; uint64 bytes = 3; uint64 result_bytes = 4; uint64 fact_limit = 5; }
+message Discover { Manifest manifest = 1; JavaConfig java = 2; RustConfig rust = 3; }
 message Analyze { Manifest manifest = 1; string profile = 2; string baseline = 3; bool full = 4; reserved 5; bytes baseline_summary_json = 6; }
 // Protocol 19: Begin/Chunk are provisional. Only a verified End permits candidate finalization.
 message Begin { string mode = 1; string baseline = 2; string manifest = 3; string profile = 4; string producer = 5; repeated Owner replacements = 6; }

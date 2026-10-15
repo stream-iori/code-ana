@@ -19,6 +19,54 @@ use tokio_util::sync::CancellationToken;
 // deadline killed healthy workers after a successful publication.
 const JAVA_ACK_TIMEOUT: Duration = Duration::from_secs(30);
 
+#[derive(Clone, serde::Serialize)]
+pub(super) struct MemoryUsage {
+    limit_bytes: u64,
+    rss_bytes: u64,
+    peak_rss_bytes: u64,
+    stage: String,
+    process_group: u32,
+    phase_ms: std::collections::BTreeMap<String, u64>,
+    stream: Option<codeana_contracts::stream::StreamSummary>,
+}
+impl MemoryUsage {
+    fn sample(&mut self, rss: u64) -> bool {
+        self.rss_bytes = rss;
+        self.peak_rss_bytes = self.peak_rss_bytes.max(rss);
+        rss > self.limit_bytes
+    }
+    fn observe_phase(&mut self, log: &[u8]) {
+        for line in String::from_utf8_lossy(log).lines() {
+            if let Some(timing) = line.strip_prefix("codeana-rust-timing ")
+                && let Some((name, value)) = timing.split_once('=')
+                && let Ok(value) = value.parse::<u64>()
+            {
+                self.phase_ms.insert(name.into(), value);
+            }
+            if let Some(summary) = line.strip_prefix("codeana-rust-stream ")
+                && let Ok(value) = serde_json::from_str(summary)
+            {
+                self.stream = Some(value);
+            }
+            if let Some(phase) = line.strip_prefix("codeana-rust-phase=")
+                && matches!(
+                    phase,
+                    "inputs"
+                        | "database_load"
+                        | "declarations"
+                        | "bindings"
+                        | "archive"
+                        | "transport"
+                        | "incremental"
+                        | "records"
+                )
+            {
+                self.stage = phase.to_owned();
+            }
+        }
+    }
+}
+
 async fn receive_ack(
     ipc: &mut UnixStream,
     attempt: &str,
@@ -54,9 +102,10 @@ pub struct Worker {
     log_task: tokio::task::JoinHandle<()>,
     monitor: tokio::task::JoinHandle<()>,
     memory_exceeded: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    memory: std::sync::Arc<std::sync::Mutex<MemoryUsage>>,
     pub attempt: String,
     pub context: BuildContext,
-    output_limits: codeana_contracts::java::OutputLimits,
+    output_limits: codeana_contracts::graph_archive::OutputLimits,
     scratch: std::sync::Arc<std::sync::Mutex<Option<super::java::DiskBudget>>>,
     scratch_exceeded: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
@@ -81,11 +130,33 @@ impl Worker {
         cancel: &CancellationToken,
         memory_limit: u64,
     ) -> Result<Self> {
+        Self::start_language(
+            fixtures,
+            java,
+            None,
+            checkout,
+            manifest,
+            cancel,
+            memory_limit,
+        )
+        .await
+    }
+    pub async fn start_language(
+        fixtures: Option<&Path>,
+        java: Option<&super::java::PreparedJava>,
+        rust: Option<&w::RustConfig>,
+        checkout: &Path,
+        manifest: &Manifest,
+        cancel: &CancellationToken,
+        memory_limit: u64,
+    ) -> Result<Self> {
         let (a, b) = std::os::unix::net::UnixStream::pair()?;
         a.set_nonblocking(true)?;
         let fd = b.as_raw_fd();
         let binary = std::env::current_exe()?.with_file_name(if fixtures.is_some() {
             "codeana-mock-worker"
+        } else if rust.is_some() {
+            "codeana-rust-worker"
         } else {
             "codeana-java-worker"
         });
@@ -125,6 +196,15 @@ impl Worker {
             codeana_model::ErrorCode::WorkerNotInstalled,
             "",
         ))?;
+        let memory = std::sync::Arc::new(std::sync::Mutex::new(MemoryUsage {
+            limit_bytes: memory_limit,
+            rss_bytes: 0,
+            peak_rss_bytes: 0,
+            stage: "starting".into(),
+            process_group: child.id().context("WORKER_PID_REQUIRED")?,
+            phase_ms: Default::default(),
+            stream: None,
+        }));
         let mut stderr = child
             .stderr
             .take()
@@ -134,6 +214,7 @@ impl Worker {
             ))?;
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let captured = logs.clone();
+        let phase_memory = memory.clone();
         let log_task = tokio::spawn(async move {
             use tokio::io::AsyncReadExt;
             let mut buf = [0u8; 1024];
@@ -145,6 +226,7 @@ impl Worker {
                 tail.extend_from_slice(&buf[..n]);
                 let excess = tail.len().saturating_sub(4096);
                 tail.drain(..excess);
+                phase_memory.lock().unwrap().observe_phase(&tail);
             }
         });
         let pid = child.id().context(codeana_model::DomainError::new(
@@ -158,6 +240,7 @@ impl Worker {
         let monitored_scratch = scratch.clone();
         let scratch_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let disk_exceeded = scratch_exceeded.clone();
+        let sampled_memory = memory.clone();
         let monitor = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(100));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -192,7 +275,7 @@ impl Worker {
                             (group == pid).then_some(rss.saturating_mul(1024))
                         })
                         .sum();
-                    if rss > memory_limit {
+                    if sampled_memory.lock().unwrap().sample(rss) {
                         exceeded.store(true, std::sync::atomic::Ordering::SeqCst);
                         unsafe {
                             libc::kill(-(pid as i32), libc::SIGKILL);
@@ -205,13 +288,14 @@ impl Worker {
         drop(b);
         let mut worker = Self {
             output_limits: java
-                .map(|j| codeana_contracts::java::OutputLimits::from_config(&j.config))
+                .map(|j| codeana_contracts::graph_archive::OutputLimits::from_config(&j.config))
                 .transpose()?
                 .unwrap_or_default(),
             scratch,
             scratch_exceeded,
             monitor,
             memory_exceeded,
+            memory,
             child,
             process_group: pid,
             command,
@@ -228,6 +312,17 @@ impl Worker {
                 capabilities: vec![],
             },
         };
+        if let Some(config) = rust {
+            ensure!(
+                (65536..=1073741824).contains(&config.result_bytes)
+                    && (1..=2000000).contains(&config.fact_limit),
+                "RUST_OUTPUT_LIMIT_RANGE"
+            );
+            worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
+                bytes: config.result_bytes,
+                facts: config.fact_limit,
+            };
+        }
         worker
             .send(Body::Hello(w::Hello {
                 protocol: WORKER_PROTOCOL_VERSION,
@@ -242,6 +337,8 @@ impl Worker {
                     && h.producer
                         == if fixtures.is_some() {
                             "mock-fixture-v1"
+                        } else if rust.is_some() {
+                            "rust-core"
                         } else {
                             "javac-java8-v1"
                         },
@@ -257,6 +354,7 @@ impl Worker {
         };
         worker
             .send(Body::Discover(w::Discover {
+                rust: rust.cloned().map(Box::new),
                 manifest: Some(map(manifest)?),
                 java: java.map(|j| j.config.clone()),
             }))
@@ -333,7 +431,7 @@ impl Worker {
                     tokio::task::yield_now().await;
                     let logs=String::from_utf8_lossy(&self.logs.lock().unwrap()).into_owned();
                     if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaScratchBudget, ""));}
-                    if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerMemoryBudget, ""));}
+                    if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerMemoryBudget, serde_json::to_string(&self.memory_usage())?));}
                     let status=match status {Ok(Ok(s))=>s.to_string(),Ok(Err(e))=>e.to_string(),Err(_)=>"still running".into()};
                     bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerProtocol, format!("{error}; pid={}; command={}; exit={status}; stderr={logs}", self.process_group,self.command)));
                 }
@@ -357,6 +455,10 @@ impl Worker {
             b => Ok(b),
         }
     }
+
+    pub(super) fn memory_usage(&self) -> MemoryUsage {
+        self.memory.lock().unwrap().clone()
+    }
     pub async fn analyze(
         &mut self,
         manifest: &Manifest,
@@ -366,125 +468,38 @@ impl Worker {
         full: bool,
         cancel: &CancellationToken,
     ) -> Result<SpooledAnalysis> {
-        let diagnostics = codeana_contracts::performance::Report::new("transport");
-        diagnostics
-            .capture
-            .scope(async {
-                let mut full = full;
-                for retry in 0..2 {
-                    self.attempt = new_id("attempt");
-                    let baseline_summary_json = if full {
-                        Vec::new()
-                    } else {
-                        old.map(serde_json::to_vec).transpose()?.unwrap_or_default()
-                    };
-                    self.send(Body::Analyze(w::Analyze {
-                        baseline_summary_json,
-                        manifest: Some(map(manifest)?),
-                        profile: profile.into(),
-                        baseline: baseline.into(),
-                        full,
-                    }))
-                    .await?;
-                    let begin = match self.receive(cancel).await? {
-                        Body::Begin(b) => b,
-                        Body::Replan(_) if retry == 0 && !full => {
-                            full = true;
-                            continue;
-                        }
-                        _ => bail!(codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::ExpectedResultBegin,
-                            ""
-                        )),
-                    };
-                    ensure!(
-                        begin.manifest == manifest.id()
-                            && begin.profile == profile
-                            && begin.baseline == baseline
-                            && begin.producer == self.context.producer,
-                        codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::ResultIdentityMismatch,
-                            ""
-                        )
-                    );
-                    ensure!(
-                        !full || begin.mode == "full",
-                        codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::ExpectedFullResult,
-                            ""
-                        )
-                    );
-                    let root = self
-                        .scratch
-                        .lock()
-                        .unwrap()
-                        .as_ref()
-                        .map(|b| b.root.clone());
-                    let mut facts = GraphArchiveBuilder::new(
-                        root.as_deref(),
-                        self.output_limits.bytes,
-                        self.output_limits.facts,
-                    )?;
-                    let mut seq = 0;
-                    let archive = loop {
-                        match self.receive(cancel).await? {
-                            Body::Chunk(chunk) => {
-                                ensure!(
-                                    chunk.seq == seq,
-                                    codeana_model::DomainError::new(
-                                        codeana_model::ErrorCode::ChunkSequenceMismatch,
-                                        ""
-                                    )
-                                );
-                                seq += 1;
-                                for row in chunk.rows {
-                                    facts.push(&row)?;
-                                }
-                            }
-                            Body::End(end) => {
-                                ensure!(
-                                    end.chunks == seq && end.count == facts.count(),
-                                    codeana_model::DomainError::new(
-                                        codeana_model::ErrorCode::ResultChecksumMismatch,
-                                        ""
-                                    )
-                                );
-                                let sealed = facts.seal()?;
-                                ensure!(
-                                    end.checksum == sealed.checksum,
-                                    codeana_model::DomainError::new(
-                                        codeana_model::ErrorCode::ResultChecksumMismatch,
-                                        ""
-                                    )
-                                );
-                                break sealed;
-                            }
-                            _ => bail!(codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::UnexpectedResultMessage,
-                                ""
-                            )),
-                        }
-                    };
-                    let r = AnalysisHeader {
-                        mode: begin.mode.parse()?,
-                        baseline: begin.baseline,
-                        manifest: begin.manifest,
-                        profile: begin.profile,
-                        producer: begin.producer,
-                        replacements: begin.replacements.iter().map(map).collect::<Result<_>>()?,
-                    };
-                    r.validate(manifest).map_err(anyhow::Error::msg)?;
-                    return Ok(SpooledAnalysis {
-                        header: r,
-                        records: archive,
-                    });
-                }
-                bail!(codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::ReplanBudget,
-                    ""
-                ))
+        let root = self
+            .scratch
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|b| b.root.clone());
+        let limits = self.output_limits;
+        let mut archive_task = None;
+        let header = self
+            .analyze_into(manifest, profile, baseline, old, full, cancel, |_| {
+                let (sender, records) = codeana_contracts::stream::GraphStream::channel();
+                let root = root.clone();
+                archive_task = Some(tokio::task::spawn_blocking(move || -> Result<_> {
+                    let mut archive =
+                        GraphArchiveBuilder::new(root.as_deref(), limits.bytes, limits.facts)?;
+                    for row in records {
+                        archive.push(&row?)?;
+                    }
+                    archive.seal()
+                }));
+                Ok(sender)
             })
-            .await
+            .await;
+        let archive = match archive_task {
+            Some(task) => Some(task.await?),
+            None => None,
+        };
+        let header = header?;
+        Ok(SpooledAnalysis {
+            header,
+            records: archive.context("RESULT_BEGIN_MISSING")??,
+        })
     }
     #[allow(clippy::too_many_arguments)]
     pub async fn analyze_into(
@@ -495,11 +510,7 @@ impl Worker {
         old: Option<&BaselineInput>,
         full: bool,
         cancel: &CancellationToken,
-        mut begin_sink: impl FnMut(
-            &AnalysisHeader,
-        ) -> Result<
-            tokio::sync::mpsc::Sender<codeana_contracts::stream::GraphStreamEvent>,
-        >,
+        mut begin_sink: impl FnMut(&AnalysisHeader) -> Result<codeana_contracts::stream::SinkSender>,
     ) -> Result<AnalysisHeader> {
         let diagnostics = codeana_contracts::performance::Report::new("transport");
         diagnostics
@@ -568,8 +579,12 @@ impl Worker {
                             Body::End(end) => {
                                 ensure!(end.chunks == seq && end.count == count, codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
                                 ensure!(end.checksum == format!("{:x}", checksum.finalize()), codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
-                                sink.send(codeana_contracts::stream::GraphStreamEvent::VerifiedEnd).await
-                                    .map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed, "")))?;
+                                tokio::select! {
+                                    biased;
+                                    _=cancel.cancelled()=>bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled,"")),
+                                    sent=sink.send(codeana_contracts::stream::GraphStreamEvent::VerifiedEnd)=>sent.map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed,"")))?,
+                                }
+                                eprintln!("codeana-stream {}",serde_json::to_string(&sink.metrics.summary())?);
                                 return Ok(r);
                             }
                             _ => bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::UnexpectedResultMessage, "")),
@@ -632,9 +647,11 @@ impl Worker {
             codeana_model::DomainError::new(codeana_model::ErrorCode::WarmWorkerExited, "")
         );
         *self.scratch.lock().unwrap() = Some(java.disk_budget.clone());
-        self.output_limits = codeana_contracts::java::OutputLimits::from_config(&java.config)?;
+        self.output_limits =
+            codeana_contracts::graph_archive::OutputLimits::from_config(&java.config)?;
         self.attempt = new_id("attempt");
         self.send(Body::Discover(w::Discover {
+            rust: None,
             manifest: Some(map(manifest)?),
             java: Some(java.config.clone()),
         }))
@@ -657,6 +674,28 @@ impl Worker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn memory_samples_keep_peak_and_last_complete_phase() {
+        let mut usage = MemoryUsage {
+            limit_bytes: 256,
+            rss_bytes: 0,
+            peak_rss_bytes: 0,
+            stage: "starting".into(),
+            process_group: 7,
+            phase_ms: Default::default(),
+            stream: None,
+        };
+        assert!(!usage.sample(100));
+        assert!(!usage.sample(256));
+        usage.observe_phase(b"codeana-rust-phase=database_load\ncodeana-rust-phase=decla");
+        assert_eq!(usage.stage, "database_load");
+        assert!(usage.sample(300));
+        assert!(!usage.sample(200));
+        assert_eq!((usage.rss_bytes, usage.peak_rss_bytes), (200, 300));
+        usage.observe_phase(b"codeana-rust-phase=bindings\n");
+        assert_eq!(usage.stage, "bindings");
+        assert_eq!(serde_json::to_value(&usage).unwrap()["limit_bytes"], 256);
+    }
 
     #[tokio::test]
     async fn delayed_java_ack_preserves_identity_and_exceeds_old_deadline() {

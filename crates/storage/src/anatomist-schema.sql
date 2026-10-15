@@ -25,6 +25,7 @@ CREATE TABLE nodes (
     scope TEXT NOT NULL CHECK (scope IN ('MAIN','TEST','GENERATED')),
     metadata TEXT,
     producer_id TEXT NOT NULL DEFAULT 'java-core',
+    world TEXT NOT NULL DEFAULT '',
     declaration_kind TEXT,
     type_kind TEXT,
     visibility TEXT,
@@ -59,9 +60,9 @@ CREATE TABLE nodes (
          AND nesting_depth IS NULL AND direct_member IS NULL
          AND synthetic IS NULL AND binding_resolved IS NULL)
         OR
-        (declaration_kind IN ('type','method','constructor','field','enum_constant','record_component','initializer')
+        ((declaration_kind IN ('type','method','constructor','field','enum_constant','record_component','initializer') OR language='rust' AND declaration_kind IN ('function','struct','enum','trait','union','type_alias','constant','static','module','variant','macro','impl'))
          AND (type_kind IS NULL OR type_kind IN ('class','interface','enum','record','annotation'))
-         AND visibility IN ('public','protected','private','package')
+         AND (visibility IN ('public','protected','private','package') OR language='rust' AND visibility IN ('crate','restricted'))
          AND modifiers IS NOT NULL AND declared_modifiers IS NOT NULL AND implicit_modifiers IS NOT NULL
          AND nesting_depth IS NOT NULL
          AND direct_member IN (0,1) AND synthetic IN (0,1) AND binding_resolved IN (0,1)
@@ -332,7 +333,8 @@ CREATE TABLE index_diagnostics (
     reason_code TEXT,
     sample_details TEXT,
     occurrence_count INTEGER NOT NULL,
-    sample TEXT
+    sample TEXT,
+    world TEXT NOT NULL DEFAULT ''
 );
 
 CREATE INDEX idx_diagnostics_severity ON index_diagnostics(severity);
@@ -352,7 +354,8 @@ CREATE TABLE analysis_coverage (
     codes TEXT NOT NULL,
     code_counts TEXT NOT NULL,
     details_truncated INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (provider_id, source_file, module, scope, capability)
+    world TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (provider_id, source_file, module, scope, capability, world)
 );
 
 CREATE INDEX idx_analysis_coverage_capability
@@ -377,3 +380,7 @@ CREATE TABLE symbol_dependencies (
     source_file TEXT NOT NULL,
     PRIMARY KEY (target_key, source_file)
 ) WITHOUT ROWID;
+
+-- Persistent Rust invalidation inputs; independent of Java's derived dependencies.
+CREATE TABLE rust_source_states(source_file TEXT NOT NULL,world TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(source_file,world));
+CREATE TABLE rust_analysis_dependencies(source_file TEXT NOT NULL,world TEXT NOT NULL,kind TEXT NOT NULL,target_world TEXT NOT NULL,target_key TEXT NOT NULL,PRIMARY KEY(source_file,world,kind,target_world,target_key));

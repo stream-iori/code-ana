@@ -109,7 +109,7 @@ impl Store {
             .manifest
             .files
             .iter()
-            .map(|s| (s.path.as_str(), s))
+            .map(|s| ((s.path.as_str(), s.world.as_str()), s))
             .collect();
         let replaced: BTreeSet<_> = header
             .replacements
@@ -331,7 +331,7 @@ impl Store {
 
 fn validate_record(
     row: &Row,
-    sources: &BTreeMap<&str, &SourceUnit>,
+    sources: &BTreeMap<(&str, &str), &SourceUnit>,
     replaced: &BTreeSet<&str>,
     delta: bool,
 ) -> Result<()> {
@@ -359,6 +359,7 @@ fn validate_record(
         Table::Coverage => Some((0, Some((1, 2)))),
         Table::Diagnostic => Some((3, Some((4, 5)))),
         Table::FileCache => Some((1, None)),
+        Table::SourceState | Table::AnalysisDependency => Some((0, None)),
         Table::AnnotationMeta => Some((7, None)),
         Table::SemanticAnnotation => Some((7, Some((8, 9)))),
         _ => None,
@@ -370,10 +371,23 @@ fn validate_record(
             safe_path(path),
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphSourceUnsafe, "")
         );
-        let unit = sources.get(path).context(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::GraphSourceNotCaptured,
-            "",
-        ))?;
+        let unit = sources
+            .get(&(path, row.world.as_str()))
+            .copied()
+            .or_else(|| {
+                if row.world.is_empty() {
+                    sources
+                        .iter()
+                        .find(|((p, _), _)| *p == path)
+                        .map(|(_, unit)| *unit)
+                } else {
+                    None
+                }
+            })
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::GraphSourceNotCaptured,
+                "",
+            ))?;
         if let Some((module, scope)) = identity {
             if let Some(module) = text(module)? {
                 ensure!(
@@ -441,6 +455,8 @@ fn replace_affected(db: &Connection, files: &BTreeSet<String>) -> Result<()> {
       DELETE FROM annotation_meta_owned WHERE source_file IN(SELECT source_file FROM graph_replaced);
       DELETE FROM nodes WHERE source_file IN(SELECT source_file FROM graph_replaced) AND id NOT IN(SELECT id FROM staged.stage_nodes);
       DELETE FROM file_cache WHERE source_file IN(SELECT source_file FROM graph_replaced);
+      DELETE FROM graph_rust_analysis_dependencies WHERE source_file IN(SELECT file_pk FROM source_files WHERE path IN(SELECT source_file FROM graph_replaced));
+      DELETE FROM graph_rust_source_states WHERE source_file IN(SELECT file_pk FROM source_files WHERE path IN(SELECT source_file FROM graph_replaced));
       DELETE FROM analysis_coverage WHERE source_file IN(SELECT source_file FROM graph_replaced);
       DELETE FROM analysis_coverage WHERE coalesce(source_file,'') IN ('','*') AND EXISTS(SELECT 1 FROM staged.stage_coverage s WHERE coalesce(s.source_file,'') IN ('','*') AND s.module IS analysis_coverage.module AND s.scope IS analysis_coverage.scope AND s.provider_id IS analysis_coverage.provider_id AND s.capability=analysis_coverage.capability);
       DELETE FROM index_diagnostics;
@@ -474,8 +490,8 @@ fn seed_baseline(
         stage.execute("INSERT OR IGNORE INTO replaced VALUES(?)", [&owner.id])?;
     }
     check()?;
-    stage.execute_batch("INSERT INTO stage_nodes(id,symbol_id,domain,language,provider_id,entity_kind,language_kind,label,kind,qualified_name,package,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,module,scope,metadata,producer_id)
-      SELECT id,symbol_id,domain,language,provider_id,entity_kind,language_kind,label,kind,qualified_name,package,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,module,scope,metadata,producer_id FROM baseline.nodes WHERE source_file NOT IN(SELECT source_file FROM replaced);
+    stage.execute_batch("INSERT INTO stage_nodes(id,symbol_id,domain,language,provider_id,entity_kind,language_kind,label,kind,qualified_name,package,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,module,scope,metadata,producer_id,world)
+      SELECT id,symbol_id,domain,language,provider_id,entity_kind,language_kind,label,kind,qualified_name,package,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,module,scope,metadata,producer_id,world FROM baseline.nodes WHERE source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_declarations(symbol_id,domain,language,provider_id,entity_kind,language_kind,qualified_name,label,kind,declaration_kind,type_kind,visibility,modifiers,declared_modifiers,implicit_modifiers,declaring_type,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,module,scope,nesting_depth,direct_member,synthetic,binding_resolved,producer_id)
       SELECT symbol_id,domain,language,provider_id,entity_kind,language_kind,qualified_name,label,kind,declaration_kind,type_kind,visibility,modifiers,declared_modifiers,implicit_modifiers,declaring_type,declaration_namespace,source_file,declaration_source_location,declaration_begin_line,declaration_begin_column,declaration_end_line,declaration_end_column,module,scope,nesting_depth,direct_member,synthetic,binding_resolved,producer_id FROM baseline.nodes WHERE declaration_kind IS NOT NULL AND source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_edges(source_ref,target_ref,external_target_fqn,external_target_symbol,external_target_language,external_target_provider_id,relation,semantic,mechanism,language,provider_id,call_kind,confidence,resolution,context,is_external,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,metadata,source_module,source_scope,source_is_key,target_is_key,resolved_source,resolved_target,producer_id)
@@ -487,7 +503,7 @@ fn seed_baseline(
       SELECT a.node_id,a.category,a.business_label,a.business_description,a.domain_context,a.source,a.confidence,a.source_file,n.module,n.scope,1,a.node_id,a.producer_id FROM baseline.semantic_annotations a JOIN baseline.nodes n ON n.id=a.node_id WHERE a.source_file IS NULL OR a.source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_file_cache SELECT provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash FROM baseline.file_cache WHERE source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_coverage SELECT * FROM baseline.analysis_coverage WHERE source_file NOT IN(SELECT source_file FROM replaced) AND NOT (coalesce(source_file,'') IN ('','*') AND codes LIKE '%CLASSPATH_UNAVAILABLE%');
-      INSERT INTO stage_diagnostics SELECT severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample FROM baseline.index_diagnostics WHERE code<>'CLASSPATH_UNAVAILABLE' AND source_file NOT IN(SELECT source_file FROM replaced);
+      INSERT INTO stage_diagnostics SELECT severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world FROM baseline.index_diagnostics WHERE code<>'CLASSPATH_UNAVAILABLE' AND source_file NOT IN(SELECT source_file FROM replaced);
       INSERT INTO stage_providers SELECT * FROM baseline.index_providers;")?;
     // Persisted call sites are the canonical source; seed their exact range and
     // targets, including unresolved sites, without manufacturing method CALLS.

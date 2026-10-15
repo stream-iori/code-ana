@@ -1,0 +1,29 @@
+[package]
+name = "codeana-rust-adaptor"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# RA lexer 0.166 uses Unicode 17, matching unicode-properties 0.1.4.
+unicode-ident = "=1.0.24"
+# ra_ap_span uses Salsa internals, including the 0.28.2 intern signature.
+salsa = "=0.28.2"
+salsa-macro-rules = "=0.28.2"
+anyhow.workspace = true
+serde_json.workspace = true
+triomphe = "0.1.15"
+ra_ap_hir.workspace = true
+ra_ap_ide_db.workspace = true
+ra_ap_base_db.workspace = true
+ra_ap_syntax.workspace = true
+ra_ap_vfs.workspace = true
+ra_ap_cfg.workspace = true
+ra_ap_intern.workspace = true
+ra_ap_span.workspace = true
+codeana-model = { path = "../crates/model" }
+codeana-contracts = { path = "../crates/contracts" }
+
+[dev-dependencies]
+codeana-storage = { path = "../crates/storage" }
+tempfile.workspace = true
