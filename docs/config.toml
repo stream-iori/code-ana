@@ -2,7 +2,7 @@
 # 建议保存到 <project>/.code-ana/config.toml。
 # 这是 Java + Rust 混合仓库示例；模块路径、features 应按项目修改。
 # 字段、默认、优先级见 configuration.md；无旧配置兼容。
-# 此示例展示 Java + 后续 Rust 请求形状；Rust adapter 未实现。可运行的 Java 8 示例见 examples/java-fixture-config.toml。
+# 此示例展示 Java + Rust 请求形状；Rust 需显式导出 inputs_manifest。可运行的 Java 8 示例见 examples/java-fixture-config.toml。
 # Java 后端固定 javac，无解析器切换/回退；parse/analyze 禁用处理器。
 # auto 工具链仅从用户登记的别名选唯一匹配 JDK，不回退 JAVA_HOME/PATH。
 
@@ -29,7 +29,7 @@ mode = "auto" # full：明确全量；auto：兼容时增量
 
 [resources.index]
 # 省略时使用服务预算；数值是申请上限，不是产品容量承诺。
-# worker_memory_bytes = 2147483648 # 包含 host/原生库和目标 JDK 子进程
+# worker_memory_bytes = 268435456 # Rust 默认 256 MiB，须不超过用户 home 的 worker 上限
 # java_compiler_heap_bytes = 134217728 # Java 8 javac 子进程堆，8–512 MiB
 # java_parallelism = 8 # 1–8；显式设置须满足 host/JVM 堆与非堆空间预约，128 MiB 堆的 8 并行至少 2 GiB
 # java_model_record_limit = 100000 # 每 context 的模型工作记录数，1–5000000
@@ -85,6 +85,10 @@ mode = "semantic" # syntax：语法能力；semantic：需要已验证 crate gra
 
 [languages.rust.discovery]
 build_system = "cargo"
+
+[languages.rust.dependencies]
+include = ["**"]
+exclude = [] # 可显式设置 ["tests/**", "examples/**", "benches/**"]，按包内路径匹配
 
 [languages.rust.analysis]
 edition = "auto"

@@ -12,10 +12,10 @@
 | [总体架构](architecture.md) / [公共契约](contracts.md) | 进程、身份、GRA1、取消和发布边界 |
 | [配置](configuration.md) | 显式语言、外部 Maven metadata、预算和优先级 |
 | [Java fixture](examples/java-fixture-config.toml) / [用户配置](examples/user-config.toml) | 目标 Java 8 与本机工具链；使用前替换真实路径 |
-| [完整配置 schema 示例](config.toml) | 混合语言请求形状；Rust 分析尚未实现 |
+| [完整配置 schema 示例](config.toml) | 混合语言请求形状；Rust 需外部导出的冻结输入 |
 | [CLI / daemon](modules/runtime.md) / [索引](modules/indexing.md) | 任务、调度、冻结输入和增量 |
-| [Java worker](modules/java-worker.md) / [Rust worker 设计](modules/rust-worker.md) | 已实现 Java 链路与后续 Rust 能力 |
-| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 7、逻辑 schema 33、只读投影和 pipeline |
+| [Java worker](modules/java-worker.md) / [Rust worker](modules/rust-worker.md) | Java 与 Rust 分析链路、能力限制 |
+| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 9、逻辑 schema 33、只读投影和 pipeline |
 | [版本与源码](modules/versioning.md) / [诊断与标注](modules/operations.md) | 冻结历史、diff、引用保护和用户内容 |
 | [决策登记](design-review.md) / [实施与验收](delivery.md) | 已落实决策、剩余门禁与实际测试入口 |
 | [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |

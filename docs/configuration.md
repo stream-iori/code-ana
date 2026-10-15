@@ -2,7 +2,7 @@
 
 **公共配置管扫描、预算和版本；语言配置管分析语义；模块与 world 表达同仓库中的不同构建上下文。**
 
-状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与捕获已实现；Rust 语言分析仍是后续设计，Java 8 支持显式 plain 和外部 Maven metadata，现行边界见 [当前实现](current-state.md) 和 [Java worker](modules/java-worker.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；混合语言示例展示后续扩展，当前可运行配置以 Java 8 示例为准。
+状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与捕获已实现；Rust 语言分析使用外部输入清单和独立 rust-analyzer worker，Java 8 支持显式 plain 和外部 Maven metadata，现行边界见 [当前实现](current-state.md) 和 [Java worker](modules/java-worker.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；Rust 最小可运行配置与导出命令见 [Rust worker](modules/rust-worker.md)。
 
 ## 1. 配置分层
 
@@ -21,9 +21,9 @@
                                |
           +--------------------+--------------------+
           |                    |                    |
-     JavaAnalysisConfig   Rust 配置（后续）    Capture/QueryPolicy
+     JavaAnalysisConfig   RustAnalysisConfig    Capture/QueryPolicy
           |                    |
-       Java host           Rust adapter（未实现）
+       Java host           Rust adapter
 ```
 
 Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单独构建，当前 Java 8 桥字节码为 52，与 Java 25 Native 分开验证；`languages.java.analysis.source_version` 描述**被分析源码**的语法版本，`analysis.toolchain` 描述用于该项目解析的工具链。修改这两个字段不会重编适配器或切换它的构建 JDK。
@@ -73,7 +73,7 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 | `[versions.capture]` | `include_ignored` | 增补 WORKTREE 捕获范围，不绕过 excludes |
 | `[versions.gc]` | `auto`、`keep`、`max_bytes`、`max_age_days`、`include_caches` | auto 默认 true、keep 20、max_age_days 30、max_bytes 0；引用保护。include_caches 当前未接入执行路径 |
 | `[languages.<id>]` | `enabled`、`mode` | 语言能力选择；支持的 mode 由版本化语言描述符声明 |
-| `[languages.<id>.discovery]` | `build_system`、Java `inputs_manifest` | Java schema 为 auto/maven/gradle/plain，支持 plain 与外部 Maven inputs_manifest；Gradle/Rust 仍未实现 |
+| `[languages.<id>.discovery]` | `build_system`、Java `inputs_manifest` | Java schema 为 auto/maven/gradle/plain，支持 plain 与外部 Maven inputs_manifest；Gradle 未实现；Rust 使用 rust-inputs.json |
 | `[languages.<id>.analysis]` | 语言专属分析参数 | 由对应 adapter 的 schema 校验，不能塞回全局 index |
 | `[languages.java.lombok]` | `mode = "off" / "model"`、`strict` | 用户确定直接挂在 Java 下；Lombok 模型不经过 extensions 中间层 |
 | `[languages.<id>.extensions.<id>]` | 框架参数 | Spring/SOFA 等框架配置归所属语言，不出现在其他语言命名空间 |
@@ -97,7 +97,7 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 | java_fact_limit | 100,000 | 1–5,000,000，全任务行/归属计数 |
 | java_scratch_bytes | 2 GiB | 64 KiB–32 GiB，捕获副本 / 模型 / 候选暂存 |
 
-当前 schema 固定 Java/Rust 命名空间，未知语言/字段拒绝；不从项目下载插件。扩展描述符/新语言注册是后续设计，Rust 字段被解析不能证明 Rust adapter 已存在。
+当前 schema 固定 Java/Rust 命名空间，未知语言/字段拒绝；不从项目下载插件。扩展描述符/新语言注册是后续设计，Rust 必须提供匹配的冻结输入清单。
 
 | 语言专属键 | 值域 / 解释 |
 |---|---|
@@ -107,7 +107,7 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 | Java `analysis.vm_classpath` | boolean；javac semantic 只接受 true，false 在分析前拒绝；不取宿主 GraalVM JDK 冒充目标 JDK |
 | Java `lombok.mode` / `lombok.strict` | off/model 与 boolean，默认 off/false；model 为独立 Java 声明模型补全，strict 将不完整模型纳入质量门禁，不触发 Lombok 编译执行 |
 | Rust `analysis.edition` | `"auto"` 或 adapter 支持的 edition 字符串；显式值须与有效构建声明一致，冲突拒绝 |
-| Rust `analysis.toolchain` | `"auto"` 或 Rust 工具链别名；实际版本与产物内容进入 profile |
+| Rust `analysis.toolchain` | 当前仅 `"auto"`；导出器可显式指定 --cargo/--rustc，版本进入输入 profile，未实现的别名拒绝 |
 | Rust world `target` | `"host"` 或工具链支持的目标平台名；分析前解析能力与依赖可用性 |
 | Rust world `features` / `default_features` | feature 字符串数组 / boolean；按 manifest 和构建图校验 |
 | Rust world `cfg` | 规范化字符串数组，元素为 `name` 或 `name="value"`；语法与冲突由 adapter 校验，不允许覆盖保留的目标平台内置项 |
@@ -133,7 +133,7 @@ enabled = true
 | 有项目文件但未启用语言 | 不发现/启用任何语言；语义 index 返回语言未配置；只有报告配置或检测到 manifest 都不构成启用 |
 | 显式启用语言 | 仅 `languages.<id>.enabled=true` 的语言参与索引；Java 的 auto 模块展开需已导出的 inputs_manifest；无 metadata 的 auto 明确拒绝；modules.language 不隐式启用语言 |
 | files/search-text | 无语言声明也可按显式文件范围读取；不触发语言发现、解析或编译 |
-| language.mode | Java 为 semantic；Rust 为 syntax；Rust semantic 必须显式选择，执行中不静默降级 |
+| language.mode | Java/Rust 均默认 semantic；Rust 可显式选择 syntax，执行中不静默降级 |
 | scan.scopes | MAIN + GENERATED；query.scopes 默认 ALL，含义仅为已捕获范围 |
 | include / exclude / text_only | `["**"]` / `[]` / `[]`；建议 include=[] 表示所有已选源码根内路径 |
 | Java source_version / toolchain | auto；版本来自已验证模块声明；工具链只从用户登记的别名中选唯一匹配项，零个或多个匹配都要求显式指定；来源与最终版本必须披露 |
@@ -141,7 +141,7 @@ enabled = true
 | Java classpath | existing；已有可验证依赖缺失则按 coverage/门禁处理，不自动执行构建 |
 | Java 扩展 | Lombok off、strict=false；Spring enabled=true、xml=false；SOFA enabled=true；当前静态 XML 接口清单可独立于 Spring |
 | Rust edition / toolchain | auto；从有效 manifest/toolchain 输入解析，无法确定则披露能力不足 |
-| Rust world 未列出 | 后续 semantic 设计为 host / default_features=true；当前没有 Rust adapter，不发生真实 crate graph 解析 |
+| Rust world 未列出 | 默认为 host / default_features=true；由显式导出器解析 Cargo crate graph |
 | 数值资源预算未设置 | 使用用户级服务策略并披露实际值；不能把省略理解为无限资源 |
 
 开启缺少已安装能力的语言时，在运行前返回 unsupported；不能默默只分析另一种语言。语义失败可产生 partial coverage，由健康门禁决定能否发布，与无效配置的直接拒绝区分。
@@ -341,7 +341,7 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 | Java 25 adapter 分析 Java 8 项目 | 构建运行时与目标语法/解析 JDK 分离 |
 | 同文件两个 feature world / Java 多模块 scope | 公共身份、coverage、增量基线分别固定；混合 Java 目标版本首版明确 unsupported |
 | 配置注释变化 / 字段重排 | 文件 diff 可见，语义摘要不变 |
-| 只改 report/output / 只改 Rust features | 前者不重建；后者不机械重建 Java |
+| 只改 report/output / 只改 Rust features | Rust 输入控制文件变化需重新导出；混合模式当前 Java 子任务全量，Rust 可增量 |
 | 禁用语言/扩展或删除模块 | 新 revision 无陈旧 owner，旧历史仍可读 |
 | 排队/执行中改配置、daemon 配置未重启 | 有效配置 generation 明确，不半途漂移 |
 | 缺配置、缺 language.enabled、只有报告配置或 manifest | 不自动启用语言，给出配置建议 |
@@ -349,7 +349,7 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 | 缺 classpath/生成产物、建议开关 true/false | 产品不执行目标构建或处理器；true 返回建议，false 保留缺口；外部执行后重试才捕获新产物 |
 | TOML 到 protobuf / FFI 输入 | 各语言收到明确类型和相同摘要，不在 worker 二次加载文件 |
 
-示例 TOML 已由 config 单元测试读取；Rust 显式配置/捕获走端到端验收。Java 8 工具链/metadata 已有独立回归；Rust 分析、Gradle 和 Java 17/25 仍未交付。
+示例 TOML 已由 config 单元测试读取；Rust 显式配置/捕获走端到端验收。Java 8 工具链/metadata 已有独立回归；Rust 能力边界见 [Rust worker](modules/rust-worker.md)；Gradle 和 Java 17/25 仍未交付。
 
 ## 12. 当前执行边界
 
@@ -357,7 +357,8 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 |---|---|
 | discovery.mode=explicit + Java plain | 显式源码根、source_version=8 和登记的 SDKMAN Java 8 工具链 |
 | discovery.mode=auto + languages.java.discovery.inputs_manifest | 外部 Maven metadata 展开，索引不调用 Maven |
-| Java 17/25、Gradle、Rust syntax/semantic | schema 可描述部分请求形状；产品能力仍不支持，不静默降级 |
+| Rust syntax/semantic | 显式导出的冻结输入 + 独立 worker；范围与缺口见 Rust worker 文档 |
+| Java 17/25、Gradle | schema 可描述部分请求形状；产品能力仍不支持，不静默降级 |
 | daemon.java_warm_workers | 健康 worker/isolate 复用开关；名字不表示 Native 有冷/热执行模式 |
 | Native GC | 构建默认 G1；不在项目 TOML 运行时切 GC，切换需成套构建/安装 |
 
@@ -373,3 +374,11 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 | versions.gc.include_caches | GC 不据此回收派生缓存；缓存有自己的有界管理 |
 
 以上来自 crates/config/src/lib.rs 的字段定义及 application/query/storage 的使用检查，不能把 TOML 解析成功写成能力已实现。
+
+## Rust 输入范围与内存预算
+
+项目 `[scan]` 和模块 scan 在捕获 Rust 文件前过滤；辅助依赖使用 `[languages.rust.dependencies] include/exclude`，按依赖包内相对路径匹配。include 省略或空数组表示全部，exclude 优先。仅保留已选项目 target 的一层 Cargo 直接依赖；依赖不发布图，截断上下文明确标 partial。主动宏展开已关闭，HIR 内部按需展开不在此次禁用范围。
+
+Rust 项目 `resources.index.worker_memory_bytes` 默认 268435456（256 MiB），范围 16 MiB–4 GiB；用户 home `[limits].max_worker_memory_bytes` 控制上限，省略同样为 256 MiB。项目不得超过服务上限；用户提高上限后项目仍默认请求 256 MiB。预算改动不要求重新导出；过滤、scope/world、语言语义设置变化要求重导 schema 2 输入。
+
+导出器与捕获共用 Rust worker 的准备入口和 globset；旧 schema 1 输入明确要求重导。诊断和单轮测量入口见 [Rust worker](modules/rust-worker.md)。

@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-10-14。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-10-15。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -12,7 +12,78 @@
 | 存储 | 不可变 SQLite revision；私有 candidate 校验、落盘后 catalog CAS | `crates/storage/src/graph_store.rs`、`crates/storage/src/lib.rs` |
 | 紧凑布局 | 整数引用、路径/外部目标字典、重复大 metadata 共享、元注解定义/归属分离 | `crates/storage/src/compact-schema.sql`、`compact-meta.sql` |
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
-| Rust 源码分析 | rust-analyzer 仍为后续设计；mock 只回放冻结 fixture，不分析任意 Rust 源码 | [Rust worker](modules/rust-worker.md) |
+| Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
+
+## Rust 存储压缩与有界流水线（schema 9）
+
+Rust 单语言已直接复用 GraphStream：blocking HIR/记录生成 → 4 批 / 8 MiB 队列 → async IPC → 有界队列 → blocking SQLite。独立控制读取保留半帧，满队列/写阻塞仍可取消；只有 VerifiedEnd 后才能封存。混合语言继续采用已验证归档合并。活动 blob pin 使用引用计数，文件 I/O 共享并发上限 2，复制/校验/文件同步移出全局锁，最终持久化和 CAS 屏障保留。
+
+schema 9 将 Rust 路径/world/key 字典化、依赖表改为 WITHOUT ROWID；依赖从状态 JSON 去重，baseline 批量还原。公开图 ID、worker 20、graph model 3、逻辑 schema 33 不变；schema 8 及更旧图必须 `index --full`。实现同时加入行首索引、owner 分组、任务内源码定位/path 缓存、接口摘要排除嵌套执行体，以及无变化跳过 HIR。
+
+| 指标 | 优化前参考 | 本轮固定输入 |
+|---|---:|---:|
+| 内部 index 耗时 | 66.155 s | 54.453 s（参考差值 -17.7%） |
+| CLI 墙钟 | 未记录 | 55.576 s |
+| facts.db | 70,434,816 bytes / 67.17 MiB | 9,777,152 bytes / 9.32 MiB（-86.1%） |
+| worker 监督器采样峰值 | 340.45 MiB | 339.67 MiB |
+| daemon 独立峰值 | 未采样 | 96.52 MiB |
+| 同一时刻 daemon + worker 树 RSS 峰值 | 未采样 | 435.22 MiB |
+| blobs | 1,511 / 18,602,179 bytes | 相同 |
+| 节点 / 边 / 调用点 / 调用目标 | 2618 / 6710 / 10545 / 1257 | 相同 |
+| 增量依赖 | 109,394 | 相同，包括失败 lookup |
+
+环境为 macOS ARM64 / debug，空独立 home、512 MiB worker、300 s 期限。冻结输入 SHA 与旧参考一致，原源码/依赖逐文件对照旧 archive 后运行，仅执行一轮；新二进制 SHA、输入、源码 archive 和失败历史各自保留。回执：`target/rust-dogfood/optimized-512m/receipt.json`；公开节点、边 hash、调用点 hash、调用目标和全部依赖逐项相等：同目录 `equivalence.json`。
+
+worker 阶段：数据库加载 0.254 s、声明 12.856 s、绑定 28.291 s、最终增量摘要 0.209 s、行生成及背压 1.831 s。daemon `analyze_ms=46.534 s` 包含候选写库完成，发布 7.633 s；SQLite 阶段合计 4.757 s，与传输重叠，不能再次累加。worker/daemon 队列估算峰值分别 942,362 / 979,625 bytes，发送等待约 0.639 / 0.112 s，消费等待约 0.244 / 0.733 s。
+
+外部进程树采样 worker 峰值为 341.72 MiB，与监督器 339.67 MiB 因采样时刻不同；435.22 MiB 是同一采样的总和，不是独立峰值相加。0.78 MiB 的监督器差异不足以宣称显著内存收益。默认请求仍为 256 MiB，本轮不声称默认预算已跑通；历史 256 MiB 失败回执不变。
+
+当前源码另做功能 dogfood，初次 full 产生 2,690 节点、6,895 边、10,863 调用点、1,295 目标，图库 10,203,136 bytes；回执 `target/rust-dogfood/optimized-functional/receipt.json`。它与固定旧输入测量分开。同目录 `validation.json` 已通过三个自身符号查询、无变化跳过 HIR、方法体修改仅改变一个 owner 的 source hash 且全部 interface hash 保持、delta/full 图逐项相等，以及恢复原源码后的图一致。
+
+当前回归：Rust workspace 174 项通过、1 项需 G1 的测试跳过；真实 Rust 导出/E2E 5、公共图 13、文本 2、标注 4，以及证据保护/采样口径 2 和 bundle 版本生成 1 项通过。Java fixture 636 项、显式 JVM 产品图 6 项通过。新增半帧控制取消覆盖未消费输出，新增坏 owner/旧 schema、增量依赖往返、嵌套方法体和 GC/共享 hash 验证。fmt、clippy、DDL 与脚本检查通过。
+
+JVM 回归曾被生成脚本写死 graph model 2 阻塞；已让 JVM/Native manifest 从 Rust 常量生成，打包/运行时按 manifest 核对，并补未来版本回归。准备失败原因保留于 `target/rust-dogfood/optimization-java-graph-preparation-failure.json`。本轮未重建 Native、未做 release/正式 Native 验收。汇总回执 `target/rust-dogfood/optimization-validation.json`，其中二进制 SHA 与单轮回执一致。
+
+上述旧值来自功能参考记录，新轮加入更细诊断；单样本不证明稳定加速或完整语义，仍为 87 文件 partial，`performance_accepted=false`。版本边界及宏/sysroot 限制保持。
+
+## Rust 输入收敛与内存诊断（schema 2，优化前历史记录）
+
+当前采用项目源码加一层 Cargo 直接依赖；依赖只辅助解析，不发布自身图。项目与依赖目录规则分别配置，在复制/捕获前过滤；辅助文件按白名单加载。主动宏展开已关闭，HIR 内部仍可按需展开声明宏；过程宏不执行。旧 schema 1 输入要求重导，adapter/profile 改变后首次全量清除旧宏生成事实。
+
+| 当前验证 | 结果 |
+|---|---|
+| Rust 门禁 | workspace 167 项通过、1 项需 G1 的测试跳过；真实 Rust 导出/E2E 5 项、公共图 13 项、文本 2 项、标注 4 项通过；clippy、fmt、DDL、脚本语法及 diff 检查通过 |
+| 输入边界 | 项目 → A → B → C 仅保留项目与 A；过滤后的旧复制文件不进入捕获/HIR；MAIN/TEST、别名、cfg、strict、delta/full 保持回归 |
+| 预算 | Rust 默认请求 256 MiB，项目配置可修改且不超过用户上限；只改预算无需重导、保持语义 profile；doctor 披露请求与上限 |
+| 单轮环境 | macOS ARM64 / debug；空独立 home，256 MiB worker、512 MiB 输出、2,000,000 fact、300 秒期限；产物与冻结输入 SHA 随回执保存 |
+| 实际输入 | 274 个候选实例保留 46 个，其中 12 个发布项目实例；过滤 663 个源码实例；实际 1,529 文件/实例，18,237,477 bytes |
+| 测量结果 | 21.773 s 后 `WORKER_MEMORY_BUDGET`；最后阶段 `bindings`，触发采样/已见峰值 268,484,608 bytes（256.046875 MiB），限额 268,435,456 bytes |
+| 发布与证据 | 无 revision 发布；`target/rust-dogfood/memory-v2/receipt.json`、输入清单及 `frozen-sources.tar.gz` 保留，不加预算、不重复测量 |
+| 512 MiB 功能验证 | 同一二进制/输入 SHA，仅修改项目预算和独立用户上限；成功发布 `rev_802cbd117e25451f85ff312ba2a2b32a`，采样峰值 356990976 bytes（340.45 MiB）；87 文件 partial，三个自身符号查询通过 |
+
+该采样是终止前已见的峰值，不能推断完成索引所需的最低内存，也不能将失败中止耗时用于速度比较。本轮尚未在默认预算下完成自身索引，`performance_accepted=false`。当前产物未重新执行 release 或 Java Native 正式验收。配置、过滤语义和命令见 [Rust worker](modules/rust-worker.md)。
+
+512 MiB 功能回执保存在 `target/rust-dogfood/functional-512m/receipt.json`。本次未重新导出输入；`stage_graph_records`、`analyze`、`index_rust` 均可定位。功能验证与原 256 MiB 固定预算测量分别保存，不作为新的稳定性能结论。
+
+## Rust 首版自身验证（schema 1，历史回执）
+
+以下为输入收敛前的历史产物。采用固定 `ra_ap_* = 0.0.349` 的 syntax/HIR API，不通过 LSP 自动加载工作区。`scripts/export-rust-inputs.py` 显式生成输入；索引不运行目标项目构建脚本或过程宏。适配器通过独立 worker 交付 GRA1，复用既有存储、查询和原子发布；混合项目一次切换 head。
+
+| 验证 | 当前证据与边界 |
+|---|---|
+| Rust 门禁 | workspace 163 项通过、1 项需 G1 的测试跳过；真实 Rust E2E/导出 3 项、公共图 13 项、文本 2 项、标注 4 项通过；fmt、DDL、clippy 与 diff 检查通过 |
+| 解析与增量 | 双 crate fixture 覆盖跨文件模块、别名/重导出、trait、声明宏、cfg、失败查找、取消、输入漂移；函数体局部重绑定及接口/重导出失效传播 |
+| 产品 | 真实 Rust worker → store → CLI；MAIN/TEST world、resolve/structure/calls、delta/full 一致、strict 拒绝和过期输入保留旧 head |
+| 混合存储 | 真实 Rust archive 与 Java fixture 行合并；Rust delta 保留 Java ID，未封口失败不发布。未重测当前协议的真实 Java Native 混合运行 |
+| code-ana dogfood | 冻结的自身源码快照成功发布 `rev_e24ea07adaad4e61bed26f12bcfc199b`，3,649 节点、9,063 边、10,590 调用点、1,410 调用目标；图库 77,234,176 bytes |
+| 自身查询 | `stage_graph_records`、`analyze`、`index_rust` 均可经现有 CLI 定位 |
+| 覆盖 | dogfood 为 partial，88 文件有缺口；sysroot 未加载、过程宏不执行、动态派发及宏展开上限均明确记录 |
+
+dogfood 使用独立 home、4 GiB worker 预算、512 MiB 结果预算及 2,000,000 fact 上限。功能回执保存在 `target/rust-dogfood/functional-receipt.json`，包含失败尝试及成功产物 SHA；快照早于最后的模块包含关系修正，不冒充最终源码逐字验收。默认 256 MiB 的首次性能尝试以 `WORKER_MEMORY_BUDGET` 失败，原回执 `target/rust-dogfood/receipt.json` 保留；后续仅功能验证，不报告性能通过或稳定容量结论。
+
+当前 worker 20 / graph model 3 / 物理 schema 9 需要配套重建；旧图执行 `index --full`。下文 Java Native / release / 性能回执属于各自历史产物，不构成本次版本的正式放行。
+
+Rust 分发脚本已包含真实 worker、导出器、fixture 和语言文档，release 门禁已增加真实 Rust E2E；本轮验证 debug 构建及脚本语法，未重新执行 release 构建和分发验收。
 
 ## Rust 结构与回归
 
@@ -56,18 +127,18 @@ Native 首次安装因活跃 JVM 触发 `STOP_RUNTIME_BEFORE_NATIVE_INSTALL:9792
 | 项目 | 当前值 | 说明 |
 |---|---|---|
 | CLI-daemon handshake | 3 | `DAEMON_PROTOCOL_VERSION` |
-| worker protocol | 19 | `WORKER_PROTOCOL_VERSION` |
-| graph model | 2 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
+| worker protocol | 20 | `WORKER_PROTOCOL_VERSION` |
+| graph model | 3 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
 | analysis request/result | 10 | Java bridge 与 Rust host 必须成套 |
 | C ABI | 4 | 共享库/header/host 必须成套 |
 | javac 模型 / compiler batch | javac-model-v50 / 2 | 与 worker 协议独立 |
-| 图库物理格式 | user_version 7 | Rust 紧凑布局 |
+| 图库物理格式 | user_version 9 | Rust 紧凑布局 |
 | 上游逻辑格式 | schema 33 / GraphSemantics 26 | `project_meta.schema_version` 与物理格式不是同一个版本 |
 | adapter | anatomist-4a903272-codeana-graph2-maven-fallback1 | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
 | catalog / 人工标注库 | 2 / 2 | 独立事务升级，保留人工正文 |
 | Native 构建 JDK | 25.3.4+1.r25-graal | `lang-java-adapotr/.sdkmanrc` 固定 Oracle GraalVM |
 
-图 schema 6 及更旧格式的查询/增量返回 `GRAPH_SCHEMA_REBUILD_REQUIRED`。执行 `index --full` 创建新 revision，成功后切 head；旧文件保留，不原地迁移。历史图查询也要求兼容物理格式。
+图 schema 8 及更旧格式的查询/增量返回 `GRAPH_SCHEMA_REBUILD_REQUIRED`。执行 `index --full` 创建新 revision，成功后切 head；旧文件保留，不原地迁移。历史图查询也要求兼容物理格式。
 
 ## 最新单轮结果
 

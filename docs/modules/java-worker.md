@@ -3,7 +3,7 @@
 对齐 2026-10-14。默认 Native/G1，javac 唯一后端，目标 Java 8；版本见 [当前实现](../current-state.md)，接口见 [公共契约](../contracts.md)。
 
 ```text
-daemon ── worker protocol 19 ──► Rust Java worker（独立进程）
+daemon ── worker protocol 20 ──► Rust Java worker（独立进程）
                                       │ C ABI 4 / FFI
                                       ▼
                                GraalVM Java 25 / G1
@@ -97,4 +97,4 @@ isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任�
 
 最新正确性、单轮 iopengw 和未完成验收见 [当前实现](../current-state.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。
 
-Maven 源码模式通过 worker 19 / analysis request 10 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
+Maven 源码模式通过 worker 20 / analysis request 10 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。

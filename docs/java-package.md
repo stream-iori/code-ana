@@ -2,7 +2,7 @@
 
 Native 默认采用 G1，worker 进程内复用一个 isolate；显式 `CODEANA_NATIVE_GC=serial` 可构建 Serial。
 
-当前 bundle 为逻辑 schema 33 / adapter `anatomist-4a903272-codeana-graph2-maven-fallback1`，图库采用紧凑 storage schema 7。旧 schema 6 查询及增量明确要求 `index --full`；保留旧文件，成功全量发布后才切换 head，不进行原地迁移。GRA1 protobuf 行和 ABI 4 保持不变；worker 升为 19，analysis request/result 为 10，旧 adapter bundle 拒绝混装。
+当前 bundle 为逻辑 schema 33 / adapter `anatomist-4a903272-codeana-graph2-maven-fallback1`，图库采用紧凑 storage schema 9。旧 schema 8 查询及增量明确要求 `index --full`；保留旧文件，成功全量发布后才切换 head，不进行原地迁移。GRA1 protobuf 行和 ABI 4 保持不变；worker 升为 20，analysis request/result 为 10，旧 adapter bundle 拒绝混装。
 
 包内包含 CLI、daemon、Rust worker、GraalVM 共享库、Java 8 编译器桥和 C header。目标 JDK 由本机 SDKMAN 提供，不随包分发。
 

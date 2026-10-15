@@ -1,6 +1,6 @@
 # 存储与原子发布
 
-对齐 2026-10-14：图库物理 `user_version=7`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
+对齐 2026-10-14：图库物理 `user_version=9`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
 
 Rust 存储按 blob、task、object、annotation、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。对象和标注使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
 
@@ -32,12 +32,13 @@ home 共享 catalog，以身份隔离项目；不是每仓库一套 catalog。ma
 | graph_file_cache / graph_file_dependencies / graph_symbol_dependencies | file_cache / file_dependencies / symbol_dependencies | 源文件字典 + 增量契约/依赖 |
 | graph_index_diagnostics / graph_analysis_coverage | index_diagnostics / analysis_coverage | 零事实文件与 partial 缺口仍保留 |
 | index_providers / project_meta | 同名表 | provider 身份、逻辑 schema 与计数 |
+| graph_rust_source_states / graph_rust_analysis_dependencies | rust_source_states / rust_analysis_dependencies | world/key 字典与整数引用，WITHOUT ROWID；依赖只保存一次，baseline 批量还原 |
 | source_files | 路径逻辑列 | 全局复用路径，NULL 与空字符串分开 |
 | external_targets | 外部目标逻辑列 | 四 nullable 字段完整身份，NULL/空不能混并 |
 | metadata_values | metadata 逻辑列 | 仅原始 UTF-8 ≥256 bytes 且重复至少两次共享 |
 | node_names | FTS5 | external-content 为 graph_nodes，以 node_pk 连接；4096 字节页 |
 
-逻辑视图负责恢复字符串列，私有候选的写触发器负责翻译整数引用。查询只读逻辑投影，解码稳定属性时不输出 `site_pk`、`owner_pk` 等物理列。`facts(body)`、整条 Fact JSON、Java raw type/binding/syntax 表均不在产品图库中。schema 7 是 code-ana 的物理格式，不承诺与 Anatomist 物理数据库兼容。
+逻辑视图负责恢复字符串列，私有候选的写触发器负责翻译整数引用。查询只读逻辑投影，解码稳定属性时不输出 `site_pk`、`owner_pk` 等物理列。`facts(body)`、整条 Fact JSON、Java raw type/binding/syntax 表均不在产品图库中。schema 9 是 code-ana 的物理格式，不承诺与 Anatomist 物理数据库兼容。
 
 DDL 生成入口：[generate-compact-schema.py](../../scripts/generate-compact-schema.py) 从 [anatomist-schema.sql](../../crates/storage/src/anatomist-schema.sql) 和 [compact-meta.sql](../../crates/storage/src/compact-meta.sql) 生成 [compact-schema.sql](../../crates/storage/src/compact-schema.sql)。修改生成输入并运行生成器，不手改生成文件；`--check` 已纳入 `just test-rust`。
 
@@ -74,7 +75,7 @@ active r10 ──► reader Q 固定 r10，引用保护
 Q 继续读 r10；新读者取 r11；Q 释放前 GC 不删 r10。
 ```
 
-blob 批次逐文件校验、同步和重命名，整批同步 blobs 目录；复用已有 blob 同样保持目录同步屏障。只在私有 candidate 写，已发布图永不修改。delta 使用 SQLite backup API，不能复制正在写入的数据库文件冒充一致快照。
+blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和重命名，整批同步 blobs 目录；复用已有 blob 同样保持目录同步屏障。只在私有 candidate 写，已发布图永不修改。delta 使用 SQLite backup API，不能复制正在写入的数据库文件冒充一致快照。
 
 ## 5. 失败、升级与回收
 
@@ -90,3 +91,5 @@ blob 批次逐文件校验、同步和重命名，整批同步 blobs 目录；�
 | GC | 受活动入口、snapshot、reader、build、有效结果引用保护；删除失败登记 cleanup_pending，recover 重试 |
 
 当前 GC 字节预算只计 facts.db，不是整个 home 硬配额。backup 和不可变 revision 会占额外磁盘；233.49 MB 是单个最终图库，不能等同分析时峰值或整个 home。单轮结果和边界见 [当前实现](../current-state.md)。
+
+活动 blob pin 使用引用计数，覆盖复制、校验到提交/回滚；并发任务共享同 hash 时不会互相解除保护，GC 同时识别活动 pin 和原有暂存保护。大文件复制、发布前流式 hash、facts.db 同步在协调锁外完成；锁内保留最终 head 检查、rename/目录同步及 catalog CAS。故障恢复和持久化屏障保持。

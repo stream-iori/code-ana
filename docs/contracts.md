@@ -14,7 +14,7 @@
 | profile / 输入 digest | 包含实际工具链、依赖顺序、adapter/模型/规则及语义配置；执行预算另记录 |
 | replacement owners | 源文件/资源/producer 的替换范围包含删除和零输出，避免留下旧事实 |
 
-当前 graph model 2、worker 19、analysis request/result 10、C ABI 4、daemon handshake 3；javac-model-v50、compiler batch 2。图库物理 user_version 7，上游逻辑 schema 33、GraphSemantics 26，adapter `anatomist-4a903272-codeana-graph2-maven-fallback1`。catalog/annotations 均为 2，彼此独立。
+当前 graph model 3、worker 20、analysis request/result 10、C ABI 4、daemon handshake 3；javac-model-v50、compiler batch 2。图库物理 user_version 9，上游逻辑 schema 33、GraphSemantics 26，adapter `anatomist-4a903272-codeana-graph2-maven-fallback1`。catalog/annotations 均为 2，彼此独立。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
 
@@ -61,7 +61,7 @@ GRA1 | u32be(record_length) | protobuf Row | ... | EOF
 | 重规划 | Replan / Failure 终止当前 attempt 的交付；不发布半图 |
 | 确认 | daemon 成功提交后发送 PublishAck，worker 回 Acked；确认失败披露 warning、实例不复用，已发布 head 保留 |
 
-Begin/Chunk 均为 provisional。worker 核对归档长度、EOF、SHA 与预算后才发 End；daemon 独立核对序号、行数、摘要、来源/类型/引用、coverage 和门禁后才能完成候选。结果大小、行数、scratch 预算见 [配置](configuration.md)。
+Begin/Chunk 均为 provisional。worker 核对归档长度/EOF 或流式生成终态、SHA 与预算后才发 End；daemon 独立核对序号、行数、摘要、来源/类型/引用、coverage 和门禁后才能完成候选。结果大小、行数、scratch 预算见 [配置](configuration.md)。
 
 持久 `FrameReader` 保存控制帧前缀/正文进度；异步读取被 select 中断不能丢半帧。控制取消优先处理，有界队列和背压限制待消费记录。
 
@@ -115,6 +115,27 @@ pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续�
 
 导出 XML `maven-inputs-v2`、manifest schema 4；旧 schema 3 要求重新导出。三态 `resolved` / `source_only_requested` / `source_only_fallback` 与 `resolved_classpath` 一致，源码模式不允许外部 classpath。失败模式必须包含模块、实际 POM、坐标、原因、轮次及失败回执 SHA。schema 4 的 inputs SHA 在降级时指向本次已验证 metadata；失败回执另有独立 SHA。
 
-worker 19 的 JavaConfig 与 analysis request/result 10 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。C ABI 4、graph model 2、图库 schema 7、compiler batch 2 不变。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
+worker 20 的 JavaConfig 与 analysis request/result 10 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。当前 C ABI 4、graph model 3、图库 schema 9、compiler batch 2。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
 
 全局 coverage 使用 `*` 来源；模块级缺口同样影响 semantic evidence，不计作真实源码文件。SQL NULL 来源仍受现有图库 NOT NULL 约束拒绝。增量替换全局降级覆盖与诊断，不随任务次数重复累加；模式切换全量重建。报告新增可选 `analysis_mode/classpath_status`，旧报告缺字段仍可读取。
+
+## 8. Rust 冻结输入与公共行
+
+| 对象 | 契约 |
+|---|---|
+| `rust-inputs.json` | schema 2；输入策略摘要、辅助文件白名单、截断依赖；工具链版本、crate/依赖图、edition/target/cfg/env、controls/generated SHA256；所有源码路径限制在项目内 |
+| `Discover.rust` | 冻结配置文件路径、长度、SHA256 和输出预算；worker 不重新读取项目配置，不执行 Cargo/build.rs/过程宏 |
+| `Row.world` | Rust 必填且与捕获 source instance 匹配；Java 保持空值及原公开 ID；coverage/diagnostic 同样按 world 隔离 |
+| `SOURCE_STATE` / `ANALYSIS_DEPENDENCY` | 保存 Rust 文件/接口摘要、声明名与文件/符号/查找/宏/impl 环境依赖，随 revision 原子发布 |
+| 增量 | 新增、删除及零输出都有 owner replacement；同物理文件全部 world 一起替换，未变 owner 保留 |
+| 混合发布 | Rust 和 Java 子任务分别封口；任一失败则不切 head，合并后只执行一次 candidate 校验和 CAS |
+
+Rust 未绑定调用保留调用点，不伪造目标；只加载项目及一层直接依赖，截断、过滤和主动宏展开禁用均记录 coverage 缺口。strict 在 partial 时拒绝发布。Rust 原始 HIR/Salsa 数据不作为持久化契约。
+
+## 9. 有界记录流与 Rust 增量存储
+
+Rust 单语言由 blocking 记录生成器直接送入 IPC，daemon 复用 `analyze_into` 写私有候选。worker 和 daemon 队列各 4 批、8 MiB 解码数据预算，批次最多 64 行；Rust 生成器通常按 256 KiB 编码数据切批。预算覆盖已接收但尚未消费完的批次；单个合法超大行独占预算，仍受帧/结果上限约束。队列之外还允许一个有界待发送批次及编解码缓冲，因此队列预算不是进程 RSS 上限。
+
+只有独立校验过的 End 才产生内部 `VerifiedEnd`；断流、错序、摘要错误或取消均不可封存候选。队列等待和终态发送可取消；worker 独立读半帧保留的控制流，写阻塞不阻止取消。混合 Java/Rust 使用已验证归档合并，全部成功后一次 CAS。
+
+物理 schema 9 将 Rust 路径/world/key 转为内部整数引用，依赖只存在类型化表中；状态 JSON 不再包含 dependencies。baseline 批量关联重建完整 SourceState，公开 ID、worker 20 和 graph model 3 保持。旧图必须全量重建。

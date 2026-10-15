@@ -40,6 +40,7 @@ CLI
 | crates/storage | catalog、blob、候选/发布、紧凑图与只读投影 | SQL/整数引用封装在存储层 |
 | crates/query | selector、pipeline、有界遍历和 Java 静态派发 | 只消费已发布图，不启动分析器补结果 |
 | crates/cli、crates/daemon | CLI / gRPC 装配 | 本机用户级服务，按项目/checkout/target 隔离 |
+| lang-rust-adaptor / crates/rust-worker | rust-analyzer HIR 与独立 Rust 语言 worker | schema 2 冻结输入；项目与一层直接依赖，过滤后加载；不主动展开宏或执行构建/过程宏 |
 | crates/java-worker | 独立 Rust host、FFI 线程和异步控制 | 一进程一次 G1 isolate 创建 |
 | crates/mock-worker | 固定 fixture 回放与协议故障注入 | 显式独立 mock home，无任意源码分析能力 |
 | lang-java-adapotr/analysis-core | 迁入的 Anatomist 独立 Java 模型/提取器/框架 | javac 唯一后端，编译器对象不进入模型 |
@@ -58,7 +59,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 语言模型原始 wire arena 继续有界验证；类型图通过节点句柄及 `SingleEdge` / `ManyEdge` 遍历，不展开循环。
 
-`lang-adaptor/` 已删除。rust-analyzer 适配器仍为 [后续设计](modules/rust-worker.md)，不存在已交付的 Rust 语言 worker。
+`lang-adaptor/` 已删除。Rust 适配器位于 `lang-rust-adaptor`，独立 host 位于 `crates/rust-worker`；能力和限制见 [Rust worker](modules/rust-worker.md)。
 
 ## 2. 输入与分析
 
@@ -90,7 +91,7 @@ delta: SQLite backup(兼容 baseline) → 替换归属 → 同样封存校验
                      老读者保留旧 revision；新查询固定新 head
 ```
 
-物理 schema 7，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 33。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
+物理 schema 9，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 33。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
 
 graph/catalog/人工标注分别版本化。源码 blobs、分页结果、snapshot/diff/report 等仍由 Rust 生命周期和引用保护管理；人工正文不随图重建删除。
 
@@ -112,8 +113,10 @@ graph/catalog/人工标注分别版本化。源码 blobs、分页结果、snapsh
 
 ## 5. 验证边界
 
-当前 macOS ARM64 / Java 8 的 fixture、故障、紧凑存储和冻结 iopengw 单轮已验证。Linux、Java 17/25、Rust 语言分析、完整框架覆盖、当前 raw model/AST 迁移与容量/稳定性能门禁仍待完成；Hello 或 build-only 不代表正式放行。
+当前 macOS ARM64 / Java 8 的 fixture、故障、紧凑存储和冻结 iopengw 单轮已验证。Linux、Java 17/25、完整 Rust 语义与框架覆盖、当前 raw model/AST 迁移与容量/稳定性能门禁仍待完成；Hello 或 build-only 不代表正式放行。
 
 现行 [契约](contracts.md)、[模块](README.md)、[验证入口](delivery.md) 与 [当前实现](current-state.md) 分别说明协议、行为、验证要求和已执行证据。
 
 Maven 外部准备借鉴 Anatomist `e8a940557c9365084cdd5318ed2be3d147697113` 的依赖失败回执；仅迁入行为，不改整体上游基线。有效模型与依赖可用性分离，源码降级仍走同一 javac / GRA1 / candidate / CAS 链路。索引不启动 Maven，超时不降级。详见 [配置](configuration.md#maven-依赖失败与源码模式)。
+
+Rust 单语言复用有界 GraphStream，blocking 记录生成、异步 IPC 和 blocking SQLite 可重叠；混合语言保留封口归档合并。队列按批数和估算字节限流，控制读取与数据发送分离；内部 VerifiedEnd 前不允许发布。CPU/文件/SQLite 工作保持在受限 blocking 工作中，不使用无界任务或额外无锁队列。存储和诊断细节见公共契约及 Rust worker 模块。

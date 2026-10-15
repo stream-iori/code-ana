@@ -11,7 +11,7 @@ java_signature_cache = true
 
 [limits]
 max_workers = 2 # 顶层 worker 槽位，子进程并发另有固定上限
-max_worker_memory_bytes = 2147483648 # 整个 worker 进程树预算
+max_worker_memory_bytes = 268435456 # 默认 256 MiB；项目申请不得超过此上限
 max_total_worker_memory_bytes = 4294967296
 
 # 每个别名有语言和本机绝对路径。启用示例前替换成真实安装路径。

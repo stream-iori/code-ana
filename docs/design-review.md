@@ -44,7 +44,7 @@ Rust、daemon、SQLite 都是实现选择；正确性首先由输入捕获、事
 |---|---|---|---|
 | D01 | daemon 管理范围 | 每 OS 用户一个 daemon；内部项目隔离 | 用户已确认，2026-09-24；版本升级协调见 D02 |
 | D02 | CLI-daemon 通信 | HTTP/2 + protobuf gRPC，.proto 为源；loopback + token | 已落地 tonic；handshake 3；任务/事件与传输状态分开，规模化背压仍按预算验收 |
-| D03 | revision 物理存储 | 不可变 SQLite generation；delta backup，私有候选，catalog CAS | 已落地；当前图物理 schema 7 / 逻辑 33；复制和磁盘峰值单独记录，失败保旧版 |
+| D03 | revision 物理存储 | 不可变 SQLite generation；delta backup，私有候选，catalog CAS | 已落地；当前图物理 schema 9 / 逻辑 33；复制和磁盘峰值单独记录，失败保旧版 |
 | D04 | Java 容量边界 | 进程树 RSS、heap、解码/结果/暂存分别限额 | fixture 和冻结 iopengw 单轮已验证；正式容量承诺未完成，不把 heap 当 RSS |
 | D05 | 基线与重规划 | 固定 revision/profile；归属替换、有界重规划 | 已落地；旧格式要求全量，worker 不读半成品 |
 | D06 | 语言查询策略 | Rust 只读逻辑投影与公共事实，Java 层级/CHA 不重跑 javac | 查询/pipeline 与固定图门禁已实现；raw type/binding/syntax 图查询不支持；Rust 分析仍待实现 |
@@ -52,7 +52,7 @@ Rust、daemon、SQLite 都是实现选择；正确性首先由输入捕获、事
 | D08 | 产品与兼容范围 | 全新产品，独立定义 CLI/输出/配置/存储；不做旧版兼容或迁移 | 用户已确认；Anatomist 只提供设计、代码和 fixture 参考 |
 | D09 | 目标项目构建 | 读取已有可验证产物；缺失时返回 cwd/argv/目的/预期产物，Agent 或人类自行执行后重试 | 用户已确认；产品不执行 Maven/Gradle/Cargo 编译、build.rs、过程宏或代码生成，不提供 allow 自动执行开关 |
 | D10 | 历史与用户数据 | 捕获源码、冻结结果与独立人工标注正文/锚点 | 已落地 catalog/annotation 2；绑定状态保留；标注接入 typed pipeline 未实现 |
-| D11 | 项目与 world | project/checkout/target 隔离，module/scope/world 固定 | 已实现 Java 模块/MAIN/TEST；Rust feature world 与跨语言桥为后续设计 |
+| D11 | 项目与 world | project/checkout/target 隔离，module/scope/world 固定 | 已实现 Java 模块/MAIN/TEST；Rust feature world 已接入冻结输入；跨语言符号桥仍未实现 |
 | D12 | 验收与性能 | 先 Java fixture，后冻结真实项目；Native 不分冷热，性能一轮 | 当前 214.28 s / 233.49 MB 为单轮观测；正式迁移/容量/稳定性能未关闭 |
 | D13 | Java 与互操作 | lang-java-adapotr/，Java 25 GraalVM G1 shared library；独立 Rust C ABI host，无 JNI | 已落地 ABI 4；每进程一次 G1 isolate 创建，故障后换进程；Oracle SDK 固定 |
 | D14 | 配置 | 显式 languages.<id>.enabled；公共/语言/module/world 分层 | 严格 TOML 已实现；Java auto 需外部 inputs_manifest；Rust schema 不等于 adapter 能力 |

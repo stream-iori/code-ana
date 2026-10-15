@@ -117,4 +117,4 @@ impact 用双方捕获图分别遍历；展示 scope 不截断中间路径。可
 
 ## 图格式升级边界
 
-历史文件保留与读者兼容是两件事。当前仅打开物理 schema 7 的图；schema 6 及更旧查询/delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED。index --full 创建新图并在成功后切换 head，不原地升级旧 revision。已经打开的同格式 revision 仍受 reader 引用保护；FILES/源码捕获与人工标注生命周期独立。
+历史文件保留与读者兼容是两件事。当前仅打开物理 schema 9 的图；schema 8 及更旧查询/delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED。index --full 创建新图并在成功后切换 head，不原地升级旧 revision。已经打开的同格式 revision 仍受 reader 引用保护；FILES/源码捕获与人工标注生命周期独立。

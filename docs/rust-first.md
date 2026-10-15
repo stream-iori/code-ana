@@ -11,8 +11,10 @@ clap CLI ── authenticated gRPC ── Rust daemon
                                   └─ 查询 / pipeline / snapshot / diff / report / annotation / GC
 
 生产：Rust java-worker ── C ABI 4 ── Java 25/G1 ── Java 8 javac
-      GRA1/protobuf 行 → 紧凑 SQLite（物理 7 / 逻辑 33）；mock 保留独立回归
+      GRA1/protobuf 行 → 紧凑 SQLite（物理 8 / 逻辑 33）；mock 保留独立回归
 ```
+
+Rust 源码分析使用真实 `codeana-rust-worker`，无需 JDK；配置、输入导出及当前语义边界见 [Rust worker](modules/rust-worker.md)。以下 mock 示例用于公共产品回归。
 
 ## 运行
 
@@ -130,7 +132,7 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | worker 内存 | 默认每 worker 256 MiB；按独立进程组 RSS 每 100ms 调度采样，超额终止；不是内核级硬隔离 |
 | 超时 | 任务默认 120s，显式 deadline 最大 86400s；单 javac context 仍最多 3600s。捕获、查询、发布和 Git 读取在阻塞线程运行；查询在选择器/源码读取边界检查取消，正在执行的单条 SQLite 语句尚无中断钩子 |
 | 输出 | 默认 100 条、32 KiB；最多 10,000 条、8 MiB；至少 2 KiB 用于终态和记录 |
-| 发现 | mock 只支持显式 Java source_roots；生产 Java 的 auto 支持已有 Maven inputs_manifest，索引不调用 Maven。缺输入返回 BuildAdvice，cwd 指向用户 checkout；Gradle/Rust adapter 未支持 |
+| 发现 | mock 只支持显式 Java source_roots；生产 Java 的 auto 支持已有 Maven inputs_manifest，索引不调用 Maven。缺输入返回 BuildAdvice，cwd 指向用户 checkout；Gradle 未支持；Rust 使用独立冻结输入导出器 |
 | 增量 | Rust 真正执行 backup + owner 替换；mock 用全 owner 替换验证独立 worker 基线，不宣称语义失效算法 |
 | 高级语义 | 消费已有 overrides/implements 等事实；不在 Rust 重做 javac 类型推理。派发候选、impact 明确可能性 |
 | Git | 只读解析 commit/tree/blob；不运行 checkout、构建、钩子或 annotation processor |
@@ -138,9 +140,9 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | GC | 引用可达性回收 revision/blob；按项目 keep/年龄/图文件字节预算回收，失败登记待清理并恢复；命名快照/未过期报告/读者保护引用，预算不足返回 budget_unmet。字节预算当前只计 facts.db，不是整个 home 的硬配额 |
 | 标注 | 精确事实 ID、world、来源 hash 锚定；目标图变化时显示 bound/ambiguous/orphaned/unavailable。标注进入 typed pipeline 尚未实现 |
 | 报告 | off/basic/full；诊断总量、分组、至多 100 条样例与省略数；自动报告上限 4 MiB。显式导出不可覆盖；没有 Java 原始诊断时 mock 不能验证诊断质量 |
-| 平台 | 本轮 macOS 实测；Linux 分发未验收；Rust 源码分析仍为 P3 |
+| 平台 | 本轮 macOS 实测；Linux 分发未验收；Rust 源码能力见 [Rust worker](modules/rust-worker.md) |
 
-`docs/config.toml` 保留目标完整 schema 示例。schema 接受不等于字段已执行；query 默认、diff_spill_bytes、文本 backend、GC include_caches 尚未接入。auto GC 已在发布后调用，adapter 能力仍分别验收；doctor 与本页列出当前能力。真实 Java 8 的 BuildContext、框架、签名缓存和 native/compiler bridge 使用独立门禁，不能由 mock 代替；Java 17/25、Rust 语言分析仍未支持。
+`docs/config.toml` 保留目标完整 schema 示例。schema 接受不等于字段已执行；query 默认、diff_spill_bytes、文本 backend、GC include_caches 尚未接入。auto GC 已在发布后调用，adapter 能力仍分别验收；doctor 与本页列出当前能力。真实 Java 8 的 BuildContext、框架、签名缓存和 native/compiler bridge 使用独立门禁，不能由 mock 代替；Java 17/25 仍未支持；真实 Rust 解析由 `tests/rust_language_e2e.py` 验证。
 
 ## 验证入口
 
@@ -154,3 +156,5 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | Java Hello | `scripts/smoke.sh`，需固定 GraalVM JDK 25 与有效正式构建回执；与 Rust 验收独立 |
 
 fixture 原始输入和人工编写的查询预期见 `tests/fixtures/`；`build_mock.py` 仅生成固定测试数据，不是从任意源码提取语义的解析器。发布、迁移和报告故障点仅在 debug 构建的显式 mock home 下响应 `CODEANA_TEST_FAULT`；release 构建无此路径。
+
+真实 Rust 语言入口：见 [Rust worker](modules/rust-worker.md)。分发包新增 `codeana-rust-worker` 和 `codeana-export-rust-inputs`（使用 `python3` 执行）。
