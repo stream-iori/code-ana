@@ -30,7 +30,7 @@ manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v
 
 ## 2. GRA1 图记录
 
-源码：[graph.proto](../proto/codeana/v1/graph.proto)、[graph_archive.rs](../crates/contracts/src/graph_archive.rs)、[AnatomistRows.java](../lang-java-adapotr/java-bridge/src/main/java/dev/codeana/adapter/AnatomistRows.java)。
+源码：[graph.proto](../proto/codeana/v1/graph.proto)、[graph_archive.rs](../crates/contracts/src/graph_archive.rs)、[AnatomistRows.java](../lang-java-adaptor/java-bridge/src/main/java/dev/codeana/adapter/AnatomistRows.java)。
 
 ```text
 GRA1 | u32be(record_length) | protobuf Row | ... | EOF

@@ -43,9 +43,9 @@ CLI
 | lang-rust-adaptor / crates/rust-worker | rust-analyzer HIR 与独立 Rust 语言 worker | schema 2 冻结输入；项目与一层直接依赖，过滤后加载；不主动展开宏或执行构建/过程宏 |
 | crates/java-worker | 独立 Rust host、FFI 线程和异步控制 | 一进程一次 G1 isolate 创建 |
 | crates/mock-worker | 固定 fixture 回放与协议故障注入 | 显式独立 mock home，无任意源码分析能力 |
-| lang-java-adapotr/analysis-core | 迁入的 Anatomist 独立 Java 模型/提取器/框架 | javac 唯一后端，编译器对象不进入模型 |
-| lang-java-adapotr/java-bridge | 捕获输入、编译器桥、行输出和 Maven metadata 桥 | Java 8 编译器桥独立构建 |
-| lang-java-adapotr/native-bridge、jvm-runner | Native C 入口 / 显式 JVM 执行入口 | Java 25 构建环境与目标 Java 8 分开 |
+| lang-java-adaptor/analysis-core | 迁入的 Anatomist 独立 Java 模型/提取器/框架 | javac 唯一后端，编译器对象不进入模型 |
+| lang-java-adaptor/java-bridge | 捕获输入、编译器桥、行输出和 Maven metadata 桥 | Java 8 编译器桥独立构建 |
+| lang-java-adaptor/native-bridge、jvm-runner | Native C 入口 / 显式 JVM 执行入口 | Java 25 构建环境与目标 Java 8 分开 |
 | tests、scripts | fixture、故障/产品回归、构建/打包 | 开发可显式编译 fixture，不授予产品自动构建权限 |
 
 Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使用 `IndexCommand` / `QueryRequest`。查询消费按能力拆分的读接口并输出 `Record`；未知语言 metadata 仅透传。索引阶段持有 worker/candidate，任务与发布接入窄端口，提交后的报告/确认不改变发布事实。编码与历史兼容见 [公共契约](contracts.md)。

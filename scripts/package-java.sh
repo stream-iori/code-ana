@@ -23,7 +23,7 @@ if [[ "$from_build" == false ]]; then
   "$repo_root/scripts/build-java-native.sh"
 fi
 # Never package a mixed native/SDK8 build or old files left by a previous package.
-python3 - "$repo_root/lang-java-adapotr/target" <<'VERIFY'
+python3 - "$repo_root/lang-java-adaptor/target" <<'VERIFY'
 import hashlib,json,pathlib,subprocess,sys
 root=pathlib.Path(sys.argv[1]).resolve()
 manifest=json.loads((root/'native/manifest.json').read_text())
@@ -45,10 +45,10 @@ mkdir -p "$package_dir/bin" "$package_dir/lib/java/native" "$package_dir/include
 for binary in codeana-cli codeana-daemon codeana-java-worker codeana-rust-worker; do
   cp "target/release/$binary" "$package_dir/bin/"
 done
-cp lang-java-adapotr/target/native/libcodeana_java.dylib lang-java-adapotr/target/native/manifest.json "$package_dir/lib/java/native/"
-cp lang-java-adapotr/target/compiler-bridge.jar "$package_dir/lib/java/"
-cp lang-java-adapotr/target/maven-input-worker.jar "$package_dir/lib/java/"
-cp lang-java-adapotr/target/native/*.h "$package_dir/include/"
+cp lang-java-adaptor/target/native/libcodeana_java.dylib lang-java-adaptor/target/native/manifest.json "$package_dir/lib/java/native/"
+cp lang-java-adaptor/target/compiler-bridge.jar "$package_dir/lib/java/"
+cp lang-java-adaptor/target/maven-input-worker.jar "$package_dir/lib/java/"
+cp lang-java-adaptor/target/native/*.h "$package_dir/include/"
 cat > "$package_dir/bin/codeana-export-java-inputs" <<'EXPORT'
 #!/bin/sh
 set -eu

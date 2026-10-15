@@ -30,14 +30,14 @@ def check(receipt, root):
         if sha(filename) != expected:
             raise ValueError('JVM_ACCEPTANCE_PROOF_DRIFT: ' + filename)
     components = json.loads(pathlib.Path(gate['receipts']['components']).read_text())
-    accepted = {name.split('/lang-java-adapotr/', 1)[1]: checksum
-                for name, checksum in components['sources'].items() if '/lang-java-adapotr/' in name}
+    accepted = {name.split('/lang-java-adaptor/', 1)[1]: checksum
+                for name, checksum in components['sources'].items() if '/lang-java-adaptor/' in name}
     count = 0
     found = set()
     for module in ('analysis-core', 'framework-spring', 'framework-sofa', 'java-bridge'):
-        for path in (root / 'lang-java-adapotr' / module / 'src/main').rglob('*'):
+        for path in (root / 'lang-java-adaptor' / module / 'src/main').rglob('*'):
             if not path.is_file(): continue
-            relative = str(path.relative_to(root / 'lang-java-adapotr'))
+            relative = str(path.relative_to(root / 'lang-java-adaptor'))
             found.add(relative)
             if accepted.get(relative) != sha(path):
                 raise ValueError('JVM_VERIFIED_PRODUCTION_SOURCE_REQUIRED: ' + relative)

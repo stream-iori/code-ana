@@ -34,7 +34,7 @@ def release_artifacts():
     root = alignment.ROOT
     files = [root / 'target/release' / name for name in
              ('codeana-cli', 'codeana-daemon', 'codeana-java-worker', 'codeana-rust-worker')]
-    files += [root / 'lang-java-adapotr/target' / name for name in
+    files += [root / 'lang-java-adaptor/target' / name for name in
               ('compiler-bridge.jar', 'maven-input-worker.jar',
                'native/libcodeana_java.dylib', 'native/manifest.json')]
     return {str(path.relative_to(root)): sha256(path) for path in files}

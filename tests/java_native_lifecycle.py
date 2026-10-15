@@ -18,7 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 def bundle_path():
     return pathlib.Path(os.environ.get('CODEANA_TEST_JAVA_BUNDLE',
-        ROOT / 'lang-java-adapotr/target/native')).resolve()
+        ROOT / 'lang-java-adaptor/target/native')).resolve()
 
 
 def child_environment():

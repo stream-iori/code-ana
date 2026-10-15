@@ -17,7 +17,7 @@ else
 fi
 set +u
 source "$HOME/.sdkman/bin/sdkman-init.sh"
-cd "$repo_root/lang-java-adapotr"
+cd "$repo_root/lang-java-adaptor"
 sdk env
 set -u
 java8_home="${CODEANA_JAVA8_HOME:-$HOME/.sdkman/candidates/java/8.0.492-zulu}"
@@ -57,4 +57,4 @@ mv "$native_temp/libcodeana_java.$native_suffix" "$PWD/target/native/libcodeana_
 for native_header in "$native_temp"/*.h; do
   [[ -f "$native_header" ]] && mv "$native_header" "$PWD/target/native/"
 done
-python3 "$repo_root/scripts/java-adapotr-manifest.py" "$PWD/target"
+python3 "$repo_root/scripts/java-adaptor-manifest.py" "$PWD/target"

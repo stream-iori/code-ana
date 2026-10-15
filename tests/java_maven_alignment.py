@@ -73,7 +73,7 @@ class MavenAlignment(unittest.TestCase):
 
     def export(self, **options):
         output = self.project / ('out-' + str(len(list(self.project.glob('out-*')))) + '.json')
-        return EXPORTER.export(self.project, output, 'mvn', settings=self.settings, offline=True, extension=ROOT / 'lang-java-adapotr/target/maven-input-worker.jar', **options)
+        return EXPORTER.export(self.project, output, 'mvn', settings=self.settings, offline=True, extension=ROOT / 'lang-java-adaptor/target/maven-input-worker.jar', **options)
 
     def app(self, result):
         return next(m for m in result['modules'] if m['id'] == 'app')

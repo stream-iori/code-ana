@@ -57,8 +57,8 @@ def main():
     inputs = {str(path.resolve()): sha256(path) for path in [args.inventory, args.jvm_gate,
               args.rust_gate, Path(__file__), ROOT / 'scripts/java-coverage-inventory.py',
               ROOT / 'tests/java_coverage_scope.py', ROOT / 'tests/java_source_cases.py',
-              ROOT / 'lang-java-adapotr/upstream-sources.json', ROOT / 'lang-java-adapotr/upstream-archive.json',
-              ROOT / 'lang-java-adapotr/rust-coverage-mappings.json']}
+              ROOT / 'lang-java-adaptor/upstream-sources.json', ROOT / 'lang-java-adaptor/upstream-archive.json',
+              ROOT / 'lang-java-adaptor/rust-coverage-mappings.json']}
     report = dict(status='failed', coverage_inventory_closed=False, native_accepted=False,
                   performance_accepted=False, unresolved_files=[], unexecuted_cases=[],
                   unsupported_annotations=[], inputs=inputs)
@@ -81,7 +81,7 @@ def main():
                 if (row.get('test_cases') != test_cases(original.decode(), Path(path).stem)
                         or row.get('other_test_annotations') != other_annotations(original.decode())):
                     raise ValueError('ORIGINAL_CASE_OMISSION: ' + path)
-        project = ROOT / 'lang-java-adapotr'
+        project = ROOT / 'lang-java-adaptor'
         ledger = json.loads((project / 'upstream-sources.json').read_text())
         retained = {row['source']: row for row in ledger['files']}
         archives = {row['source']: row for row in json.loads((project / 'upstream-archive.json').read_text())['files']}
@@ -116,7 +116,7 @@ def main():
             if disposition in ['pending', 'rust-pending']:
                 report['unresolved_files'].append(path)
             elif disposition in ['copied', 'boundary-adaptation']:
-                destination = ROOT / 'lang-java-adapotr' / row['destination']
+                destination = ROOT / 'lang-java-adaptor' / row['destination']
                 if sha256(destination) != retained[path]['migrated_sha256']:
                     raise ValueError('COPIED_ORIGINAL_SOURCE_DRIFT: ' + path)
                 inputs[str(destination.resolve())] = sha256(destination)

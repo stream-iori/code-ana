@@ -19,7 +19,7 @@ hello: build
   ./target/debug/codeana-cli hello
 
 worker: build java-native
-  ./target/debug/codeana-java-worker ./lang-java-adapotr/target/native/libcodeana_java.dylib
+  ./target/debug/codeana-java-worker ./lang-java-adaptor/target/native/libcodeana_java.dylib
 
 smoke:
   ./scripts/smoke.sh
@@ -56,11 +56,11 @@ test-java:
 
 # Static ownership audit runs separately and does not rebuild sealed bundles.
 test-java-source-audit:
-  JAVA_HOME="$HOME/.sdkman/candidates/java/25.3.4+1.r25-graal" mvn -q -f lang-java-adapotr/migration-audit/process-architecture/pom.xml test
+  JAVA_HOME="$HOME/.sdkman/candidates/java/25.3.4+1.r25-graal" mvn -q -f lang-java-adaptor/migration-audit/process-architecture/pom.xml test
 
 # Original component tests run against an already accepted runner, without rebuilding it.
 test-java-upstream-audit runner:
-  JAVA_HOME="$HOME/.sdkman/candidates/java/25.3.4+1.r25-graal" mvn -q -f lang-java-adapotr/migration-audit/upstream-components/pom.xml -Dcodeana.audit.runner="{{runner}}" test
+  JAVA_HOME="$HOME/.sdkman/candidates/java/25.3.4+1.r25-graal" mvn -q -f lang-java-adaptor/migration-audit/upstream-components/pom.xml -Dcodeana.audit.runner="{{runner}}" test
 
 test-java-jvm-components evidence:
   python3 tests/acceptance_support_tests.py

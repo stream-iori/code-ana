@@ -234,7 +234,7 @@ pub fn installed_library() -> Result<PathBuf> {
         }
         if cfg!(debug_assertions) {
             let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../../lang-java-adapotr/target/jvm/runner.jar");
+                .join("../../lang-java-adaptor/target/jvm/runner.jar");
             if dev.is_file() {
                 return Ok(dev.canonicalize()?);
             }
@@ -255,7 +255,7 @@ pub fn installed_library() -> Result<PathBuf> {
     }
     if cfg!(debug_assertions) {
         let dev = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../lang-java-adapotr/target/native")
+            .join("../../lang-java-adaptor/target/native")
             .join(name);
         if dev.is_file() {
             return Ok(dev.canonicalize()?);

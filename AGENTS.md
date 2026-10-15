@@ -4,9 +4,9 @@
 |---|---|
 | 架构依据 | 先读 `docs/architecture.md`、`docs/contracts.md` 和对应模块文档。设计与实现冲突时，查证后同步修改。 |
 | CLI / daemon | Rust；CLI 与本机用户级 daemon 使用 HTTP/2 + protobuf（gRPC）。项目在 daemon 内隔离。 |
-| Java | Java 代码放在 `lang-java-adapotr/`（旧 `lang-adaptor/` 已删除）；原生适配器使用 Java 25 + GraalVM Native Image 生成共享库；独立 Rust worker 通过 C ABI / FFI 调用。禁止 JNI。 |
+| Java | Java 代码放在 `lang-java-adaptor/`（旧 `lang-adaptor/` 已删除）；原生适配器使用 Java 25 + GraalVM Native Image 生成共享库；独立 Rust worker 通过 C ABI / FFI 调用。禁止 JNI。 |
 | Java 后端 | 仅采用 javac；不引入 JavaParser/SymbolSolver，也不提供回退。原生库协调目标 Java 8 javac 子进程；桥的 Java 8 字节码与 Java 25 原生库分开构建。显式 JVM 仅供开发/诊断，无自动回退。 |
-| JDK 选择 | `lang-java-adapotr/.sdkmanrc` 固定 GraalVM JDK 25，Oracle `25.3.4+1.r25-graal`；进入该目录执行 `sdk env`。默认 Native GC 为 G1；显式 Serial 仍支持。 |
+| JDK 选择 | `lang-java-adaptor/.sdkmanrc` 固定 GraalVM JDK 25，Oracle `25.3.4+1.r25-graal`；进入该目录执行 `sdk env`。默认 Native GC 为 G1；显式 Serial 仍支持。 |
 | 配置 | 语义索引须在 `.code-ana/config.toml` 显式启用语言；FILES 和工作区文本搜索可无语言配置。Maven 自动展开模块需外部准备的 `inputs_manifest`；Lombok 配在 `[languages.java.lombok]`。 |
 | 构建 | 产品只给目标项目的构建建议，不自动运行目标项目的编译命令或注解处理器。禁用处理器、无业务字节码生成的 javac parse/analyze 属于索引分析。开发和测试可显式编译本项目与 fixture。 |
 | 存储 | GRA1/protobuf 行交付；Rust 图库物理 schema 9、上游逻辑 schema 33。公开 ID 不变，内部整数主键不输出。旧格式查询/增量要求 `index --full`，成功建新 revision 才切 head。 |
@@ -41,7 +41,7 @@
 
 不能把 Hello、开发构建、旧版本或 fixture 的通过写成当前正式放行；Linux、目标 Java 17/25、Rust 完整语义/来源覆盖与容量/稳定性能仍有未完成项。当前边界及最新 214.28 s / 233.49 MB 单轮记录见 `docs/current-state.md`。
 
-`lang-java-adapotr/e2e/fixtures/*/AGENTS.md` 是 Anatomist 参考场景的分析输入，保留其原始 CLI/编辑边界，不作为 code-ana 根目录开发命令。
+`lang-java-adaptor/e2e/fixtures/*/AGENTS.md` 是 Anatomist 参考场景的分析输入，保留其原始 CLI/编辑边界，不作为 code-ana 根目录开发命令。
 
 ```sh
 cargo build --workspace --locked

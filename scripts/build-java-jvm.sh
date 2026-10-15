@@ -3,7 +3,7 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 set +u
 source "$HOME/.sdkman/bin/sdkman-init.sh"
-cd "$repo_root/lang-java-adapotr"
+cd "$repo_root/lang-java-adaptor"
 sdk env
 set -u
 # Clean reactor modules, keeping the independently sealed native SDK in parent target/.

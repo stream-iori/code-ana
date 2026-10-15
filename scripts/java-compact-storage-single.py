@@ -47,7 +47,7 @@ def main():
     # Existing captured source/config paths are preserved, not copied or edited.
     tracked=subprocess.check_output(['git','ls-files','--cached','--others','--exclude-standard'],cwd=ROOT,text=True).splitlines()
     source_inputs={str(ROOT/name):sha256(ROOT/name) for name in tracked if (ROOT/name).is_file() and
-        name.startswith(('crates/','proto/','lang-java-adapotr/','scripts/','tests/'))}
+        name.startswith(('crates/','proto/','lang-java-adaptor/','scripts/','tests/'))}
     source_inputs.update({str(project/'.code-ana/config.toml'):sha256(project/'.code-ana/config.toml'),
         str(project/'.code-ana/java-inputs-v2.json'):sha256(project/'.code-ana/java-inputs-v2.json')})
     revision=json.loads((baseline.parent/'revision.json').read_text())

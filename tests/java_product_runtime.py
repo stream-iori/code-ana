@@ -58,7 +58,7 @@ def install_jvm(root, source, archive):
 def prepare(root, destination, backend=None, stable_paths=False):
     backend=backend or os.environ.get('CODEANA_JAVA_BACKEND','native')
     if backend=='jvm':
-        source=root/'lang-java-adapotr/target/jvm'
+        source=root/'lang-java-adaptor/target/jvm'
         manifest=json.loads((source/'manifest.json').read_text())
         if manifest.get('backend')!='jvm': raise ValueError('JVM_RUNTIME_MANIFEST_REQUIRED')
         for relative,expected in manifest['files'].items():
@@ -94,7 +94,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
         (destination/'runtime.json').write_text(json.dumps(result,indent=2)+'\n')
         return result
     if backend!='native':raise ValueError('JAVA_RUNTIME_BACKEND')
-    source = root / 'lang-java-adapotr/target'
+    source = root / 'lang-java-adaptor/target'
     manifest = json.loads((source / 'native/manifest.json').read_text())
     suffix = 'dylib' if sys.platform == 'darwin' else 'so'
     library = 'native/libcodeana_java.' + suffix
@@ -147,9 +147,9 @@ def prepare(root, destination, backend=None, stable_paths=False):
 
 
 def input_files():
-    paths = [ROOT / name for name in ('Cargo.toml','Cargo.lock','lang-java-adapotr/pom.xml','lang-java-adapotr/.sdkmanrc','justfile')]
+    paths = [ROOT / name for name in ('Cargo.toml','Cargo.lock','lang-java-adaptor/pom.xml','lang-java-adaptor/.sdkmanrc','justfile')]
     extensions = {'.rs','.java','.py','.sh','.proto','.toml','.xml','.json','.sql'}
-    for directory in ('crates','lang-java-adapotr','lang-rust-adaptor','scripts','tests','proto'):
+    for directory in ('crates','lang-java-adaptor','lang-rust-adaptor','scripts','tests','proto'):
         paths += [p for p in (ROOT / directory).rglob('*') if p.is_file() and p.suffix in extensions
                   and not {'target','__pycache__'}.intersection(p.relative_to(ROOT).parts)]
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(set(paths))}

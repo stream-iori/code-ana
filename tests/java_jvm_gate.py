@@ -11,7 +11,7 @@ from acceptance_support import identities, read_surefire, run_command, summarize
 from java_source_cases import test_cases
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-PROJECT = ROOT / 'lang-java-adapotr'
+PROJECT = ROOT / 'lang-java-adaptor'
 
 
 def source_cases():

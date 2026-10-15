@@ -1559,7 +1559,7 @@
       "sha256": "29c6bb34116a644c70fd8c8ec7ee47f2d26b1f7eb35bf0a61e055b195888c989",
       "disposition": "archived",
       "reason": "The migration Maven reactor pins its own dependency closure and separates Java 8 compiler bridge, shared Java bridge and explicit native profile. Original product reactor builds no longer define the shipped artifact; retained dependencies are listed in upstream-sources.json.",
-      "replacement_source": "lang-java-adapotr/pom.xml",
+      "replacement_source": "lang-java-adaptor/pom.xml",
       "original_test_cases": []
     },
     {
@@ -1719,7 +1719,7 @@
       "sha256": "1d8583946f1a27f7ecb3c2d72c22dbdae01edac0f60a636b4d4a2dfb0ae3f412",
       "disposition": "archived",
       "reason": "The migration Maven reactor pins its own dependency closure and separates Java 8 compiler bridge, shared Java bridge and explicit native profile. Original product reactor builds no longer define the shipped artifact; retained dependencies are listed in upstream-sources.json.",
-      "replacement_source": "lang-java-adapotr/pom.xml",
+      "replacement_source": "lang-java-adaptor/pom.xml",
       "original_test_cases": []
     },
     {
@@ -2063,7 +2063,7 @@
       "sha256": "55774cd033f0c7c5ab6d008b71a09dca0d6ac6ad8581318616421f5d4ae464f4",
       "disposition": "archived",
       "reason": "The migration Maven reactor pins its own dependency closure and separates Java 8 compiler bridge, shared Java bridge and explicit native profile. Original product reactor builds no longer define the shipped artifact; retained dependencies are listed in upstream-sources.json.",
-      "replacement_source": "lang-java-adapotr/pom.xml",
+      "replacement_source": "lang-java-adaptor/pom.xml",
       "original_test_cases": []
     },
     {
@@ -2071,7 +2071,7 @@
       "sha256": "e8b5a1ec38f2dac0e47bdb100493409798247131d85abd17893f0468886f873a",
       "disposition": "archived",
       "reason": "The migration Maven reactor pins its own dependency closure and separates Java 8 compiler bridge, shared Java bridge and explicit native profile. Original product reactor builds no longer define the shipped artifact; retained dependencies are listed in upstream-sources.json.",
-      "replacement_source": "lang-java-adapotr/pom.xml",
+      "replacement_source": "lang-java-adaptor/pom.xml",
       "original_test_cases": []
     },
     {
@@ -2119,7 +2119,7 @@
       "sha256": "91b15460af4b933ab68de157c337d2daa77a47846e663aad33bf53fc4ca8120a",
       "disposition": "archived",
       "reason": "The frozen core main tree has no consumers of this unused interface/helper (Git search inspected). The active javac backend and its copied recovery budgets are retained. No unused JavaParser-era helper is introduced into the javac-only closure.",
-      "replacement_source": "lang-java-adapotr/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
+      "replacement_source": "lang-java-adaptor/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "original_test_cases": []
     },
     {
@@ -2175,7 +2175,7 @@
       "sha256": "852ed7244cdaa3e011e62de5c38a87e927db340e5e381c9c64e8b86ee1a96d01",
       "disposition": "archived",
       "reason": "The frozen core main tree has no consumers of this unused interface/helper (Git search inspected). The active javac backend and its copied recovery budgets are retained. No unused JavaParser-era helper is introduced into the javac-only closure.",
-      "replacement_source": "lang-java-adapotr/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
+      "replacement_source": "lang-java-adaptor/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "original_test_cases": []
     },
     {
@@ -2183,7 +2183,7 @@
       "sha256": "c623626f6a59c830a5333c19eeaf60b355661ea709458da07119f3d8ace89098",
       "disposition": "archived",
       "reason": "The javac-only adapter uses the selected real Java 8 compiler child and captured SDK bytes. An embedded fixed JDK type catalogue and its standalone generator/cache resolver are outside this backend. SDK8 type/binary behavior is verified by copied javac/binary fixtures and independent raw/AST inventories; original catalogue tests remain separately inventoried.",
-      "replacement_source": "lang-java-adapotr/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
+      "replacement_source": "lang-java-adaptor/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "original_test_cases": []
     },
     {
@@ -2191,7 +2191,7 @@
       "sha256": "c3a41f6e2dedb42349ceea27c80906f7ecc103968b67857bffd96baf6550aeaa",
       "disposition": "archived",
       "reason": "The javac-only adapter uses the selected real Java 8 compiler child and captured SDK bytes. An embedded fixed JDK type catalogue and its standalone generator/cache resolver are outside this backend. SDK8 type/binary behavior is verified by copied javac/binary fixtures and independent raw/AST inventories; original catalogue tests remain separately inventoried.",
-      "replacement_source": "lang-java-adapotr/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
+      "replacement_source": "lang-java-adaptor/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "original_test_cases": []
     },
     {
@@ -2223,7 +2223,7 @@
       "sha256": "bf302c84420d5f88413e7b1e54d981ab61f7280f1511e27f911f03ffe1920ba1",
       "disposition": "archived",
       "reason": "The javac-only adapter uses the selected real Java 8 compiler child and captured SDK bytes. An embedded fixed JDK type catalogue and its standalone generator/cache resolver are outside this backend. SDK8 type/binary behavior is verified by copied javac/binary fixtures and independent raw/AST inventories; original catalogue tests remain separately inventoried.",
-      "replacement_source": "lang-java-adapotr/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
+      "replacement_source": "lang-java-adaptor/analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "original_test_cases": []
     },
     {
@@ -2231,7 +2231,7 @@
       "sha256": "255568c7b7c0b46b4e268be8797ed5bb61b25836a4bfbd98eadfde56d73bf40f",
       "disposition": "archived",
       "reason": "Original metadata targets the Anatomist executable/product closure. The migrated shared-library profile has its own explicit C entry points and resource/reflection metadata. Actual native build, ABI/header/resource and runtime gates are still required; this archive does not assert native success.",
-      "replacement_source": "lang-java-adapotr/native-bridge/pom.xml",
+      "replacement_source": "lang-java-adaptor/native-bridge/pom.xml",
       "original_test_cases": []
     },
     {
@@ -2239,7 +2239,7 @@
       "sha256": "2fc5c43d41e7bd64586a27523cb1a0b52ae016e24d0c0c7525a6e884d0525426",
       "disposition": "archived",
       "reason": "Original metadata targets the Anatomist executable/product closure. The migrated shared-library profile has its own explicit C entry points and resource/reflection metadata. Actual native build, ABI/header/resource and runtime gates are still required; this archive does not assert native success.",
-      "replacement_source": "lang-java-adapotr/native-bridge/pom.xml",
+      "replacement_source": "lang-java-adaptor/native-bridge/pom.xml",
       "original_test_cases": []
     },
     {
@@ -2247,7 +2247,7 @@
       "sha256": "3bce1ae20a1e9758d7885e6eb7f7287c9b785151e6acc9e7e668de4abffdb060",
       "disposition": "archived",
       "reason": "Original metadata targets the Anatomist executable/product closure. The migrated shared-library profile has its own explicit C entry points and resource/reflection metadata. Actual native build, ABI/header/resource and runtime gates are still required; this archive does not assert native success.",
-      "replacement_source": "lang-java-adapotr/native-bridge/pom.xml",
+      "replacement_source": "lang-java-adaptor/native-bridge/pom.xml",
       "original_test_cases": []
     },
     {
@@ -2255,7 +2255,7 @@
       "sha256": "1f862b87ac464ad1cf8036ff4e0f98d445b2e8aa46f9d90c64e6eb5f89d49543",
       "disposition": "archived",
       "reason": "Original metadata targets the Anatomist executable/product closure. The migrated shared-library profile has its own explicit C entry points and resource/reflection metadata. Actual native build, ABI/header/resource and runtime gates are still required; this archive does not assert native success.",
-      "replacement_source": "lang-java-adapotr/native-bridge/pom.xml",
+      "replacement_source": "lang-java-adaptor/native-bridge/pom.xml",
       "original_test_cases": []
     },
     {
@@ -2263,7 +2263,7 @@
       "sha256": "c511ecb0f8e68195c267cdc4d72e4de5527f7e44311ac0a9737b803d0ae9dd40",
       "disposition": "archived",
       "reason": "The shared Java bridge supplies the migrated adapter identity, coupled to worker/request/Fact IR versions. Original Anatomist CLI build-version presentation is not a compatibility contract; corresponding original tests remain separately inventoried.",
-      "replacement_source": "lang-java-adapotr/java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java",
+      "replacement_source": "lang-java-adaptor/java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java",
       "original_test_cases": []
     },
     {
@@ -2271,7 +2271,7 @@
       "sha256": "655f4970b464cb0b3fe632187c59f9ca0dcc7b36eaeffe3affa6d5fc3ba16a5e",
       "disposition": "archived",
       "reason": "Checks the old Anatomist display prefix and filtered Maven product version resource. Rust package/runtime identities use their own manifest and protocol metadata; no Anatomist CLI display compatibility is requested.",
-      "replacement_source": "lang-java-adapotr/README.md",
+      "replacement_source": "lang-java-adaptor/README.md",
       "original_test_cases": [
         "com.anatomist.cli.BuildVersionTest#readsFilteredMavenVersionResource"
       ],

@@ -14,7 +14,7 @@ def main():
     parser.add_argument('--evidence', type=pathlib.Path, required=True)
     args = parser.parse_args()
     root = args.runtime_root.resolve()
-    headers = root / 'lang-java-adapotr/target/native'
+    headers = root / 'lang-java-adaptor/target/native'
     source = root / 'crates/java-worker/src/native.rs'
     structure = re.search(r'#\[repr\(C\)\]\s*struct IsolateParams \{[\s\S]*?\n\}', source.read_text())
     if structure is None:

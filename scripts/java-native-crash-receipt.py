@@ -33,7 +33,7 @@ def main():
     scratch.mkdir()
     os.environ.update(CODEANA_JAVA_BACKEND='native',
                       CODEANA_TEST_BIN=str(args.bin_root.resolve()),
-                      CODEANA_TEST_JAVA_BUNDLE=str(runtime / 'lang-java-adapotr/target/native'),
+                      CODEANA_TEST_JAVA_BUNDLE=str(runtime / 'lang-java-adaptor/target/native'),
                       TMPDIR=str(scratch))
     sys.path.insert(0, str(runtime / 'tests'))
     fixture = importlib.import_module('java_native_crash_e2e')

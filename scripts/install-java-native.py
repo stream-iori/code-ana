@@ -30,7 +30,7 @@ def replace(source, destination):
 
 
 def install(root, archive):
-    source = root / 'lang-java-adapotr/target'
+    source = root / 'lang-java-adaptor/target'
     target = root / 'target/lib/java'
     binaries = (root / 'target/debug').resolve()
     manifest = json.loads((source / 'native/manifest.json').read_text())

@@ -11,7 +11,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 from java_source_cases import other_annotations, test_cases
 from java_coverage_scope import analyzer_test_source
-PROJECT = ROOT / 'lang-java-adapotr'
+PROJECT = ROOT / 'lang-java-adaptor'
 ledger = json.loads((PROJECT / 'upstream-sources.json').read_text())
 copied = {row['source']: row for row in ledger['files']}
 mapping_file = PROJECT / 'rust-coverage-mappings.json'

@@ -19,7 +19,7 @@ class StableRuntimeTests(unittest.TestCase):
         (self.root/'target/debug').symlink_to(self.bins,target_is_directory=True)
         for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):(self.bins/name).write_text(name)
         for backend in ('native','jvm'):
-            source=self.root/'lang-java-adapotr/target';source=source/'jvm' if backend=='jvm' else source
+            source=self.root/'lang-java-adaptor/target';source=source/'jvm' if backend=='jvm' else source
             runtime='runner.jar' if backend=='jvm' else 'native/libcodeana_java.'+('dylib' if stable.sys.platform=='darwin' else 'so')
             files={}
             for name in (runtime,'compiler-bridge.jar','maven-input-worker.jar'):
@@ -55,7 +55,7 @@ class StableRuntimeTests(unittest.TestCase):
         self.assertEqual(library.read_text(),'changed installed bytes')
 
     def test_invalid_bundle_is_rejected_before_installation(self):
-        bridge=self.root/'lang-java-adapotr/target/compiler-bridge.jar';bridge.write_text('drift')
+        bridge=self.root/'lang-java-adaptor/target/compiler-bridge.jar';bridge.write_text('drift')
         with self.assertRaisesRegex(ValueError,'JAVA_RUNTIME_BUILD_CHECKSUM'):
             stable.prepare(self.root,self.base/'one','native')
         self.assertFalse((self.bins.parent/'lib').exists())

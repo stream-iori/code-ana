@@ -19,7 +19,7 @@ class NativeInstallation(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
-        self.source = self.root/'lang-java-adapotr/target'
+        self.source = self.root/'lang-java-adaptor/target'
         self.target = self.root/'target/lib/java'
         self.bin = self.root/'target/debug'
         self.bin.mkdir(parents=True)
@@ -72,7 +72,7 @@ class JvmInstallation(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name).resolve()
-        self.source = self.root/'lang-java-adapotr/target/jvm'
+        self.source = self.root/'lang-java-adaptor/target/jvm'
         self.target = self.root/'target/lib/java/jvm'
         self.archive = self.root/'archive'
         self.source.mkdir(parents=True)

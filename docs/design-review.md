@@ -54,7 +54,7 @@ Rust、daemon、SQLite 都是实现选择；正确性首先由输入捕获、事
 | D10 | 历史与用户数据 | 捕获源码、冻结结果与独立人工标注正文/锚点 | 已落地 catalog/annotation 2；绑定状态保留；标注接入 typed pipeline 未实现 |
 | D11 | 项目与 world | project/checkout/target 隔离，module/scope/world 固定 | 已实现 Java 模块/MAIN/TEST；Rust feature world 已接入冻结输入；跨语言符号桥仍未实现 |
 | D12 | 验收与性能 | 先 Java fixture，后冻结真实项目；Native 不分冷热，性能一轮 | 当前 214.28 s / 233.49 MB 为单轮观测；正式迁移/容量/稳定性能未关闭 |
-| D13 | Java 与互操作 | lang-java-adapotr/，Java 25 GraalVM G1 shared library；独立 Rust C ABI host，无 JNI | 已落地 ABI 4；每进程一次 G1 isolate 创建，故障后换进程；Oracle SDK 固定 |
+| D13 | Java 与互操作 | lang-java-adaptor/，Java 25 GraalVM G1 shared library；独立 Rust C ABI host，无 JNI | 已落地 ABI 4；每进程一次 G1 isolate 创建，故障后换进程；Oracle SDK 固定 |
 | D14 | 配置 | 显式 languages.<id>.enabled；公共/语言/module/world 分层 | 严格 TOML 已实现；Java auto 需外部 inputs_manifest；Rust schema 不等于 adapter 能力 |
 | D15 | source 读取策略 | 普通 source 校验工作区文件 hash，不匹配报错；历史 source 读取冻结内容 | 用户已确认；这是新产品行为选择，与旧版兼容无关 |
 | D16 | Java 解析后端 | javac 唯一后端；不引入 JavaParser/SymbolSolver、不建兼容 AST、不做双后端或失败回退 | 用户已确认，2026-09-29 |

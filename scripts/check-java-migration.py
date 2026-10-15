@@ -4,7 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1] / 'lang-java-adapotr'
+ROOT = Path(__file__).resolve().parents[1] / 'lang-java-adaptor'
 ledger = json.loads((ROOT / 'upstream-sources.json').read_text())
 seen = set()
 changed = []

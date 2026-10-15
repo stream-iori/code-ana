@@ -1,6 +1,6 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
-  <parent><groupId>dev.codeana</groupId><artifactId>lang-java-adapotr</artifactId><version>0.1.0</version><relativePath>../../pom.xml</relativePath></parent>
+  <parent><groupId>dev.codeana</groupId><artifactId>lang-java-adaptor</artifactId><version>0.1.0</version><relativePath>../../pom.xml</relativePath></parent>
   <artifactId>migration-upstream-components-audit</artifactId>
   <dependencies>
     <!-- Test the already accepted producer bytes without rebuilding either bundle. -->

@@ -27,7 +27,7 @@ def atomic_copy(source, destination):
 def upgrade(binaries, bundle, backend, archive, previous_manifest_sha256):
     binaries = binaries.resolve(strict=True)
     stable = binaries.parent / 'runtime'
-    source = bundle.resolve() / 'lang-java-adapotr/target'
+    source = bundle.resolve() / 'lang-java-adaptor/target'
     target = binaries.parent / 'lib/java'
     if backend == 'jvm':
         source /= 'jvm'

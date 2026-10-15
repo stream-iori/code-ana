@@ -34,7 +34,7 @@ def prepare(root, destination, backend):
     stable = binaries.parent/'runtime'
     if destination.resolve() == stable:
         raise ValueError('STABLE_RUNTIME_EVIDENCE_ALIAS_REQUIRED')
-    source = root/'lang-java-adapotr/target'
+    source = root/'lang-java-adaptor/target'
     if backend == 'native':
         manifest_path = source/'native/manifest.json'
         target = binaries.parent/'lib/java'

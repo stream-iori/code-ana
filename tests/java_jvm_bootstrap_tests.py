@@ -8,7 +8,7 @@ import unittest
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-BUNDLE = ROOT / 'lang-java-adapotr/target/jvm'
+BUNDLE = ROOT / 'lang-java-adaptor/target/jvm'
 
 
 class JvmBundleTests(unittest.TestCase):

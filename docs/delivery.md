@@ -52,7 +52,7 @@ JVM 图产品门禁同样使用原 `target/debug/codeana-*` 路径；新构建�
 | GC / 标注 / 报告 | 引用保护；人工正文保全；报告失败与 publication 分开 |
 | 输入准备 | index 不运行目标构建/处理器；缺输入给 BuildAdvice；外部准备后重新捕获 |
 
-fixture 的预期来自源码语义、人工断言或固定参考多重集；必须记录来源 commit/hash。`lang-java-adapotr/e2e/fixtures/*/AGENTS.md` 是参考场景输入，不改写成 code-ana 开发指令。
+fixture 的预期来自源码语义、人工断言或固定参考多重集；必须记录来源 commit/hash。`lang-java-adaptor/e2e/fixtures/*/AGENTS.md` 是参考场景输入，不改写成 code-ana 开发指令。
 
 ## 4. 性能口径
 

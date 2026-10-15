@@ -20,7 +20,7 @@ class UpgradeTests(unittest.TestCase):
         self.binaries = self.root / 'build/release'
         self.binaries.mkdir(parents=True)
         self.bundle = self.root / 'bundle'
-        self.source = self.bundle / 'lang-java-adapotr/target/jvm'
+        self.source = self.bundle / 'lang-java-adaptor/target/jvm'
         self.source.mkdir(parents=True)
         self.installed = self.root / 'build/lib/java/jvm'
         self.installed.mkdir(parents=True)

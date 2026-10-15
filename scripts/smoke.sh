@@ -37,7 +37,7 @@ if [[ "${grpc_reply:-}" != "Hello, world!" ]]; then
 fi
 
 ffi_reply="$("$repo_root/target/debug/codeana-java-worker" \
-  "$repo_root/lang-java-adapotr/target/native/libcodeana_java.dylib")"
+  "$repo_root/lang-java-adaptor/target/native/libcodeana_java.dylib")"
 if [[ "$ffi_reply" != "Hello from Java 25 via FFI: 25" ]]; then
   echo "unexpected FFI reply: $ffi_reply" >&2
   exit 1

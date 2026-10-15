@@ -5,7 +5,7 @@
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
 | 服务 | Rust CLI → loopback gRPC → 用户级 Rust daemon | `crates/cli/`、`crates/daemon/`、`proto/codeana/v1/task.proto` |
-| 分析 | Rust 独立 worker → C ABI → Java 25 Native Image → 目标 Java 8 javac 子进程 | `crates/java-worker/`、`lang-java-adapotr/` |
+| 分析 | Rust 独立 worker → C ABI → Java 25 Native Image → 目标 Java 8 javac 子进程 | `crates/java-worker/`、`lang-java-adaptor/` |
 | 后端 | javac 唯一后端；显式 JVM 后端供开发/诊断，无自动回退 | `crates/application/src/java.rs` |
 | GC | Oracle GraalVM G1 默认；每进程仅创建一次 isolate，健康任务复用，故障后换进程 | `crates/java-worker/src/native.rs` |
 | 输出 | GRA1 + protobuf Row；JSON 仅用于控制输入、metadata/attributes 和查询展示 | `proto/codeana/v1/graph.proto`、`crates/contracts/src/graph_archive.rs` |
@@ -13,6 +13,19 @@
 | 紧凑布局 | 整数引用、路径/外部目标字典、重复大 metadata 共享、元注解定义/归属分离 | `crates/storage/src/compact-schema.sql`、`compact-meta.sql` |
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
+
+## Java 目录命名（2026-10-15）
+
+Java 源码统一位于 `lang-java-adaptor/`，Maven 父 artifactId 同名；底层构建和 manifest 脚本分别为 `scripts/build-lang-java-adaptor.sh`、`scripts/java-adaptor-manifest.py`。Rust 开发路径、构建/安装/分发、测试及来源清单同步使用新名称。CLI/daemon/worker 仍从原 Cargo 路径执行，协议和图库版本保持；历史本机回执按原路径和产物解释，不改写旧证据。
+
+| 更名回归（macOS ARM64 / 目标 Java 8） | 结果 |
+|---|---|
+| 源码与入口 | 615 个文件移动；其中 604 个文件字节不变，其余仅修正 POM/来源清单中的拼写；Java/C/header 字节不变，546 个来源文件校验通过，现行引用无旧拼写 |
+| Rust / Java / Maven | Rust 完整门禁 181 项通过、1 项需 G1 的测试跳过；Java fixture 636 项、路径工具 28 项、Maven 导出与 21 项对齐通过 |
+| JVM / Native | JVM 图 7 项；新目录 Native 开发构建/安装、G1 生命周期 8 项、图 8 项、错误 JDK 和独占真实 SIGSEGV 恢复通过 |
+| 分发 | release 构建、包 checksum、原执行路径图 8 项/错误 JDK/随包 fixture 通过；源码及产物无漂移，原 debug 字节已恢复 |
+
+回执：`target/java-adaptor-rename/validation.json`。Native 重建在完整 Java fixture 通过后使用 `--build-only -DskipTests`，ABI/产品回归另行执行；不签正式迁移或容量验收。本轮不重测 iopengw。
 
 ## Rust 可维护性重构（2026-10-15）
 
@@ -159,7 +172,7 @@ Native 首次安装因活跃 JVM 触发 `STOP_RUNTIME_BEFORE_NATIVE_INSTALL:9792
 | 上游逻辑格式 | schema 33 / GraphSemantics 26 | `project_meta.schema_version` 与物理格式不是同一个版本 |
 | adapter | anatomist-4a903272-codeana-graph2-maven-fallback1 | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
 | catalog / 人工标注库 | 2 / 2 | 独立事务升级，保留人工正文 |
-| Native 构建 JDK | 25.3.4+1.r25-graal | `lang-java-adapotr/.sdkmanrc` 固定 Oracle GraalVM |
+| Native 构建 JDK | 25.3.4+1.r25-graal | `lang-java-adaptor/.sdkmanrc` 固定 Oracle GraalVM |
 
 图 schema 8 及更旧格式的查询/增量返回 `GRAPH_SCHEMA_REBUILD_REQUIRED`。执行 `index --full` 创建新 revision，成功后切 head；旧文件保留，不原地迁移。历史图查询也要求兼容物理格式。
 

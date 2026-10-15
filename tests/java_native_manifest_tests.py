@@ -15,13 +15,13 @@ class NativeManifest(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         stage = pathlib.Path(self.temp.name)
-        self.project = stage / 'lang-java-adapotr'
+        self.project = stage / 'lang-java-adaptor'
         for name in ['java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java',
                      'analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java',
                      'analysis-core/src/main/java/com/anatomist/core/javac/JavacBatchProtocol.java']:
             destination = self.project / name
             destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(ROOT / 'lang-java-adapotr' / name, destination)
+            shutil.copy2(ROOT / 'lang-java-adaptor' / name, destination)
         destination = stage / 'crates/model/src/lib.rs'
         destination.parent.mkdir(parents=True)
         shutil.copy2(ROOT / 'crates/model/src/lib.rs', destination)
@@ -32,7 +32,7 @@ class NativeManifest(unittest.TestCase):
             path.write_bytes(('fixture:' + path.name).encode())
         self.environment = dict(os.environ)
         self.environment.pop('CODEANA_NATIVE_GC', None)
-        subprocess.run([sys.executable, str(ROOT / 'scripts/java-adapotr-manifest.py'), str(self.target)], env=self.environment, check=True)
+        subprocess.run([sys.executable, str(ROOT / 'scripts/java-adaptor-manifest.py'), str(self.target)], env=self.environment, check=True)
         self.manifest_path = self.target / 'native/manifest.json'
         self.manifest = json.loads(self.manifest_path.read_text())
 
@@ -41,7 +41,7 @@ class NativeManifest(unittest.TestCase):
 
     def test_default_gc_is_g1_and_serial_override_is_preserved(self):
         self.assertEqual(self.manifest['native_gc'], 'G1')
-        subprocess.run([sys.executable, str(ROOT / 'scripts/java-adapotr-manifest.py'), str(self.target)],
+        subprocess.run([sys.executable, str(ROOT / 'scripts/java-adaptor-manifest.py'), str(self.target)],
                        env=dict(self.environment, CODEANA_NATIVE_GC='serial'), check=True)
         self.assertEqual(json.loads(self.manifest_path.read_text())['native_gc'], 'serial')
         self.assertEqual(self.probe().returncode, 0)

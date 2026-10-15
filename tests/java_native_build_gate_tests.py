@@ -17,7 +17,7 @@ class NativeBuildPrerequisites(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
         self.root = pathlib.Path(self.temp.name)
-        self.source = self.root / 'lang-java-adapotr/java-bridge/src/main/java/A.java'
+        self.source = self.root / 'lang-java-adaptor/java-bridge/src/main/java/A.java'
         self.source.parent.mkdir(parents=True); self.source.write_text('class A {}')
         self.components = self.root / 'components.json'
         self.components.write_text(json.dumps(dict(sources={str(self.source): gate.sha(self.source)})))
