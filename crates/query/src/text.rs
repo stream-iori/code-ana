@@ -131,7 +131,7 @@ fn stream_text_candidates_query(
 ) -> Result<Output> {
     preflight_query(req)?;
     ensure!(
-        req.operation == "search-text",
+        req.operation == codeana_model::Operation::SearchText,
         codeana_model::DomainError::new(codeana_model::ErrorCode::StreamTextOperationRequired, "")
     );
     let matcher = text_matcher(req)?;
@@ -175,7 +175,7 @@ fn stream_text_candidates_query(
         }
     }
     Ok(Output {
-        revision: reader.revision().id.clone(),
+        revision: reader.revision().id.to_string(),
         producer: reader.revision().producer.clone(),
         evidence,
         ..Default::default()
@@ -228,7 +228,7 @@ mod tests {
         let text = "before\r\n中文.* 中文.*\r\nafter\r\n";
         let source = upstream_source(text);
         let mut req = Request {
-            operation: "search-text".into(),
+            operation: codeana_model::Operation::SearchText,
             selector: "中文.*".into(),
             text_context: 1,
             ..Default::default()
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn upstream_invalid_regex_is_checked_without_files_and_missing_literal_is_empty() {
         let mut req = Request {
-            operation: "search-text".into(),
+            operation: codeana_model::Operation::SearchText,
             selector: "[".into(),
             text_regex: true,
             ..Default::default()
@@ -304,7 +304,7 @@ mod tests {
     fn upstream_closed_output_and_expired_check_stop_without_scanning_remaining_lines() {
         let text = "hit\n".repeat(10000);
         let req = Request {
-            operation: "search-text".into(),
+            operation: codeana_model::Operation::SearchText,
             selector: "hit".into(),
             ..Default::default()
         };
@@ -334,7 +334,7 @@ mod tests {
             auxiliary: false,
         };
         let req = Request {
-            operation: "search-text".into(),
+            operation: codeana_model::Operation::SearchText,
             selector: "match".into(),
             text_context: 1,
             ..Default::default()

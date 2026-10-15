@@ -1,7 +1,8 @@
 //! Stable user-content and maintenance results, independent of SQLite.
 use crate::Span;
+use crate::{Evidence, Fact};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GcResult {
     pub execute: bool,
@@ -21,8 +22,8 @@ pub struct RecoveryResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnnotationAnchor {
     pub revision: String,
-    pub fact_id: String,
-    pub world: String,
+    pub fact_id: crate::FactId,
+    pub world: crate::WorldId,
     pub source: String,
     pub source_hash: String,
     pub span: Option<Span>,
@@ -53,4 +54,28 @@ pub enum AnnotationResult {
     Entry(Box<AnnotationEntry>),
     Mutation(AnnotationMutation),
     List(Vec<AnnotationEntry>),
+}
+
+#[derive(Clone, Default)]
+pub struct IndexSummary {
+    pub statistics: CandidateStatistics,
+    /// Task-local diagnostics; never part of Fact IR or the worker protocol.
+    pub phase_ms: BTreeMap<String, u64>,
+    pub fact_count: u64,
+    pub counts: BTreeMap<String, u64>,
+    pub diagnostic_total: u64,
+    pub diagnostic_rows: u64,
+    pub diagnostic_sampled_occurrences: u64,
+    pub diagnostic_groups: BTreeMap<String, u64>,
+    pub diagnostic_groups_omitted: u64,
+    pub diagnostic_samples: Vec<Fact>,
+    pub evidence: Evidence,
+    pub analysis_mode: Option<String>,
+    pub classpath_status: Option<String>,
+}
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct CandidateStatistics {
+    pub analyzed_indexes: u64,
+    pub elapsed_ms: u64,
+    pub warnings: Vec<String>,
 }

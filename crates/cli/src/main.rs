@@ -566,7 +566,7 @@ async fn run() -> Result<i32> {
                 "",
             ))?
             .into(),
-        operation: operation.into(),
+        operation: operation.parse()?,
         selector: if operation == "pipeline" {
             String::new()
         } else {

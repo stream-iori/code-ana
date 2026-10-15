@@ -3,10 +3,11 @@ use super::*;
 use crate::reports::{
     ReportConfig, ReportDiagnostics, ReportDocument, ReportSummary, ReportTiming,
 };
-use codeana_storage::{StagedCandidate, StagedSummary};
+pub(super) type StagedCandidate =
+    <crate::ports::storage::IndexAdapter as IndexRepository>::Candidate;
 struct IndexSetup {
     prepared: Option<java::PreparedJava>,
-    expected: String,
+    expected: RevisionId,
     worker: worker::Worker,
     pool_key: Option<String>,
     undiscovered_warm: bool,
@@ -33,12 +34,12 @@ struct IndexReceipt<'a> {
     profile: &'a str,
     producer: &'a str,
     ack_warning: Option<&'a str>,
-    statistics: &'a codeana_storage::CandidateStatistics,
+    statistics: &'a CandidateStatistics,
 }
 pub(super) struct PublishedIndex {
     pub(super) revision: Revision,
     pub(super) result_mode: AnalysisMode,
-    pub(super) summary: StagedSummary,
+    pub(super) summary: IndexSummary,
     pub(super) evidence: Evidence,
     pub(super) ack: Option<String>,
     pub(super) worker_context: BuildContext,
@@ -84,12 +85,12 @@ impl Engine {
             .transpose()?
             .unwrap_or_default();
         ensure!(
-            candidate.summary.fact_count <= limits.facts,
+            self.index.summary(&candidate).fact_count <= limits.facts,
             "JAVA_FACT_BUDGET count={} limit={}",
-            candidate.summary.fact_count,
+            self.index.summary(&candidate).fact_count,
             limits.facts
         );
-        let summary = candidate.summary.clone();
+        let summary = self.index.summary(&candidate).clone();
         if let Some(timings) = &mut timings {
             timings.phase("candidate_validated");
             timings.storage(&summary.phase_ms);
@@ -101,8 +102,8 @@ impl Engine {
                 evidence,
                 ..Default::default()
             });
-            t.gate = "rejected".into();
-            t.publication = "retained".into();
+            t.gate = codeana_model::GateState::Rejected;
+            t.publication = codeana_model::PublicationState::Retained;
             t.exit_code = 3;
             return Ok(t);
         }
@@ -110,30 +111,12 @@ impl Engine {
             !cancel.is_cancelled(),
             codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
         );
-        let store = self.store.clone();
         let blobs = std::mem::take(&mut c.blobs);
-        let task_id = TaskId::from(id);
-        let publisher = self.publisher.clone();
-        let cancellation = cancel.clone();
         let publishing = Instant::now();
-        let revision = tokio::task::spawn_blocking(move || -> Result<Revision> {
-            let diagnostics = codeana_contracts::performance::Report::new("publish-detail");
-            diagnostics.capture.sync(|| {
-                ensure!(
-                    !cancellation.is_cancelled(),
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-                );
-                codeana_storage::test_fault(&store.home, "before_publish")?;
-                let _pins = store.pin_blobs(blobs.keys());
-                store.put_blob_files(&blobs)?;
-                ensure!(
-                    !cancellation.is_cancelled(),
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-                );
-                publisher.publish(candidate, &task_id)
-            })
-        })
-        .await??;
+        let revision = self
+            .index
+            .publish(candidate, TaskId::from(id), blobs, cancel.clone())
+            .await?;
         let publish_ms = publishing.elapsed().as_millis() as u64;
         if let Some(timings) = &mut timings {
             timings.phase("published");
@@ -201,7 +184,7 @@ impl Engine {
         let prepared = if self.mock.is_none() {
             let captured = c.clone();
             let user = self.user.clone();
-            let home = self.store.home.clone();
+            let home = self.index.home().to_path_buf();
             Some(
                 tokio::task::spawn_blocking(move || java::prepare(&captured, &user, &home))
                     .await??,
@@ -212,10 +195,7 @@ impl Engine {
         if let Some(timings) = timings {
             timings.phase("prepared");
         }
-        let expected = self
-            .publisher
-            .head(&IndexTarget::from(c.target.clone()))?
-            .to_string();
+        let expected = self.index.head(&IndexTarget::from(c.target.clone()))?;
         if !req.expected_revision.is_empty() {
             ensure!(
                 expected == req.expected_revision.as_str(),
@@ -248,7 +228,7 @@ impl Engine {
         let identical_capture = !expected.is_empty()
             && !req.full
             && c.effective.config.index.mode != "full"
-            && self.store.read(&expected)?.revision().manifest.id() == c.manifest.id();
+            && self.index.read(&expected)?.revision().manifest.id() == c.manifest.id();
         let mut undiscovered_warm = false;
         let mut reused = None;
         if self.mock.is_none() && self.user.daemon.java_warm_workers.unwrap_or(true) {
@@ -256,7 +236,7 @@ impl Engine {
             if let (Some(mut idle), Some(prepared), Some(key)) =
                 (idle, prepared.as_ref(), pool_key.as_ref())
                 && idle.key == *key
-                && idle.revision == expected
+                && idle.revision == expected.as_str()
                 && idle.worker.alive().unwrap_or(false)
                 && (identical_capture
                     || idle
@@ -323,7 +303,7 @@ impl Engine {
         let mut old = None;
         let mut unchanged = false;
         if !expected.is_empty() && !full {
-            let store = self.store.clone();
+            let store = self.index.clone();
             let baseline_id = expected.clone();
             let desired_profile = profile.clone();
             let desired_manifest = c.manifest.id();
@@ -353,7 +333,7 @@ impl Engine {
                                     ""
                                 )
                             );
-                            codeana_storage::durable_write(&path, &bytes)?;
+                            store.write_baseline(&path, &bytes)?;
                             Some(BaselineInput::File(BaselineFile {
                                 path,
                                 sha256: codeana_model::hash(&bytes),
@@ -437,7 +417,7 @@ impl Engine {
         let streaming = prepared.is_some() && !unchanged;
         let analyze_ms;
         let (result_mode, candidate) = if streaming {
-            let store = self.store.clone();
+            let store = self.index.clone();
             let revision = Revision {
                 id: String::new(),
                 target: c.target.clone(),
@@ -534,8 +514,8 @@ impl Engine {
                 let limits = codeana_contracts::java::OutputLimits::from_config(&prepared.config)?;
                 SpooledAnalysis {
                     header: AnalysisHeader {
-                        mode: "delta".into(),
-                        baseline: expected.clone(),
+                        mode: codeana_model::AnalysisMode::Delta,
+                        baseline: expected.to_string(),
                         manifest: c.manifest.id(),
                         profile: profile.clone(),
                         producer: worker.context.producer.clone(),
@@ -572,7 +552,7 @@ impl Engine {
                 producer: result.header.producer.clone(),
                 created: 0,
             };
-            let store = self.store.clone();
+            let store = self.index.clone();
             let baseline_id = expected.clone();
             let staging_cancel = cancel.clone();
             let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
@@ -647,7 +627,7 @@ impl Engine {
             })?],
             cursor: String::new(),
         });
-        t.publication = "published".into();
+        t.publication = codeana_model::PublicationState::Published;
         if c.effective.config.observability.mode != "off" {
             t.report = id.into();
             let report_summary = ReportSummary {

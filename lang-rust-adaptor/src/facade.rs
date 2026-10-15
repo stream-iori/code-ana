@@ -192,7 +192,7 @@ mod tests {
                 generated: BTreeMap::new(),
             },
             files,
-            mode: "semantic".into(),
+            mode: codeana_model::rust::RustAnalysisMode::Semantic,
             scratch: scratch.path().into(),
             result_bytes: 1 << 20,
             fact_limit: 1000,

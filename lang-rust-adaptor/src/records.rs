@@ -2,32 +2,14 @@
 use crate::{Analysis, incremental};
 use anyhow::Result;
 use codeana_contracts::{
-    graph::{Cell, Row, Table, cell},
+    graph::Row,
     graph_archive::{Builder, GraphArchive},
+    graph_rows::*,
 };
 use codeana_model::rust::{AnalysisConfig, PRODUCER, SourceState};
-use serde_json::{Value, json};
+use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
 
-fn row(table: Table, world: &str, values: Vec<Value>) -> Row {
-    Row {
-        table: table as i32,
-        world: world.into(),
-        cells: values
-            .into_iter()
-            .map(|v| Cell {
-                value: match v {
-                    Value::Null => None,
-                    Value::String(s) => Some(cell::Value::Text(s)),
-                    Value::Number(n) => {
-                        Some(cell::Value::Integer(n.as_i64().expect("signed cell")))
-                    }
-                    _ => unreachable!("typed graph cells"),
-                },
-            })
-            .collect(),
-    }
-}
 /// One index per physical source; columns retain the public one-based UTF-16 contract.
 struct LineIndex<'a> {
     text: &'a str,
@@ -133,86 +115,84 @@ pub fn emit(
         let metadata =
             json!({"rust_kind":d.kind,"signature_hash":d.signature_hash,"generated":d.synthetic})
                 .to_string();
-        push(row(
-            Table::Node,
-            &d.world,
-            vec![
-                json!(d.id),
-                json!(d.id),
-                json!("language"),
-                json!("rust"),
-                json!(PRODUCER),
-                json!("declaration"),
-                json!(d.kind),
-                json!(d.name),
-                json!(d.kind),
-                json!(d.qualified_name),
-                Value::Null,
-                Value::Null,
-                json!(d.source),
-                json!(location),
-                json!(bl),
-                json!(bc),
-                json!(el),
-                json!(ec),
-                json!(0),
-                json!(d.module),
-                json!(d.scope),
-                json!(metadata),
-                Value::Null,
-                json!(PRODUCER),
-            ],
-        ))?;
-        push(row(
-            Table::Declaration,
-            &d.world,
-            vec![
-                json!(d.id),
-                json!("language"),
-                json!("rust"),
-                json!(PRODUCER),
-                json!("declaration"),
-                json!(d.kind),
-                json!(d.qualified_name),
-                json!(d.name),
-                json!(d.kind),
-                json!(d.kind),
-                Value::Null,
-                json!(d.visibility),
-                json!("[]"),
-                json!("[]"),
-                json!("[]"),
-                json!(d.parent),
-                Value::Null,
-                json!(d.source),
-                json!(location),
-                json!(bl),
-                json!(bc),
-                json!(el),
-                json!(ec),
-                json!(d.module),
-                json!(d.scope),
-                json!(0),
-                json!(1),
-                json!(i64::from(d.synthetic)),
-                json!(i64::from(d.resolved)),
-                json!(PRODUCER),
-            ],
-        ))?;
+        push(
+            NodeRow {
+                id: Some((d.id).to_string()),
+                symbol_id: Some((d.id).to_string()),
+                domain: Some(("language").to_string()),
+                language: Some(("rust").to_string()),
+                provider_id: Some((PRODUCER).to_string()),
+                entity_kind: Some(("declaration").to_string()),
+                language_kind: Some((d.kind).to_string()),
+                label: Some((d.name).to_string()),
+                kind: Some((d.kind).to_string()),
+                qualified_name: Some((d.qualified_name).to_string()),
+                package: None,
+                namespace: None,
+                source_file: Some((d.source).to_string()),
+                source_location: Some((location).to_string()),
+                begin_line: Some(i64::try_from(bl)?),
+                begin_column: Some(i64::try_from(bc)?),
+                end_line: Some(i64::try_from(el)?),
+                end_column: Some(i64::try_from(ec)?),
+                source_ordinal: Some(0),
+                module: Some((d.module).to_string()),
+                scope: Some((d.scope).to_string()),
+                metadata: Some((metadata).to_string()),
+                arity_key: None,
+                producer_id: Some((PRODUCER).to_string()),
+            }
+            .into_row(&d.world),
+        )?;
+        push(
+            DeclarationRow {
+                symbol_id: Some((d.id).to_string()),
+                domain: Some(("language").to_string()),
+                language: Some(("rust").to_string()),
+                provider_id: Some((PRODUCER).to_string()),
+                entity_kind: Some(("declaration").to_string()),
+                language_kind: Some((d.kind).to_string()),
+                qualified_name: Some((d.qualified_name).to_string()),
+                label: Some((d.name).to_string()),
+                kind: Some((d.kind).to_string()),
+                declaration_kind: Some((d.kind).to_string()),
+                type_kind: None,
+                visibility: Some((d.visibility).to_string()),
+                modifiers: Some(("[]").to_string()),
+                declared_modifiers: Some(("[]").to_string()),
+                implicit_modifiers: Some(("[]").to_string()),
+                declaring_type: d.parent.as_ref().map(|v| v.to_string()),
+                namespace: None,
+                source_file: Some((d.source).to_string()),
+                source_location: Some((location).to_string()),
+                begin_line: Some(i64::try_from(bl)?),
+                begin_column: Some(i64::try_from(bc)?),
+                end_line: Some(i64::try_from(el)?),
+                end_column: Some(i64::try_from(ec)?),
+                module: Some((d.module).to_string()),
+                scope: Some((d.scope).to_string()),
+                nesting_depth: Some(0),
+                direct_member: Some(1),
+                synthetic: Some(i64::from(d.synthetic)),
+                binding_resolved: Some(i64::from(d.resolved)),
+                producer_id: Some((PRODUCER).to_string()),
+            }
+            .into_row(&d.world),
+        )?;
         if let Some(parent) = &d.parent {
             let r = crate::Relation {
                 source: parent.clone(),
                 target: Some(d.id.clone()),
                 external: None,
-                kind: "CONTAINS".into(),
+                kind: codeana_model::rust::RustRelation::Contains,
                 file: d.source.clone(),
                 world: d.world.clone(),
                 start: d.start,
                 end: d.end,
                 syntax: String::new(),
-                resolution: "exact".into(),
+                resolution: codeana_model::rust::RustResolution::Exact,
             };
-            push(edge(&r, &d.module, &d.scope, text))?;
+            push(edge(&r, &d.module, &d.scope, text)?)?;
         }
     }
     for r in &analysis.relations {
@@ -222,7 +202,7 @@ pub fn emit(
             continue;
         }
         if let Some(d) = declarations.get(r.source.as_str()) {
-            push(edge(r, &d.module, &d.scope, &lines[r.file.as_str()]))?;
+            push(edge(r, &d.module, &d.scope, &lines[r.file.as_str()])?)?;
         }
     }
     for ((file, world), gaps) in &analysis.gaps {
@@ -236,145 +216,147 @@ pub fn emit(
             .find(|c| &c.world == world)
             .unwrap();
         let counts = gaps.iter().map(|g| (g, 1)).collect::<BTreeMap<_, _>>();
-        push(row(
-            Table::Coverage,
-            world,
-            vec![
-                json!(file),
-                json!(input.module),
-                json!(input.scope),
-                json!("rust"),
-                json!(PRODUCER),
-                json!("AGGREGATE"),
-                json!(if gaps.is_empty() {
-                    "complete"
-                } else {
-                    "partial"
-                }),
-                json!(gaps.len()),
-                json!(gaps.len()),
-                json!(serde_json::to_string(gaps)?),
-                json!(serde_json::to_string(&counts)?),
-                json!(0),
-            ],
-        ))?;
+        push(
+            CoverageRow {
+                source_file: Some((file).to_string()),
+                module: Some((input.module).to_string()),
+                scope: Some((input.scope).to_string()),
+                language: Some(("rust").to_string()),
+                provider_id: Some((PRODUCER).to_string()),
+                capability: Some(("AGGREGATE").to_string()),
+                status: Some(
+                    (if gaps.is_empty() {
+                        "complete"
+                    } else {
+                        "partial"
+                    })
+                    .to_string(),
+                ),
+                occurrences: Some(i64::try_from(gaps.len())?),
+                groups_count: Some(i64::try_from(gaps.len())?),
+                codes: Some((serde_json::to_string(gaps)?).to_string()),
+                code_counts: Some((serde_json::to_string(&counts)?).to_string()),
+                details_truncated: Some(0),
+            }
+            .into_row(world),
+        )?;
         for gap in gaps {
-            push(row(
-                Table::Diagnostic,
-                world,
-                vec![
-                    json!("warning"),
-                    json!(gap),
-                    json!("analyze"),
-                    json!(file),
-                    json!(input.module),
-                    json!(input.scope),
-                    Value::Null,
-                    json!("rust"),
-                    json!(PRODUCER),
-                    Value::Null,
-                    json!(gap),
-                    Value::Null,
-                    json!(1),
-                    json!(gap),
-                ],
-            ))?;
+            push(
+                DiagnosticRow {
+                    severity: Some(("warning").to_string()),
+                    code: Some((gap).to_string()),
+                    phase: Some(("analyze").to_string()),
+                    source_file: Some((file).to_string()),
+                    module: Some((input.module).to_string()),
+                    scope: Some((input.scope).to_string()),
+                    symbol: None,
+                    language: Some(("rust").to_string()),
+                    provider_id: Some((PRODUCER).to_string()),
+                    provider_reason: None,
+                    reason_code: Some((gap).to_string()),
+                    sample_details: None,
+                    occurrence_count: Some(1),
+                    sample: Some((gap).to_string()),
+                }
+                .into_row(world),
+            )?;
         }
     }
     for state in states {
         if !wanted(&state.file, &state.world) {
             continue;
         }
-        push(row(
-            Table::SourceState,
-            &state.world,
-            vec![
-                json!(state.file),
-                json!(state.world),
-                json!(serde_json::to_string(state)?),
-            ],
-        ))?;
+        push(
+            SourceStateRow {
+                source_file: Some((state.file).to_string()),
+                world: Some((state.world).to_string()),
+                state: Some((serde_json::to_string(state)?).to_string()),
+            }
+            .into_row(&state.world),
+        )?;
         for dep in &state.dependencies {
-            push(row(
-                Table::AnalysisDependency,
-                &state.world,
-                vec![
-                    json!(state.file),
-                    json!(state.world),
-                    json!(serde_json::to_value(&dep.kind)?.as_str().unwrap()),
-                    json!(dep.world),
-                    json!(dep.key),
-                ],
-            ))?;
+            push(
+                AnalysisDependencyRow {
+                    source_file: Some((state.file).to_string()),
+                    world: Some((state.world).to_string()),
+                    kind: Some(dep.kind.as_str().into()),
+                    target_world: Some((dep.world).to_string()),
+                    target_key: Some((dep.key).to_string()),
+                }
+                .into_row(&state.world),
+            )?;
         }
     }
-    push(row(
-        Table::Provider,
-        "",
-        vec![
-            json!(PRODUCER),
-            json!("rust"),
-            json!(crate::ADAPTER_VERSION),
-            json!("[\"declarations\",\"references\",\"calls\"]"),
-            json!("[\"no proc-macro execution\",\"dynamic dispatch incomplete\"]"),
-            json!(codeana_model::digest(&config.inputs)),
-        ],
-    ))?;
-    push(row(
-        Table::ProjectMeta,
-        "",
-        vec![json!("rust.analysis_mode"), json!(config.mode)],
-    ))?;
+    push(
+        ProviderRow {
+            provider_id: Some((PRODUCER).to_string()),
+            language: Some(("rust").to_string()),
+            provider_version: Some((crate::ADAPTER_VERSION).to_string()),
+            operations: Some(("[\"declarations\",\"references\",\"calls\"]").to_string()),
+            limitations: Some(
+                ("[\"no proc-macro execution\",\"dynamic dispatch incomplete\"]").to_string(),
+            ),
+            profile_hash: Some((codeana_model::digest(&config.inputs)).to_string()),
+        }
+        .into_row(""),
+    )?;
+    push(
+        ProjectMetaRow {
+            key: Some(("rust.analysis_mode").to_string()),
+            value: Some((config.mode).to_string()),
+        }
+        .into_row(""),
+    )?;
     Ok(())
 }
 
-fn edge(r: &crate::Relation, module: &str, scope: &str, text: &LineIndex<'_>) -> Row {
+fn edge(r: &crate::Relation, module: &str, scope: &str, text: &LineIndex<'_>) -> Result<Row> {
     let (bl, bc) = text.position(r.start);
     let (el, ec) = text.position(r.end);
-    row(
-        Table::Edge,
-        &r.world,
-        vec![
-            json!(r.source),
-            json!(r.target),
-            json!(r.external),
-            Value::Null,
-            json!(r.external.as_ref().map(|_| "rust")),
-            json!(r.external.as_ref().map(|_| PRODUCER)),
-            json!(r.kind),
-            Value::Null,
-            json!("rust-analyzer"),
-            json!("rust"),
-            json!(PRODUCER),
-            json!(if r.kind == "CALLS" { "DIRECT" } else { "" }),
-            json!(if r.resolution == "exact" {
+    Ok(EdgeRow {
+        source_ref: Some((r.source).to_string()),
+        target_ref: r.target.as_ref().map(|v| v.to_string()),
+        external_target_fqn: r.external.as_ref().map(|v| v.to_string()),
+        external_target_symbol: None,
+        external_target_language: r.external.as_ref().map(|_| "rust").map(str::to_owned),
+        external_target_provider_id: r.external.as_ref().map(|_| PRODUCER).map(str::to_owned),
+        relation: Some((r.kind).to_string()),
+        semantic: None,
+        mechanism: Some(("rust-analyzer").to_string()),
+        language: Some(("rust").to_string()),
+        provider_id: Some((PRODUCER).to_string()),
+        call_kind: Some((if r.kind == "CALLS" { "DIRECT" } else { "" }).to_string()),
+        confidence: Some(
+            (if r.resolution == "exact" {
                 "EXTRACTED"
             } else {
                 "UNRESOLVED"
-            }),
-            json!(r.resolution),
-            Value::Null,
-            json!(i64::from(r.target.is_none())),
-            json!(r.file),
-            json!(format!("{}:{bl}:{bc}:{el}:{ec}", r.file)),
-            json!(bl),
-            json!(bc),
-            json!(el),
-            json!(ec),
-            json!(0),
-            json!(r.syntax),
-            Value::Null,
-            json!("{}"),
-            json!(module),
-            json!(scope),
-            json!(1),
-            json!(1),
-            json!(r.source),
-            json!(r.target),
-            Value::Null,
-            json!(PRODUCER),
-        ],
-    )
+            })
+            .to_string(),
+        ),
+        resolution: Some((r.resolution).to_string()),
+        context: None,
+        is_external: Some(i64::from(r.target.is_none())),
+        source_file: Some((r.file).to_string()),
+        source_location: Some((format!("{}:{bl}:{bc}:{el}:{ec}", r.file)).to_string()),
+        begin_line: Some(i64::try_from(bl)?),
+        begin_column: Some(i64::try_from(bc)?),
+        end_line: Some(i64::try_from(el)?),
+        end_column: Some(i64::try_from(ec)?),
+        source_ordinal: Some(0),
+        syntax_target: Some((r.syntax).to_string()),
+        receiver_static_type: None,
+        metadata: Some(("{}").to_string()),
+        source_module: Some((module).to_string()),
+        source_scope: Some((scope).to_string()),
+        source_is_key: Some(1),
+        target_is_key: Some(1),
+        resolved_source: Some((r.source).to_string()),
+        resolved_target: r.target.as_ref().map(|v| v.to_string()),
+        target_arity_key: None,
+        producer_id: Some((PRODUCER).to_string()),
+    }
+    .into_row(&r.world))
 }
 
 #[cfg(test)]

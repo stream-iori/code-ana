@@ -14,10 +14,11 @@ mod tasks;
 mod text_search;
 use anyhow::{Context, Result, ensure};
 use codeana_model::*;
+pub use codeana_model::{CandidateStatistics, IndexSummary as StagedSummary};
 pub use pages::PageSpool;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Serialize, de::DeserializeOwned};
-pub use staged::{CandidateStatistics, StagedCandidate, StagedSummary};
+pub use staged::StagedCandidate;
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
@@ -508,7 +509,7 @@ mod tests {
                 .is_empty()
         );
         let mut delta = result();
-        delta.mode = "delta".into();
+        delta.mode = AnalysisMode::Delta;
         delta.baseline = first.id.clone();
         delta.manifest = rev.manifest.id();
         delta.replacements = vec![initial.facts[0].owner.clone()];
@@ -617,7 +618,7 @@ mod tests {
         missing.name = "A.read".into();
         missing.status = "unresolved".into();
         let mut delta = result();
-        delta.mode = "delta".into();
+        delta.mode = AnalysisMode::Delta;
         delta.baseline = first.id.clone();
         delta.manifest = rev.manifest.id();
         delta.replacements = vec![a.owner, b.owner.clone()];
@@ -812,7 +813,7 @@ mod tests {
     }
     pub(super) fn result() -> AnalysisResult {
         AnalysisResult {
-            mode: "full".into(),
+            mode: codeana_model::AnalysisMode::Full,
             baseline: String::new(),
             manifest: Manifest::default().id(),
             profile: "profile".into(),
@@ -883,7 +884,7 @@ mod tests {
         let store = Store::open(dir.path()).unwrap();
         let first = store.publish(revision(), &result(), "", "initial").unwrap();
         let mut delta = result();
-        delta.mode = "delta".into();
+        delta.mode = AnalysisMode::Delta;
         delta.baseline = first.id.clone();
         delta.replacements.push(Owner {
             world: "w".into(),

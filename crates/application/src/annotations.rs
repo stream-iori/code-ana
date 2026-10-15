@@ -11,7 +11,7 @@ fn binding(
         return Ok(AnnotationBinding::Unavailable);
     };
     let facts = reader.select(&FactFilter {
-        ids: vec![anchor.fact_id.clone()],
+        ids: vec![anchor.fact_id.to_string()],
         ..Default::default()
     })?;
     if facts.is_empty() {

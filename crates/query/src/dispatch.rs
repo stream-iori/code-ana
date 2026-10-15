@@ -2,28 +2,22 @@
 //! reads rather than loading every declaration and hierarchy edge in a project.
 use super::*;
 
-pub(super) fn options(operation: &str, algorithm: &str, world: &str) -> Result<()> {
+pub(super) fn options(
+    operation: Operation,
+    algorithm: DispatchAlgorithm,
+    world: AnalysisWorld,
+) -> Result<()> {
     ensure!(
-        algorithm.is_empty() || operation == "dispatch",
-        codeana_model::DomainError::new(codeana_model::ErrorCode::AlgorithmRequiresDispatch, "")
+        algorithm == DispatchAlgorithm::Default || operation == Operation::Dispatch,
+        DomainError::new(ErrorCode::AlgorithmRequiresDispatch, "")
     );
     ensure!(
-        matches!(algorithm, "" | "auto" | "exact" | "cha"),
-        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDispatchAlgorithm, "")
-    );
-    ensure!(
-        world.is_empty() || matches!(operation, "dispatch" | "runtime-implementations"),
-        codeana_model::DomainError::new(
-            codeana_model::ErrorCode::AnalysisWorldRequiresJavaCandidates,
-            ""
-        )
-    );
-    ensure!(
-        matches!(
-            world,
-            "" | "workspace-open" | "workspace-closed" | "classpath-open"
-        ),
-        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidAnalysisWorld, "")
+        world == AnalysisWorld::Default
+            || matches!(
+                operation,
+                Operation::Dispatch | Operation::RuntimeImplementations
+            ),
+        DomainError::new(ErrorCode::AnalysisWorldRequiresJavaCandidates, "")
     );
     Ok(())
 }
@@ -56,7 +50,7 @@ fn load(
                 ..Default::default()
             },
         )? {
-            cache.insert(fact.id.clone(), fact);
+            cache.insert(fact.id.to_string(), fact);
         }
         ensure!(
             cache.len() <= 10000,
@@ -191,7 +185,7 @@ fn walk(
                     .push("dispatch_hierarchy_incomplete".into());
             }
             let mut path = paths[current].clone();
-            path.push(edge.id);
+            path.push(edge.id.to_string());
             paths.insert(next.clone(), path);
             next_frontier.insert(next.clone());
         }
@@ -214,7 +208,7 @@ pub(super) fn candidates(
     if target.parent.is_empty() {
         return Ok(vec![]);
     }
-    let mut cache = BTreeMap::from([(target.id.clone(), target.clone())]);
+    let mut cache = BTreeMap::from([(target.id.to_string(), target.clone())]);
     load(reader, std::slice::from_ref(&target.parent), &mut cache)?;
     let receiver_name = site
         .attributes
@@ -241,7 +235,7 @@ pub(super) fn candidates(
                 },
             )?;
             if matches.len() == 1 {
-                receiver = matches[0].id.clone();
+                receiver = matches[0].id.to_string();
                 cache.insert(receiver.clone(), matches[0].clone());
             } else {
                 evidence.semantic = false;
@@ -327,7 +321,7 @@ pub(super) fn candidates(
             codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
         );
         for method in methods.into_iter().filter(|fact| kind(fact) == "METHOD") {
-            cache.insert(method.id.clone(), method);
+            cache.insert(method.id.to_string(), method);
         }
         method_owners.extend(batch.iter().cloned());
         ensure!(
@@ -379,7 +373,7 @@ pub(super) fn candidates(
                 codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
             );
             for method in methods.into_iter().filter(|fact| kind(fact) == "METHOD") {
-                cache.insert(method.id.clone(), method);
+                cache.insert(method.id.to_string(), method);
             }
             method_owners.extend(batch.iter().cloned());
             ensure!(
@@ -398,7 +392,7 @@ pub(super) fn candidates(
                     && ancestry.contains_key(&method.parent)
                     && !modifier(method, "static")
                     && !modifier(method, "private")
-                    && (callable.contains_key(&method.id)
+                    && (callable.contains_key(method.id.as_str())
                         || (slot.is_some()
                             && method.signature.rsplit_once('#').map(|(_, slot)| slot) == slot))
             })
@@ -460,10 +454,10 @@ pub(super) fn candidates(
             if implementation.id == target.id || !allowed(reader, req, &implementation) {
                 continue;
             }
-            let mut proof = vec![binding.id.clone()];
+            let mut proof = vec![binding.id.to_string()];
             proof.extend(
                 callable
-                    .get(&implementation.id)
+                    .get(implementation.id.as_str())
                     .into_iter()
                     .flatten()
                     .cloned(),
@@ -473,10 +467,10 @@ pub(super) fn candidates(
             let mut unique = BTreeSet::new();
             type_proof.retain(|edge| unique.insert(edge.clone()));
             output
-                .entry(implementation.id.clone())
+                .entry(implementation.id.to_string())
                 .or_insert(Record::Dispatch(DispatchCandidate {
-                    call_site: site.id.clone(),
-                    target: Some(implementation.id.clone()),
+                    call_site: site.id.to_string(),
+                    target: Some(implementation.id.to_string()),
                     proof,
                     type_proof: Some(type_proof),
                     possible: true,
@@ -488,7 +482,7 @@ pub(super) fn candidates(
                     } else {
                         req.analysis_world.to_string()
                     }),
-                    world: implementation.owner.world.clone(),
+                    world: implementation.owner.world.to_string(),
                     ..Default::default()
                 }));
         }
@@ -504,7 +498,7 @@ pub(super) fn run(
     let mut records = Vec::new();
     let roots = resolve_scoped(r, req)?;
     for root in roots {
-        if req.operation == "dispatch" {
+        if req.operation == codeana_model::Operation::Dispatch {
             ensure!(
                 root.kind == FactKind::CallSite,
                 codeana_model::DomainError::new(
@@ -516,7 +510,7 @@ pub(super) fn run(
                 r,
                 FactFilter {
                     kinds: vec![FactKind::CallTarget],
-                    parent: Some(root.id.clone()),
+                    parent: Some(root.id.to_string()),
                     ..Default::default()
                 },
             )?;
@@ -547,7 +541,7 @@ pub(super) fn run(
                             .or(t.attributes.recovery_input.as_ref())
                     };
                     records.push(Record::Dispatch(DispatchCandidate {
-                        call_site: root.id.clone(),
+                        call_site: root.id.to_string(),
                         target: Some(t.target.clone()),
                         binding: Some(t.status.clone()),
                         binding_origin: Some(t.origin.clone()),
@@ -561,9 +555,9 @@ pub(super) fn run(
                             basis: basis.cloned(),
                             recovery_phase: t.attributes.recovery_phase.as_ref().copied(),
                         }),
-                        proof: vec![t.id],
+                        proof: vec![t.id.to_string()],
                         possible: true,
-                        world: t.owner.world,
+                        world: t.owner.world.to_string(),
                         ..Default::default()
                     }));
                     continue;
@@ -574,11 +568,11 @@ pub(super) fn run(
                         .reasons
                         .push(format!("unresolved_binding:{}", t.id));
                     records.push(Record::Dispatch(DispatchCandidate {
-                        call_site: root.id.clone(),
+                        call_site: root.id.to_string(),
                         binding: Some(t.status),
-                        proof: vec![t.id],
+                        proof: vec![t.id.to_string()],
                         possible: false,
-                        world: t.owner.world,
+                        world: t.owner.world.to_string(),
                         ..Default::default()
                     }));
                     continue;
@@ -628,7 +622,7 @@ pub(super) fn run(
                     .as_ref()
                     .map(String::as_str)
                     .unwrap_or("");
-                let exact = req.algorithm == "exact"
+                let exact = req.algorithm == codeana_model::DispatchAlgorithm::Exact
                     || mechanism == "constructor"
                     || root.attributes.reference_mode.as_ref().map(String::as_str) == Some("NEW")
                     || root.name.starts_with("super.")
@@ -637,12 +631,12 @@ pub(super) fn run(
                     || has_modifier("final")
                     || class_final;
                 records.push(Record::Dispatch(DispatchCandidate {
-                    call_site: root.id.clone(),
+                    call_site: root.id.to_string(),
                     target: Some(t.target.clone()),
                     binding: Some(t.status.clone()),
-                    proof: vec![t.id.clone()],
+                    proof: vec![t.id.to_string()],
                     possible: !exact,
-                    world: t.owner.world.clone(),
+                    world: t.owner.world.to_string(),
                     candidate: Some("resolved".into()),
                     algorithm: Some(if exact { "exact" } else { "CHA" }.into()),
                     executable: declaration
@@ -667,7 +661,7 @@ pub(super) fn run(
                     declaration.as_ref(),
                     evidence,
                 )?);
-                if req.analysis_world != "workspace-closed" {
+                if req.analysis_world != codeana_model::AnalysisWorld::WorkspaceClosed {
                     evidence.semantic = false;
                     evidence.reasons.push("open_world_dispatch".into());
                 }

@@ -19,6 +19,7 @@ pub mod bundle;
 pub mod engine_request;
 pub mod fixture_graph;
 pub mod graph_archive;
+pub mod graph_rows;
 pub mod java;
 mod mapping;
 pub mod performance;
@@ -569,17 +570,17 @@ mod query_option_tests {
     #[test]
     fn hierarchy_options_survive_task_and_stage_protobuf_transport() {
         let request = m::Request {
-            operation: "runtime-implementations".into(),
-            instantiability: "unknown".into(),
+            operation: codeana_model::Operation::RuntimeImplementations,
+            instantiability: codeana_model::Instantiability::Unknown,
             transitive: true,
-            algorithm: "exact".into(),
-            analysis_world: "workspace-closed".into(),
+            algorithm: codeana_model::DispatchAlgorithm::Exact,
+            analysis_world: codeana_model::AnalysisWorld::WorkspaceClosed,
             stages: vec![m::Stage {
-                operation: "type-relations".into(),
-                instantiability: "all".into(),
+                operation: codeana_model::Operation::TypeRelations,
+                instantiability: codeana_model::Instantiability::All,
                 transitive: true,
-                algorithm: "cha".into(),
-                analysis_world: "classpath-open".into(),
+                algorithm: codeana_model::DispatchAlgorithm::Cha,
+                analysis_world: codeana_model::AnalysisWorld::ClasspathOpen,
                 ..Default::default()
             }],
             ..Default::default()
@@ -602,10 +603,10 @@ mod query_option_tests {
     #[test]
     fn meta_annotation_options_survive_task_and_stage_protobuf_transport() {
         let request = m::Request {
-            operation: "annotations".into(),
+            operation: codeana_model::Operation::Annotations,
             meta: true,
             stages: vec![m::Stage {
-                operation: "annotations".into(),
+                operation: codeana_model::Operation::Annotations,
                 meta: true,
                 ..Default::default()
             }],

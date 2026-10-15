@@ -24,10 +24,10 @@ pub(super) fn structure(
             let Some((fact, depth)) = queue.pop_front() else {
                 break;
             };
-            if !seen.insert(fact.id.clone()) {
+            if !seen.insert(fact.id.to_string()) {
                 continue;
             }
-            frontier.push((fact.id.clone(), depth));
+            frontier.push((fact.id.to_string(), depth));
             if allowed(r, req, &fact) {
                 records.push(fact.into());
             }
@@ -71,17 +71,17 @@ pub(super) fn occurrences(
     let roots = resolve_scoped(r, req)?;
     let mut seen = BTreeSet::new();
     for f in roots {
-        let hits = match req.operation.as_str() {
-            "references" => {
-                let outgoing = req.direction == "out";
+        let hits = match req.operation {
+            Operation::References => {
+                let outgoing = req.direction == codeana_model::Direction::Outgoing;
                 let base = FactFilter {
                     kinds: if req.relation.is_empty() {
                         vec![FactKind::Reference]
                     } else {
                         vec![FactKind::Reference, FactKind::Relation]
                     },
-                    parent: outgoing.then(|| f.id.clone()),
-                    target: (!outgoing).then(|| f.id.clone()),
+                    parent: outgoing.then(|| f.id.to_string()),
+                    target: (!outgoing).then(|| f.id.to_string()),
                     ..Default::default()
                 };
                 if req.relation.is_empty() {
@@ -100,12 +100,12 @@ pub(super) fn occurrences(
                     hits
                 }
             }
-            "annotations" => {
+            Operation::Annotations => {
                 let direct = select(
                     r,
                     FactFilter {
                         kinds: vec![FactKind::Facet],
-                        parent: Some(f.id),
+                        parent: Some(f.id.to_string()),
                         relation: Some("java.annotation".into()),
                         ..Default::default()
                     },
@@ -117,12 +117,12 @@ pub(super) fn occurrences(
                 }
             }
             _ => {
-                if req.direction == "in" {
+                if req.direction == codeana_model::Direction::Incoming {
                     let targets = select(
                         r,
                         FactFilter {
                             kinds: vec![FactKind::CallTarget],
-                            target: Some(f.id),
+                            target: Some(f.id.to_string()),
                             ..Default::default()
                         },
                     )?;
@@ -143,7 +143,7 @@ pub(super) fn occurrences(
                         r,
                         FactFilter {
                             kinds: vec![FactKind::CallSite],
-                            parent: Some(f.id),
+                            parent: Some(f.id.to_string()),
                             ..Default::default()
                         },
                     )?
@@ -151,9 +151,10 @@ pub(super) fn occurrences(
             }
         };
         for f in hits {
-            if seen.insert(f.id.clone())
-                && ((req.direction == "in"
-                    || (req.operation == "references" && req.direction.is_empty()))
+            if seen.insert(f.id.to_string())
+                && ((req.direction == codeana_model::Direction::Incoming
+                    || (req.operation == codeana_model::Operation::References
+                        && req.direction.is_empty()))
                     || allowed(r, req, &f))
             {
                 records.push(f.into());

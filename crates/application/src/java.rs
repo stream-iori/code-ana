@@ -342,7 +342,54 @@ fn context_worlds(
         .collect()
 }
 
+struct JavaBundle {
+    library: PathBuf,
+    backend: &'static str,
+    root: PathBuf,
+}
+struct PreparedInputs {
+    scratch: tempfile::TempDir,
+    disk_budget: DiskBudget,
+    input: PathBuf,
+}
+struct JavaToolchain {
+    home: PathBuf,
+    inputs: Vec<(PathBuf, String)>,
+    digest: String,
+    host_identity: Option<String>,
+}
+
 pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<PreparedJava> {
+    let bundle = prepare_bundle()?;
+    let inputs = prepare_captured_inputs(c, user)?;
+    let modules: Vec<_> = c
+        .effective
+        .config
+        .modules
+        .iter()
+        .filter(|m| m.language == "java")
+        .collect();
+    let toolchain = prepare_toolchain(user, &modules)?;
+    let contexts = prepare_contexts(c, &inputs.input, modules)?;
+    let config = prepare_config(
+        c,
+        user,
+        user_home,
+        &bundle,
+        &inputs.scratch,
+        &toolchain,
+        contexts,
+    )?;
+    Ok(PreparedJava {
+        library: bundle.library,
+        backend: bundle.backend,
+        config,
+        disk_budget: inputs.disk_budget,
+        _scratch: inputs.scratch,
+        toolchain: toolchain.inputs,
+    })
+}
+fn prepare_bundle() -> Result<JavaBundle> {
     let library = installed_library()?;
     let backend = if library.extension().is_some_and(|s| s == "jar") {
         "jvm"
@@ -361,6 +408,14 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             "",
         ))?
     };
+    let root = bundle.to_path_buf();
+    Ok(JavaBundle {
+        library,
+        backend,
+        root,
+    })
+}
+fn prepare_captured_inputs(c: &Capture, user: &UserConfig) -> Result<PreparedInputs> {
     let scratch = tempfile::Builder::new().prefix("codeana-java-").tempdir()?;
     let captured_bytes = c
         .blobs
@@ -431,15 +486,18 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureBlobHash, "")
         );
     }
-    let modules: Vec<_> = c
-        .effective
-        .config
-        .modules
-        .iter()
-        .filter(|m| m.language == "java")
-        .collect();
+    Ok(PreparedInputs {
+        scratch,
+        disk_budget,
+        input,
+    })
+}
+fn prepare_toolchain(
+    user: &UserConfig,
+    modules: &[&codeana_config::Module],
+) -> Result<JavaToolchain> {
     let mut homes = Vec::new();
-    for module in &modules {
+    for module in modules {
         ensure!(
             module.analysis.source_version.as_deref() == Some("8"),
             codeana_model::DomainError::new(
@@ -510,6 +568,14 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
     } else {
         None
     };
+    Ok(JavaToolchain {
+        home,
+        inputs: toolchain,
+        digest: toolchain_digest,
+        host_identity,
+    })
+}
+fn prerequisite_modules(c: &Capture) -> std::collections::BTreeSet<String> {
     let mut prerequisites = std::collections::BTreeSet::new();
     if let Some(inputs) = &c.effective.java_inputs {
         let mut pending = Vec::new();
@@ -554,6 +620,14 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             }
         }
     }
+    prerequisites
+}
+fn prepare_contexts(
+    c: &Capture,
+    input: &Path,
+    modules: Vec<&codeana_config::Module>,
+) -> Result<Vec<w::JavaContext>> {
+    let prerequisites = prerequisite_modules(c);
     let mut contexts = Vec::new();
     for module in modules {
         let selected = !c.effective.java_inputs.as_ref().is_some_and(|inputs| {
@@ -771,6 +845,22 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
             });
         }
     }
+    Ok(contexts)
+}
+fn prepare_config(
+    c: &Capture,
+    user: &UserConfig,
+    user_home: &Path,
+    bundle: &JavaBundle,
+    scratch: &tempfile::TempDir,
+    toolchain: &JavaToolchain,
+    contexts: Vec<w::JavaContext>,
+) -> Result<w::JavaConfig> {
+    let home = &toolchain.home;
+    let toolchain_digest = toolchain.digest.clone();
+    let host_identity = &toolchain.host_identity;
+    let library = &bundle.library;
+    let bundle = &bundle.root;
     let mut config = w::JavaConfig {
         java_home: home.to_string_lossy().into_owned(),
         toolchain_digest,
@@ -782,7 +872,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
         semantic_identity: digest(&(
             &c.effective.java_inputs,
             &c.effective.config.resources.index,
-            hash(std::fs::read(&library)?),
+            hash(std::fs::read(library)?),
             hash(std::fs::read(bundle.join("compiler-bridge.jar"))?),
             &host_identity,
         )),
@@ -881,14 +971,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
         ..Default::default()
     };
     codeana_contracts::java::compact(&mut config)?;
-    Ok(PreparedJava {
-        library,
-        backend,
-        config,
-        disk_budget,
-        _scratch: scratch,
-        toolchain,
-    })
+    Ok(config)
 }
 
 #[cfg(test)]

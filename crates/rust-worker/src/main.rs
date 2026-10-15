@@ -219,7 +219,7 @@ async fn analyze_stream(
             .iter()
             .map(|(file, world)| {
                 map(&Owner {
-                    world: world.clone(),
+                    world: world.clone().into(),
                     producer: rust::PRODUCER.into(),
                     kind: "source".into(),
                     id: file.clone(),
@@ -383,7 +383,7 @@ mod tests {
                 input: path,
                 crates: vec!["crate".into()],
             }],
-            mode: "syntax".into(),
+            mode: codeana_model::rust::RustAnalysisMode::Syntax,
             scratch: scratch.path().into(),
             result_bytes: 64 << 20,
             fact_limit: 100000,

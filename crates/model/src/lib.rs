@@ -80,7 +80,7 @@ pub fn safe_path(path: &str) -> bool {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(deny_unknown_fields)]
 pub struct Owner {
-    pub world: String,
+    pub world: WorldId,
     pub producer: String,
     pub kind: String,
     pub id: String,
@@ -131,7 +131,7 @@ pub struct Span {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Fact {
-    pub id: String,
+    pub id: FactId,
     pub kind: FactKind,
     pub owner: Owner,
     #[serde(default)]
@@ -149,7 +149,7 @@ pub struct Fact {
     #[serde(default)]
     pub relation: String,
     #[serde(default)]
-    pub status: String,
+    pub status: FactStatus,
     #[serde(default)]
     pub origin: String,
     #[serde(default)]
@@ -460,7 +460,7 @@ impl AnalysisResult {
             .iter()
             .map(|x| (x.path.as_str(), x))
             .collect();
-        let mut merged: BTreeMap<String, Fact> = if self.mode == "delta" {
+        let mut merged: BTreeMap<FactId, Fact> = if self.mode == "delta" {
             baseline
                 .iter()
                 .filter(|f| !owners.contains(&f.owner))
@@ -518,15 +518,15 @@ impl AnalysisResult {
                         || f.relation == "java.binding"
                             && attributes.get("schema_version") == Some(&serde_json::json!(4))),
             )?;
-            if !f.parent.is_empty() && !merged.contains_key(&f.parent) {
+            if !f.parent.is_empty() && !merged.contains_key(f.parent.as_str()) {
                 return Err(format!("DANGLING_PARENT: {}", f.id));
             }
-            if !f.target.is_empty() && !merged.contains_key(&f.target) {
+            if !f.target.is_empty() && !merged.contains_key(f.target.as_str()) {
                 return Err(format!("DANGLING_TARGET: {}", f.id));
             }
             if f.kind == FactKind::CallTarget
                 && attributes.contains_key("binding_evidence")
-                && (merged.get(&f.parent).is_none_or(|site| {
+                && (merged.get(f.parent.as_str()).is_none_or(|site| {
                     site.kind != FactKind::CallSite
                         || site.owner != f.owner
                         || site.source != f.source
@@ -543,7 +543,7 @@ impl AnalysisResult {
                         .and_then(serde_json::Value::as_u64),
                     Some(3 | 4)
                 )
-                && (merged.get(&f.parent).is_none_or(|site| {
+                && (merged.get(f.parent.as_str()).is_none_or(|site| {
                     site.kind != FactKind::CallSite
                         || site.owner != f.owner
                         || site.source != f.source
@@ -719,15 +719,14 @@ pub struct TaskResult {
 impl TaskResult {
     pub fn success(output: Output) -> Self {
         Self {
-            execution: "completed".into(),
+            execution: crate::ExecutionState::Completed,
             assessment: if output.evidence.semantic {
-                "complete"
+                Assessment::Complete
             } else {
-                "partial"
-            }
-            .into(),
-            gate: "passed".into(),
-            publication: "not_requested".into(),
+                Assessment::Partial
+            },
+            gate: crate::GateState::Passed,
+            publication: crate::PublicationState::NotRequested,
             report: "off".into(),
             revision: output.revision.clone(),
             producer: output.producer.clone(),
@@ -740,14 +739,13 @@ impl TaskResult {
     pub fn failure(code: &str, message: impl Into<String>, exit_code: i32) -> Self {
         let mut r = Self::success(Output::default());
         r.execution = if code == "CANCELLED" {
-            "cancelled"
+            ExecutionState::Cancelled
         } else {
-            "failed"
-        }
-        .into();
-        r.assessment = "unknown".into();
-        r.gate = "not_evaluated".into();
-        r.publication = "retained".into();
+            ExecutionState::Failed
+        };
+        r.assessment = crate::Assessment::Unknown;
+        r.gate = crate::GateState::NotEvaluated;
+        r.publication = crate::PublicationState::Retained;
         r.code = code.into();
         r.message = message.into();
         r.exit_code = exit_code;
@@ -850,7 +848,7 @@ mod tests {
             let validator = FactValidator::new(&manifest);
             assert!(validator.validate(&binding).is_ok());
             let mut result = AnalysisResult {
-                mode: "full".into(),
+                mode: crate::AnalysisMode::Full,
                 baseline: String::new(),
                 manifest: manifest.id(),
                 profile: "p".into(),
@@ -910,7 +908,7 @@ mod tests {
         let validator = FactValidator::new(&manifest);
         assert!(validator.validate(&fact).is_ok());
         let mut result = AnalysisResult {
-            mode: "full".into(),
+            mode: crate::AnalysisMode::Full,
             baseline: String::new(),
             manifest: manifest.id(),
             profile: "p".into(),
@@ -956,7 +954,7 @@ mod tests {
                 "origin":"javac", "relation":namespace, "attributes":{"schema_version":version}
             })).unwrap();
             let result = AnalysisResult {
-                mode: "full".into(),
+                mode: crate::AnalysisMode::Full,
                 baseline: String::new(),
                 manifest: manifest.id(),
                 profile: "p".into(),
@@ -1008,7 +1006,7 @@ mod tests {
             "origin":"javac"
         });
         let mut publication = AnalysisResult {
-            mode: "full".into(),
+            mode: crate::AnalysisMode::Full,
             baseline: String::new(),
             manifest: manifest.id(),
             profile: "p".into(),

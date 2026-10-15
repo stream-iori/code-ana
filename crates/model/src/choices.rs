@@ -23,9 +23,9 @@ macro_rules! choice {
                     _ => Err(crate::DomainError::new(crate::ErrorCode::$code, format!("{value:?}"))), }
             }
         }
-        // Literal construction is for trusted, compile-time product choices.
-        impl From<&str> for $name {
-            fn from(value: &str) -> Self { value.parse().expect("trusted domain choice") }
+        impl TryFrom<&str> for $name {
+            type Error = crate::DomainError;
+            fn try_from(value: &str) -> Result<Self, Self::Error> { value.parse() }
         }
         impl Deref for $name { type Target = str; fn deref(&self) -> &str { self.as_str() } }
         impl fmt::Display for $name { fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { f.write_str(self.as_str()) } }
@@ -209,3 +209,101 @@ choice!(
 );
 
 choice!(AnalysisMode, InvalidMode, Full = "full", Delta = "delta");
+
+/// Shared producer states are open. Known semantics are typed; future values round-trip unchanged.
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FactStatus {
+    #[default]
+    Unspecified,
+    Resolved,
+    Possible,
+    Unresolved,
+    External,
+    Complete,
+    Partial,
+    Other(String),
+}
+impl FactStatus {
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::Unspecified => "",
+            Self::Resolved => "resolved",
+            Self::Possible => "possible",
+            Self::Unresolved => "unresolved",
+            Self::External => "external",
+            Self::Complete => "complete",
+            Self::Partial => "partial",
+            Self::Other(value) => value,
+        }
+    }
+}
+impl From<String> for FactStatus {
+    fn from(value: String) -> Self {
+        match value.as_str() {
+            "" => Self::Unspecified,
+            "resolved" => Self::Resolved,
+            "possible" => Self::Possible,
+            "unresolved" => Self::Unresolved,
+            "external" => Self::External,
+            "complete" => Self::Complete,
+            "partial" => Self::Partial,
+            _ => Self::Other(value),
+        }
+    }
+}
+impl From<&str> for FactStatus {
+    fn from(value: &str) -> Self {
+        value.to_owned().into()
+    }
+}
+impl std::fmt::Display for FactStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+impl std::ops::Deref for FactStatus {
+    type Target = str;
+    fn deref(&self) -> &str {
+        self.as_str()
+    }
+}
+impl PartialEq<&str> for FactStatus {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+impl Serialize for FactStatus {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(self.as_str())
+    }
+}
+impl<'de> Deserialize<'de> for FactStatus {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(String::deserialize(d)?.into())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn closed_choices_fail_without_panicking_and_producer_states_round_trip() {
+        assert!(Operation::try_from("future-operation").is_err());
+        assert!(Direction::try_from("sideways").is_err());
+        for raw in [
+            "",
+            "resolved",
+            "possible",
+            "unresolved",
+            "external",
+            "complete",
+            "partial",
+            "future-java-state",
+        ] {
+            let encoded = serde_json::to_string(raw).unwrap();
+            let state: FactStatus = serde_json::from_str(&encoded).unwrap();
+            assert_eq!(state.as_str(), raw);
+            assert_eq!(serde_json::to_string(&state).unwrap(), encoded);
+        }
+    }
+}

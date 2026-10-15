@@ -57,7 +57,8 @@ pub(super) fn expand(
                 next.id = format!(
                     "annotation-meta-{}",
                     hash(format!("{}\n{}", direct.id, next_path.join(">")).as_bytes())
-                );
+                )
+                .into();
                 next.attributes.merge_annotation_meta(attributes);
                 next.attributes.annotation = meta.clone().into();
                 next.attributes.values = Field::Null;

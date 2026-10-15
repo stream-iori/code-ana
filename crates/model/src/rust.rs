@@ -72,7 +72,7 @@ pub struct AnalysisConfig {
     pub excluded: std::collections::BTreeSet<(String, String)>,
     pub inputs: Inputs,
     pub files: Vec<FrozenFile>,
-    pub mode: String,
+    pub mode: RustAnalysisMode,
     pub scratch: std::path::PathBuf,
     pub result_bytes: u64,
     pub fact_limit: u64,
@@ -237,3 +237,59 @@ pub struct Dependency {
     pub world: String,
     pub key: String,
 }
+
+impl DependencyKind {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::File => "file",
+            Self::Symbol => "symbol",
+            Self::Lookup => "lookup",
+            Self::Macro => "macro",
+            Self::ImplSet => "impl_set",
+        }
+    }
+}
+
+// Rust producer choices are closed; shared producer payloads remain extensible.
+macro_rules! rust_choice {
+    ($name:ident, $($variant:ident = $text:literal),+ $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        pub enum $name { $(#[serde(rename = $text)] $variant,)+ }
+        impl $name {pub const fn as_str(self)->&'static str {match self {$(Self::$variant=>$text,)+}}}
+        impl std::fmt::Display for $name {fn fmt(&self,f:&mut std::fmt::Formatter<'_>)->std::fmt::Result {f.write_str(self.as_str())}}
+        impl std::str::FromStr for $name {type Err=crate::DomainError;fn from_str(value:&str)->Result<Self,Self::Err> {match value {$($text=>Ok(Self::$variant),)+ _=>Err(crate::DomainError::new(crate::ErrorCode::from("RUST_ANALYSIS_MODE"),format!("{}: {value}",stringify!($name))))}}}
+        impl PartialEq<&str> for $name {fn eq(&self,other:&&str)->bool {self.as_str()==*other}}
+    };
+}
+rust_choice!(
+    DeclarationKind,
+    Function = "function",
+    Struct = "struct",
+    Enum = "enum",
+    Trait = "trait",
+    Union = "union",
+    TypeAlias = "type_alias",
+    Constant = "constant",
+    Static = "static",
+    Module = "module",
+    Field = "field",
+    Variant = "variant",
+    Macro = "macro",
+    Impl = "impl"
+);
+rust_choice!(
+    RustVisibility,
+    Public = "public",
+    Crate = "crate",
+    Private = "private",
+    Restricted = "restricted"
+);
+rust_choice!(
+    RustRelation,
+    Calls = "CALLS",
+    References = "REFERENCES",
+    Implements = "IMPLEMENTS",
+    Contains = "CONTAINS"
+);
+rust_choice!(RustResolution, Exact = "exact", Unresolved = "unresolved");
+rust_choice!(RustAnalysisMode, Semantic = "semantic", Syntax = "syntax");

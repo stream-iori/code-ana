@@ -155,7 +155,7 @@ async fn main() -> Result<()> {
                     .files
                     .iter()
                     .map(|f| Owner {
-                        world: f.world.clone(),
+                        world: f.world.clone().into(),
                         producer: s.context.producer.clone(),
                         kind: "source".into(),
                         id: f.path.clone(),
@@ -164,7 +164,7 @@ async fn main() -> Result<()> {
                 {
                     for f in &summary.files {
                         replacements.insert(Owner {
-                            world: f.world.clone(),
+                            world: f.world.clone().into(),
                             producer: s.context.producer.clone(),
                             kind: "source".into(),
                             id: f.path.clone(),

@@ -33,6 +33,7 @@ async fn main() -> Result<()> {
         project.join(".code-ana/config.toml"),
     )?;
     let engine = Engine::new(&home, None)?;
+    let store = codeana_storage::Store::open(&home)?;
     let mut previous = Vec::new();
     let mut first_revision = String::new();
     for round in 0..3 {
@@ -46,14 +47,14 @@ async fn main() -> Result<()> {
         let id = engine.submit(Request {
             request_id: new_id("smoke").into(),
             project: project.to_string_lossy().into(),
-            operation: "index".into(),
+            operation: codeana_model::Operation::Index,
             full: round != 1,
             deadline_seconds: 150,
             ..Default::default()
         })?;
         let terminal = tokio::time::timeout(Duration::from_secs(160), async {
             loop {
-                if let Some(result) = engine.store.task(&id)?.1 {
+                if let Some(result) = engine.task(&id)?.result {
                     break Ok::<_, anyhow::Error>(result);
                 }
                 tokio::time::sleep(Duration::from_millis(20)).await;
@@ -65,20 +66,20 @@ async fn main() -> Result<()> {
             "ENGINE_INDEX: {}",
             serde_json::to_string(&terminal)?
         );
-        let reader = engine.store.read(&terminal.revision)?;
+        let reader = store.read(&terminal.revision)?;
         let facts = reader
             .select(&FactFilter::default())
             .map_err(anyhow::Error::msg)?;
         let locals: std::collections::BTreeSet<_> = facts
             .iter()
             .filter(|f| f.kind == FactKind::Declaration && f.signature.contains("#local:"))
-            .map(|f| &f.id)
+            .map(|f| f.id.as_str())
             .collect();
         ensure!(locals.len() >= 2, "LOCAL_DECLARATIONS");
         ensure!(
             facts
                 .iter()
-                .any(|f| f.kind == FactKind::Reference && locals.contains(&f.target)),
+                .any(|f| f.kind == FactKind::Reference && locals.contains(f.target.as_str())),
             "LOCAL_NAVIGATION"
         );
         if round == 0 {
@@ -95,10 +96,7 @@ async fn main() -> Result<()> {
         );
         previous = facts;
     }
-    ensure!(
-        engine.store.read(&first_revision).is_ok(),
-        "OLD_REVISION_LOST"
-    );
+    ensure!(store.read(&first_revision).is_ok(), "OLD_REVISION_LOST");
     println!(
         "daemon index engine: supervisor, Fact IR validation, publication and delta/full equality passed; HTTP endpoint and capacity not certified"
     );

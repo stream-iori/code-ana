@@ -181,24 +181,46 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     }
     let mut origins = BTreeMap::new();
     let value: toml::Value = toml::from_str(text)?;
-    fn origins_walk(v: &toml::Value, p: String, m: &mut BTreeMap<String, String>) {
-        if let Some(t) = v.as_table() {
-            for (k, v) in t {
-                origins_walk(
-                    v,
-                    if p.is_empty() {
-                        k.clone()
-                    } else {
-                        format!("{p}.{k}")
-                    },
-                    m,
-                )
-            }
-        } else {
-            m.insert(p, ".code-ana/config.toml".into());
-        }
-    }
+
     origins_walk(&value, String::new(), &mut origins);
+    resolve_common(&mut c, &mut origins)?;
+    validate_index_resources(&c.resources.index)?;
+    resolve_languages(&mut c, request, &mut origins, language_required)?;
+    let java_inputs = discover_java(root, &mut c, language_required)?;
+    let rust_inputs = discover_rust(root, &mut c, language_required, rust_policy.as_ref())?;
+    resolve_modules(&mut c, request, java_inputs.is_some())?;
+    glob(&c.scan.include)?;
+    glob(&c.scan.exclude)?;
+    glob(&c.scan.text_only)?;
+    glob(&c.search.text.include)?;
+    c.build.suggestions.get_or_insert(true);
+    if c.index.mode.is_empty() {
+        c.index.mode = "auto".into();
+    }
+    if c.observability.mode.is_empty() {
+        c.observability.mode = "basic".into();
+    }
+    if c.query.scopes.is_empty() {
+        c.query.scopes.push("ALL".into());
+    }
+    // Sources for defaulted scalar fields are materialized for doctor.
+
+    default_origins(&serde_json::to_value(&c)?, String::new(), &mut origins);
+    let semantic_digest = digest(&(&c.languages, &c.modules));
+    let capture_digest = digest(&(&c.scan, &c.versions.capture));
+    let config_digest = digest(&c);
+    Ok(Effective {
+        config: c,
+        origins,
+        config_digest,
+        input_hash: hash(text.as_bytes()),
+        semantic_digest,
+        capture_digest,
+        java_inputs,
+        rust_inputs,
+    })
+}
+fn resolve_common(c: &mut ProjectConfig, origins: &mut BTreeMap<String, String>) -> Result<()> {
     if c.discovery.mode.is_empty() {
         c.discovery.mode = "explicit".into();
         origins.insert("discovery.mode".into(), "builtin".into());
@@ -231,25 +253,29 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             ),
         codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidObservabilityMode, "")
     );
-    if let Some(memory) = c.resources.index.worker_memory_bytes {
+    Ok(())
+}
+
+fn validate_index_resources(limits: &IndexResources) -> Result<()> {
+    if let Some(memory) = limits.worker_memory_bytes {
         ensure!(
             (16 * 1024 * 1024..=4 * 1024 * 1024 * 1024).contains(&memory),
             "PROJECT_WORKER_MEMORY_LIMIT"
         );
     }
-    if let Some(heap) = c.resources.index.java_compiler_heap_bytes {
+    if let Some(heap) = limits.java_compiler_heap_bytes {
         ensure!(
             (8 * 1024 * 1024..=512 * 1024 * 1024).contains(&heap) && heap % (1024 * 1024) == 0,
             codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidJavaCompilerHeap, "")
         );
     }
-    if let Some(parallelism) = c.resources.index.java_parallelism {
+    if let Some(parallelism) = limits.java_parallelism {
         ensure!(
             (1..=8).contains(&parallelism),
             codeana_model::DomainError::new(codeana_model::ErrorCode::JavaParallelismRange, "")
         );
     }
-    if let Some(limit) = c.resources.index.java_model_record_limit {
+    if let Some(limit) = limits.java_model_record_limit {
         ensure!(
             (1..=5000000).contains(&limit),
             codeana_model::DomainError::new(
@@ -258,7 +284,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             )
         );
     }
-    if let Some(bytes) = c.resources.index.java_model_decode_bytes {
+    if let Some(bytes) = limits.java_model_decode_bytes {
         ensure!(
             (64 * 1024..=2 * 1024 * 1024 * 1024).contains(&bytes),
             codeana_model::DomainError::new(
@@ -267,7 +293,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             )
         );
     }
-    if let Some(bytes) = c.resources.index.java_model_archive_bytes {
+    if let Some(bytes) = limits.java_model_archive_bytes {
         ensure!(
             (64 * 1024..=1024 * 1024 * 1024).contains(&bytes),
             codeana_model::DomainError::new(
@@ -276,36 +302,45 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             )
         );
     }
-    if let Some(bytes) = c.resources.index.java_scratch_bytes {
+    if let Some(bytes) = limits.java_scratch_bytes {
         ensure!(
             (64 * 1024..=codeana_model::MAX_JAVA_SCRATCH_BYTES).contains(&bytes),
             codeana_model::DomainError::new(codeana_model::ErrorCode::JavaScratchBytesRange, "")
         );
     }
-    if let Some(bytes) = c.resources.index.java_result_bytes {
+    if let Some(bytes) = limits.java_result_bytes {
         ensure!(
             (64 * 1024..=codeana_model::MAX_JAVA_RESULT_BYTES).contains(&bytes),
             codeana_model::DomainError::new(codeana_model::ErrorCode::JavaResultBytesRange, "")
         );
     }
-    if let Some(count) = c.resources.index.java_fact_limit {
+    if let Some(count) = limits.java_fact_limit {
         ensure!(
             (1..=5000000).contains(&count),
             codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFactLimitRange, "")
         );
     }
-    if let Some(heap) = c.resources.index.java_native_heap_bytes {
+    if let Some(heap) = limits.java_native_heap_bytes {
         ensure!(
             (8 * 1024 * 1024..=2 * 1024 * 1024 * 1024).contains(&heap) && heap % (1024 * 1024) == 0,
             codeana_model::DomainError::new(codeana_model::ErrorCode::JavaNativeHeapRange, "")
         );
     }
-    if let Some(seconds) = c.resources.index.java_compiler_timeout_seconds {
+    if let Some(seconds) = limits.java_compiler_timeout_seconds {
         ensure!(
             (1..=3600).contains(&seconds),
             codeana_model::DomainError::new(codeana_model::ErrorCode::CompilerTimeoutBudget, "")
         );
     }
+    Ok(())
+}
+
+fn resolve_languages(
+    c: &mut ProjectConfig,
+    request: &Request,
+    origins: &mut BTreeMap<String, String>,
+    language_required: bool,
+) -> Result<()> {
     if let Some(v) = request.suggestions {
         c.build.suggestions = Some(v);
         origins.insert("build.suggestions".into(), "CLI".into());
@@ -404,7 +439,15 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             }
         }
     }
-    let java_inputs = if language_required {
+    Ok(())
+}
+
+fn discover_java(
+    root: &Path,
+    c: &mut ProjectConfig,
+    language_required: bool,
+) -> Result<Option<JavaInputs>> {
+    Ok(if language_required {
         if let Some(java) = &c.languages.java {
             if java.discovery.build_system == "maven" || java.discovery.inputs_manifest.is_some() {
                 let suggestions = c.build.suggestions.unwrap_or(true);
@@ -456,31 +499,44 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         }
     } else {
         None
-    };
-    let rust_inputs = if language_required
-        && c.languages
-            .rust
-            .as_ref()
-            .is_some_and(|r| r.enabled == Some(true))
-    {
-        let path = c
-            .languages
-            .rust
-            .as_ref()
-            .and_then(|r| r.discovery.inputs_manifest.as_deref())
-            .unwrap_or(".code-ana/rust-inputs.json")
-            .to_owned();
-        let inputs = rust_inputs::read(root, &path)?;
-        ensure!(
-            Some(&inputs.policy) == rust_policy.as_ref(),
-            "RUST_INPUTS_STALE: selection policy changed; re-export Rust inputs"
-        );
-        c.languages.rust.as_mut().unwrap().discovery.inputs_manifest = Some(path);
-        rust_inputs::discover(&mut c, &inputs);
-        Some(inputs)
-    } else {
-        None
-    };
+    })
+}
+
+fn discover_rust(
+    root: &Path,
+    c: &mut ProjectConfig,
+    language_required: bool,
+    rust_policy: Option<&String>,
+) -> Result<Option<codeana_model::rust::Inputs>> {
+    Ok(
+        if language_required
+            && c.languages
+                .rust
+                .as_ref()
+                .is_some_and(|r| r.enabled == Some(true))
+        {
+            let path = c
+                .languages
+                .rust
+                .as_ref()
+                .and_then(|r| r.discovery.inputs_manifest.as_deref())
+                .unwrap_or(".code-ana/rust-inputs.json")
+                .to_owned();
+            let inputs = rust_inputs::read(root, &path)?;
+            ensure!(
+                Some(&inputs.policy) == rust_policy,
+                "RUST_INPUTS_STALE: selection policy changed; re-export Rust inputs"
+            );
+            c.languages.rust.as_mut().unwrap().discovery.inputs_manifest = Some(path);
+            rust_inputs::discover(c, &inputs);
+            Some(inputs)
+        } else {
+            None
+        },
+    )
+}
+
+fn resolve_modules(c: &mut ProjectConfig, request: &Request, has_java_inputs: bool) -> Result<()> {
     let mut ids = BTreeSet::new();
     let mut entries = BTreeSet::new();
     for m in &mut c.modules {
@@ -609,7 +665,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
             );
         }
         for s in &m.source_roots {
-            if m.language == "java" && java_inputs.is_some() {
+            if m.language == "java" && has_java_inputs {
                 java_inputs::root_path(&m.root, &s.path)?;
             } else {
                 ensure!(
@@ -649,57 +705,49 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         glob(&m.scan.include)?;
         glob(&m.scan.exclude)?;
     }
-    glob(&c.scan.include)?;
-    glob(&c.scan.exclude)?;
-    glob(&c.scan.text_only)?;
-    glob(&c.search.text.include)?;
-    c.build.suggestions.get_or_insert(true);
-    if c.index.mode.is_empty() {
-        c.index.mode = "auto".into();
-    }
-    if c.observability.mode.is_empty() {
-        c.observability.mode = "basic".into();
-    }
-    if c.query.scopes.is_empty() {
-        c.query.scopes.push("ALL".into());
-    }
-    // Sources for defaulted scalar fields are materialized for doctor.
-    fn default_origins(
-        value: &serde_json::Value,
-        path: String,
-        origins: &mut BTreeMap<String, String>,
-    ) {
-        if let Some(object) = value.as_object() {
-            for (k, v) in object {
-                default_origins(
-                    v,
-                    if path.is_empty() {
-                        k.clone()
-                    } else {
-                        format!("{path}.{k}")
-                    },
-                    origins,
-                );
-            }
-        } else if !value.is_null() {
-            origins.entry(path).or_insert("builtin/inherited".into());
-        }
-    }
-    default_origins(&serde_json::to_value(&c)?, String::new(), &mut origins);
-    let semantic_digest = digest(&(&c.languages, &c.modules));
-    let capture_digest = digest(&(&c.scan, &c.versions.capture));
-    let config_digest = digest(&c);
-    Ok(Effective {
-        config: c,
-        origins,
-        config_digest,
-        input_hash: hash(text.as_bytes()),
-        semantic_digest,
-        capture_digest,
-        java_inputs,
-        rust_inputs,
-    })
+    Ok(())
 }
+
+fn origins_walk(v: &toml::Value, p: String, m: &mut BTreeMap<String, String>) {
+    if let Some(t) = v.as_table() {
+        for (k, v) in t {
+            origins_walk(
+                v,
+                if p.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{p}.{k}")
+                },
+                m,
+            )
+        }
+    } else {
+        m.insert(p, ".code-ana/config.toml".into());
+    }
+}
+
+fn default_origins(
+    value: &serde_json::Value,
+    path: String,
+    origins: &mut BTreeMap<String, String>,
+) {
+    if let Some(object) = value.as_object() {
+        for (k, v) in object {
+            default_origins(
+                v,
+                if path.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{path}.{k}")
+                },
+                origins,
+            );
+        }
+    } else if !value.is_null() {
+        origins.entry(path).or_insert("builtin/inherited".into());
+    }
+}
+
 fn git(root: &Path, args: &[&str]) -> Option<String> {
     use std::io::Read;
     let mut child = std::process::Command::new("git")
@@ -850,36 +898,51 @@ fn add_captured(
     blobs.insert(h, CapturedBlob::bytes(spool, &bytes)?);
     Ok(())
 }
-pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
-    let started = std::time::Instant::now();
-    let deadline = std::time::Duration::from_secs(if request.deadline_seconds == 0 {
-        120
-    } else {
-        request.deadline_seconds.min(MAX_TASK_DEADLINE_SECONDS)
-    });
-    let root = root.canonicalize()?;
-    let text_search = request.operation == "search-text";
-    let files_only = text_search || (request.operation == "snapshot" && request.name != "analysis");
-    let effective = if files_only {
-        resolve_files(&root, request)?
-    } else {
-        resolve(&root, request)?
-    };
-    let c = &effective.config;
-    let includes = glob(&c.scan.include)?;
-    let excludes = glob(&c.scan.exclude)?;
-    let text_only = glob(&c.scan.text_only)?;
-    let text_include = glob(&c.search.text.include)?;
-    let mut manifest = Manifest::default();
-    let mut blobs = BTreeMap::new();
-    let spool = std::sync::Arc::new(
-        tempfile::Builder::new()
-            .prefix("codeana-capture-")
-            .tempdir()?,
-    );
-    let mut total = 0;
+
+struct CaptureSelection<'a> {
+    root: &'a Path,
+    effective: &'a Effective,
+    includes: globset::GlobSet,
+    excludes: globset::GlobSet,
+    text_only: globset::GlobSet,
+    text_include: globset::GlobSet,
+    text_search: bool,
+    files_only: bool,
+    started: std::time::Instant,
+    deadline: std::time::Duration,
+}
+struct CaptureAccumulator {
+    manifest: Manifest,
+    blobs: BTreeMap<String, CapturedBlob>,
+    total: usize,
+    scanned: usize,
+    spool: std::sync::Arc<tempfile::TempDir>,
+}
+fn capture_workspace(
+    policy: &CaptureSelection<'_>,
+    accumulator: &mut CaptureAccumulator,
+) -> Result<()> {
+    let root = policy.root;
+    let effective = policy.effective;
+    let c = &policy.effective.config;
+    let includes = &policy.includes;
+    let excludes = &policy.excludes;
+    let text_only = &policy.text_only;
+    let text_include = &policy.text_include;
+    let text_search = policy.text_search;
+    let files_only = policy.files_only;
+    let started = policy.started;
+    let deadline = policy.deadline;
+    let CaptureAccumulator {
+        manifest,
+        blobs,
+        total,
+        scanned,
+        spool,
+        ..
+    } = accumulator;
     let ignored_output = git(
-        &root,
+        root,
         &[
             "ls-files",
             "--others",
@@ -888,7 +951,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             "-z",
         ],
     );
-    let in_git = git(&root, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true");
+    let in_git = git(root, &["rev-parse", "--is-inside-work-tree"]).as_deref() == Some("true");
     ensure!(
         !in_git || ignored_output.is_some(),
         codeana_model::DomainError::new(codeana_model::ErrorCode::GitIgnoredEnumerationFailed, "")
@@ -899,8 +962,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
         .map(str::to_owned)
         .collect();
     let include_ignored = glob(&c.versions.capture.include_ignored)?;
-    let mut scanned = 0usize;
-    for entry in walkdir::WalkDir::new(&root)
+    for entry in walkdir::WalkDir::new(root)
         .follow_links(false)
         .into_iter()
         .filter_entry(|e| {
@@ -911,9 +973,9 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                 )
         })
     {
-        scanned += 1;
+        *scanned += 1;
         ensure!(
-            scanned <= 100_000,
+            *scanned <= 100_000,
             codeana_model::DomainError::new(codeana_model::ErrorCode::ScanEntryBudget, "")
         );
         ensure!(
@@ -926,7 +988,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
         }
         let p = entry
             .path()
-            .strip_prefix(&root)?
+            .strip_prefix(root)?
             .to_str()
             .context(codeana_model::DomainError::new(
                 codeana_model::ErrorCode::NonUtf8Path,
@@ -974,9 +1036,9 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureFileBudget, "")
         );
         let bytes = bounded_read(entry.path(), MAX_FRAME)?;
-        total += bytes.len();
+        *total += bytes.len();
         ensure!(
-            bytes.len() <= MAX_FRAME && total <= MAX_CAPTURE_BYTES,
+            bytes.len() <= MAX_FRAME && *total <= MAX_CAPTURE_BYTES,
             codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureBudget, "")
         );
         ensure!(
@@ -999,8 +1061,31 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             scope,
             language,
         });
-        blobs.insert(h, CapturedBlob::bytes(&spool, &bytes)?);
+        blobs.insert(h, CapturedBlob::bytes(spool, &bytes)?);
     }
+    Ok(())
+}
+fn capture_java_metadata(
+    policy: &CaptureSelection<'_>,
+    accumulator: &mut CaptureAccumulator,
+) -> Result<()> {
+    let root = policy.root;
+    let effective = policy.effective;
+    let c = &policy.effective.config;
+    let includes = &policy.includes;
+    let excludes = &policy.excludes;
+    let text_only = &policy.text_only;
+    let files_only = policy.files_only;
+    let started = policy.started;
+    let deadline = policy.deadline;
+    let CaptureAccumulator {
+        manifest,
+        blobs,
+        total,
+        scanned,
+        spool,
+        ..
+    } = accumulator;
     if !files_only && let Some(inputs) = &effective.java_inputs {
         let metadata_path = c
             .languages
@@ -1021,10 +1106,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             )
         );
         add_captured(
-            &mut manifest,
-            &mut blobs,
-            &mut total,
-            &spool,
+            manifest,
+            blobs,
+            total,
+            spool,
             metadata_path.into(),
             metadata,
             (
@@ -1045,10 +1130,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                 codeana_model::DomainError::new(codeana_model::ErrorCode::JavaMetadataStale, "")
             );
             add_captured(
-                &mut manifest,
-                &mut blobs,
-                &mut total,
-                &spool,
+                manifest,
+                blobs,
+                total,
+                spool,
                 path.clone(),
                 bytes,
                 (
@@ -1121,10 +1206,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                         )
                     );
                     add_captured(
-                        &mut manifest,
-                        &mut blobs,
-                        &mut total,
-                        &spool,
+                        manifest,
+                        blobs,
+                        total,
+                        spool,
                         proof.clone(),
                         bytes,
                         (
@@ -1147,7 +1232,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                     continue;
                 }
                 ensure!(
-                    dir.canonicalize()?.starts_with(&root),
+                    dir.canonicalize()?.starts_with(root),
                     codeana_model::DomainError::new(
                         codeana_model::ErrorCode::JavaInputOutsideProject,
                         ""
@@ -1172,9 +1257,9 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                             ""
                         )
                     );
-                    scanned += 1;
+                    *scanned += 1;
                     ensure!(
-                        scanned <= 100000,
+                        *scanned <= 100000,
                         codeana_model::DomainError::new(
                             codeana_model::ErrorCode::ScanEntryBudget,
                             ""
@@ -1182,7 +1267,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                     );
                     let path = entry
                         .path()
-                        .strip_prefix(&root)?
+                        .strip_prefix(root)?
                         .to_str()
                         .context(codeana_model::DomainError::new(
                             codeana_model::ErrorCode::NonUtf8Path,
@@ -1219,10 +1304,10 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                         (m.id.clone(), r.scope.clone(), String::new(), m.id.clone())
                     };
                     add_captured(
-                        &mut manifest,
-                        &mut blobs,
-                        &mut total,
-                        &spool,
+                        manifest,
+                        blobs,
+                        total,
+                        spool,
                         path,
                         bounded_read(entry.path(), MAX_FRAME)?,
                         ownership,
@@ -1248,7 +1333,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                 if manifest.files.iter().any(|s| s.path == captured_path) {
                     continue;
                 }
-                let (blob, h, size) = CapturedBlob::file(&spool, &path, MAX_ARTIFACT_BYTES)
+                let (blob, h, size) = CapturedBlob::file(spool, &path, MAX_ARTIFACT_BYTES)
                     .context("BUILD_INPUT_REQUIRED: dependency artifact")?;
                 ensure!(
                     h == artifact.sha256,
@@ -1257,9 +1342,9 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                         ""
                     )
                 );
-                total += size;
+                *total += size;
                 ensure!(
-                    total <= MAX_CAPTURE_BYTES && manifest.files.len() < 10000,
+                    *total <= MAX_CAPTURE_BYTES && manifest.files.len() < 10000,
                     codeana_model::DomainError::new(
                         codeana_model::ErrorCode::JavaCaptureBudget,
                         ""
@@ -1279,6 +1364,67 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             }
         }
     }
+    Ok(())
+}
+
+pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
+    let started = std::time::Instant::now();
+    let deadline = std::time::Duration::from_secs(if request.deadline_seconds == 0 {
+        120
+    } else {
+        request.deadline_seconds.min(MAX_TASK_DEADLINE_SECONDS)
+    });
+    let root = root.canonicalize()?;
+    let text_search = request.operation == codeana_model::Operation::SearchText;
+    let files_only = text_search
+        || (request.operation == codeana_model::Operation::Snapshot && request.name != "analysis");
+    let effective = if files_only {
+        resolve_files(&root, request)?
+    } else {
+        resolve(&root, request)?
+    };
+    let c = &effective.config;
+    let includes = glob(&c.scan.include)?;
+    let excludes = glob(&c.scan.exclude)?;
+    let text_only = glob(&c.scan.text_only)?;
+    let text_include = glob(&c.search.text.include)?;
+    let manifest = Manifest::default();
+    let blobs = BTreeMap::new();
+    let spool = std::sync::Arc::new(
+        tempfile::Builder::new()
+            .prefix("codeana-capture-")
+            .tempdir()?,
+    );
+    let total = 0;
+    let policy = CaptureSelection {
+        root: &root,
+        effective: &effective,
+        includes,
+        excludes,
+        text_only,
+        text_include,
+        text_search,
+        files_only,
+        started,
+        deadline,
+    };
+    let mut accumulator = CaptureAccumulator {
+        manifest,
+        blobs,
+        total,
+        scanned: 0,
+        spool,
+    };
+    capture_workspace(&policy, &mut accumulator)?;
+    capture_java_metadata(&policy, &mut accumulator)?;
+    let CaptureAccumulator {
+        mut manifest,
+        mut blobs,
+        mut total,
+        spool,
+        ..
+    } = accumulator;
+    let excludes = &policy.excludes;
     if !files_only
         && !text_search
         && c.modules
@@ -1291,7 +1437,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             &mut blobs,
             &mut total,
             &spool,
-            &excludes,
+            excludes,
             (started, deadline),
         )?;
     }
@@ -1453,7 +1599,7 @@ mod tests {
         let semantic = capture(
             root,
             &Request {
-                operation: "index".into(),
+                operation: codeana_model::Operation::Index,
                 ..Default::default()
             },
         )
@@ -1475,7 +1621,7 @@ mod tests {
         let files = capture(
             root,
             &Request {
-                operation: "snapshot".into(),
+                operation: codeana_model::Operation::Snapshot,
                 name: "files".into(),
                 ..Default::default()
             },
@@ -1513,7 +1659,7 @@ mod tests {
         let captured = capture(
             root,
             &Request {
-                operation: "index".into(),
+                operation: codeana_model::Operation::Index,
                 ..Default::default()
             },
         )

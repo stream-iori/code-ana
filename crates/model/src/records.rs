@@ -61,7 +61,7 @@ impl Record {
                 endpoint.to_string(),
             )
         };
-        let id = match (self, endpoint) {
+        let id: &str = match (self, endpoint) {
             (Self::Fact(v), Endpoint::Entity) => &v.fact.id,
             (Self::Fact(v), Endpoint::Caller | Endpoint::Parent) => &v.fact.parent,
             (Self::Fact(v), Endpoint::Callee | Endpoint::Target) => &v.fact.target,
@@ -81,6 +81,74 @@ impl Record {
             return Err(missing());
         }
         Ok(vec![id])
+    }
+    /// Stable query order uses semantic identity, independent of JSON presentation.
+    /// Equal keys retain producer order and multiplicity.
+    pub fn query_cmp(&self, other: &Self) -> std::cmp::Ordering {
+        fn family(record: &Record) -> u8 {
+            match record {
+                Record::Fact(_) => 0,
+                Record::Call(_) => 1,
+                Record::Trace(_) => 2,
+                Record::Dispatch(_) => 3,
+                Record::Source(_) => 4,
+                Record::Text(_) => 5,
+                Record::Project(_) => 6,
+                Record::Group(_) => 7,
+                Record::Display(_) => 8,
+            }
+        }
+        let order = family(self).cmp(&family(other));
+        if order != std::cmp::Ordering::Equal {
+            return order;
+        }
+        match (self, other) {
+            (Self::Fact(a), Self::Fact(b)) => {
+                (&a.fact.owner.world, &a.fact.id).cmp(&(&b.fact.owner.world, &b.fact.id))
+            }
+            (Self::Call(a), Self::Call(b)) => (&a.from, &a.to, &a.kind, a.depth, &a.sites)
+                .cmp(&(&b.from, &b.to, &b.kind, b.depth, &b.sites)),
+            (Self::Trace(a), Self::Trace(b)) => (&a.from, &a.to, &a.nodes)
+                .cmp(&(&b.from, &b.to, &b.nodes))
+                .then_with(|| {
+                    for (a, b) in a.hops.iter().zip(&b.hops) {
+                        let order = (&a.from, &a.to, &a.kind, a.depth, &a.sites)
+                            .cmp(&(&b.from, &b.to, &b.kind, b.depth, &b.sites));
+                        if order != std::cmp::Ordering::Equal {
+                            return order;
+                        }
+                    }
+                    a.hops.len().cmp(&b.hops.len())
+                }),
+            (Self::Dispatch(a), Self::Dispatch(b)) => (
+                &a.world,
+                &a.call_site,
+                &a.target,
+                &a.binding,
+                &a.candidate,
+                &a.algorithm,
+            )
+                .cmp(&(
+                    &b.world,
+                    &b.call_site,
+                    &b.target,
+                    &b.binding,
+                    &b.candidate,
+                    &b.algorithm,
+                )),
+            (Self::Source(a), Self::Source(b)) => {
+                (&a.path, a.span.start, a.span.end).cmp(&(&b.path, b.span.start, b.span.end))
+            }
+            (Self::Text(a), Self::Text(b)) => (&a.path, a.line).cmp(&(&b.path, b.line)),
+            (Self::Group(a), Self::Group(b)) => (
+                &a.module,
+                &a.package,
+                &a.target_package,
+                &a.relation,
+            )
+                .cmp(&(&b.module, &b.package, &b.target_package, &b.relation)),
+            _ => std::cmp::Ordering::Equal,
+        }
     }
     pub fn source_key(&self) -> Option<(&str, u64)> {
         match self {
@@ -138,7 +206,7 @@ pub struct DispatchCandidate {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub binding: Option<String>,
+    pub binding: Option<crate::FactStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub binding_origin: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -237,6 +305,43 @@ impl<'de> Deserialize<'de> for Record {
 mod tests {
     use super::*;
     #[test]
+    fn query_order_uses_identity_and_keeps_equal_records() {
+        let fact = |id: &str, name: &str| -> Record {
+            serde_json::from_value::<Fact>(serde_json::json!({"id":id,"kind":"declaration","owner":{"world":"w","producer":"p","kind":"source","id":"a"},"name":name})).unwrap().into()
+        };
+        let mut records = [fact("b", "A"), fact("a", "Z"), fact("a", "A")];
+        records.sort_by(Record::query_cmp);
+        let names = records
+            .iter()
+            .map(|record| match record {
+                Record::Fact(value) => value.fact.name.as_str(),
+                _ => unreachable!(),
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(names, vec!["Z", "A", "A"]);
+        let mut calls = [
+            Record::Call(CallRelation {
+                from: "b".into(),
+                to: "a".into(),
+                kind: "calls".into(),
+                sites: vec![],
+                depth: None,
+            }),
+            Record::Call(CallRelation {
+                from: "a".into(),
+                to: "b".into(),
+                kind: "calls".into(),
+                sites: vec![],
+                depth: None,
+            }),
+        ];
+        calls.sort_by(Record::query_cmp);
+        assert_eq!(
+            calls[0].endpoint(crate::Endpoint::Caller).unwrap(),
+            vec!["a"]
+        );
+    }
+    #[test]
     fn endpoints_are_typed_and_display_records_cannot_enter_a_pipeline() {
         let record = Record::Call(CallRelation {
             from: "a".into(),
@@ -258,5 +363,23 @@ mod tests {
         let historical: Record = serde_json::from_value(record.wire().unwrap()).unwrap();
         assert_eq!(historical.wire().unwrap(), record.wire().unwrap());
         assert!(historical.endpoint(crate::Endpoint::Target).is_err());
+    }
+}
+
+/// Persisted page metadata only; old pages have no policy and retain frozen order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryOrderPolicy {
+    BusinessV1,
+    PublicIdV1,
+    SourceLinesV1,
+}
+impl QueryOrderPolicy {
+    pub fn for_operation(operation: crate::Operation) -> Self {
+        match operation {
+            crate::Operation::SearchCode => Self::PublicIdV1,
+            crate::Operation::SearchText => Self::SourceLinesV1,
+            _ => Self::BusinessV1,
+        }
     }
 }

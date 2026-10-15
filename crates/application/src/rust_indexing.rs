@@ -13,6 +13,34 @@ struct InputSummary {
     source_instance_bytes: u64,
     selection: codeana_model::rust::SelectionSummary,
 }
+
+struct RustInput {
+    scratch: tempfile::TempDir,
+    config: AnalysisConfig,
+    descriptor: RustConfig,
+    manifest: Manifest,
+    memory: u64,
+}
+struct RustWorkers {
+    rust: worker::Worker,
+    java: Option<worker::Worker>,
+    java_capture: Option<Capture>,
+    prepared: Option<java::PreparedJava>,
+}
+struct RustBaseline {
+    expected: RevisionId,
+    profile: String,
+    full: bool,
+    old: Option<BaselineInput>,
+    unchanged: bool,
+}
+struct RustAttempt {
+    // Fields drop in declaration order: stop workers before deleting their inputs.
+    workers: RustWorkers,
+    input: RustInput,
+    baseline: RustBaseline,
+}
+
 impl Engine {
     pub(super) async fn index_rust(
         &self,
@@ -24,16 +52,98 @@ impl Engine {
         let started = Instant::now();
         ensure!(self.mock.is_none(), "RUST_REAL_WORKER_REQUIRED");
         let expected = self
-            .publisher
-            .head(&IndexTarget::from(capture.target.clone()))?
-            .to_string();
+            .index
+            .head(&IndexTarget::from(capture.target.clone()))?;
         ensure!(
             req.expected_revision.is_empty() || expected == req.expected_revision.as_str(),
             DomainError::new(ErrorCode::HeadConflict, "")
         );
+        let input = self.prepare_rust_inputs(id, &capture).await?;
+        let workers = self.start_rust_workers(&input, &capture, cancel).await?;
+        let baseline = self
+            .resolve_rust_baseline(id, req, &capture, &input, &workers, expected)
+            .await?;
+        let mut attempt = RustAttempt {
+            input,
+            workers,
+            baseline,
+        };
+        let analyzing = Instant::now();
+        let (result_mode, candidate) = self
+            .analyze_rust_index(id, &capture, &mut attempt, cancel)
+            .await?;
+        let analyze_ms = analyzing.elapsed().as_millis() as u64;
+        self.tasks.event(
+            &TaskId::from(id),
+            &Event::Progress(format!(
+                "rust_worker_memory {}",
+                serde_json::to_string(&attempt.workers.rust.memory_usage())?
+            )),
+        )?;
+        let summary = self.index.summary(&candidate).clone();
+        let evidence = summary.evidence.clone();
+        if req.strict && !evidence.semantic {
+            let mut t = TaskResult::success(Output {
+                producer: "rust-core".into(),
+                evidence,
+                ..Default::default()
+            });
+            t.gate = codeana_model::GateState::Rejected;
+            t.publication = codeana_model::PublicationState::Retained;
+            t.exit_code = 3;
+            return Ok(t);
+        }
+        self.tasks
+            .event(&TaskId::from(id), &Event::Progress("rust_publish".into()))?;
+        let publishing = Instant::now();
+        let blobs = std::mem::take(&mut capture.blobs);
+        let revision = self
+            .index
+            .publish(candidate, TaskId::from(id), blobs, cancel.clone())
+            .await?;
+        let mut ack = if attempt.baseline.unchanged {
+            None
+        } else {
+            attempt
+                .workers
+                .rust
+                .ack(&revision.id)
+                .await
+                .err()
+                .map(|e| e.to_string())
+        };
+        if let Some(worker) = &mut attempt.workers.java
+            && let Err(e) = worker.ack(&revision.id).await
+        {
+            ack = Some(e.to_string());
+        }
+        if let Ok(memory) = serde_json::to_string(&attempt.workers.rust.memory_usage()) {
+            let _ = self.tasks.event(
+                &TaskId::from(id),
+                &Event::Progress(format!("rust_worker_memory {memory}")),
+            );
+        }
+        self.finish_index(
+            id,
+            &capture,
+            PublishedIndex {
+                revision,
+                result_mode,
+                summary,
+                evidence,
+                ack,
+                worker_context: attempt.workers.rust.context.clone(),
+                analyze_ms,
+                publish_ms: publishing.elapsed().as_millis() as u64,
+                index_elapsed_ms: started.elapsed().as_millis() as u64,
+            },
+        )
+        .await
+    }
+    async fn prepare_rust_inputs(&self, id: &str, capture: &Capture) -> Result<RustInput> {
         let scratch = tempfile::Builder::new()
             .prefix("rust-index-")
-            .tempdir_in(&self.store.home)?;
+            .tempdir_in(self.index.home())?;
         let inputs = capture
             .effective
             .rust_inputs
@@ -89,7 +199,7 @@ impl Engine {
                 .as_ref()
                 .unwrap()
                 .mode
-                .clone(),
+                .parse()?,
             scratch: scratch.path().into(),
             result_bytes,
             fact_limit,
@@ -156,7 +266,7 @@ impl Engine {
         } else {
             memory
         };
-        let rust_manifest = Manifest {
+        let manifest = Manifest {
             files: capture
                 .manifest
                 .files
@@ -165,12 +275,29 @@ impl Engine {
                 .cloned()
                 .collect(),
         };
-        let mut rust_worker = worker::Worker::start_language(
+        Ok(RustInput {
+            scratch,
+            config,
+            descriptor,
+            manifest,
+            memory,
+        })
+    }
+    async fn start_rust_workers(
+        &self,
+        input: &RustInput,
+        capture: &Capture,
+        cancel: &CancellationToken,
+    ) -> Result<RustWorkers> {
+        let descriptor = &input.descriptor;
+        let rust_manifest = &input.manifest;
+        let memory = input.memory;
+        let rust_worker = worker::Worker::start_language(
             None,
             None,
-            Some(&descriptor),
+            Some(descriptor),
             &capture.root,
-            &rust_manifest,
+            rust_manifest,
             cancel,
             memory,
         )
@@ -201,12 +328,12 @@ impl Engine {
         };
         let prepared = if let Some(c) = java_capture.clone() {
             let user = self.user.clone();
-            let home = self.store.home.clone();
+            let home = self.index.home().to_path_buf();
             Some(tokio::task::spawn_blocking(move || java::prepare(&c, &user, &home)).await??)
         } else {
             None
         };
-        let mut java_worker = if let Some(c) = &java_capture {
+        let java_worker = if let Some(c) = &java_capture {
             Some(
                 worker::Worker::start(
                     None,
@@ -221,6 +348,26 @@ impl Engine {
         } else {
             None
         };
+        Ok(RustWorkers {
+            rust: rust_worker,
+            java: java_worker,
+            java_capture,
+            prepared,
+        })
+    }
+    async fn resolve_rust_baseline(
+        &self,
+        id: &str,
+        req: &IndexCommand,
+        capture: &Capture,
+        input: &RustInput,
+        workers: &RustWorkers,
+        expected: RevisionId,
+    ) -> Result<RustBaseline> {
+        let config = &input.config;
+        let rust_worker = &workers.rust;
+        let java_worker = &workers.java;
+        let scratch = &input.scratch;
         // Unpublished dependency bytes can alter bindings without a public source owner.
         // Rebuild on their change until external interface summaries are available.
         let dependency_inputs = config
@@ -250,7 +397,7 @@ impl Engine {
         let mut old = None;
         let mut unchanged = false;
         if !full {
-            let store = self.store.clone();
+            let store = self.index.clone();
             let baseline_id = expected.clone();
             let desired_profile = profile.clone();
             let desired_manifest = capture.manifest.id();
@@ -293,15 +440,29 @@ impl Engine {
                 .into(),
             ),
         )?;
-        let analyzing = Instant::now();
+        Ok(RustBaseline {
+            expected,
+            profile,
+            full,
+            old,
+            unchanged,
+        })
+    }
+    async fn analyze_rust_index(
+        &self,
+        id: &str,
+        capture: &Capture,
+        attempt: &mut RustAttempt,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
         let revision = Revision {
             id: String::new(),
             target: capture.target.clone(),
             project: capture.project.clone(),
             checkout: capture.checkout.clone(),
             manifest: capture.manifest.clone(),
-            profile: profile.clone(),
-            producer: if java_worker.is_some() {
+            profile: attempt.baseline.profile.clone(),
+            producer: if attempt.workers.java.is_some() {
                 "codeana-java-rust"
             } else {
                 "rust-core"
@@ -309,209 +470,167 @@ impl Engine {
             .into(),
             created: 0,
         };
-        let (result_mode, candidate) = if unchanged {
-            rust_worker.retire_unused().await?;
-            self.tasks.event(
-                &TaskId::from(id),
-                &Event::Progress("rust_analyze_unchanged".into()),
-            )?;
-            let header = AnalysisHeader {
-                mode: "delta".into(),
-                baseline: expected.clone(),
-                manifest: capture.manifest.id(),
-                profile: profile.clone(),
-                producer: "rust-core".into(),
-                replacements: vec![],
-            };
-            let store = self.store.clone();
-            let baseline = expected.clone();
-            let cancellation = cancel.clone();
-            let candidate = tokio::task::spawn_blocking(move || {
-                store.stage_graph_records(
-                    revision,
-                    &header,
-                    std::iter::empty(),
-                    &baseline,
-                    || {
-                        ensure!(
-                            !cancellation.is_cancelled(),
-                            DomainError::new(ErrorCode::Cancelled, "")
-                        );
-                        Ok(())
-                    },
-                    |_| Ok(()),
-                )
-            })
-            .await??;
-            (AnalysisMode::Delta, candidate)
-        } else if java_worker.is_none() {
-            let mut staging = None;
-            let mut stream_metrics = None;
-            let header = rust_worker
-                .analyze_into(
-                    &rust_manifest,
-                    &profile,
-                    &expected,
-                    old.as_ref(),
-                    full,
-                    cancel,
-                    |header| {
-                        let (sender, records) = codeana_contracts::stream::GraphStream::channel();
-                        stream_metrics = Some(sender.metrics.clone());
-                        let store = self.store.clone();
-                        let revision = revision.clone();
-                        let header = header.clone();
-                        let baseline = expected.clone();
-                        let cancellation = cancel.clone();
-                        staging = Some(tokio::task::spawn_blocking(move || {
-                            store.stage_graph_records(
-                                revision,
-                                &header,
-                                records,
-                                &baseline,
-                                || {
-                                    ensure!(
-                                        !cancellation.is_cancelled(),
-                                        DomainError::new(ErrorCode::Cancelled, "")
-                                    );
-                                    Ok(())
-                                },
-                                |_| Ok(()),
-                            )
-                        }));
-                        Ok(sender)
-                    },
-                )
-                .await;
-            let staged = match staging {
-                Some(task) => Some(task.await?),
-                None => None,
-            };
-            let header = header?;
-            if let Some(metrics) = stream_metrics {
-                self.tasks.event(
-                    &TaskId::from(id),
-                    &Event::Progress(format!(
-                        "rust_stream {}",
-                        serde_json::to_string(&metrics.summary())?
-                    )),
-                )?;
-            }
-            (
-                header.mode,
-                staged.context("CANDIDATE_STREAM_NOT_STARTED")??,
-            )
+        if attempt.baseline.unchanged {
+            self.stage_unchanged_rust(id, capture, attempt, revision, cancel)
+                .await
+        } else if attempt.workers.java.is_none() {
+            self.stage_rust_stream(id, attempt, revision, cancel).await
         } else {
-            let result = rust_worker
-                .analyze(
-                    &rust_manifest,
-                    &profile,
-                    &expected,
-                    old.as_ref(),
-                    full,
-                    cancel,
-                )
-                .await?;
+            self.stage_mixed_languages(id, capture, attempt, revision, cancel)
+                .await
+        }
+    }
+    async fn stage_unchanged_rust(
+        &self,
+        id: &str,
+        capture: &Capture,
+        attempt: &mut RustAttempt,
+        revision: Revision,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
+        let rust_worker = &mut attempt.workers.rust;
+        let expected = attempt.baseline.expected.clone();
+        let profile = attempt.baseline.profile.clone();
+
+        rust_worker.retire_unused().await?;
+        self.tasks.event(
+            &TaskId::from(id),
+            &Event::Progress("rust_analyze_unchanged".into()),
+        )?;
+        let header = AnalysisHeader {
+            mode: codeana_model::AnalysisMode::Delta,
+            baseline: expected.to_string(),
+            manifest: capture.manifest.id(),
+            profile: profile.clone(),
+            producer: "rust-core".into(),
+            replacements: vec![],
+        };
+        let store = self.index.clone();
+        let baseline = expected.clone();
+        let cancellation = cancel.clone();
+        let candidate = tokio::task::spawn_blocking(move || {
+            store.stage_graph_records(
+                revision,
+                &header,
+                std::iter::empty(),
+                &baseline,
+                || {
+                    ensure!(
+                        !cancellation.is_cancelled(),
+                        DomainError::new(ErrorCode::Cancelled, "")
+                    );
+                    Ok(())
+                },
+                |_| Ok(()),
+            )
+        })
+        .await??;
+        Ok((AnalysisMode::Delta, candidate))
+    }
+    async fn stage_rust_stream(
+        &self,
+        id: &str,
+        attempt: &mut RustAttempt,
+        revision: Revision,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
+        let rust_worker = &mut attempt.workers.rust;
+        let rust_manifest = &attempt.input.manifest;
+        let old = &attempt.baseline.old;
+        let full = attempt.baseline.full;
+        let expected = attempt.baseline.expected.clone();
+        let profile = attempt.baseline.profile.clone();
+
+        let mut staging = None;
+        let mut stream_metrics = None;
+        let header = rust_worker
+            .analyze_into(
+                rust_manifest,
+                &profile,
+                &expected,
+                old.as_ref(),
+                full,
+                cancel,
+                |header| {
+                    let (sender, records) = codeana_contracts::stream::GraphStream::channel();
+                    stream_metrics = Some(sender.metrics.clone());
+                    let store = self.index.clone();
+                    let revision = revision.clone();
+                    let header = header.clone();
+                    let baseline = expected.clone();
+                    let cancellation = cancel.clone();
+                    staging = Some(tokio::task::spawn_blocking(move || {
+                        store.stage_graph_records(
+                            revision,
+                            &header,
+                            records,
+                            &baseline,
+                            || {
+                                ensure!(
+                                    !cancellation.is_cancelled(),
+                                    DomainError::new(ErrorCode::Cancelled, "")
+                                );
+                                Ok(())
+                            },
+                            |_| Ok(()),
+                        )
+                    }));
+                    Ok(sender)
+                },
+            )
+            .await;
+        let staged = match staging {
+            Some(task) => Some(task.await?),
+            None => None,
+        };
+        let header = header?;
+        if let Some(metrics) = stream_metrics {
             self.tasks.event(
                 &TaskId::from(id),
                 &Event::Progress(format!(
-                    "rust_worker_memory {}",
-                    serde_json::to_string(&rust_worker.memory_usage())?
+                    "rust_stream {}",
+                    serde_json::to_string(&metrics.summary())?
                 )),
             )?;
-            let mut archive = result.records;
-            let mut replacements = result.header.replacements;
-            if let (Some(worker), Some(c)) = (&mut java_worker, &java_capture) {
-                // Java retains its existing semantic backend. The merge is still one revision.
-                let result = worker
-                    .analyze(&c.manifest, &profile, &expected, None, true, cancel)
-                    .await?;
-                let root = scratch.path().to_path_buf();
-                archive = tokio::task::spawn_blocking(move || -> Result<_> {
-                    let mut combined =
-                        GraphArchiveBuilder::new(Some(&root), result_bytes, fact_limit)?;
-                    for row in archive.records()?.chain(result.records.records()?) {
-                        combined.push(&row?)?;
-                    }
-                    combined.seal()
-                })
-                .await??;
-                replacements.extend(
-                    c.manifest
-                        .files
-                        .iter()
-                        .filter(|s| s.language == "java")
-                        .map(|s| Owner {
-                            world: s.world.clone(),
-                            producer: worker.context.producer.clone(),
-                            kind: "source".into(),
-                            id: s.path.clone(),
-                        }),
-                );
-                if !full {
-                    let reader = self.store.read(&expected)?;
-                    replacements.extend(
-                        reader
-                            .revision()
-                            .manifest
-                            .files
-                            .iter()
-                            .filter(|s| s.language == "java")
-                            .map(|s| Owner {
-                                world: s.world.clone(),
-                                producer: worker.context.producer.clone(),
-                                kind: "source".into(),
-                                id: s.path.clone(),
-                            }),
-                    );
-                }
-            }
-            if let Some(prepared) = &prepared {
-                prepared.verify()?;
-            }
-            replacements.sort();
-            replacements.dedup();
-            let producer = if java_worker.is_some() {
-                "codeana-java-rust"
-            } else {
-                "rust-core"
-            }
-            .to_owned();
-            let header = AnalysisHeader {
-                mode: if full { "full" } else { "delta" }.into(),
-                baseline: expected.clone(),
-                manifest: capture.manifest.id(),
-                profile: profile.clone(),
-                producer: producer.clone(),
-                replacements,
-            };
-            self.tasks.event(
-                &TaskId::from(id),
-                &Event::Progress("rust_stage_graph".into()),
-            )?;
-            let result_mode = header.mode;
-            let store = self.store.clone();
-            let cancellation = cancel.clone();
-            let candidate = tokio::task::spawn_blocking(move || {
-                store.stage_graph_records(
-                    revision,
-                    &header,
-                    archive.records()?,
-                    &expected,
-                    || {
-                        ensure!(
-                            !cancellation.is_cancelled(),
-                            DomainError::new(ErrorCode::Cancelled, "")
-                        );
-                        Ok(())
-                    },
-                    |_| Ok(()),
-                )
-            })
-            .await??;
-            (result_mode, candidate)
-        };
-        let analyze_ms = analyzing.elapsed().as_millis() as u64;
+        }
+        Ok((
+            header.mode,
+            staged.context("CANDIDATE_STREAM_NOT_STARTED")??,
+        ))
+    }
+    async fn stage_mixed_languages(
+        &self,
+        id: &str,
+        capture: &Capture,
+        attempt: &mut RustAttempt,
+        revision: Revision,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
+        let RustWorkers {
+            rust: rust_worker,
+            java: java_worker,
+            java_capture,
+            prepared,
+        } = &mut attempt.workers;
+        let rust_manifest = &attempt.input.manifest;
+        let scratch = &attempt.input.scratch;
+        let result_bytes = attempt.input.config.result_bytes;
+        let fact_limit = attempt.input.config.fact_limit;
+        let old = &attempt.baseline.old;
+        let full = attempt.baseline.full;
+        let expected = attempt.baseline.expected.clone();
+        let profile = attempt.baseline.profile.clone();
+
+        let result = rust_worker
+            .analyze(
+                rust_manifest,
+                &profile,
+                &expected,
+                old.as_ref(),
+                full,
+                cancel,
+            )
+            .await?;
         self.tasks.event(
             &TaskId::from(id),
             &Event::Progress(format!(
@@ -519,79 +638,99 @@ impl Engine {
                 serde_json::to_string(&rust_worker.memory_usage())?
             )),
         )?;
-        let summary = candidate.summary.clone();
-        let evidence = summary.evidence.clone();
-        if req.strict && !evidence.semantic {
-            let mut t = TaskResult::success(Output {
-                producer: "rust-core".into(),
-                evidence,
-                ..Default::default()
-            });
-            t.gate = "rejected".into();
-            t.publication = "retained".into();
-            t.exit_code = 3;
-            return Ok(t);
-        }
-        self.tasks
-            .event(&TaskId::from(id), &Event::Progress("rust_publish".into()))?;
-        let publishing = Instant::now();
-        let store = self.store.clone();
-        let publisher = self.publisher.clone();
-        let blobs = std::mem::take(&mut capture.blobs);
-        let task = TaskId::from(id);
-        let cancellation = cancel.clone();
-        let revision = tokio::task::spawn_blocking(move || -> Result<_> {
-            let diagnostics = codeana_contracts::performance::Report::new("publish-detail");
-            diagnostics.capture.sync(|| -> Result<_> {
-                ensure!(
-                    !cancellation.is_cancelled(),
-                    DomainError::new(ErrorCode::Cancelled, "")
-                );
-                let _pins = store.pin_blobs(blobs.keys());
-                store.put_blob_files(&blobs)?;
-                ensure!(
-                    !cancellation.is_cancelled(),
-                    DomainError::new(ErrorCode::Cancelled, "")
-                );
-                publisher.publish(candidate, &task)
+        let mut archive = result.records;
+        let mut replacements = result.header.replacements;
+        if let (Some(worker), Some(c)) = (java_worker.as_mut(), java_capture.as_ref()) {
+            // Java retains its existing semantic backend. The merge is still one revision.
+            let result = worker
+                .analyze(&c.manifest, &profile, &expected, None, true, cancel)
+                .await?;
+            let root = scratch.path().to_path_buf();
+            archive = tokio::task::spawn_blocking(move || -> Result<_> {
+                let mut combined = GraphArchiveBuilder::new(Some(&root), result_bytes, fact_limit)?;
+                for row in archive.records()?.chain(result.records.records()?) {
+                    combined.push(&row?)?;
+                }
+                combined.seal()
             })
+            .await??;
+            replacements.extend(
+                c.manifest
+                    .files
+                    .iter()
+                    .filter(|s| s.language == "java")
+                    .map(|s| Owner {
+                        world: s.world.clone().into(),
+                        producer: worker.context.producer.clone(),
+                        kind: "source".into(),
+                        id: s.path.clone(),
+                    }),
+            );
+            if !full {
+                let reader = self.index.read(&expected)?;
+                replacements.extend(
+                    reader
+                        .revision()
+                        .manifest
+                        .files
+                        .iter()
+                        .filter(|s| s.language == "java")
+                        .map(|s| Owner {
+                            world: s.world.clone().into(),
+                            producer: worker.context.producer.clone(),
+                            kind: "source".into(),
+                            id: s.path.clone(),
+                        }),
+                );
+            }
+        }
+        if let Some(prepared) = &prepared {
+            prepared.verify()?;
+        }
+        replacements.sort();
+        replacements.dedup();
+        let producer = if java_worker.is_some() {
+            "codeana-java-rust"
+        } else {
+            "rust-core"
+        }
+        .to_owned();
+        let header = AnalysisHeader {
+            mode: if full {
+                AnalysisMode::Full
+            } else {
+                AnalysisMode::Delta
+            },
+            baseline: expected.to_string(),
+            manifest: capture.manifest.id(),
+            profile: profile.clone(),
+            producer: producer.clone(),
+            replacements,
+        };
+        self.tasks.event(
+            &TaskId::from(id),
+            &Event::Progress("rust_stage_graph".into()),
+        )?;
+        let result_mode = header.mode;
+        let store = self.index.clone();
+        let cancellation = cancel.clone();
+        let candidate = tokio::task::spawn_blocking(move || {
+            store.stage_graph_records(
+                revision,
+                &header,
+                archive.records()?,
+                &expected,
+                || {
+                    ensure!(
+                        !cancellation.is_cancelled(),
+                        DomainError::new(ErrorCode::Cancelled, "")
+                    );
+                    Ok(())
+                },
+                |_| Ok(()),
+            )
         })
         .await??;
-        let mut ack = if unchanged {
-            None
-        } else {
-            rust_worker
-                .ack(&revision.id)
-                .await
-                .err()
-                .map(|e| e.to_string())
-        };
-        if let Some(worker) = &mut java_worker
-            && let Err(e) = worker.ack(&revision.id).await
-        {
-            ack = Some(e.to_string());
-        }
-        if let Ok(memory) = serde_json::to_string(&rust_worker.memory_usage()) {
-            let _ = self.tasks.event(
-                &TaskId::from(id),
-                &Event::Progress(format!("rust_worker_memory {memory}")),
-            );
-        }
-        self.finish_index(
-            id,
-            &capture,
-            PublishedIndex {
-                revision,
-                result_mode,
-                summary,
-                evidence,
-                ack,
-                worker_context: rust_worker.context.clone(),
-                analyze_ms,
-                publish_ms: publishing.elapsed().as_millis() as u64,
-                index_elapsed_ms: started.elapsed().as_millis() as u64,
-            },
-        )
-        .await
+        Ok((result_mode, candidate))
     }
 }

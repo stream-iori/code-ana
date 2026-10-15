@@ -98,43 +98,38 @@ fn overview_relations(value: &str) -> Result<Vec<String>> {
     }
     Ok(selected.into_iter().collect())
 }
-fn hierarchy_options(operation: &str, instantiability: &str, transitive: bool) -> Result<()> {
+fn hierarchy_options(
+    operation: Operation,
+    instantiability: Instantiability,
+    transitive: bool,
+) -> Result<()> {
     ensure!(
-        instantiability.is_empty() || operation == "runtime-implementations",
-        codeana_model::DomainError::new(
-            codeana_model::ErrorCode::InstantiabilityRequiresRuntimeImplementations,
-            ""
-        )
+        instantiability == Instantiability::Default
+            || operation == Operation::RuntimeImplementations,
+        DomainError::new(ErrorCode::InstantiabilityRequiresRuntimeImplementations, "")
     );
     ensure!(
-        matches!(instantiability, "" | "yes" | "unknown" | "all"),
-        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidInstantiability, "")
-    );
-    ensure!(
-        !transitive || matches!(operation, "type-relations" | "callable-relations"),
-        codeana_model::DomainError::new(
-            codeana_model::ErrorCode::TransitiveRequiresHierarchyRelations,
-            ""
-        )
+        !transitive
+            || matches!(
+                operation,
+                Operation::TypeRelations | Operation::CallableRelations
+            ),
+        DomainError::new(ErrorCode::TransitiveRequiresHierarchyRelations, "")
     );
     Ok(())
 }
 fn preflight_query(request: &Request) -> Result<()> {
-    dispatch::options(
-        &request.operation,
-        &request.algorithm,
-        &request.analysis_world,
-    )?;
+    dispatch::options(request.operation, request.algorithm, request.analysis_world)?;
     hierarchy_options(
-        &request.operation,
-        &request.instantiability,
+        request.operation,
+        request.instantiability,
         request.transitive,
     )?;
     ensure!(
-        !request.meta || request.operation == "annotations",
+        !request.meta || request.operation == codeana_model::Operation::Annotations,
         codeana_model::DomainError::new(codeana_model::ErrorCode::MetaRequiresAnnotations, "")
     );
-    if request.operation == "references" && !request.relation.is_empty() {
+    if request.operation == codeana_model::Operation::References && !request.relation.is_empty() {
         let relations = overview_relations(&request.relation)?;
         ensure!(
             relations
@@ -143,12 +138,14 @@ fn preflight_query(request: &Request) -> Result<()> {
             codeana_model::DomainError::new(codeana_model::ErrorCode::ReferenceRelationInvalid, "")
         );
     }
-    if request.operation == "overview" && request.overview_section == "dependencies" {
+    if request.operation == codeana_model::Operation::Overview
+        && request.overview_section == "dependencies"
+    {
         overview_relations(&request.relation)?;
     }
     if !request.overview_section.is_empty() || request.overview_depth > 0 {
         ensure!(
-            request.operation == "overview",
+            request.operation == codeana_model::Operation::Overview,
             codeana_model::DomainError::new(codeana_model::ErrorCode::OverviewSectionOperation, "")
         );
         ensure!(
@@ -172,19 +169,19 @@ fn preflight_query(request: &Request) -> Result<()> {
     );
     if request.text_regex || request.text_ignore_case || request.text_context > 0 {
         ensure!(
-            request.operation == "search-text"
-                || (request.operation == "pipeline"
+            request.operation == codeana_model::Operation::SearchText
+                || (request.operation == codeana_model::Operation::Pipeline
                     && request
                         .stages
                         .first()
-                        .is_some_and(|s| s.operation == "search-text")),
+                        .is_some_and(|s| s.operation == codeana_model::Operation::SearchText)),
             codeana_model::DomainError::new(
                 codeana_model::ErrorCode::TextOptionsRequireSearchText,
                 ""
             )
         );
     }
-    if request.operation == "search-text" {
+    if request.operation == codeana_model::Operation::SearchText {
         text_matcher(request)?;
     }
     ensure!(
@@ -236,20 +233,21 @@ fn preflight_query(request: &Request) -> Result<()> {
     ensure!(
         request.direction.is_empty()
             || matches!(request.direction.as_str(), "in" | "out")
-            || (request.operation == "overview" && request.direction == "both"),
+            || (request.operation == codeana_model::Operation::Overview
+                && request.direction == codeana_model::Direction::Both),
         codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDirection, "")
     );
-    if request.operation == "pipeline" {
+    if request.operation == codeana_model::Operation::Pipeline {
         ensure!(
             !request.stages.is_empty(),
             codeana_model::DomainError::new(codeana_model::ErrorCode::PipelineRequired, "")
         );
         let mut ty = StageRecordType::Start;
         for (i, s) in request.stages.iter().enumerate() {
-            dispatch::options(&s.operation, &s.algorithm, &s.analysis_world)?;
-            hierarchy_options(&s.operation, &s.instantiability, s.transitive)?;
+            dispatch::options(s.operation, s.algorithm, s.analysis_world)?;
+            hierarchy_options(s.operation, s.instantiability, s.transitive)?;
             ensure!(
-                !s.meta || s.operation == "annotations",
+                !s.meta || s.operation == codeana_model::Operation::Annotations,
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::MetaRequiresAnnotations,
                     ""
@@ -258,13 +256,14 @@ fn preflight_query(request: &Request) -> Result<()> {
             ensure!(
                 s.direction.is_empty()
                     || matches!(s.direction.as_str(), "in" | "out")
-                    || (s.operation == "overview" && s.direction == "both"),
+                    || (s.operation == codeana_model::Operation::Overview
+                        && s.direction == codeana_model::Direction::Both),
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::InvalidStageDirection,
                     ""
                 )
             );
-            if s.operation == "references" && !s.relation.is_empty() {
+            if s.operation == codeana_model::Operation::References && !s.relation.is_empty() {
                 let selected = overview_relations(&s.relation)?;
                 ensure!(
                     selected
@@ -281,7 +280,8 @@ fn preflight_query(request: &Request) -> Result<()> {
                 codeana_model::DomainError::new(codeana_model::ErrorCode::DepthBudget, "")
             );
             ensure!(
-                OPERATIONS.contains(&s.operation.as_str()) && s.operation != "pipeline",
+                OPERATIONS.contains(&s.operation.as_str())
+                    && s.operation != codeana_model::Operation::Pipeline,
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::UnsupportedStage,
                     format!("{}", s.operation)
@@ -511,8 +511,8 @@ fn coverage(r: &dyn GraphAccess, req: &Request) -> Result<Evidence> {
     let mut filter = scope_filter(req);
     filter.kinds = vec![FactKind::Coverage];
     // Incoming callers can originate in any captured module. Their coverage matters too.
-    if req.operation == "runtime-implementations"
-        || (req.direction == "in"
+    if req.operation == codeana_model::Operation::RuntimeImplementations
+        || (req.direction == codeana_model::Direction::Incoming
             && matches!(
                 req.operation.as_str(),
                 "calls"
@@ -579,7 +579,10 @@ fn fact_source(r: &dyn SourceQueryReader, f: &Fact) -> Result<(SourceUnit, Optio
         )
     );
     let origin = f.attributes.source_origin.as_ref().ok_or_else(|| {
-        anyhow::anyhow!(DomainError::new(ErrorCode::SourceUnavailable, f.id.clone()))
+        anyhow::anyhow!(DomainError::new(
+            ErrorCode::SourceUnavailable,
+            f.id.to_string()
+        ))
     })?;
     let source = r
         .manifest()
@@ -662,7 +665,7 @@ fn call_edges_many(
                     ..Default::default()
                 },
             )?;
-            let by_id: BTreeMap<_, _> = sites.into_iter().map(|s| (s.id.clone(), s)).collect();
+            let by_id: BTreeMap<_, _> = sites.into_iter().map(|s| (s.id.to_string(), s)).collect();
             for t in chunk {
                 if t.status != "resolved" || !t.declaration_resolved {
                     evidence.semantic = false;
@@ -679,7 +682,7 @@ fn call_edges_many(
                     edges
                         .entry((s.parent.clone(), t.target.clone()))
                         .or_default()
-                        .push(s.id.clone());
+                        .push(s.id.to_string());
                 } else {
                     evidence.semantic = false;
                     evidence
@@ -704,7 +707,7 @@ fn call_edges_many(
                 r,
                 FactFilter {
                     kinds: vec![FactKind::CallTarget],
-                    parents: chunk.iter().map(|s| s.id.clone()).collect(),
+                    parents: chunk.iter().map(|s| s.id.to_string()).collect(),
                     ..Default::default()
                 },
             )?;
@@ -725,7 +728,7 @@ fn call_edges_many(
                     edges
                         .entry((s.parent.clone(), t.target.clone()))
                         .or_default()
-                        .push(s.id.clone());
+                        .push(s.id.to_string());
                 }
             }
             for site in chunk {
@@ -748,7 +751,7 @@ fn stream_search_query(
 ) -> Result<Output> {
     preflight_query(req)?;
     ensure!(
-        req.operation == "search-code",
+        req.operation == codeana_model::Operation::SearchCode,
         codeana_model::DomainError::new(
             codeana_model::ErrorCode::StreamSearchOperationRequired,
             ""
@@ -773,7 +776,8 @@ fn stream_search_query(
                 fact.id > after,
                 codeana_model::DomainError::new(codeana_model::ErrorCode::UnorderedScanResult, "")
             );
-            after.clone_from(&fact.id);
+            after.clear();
+            after.push_str(fact.id.as_str());
         }
         let complete = batch.len() < 512;
         sink(values(batch))?;
@@ -782,7 +786,7 @@ fn stream_search_query(
         }
     }
     Ok(Output {
-        revision: r.revision().id.clone(),
+        revision: r.revision().id.to_string(),
         producer: r.revision().producer.clone(),
         evidence,
         ..Default::default()
@@ -793,7 +797,7 @@ fn run_query(
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
 ) -> Result<Output> {
-    if req.operation == "search-text" {
+    if req.operation == codeana_model::Operation::SearchText {
         let mut records = Vec::new();
         let mut output = stream_text(r, req, read_source, &mut |batch| {
             ensure!(
@@ -806,7 +810,7 @@ fn run_query(
         output.records = records;
         return Ok(output);
     }
-    if req.operation == "search-code" {
+    if req.operation == codeana_model::Operation::SearchCode {
         let mut records = Vec::new();
         let mut output = stream_search_query(r, req, &mut |batch| {
             records.extend(batch);
@@ -818,45 +822,45 @@ fn run_query(
     preflight_query(req)?;
     let mut evidence = coverage(r, req)?;
     let mut records;
-    if req.operation == "pipeline" {
+    if req.operation == codeana_model::Operation::Pipeline {
         records = pipeline::run(r, req, read_source, &mut evidence)?;
     } else {
-        match req.operation.as_str() {
-            "resolve" => {
+        match req.operation {
+            Operation::Resolve => {
                 records = navigation::resolve(r, req, &mut evidence)?;
             }
-            "search-code" => {
+            Operation::SearchCode => {
                 records = values(
                     r.search_symbols_filtered(&req.selector, &selector_filter(r, req)?)
                         .map_err(anyhow::Error::new)?,
                 );
             }
-            "overview" => {
+            Operation::Overview => {
                 records = overview::run(r, req, &mut evidence)?;
             }
-            "source" => {
+            Operation::Source => {
                 records = source::run(r, req, &mut evidence, read_source)?;
             }
-            "search-text" => unreachable!("text search returns from streaming entry"),
-            "structure" => {
+            Operation::SearchText => unreachable!("text search returns from streaming entry"),
+            Operation::Structure => {
                 records = navigation::structure(r, req, &mut evidence)?;
             }
-            "references" | "call-sites" | "annotations" => {
+            Operation::References | Operation::CallSites | Operation::Annotations => {
                 records = navigation::occurrences(r, req, &mut evidence)?;
             }
-            "trace" => {
+            Operation::Trace => {
                 records = calls::trace(r, req, &mut evidence)?;
             }
-            "calls" => {
+            Operation::Calls => {
                 records = calls::run(r, req, &mut evidence)?;
             }
-            "runtime-implementations" => {
+            Operation::RuntimeImplementations => {
                 records = hierarchy::runtime(r, req, resolve_scoped(r, req)?, &mut evidence)?;
             }
-            "type-relations" | "callable-relations" => {
+            Operation::TypeRelations | Operation::CallableRelations => {
                 records = hierarchy::relations(r, req, resolve_scoped(r, req)?, &mut evidence)?;
             }
-            "dispatch" => {
+            Operation::Dispatch => {
                 records = dispatch::run(r, req, &mut evidence)?;
             }
             _ => bail!(codeana_model::DomainError::new(
@@ -865,12 +869,7 @@ fn run_query(
             )),
         }
     }
-    if req.operation == "source" || req.stages.last().is_some_and(|s| s.operation == "source") {
-        records
-            .sort_by_cached_key(|v| v.source_key().map(|(path, start)| (path.to_owned(), start)));
-    } else {
-        records.sort_by_cached_key(|v| v.wire().expect("record serialization").to_string());
-    }
+    records.sort_by(Record::query_cmp);
     if records.len() > 10000 {
         records.truncate(10000);
         evidence.enumeration = false;
@@ -881,7 +880,7 @@ fn run_query(
     evidence.reasons.sort();
     evidence.reasons.dedup();
     Ok(Output {
-        revision: r.revision().id.clone(),
+        revision: r.revision().id.to_string(),
         producer: r.revision().producer.clone(),
         records,
         evidence,
@@ -940,7 +939,7 @@ where
         .ok_or_else(|| DomainError::new(ErrorCode::SourceUnavailable, request.selector.clone()))?;
     let records = source::snippets(&request, vec![(file.clone(), None)], source)?;
     Ok(Output {
-        revision: reader.revision().id.clone(),
+        revision: reader.revision().id.to_string(),
         producer: reader.revision().producer.clone(),
         records,
         evidence: selection_evidence(reader, &request),
@@ -1003,7 +1002,7 @@ mod tests {
         let template = inner.facts[0].clone();
         let mut root_method = template.clone();
         root_method.id = "api#run()".into();
-        root_method.signature = root_method.id.clone();
+        root_method.signature = root_method.id.to_string();
         root_method.parent = "api".into();
         root_method.attributes =
             serde_json::from_value(json!({"element_kind":"METHOD","modifiers":["abstract"]}))
@@ -1011,26 +1010,26 @@ mod tests {
         inner.facts.push(root_method.clone());
         for number in 0..1200 {
             let mut class = template.clone();
-            class.id = format!("impl{number}");
-            class.signature = class.id.clone();
+            class.id = format!("impl{number}").into();
+            class.signature = class.id.to_string();
             class.attributes =
                 serde_json::from_value(json!({"element_kind":"CLASS","modifiers":[]})).unwrap();
             let mut method = root_method.clone();
-            method.id = format!("{}#run()", class.id);
-            method.signature = method.id.clone();
-            method.parent = class.id.clone();
+            method.id = format!("{}#run()", class.id).into();
+            method.signature = method.id.to_string();
+            method.parent = class.id.to_string();
             method
                 .attributes
                 .set_wire_field("modifiers".into(), json!([]));
             let mut type_edge = class.clone();
-            type_edge.id = format!("type{number}");
+            type_edge.id = format!("type{number}").into();
             type_edge.kind = FactKind::Relation;
-            type_edge.parent = class.id.clone();
+            type_edge.parent = class.id.to_string();
             type_edge.target = "api".into();
             type_edge.relation = "implements".into();
             let mut override_edge = type_edge.clone();
-            override_edge.id = format!("override{number}");
-            override_edge.parent = method.id.clone();
+            override_edge.id = format!("override{number}").into();
+            override_edge.parent = method.id.to_string();
             override_edge.target = "api#run()".into();
             override_edge.relation = "overrides".into();
             inner
@@ -1054,7 +1053,7 @@ mod tests {
         let output = run(
             &reader,
             &Request {
-                operation: "dispatch".into(),
+                operation: codeana_model::Operation::Dispatch,
                 selector: "site".into(),
                 depth: 4,
                 ..Default::default()
@@ -1081,8 +1080,8 @@ mod tests {
                 .find(|fact| fact.id == owner)
                 .unwrap()
                 .clone();
-            method.id = format!("{owner}#run()");
-            method.signature = method.id.clone();
+            method.id = format!("{owner}#run()").into();
+            method.signature = method.id.to_string();
             method.parent = owner.into();
             method
                 .attributes
@@ -1106,7 +1105,7 @@ mod tests {
             ("final", "concrete"),
         ] {
             let mut edge = reader.facts[0].clone();
-            edge.id = format!("override:{child}");
+            edge.id = format!("override:{child}").into();
             edge.kind = FactKind::Relation;
             edge.parent = format!("{child}#run()");
             edge.target = format!("{parent}#run()");
@@ -1129,7 +1128,7 @@ mod tests {
         let result = run(
             &reader,
             &Request {
-                operation: "dispatch".into(),
+                operation: codeana_model::Operation::Dispatch,
                 selector: "runtime-site".into(),
                 depth: 8,
                 ..Default::default()
@@ -1209,7 +1208,7 @@ mod tests {
     fn runtime_candidates_traverse_abstract_types_preserve_proofs_and_exclude_seed() {
         let reader = hierarchy_fixture();
         let request = Request {
-            operation: "runtime-implementations".into(),
+            operation: codeana_model::Operation::RuntimeImplementations,
             selector: "api".into(),
             module: "a".into(),
             depth: 4,
@@ -1254,16 +1253,16 @@ mod tests {
         let pipeline = run(
             &reader,
             &Request {
-                operation: "pipeline".into(),
+                operation: codeana_model::Operation::Pipeline,
                 stages: vec![
                     Stage {
-                        operation: "runtime-implementations".into(),
+                        operation: codeana_model::Operation::RuntimeImplementations,
                         selector: "api".into(),
                         depth: 4,
                         ..Default::default()
                     },
                     Stage {
-                        operation: "resolve".into(),
+                        operation: codeana_model::Operation::Resolve,
                         ..Default::default()
                     },
                 ],
@@ -1278,10 +1277,10 @@ mod tests {
     fn runtime_instantiability_filters_and_incoming_coverage_are_explicit() {
         let mut reader = hierarchy_fixture();
         let request = Request {
-            operation: "runtime-implementations".into(),
+            operation: codeana_model::Operation::RuntimeImplementations,
             selector: "api".into(),
             depth: 4,
-            instantiability: "unknown".into(),
+            instantiability: codeana_model::Instantiability::Unknown,
             module: "a".into(),
             ..Default::default()
         };
@@ -1291,7 +1290,7 @@ mod tests {
         let all = run(
             &reader,
             &Request {
-                instantiability: "all".into(),
+                instantiability: codeana_model::Instantiability::All,
                 ..request.clone()
             },
             &|_| bail!("no source"),
@@ -1321,7 +1320,7 @@ mod tests {
         assert!("no".parse::<Instantiability>().is_err());
         assert!(
             preflight(&Request {
-                operation: "resolve".into(),
+                operation: codeana_model::Operation::Resolve,
                 ..request
             })
             .is_err()
@@ -1331,9 +1330,9 @@ mod tests {
     fn transitive_hierarchy_preserves_direct_default_cycles_and_depth_limits() {
         let reader = hierarchy_fixture();
         let request = Request {
-            operation: "type-relations".into(),
+            operation: codeana_model::Operation::TypeRelations,
             selector: "api".into(),
-            direction: "in".into(),
+            direction: codeana_model::Direction::Incoming,
             module: "a".into(),
             depth: 4,
             ..Default::default()
@@ -1382,7 +1381,7 @@ mod tests {
         assert!(limited.evidence.limits.contains(&"depth".into()));
         assert!(
             preflight(&Request {
-                operation: "calls".into(),
+                operation: codeana_model::Operation::Calls,
                 transitive: true,
                 ..Default::default()
             })
@@ -1397,7 +1396,7 @@ mod tests {
         let result = run(
             &callable,
             &Request {
-                operation: "callable-relations".into(),
+                operation: codeana_model::Operation::CallableRelations,
                 selector: "final".into(),
                 transitive: true,
                 depth: 2,
@@ -1426,9 +1425,9 @@ mod tests {
             reader.facts.push(reference.clone());
         }
         let request = Request {
-            operation: "references".into(),
+            operation: codeana_model::Operation::References,
             selector: "caller".into(),
-            direction: "out".into(),
+            direction: codeana_model::Direction::Outgoing,
             relation: "reads".into(),
             ..Default::default()
         };
@@ -1445,7 +1444,7 @@ mod tests {
             &Request {
                 selector: "callee".into(),
                 module: "b".into(),
-                direction: "in".into(),
+                direction: codeana_model::Direction::Incoming,
                 ..request
             },
             &|_| bail!("no source"),
@@ -1484,7 +1483,7 @@ mod tests {
     #[test]
     fn overview_rejects_unknown_relation_before_reading() {
         let request = Request {
-            operation: "overview".into(),
+            operation: codeana_model::Operation::Overview,
             overview_section: "dependencies".into(),
             relation: "unknown-group".into(),
             ..Default::default()
@@ -1503,7 +1502,7 @@ mod tests {
         reader.facts = (0..10001)
             .map(|number| {
                 let mut fact = template.clone();
-                fact.id = format!("symbol-{number:05}");
+                fact.id = format!("symbol-{number:05}").into();
                 fact.name = "same".into();
                 fact
             })
@@ -1511,7 +1510,7 @@ mod tests {
         let output = run(
             &reader,
             &Request {
-                operation: "search-code".into(),
+                operation: codeana_model::Operation::SearchCode,
                 selector: "same".into(),
                 ..Default::default()
             },
@@ -1573,7 +1572,7 @@ mod tests {
         reader.facts.push(direct);
         for index in 0..18 {
             let mut meta = reader.facts[0].clone();
-            meta.id = format!("meta{index}");
+            meta.id = format!("meta{index}").into();
             meta.kind = FactKind::Facet;
             meta.relation = "java.annotation.meta".into();
             meta.attributes
@@ -1658,7 +1657,7 @@ mod tests {
         let plain = run(
             &reader,
             &Request {
-                operation: "annotations".into(),
+                operation: codeana_model::Operation::Annotations,
                 selector: "caller".into(),
                 ..Default::default()
             },
@@ -1697,7 +1696,7 @@ mod tests {
             let output = run(
                 &reader,
                 &Request {
-                    operation: "structure".into(),
+                    operation: codeana_model::Operation::Structure,
                     selector: selector.into(),
                     depth: 4,
                     ..Default::default()
@@ -1718,7 +1717,7 @@ mod tests {
             run(
                 &reader,
                 &Request {
-                    operation: "resolve".into(),
+                    operation: codeana_model::Operation::Resolve,
                     selector: "config:binding".into(),
                     ..Default::default()
                 },
@@ -1733,10 +1732,10 @@ mod tests {
         let output = run(
             &reader,
             &Request {
-                operation: "call-sites".into(),
+                operation: codeana_model::Operation::CallSites,
                 selector: "callee".into(),
                 module: "b".into(),
-                direction: "in".into(),
+                direction: codeana_model::Direction::Incoming,
                 ..Default::default()
             },
             &|_| bail!("no source"),
@@ -1766,7 +1765,7 @@ mod tests {
         let output = run(
             &reader,
             &Request {
-                operation: "trace".into(),
+                operation: codeana_model::Operation::Trace,
                 selector: "caller".into(),
                 target: "end".into(),
                 depth: 3,
@@ -1787,7 +1786,7 @@ mod tests {
         let unreachable = run(
             &reader,
             &Request {
-                operation: "trace".into(),
+                operation: codeana_model::Operation::Trace,
                 selector: "end".into(),
                 target: "caller".into(),
                 depth: 3,
@@ -1801,7 +1800,7 @@ mod tests {
         let limited = run(
             &reader,
             &Request {
-                operation: "trace".into(),
+                operation: codeana_model::Operation::Trace,
                 selector: "caller".into(),
                 target: "end".into(),
                 depth: 1,
@@ -1859,7 +1858,7 @@ mod tests {
                 .facts
                 .iter()
                 .filter(|f| {
-                    (filter.ids.is_empty() || filter.ids.contains(&f.id))
+                    (filter.ids.is_empty() || filter.ids.iter().any(|id| id == f.id.as_str()))
                         && (filter.targets.is_empty() || filter.targets.contains(&f.target))
                         && (filter.parents.is_empty() || filter.parents.contains(&f.parent))
                         && (filter.kinds.is_empty() || filter.kinds.contains(&f.kind))
@@ -1920,7 +1919,7 @@ mod tests {
         let result = run(
             &reader,
             &Request {
-                operation: "resolve".into(),
+                operation: codeana_model::Operation::Resolve,
                 selector: "Api".into(),
                 module: "b".into(),
                 unique: true,
@@ -1975,8 +1974,8 @@ mod tests {
             facts: vec![declaration, auxiliary.clone()],
         };
         let request = Request {
-            operation: "source".into(),
-            selector: auxiliary.id.clone(),
+            operation: codeana_model::Operation::Source,
+            selector: auxiliary.id.to_string(),
             unique: true,
             ..Default::default()
         };
@@ -2090,7 +2089,7 @@ mod tests {
         let calls = run(
             &reader,
             &Request {
-                operation: "calls".into(),
+                operation: codeana_model::Operation::Calls,
                 selector: "main".into(),
                 ..Default::default()
             },
@@ -2102,7 +2101,7 @@ mod tests {
         let dispatch = run(
             &reader,
             &Request {
-                operation: "dispatch".into(),
+                operation: codeana_model::Operation::Dispatch,
                 selector: "site".into(),
                 ..Default::default()
             },
@@ -2145,7 +2144,7 @@ mod tests {
         let calls = run(
             &reader,
             &Request {
-                operation: "calls".into(),
+                operation: codeana_model::Operation::Calls,
                 selector: "caller".into(),
                 ..Default::default()
             },
@@ -2157,7 +2156,7 @@ mod tests {
         let dispatch = run(
             &reader,
             &Request {
-                operation: "dispatch".into(),
+                operation: codeana_model::Operation::Dispatch,
                 selector: "site".into(),
                 ..Default::default()
             },
@@ -2192,7 +2191,7 @@ mod tests {
             let calls = run(
                 &reader,
                 &Request {
-                    operation: "calls".into(),
+                    operation: codeana_model::Operation::Calls,
                     selector: "caller".into(),
                     ..Default::default()
                 },
@@ -2204,7 +2203,7 @@ mod tests {
             let dispatch = run(
                 &reader,
                 &Request {
-                    operation: "dispatch".into(),
+                    operation: codeana_model::Operation::Dispatch,
                     selector: "site".into(),
                     ..Default::default()
                 },
@@ -2265,7 +2264,7 @@ mod tests {
             ),
         ];
         let request = Request {
-            operation: "dispatch".into(),
+            operation: codeana_model::Operation::Dispatch,
             selector: "site".into(),
             ..Default::default()
         };
@@ -2316,7 +2315,7 @@ mod tests {
         })
         .collect();
         let request = Request {
-            operation: "search-code".into(),
+            operation: codeana_model::Operation::SearchCode,
             paths: vec!["src/**/A?.java".into(), "docs/*.md".into()],
             ..Default::default()
         };
@@ -2331,7 +2330,7 @@ mod tests {
     fn upstream_search_selection_owns_paths_and_rejects_invalid_patterns() {
         let mut paths = vec!["src/**/A.java".to_owned()];
         let request = Request {
-            operation: "search-code".into(),
+            operation: codeana_model::Operation::SearchCode,
             paths: paths.clone(),
             ..Default::default()
         };
@@ -2368,15 +2367,15 @@ mod tests {
     #[test]
     fn invalid_pipeline_fails_before_read() {
         let r = Request {
-            operation: "pipeline".into(),
+            operation: codeana_model::Operation::Pipeline,
             stages: vec![
                 Stage {
-                    operation: "source".into(),
+                    operation: codeana_model::Operation::Source,
                     selector: "a".into(),
                     ..Default::default()
                 },
                 Stage {
-                    operation: "calls".into(),
+                    operation: codeana_model::Operation::Calls,
                     ..Default::default()
                 },
             ],

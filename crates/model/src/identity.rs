@@ -14,6 +14,10 @@ macro_rules! identity {
         impl AsRef<str> for $name {fn as_ref(&self)->&str {self.as_str()}}
         impl Deref for $name {type Target=str;fn deref(&self)->&str {self.as_str()}}
         impl fmt::Display for $name {fn fmt(&self,f:&mut fmt::Formatter<'_>)->fmt::Result {f.write_str(self.as_str())}}
+        impl PartialEq<String> for $name {fn eq(&self,other:&String)->bool {self.as_str()==other.as_str()}}
+        impl PartialEq<$name> for String {fn eq(&self,other:&$name)->bool {self.as_str()==other.as_str()}}
+        impl PartialOrd<String> for $name {fn partial_cmp(&self,other:&String)->Option<std::cmp::Ordering> {Some(self.as_str().cmp(other.as_str()))}}
+        impl PartialOrd<&str> for $name {fn partial_cmp(&self,other:&&str)->Option<std::cmp::Ordering> {Some(self.as_str().cmp(other))}}
         impl PartialEq<&str> for $name {fn eq(&self,other:&&str)->bool {self.as_str()==*other}}
     )*};
 }

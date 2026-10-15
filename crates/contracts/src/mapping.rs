@@ -35,7 +35,7 @@ impl From<&worker::SourceUnit> for m::SourceUnit {
 impl From<&m::Owner> for worker::Owner {
     fn from(value: &m::Owner) -> Self {
         Self {
-            world: value.world.clone(),
+            world: value.world.to_string(),
             producer: value.producer.clone(),
             kind: value.kind.clone(),
             id: value.id.clone(),
@@ -46,7 +46,7 @@ impl From<&m::Owner> for worker::Owner {
 impl From<&worker::Owner> for m::Owner {
     fn from(value: &worker::Owner) -> Self {
         Self {
-            world: value.world.clone(),
+            world: value.world.clone().into(),
             producer: value.producer.clone(),
             kind: value.kind.clone(),
             id: value.id.clone(),

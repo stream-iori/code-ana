@@ -227,7 +227,7 @@ impl ReadContext {
             .filter(|world| !world.is_empty())
             .unwrap_or_else(|| key("world", &[module, scope]));
         Owner {
-            world,
+            world: world.into(),
             producer: self.revision.producer.clone(),
             kind: "source".into(),
             id: source.into(),
@@ -536,13 +536,13 @@ impl ReadContext {
             .get("fixture_span")
             .and_then(|v| serde_json::from_value(v.clone()).ok());
         Ok(Fact {
-            id,
+            id: id.into(),
             kind,
             owner: {
                 let mut owner = self.owner_for(&source, &module, &scope);
                 let world = text(row, "display_world")?;
                 if !world.is_empty() {
-                    owner.world = world;
+                    owner.world = world.into();
                 }
                 let producer = text(row, "display_producer")?;
                 if !producer.is_empty() {
@@ -557,7 +557,7 @@ impl ReadContext {
             parent: text(row, "display_parent")?,
             target: text(row, "display_target")?,
             relation: relation_name,
-            status,
+            status: status.into(),
             origin: if text(row, "display_producer")? == "rust-core" {
                 "rust-analyzer"
             } else {
@@ -667,7 +667,7 @@ impl ReadContext {
                 scope,
                 source_file: source,
                 metadata,
-                world: owner.world,
+                world: owner.world.to_string(),
             });
         }
         let mut relations = Vec::new();
@@ -980,12 +980,52 @@ impl AnnotationReader for ReadContext {
         &self,
         names: &[String],
     ) -> std::result::Result<Vec<AnnotationMetaEdge>, DomainError> {
-        (||->Result<_>{ensure!(names.len()<=500, codeana_model::DomainError::new(codeana_model::ErrorCode::AnnotationMetaKeyBudget, ""));if names.is_empty(){return Ok(vec![]);}
-            let sql=format!("SELECT annotation_fqn,meta_annotation_fqn,min(raw_name),min(language),min(mechanism),min(resolution_status),min(producer_id) FROM annotation_meta_relations WHERE annotation_fqn IN({}) AND meta_annotation_fqn IS NOT NULL GROUP BY annotation_fqn,meta_annotation_fqn LIMIT 10001",vec!["?";names.len()].join(","));
-            let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(names))?;let mut output=Vec::new();
-            while let Some(row)=rows.next()?{ensure!(output.len()<10000, codeana_model::DomainError::new(codeana_model::ErrorCode::QueryWorkBudget, ""));let mut attrs=BTreeMap::new();for(i,k)in["raw_name","language","mechanism","resolution","upstream_producer"].iter().enumerate(){if let Some(v)=row.get::<_,Option<String>>(i+2)?{attrs.insert((*k).into(),json!(v));}}
-                output.push(AnnotationMetaEdge{annotation:row.get(0)?,meta_annotation:row.get(1)?,attributes:FactAttributes::from_wire_map(attrs)?});}Ok(output)
-        })().map_err(codeana_contracts::read_error)
+        (|| -> Result<_> {
+            ensure!(
+                names.len() <= 500,
+                DomainError::new(ErrorCode::AnnotationMetaKeyBudget, "")
+            );
+            if names.is_empty() {
+                return Ok(Vec::new());
+            }
+            let placeholders = vec!["?"; names.len()].join(",");
+            let sql = format!(
+                "SELECT annotation_fqn,meta_annotation_fqn,min(raw_name),min(language),\
+                 min(mechanism),min(resolution_status),min(producer_id) \
+                 FROM annotation_meta_relations WHERE annotation_fqn IN({placeholders}) \
+                 AND meta_annotation_fqn IS NOT NULL \
+                 GROUP BY annotation_fqn,meta_annotation_fqn LIMIT 10001"
+            );
+            let mut statement = self.connection.prepare(&sql)?;
+            let mut rows = statement.query(rusqlite::params_from_iter(names))?;
+            let mut output = Vec::new();
+            while let Some(row) = rows.next()? {
+                ensure!(
+                    output.len() < 10000,
+                    DomainError::new(ErrorCode::QueryWorkBudget, "")
+                );
+                let field = |index| -> Result<Field<String>> {
+                    Ok(row
+                        .get::<_, Option<String>>(index)?
+                        .map(Field::Value)
+                        .unwrap_or_default())
+                };
+                output.push(AnnotationMetaEdge {
+                    annotation: row.get(0)?,
+                    meta_annotation: row.get(1)?,
+                    attributes: FactAttributes {
+                        raw_name: field(2)?,
+                        language: field(3)?,
+                        mechanism: field(4)?,
+                        resolution: field(5)?,
+                        upstream_producer: field(6)?,
+                        ..Default::default()
+                    },
+                });
+            }
+            Ok(output)
+        })()
+        .map_err(codeana_contracts::read_error)
     }
 }
 impl OverviewReader for ReadContext {
@@ -1046,33 +1086,93 @@ impl OverviewReader for ReadContext {
         direction: &str,
         relations: &[String],
     ) -> std::result::Result<Vec<OverviewGroup>, DomainError> {
-        (||->Result<_>{
-            let p=projections(&FactFilter{ kinds:vec![FactKind::Declaration],..Default::default()}).remove(0);
-            let (predicate,mut values)=self.predicate(&p,f,"",None)?;
-            let sql=if section=="dependencies"{
-                let mut relation_sql=String::new();if !relations.is_empty(){relation_sql=format!(" AND e.relation IN({})",vec!["?";relations.len()].join(","));values.extend(relations.iter().map(|r|upstream_relation(r)));}
-                let (near,far)=if direction=="in"{("e.target_id","e.source_id")}else{("e.source_id","e.target_id")};
-                if direction=="both" {
-                    let count=values.len();let repeated=values[..count].to_vec();values.extend(repeated);
-                    format!("SELECT package,target_package,relation,sum(count) FROM (SELECT coalesce(n.package,'') AS package,coalesce(t.package,'') AS target_package,e.relation,count(*) AS count FROM edges e JOIN nodes n ON n.id=e.source_id JOIN nodes t ON t.id=e.target_id WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation UNION ALL SELECT coalesce(n.package,''),coalesce(t.package,''),e.relation,count(*) FROM edges e JOIN nodes n ON n.id=e.target_id JOIN nodes t ON t.id=e.source_id WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation) GROUP BY package,target_package,relation ORDER BY package,target_package,relation LIMIT 10001")
-                } else {format!("SELECT coalesce(n.package,''),coalesce(t.package,''),e.relation,count(*) FROM edges e JOIN nodes n ON n.id={near} JOIN nodes t ON t.id={far} WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation ORDER BY n.package,t.package,e.relation LIMIT 10001")}
-            }else{let column=if section=="modules"{"n.module"}else{"coalesce(n.package,'')"};format!("SELECT {column},count(*) FROM nodes n WHERE {predicate} GROUP BY {column} ORDER BY {column} LIMIT 10001")};
+        (|| -> Result<_> {
+            let projection = projections(&FactFilter {
+                kinds: vec![FactKind::Declaration],
+                ..Default::default()
+            })
+            .remove(0);
+            let (predicate, mut values) = self.predicate(&projection, f, "", None)?;
+            let sql = if section == "dependencies" {
+                let mut relation_sql = String::new();
+                if !relations.is_empty() {
+                    let placeholders = vec!["?"; relations.len()].join(",");
+                    relation_sql = format!(" AND e.relation IN({placeholders})");
+                    values.extend(relations.iter().map(|r| upstream_relation(r)));
+                }
+                let (near, far) = if direction == "in" {
+                    ("e.target_id", "e.source_id")
+                } else {
+                    ("e.source_id", "e.target_id")
+                };
+                if direction == "both" {
+                    // Each half of the UNION binds the same predicates independently.
+                    values.extend(values.clone());
+                    format!(
+                        "SELECT package,target_package,relation,sum(count) FROM (\
+                         SELECT coalesce(n.package,'') AS package,\
+                         coalesce(t.package,'') AS target_package,e.relation,count(*) AS count \
+                         FROM edges e JOIN nodes n ON n.id=e.source_id \
+                         JOIN nodes t ON t.id=e.target_id \
+                         WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation \
+                         UNION ALL SELECT coalesce(n.package,''),coalesce(t.package,''),\
+                         e.relation,count(*) FROM edges e JOIN nodes n ON n.id=e.target_id \
+                         JOIN nodes t ON t.id=e.source_id \
+                         WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation) \
+                         GROUP BY package,target_package,relation \
+                         ORDER BY package,target_package,relation LIMIT 10001"
+                    )
+                } else {
+                    format!(
+                        "SELECT coalesce(n.package,''),coalesce(t.package,''),e.relation,count(*) \
+                         FROM edges e JOIN nodes n ON n.id={near} JOIN nodes t ON t.id={far} \
+                         WHERE {predicate}{relation_sql} GROUP BY n.package,t.package,e.relation \
+                         ORDER BY n.package,t.package,e.relation LIMIT 10001"
+                    )
+                }
+            } else {
+                let column = if section == "modules" {
+                    "n.module"
+                } else {
+                    "coalesce(n.package,'')"
+                };
+                format!(
+                    "SELECT {column},count(*) FROM nodes n WHERE {predicate} \
+                     GROUP BY {column} ORDER BY {column} LIMIT 10001"
+                )
+            };
             let mut statement = self.connection.prepare(&sql)?;
             let mut rows = statement.query(rusqlite::params_from_iter(values))?;
             let mut output = Vec::new();
             while let Some(row) = rows.next()? {
-                ensure!(output.len() < 10000, codeana_model::DomainError::new(codeana_model::ErrorCode::OverviewGroupBudget, ""));
-                output.push(if section == "dependencies" {
-                    OverviewGroup { package: Some(row.get(0)?), target_package: Some(row.get(1)?),
-                        relation: Some(relation(&row.get::<_, String>(2)?)), count: u64::try_from(row.get::<_, i64>(3)?).context(codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidOverviewCount, ""))?, ..Default::default() }
+                ensure!(
+                    output.len() < 10000,
+                    DomainError::new(ErrorCode::OverviewGroupBudget, "")
+                );
+                let group = if section == "dependencies" {
+                    OverviewGroup {
+                        package: Some(row.get(0)?),
+                        target_package: Some(row.get(1)?),
+                        relation: Some(relation(&row.get::<_, String>(2)?)),
+                        count: u64::try_from(row.get::<_, i64>(3)?)
+                            .context(DomainError::new(ErrorCode::InvalidOverviewCount, ""))?,
+                        ..Default::default()
+                    }
                 } else {
                     let name = row.get::<_, String>(0)?;
-                    OverviewGroup { module: (section == "modules").then(|| name.clone()),
-                        package: (section != "modules").then_some(name), count: u64::try_from(row.get::<_, i64>(1)?).context(codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidOverviewCount, ""))?, ..Default::default() }
-                });
+                    OverviewGroup {
+                        module: (section == "modules").then(|| name.clone()),
+                        package: (section != "modules").then_some(name),
+                        count: u64::try_from(row.get::<_, i64>(1)?)
+                            .context(DomainError::new(ErrorCode::InvalidOverviewCount, ""))?,
+                        ..Default::default()
+                    }
+                };
+                output.push(group);
             }
             Ok(output)
-        })().map_err(codeana_contracts::read_error)
+        })()
+        .map_err(codeana_contracts::read_error)
     }
 }
 impl DependencyReader for ReadContext {

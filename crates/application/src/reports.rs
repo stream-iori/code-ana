@@ -30,7 +30,7 @@ pub(super) struct ReportSummary {
     pub evidence: Evidence,
     pub profile: String,
     pub capture_digest: String,
-    pub statistics: codeana_storage::CandidateStatistics,
+    pub statistics: CandidateStatistics,
     pub timing: ReportTiming,
     pub diagnostics: ReportDiagnostics,
 }

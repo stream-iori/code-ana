@@ -81,7 +81,7 @@ fn limited_records(result: &mut TaskResult, request: &Request) {
     }
     if request.strict && result.exit_code == 0 {
         result.exit_code = 3;
-        result.gate = "rejected".into();
+        result.gate = codeana_model::GateState::Rejected;
     }
 }
 
@@ -119,7 +119,7 @@ pub(crate) fn render(request: &Request, result: &mut TaskResult) -> Result<Vec<u
             Ok((line, compact)) => {
                 if compact && request.strict && result.exit_code == 0 {
                     result.exit_code = 3;
-                    result.gate = "rejected".into();
+                    result.gate = codeana_model::GateState::Rejected;
                     if !result
                         .output
                         .evidence
@@ -192,7 +192,7 @@ mod tests {
             },
             ..Default::default()
         });
-        result.publication = "published".into();
+        result.publication = codeana_model::PublicationState::Published;
         result
     }
 

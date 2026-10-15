@@ -4,13 +4,13 @@ use std::collections::BTreeSet;
 #[derive(Clone, Serialize)]
 struct SemanticFact {
     kind: FactKind,
-    world: String,
+    world: WorldId,
     name: String,
     signature: String,
     parent: String,
     target: String,
     relation: String,
-    status: String,
+    status: FactStatus,
     origin: String,
     evidence_complete: bool,
     declaration_resolved: bool,
@@ -80,6 +80,8 @@ pub(crate) struct Snapshot {
 }
 #[derive(Serialize, Deserialize)]
 struct Page {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    order_policy: Option<QueryOrderPolicy>,
     output: Output,
     options: String,
     created: u64,
@@ -225,7 +227,7 @@ impl Engine {
         let mut t = if kind == "analysis" {
             let t = self.index(id, &IndexCommand::from(req), c, cancel).await?;
             ensure!(
-                t.publication == "published",
+                t.publication == codeana_model::PublicationState::Published,
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::SnapshotAnalysisNotPublished,
                     ""
@@ -401,9 +403,9 @@ impl Engine {
                 for (side, reader) in [("base", &a), ("target", &b)] {
                     for symbol in &changed {
                         let r = Request {
-                            operation: "calls".into(),
+                            operation: codeana_model::Operation::Calls,
                             selector: symbol.clone(),
-                            direction: "in".into(),
+                            direction: codeana_model::Direction::Incoming,
                             depth: req.depth.max(1),
                             ..Default::default()
                         };
@@ -565,6 +567,7 @@ impl Engine {
         );
         let id = new_id("page");
         let page = Page {
+            order_policy: Some(QueryOrderPolicy::for_operation(req.operation)),
             output,
             options: options(req),
             created: now(),
@@ -706,12 +709,20 @@ fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_frozen_pages_keep_original_order_without_a_sort_policy() {
+        let original = serde_json::json!({"output":{"revision":"r","producer":"p","records":[{"id":"z"},{"id":"a"}],"evidence":{"enumeration":true,"semantic":true,"limits":[],"reasons":[]},"cursor":""},"options":"frozen-options","created":1});
+        let page: Page = serde_json::from_value(original).unwrap();
+        assert_eq!(page.order_policy, None);
+        assert_eq!(page.output.records[0].wire().unwrap()["id"], "z");
+        assert_eq!(page.output.records[1].wire().unwrap()["id"], "a");
+    }
     #[tokio::test]
     async fn frozen_pages_store_only_metadata_and_allow_different_page_sizes() {
         let directory = tempfile::tempdir().unwrap();
         let engine = Engine::new(directory.path(), None).unwrap();
         let mut request = Request {
-            operation: "search-code".into(),
+            operation: codeana_model::Operation::SearchCode,
             selector: "same".into(),
             max_records: 7,
             max_output_bytes: 32768,

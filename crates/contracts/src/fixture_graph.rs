@@ -1,8 +1,10 @@
 //! Explicit mock-fixture conversion. The Java product never uses this adapter.
 use crate::graph::{Cell, Row, Table, cell};
+use crate::graph_rows::*;
 use codeana_model::{Fact, FactKind, Manifest};
 use serde_json::{Value, json};
 
+/// Raw malformed-row construction used by protocol fault tests, never ordinary fixture emission.
 pub fn row(table: Table, values: Vec<Value>) -> Row {
     Row {
         world: String::new(),
@@ -30,7 +32,7 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
     for f in facts.iter().filter(|f| f.kind == FactKind::Declaration) {
         source_owners
             .entry(f.source.clone())
-            .or_insert(f.id.clone());
+            .or_insert(f.id.to_string());
     }
     for f in facts.iter().filter(|f| {
         matches!(
@@ -41,35 +43,35 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
         if !source_owners.contains_key(&f.source) {
             let id = format!("fixture-source:{}", f.source);
             let source = manifest.files.iter().find(|s| s.path == f.source);
-            output.push(row(
-                Table::Node,
-                vec![
-                    json!(id),
-                    json!(id),
-                    json!("language"),
-                    json!("java"),
-                    json!("java-core"),
-                    json!("type"),
-                    json!("CLASS"),
-                    json!(f.source),
-                    json!("CLASS"),
-                    json!(id),
-                    json!(""),
-                    Value::Null,
-                    json!(f.source),
-                    Value::Null,
-                    Value::Null,
-                    Value::Null,
-                    Value::Null,
-                    Value::Null,
-                    Value::Null,
-                    json!(source.map(|s| s.module.as_str()).unwrap_or(".")),
-                    json!(source.map(|s| s.scope.as_str()).unwrap_or("MAIN")),
-                    Value::Null,
-                    Value::Null,
-                    json!("java-core"),
-                ],
-            ));
+            output.push(
+                NodeRow {
+                    id: Some((id).to_string()),
+                    symbol_id: Some((id).to_string()),
+                    domain: Some(("language").to_string()),
+                    language: Some(("java").to_string()),
+                    provider_id: Some(("java-core").to_string()),
+                    entity_kind: Some(("type").to_string()),
+                    language_kind: Some(("CLASS").to_string()),
+                    label: Some((f.source).to_string()),
+                    kind: Some(("CLASS").to_string()),
+                    qualified_name: Some((id).to_string()),
+                    package: Some(("").to_string()),
+                    namespace: None,
+                    source_file: Some((f.source).to_string()),
+                    source_location: None,
+                    begin_line: None,
+                    begin_column: None,
+                    end_line: None,
+                    end_column: None,
+                    source_ordinal: None,
+                    module: Some((source.map(|s| s.module.as_str()).unwrap_or(".")).to_string()),
+                    scope: Some((source.map(|s| s.scope.as_str()).unwrap_or("MAIN")).to_string()),
+                    metadata: None,
+                    arity_key: None,
+                    producer_id: Some(("java-core").to_string()),
+                }
+                .into_row(""),
+            );
             source_owners.insert(f.source.clone(), id);
         }
     }
@@ -85,50 +87,48 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
                 }
                 metadata.insert("fixture_signature".into(), json!(f.signature));
                 let kind = attr(f, "element_kind", json!("CLASS"));
-                let symbol = if f.signature.is_empty() {
+                let symbol: &str = if f.signature.is_empty() {
                     &f.id
                 } else {
                     &f.signature
                 };
-                output.push(row(
-                    Table::Node,
-                    vec![
-                        json!(f.id),
-                        json!(symbol),
-                        json!("language"),
-                        json!("java"),
-                        json!("java-core"),
-                        attr(f, "entity_kind", json!("type")),
-                        kind.clone(),
-                        json!(f.name),
-                        kind,
-                        json!(f.signature),
-                        attr(f, "package", json!("")),
-                        Value::Null,
-                        json!(f.source),
-                        Value::Null,
-                        Value::Null,
-                        Value::Null,
-                        Value::Null,
-                        Value::Null,
-                        Value::Null,
-                        json!(module),
-                        json!(scope),
-                        json!(serde_json::to_string(&metadata).expect("fixture metadata")),
-                        Value::Null,
-                        json!("java-core"),
-                    ],
-                ));
+                output.push(
+                    NodeRow {
+                        id: Some((f.id).to_string()),
+                        symbol_id: Some((symbol).to_string()),
+                        domain: Some(("language").to_string()),
+                        language: Some(("java").to_string()),
+                        provider_id: Some(("java-core").to_string()),
+                        entity_kind: text_value(attr(f, "entity_kind", json!("type"))),
+                        language_kind: text_value(kind.clone()),
+                        label: Some((f.name).to_string()),
+                        kind: text_value(kind),
+                        qualified_name: Some((f.signature).to_string()),
+                        package: text_value(attr(f, "package", json!(""))),
+                        namespace: None,
+                        source_file: Some((f.source).to_string()),
+                        source_location: None,
+                        begin_line: None,
+                        begin_column: None,
+                        end_line: None,
+                        end_column: None,
+                        source_ordinal: None,
+                        module: Some((module).to_string()),
+                        scope: Some((scope).to_string()),
+                        metadata: Some(
+                            (serde_json::to_string(&metadata).expect("fixture metadata"))
+                                .to_string(),
+                        ),
+                        arity_key: None,
+                        producer_id: Some(("java-core").to_string()),
+                    }
+                    .into_row(""),
+                );
                 if !f.parent.is_empty() && f.kind == FactKind::Declaration {
-                    output.push(edge(
-                        f,
-                        &f.parent,
-                        &f.id,
-                        "CONTAINS",
-                        module,
-                        scope,
-                        Value::Null,
-                    ));
+                    output.push(
+                        edge(f, &f.parent, &f.id, "CONTAINS", module, scope, Value::Null)
+                            .into_row(""),
+                    );
                 }
             }
             FactKind::Relation | FactKind::Reference | FactKind::Dependency => {
@@ -148,42 +148,40 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
                 } else {
                     &f.parent
                 };
-                output.push(edge(
-                    f,
-                    parent,
-                    &f.target,
-                    relation,
-                    module,
-                    scope,
-                    Value::Null,
-                ));
+                output.push(
+                    edge(f, parent, &f.target, relation, module, scope, Value::Null).into_row(""),
+                );
             }
             FactKind::CallSite => {
                 let mut metadata = f.attributes.wire_map();
                 if let Some(span) = &f.span {
                     metadata.insert("fixture_span".into(), json!(span));
                 }
-                output.push(row(
-                    Table::UnresolvedCall,
-                    vec![
-                        json!(f.parent),
-                        json!(f.source),
-                        json!(1),
-                        json!(1),
-                        json!(1),
-                        json!(2),
-                        json!(position as i64),
-                        json!(f.name),
-                        attr(f, "receiver_static_type", Value::Null),
-                        attr(f, "dispatch", Value::Null),
-                        Value::Null,
-                        json!(metadata),
-                        json!("java-core"),
-                        json!(module),
-                        json!(scope),
-                        json!(f.parent),
-                    ],
-                ));
+                output.push(
+                    UnresolvedCallRow {
+                        source_ref: Some((f.parent).to_string()),
+                        source_file: Some((f.source).to_string()),
+                        begin_line: Some(1),
+                        begin_column: Some(1),
+                        end_line: Some(1),
+                        end_column: Some(2),
+                        source_ordinal: Some(position as i64),
+                        syntax_target: Some((f.name).to_string()),
+                        receiver_static_type: text_value(attr(
+                            f,
+                            "receiver_static_type",
+                            Value::Null,
+                        )),
+                        call_kind: text_value(attr(f, "dispatch", Value::Null)),
+                        context: None,
+                        metadata: Some(serde_json::to_string(&metadata).expect("fixture metadata")),
+                        producer_id: Some(("java-core").to_string()),
+                        source_module: Some((module).to_string()),
+                        source_scope: Some((scope).to_string()),
+                        resolved_source: Some((f.parent).to_string()),
+                    }
+                    .into_row(""),
+                );
             }
             FactKind::CallTarget => {
                 if let Some((position, site)) =
@@ -198,86 +196,84 @@ pub fn rows(manifest: &Manifest, facts: &[Fact]) -> Vec<Row> {
                         scope,
                         json!(site.name),
                     );
-                    target.cells[22] = Cell {
-                        value: Some(cell::Value::Integer(position as i64)),
-                    };
+                    target.source_ordinal = Some(position as i64);
                     let mut metadata = site.attributes.wire_map();
                     if let Some(span) = &site.span {
                         metadata.insert("fixture_span".into(), json!(span));
                     }
-                    target.cells[25] = Cell {
-                        value: Some(cell::Value::Text(
-                            serde_json::to_string(&metadata).expect("fixture metadata"),
-                        )),
-                    };
-                    output.push(target);
+                    target.metadata =
+                        Some(serde_json::to_string(&metadata).expect("fixture metadata"));
+                    output.push(target.into_row(""));
                 }
             }
             FactKind::Facet if f.relation == "java.annotation" => {
                 let name = attr(f, "annotation", attr(f, "name", json!(f.name)));
-                output.push(row(
-                    Table::Annotation,
-                    vec![
-                        json!(f.parent),
-                        name.clone(),
-                        name,
-                        json!(f.attributes),
-                        json!("DECLARATION"),
-                        Value::Null,
-                        json!("java"),
-                        json!("java-core"),
-                        json!("java.annotation"),
-                        json!("exact"),
-                        json!(f.source),
-                        Value::Null,
-                        Value::Null,
-                        Value::Null,
-                        Value::Null,
-                        Value::Null,
-                        json!(module),
-                        json!(scope),
-                        json!(1),
-                        json!(f.parent),
-                        json!("java-core"),
-                    ],
-                ));
+                output.push(
+                    AnnotationRow {
+                        node_ref: Some((f.parent).to_string()),
+                        annotation_fqn: text_value(name.clone()),
+                        raw_name: text_value(name),
+                        attributes: Some(
+                            serde_json::to_string(&f.attributes.wire_map())
+                                .expect("fixture attributes"),
+                        ),
+                        target_kind: Some(("DECLARATION").to_string()),
+                        target_path: None,
+                        language: Some(("java").to_string()),
+                        provider_id: Some(("java-core").to_string()),
+                        mechanism: Some(("java.annotation").to_string()),
+                        resolution_status: Some(("exact").to_string()),
+                        source_file: Some((f.source).to_string()),
+                        source_location: None,
+                        begin_line: None,
+                        begin_column: None,
+                        end_line: None,
+                        end_column: None,
+                        source_module: Some((module).to_string()),
+                        source_scope: Some((scope).to_string()),
+                        node_is_key: Some(1),
+                        resolved_node: Some((f.parent).to_string()),
+                        producer_id: Some(("java-core").to_string()),
+                    }
+                    .into_row(""),
+                );
             }
-            FactKind::Coverage => output.push(row(
-                Table::Coverage,
-                vec![
-                    json!(f.source),
-                    json!(module),
-                    json!(scope),
-                    json!("java"),
-                    json!("java-core"),
-                    json!("SEMANTIC"),
-                    json!(f.status),
-                    json!(0),
-                    json!(0),
-                    json!("[]"),
-                    json!("{}"),
-                    json!(0),
-                ],
-            )),
-            FactKind::Diagnostic => output.push(row(
-                Table::Diagnostic,
-                vec![
-                    attr(f, "severity", json!("warning")),
-                    attr(f, "code", json!(f.name)),
-                    json!("MOCK"),
-                    json!(f.source),
-                    json!(module),
-                    json!(scope),
-                    Value::Null,
-                    json!("java"),
-                    json!("java-core"),
-                    Value::Null,
-                    Value::Null,
-                    Value::Null,
-                    attr(f, "count", json!(1)),
-                    attr(f, "sample", Value::Null),
-                ],
-            )),
+            FactKind::Coverage => output.push(
+                CoverageRow {
+                    source_file: Some((f.source).to_string()),
+                    module: Some((module).to_string()),
+                    scope: Some((scope).to_string()),
+                    language: Some(("java").to_string()),
+                    provider_id: Some(("java-core").to_string()),
+                    capability: Some(("SEMANTIC").to_string()),
+                    status: Some((f.status).to_string()),
+                    occurrences: Some(0),
+                    groups_count: Some(0),
+                    codes: Some(("[]").to_string()),
+                    code_counts: Some(("{}").to_string()),
+                    details_truncated: Some(0),
+                }
+                .into_row(""),
+            ),
+            FactKind::Diagnostic => output.push(
+                DiagnosticRow {
+                    severity: text_value(attr(f, "severity", json!("warning"))),
+                    code: text_value(attr(f, "code", json!(f.name))),
+                    phase: Some(("MOCK").to_string()),
+                    source_file: Some((f.source).to_string()),
+                    module: Some((module).to_string()),
+                    scope: Some((scope).to_string()),
+                    symbol: None,
+                    language: Some(("java").to_string()),
+                    provider_id: Some(("java-core").to_string()),
+                    provider_reason: None,
+                    reason_code: None,
+                    sample_details: None,
+                    occurrence_count: integer_value(attr(f, "count", json!(1))),
+                    sample: text_value(attr(f, "sample", Value::Null)),
+                }
+                .into_row(""),
+            ),
             // Fixtures for removed raw-model capabilities do not become product rows.
             _ => {}
         }
@@ -295,48 +291,66 @@ fn edge(
     module: &str,
     scope: &str,
     syntax: Value,
-) -> Row {
-    row(
-        Table::Edge,
-        vec![
-            json!(parent),
-            json!(target),
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            Value::Null,
-            json!(relation.to_ascii_uppercase()),
-            Value::Null,
-            Value::Null,
-            json!("java"),
-            json!("java-core"),
-            Value::Null,
-            json!(if f.status == "resolved" {
+) -> EdgeRow {
+    EdgeRow {
+        source_ref: Some((parent).to_string()),
+        target_ref: Some((target).to_string()),
+        external_target_fqn: None,
+        external_target_symbol: None,
+        external_target_language: None,
+        external_target_provider_id: None,
+        relation: Some((relation.to_ascii_uppercase()).to_string()),
+        semantic: None,
+        mechanism: None,
+        language: Some(("java").to_string()),
+        provider_id: Some(("java-core").to_string()),
+        call_kind: None,
+        confidence: Some(
+            (if f.status == "resolved" {
                 "EXTRACTED"
             } else {
                 "INFERRED"
-            }),
-            Value::Null,
-            Value::Null,
-            json!(0),
-            json!(f.source),
-            Value::Null,
-            json!(1),
-            json!(1),
-            json!(1),
-            json!(2),
-            json!(0),
-            syntax,
-            attr(f, "receiver_static_type", Value::Null),
-            json!(f.attributes),
-            json!(module),
-            json!(scope),
-            json!(1),
-            json!(1),
-            json!(parent),
-            json!(target),
-            Value::Null,
-            json!("java-core"),
-        ],
-    )
+            })
+            .to_string(),
+        ),
+        resolution: None,
+        context: None,
+        is_external: Some(0),
+        source_file: Some((f.source).to_string()),
+        source_location: None,
+        begin_line: Some(1),
+        begin_column: Some(1),
+        end_line: Some(1),
+        end_column: Some(2),
+        source_ordinal: Some(0),
+        syntax_target: text_value(syntax),
+        receiver_static_type: text_value(attr(f, "receiver_static_type", Value::Null)),
+        metadata: Some(
+            serde_json::to_string(&f.attributes.wire_map()).expect("fixture attributes"),
+        ),
+        source_module: Some((module).to_string()),
+        source_scope: Some((scope).to_string()),
+        source_is_key: Some(1),
+        target_is_key: Some(1),
+        resolved_source: Some((parent).to_string()),
+        resolved_target: Some((target).to_string()),
+        target_arity_key: None,
+        producer_id: Some(("java-core").to_string()),
+    }
+}
+
+// Fixture attributes are decoded at this mock boundary; product constructors use typed fields.
+fn text_value(value: Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(s) => Some(s),
+        other => Some(other.to_string()),
+    }
+}
+fn integer_value(value: Value) -> Option<i64> {
+    match value {
+        Value::Null => None,
+        Value::Bool(v) => Some(i64::from(v)),
+        v => Some(v.as_i64().expect("fixture integer")),
+    }
 }

@@ -69,7 +69,7 @@ fn config(scratch: &std::path::Path, extra: bool) -> AnalysisConfig {
             generated: BTreeMap::new(),
         },
         files,
-        mode: "semantic".into(),
+        mode: codeana_model::rust::RustAnalysisMode::Semantic,
         scratch: scratch.into(),
         result_bytes: 10 << 20,
         fact_limit: 100000,
@@ -256,7 +256,7 @@ fn mixed_archive_preserves_java_on_rust_delta_and_rejects_partial_publication() 
         created: 0,
     };
     let mut header = AnalysisHeader {
-        mode: "full".into(),
+        mode: codeana_model::AnalysisMode::Full,
         baseline: String::new(),
         manifest: revision.manifest.id(),
         profile: revision.profile.clone(),
@@ -299,14 +299,14 @@ fn mixed_archive_preserves_java_on_rust_delta_and_rejects_partial_publication() 
     source.size = bytes.len() as u64;
     store.put_blobs(&BTreeMap::from([(hash(bytes), bytes.to_vec())]))?;
     let delta = records::records(&config, &analyze(&config, &|| Ok(()))?, Some(&first.states))?;
-    header.mode = "delta".into();
+    header.mode = codeana_model::AnalysisMode::Delta;
     header.baseline = baseline.id.clone();
     header.manifest = revision.manifest.id();
     header.replacements = delta
         .replacements
         .iter()
         .map(|(file, world)| Owner {
-            world: world.clone(),
+            world: world.clone().into(),
             producer: "rust-core".into(),
             kind: "source".into(),
             id: file.clone(),

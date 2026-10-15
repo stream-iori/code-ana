@@ -31,29 +31,6 @@ impl Drop for CandidatePin {
             .remove(&self.id);
     }
 }
-#[derive(Clone, Default)]
-pub struct StagedSummary {
-    pub statistics: CandidateStatistics,
-    /// Task-local diagnostics; never part of Fact IR or the worker protocol.
-    pub phase_ms: BTreeMap<String, u64>,
-    pub fact_count: u64,
-    pub counts: BTreeMap<String, u64>,
-    pub diagnostic_total: u64,
-    pub diagnostic_rows: u64,
-    pub diagnostic_sampled_occurrences: u64,
-    pub diagnostic_groups: BTreeMap<String, u64>,
-    pub diagnostic_groups_omitted: u64,
-    pub diagnostic_samples: Vec<Fact>,
-    pub evidence: Evidence,
-    pub analysis_mode: Option<String>,
-    pub classpath_status: Option<String>,
-}
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub struct CandidateStatistics {
-    pub analyzed_indexes: u64,
-    pub elapsed_ms: u64,
-    pub warnings: Vec<String>,
-}
 fn prepare_statistics(
     db: &Connection,
     check: &dyn Fn() -> Result<()>,

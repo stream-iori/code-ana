@@ -109,8 +109,8 @@ pub(super) fn runtime(
                 ""
             )
         );
-        let mut visited = BTreeSet::from([root.id.clone()]);
-        let mut frontier = BTreeMap::from([(root.id, Vec::<String>::new())]);
+        let mut visited = BTreeSet::from([root.id.to_string()]);
+        let mut frontier = BTreeMap::from([(root.id.to_string(), Vec::<String>::new())]);
         for depth in 1..=req.depth.max(1) {
             let ids = frontier.keys().cloned().collect::<Vec<_>>();
             if ids.is_empty() {
@@ -133,7 +133,7 @@ pub(super) fn runtime(
                 }
                 visited.insert(edge.parent.clone());
                 let mut proof = frontier[&edge.target].clone();
-                proof.push(edge.id);
+                proof.push(edge.id.to_string());
                 next.insert(edge.parent, proof);
             }
             let children = next.keys().cloned().collect::<Vec<_>>();
@@ -152,7 +152,7 @@ pub(super) fn runtime(
                     if filter != "all" && filter != state {
                         continue;
                     }
-                    let id = fact.id.clone();
+                    let id = fact.id.to_string();
                     let record = Record::Fact(Box::new(FactRecord {
                         fact,
                         depth: None,
@@ -202,10 +202,10 @@ pub(super) fn relations(
     } else {
         vec![req.relation.as_str()]
     };
-    let incoming = req.direction == "in";
+    let incoming = req.direction == codeana_model::Direction::Incoming;
     let mut frontier = roots
         .into_iter()
-        .map(|root| root.id)
+        .map(|root| root.id.to_string())
         .collect::<BTreeSet<_>>();
     let mut visited = frontier.clone();
     let mut output = BTreeMap::new();
@@ -226,7 +226,7 @@ pub(super) fn relations(
             if !incoming && !allowed(reader, req, &edge) {
                 continue;
             }
-            if output.len() >= 10000 && !output.contains_key(&edge.id) {
+            if output.len() >= 10000 && !output.contains_key(edge.id.as_str()) {
                 limit(evidence, "work");
                 return Ok(output.into_values().collect());
             }
@@ -251,7 +251,7 @@ pub(super) fn relations(
                 evidence.semantic = false;
                 evidence.reasons.push(format!("relation:{}", edge.id));
             }
-            let id = edge.id.clone();
+            let id = edge.id.to_string();
             let record = Record::Fact(Box::new(FactRecord {
                 fact: edge,
                 depth: req.transitive.then_some(depth),
@@ -265,7 +265,9 @@ pub(super) fn relations(
         let ids = frontier.into_iter().collect::<Vec<_>>();
         if adjacent(reader, &ids, incoming, &selected)?
             .iter()
-            .any(|edge| (incoming || allowed(reader, req, edge)) && !output.contains_key(&edge.id))
+            .any(|edge| {
+                (incoming || allowed(reader, req, edge)) && !output.contains_key(edge.id.as_str())
+            })
         {
             limit(evidence, "depth");
         }

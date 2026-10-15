@@ -26,8 +26,8 @@ pub(super) fn trace(
         targets.len() == 1,
         codeana_model::DomainError::new(codeana_model::ErrorCode::TraceUniqueTargetRequired, "")
     );
-    let start = roots[0].id.clone();
-    let target = targets[0].id.clone();
+    let start = roots[0].id.to_string();
+    let target = targets[0].id.to_string();
     let mut visited = BTreeSet::from([start.clone()]);
     let mut predecessor: BTreeMap<String, (String, CallRelation)> = BTreeMap::new();
     let mut frontier = vec![start.clone()];
@@ -39,7 +39,12 @@ pub(super) fn trace(
         }
         let mut next = BTreeSet::new();
         for batch in frontier.chunks(500) {
-            let edges = call_edges_many(r, batch, req.direction == "in", evidence)?;
+            let edges = call_edges_many(
+                r,
+                batch,
+                req.direction == codeana_model::Direction::Incoming,
+                evidence,
+            )?;
             work += batch.len() + edges.len();
             if work > 100000 {
                 evidence.enumeration = false;
@@ -47,7 +52,7 @@ pub(super) fn trace(
                 break;
             }
             for ((from, to), sites) in edges {
-                let (previous, node) = if req.direction == "in" {
+                let (previous, node) = if req.direction == codeana_model::Direction::Incoming {
                     (&to, &from)
                 } else {
                     (&from, &to)
@@ -108,8 +113,8 @@ pub(super) fn trace(
         nodes.reverse();
         hops.reverse();
         records.push(Record::Trace(TracePath {
-            from: start,
-            to: target,
+            from: start.to_string(),
+            to: target.to_string(),
             nodes,
             hops,
         }));
@@ -126,7 +131,7 @@ pub(super) fn run(
     let roots = resolve_scoped(r, req)?;
     let mut visited = BTreeSet::new();
     let mut emitted = BTreeSet::new();
-    let mut frontier: Vec<_> = roots.into_iter().map(|f| f.id).collect();
+    let mut frontier: Vec<_> = roots.into_iter().map(|f| f.id.to_string()).collect();
     let mut work = 0;
     'layers: for depth in 0..req.depth.max(1) {
         frontier.retain(|id| visited.insert(id.clone()));
@@ -135,7 +140,12 @@ pub(super) fn run(
         }
         let mut next = BTreeSet::new();
         for batch in frontier.chunks(500) {
-            let edges = call_edges_many(r, batch, req.direction == "in", evidence)?;
+            let edges = call_edges_many(
+                r,
+                batch,
+                req.direction == codeana_model::Direction::Incoming,
+                evidence,
+            )?;
             work += batch.len() + edges.len();
             if work > 100000 || visited.len() > 10000 || records.len() > 10000 {
                 evidence.enumeration = false;
@@ -144,7 +154,7 @@ pub(super) fn run(
             }
             for ((from, to), sites) in edges {
                 if depth + 1 < req.depth.max(1) {
-                    next.insert(if req.direction == "in" {
+                    next.insert(if req.direction == codeana_model::Direction::Incoming {
                         from.clone()
                     } else {
                         to.clone()

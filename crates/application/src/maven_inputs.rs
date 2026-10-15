@@ -748,7 +748,39 @@ fn extension(options: &ExportOptions) -> Result<PathBuf> {
     bail!("Maven extension missing; run scripts/build-java-maven.sh")
 }
 
+struct PreparedExport {
+    root: PathBuf,
+    output: PathBuf,
+    scopes: Vec<String>,
+    profiles: Vec<String>,
+    extension: PathBuf,
+    external: BTreeMap<String, String>,
+    control: BTreeMap<String, String>,
+    tmp: tempfile::TempDir,
+    nonce: String,
+    tests: bool,
+    command: Command,
+}
+struct ExportDiscovery {
+    names: BTreeMap<PathBuf, String>,
+    selected: BTreeSet<PathBuf>,
+    metadata_hash: String,
+    inputs: String,
+    inputs_hash: String,
+    failed: Option<(DependencyFailure, String)>,
+    classpath_rounds: u32,
+}
 pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs> {
+    let mut prepared = prepare_export(options)?;
+    let mut session = Session::start(&mut prepared.command, &prepared.nonce, options.timeout)?;
+    session.ready(cancel)?;
+    let discovered = discover_export(&prepared, &mut session, options, cancel)?;
+    let output = prepared.output.clone();
+    let (result, _scratch) = assemble_export(prepared, discovered, &session, options, cancel)?;
+    write_export(&output, &result, &session, cancel)?;
+    Ok(result)
+}
+fn prepare_export(options: &ExportOptions) -> Result<PreparedExport> {
     let root = options.project.canonicalize()?;
     let output = resolve(&options.output)?;
     ensure!(!output.exists(), "output must not exist");
@@ -812,7 +844,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
             external.insert(p.to_string_lossy().into_owned(), hash_file(&p)?);
         }
     }
-    let mut control = controls(&root)?;
+    let control = controls(&root)?;
     let tmp = tempfile::Builder::new()
         .prefix("codeana-maven-export-")
         .tempdir()?;
@@ -857,9 +889,31 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         .arg(format!("-Dcodeana.inputs.tests={tests}"))
         .arg(format!("-Dcodeana.inputs.nonce={nonce}"))
         .arg("validate");
-    let mut session = Session::start(&mut command, &nonce, options.timeout)?;
-    session.ready(cancel)?;
-    let (metadata, metadata_hash) = response(tmp.path(), "metadata", &nonce)?;
+    Ok(PreparedExport {
+        root,
+        output,
+        scopes,
+        profiles,
+        extension,
+        external,
+        control,
+        tmp,
+        nonce,
+        tests,
+        command,
+    })
+}
+fn discover_export(
+    prepared: &PreparedExport,
+    session: &mut Session,
+    options: &ExportOptions,
+    cancel: &AtomicBool,
+) -> Result<ExportDiscovery> {
+    let root = &prepared.root;
+    let tmp = &prepared.tmp;
+    let nonce = &prepared.nonce;
+    let tests = prepared.tests;
+    let (metadata, metadata_hash) = response(tmp.path(), "metadata", nonce)?;
     let meta = parse(&metadata)?;
     let inventory: Vec<_> = children(meta.root_element(), "module").collect();
     ensure!(
@@ -868,8 +922,8 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
     );
     let mut names = BTreeMap::new();
     for node in &inventory {
-        let path = inside(&root, attr(*node, "directory")?)?;
-        let rel = relative(&root, &path)?;
+        let path = inside(root, attr(*node, "directory")?)?;
+        let rel = relative(root, &path)?;
         let name = if rel == "." {
             attr(*node, "coordinate")?
                 .split(':')
@@ -894,7 +948,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
     for label in &options.modules {
         let found: Vec<_> = names
             .iter()
-            .filter(|(p, n)| label == *n || relative(&root, p).is_ok_and(|s| &s == label))
+            .filter(|(p, n)| label == *n || relative(root, p).is_ok_and(|s| &s == label))
             .collect();
         ensure!(
             found.len() == 1,
@@ -909,7 +963,7 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         selected.extend(names.keys().cloned());
     }
     let mut selection = 0x414d5331u32.to_be_bytes().to_vec();
-    write_utf(&mut selection, &nonce)?;
+    write_utf(&mut selection, nonce)?;
     selection.push(u8::from(tests));
     selection.extend((selected.len() as u32).to_be_bytes());
     for p in &selected {
@@ -924,16 +978,16 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
             ensure!(!options.source_only, "MAVEN_UNEXPECTED_DEPENDENCY_FAILURE");
             failed = Some(dependency_failure(
                 tmp.path(),
-                &nonce,
+                nonce,
                 round,
                 &metadata_hash,
-                &root,
+                root,
                 &names,
                 &attempted,
             )?);
             break;
         }
-        let (candidate, _) = response(tmp.path(), "inputs", &nonce)?;
+        let (candidate, _) = response(tmp.path(), "inputs", nonce)?;
         ensure!(
             attr(parse(&candidate)?.root_element(), "round")?.parse::<usize>()? == round,
             "MAVEN_RESPONSE_ROUND"
@@ -941,10 +995,10 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         let pending = if options.source_only {
             BTreeSet::new()
         } else {
-            prerequisite_modules(&candidate, &root, &names, &selected, tests)?
+            prerequisite_modules(&candidate, root, &names, &selected, tests)?
         };
         let mut frame = 0x414d5031u32.to_be_bytes().to_vec();
-        write_utf(&mut frame, &nonce)?;
+        write_utf(&mut frame, nonce)?;
         frame.extend((pending.len() as u32).to_be_bytes());
         for directory in &pending {
             write_utf(&mut frame, &directory.to_string_lossy())?;
@@ -971,10 +1025,10 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
     if let Some((failure, digest)) = &failed {
         let (confirmed, confirmed_digest) = dependency_failure(
             tmp.path(),
-            &nonce,
+            nonce,
             failure.round as usize,
             &metadata_hash,
-            &root,
+            root,
             &names,
             &attempted,
         )?;
@@ -991,11 +1045,49 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         } else {
             "inputs"
         },
-        &nonce,
+        nonce,
     )?;
     if failed.is_some() {
         ensure!(inputs_hash == metadata_hash, "MAVEN_METADATA_CHANGED");
     }
+    Ok(ExportDiscovery {
+        names,
+        selected,
+        metadata_hash,
+        inputs,
+        inputs_hash,
+        failed,
+        classpath_rounds,
+    })
+}
+fn assemble_export(
+    prepared: PreparedExport,
+    discovered: ExportDiscovery,
+    session: &Session,
+    options: &ExportOptions,
+    cancel: &AtomicBool,
+) -> Result<(JavaInputs, tempfile::TempDir)> {
+    let PreparedExport {
+        root,
+        scopes,
+        profiles,
+        extension,
+        mut external,
+        mut control,
+        nonce,
+        tests,
+        tmp,
+        ..
+    } = prepared;
+    let ExportDiscovery {
+        names,
+        selected,
+        metadata_hash,
+        inputs,
+        inputs_hash,
+        failed,
+        classpath_rounds,
+    } = discovered;
     let doc = parse(&inputs)?;
     let inventory: Vec<_> = children(doc.root_element(), "module").collect();
     ensure!(
@@ -1284,6 +1376,14 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
         }),
         modules: records,
     };
+    Ok((result, tmp))
+}
+fn write_export(
+    output: &Path,
+    result: &JavaInputs,
+    session: &Session,
+    cancel: &AtomicBool,
+) -> Result<()> {
     let mut encoded = serde_json::to_vec_pretty(&result)?;
     encoded.push(b'\n');
     ensure!(
@@ -1297,12 +1397,12 @@ pub fn export(options: &ExportOptions, cancel: &AtomicBool) -> Result<JavaInputs
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create_new(true)
-        .open(&output)?;
+        .open(output)?;
     if let Err(error) = file.write_all(&encoded).and_then(|()| file.sync_all()) {
-        let _ = fs::remove_file(&output);
+        let _ = fs::remove_file(output);
         return Err(error.into());
     }
-    Ok(result)
+    Ok(())
 }
 
 #[cfg(test)]

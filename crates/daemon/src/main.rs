@@ -2,12 +2,7 @@ use anyhow::{Context, Result, ensure};
 use clap::Parser;
 use codeana_application::{Endpoint, Engine, Event, default_home, private_home};
 use codeana_contracts::{map, terminal, v1::*};
-use std::{
-    os::fd::AsRawFd,
-    path::PathBuf,
-    sync::{Arc, atomic::Ordering},
-    time::Duration,
-};
+use std::{os::fd::AsRawFd, path::PathBuf, sync::Arc, time::Duration};
 use tokio_stream::wrappers::{ReceiverStream, TcpListenerStream};
 use tonic::{Request, Response, Status, transport::Server};
 #[derive(Parser)]
@@ -34,12 +29,12 @@ fn failure(e: impl std::fmt::Display) -> Status {
 }
 impl Service {
     fn status(&self, id: &str) -> Result<TaskStatus, Status> {
-        let (state, result, last_seq) = self.0.store.task(id).map_err(failure)?;
+        let snapshot = self.0.task(id).map_err(failure)?;
         Ok(TaskStatus {
             task_id: id.into(),
-            state,
-            terminal: result.as_ref().map(terminal),
-            last_seq,
+            state: snapshot.state.as_str().into(),
+            terminal: snapshot.result.as_ref().map(terminal),
+            last_seq: snapshot.last_seq,
         })
     }
 }
@@ -67,7 +62,7 @@ impl task_service_server::TaskService for Service {
                 "java-analysis-world-v1".into(),
                 "fact-ir-v1".into(),
                 "immutable-revisions".into(),
-                if self.0.mock.is_some() {
+                if self.0.is_mock() {
                     "mock-fixture-v1".into()
                 } else if self.0.java_available() {
                     "javac-java8-v1".into()
@@ -75,8 +70,8 @@ impl task_service_server::TaskService for Service {
                     "java-unavailable".into()
                 },
             ],
-            generation: self.0.generation.clone(),
-            mock: self.0.mock.is_some(),
+            generation: self.0.generation().into(),
+            mock: self.0.is_mock(),
         }))
     }
     async fn submit_task(&self, r: Request<TaskRequest>) -> Result<Response<TaskAccepted>, Status> {
@@ -103,17 +98,15 @@ impl task_service_server::TaskService for Service {
         }
         let (tx, rx) = tokio::sync::mpsc::channel(8);
         let engine = self.0.clone();
-        let job = engine.jobs.lock().unwrap().get(r.task_id.as_str()).cloned();
-        if let Some(j) = &job {
-            j.watchers.fetch_add(1, Ordering::SeqCst);
-        }
+        let watch = engine.watch_task(&r.task_id);
         tokio::spawn(async move {
+            let _watch = watch;
             let mut seq = r.after_seq;
             loop {
                 if tx.is_closed() {
                     break;
                 }
-                let events = match engine.store.events::<Event>(&r.task_id, seq) {
+                let events = match engine.task_events(&r.task_id, seq) {
                     Ok(v) => v,
                     Err(e) => {
                         let _ = tx.send(Err(failure(e))).await;
@@ -132,17 +125,13 @@ impl task_service_server::TaskService for Service {
                 if terminal_seen {
                     break;
                 }
-                if let Ok((state, _, last)) = engine.store.task(&r.task_id)
-                    && state == "terminal"
-                    && seq >= last
+                if let Ok(snapshot) = engine.task(&r.task_id)
+                    && snapshot.state.as_str() == "terminal"
+                    && seq >= snapshot.last_seq
                 {
                     break;
                 }
                 tokio::select! {_=tx.closed()=>break,_=tokio::time::sleep(Duration::from_millis(30))=>{}}
-            }
-            if let Some(j) = job {
-                *j.disconnected.lock().unwrap() = std::time::Instant::now();
-                j.watchers.fetch_sub(1, Ordering::SeqCst);
             }
         });
         Ok(Response::new(ReceiverStream::new(rx)))
@@ -161,18 +150,15 @@ impl task_service_server::TaskService for Service {
         match r.into_inner().action.as_str() {
             "status" => {}
             "drain" => {
-                self.0.draining.store(true, Ordering::SeqCst);
+                self.0.drain();
             }
             "stop" => {
-                self.0.draining.store(true, Ordering::SeqCst);
-                for j in self.0.jobs.lock().unwrap().values() {
-                    j.cancel.cancel();
-                }
+                self.0.cancel_all();
             }
             _ => return Err(Status::invalid_argument("INVALID_MANAGEMENT_ACTION")),
         };
         Ok(Response::new(ManageReply {
-            state: if self.0.draining.load(Ordering::SeqCst) {
+            state: if self.0.is_draining() {
                 "draining"
             } else {
                 "running"
@@ -246,8 +232,8 @@ async fn main() -> Result<()> {
             uuid::Uuid::new_v4().simple(),
             uuid::Uuid::new_v4().simple()
         ),
-        generation: engine.generation.clone(),
-        mock: engine.mock.is_some(),
+        generation: engine.generation().into(),
+        mock: engine.is_mock(),
     };
     codeana_storage::durable_write(&home.join("endpoint.json"), &serde_json::to_vec(&endpoint)?)?;
     let token = endpoint.token;
@@ -266,17 +252,14 @@ async fn main() -> Result<()> {
         },
     );
     eprintln!("codeana daemon ready: {} mode={mode}", endpoint.address);
-    let shutdown = engine.shutdown.clone();
+    let shutdown = engine.shutdown_token();
     let stop = engine.clone();
     tokio::spawn(async move {
         let mut terminate =
             tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
                 .expect("signal handler");
         tokio::select! {_=tokio::signal::ctrl_c()=>{},_=terminate.recv()=>{}}
-        stop.draining.store(true, Ordering::SeqCst);
-        for job in stop.jobs.lock().unwrap().values() {
-            job.cancel.cancel();
-        }
+        stop.cancel_all();
     });
     let served = Server::builder()
         .add_service(service)
@@ -285,7 +268,7 @@ async fn main() -> Result<()> {
         .await;
     if let Ok(bytes) = std::fs::read(home.join("endpoint.json"))
         && serde_json::from_slice::<Endpoint>(&bytes)
-            .is_ok_and(|e| e.generation == engine.generation)
+            .is_ok_and(|e| e.generation == engine.generation())
     {
         let _ = std::fs::remove_file(home.join("endpoint.json"));
     }

@@ -9,7 +9,8 @@ mod output;
 pub mod ports;
 mod reports;
 mod rust_indexing;
-use ports::{PublicationRepository, TaskRepository};
+use ports::TaskRepository;
+use ports::{IndexRepository, IndexService};
 mod timings;
 mod worker;
 use anyhow::{Context, Result, bail, ensure};
@@ -85,12 +86,21 @@ impl Event {
         }
     }
 }
-pub struct Job {
+struct Job {
     _queue_permit: OwnedSemaphorePermit,
     pub cancel: CancellationToken,
     pub watchers: AtomicUsize,
     pub detached: bool,
     pub disconnected: Mutex<Instant>,
+}
+pub struct TaskWatch {
+    job: Arc<Job>,
+}
+impl Drop for TaskWatch {
+    fn drop(&mut self) {
+        *self.job.disconnected.lock().unwrap() = Instant::now();
+        self.job.watchers.fetch_sub(1, Ordering::SeqCst);
+    }
 }
 struct IdleJava {
     key: String,
@@ -99,20 +109,20 @@ struct IdleJava {
     worker: worker::Worker,
 }
 pub struct Engine {
-    pub store: Store,
+    store: Store,
     tasks: Arc<dyn TaskRepository>,
-    publisher: Arc<dyn PublicationRepository>,
-    pub mock: Option<PathBuf>,
-    pub generation: String,
-    pub jobs: Mutex<BTreeMap<TaskId, Arc<Job>>>,
+    index: IndexService<ports::storage::IndexAdapter>,
+    mock: Option<PathBuf>,
+    generation: String,
+    jobs: Mutex<BTreeMap<TaskId, Arc<Job>>>,
     slots: Arc<Semaphore>,
     queue: Arc<Semaphore>,
     projects: Mutex<BTreeMap<String, Weak<Semaphore>>>,
     analysis_projects: Mutex<BTreeMap<String, Weak<Semaphore>>>,
-    pub draining: AtomicBool,
-    pub shutdown: CancellationToken,
-    pub last_activity: Mutex<Instant>,
-    pub idle_seconds: u64,
+    draining: AtomicBool,
+    shutdown: CancellationToken,
+    last_activity: Mutex<Instant>,
+    idle_seconds: u64,
     worker_memory: u64,
     user: codeana_config::UserConfig,
     idle_java: Arc<Mutex<Option<IdleJava>>>,
@@ -140,7 +150,7 @@ impl Engine {
         let s = Store::open(home)?;
         let engine = Arc::new(Self {
             tasks: Arc::new(s.clone()),
-            publisher: Arc::new(s.clone()),
+            index: IndexService::new(ports::storage::IndexAdapter(s.clone())),
             store: s,
             mock,
             generation: new_id("generation"),
@@ -169,7 +179,7 @@ impl Engine {
                     evidence: Evidence::complete(),
                     ..Default::default()
                 });
-                t.publication = "published".into();
+                t.publication = codeana_model::PublicationState::Published;
                 t.message = "Recovered durable publication; output was not delivered".into();
                 t
             } else {
@@ -181,6 +191,38 @@ impl Engine {
         }
         engine.store.recover(true)?;
         Ok(engine)
+    }
+    pub fn generation(&self) -> &str {
+        &self.generation
+    }
+    pub fn is_mock(&self) -> bool {
+        self.mock.is_some()
+    }
+    pub fn is_draining(&self) -> bool {
+        self.draining.load(Ordering::SeqCst)
+    }
+    pub fn drain(&self) {
+        self.draining.store(true, Ordering::SeqCst);
+    }
+    pub fn cancel_all(&self) {
+        self.drain();
+        for job in self.jobs.lock().unwrap().values() {
+            job.cancel.cancel();
+        }
+    }
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.shutdown.clone()
+    }
+    pub fn task(&self, id: &str) -> Result<ports::TaskSnapshot> {
+        self.tasks.get(&TaskId::from(id))
+    }
+    pub fn task_events(&self, id: &str, after: u64) -> Result<Vec<(u64, Event)>> {
+        self.tasks.events(&TaskId::from(id), after)
+    }
+    pub fn watch_task(&self, id: &str) -> Option<TaskWatch> {
+        let job = self.jobs.lock().unwrap().get(id).cloned()?;
+        job.watchers.fetch_add(1, Ordering::SeqCst);
+        Some(TaskWatch { job })
     }
     pub fn java_available(&self) -> bool {
         java::installed_library().is_ok()
@@ -268,7 +310,7 @@ impl Engine {
         };
         let capture = if matches!(req.operation.as_str(), "index" | "snapshot" | "search-text")
             && (req.target.is_empty() || req.target == "WORKTREE")
-            && (req.operation != "search-text"
+            && (req.operation != codeana_model::Operation::SearchText
                 || (req.revision.is_empty() && req.cursor.is_empty()))
         {
             Some(codeana_config::capture(&root, &req))
@@ -313,7 +355,7 @@ impl Engine {
                 });
             let mut result = result;
             // A timeout/disconnect after catalog commit cannot revoke publication.
-            if result.publication != "published"
+            if result.publication != codeana_model::PublicationState::Published
                 && let Ok(Some(revision)) = engine.tasks.committed(&task)
             {
                 let reason = result.message.clone();
@@ -329,12 +371,12 @@ impl Engine {
                         },
                         ..Default::default()
                     });
-                    result.publication = "published".into();
+                    result.publication = codeana_model::PublicationState::Published;
                     result.message = reason;
                 }
             }
             if let Err(e) = engine.render(&task, &req, &mut result) {
-                if result.publication == "published" {
+                if result.publication == codeana_model::PublicationState::Published {
                     result.code = "OUTPUT_FAILURE".into();
                     result.message = e.to_string();
                     result.exit_code = 1;
@@ -398,8 +440,8 @@ impl Engine {
             self.tasks
                 .event(&TaskId::from(id), &Event::Progress("running".into()))?;
             let capture = capture.transpose()?;
-            let mut result = match req.operation.as_str() {
-                "index" => {
+            let mut result = match req.operation {
+                Operation::Index => {
                     self.index(
                         id,
                         &IndexCommand::from(req),
@@ -411,8 +453,8 @@ impl Engine {
                     )
                     .await?
                 }
-                "snapshot" => self.snapshot(id, req, capture, &job.cancel).await?,
-                "search-text" if req.revision.is_empty() && req.cursor.is_empty() => {
+                Operation::Snapshot => self.snapshot(id, req, capture, &job.cancel).await?,
+                Operation::SearchText if req.revision.is_empty() && req.cursor.is_empty() => {
                     let c = capture.context(codeana_model::DomainError::new(
                         codeana_model::ErrorCode::CaptureRequired,
                         "",
@@ -478,7 +520,7 @@ impl Engine {
             if req.strict
                 && (!result.output.evidence.semantic || !result.output.evidence.enumeration)
             {
-                result.gate = "rejected".into();
+                result.gate = codeana_model::GateState::Rejected;
                 result.exit_code = 3;
             }
             Ok::<_, anyhow::Error>(result)
@@ -492,9 +534,9 @@ impl Engine {
         );
         let root = Path::new(&req.project);
         let (project, checkout) = self.store.project_path(&req.project)?;
-        let output = match req.operation.as_str() {
-            "doctor" => self.doctor(root, req)?,
-            "gc" => Output {
+        let output = match req.operation {
+            Operation::Doctor => self.doctor(root, req)?,
+            Operation::Gc => Output {
                 records: vec![{
                     let policy = codeana_config::resolve(root, req)?.config.versions.gc;
                     Record::display(&self.store.gc_policy(
@@ -508,7 +550,7 @@ impl Engine {
                 evidence: Evidence::complete(),
                 ..Default::default()
             },
-            "recover" => {
+            Operation::Recover => {
                 ensure!(
                     self.active() <= 1,
                     codeana_model::DomainError::new(
@@ -522,7 +564,7 @@ impl Engine {
                     ..Default::default()
                 }
             }
-            "snapshot-list" => Output {
+            Operation::SnapshotList => Output {
                 records: self
                     .store
                     .objects::<history::Snapshot>("snapshot", &project)?
@@ -532,7 +574,7 @@ impl Engine {
                 evidence: Evidence::complete(),
                 ..Default::default()
             },
-            "snapshot-remove" => {
+            Operation::SnapshotRemove => {
                 self.store
                     .delete_object("snapshot", &req.selector, &project)?;
                 Output {
@@ -543,10 +585,10 @@ impl Engine {
                     ..Default::default()
                 }
             }
-            "diff" => self.diff(req, &project)?,
-            "report" => self.report(req, &project)?,
-            "annotate" => self.annotate(req, &project, &checkout)?,
-            operation if codeana_query::OPERATIONS.contains(&operation) => {
+            Operation::Diff => self.diff(req, &project)?,
+            Operation::Report => self.report(req, &project)?,
+            Operation::Annotate => self.annotate(req, &project, &checkout)?,
+            operation if codeana_query::OPERATIONS.contains(&operation.as_str()) => {
                 if !req.cursor.is_empty() {
                     return self.continue_page(req, &project);
                 }
@@ -555,7 +597,7 @@ impl Engine {
                         self.store.object("snapshot", sid, &project)?;
                     if snapshot.revision.is_empty() {
                         ensure!(
-                            matches!(req.operation.as_str(), "source" | "search-text"),
+                            matches!(req.operation, Operation::Source | Operation::SearchText),
                             codeana_model::DomainError::new(
                                 codeana_model::ErrorCode::AnalysisSnapshotRequired,
                                 ""
@@ -571,7 +613,7 @@ impl Engine {
                             producer: "files-capture-v1".into(),
                             created: snapshot.created,
                         });
-                        if req.operation == "search-text" {
+                        if req.operation == codeana_model::Operation::SearchText {
                             return self.text_page(
                                 req,
                                 &reader,
@@ -633,7 +675,7 @@ impl Engine {
                     inner: &reader,
                     cancel,
                 };
-                if req.operation == "search-code" {
+                if req.operation == codeana_model::Operation::SearchCode {
                     return self.search_page(req, &project, &guarded, vec![id], cancel);
                 }
                 let source = |s: &SourceUnit| -> Result<Vec<u8>> {
@@ -664,7 +706,7 @@ impl Engine {
                         self.store.blob(&s.hash)
                     }
                 };
-                if req.operation == "search-text" {
+                if req.operation == codeana_model::Operation::SearchText {
                     return self.text_page(req, &guarded, &source, vec![id], cancel);
                 }
                 let out = codeana_query::run(&guarded, req, &source)?;
@@ -693,7 +735,7 @@ impl Engine {
         Ok(())
     }
     pub fn cancel(&self, id: &str) -> Result<()> {
-        self.store.task(id)?;
+        self.task(id)?;
         if let Some(job) = self.jobs.lock().unwrap().get(id) {
             job.cancel.cancel();
         }
