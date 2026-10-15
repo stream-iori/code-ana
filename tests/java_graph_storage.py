@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Production typed Anatomist graph regressions; uses the existing executable paths."""
-import contextlib, json, os, sqlite3, unittest, subprocess, zipfile
+import contextlib, json, os, sqlite3, unittest, subprocess, zipfile, sys
 from product_support import JavaProductHarness, ROOT, BIN, JDK
 
 TABLES=('nodes','edges','annotations','annotation_meta_owned','semantic_annotations',
@@ -116,6 +116,33 @@ enabled=false
         self.cli('index','--strict',code=3,timeout=180)
 
     # Shared fixture helpers never contain legacy acceptance cases.
+    def test_mixed_java_rust_delta_full_and_strict_preserve_both_languages(self):
+        (self.project/'Cargo.toml').write_text('[package]\nname="mixed_fixture"\nversion="0.1.0"\nedition="2021"\n[lib]\npath="rustsrc/lib.rs"\n')
+        (self.project/'rustsrc').mkdir()
+        source=self.project/'rustsrc/lib.rs'
+        source.write_text('pub fn rust_answer() -> i32 { 1 }\n')
+        config=self.project/'.code-ana/config.toml'
+        config.write_text(config.read_text().replace('[[modules]]', '[languages.rust]\nenabled=true\n[resources.index]\nworker_memory_bytes=1073741824\njava_native_heap_bytes=134217728\njava_compiler_heap_bytes=67108864\njava_parallelism=1\n[[modules]]', 1))
+        subprocess.run(['cargo','generate-lockfile','--offline'],cwd=self.project,check=True,capture_output=True)
+        subprocess.run([sys.executable,str(ROOT/'scripts/export-rust-inputs.py'),'--project',str(self.project),'--worker',str(BIN/'codeana-rust-worker')],check=True,capture_output=True,text=True)
+        first=self.cli('index','--full',timeout=180)[1]['revision']
+        def languages(revision):
+            with sqlite3.connect(self.home/'revisions'/revision/'facts.db') as db:
+                return dict(db.execute('SELECT language,count(*) FROM nodes GROUP BY language'))
+        self.assertGreater(languages(first).get('java',0),0)
+        self.assertGreater(languages(first).get('rust',0),0)
+        self.assertTrue(self.cli('resolve','rust_answer')[0])
+        source.write_text('pub fn rust_answer() -> i32 { 2 }\npub fn added() -> i32 { rust_answer() }\n')
+        delta=self.cli('index',timeout=180)[1]['revision']
+        full=self.cli('index','--full',timeout=180)[1]['revision']
+        self.assertEqual(self.canonical(delta),self.canonical(full))
+        self.assertEqual(languages(first).get('java'),languages(full).get('java'))
+        for revision in (delta,full):
+            with sqlite3.connect(self.home/'revisions'/revision/'facts.db') as db:
+                self.assertGreater(db.execute('SELECT count(*) FROM rust_source_states').fetchone()[0],0)
+        self.cli('index','--strict',code=3,timeout=180)
+        self.assertEqual(self.cli('overview')[1]['revision'],full)
+
     def canonical(self,revision):
         with contextlib.closing(sqlite3.connect(self.home/'revisions'/revision/'facts.db')) as db:
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
@@ -248,6 +275,7 @@ enabled=false
 def load_tests(loader,tests,pattern):
     names = [
         'test_maven_fallback_transitions_preserve_source_and_strict_head',
+        'test_mixed_java_rust_delta_full_and_strict_preserve_both_languages',
         'test_graph_full_delta_delete_and_old_revision',
         'test_search_calls_source_and_external_resolution',
         'test_xml_resource_identity_and_incremental_equivalence',

@@ -33,7 +33,7 @@ def release_artifacts():
     """Freeze the actual packaging inputs, including the migrated adapter bundle."""
     root = alignment.ROOT
     files = [root / 'target/release' / name for name in
-             ('codeana-cli', 'codeana-daemon', 'codeana-java-worker')]
+             ('codeana-cli', 'codeana-daemon', 'codeana-java-worker', 'codeana-rust-worker')]
     files += [root / 'lang-java-adapotr/target' / name for name in
               ('compiler-bridge.jar', 'maven-input-worker.jar',
                'native/libcodeana_java.dylib', 'native/manifest.json')]
@@ -124,14 +124,14 @@ def main():
                 if len(fields)==2 and fields[1].startswith(str(binaries)+'/codeana-'):
                     raise ValueError('STOP_RUNTIME_BEFORE_RELEASE_TEST: '+fields[0])
             saved=base/'original-binaries';saved.mkdir()
-            for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):
+            for name in ('codeana-cli','codeana-daemon','codeana-java-worker','codeana-rust-worker'):
                 path=binaries/name
                 shutil.copy2(path,saved/name)
                 original_binaries[path]=saved/name
                 atomic_binary_copy(package/'bin'/name,path)
             report['temporarily_staged_release']=True
         if args.bin_root:
-            for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):
+            for name in ('codeana-cli','codeana-daemon','codeana-java-worker','codeana-rust-worker'):
                 if sha256(binaries/name) != sha256(package/'bin'/name):
                     raise ValueError('PACKAGE_STABLE_BINARY_MISMATCH: '+name)
             for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','maven-input-worker.jar','native/manifest.json'):

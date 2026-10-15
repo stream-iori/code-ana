@@ -84,13 +84,13 @@ def prepare(root, destination, backend=None, stable_paths=False):
             binaries.symlink_to((root/'target/debug').resolve(),target_is_directory=True)
         else:
             binaries.mkdir(parents=True)
-            for name in ('codeana-cli','codeana-daemon','codeana-java-worker'):shutil.copy2(root/'target/debug'/name,binaries/name)
+            for name in ('codeana-cli','codeana-daemon','codeana-java-worker','codeana-rust-worker'):shutil.copy2(root/'target/debug'/name,binaries/name)
         bundle=destination/'target/lib/java/jvm';bundle.mkdir(parents=True)
         for relative in [*manifest['files'],'manifest.json']:shutil.copy2(source/relative,bundle/relative)
         result=dict(backend='jvm',binary_directory=str(binaries.resolve()),versions=versions,
             files=inventory(destination),relocated_binaries=not stable_paths,installed_files=installed_files,
             application_files={str((binaries/name).resolve()):sha(binaries/name)
-                for name in ('codeana-cli','codeana-daemon','codeana-java-worker')})
+                for name in ('codeana-cli','codeana-daemon','codeana-java-worker','codeana-rust-worker')})
         (destination/'runtime.json').write_text(json.dumps(result,indent=2)+'\n')
         return result
     if backend!='native':raise ValueError('JAVA_RUNTIME_BACKEND')
@@ -132,7 +132,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
         binaries.symlink_to((root / 'target/debug').resolve(), target_is_directory=True)
     else:
         binaries.mkdir(parents=True)
-        for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
+        for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker', 'codeana-rust-worker'):
             shutil.copy2(root / 'target/debug' / name, binaries / name)
     (bundle / 'native').mkdir(parents=True)
     for relative in sorted(required | {'native/manifest.json', 'maven-input-worker.jar'}):
@@ -141,7 +141,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
                   files=inventory(destination), relocated_binaries=not stable_paths,
                   installed_files=installed_files,
                   application_files={str((binaries / name).resolve()): sha(binaries / name)
-                      for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker')})
+                      for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker', 'codeana-rust-worker')})
     (destination.parent / 'product-runtime.json').write_text(json.dumps(result, indent=2) + '\n')
     return result
 
@@ -149,7 +149,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
 def input_files():
     paths = [ROOT / name for name in ('Cargo.toml','Cargo.lock','lang-java-adapotr/pom.xml','lang-java-adapotr/.sdkmanrc','justfile')]
     extensions = {'.rs','.java','.py','.sh','.proto','.toml','.xml','.json','.sql'}
-    for directory in ('crates','lang-java-adapotr','scripts','tests','proto'):
+    for directory in ('crates','lang-java-adapotr','lang-rust-adaptor','scripts','tests','proto'):
         paths += [p for p in (ROOT / directory).rglob('*') if p.is_file() and p.suffix in extensions
                   and not {'target','__pycache__'}.intersection(p.relative_to(ROOT).parts)]
     return {str(p.relative_to(ROOT)): hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted(set(paths))}

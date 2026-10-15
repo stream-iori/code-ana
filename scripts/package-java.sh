@@ -42,7 +42,7 @@ if [[ "$custom_output" == true && -e "$package_dir" ]]; then
 fi
 if [[ "$custom_output" == false ]]; then rm -rf "$package_dir"; fi
 mkdir -p "$package_dir/bin" "$package_dir/lib/java/native" "$package_dir/include" "$package_dir/fixtures"
-for binary in codeana-cli codeana-daemon codeana-java-worker; do
+for binary in codeana-cli codeana-daemon codeana-java-worker codeana-rust-worker; do
   cp "target/release/$binary" "$package_dir/bin/"
 done
 cp lang-java-adapotr/target/native/libcodeana_java.dylib lang-java-adapotr/target/native/manifest.json "$package_dir/lib/java/native/"
@@ -56,6 +56,8 @@ script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 exec "$script_dir/codeana-cli" java-inputs export "$@"
 EXPORT
 chmod +x "$package_dir/bin/codeana-export-java-inputs"
+cp scripts/export-rust-inputs.py "$package_dir/bin/codeana-export-rust-inputs"
+chmod +x "$package_dir/bin/codeana-export-rust-inputs"
 cp -R docs "$package_dir/docs"
 python3 - "$package_dir" <<'DOCS'
 import pathlib,sys
