@@ -98,3 +98,11 @@ isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任�
 最新正确性、单轮 iopengw 和未完成验收见 [当前实现](../current-state.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。
 
 Maven 源码模式通过 worker 20 / analysis request 10 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
+
+## 任务内协作与类型边界（2026-10-16）
+
+Java 桥在 JSON 入口构造 AnalysisRequest、ContextOptions、BaselineDescriptor 和 AnalysisResult；紧凑 source/classpath 索引保留按需共享描述，不展开复制所有上下文。AnalysisSession 保留现有入口及资源所有权，按准备、Java 提取、资源提取和封存阶段执行。coverage 只从 diagnostics 汇总，旧空 coverage/context 调用已删除。
+
+JavacRunConfiguration 一次冻结捕获运行配置；旧诊断/fixture setters 保留，但活动分析期间拒绝修改。JavacWorkerPool 拥有编译器 lane 与执行器，JavacModelConsumer 负责解码预算、模型校验及消费。调用恢复按类型运算、候选、推导和选择拆为任务内协作类；Lombok 按 Builder、声明规则、生成成员拆分，共享 Overlay 所有者。预算、缓存、递归保护、规则顺序和模型/行语义保持。
+
+既有类名、源码入口、Rust 执行路径和 SDK 路径保留；新增内部类由 Maven 默认源码收集和 Native reachable closure 打包。来源清单为提取类记录 extracted_from，不改写原始上游 commit/SHA。

@@ -17,7 +17,7 @@ import java.util.*;
  */
 public final class LombokJavaModelExtension implements JavaModelExtension {
     public static final String VERSION = "detached-19";
-    private static final Map<String, String> LOG_TYPES =
+    static final Map<String, String> LOG_TYPES =
             Map.ofEntries(
                     Map.entry("Slf4j", "org.slf4j.Logger"),
                             Map.entry("XSlf4j", "org.slf4j.ext.XLogger"),
@@ -27,7 +27,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                             Map.entry("CommonsLog", "org.apache.commons.logging.Log"),
                     Map.entry("JBossLog", "org.jboss.logging.Logger"),
                             Map.entry("Flogger", "com.google.common.flogger.FluentLogger"));
-    private static final Set<String> BASIC =
+    static final Set<String> BASIC =
             Set.of(
                     "Getter",
                     "Setter",
@@ -51,9 +51,9 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     "Delegate",
                     "UtilityClass",
                     "ExtensionMethod");
-    private final Path project;
-    private final boolean strict;
-    private final LombokConfigurationScope configurations;
+    final Path project;
+    final boolean strict;
+    final LombokConfigurationScope configurations;
 
     public LombokJavaModelExtension(Path project, boolean strict) {
         this.project = project.toAbsolutePath().normalize();
@@ -62,7 +62,8 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
     }
 
     /** Explicit configuration inventory; code-ana does not discover lombok.config. */
-    public LombokJavaModelExtension(Path project, boolean strict, Map<Path, String> capturedConfigurations) {
+    public LombokJavaModelExtension(
+            Path project, boolean strict, Map<Path, String> capturedConfigurations) {
         this.project = project.toAbsolutePath().normalize();
         this.strict = strict;
         configurations = new LombokConfigurationScope(this.project, capturedConfigurations);
@@ -119,7 +120,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 context.targetRelease());
     }
 
-    private static Boolean generatedSince34(String version) {
+    static Boolean generatedSince34(String version) {
         String[] components = version.split("[.-]", 4);
         if (components.length < 3) return null;
         try {
@@ -132,34 +133,38 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         }
     }
 
-    private static boolean usesLombok(List<JavaDeclaration> declarations) {
+    static boolean usesLombok(List<JavaDeclaration> declarations) {
         for (var declaration : declarations)
             if (!annotations(declaration).isEmpty() || usesLombok(declaration.members()))
                 return true;
         return false;
     }
 
-    private final class Overlay {
-        private final JavaAnalysisContext context;
-        private final JavaModel model;
-        private final JavaUnit unit;
-        private final LombokConfiguration configuration;
-        private final JavaBinaryRepository binaries;
-        private final List<JavaType> types;
-        private final Map<JavaDeclaration, JavaModel.DeclarationRef> references =
-                new IdentityHashMap<>();
-        private final Map<String, JavaGeneratedOrigin> generated;
-        private final Map<String, Map<String, Object>> metadata;
-        private final List<IndexDiagnostic> diagnostics;
-        private final Map<String, Long> counters;
-        private boolean seen;
-        private JavaModelAnnotations compiledAnnotations;
-        private final Map<JavaDeclaration, Map<String, JavaAnnotation>> effectiveAnnotations =
-                new IdentityHashMap<>();
-        private final Map<JavaDeclaration, Integer> generatedTypes = new IdentityHashMap<>();
-        private final Map<String, JavaDeclaration> customBuilders = new HashMap<>();
+    final class Overlay {
+        final LombokBuilderRules lombokBuilderRules = new LombokBuilderRules(this);
+        final LombokDeclarationRules lombokDeclarationRules = new LombokDeclarationRules(this);
+        final LombokGeneratedMembers lombokGeneratedMembers = new LombokGeneratedMembers(this);
+        final LombokJavaModelExtension extension = LombokJavaModelExtension.this;
 
-        private Overlay(
+        final JavaAnalysisContext context;
+        final JavaModel model;
+        final JavaUnit unit;
+        final LombokConfiguration configuration;
+        final JavaBinaryRepository binaries;
+        final List<JavaType> types;
+        final Map<JavaDeclaration, JavaModel.DeclarationRef> references = new IdentityHashMap<>();
+        final Map<String, JavaGeneratedOrigin> generated;
+        final Map<String, Map<String, Object>> metadata;
+        final List<IndexDiagnostic> diagnostics;
+        final Map<String, Long> counters;
+        boolean seen;
+        JavaModelAnnotations compiledAnnotations;
+        final Map<JavaDeclaration, Map<String, JavaAnnotation>> effectiveAnnotations =
+                new IdentityHashMap<>();
+        final Map<JavaDeclaration, Integer> generatedTypes = new IdentityHashMap<>();
+        final Map<String, JavaDeclaration> customBuilders = new HashMap<>();
+
+        Overlay(
                 JavaAnalysisContext context,
                 JavaModel model,
                 JavaUnit unit,
@@ -178,10 +183,10 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
             counters = new LinkedHashMap<>(unit.extensions().counters());
         }
 
-        private Boolean generatedAnnotationDefault;
-        private boolean generatedAnnotationChecked;
+        Boolean generatedAnnotationDefault;
+        boolean generatedAnnotationChecked;
 
-        private boolean addGeneratedAnnotation() {
+        boolean addGeneratedAnnotation() {
             if (configuration.addLombokGeneratedAnnotation() != null)
                 return configuration.addLombokGeneratedAnnotation();
             if (!generatedAnnotationChecked) {
@@ -196,13 +201,13 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
             return Boolean.TRUE.equals(generatedAnnotationDefault);
         }
 
-        private boolean generatedAnnotationKnown() {
+        boolean generatedAnnotationKnown() {
             addGeneratedAnnotation();
             return configuration.addLombokGeneratedAnnotation() != null
                     || generatedAnnotationDefault != null;
         }
 
-        private JavaDeclaration generatedAnnotations(JavaDeclaration declaration) {
+        JavaDeclaration generatedAnnotations(JavaDeclaration declaration) {
             List<JavaDeclaration> members =
                     declaration.members().stream().map(this::generatedAnnotations).toList();
             List<JavaAnnotation> annotations = declaration.annotations();
@@ -256,7 +261,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     declaration.deprecated());
         }
 
-        private JavaUnit apply() {
+        JavaUnit apply() {
             var augmented =
                     unit.declarationInventory().stream()
                             .map(this::valueModifiers)
@@ -281,7 +286,8 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 diagnostic(
                         "LOMBOK_BODY_SEMANTICS_OMITTED",
                         null,
-                        "Generated declarations have signatures only; method bodies are unavailable.");
+                        "Generated declarations have signatures only; method bodies are"
+                                + " unavailable.");
             return new JavaUnit(
                     unit.path(),
                     unit.tree(),
@@ -294,189 +300,34 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     new JavaExtensionData(generated, metadata, diagnostics, counters));
         }
 
-        private JavaDeclaration valueModifiers(JavaDeclaration owner) {
-            if (unit.hasProcessorEvidence()
-                    || !annotations(owner).containsKey("Value")
-                    || !owner.symbol().kind().equals("CLASS")
-                    || configuration.uncertainCapabilities().contains("*")
-                    || configuration
-                            .uncertainCapabilities()
-                            .contains(LombokCapabilitySummary.VALUE_MODIFIERS)) return owner;
-            var members = new ArrayList<JavaDeclaration>();
-            for (var member : owner.members()) {
-                if (!member.symbol().kind().equals("FIELD")
-                        || member.symbol().modifiers().contains("static")) {
-                    members.add(member);
-                    continue;
-                }
-                var modifiers = new ArrayList<>(member.symbol().modifiers());
-                if (modifiers.stream().noneMatch(Set.of("public", "protected", "private")::contains)
-                        && !hasAnnotation(member, "Llombok/experimental/PackagePrivate;"))
-                    modifiers.add("private");
-                if (!modifiers.contains("final")
-                        && !hasAnnotation(member, "Llombok/experimental/NonFinal;"))
-                    modifiers.add("final");
-                var replacement = withModifiers(member, modifiers, member.members());
-                if (!member.symbol().modifiers().contains("final")
-                        && modifiers.contains("final")
-                        && initialized(member)
-                        && constantType(member)) replacement = valueConstant(member, replacement);
-                members.add(replacement);
-            }
-            var modifiers = new ArrayList<>(owner.symbol().modifiers());
-            if (!modifiers.contains("final")
-                    && !hasAnnotation(owner, "Llombok/experimental/NonFinal;"))
-                modifiers.add("final");
-            return withModifiers(owner, modifiers, members);
+        JavaDeclaration valueModifiers(JavaDeclaration owner) {
+            return lombokDeclarationRules.valueModifiers(owner);
         }
 
-        private boolean constantType(JavaDeclaration field) {
-            JavaType type = types.get(field.symbol().declaredType());
-            return Set.of(
-                                    JavaType.Kind.BOOLEAN,
-                                    JavaType.Kind.BYTE,
-                                    JavaType.Kind.SHORT,
-                                    JavaType.Kind.INT,
-                                    JavaType.Kind.LONG,
-                                    JavaType.Kind.CHAR,
-                                    JavaType.Kind.FLOAT,
-                                    JavaType.Kind.DOUBLE)
-                            .contains(type.kind())
-                    || type.kind() == JavaType.Kind.DECLARED
-                            && type.name().equals("java.lang.String");
+        boolean constantType(JavaDeclaration field) {
+            return lombokDeclarationRules.constantType(field);
         }
 
-        private JavaDeclaration valueConstant(
-                JavaDeclaration original, JavaDeclaration replacement) {
-            JavaNode expression =
-                    model.syntax(references.get(original)).orElseThrow().tree("getInitializer");
-            if (Set.of("METHOD_INVOCATION", "NEW_CLASS", "NEW_ARRAY", "NULL_LITERAL")
-                    .contains(expression.kind())) return replacement;
-            if (compiledAnnotations == null)
-                compiledAnnotations =
-                        new JavaModelAnnotations(
-                                new JavaUnitAnalysis(
-                                        new JavaFrameworkContext(
-                                                project,
-                                                List.of(unit.path()),
-                                                new com.anatomist.config.ProjectConfig(),
-                                                false),
-                                        model,
-                                        binaries,
-                                        unit.path(),
-                                        context.identity(unit.path())));
-            var constant = compiledAnnotations.constant(unit.path(), expression);
-            if (!(constant instanceof JavaBinaryType.Scalar scalar))
-                return incomplete(replacement, "lombok:value-constant-unavailable");
-            Object value = scalar.value();
-            var kind = types.get(original.symbol().declaredType()).kind();
-            if (!assignableConstant(kind, value))
-                return incomplete(replacement, "lombok:value-constant-type-unavailable");
-            if (value instanceof Character character && kind != JavaType.Kind.CHAR)
-                value = (int) character;
-            else if (value instanceof Integer number && kind == JavaType.Kind.CHAR)
-                value = (char) number.intValue();
-            if (value instanceof Number number)
-                value =
-                        switch (kind) {
-                            case BYTE, SHORT, INT -> number.intValue();
-                            case LONG -> number.longValue();
-                            case FLOAT -> number.floatValue();
-                            case DOUBLE -> number.doubleValue();
-                            default -> value;
-                        };
-            var result =
-                    new JavaDeclaration(
-                            replacement.symbol(),
-                            replacement.canonicalName(),
-                            replacement.binaryName(),
-                            replacement.signature(),
-                            replacement.span(),
-                            replacement.origin(),
-                            replacement.superclass(),
-                            replacement.interfaces(),
-                            replacement.permitted(),
-                            replacement.annotations(),
-                            new JavaBinaryType.Scalar(value),
-                            replacement.annotationDefault(),
-                            replacement.members(),
-                            replacement.incompleteReasons(),
-                            replacement.overrides(),
-                            replacement.deprecated());
-            references.put(result, references.get(original));
-            return result;
+        JavaDeclaration valueConstant(JavaDeclaration original, JavaDeclaration replacement) {
+            return lombokDeclarationRules.valueConstant(original, replacement);
         }
 
-        private boolean assignableConstant(JavaType.Kind kind, Object value) {
-            return switch (kind) {
-                case BOOLEAN -> value instanceof Boolean;
-                case CHAR ->
-                        value instanceof Character
-                                || value instanceof Integer number
-                                        && number >= Character.MIN_VALUE
-                                        && number <= Character.MAX_VALUE;
-                case BYTE ->
-                        value instanceof Integer number
-                                && number >= Byte.MIN_VALUE
-                                && number <= Byte.MAX_VALUE;
-                case SHORT ->
-                        value instanceof Integer number
-                                && number >= Short.MIN_VALUE
-                                && number <= Short.MAX_VALUE;
-                case INT -> value instanceof Integer || value instanceof Character;
-                case LONG ->
-                        value instanceof Integer
-                                || value instanceof Long
-                                || value instanceof Character;
-                case FLOAT ->
-                        value instanceof Number && !(value instanceof Double)
-                                || value instanceof Character;
-                case DOUBLE -> value instanceof Number || value instanceof Character;
-                case DECLARED -> value instanceof String;
-                default -> false;
-            };
+        boolean assignableConstant(JavaType.Kind kind, Object value) {
+            return lombokDeclarationRules.assignableConstant(kind, value);
         }
 
-        private JavaDeclaration withModifiers(
+        JavaDeclaration withModifiers(
                 JavaDeclaration declaration,
                 List<String> modifiers,
                 List<JavaDeclaration> members) {
-            var symbol = declaration.symbol();
-            var replacement =
-                    new JavaDeclaration(
-                            new JavaSymbol(
-                                    symbol.kind(),
-                                    symbol.owner(),
-                                    symbol.name(),
-                                    symbol.descriptor(),
-                                    symbol.declaredType(),
-                                    modifiers,
-                                    symbol.variadic()),
-                            declaration.canonicalName(),
-                            declaration.binaryName(),
-                            declaration.signature(),
-                            declaration.span(),
-                            declaration.origin(),
-                            declaration.superclass(),
-                            declaration.interfaces(),
-                            declaration.permitted(),
-                            declaration.annotations(),
-                            declaration.constant(),
-                            declaration.annotationDefault(),
-                            members,
-                            declaration.incompleteReasons(),
-                            declaration.overrides(),
-                            declaration.deprecated());
-            references.put(replacement, references.get(declaration));
-            return replacement;
+            return lombokDeclarationRules.withModifiers(declaration, modifiers, members);
         }
 
-        private boolean hasAnnotation(JavaDeclaration declaration, String descriptor) {
-            return declaration.annotations().stream()
-                    .anyMatch(annotation -> annotation.descriptor().equals(descriptor));
+        boolean hasAnnotation(JavaDeclaration declaration, String descriptor) {
+            return lombokDeclarationRules.hasAnnotation(declaration, descriptor);
         }
 
-        private JavaDeclaration type(JavaDeclaration owner) {
+        JavaDeclaration type(JavaDeclaration owner) {
             if (unit.hasProcessorEvidence()) return compiledType(owner);
             var annotations = annotations(owner);
             if (annotations.containsKey("UtilityClass")) return utilityClass(owner, annotations);
@@ -661,7 +512,8 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 aggregate.partial("generated_annotations");
                 unsupported(
                         owner,
-                        "Generated annotation policy requires a Lombok manifest version or explicit configuration");
+                        "Generated annotation policy requires a Lombok manifest version or explicit"
+                                + " configuration");
             }
             if (count > 0) {
                 increment("lombok_types_augmented", 1);
@@ -677,1376 +529,108 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
             return replacement;
         }
 
-        private JavaDeclaration utilityClass(
+        JavaDeclaration utilityClass(
                 JavaDeclaration owner, Map<String, JavaAnnotation> annotations) {
-            seen = true;
-            var policy = summary(annotations);
-            // The first bounded case already has static source members. Rewriting instance
-            // members, nested owners or other generators needs separate declaration evidence.
-            boolean supported =
-                    owner.symbol().kind().equals("CLASS")
-                            && model.parent(references.get(owner)).isEmpty()
-                            && annotations.size() == 1
-                            && owner.annotations().stream()
-                                    .noneMatch(
-                                            annotation ->
-                                                    annotation.descriptor().startsWith("Llombok/")
-                                                            && !annotation
-                                                                    .descriptor()
-                                                                    .equals(
-                                                                            "Llombok/experimental/UtilityClass;")
-                                                            && !annotation
-                                                                    .descriptor()
-                                                                    .equals("Llombok/Generated;"))
-                            && owner.interfaces().isEmpty()
-                            && !owner.symbol().modifiers().contains("abstract")
-                            && (owner.superclass() < 0
-                                    || JavaTypeNames.erased(unit.types(), owner.superclass())
-                                            .equals("java.lang.Object"))
-                            && !policy.isPartial("utility_class")
-                            && owner.members().stream()
-                                    .allMatch(
-                                            member ->
-                                                    member.symbol().kind().equals("CONSTRUCTOR")
-                                                            ? member.origin()
-                                                                    == JavaDeclaration.Origin
-                                                                            .COMPILER_SYNTHETIC
-                                                            : Set.of("FIELD", "METHOD")
-                                                                            .contains(
-                                                                                    member.symbol()
-                                                                                            .kind())
-                                                                    && member.symbol()
-                                                                            .modifiers()
-                                                                            .contains("static")
-                                                                    && member.annotations().stream()
-                                                                            .noneMatch(
-                                                                                    annotation ->
-                                                                                            annotation
-                                                                                                    .descriptor()
-                                                                                                    .startsWith(
-                                                                                                            "Llombok/")));
-            if (!supported || !generatedAnnotationKnown()) {
-                policy.partial("utility_class");
-                put(owner.canonicalName(), "lombok", policy.toMap());
-                unsupported(
-                        owner,
-                        "UtilityClass requires a top-level class with explicit static members and no other generators");
-                return incomplete(owner, "lombok:incomplete-utility-class");
-            }
-            var members = new ArrayList<>(owner.members());
-            members.removeIf(member -> member.symbol().kind().equals("CONSTRUCTOR"));
-            method(
-                    owner,
-                    members,
-                    "<init>",
-                    List.of(),
-                    primitive(JavaType.Kind.VOID),
-                    "()V",
-                    List.of("private"),
-                    owner.span(),
-                    "@UtilityClass");
-            var modifiers = new ArrayList<>(owner.symbol().modifiers());
-            if (!modifiers.contains("final")) modifiers.add("final");
-            policy.generatedMemberCount(1);
-            put(owner.canonicalName(), "lombok", policy.toMap());
-            increment("lombok_types_augmented", 1);
-            increment("lombok_members_generated", 1);
-            return withModifiers(owner, modifiers, members);
+            return lombokDeclarationRules.utilityClass(owner, annotations);
         }
 
-        private void builder(
+        void builder(
                 JavaDeclaration owner,
                 Map<String, JavaAnnotation> annotations,
                 List<JavaDeclaration> fields,
                 List<JavaDeclaration> members,
                 LombokCapabilitySummary policy,
                 LombokCapabilitySummary aggregate) {
-            List<JavaDeclaration> targets = new ArrayList<>();
-            if (annotations.containsKey("Builder")) targets.add(owner);
-            owner.members().stream()
-                    .filter(member -> annotations(member).containsKey("Builder"))
-                    .forEach(targets::add);
-            if (targets.isEmpty()) return;
-            aggregate.detect("Builder");
-            if (annotations.containsKey("Builder")
-                    && owner.symbol().kind().equals("CLASS")
-                    && Set.of("NoArgsConstructor", "AllArgsConstructor", "RequiredArgsConstructor")
-                            .stream()
-                            .noneMatch(annotations::containsKey))
-                members.removeIf(
-                        member ->
-                                member.symbol().kind().equals("CONSTRUCTOR")
-                                        && member.origin()
-                                                == JavaDeclaration.Origin.COMPILER_SYNTHETIC);
-            var target = targets.getFirst();
-            var annotation = annotations(target).get("Builder");
-            var parent = model.parent(references.get(owner)).orElse(null);
-            if (targets.size() != 1
-                    || policy.isPartial("builder")
-                    || configuration.uncertainCapabilities().contains("*")
-                    || configuration.uncertainCapabilities().contains("builder")
-                    || !owner.symbol().kind().equals("CLASS")
-                    || owner.symbol().modifiers().contains("abstract")
-                    || parent != null && !owner.symbol().modifiers().contains("static")
-                    || target != owner
-                            && !target.symbol().kind().equals("CONSTRUCTOR")
-                            && !target.symbol().kind().equals("METHOD")
-                    || target != owner
-                            && (target.symbol().variadic()
-                                    || !types.get(target.symbol().declaredType())
-                                            .exceptions()
-                                            .isEmpty())
-                    || target != owner
-                            && target.symbol().kind().equals("CONSTRUCTOR")
-                            && target.members().stream()
-                                    .anyMatch(
-                                            member ->
-                                                    member.symbol()
-                                                            .kind()
-                                                            .equals("TYPE_PARAMETER"))) {
-                aggregate.partial("builder");
-                unsupported(owner, "Builder owner, target or generic parameters");
-                return;
-            }
-            boolean methodTarget = target.symbol().kind().equals("METHOD");
-            boolean instanceTarget =
-                    methodTarget && !target.symbol().modifiers().contains("static");
-            var genericOwner = methodTarget ? target : owner;
-            var formals =
-                    genericOwner.members().stream()
-                            .filter(member -> member.symbol().kind().equals("TYPE_PARAMETER"))
-                            .toList();
-            String formalHeader = formalHeader(genericOwner.signature());
-            int builtType =
-                    methodTarget
-                            ? types.get(target.symbol().declaredType()).returns()
-                            : owner.symbol().declaredType();
-            var built = types.get(builtType);
-            if (methodTarget
-                    && (built.kind() == JavaType.Kind.VOID
-                            || built.kind() == JavaType.Kind.ARRAY
-                            || bool(annotation, "toBuilder", false)
-                            || built.kind() == JavaType.Kind.TYPEVAR
-                                    && !annotation.values().containsKey("builderClassName"))) {
-                aggregate.partial("builder");
-                unsupported(owner, "Builder method return type or toBuilder mapping");
-                return;
-            }
-            String builtName = methodTarget ? built.name() : owner.symbol().name();
-            if (builtName.contains("."))
-                builtName = builtName.substring(builtName.lastIndexOf('.') + 1);
-            if (methodTarget && !builtName.isEmpty()) builtName = capitalize(builtName);
-            if (formals.stream()
-                            .anyMatch(
-                                    formal ->
-                                            !formal.complete()
-                                                    || !formal.annotations().isEmpty()
-                                                    || !types.get(formal.symbol().declaredType())
-                                                            .annotations()
-                                                            .isEmpty())
-                    || !formals.isEmpty() && formalHeader.isEmpty()) {
-                aggregate.partial("builder");
-                unsupported(owner, "Builder annotated or incomplete type parameters");
-                return;
-            }
-            String builderName = string(annotation, "builderClassName", builtName + "Builder");
-            String factoryName = string(annotation, "builderMethodName", "builder");
-            String buildName = string(annotation, "buildMethodName", "build");
-            String prefix = string(annotation, "setterPrefix", "");
-            String access = access(annotation, "access");
-            var customLookup = model.type(owner.binaryName() + "$" + builderName);
-            JavaDeclaration custom =
-                    customLookup instanceof JavaModel.FoundType found
-                            ? model.declaration(found.declaration())
-                            : null;
-            boolean validOptions =
-                    annotation.values().entrySet().stream()
-                            .allMatch(
-                                    entry -> {
-                                        if (Set.of(
-                                                        "builderClassName",
-                                                        "builderMethodName",
-                                                        "buildMethodName",
-                                                        "setterPrefix")
-                                                .contains(entry.getKey()))
-                                            return entry.getValue()
-                                                            instanceof JavaBinaryType.Scalar scalar
-                                                    && scalar.value() instanceof String;
-                                        if (entry.getKey().equals("toBuilder"))
-                                            return entry.getValue()
-                                                            instanceof JavaBinaryType.Scalar scalar
-                                                    && scalar.value() instanceof Boolean;
-                                        return entry.getKey().equals("access") && access != null;
-                                    });
-            if (!validOptions
-                    || access == null
-                    || Set.of("NONE", "MODULE").contains(access)
-                    || !identifier(builderName, false)
-                    || !identifier(factoryName, true)
-                    || !identifier(buildName, false)
-                    || !identifier(prefix, true)
-                    || customLookup instanceof JavaModel.AmbiguousType
-                    || custom != null
-                            && (!custom.complete()
-                                    || !custom.symbol().kind().equals("CLASS")
-                                    || custom.symbol().modifiers().contains("static")
-                                            == instanceTarget
-                                    || !formalHeader(custom.signature()).equals(formalHeader)
-                                    || !annotations(custom).isEmpty())) {
-                aggregate.partial("builder");
-                unsupported(owner, "Builder options or custom builder class");
-                return;
-            }
-            List<JavaDeclaration> parameters =
-                    target == owner
-                            ? fields.stream()
-                                    .filter(
-                                            field ->
-                                                    !field.symbol().modifiers().contains("static")
-                                                            && !field.symbol()
-                                                                    .name()
-                                                                    .startsWith("$")
-                                                            && (!(field.symbol()
-                                                                                    .modifiers()
-                                                                                    .contains(
-                                                                                            "final")
-                                                                            || annotations
-                                                                                    .containsKey(
-                                                                                            "Value"))
-                                                                    || !initialized(field)
-                                                                    || hasAnnotation(
-                                                                            field,
-                                                                            "Llombok/Builder$Default;")))
-                                    .toList()
-                            : target.members().stream()
-                                    .filter(member -> member.symbol().kind().equals("PARAMETER"))
-                                    .toList();
-            if (parameters.stream()
-                            .anyMatch(
-                                    parameter ->
-                                            !parameter.complete()
-                                                    || needsAnnotationCopies(parameter)
-                                                    || parameter.symbol().kind().equals("PARAMETER")
-                                                            && !types.get(
-                                                                            parameter
-                                                                                    .symbol()
-                                                                                    .declaredType())
-                                                                    .annotations()
-                                                                    .isEmpty())
-                    || fields.stream()
-                            .anyMatch(
-                                    field ->
-                                            field.annotations().stream()
-                                                    .anyMatch(
-                                                            value ->
-                                                                    Set.of(
-                                                                                    "Llombok/Singular;",
-                                                                                    "Llombok/Builder$ObtainVia;")
-                                                                            .contains(
-                                                                                    value
-                                                                                            .descriptor())))) {
-                aggregate.partial("builder");
-                unsupported(owner, "Builder annotated, default or collection parameters");
-                return;
-            }
-            var defaults =
-                    target == owner
-                            ? parameters.stream()
-                                    .filter(
-                                            field ->
-                                                    hasAnnotation(
-                                                            field, "Llombok/Builder$Default;"))
-                                    .toList()
-                            : List.<JavaDeclaration>of();
-            if (custom != null
-                    && parameters.stream()
-                            .anyMatch(
-                                    parameter ->
-                                            custom.members().stream()
-                                                    .filter(
-                                                            member ->
-                                                                    member.symbol()
-                                                                                    .kind()
-                                                                                    .equals("FIELD")
-                                                                            && member.symbol()
-                                                                                    .name()
-                                                                                    .equals(
-                                                                                            defaults
-                                                                                                            .contains(
-                                                                                                                    parameter)
-                                                                                                    ? parameter
-                                                                                                                    .symbol()
-                                                                                                                    .name()
-                                                                                                            + "$value"
-                                                                                                    : parameter
-                                                                                                            .symbol()
-                                                                                                            .name()))
-                                                    .anyMatch(
-                                                            member ->
-                                                                    member.symbol()
-                                                                                    .modifiers()
-                                                                                    .contains(
-                                                                                            "static")
-                                                                            || !member.symbol()
-                                                                                    .descriptor()
-                                                                                    .equals(
-                                                                                            parameter
-                                                                                                    .symbol()
-                                                                                                    .descriptor())
-                                                                            || !member.signature()
-                                                                                    .equals(
-                                                                                            parameter
-                                                                                                    .signature())))) {
-                aggregate.partial("builder");
-                unsupported(owner, "Builder custom field type or modifiers");
-                return;
-            }
-            if (defaults.stream()
-                    .anyMatch(
-                            field ->
-                                    !initialized(field)
-                                            || hasAny(
-                                                    members,
-                                                    List.of("$default$" + field.symbol().name()),
-                                                    0))) {
-                aggregate.partial("builder");
-                unsupported(
-                        owner, "Builder.Default without initializer or with provider collision");
-                return;
-            }
-            for (var field : defaults) builderDefault(owner, members, formals, formalHeader, field);
-            int builderType = types.size();
-            String canonical = owner.canonicalName() + "." + builderName;
-            String binary = owner.binaryName() + "$" + builderName;
-            types.add(
-                    new JavaType(
-                            JavaType.Kind.DECLARED,
-                            canonical,
-                            canonical,
-                            instanceTarget ? owner.symbol().declaredType() : -1,
-                            formals.stream().map(formal -> formal.symbol().declaredType()).toList(),
-                            List.of(),
-                            -1,
-                            -1,
-                            List.of(),
-                            -1,
-                            List.of(),
-                            List.of(),
-                            binary));
-            var builderModifiers = new ArrayList<>(modifiers(access, !instanceTarget));
-            var builder =
-                    custom != null
-                            ? custom
-                            : new JavaDeclaration(
-                                    new JavaSymbol(
-                                            "CLASS",
-                                            owner.canonicalName(),
-                                            builderName,
-                                            descriptor(builderType),
-                                            builderType,
-                                            builderModifiers,
-                                            false),
-                                    canonical,
-                                    binary,
-                                    formalHeader + "Ljava/lang/Object;",
-                                    owner.span(),
-                                    JavaDeclaration.Origin.MODEL,
-                                    named("java.lang.Object"),
-                                    List.of(),
-                                    List.of(),
-                                    List.of(),
-                                    null,
-                                    null,
-                                    List.of(),
-                                    List.of());
-            var builderMembers = new ArrayList<JavaDeclaration>(builder.members());
-            builderMembers.removeIf(
-                    member ->
-                            member.symbol().kind().equals("CONSTRUCTOR")
-                                    && member.origin()
-                                            == JavaDeclaration.Origin.COMPILER_SYNTHETIC);
-            if (custom == null)
-                builderMembers.addAll(
-                        formals.stream().map(formal -> modeledFormal(formal, canonical)).toList());
-            String builderSignature = genericTypeSignature(binary, formals);
-            var enclosingFormals =
-                    owner.members().stream()
-                            .filter(member -> member.symbol().kind().equals("TYPE_PARAMETER"))
-                            .toList();
-            if (instanceTarget && !enclosingFormals.isEmpty()) {
-                String enclosingSignature =
-                        genericTypeSignature(owner.binaryName(), enclosingFormals);
-                builderSignature =
-                        enclosingSignature.substring(0, enclosingSignature.length() - 1)
-                                + "."
-                                + genericTypeSignature(builderName, formals).substring(1);
-            }
-            if (builderMembers.stream()
-                    .noneMatch(member -> member.symbol().kind().equals("CONSTRUCTOR")))
-                method(
-                        builder,
-                        builderMembers,
-                        "<init>",
-                        List.of(),
-                        primitive(JavaType.Kind.VOID),
-                        "()V",
-                        List.of(),
-                        owner.span(),
-                        "@Builder");
-            String memberAccess = access.equals("PROTECTED") ? "PUBLIC" : access;
-            for (var parameter : parameters) {
-                String name = parameter.symbol().name();
-                boolean defaulted = defaults.contains(parameter);
-                var field =
-                        new JavaDeclaration(
-                                new JavaSymbol(
-                                        "FIELD",
-                                        canonical,
-                                        defaulted ? name + "$value" : name,
-                                        descriptor(parameter.symbol().declaredType()),
-                                        writtenFieldType(parameter),
-                                        List.of("private"),
-                                        false),
-                                "",
-                                "",
-                                parameter.signature(),
-                                parameter.span(),
-                                JavaDeclaration.Origin.MODEL,
-                                -1,
-                                List.of(),
-                                List.of(),
-                                List.of(),
-                                null,
-                                null,
-                                List.of(),
-                                List.of());
-                if (builderMembers.stream()
-                        .noneMatch(
-                                member ->
-                                        member.symbol().kind().equals("FIELD")
-                                                && member.symbol()
-                                                        .name()
-                                                        .equals(field.symbol().name()))) {
-                    builderMembers.add(field);
-                    generated.put(fieldId(builder, field), origin("@Builder"));
-                }
-                if (defaulted) {
-                    int booleanType = primitive(JavaType.Kind.BOOLEAN);
-                    var flag =
-                            new JavaDeclaration(
-                                    new JavaSymbol(
-                                            "FIELD",
-                                            canonical,
-                                            name + "$set",
-                                            "Z",
-                                            booleanType,
-                                            List.of("private"),
-                                            false),
-                                    "",
-                                    "",
-                                    "Z",
-                                    parameter.span(),
-                                    JavaDeclaration.Origin.MODEL,
-                                    -1,
-                                    List.of(),
-                                    List.of(),
-                                    List.of(),
-                                    null,
-                                    null,
-                                    List.of(),
-                                    List.of());
-                    if (builderMembers.stream()
-                            .noneMatch(
-                                    member ->
-                                            member.symbol().kind().equals("FIELD")
-                                                    && member.symbol()
-                                                            .name()
-                                                            .equals(flag.symbol().name()))) {
-                        builderMembers.add(flag);
-                        generated.put(fieldId(builder, flag), origin("@Builder.Default"));
-                    }
-                }
-                String setter = prefix.isEmpty() ? name : prefix + capitalize(name);
-                if (!hasNamedMethod(builderMembers, setter))
-                    method(
-                            builder,
-                            builderMembers,
-                            setter,
-                            List.of(parameter),
-                            builderType,
-                            "(" + parameter.signature() + ")" + builderSignature,
-                            modifiers(memberAccess, false),
-                            parameter.span(),
-                            "@Builder",
-                            copiedMethodAnnotations(parameter, false));
-            }
-            if (!hasNamedMethod(builderMembers, buildName))
-                method(
-                        builder,
-                        builderMembers,
-                        buildName,
-                        List.of(),
-                        builtType,
-                        "()"
-                                + (methodTarget
-                                        ? returnSignature(target.signature())
-                                        : genericTypeSignature(owner.binaryName(), formals)),
-                        modifiers(memberAccess, false),
-                        owner.span(),
-                        "@Builder");
-            if (!hasNamedMethod(builderMembers, "toString"))
-                method(
-                        builder,
-                        builderMembers,
-                        "toString",
-                        List.of(),
-                        named("java.lang.String"),
-                        "()Ljava/lang/String;",
-                        List.of("public"),
-                        owner.span(),
-                        "@Builder");
-            var completedBuilder = copy(builder, builderMembers, builder.incompleteReasons());
-            if (custom == null) {
-                members.add(completedBuilder);
-                generated.put(canonical, origin("@Builder"));
-            } else {
-                customBuilders.put(binary, completedBuilder);
-                members.replaceAll(
-                        member -> member.binaryName().equals(binary) ? completedBuilder : member);
-            }
-            if (!factoryName.isEmpty() && !hasAny(members, List.of(factoryName), 0)) {
-                method(
-                        owner,
-                        members,
-                        factoryName,
-                        List.of(),
-                        builderType,
-                        formalHeader + "()" + builderSignature,
-                        modifiers(access, !instanceTarget),
-                        owner.span(),
-                        "@Builder");
-                methodFormals(members, formals);
-            }
-            if (bool(annotation, "toBuilder", false) && !hasAny(members, List.of("toBuilder"), 0))
-                method(
-                        owner,
-                        members,
-                        "toBuilder",
-                        List.of(),
-                        builderType,
-                        "()" + builderSignature,
-                        modifiers(access, false),
-                        owner.span(),
-                        "@Builder");
-            if (target == owner
-                    && owner.members().stream()
-                            .noneMatch(
-                                    member ->
-                                            member.symbol().kind().equals("CONSTRUCTOR")
-                                                    && member.origin()
-                                                            == JavaDeclaration.Origin.SOURCE)
-                    && Set.of("NoArgsConstructor", "AllArgsConstructor", "RequiredArgsConstructor")
-                            .stream()
-                            .noneMatch(annotations::containsKey)) {
-                members.removeIf(member -> member.symbol().kind().equals("CONSTRUCTOR"));
-                method(
-                        owner,
-                        members,
-                        "<init>",
-                        parameters,
-                        primitive(JavaType.Kind.VOID),
-                        "("
-                                + String.join(
-                                        "",
-                                        parameters.stream()
-                                                .map(JavaDeclaration::signature)
-                                                .toList())
-                                + ")V",
-                        List.of(),
-                        owner.span(),
-                        "@Builder");
-            }
+            lombokBuilderRules.builder(owner, annotations, fields, members, policy, aggregate);
         }
 
-        private void builderDefault(
+        void builderDefault(
                 JavaDeclaration owner,
                 List<JavaDeclaration> members,
                 List<JavaDeclaration> formals,
                 String formalHeader,
                 JavaDeclaration field) {
-            method(
-                    owner,
-                    members,
-                    "$default$" + field.symbol().name(),
-                    List.of(),
-                    generatedType(field),
-                    formalHeader + "()" + field.signature(),
-                    List.of("private", "static"),
-                    field.span(),
-                    "@Builder.Default");
-            methodFormals(members, formals);
-            // The initializer moves to the provider, so a final field ceases to be a constant.
-            int index = members.indexOf(field);
-            if (index >= 0 && field.constant() != null) {
-                members.set(
-                        index,
-                        new JavaDeclaration(
-                                field.symbol(),
-                                field.canonicalName(),
-                                field.binaryName(),
-                                field.signature(),
-                                field.span(),
-                                field.origin(),
-                                field.superclass(),
-                                field.interfaces(),
-                                field.permitted(),
-                                field.annotations(),
-                                null,
-                                field.annotationDefault(),
-                                field.members(),
-                                field.incompleteReasons(),
-                                field.overrides(),
-                                field.deprecated()));
-            }
+            lombokBuilderRules.builderDefault(owner, members, formals, formalHeader, field);
         }
 
-        private sealed interface SuperBuilderValidation
-                permits SuperBuilderReady, SuperBuilderRejected {}
+        sealed interface SuperBuilderValidation permits SuperBuilderReady, SuperBuilderRejected {}
 
         /** A null parent denotes the Object root. */
-        private record SuperBuilderReady(JavaDeclaration parent)
-                implements SuperBuilderValidation {}
+        record SuperBuilderReady(JavaDeclaration parent) implements SuperBuilderValidation {}
 
-        private record SuperBuilderRejected(String reason) implements SuperBuilderValidation {}
+        record SuperBuilderRejected(String reason) implements SuperBuilderValidation {}
 
-        private SuperBuilderValidation validateSuperBuilder(
+        SuperBuilderValidation validateSuperBuilder(
                 JavaDeclaration owner, Set<String> active, int depth) {
-            if (depth >= 32 || !active.add(owner.canonicalName()))
-                return new SuperBuilderRejected("cyclic or over-budget hierarchy");
-            try {
-                var lookup = model.type(owner.canonicalName());
-                if (!(lookup instanceof JavaModel.FoundType found))
-                    return new SuperBuilderRejected("ambiguous owner");
-                var source = model.unit(found.declaration().source());
-                var annotation = annotations(owner).get("SuperBuilder");
-                if (!owner.complete()
-                        || !owner.symbol().kind().equals("CLASS")
-                        || annotation == null
-                        || !annotation.values().isEmpty()
-                        || annotations(owner).containsKey("Builder")
-                        || !configurations
-                                .forSource(source.path())
-                                .uncertainCapabilities()
-                                .isEmpty())
-                    return new SuperBuilderRejected("owner, options or configuration");
-                if (model.parent(found.declaration()).isPresent()
-                        && !owner.symbol().modifiers().contains("static"))
-                    return new SuperBuilderRejected("non-static nested owner");
-                var custom =
-                        model.type(owner.binaryName() + "$" + owner.symbol().name() + "Builder");
-                if (custom instanceof JavaModel.AmbiguousType
-                        || custom instanceof JavaModel.FoundType existing
-                                && model.declaration(existing.declaration()).origin()
-                                        != JavaDeclaration.Origin.MODEL
-                        || owner.members().stream()
-                                .anyMatch(
-                                        member ->
-                                                member.symbol().kind().equals("METHOD")
-                                                        && member.symbol().name().equals("builder")
-                                                        && member.origin()
-                                                                == JavaDeclaration.Origin.SOURCE))
-                    return new SuperBuilderRejected("custom builder or entry");
-                for (var member : owner.members()) {
-                    if (member.symbol().kind().equals("TYPE_PARAMETER")
-                            && (!member.complete()
-                                    || !member.annotations().isEmpty()
-                                    || !source.types()
-                                            .get(member.symbol().declaredType())
-                                            .annotations()
-                                            .isEmpty()))
-                        return new SuperBuilderRejected("annotated or incomplete type parameters");
-                    if (member.symbol().kind().equals("FIELD")
-                            && member.annotations().stream()
-                                    .anyMatch(
-                                            value ->
-                                                    Set.of(
-                                                                            "Llombok/Singular;",
-                                                                            "Llombok/Builder$ObtainVia;")
-                                                                    .contains(value.descriptor())
-                                                            || LombokAnnotationCopies.needsModel(
-                                                                    value)))
-                        return new SuperBuilderRejected("field propagation or collection options");
-                }
-                for (var field : owner.members()) {
-                    if (field.symbol().kind().equals("FIELD")
-                            && hasAnnotation(field, "Llombok/Builder$Default;")
-                            && (field.symbol().modifiers().contains("static")
-                                    || !initialized(field)
-                                    || hasAny(
-                                            owner.members(),
-                                            List.of("$default$" + field.symbol().name()),
-                                            0)))
-                        return new SuperBuilderRejected("invalid default or provider collision");
-                }
-                if (owner.superclass() < 0
-                        || JavaTypeNames.erased(source.types(), owner.superclass())
-                                .equals("java.lang.Object")) return new SuperBuilderReady(null);
-                var parentUse = source.types().get(owner.superclass());
-                var parentLookup =
-                        model.type(JavaTypeNames.erased(source.types(), owner.superclass()));
-                if (!(parentLookup instanceof JavaModel.FoundType parent))
-                    return new SuperBuilderRejected("parent source unavailable");
-                var declaration = model.declaration(parent.declaration());
-                long formals =
-                        declaration.members().stream()
-                                .filter(member -> member.symbol().kind().equals("TYPE_PARAMETER"))
-                                .count();
-                if (parentUse.arguments().size() != formals)
-                    return new SuperBuilderRejected("raw parent arguments");
-                var validation = validateSuperBuilder(declaration, active, depth + 1);
-                return validation instanceof SuperBuilderRejected rejected
-                        ? rejected
-                        : new SuperBuilderReady(declaration);
-            } finally {
-                active.remove(owner.canonicalName());
-            }
+            return lombokBuilderRules.validateSuperBuilder(owner, active, depth);
         }
 
-        private void superBuilder(
+        void superBuilder(
                 JavaDeclaration owner,
                 Map<String, JavaAnnotation> annotations,
                 List<JavaDeclaration> fields,
                 List<JavaDeclaration> members,
                 LombokCapabilitySummary policy,
                 LombokCapabilitySummary aggregate) {
-            if (!annotations.containsKey("SuperBuilder")) return;
-            var validation = validateSuperBuilder(owner, new HashSet<>(), 0);
-            if (policy.isPartial("super_builder") || validation instanceof SuperBuilderRejected) {
-                aggregate.partial("super_builder");
-                unsupported(
-                        owner,
-                        "SuperBuilder "
-                                + (validation instanceof SuperBuilderRejected rejected
-                                        ? rejected.reason()
-                                        : "partial policy"));
-                return;
-            }
-            JavaDeclaration parent = ((SuperBuilderReady) validation).parent();
-            var formals =
-                    owner.members().stream()
-                            .filter(member -> member.symbol().kind().equals("TYPE_PARAMETER"))
-                            .toList();
-            String header = formalHeader(owner.signature());
-            if (!formals.isEmpty() && header.isEmpty()
-                    || fields.stream()
-                            .anyMatch(field -> !field.complete() || needsAnnotationCopies(field))) {
-                aggregate.partial("super_builder");
-                unsupported(owner, "SuperBuilder incomplete generics or field propagation");
-                return;
-            }
-            for (var field : fields)
-                if (hasAnnotation(field, "Llombok/Builder$Default;"))
-                    builderDefault(owner, members, formals, header, field);
-            Set<String> names = new HashSet<>();
-            formals.forEach(formal -> names.add(formal.symbol().name()));
-            String productName = freshFormal("C", names), selfName = freshFormal("B", names);
-            String builderName = owner.symbol().name() + "Builder";
-            String canonical = owner.canonicalName() + "." + builderName;
-            String binary = owner.binaryName() + "$" + builderName;
-            int product = types.size(), self = product + 1, builderType = product + 2;
-            types.add(
-                    new JavaType(
-                            JavaType.Kind.TYPEVAR,
-                            productName,
-                            productName,
-                            -1,
-                            List.of(),
-                            List.of(owner.symbol().declaredType()),
-                            -1,
-                            -1,
-                            List.of(),
-                            -1,
-                            List.of()));
-            types.add(
-                    new JavaType(
-                            JavaType.Kind.TYPEVAR,
-                            selfName,
-                            selfName,
-                            -1,
-                            List.of(),
-                            List.of(builderType),
-                            -1,
-                            -1,
-                            List.of(),
-                            -1,
-                            List.of()));
-            List<Integer> arguments =
-                    new ArrayList<>(
-                            formals.stream()
-                                    .map(formal -> formal.symbol().declaredType())
-                                    .toList());
-            arguments.add(product);
-            arguments.add(self);
-            declaredType(canonical, binary, arguments);
-            var builderFormals =
-                    new ArrayList<>(
-                            formals.stream()
-                                    .map(formal -> modeledFormal(formal, canonical))
-                                    .toList());
-            builderFormals.add(typeFormal(canonical, productName, product));
-            builderFormals.add(typeFormal(canonical, selfName, self));
-            String ownerSignature = genericTypeSignature(owner.binaryName(), formals);
-            String builderSignature = genericTypeSignature(binary, builderFormals);
-            int superclass = named("java.lang.Object");
-            if (parent != null) {
-                var parentArguments = new ArrayList<>(types.get(owner.superclass()).arguments());
-                parentArguments.add(product);
-                parentArguments.add(self);
-                String parentBuilder = parent.symbol().name() + "Builder";
-                superclass =
-                        declaredType(
-                                parent.canonicalName() + "." + parentBuilder,
-                                parent.binaryName() + "$" + parentBuilder,
-                                parentArguments);
-            }
-            String extendedHeader =
-                    (header.isEmpty() ? "<" : header.substring(0, header.length() - 1))
-                            + productName
-                            + ":"
-                            + ownerSignature
-                            + selfName
-                            + ":"
-                            + builderSignature
-                            + ">";
-            var builder =
-                    modeledClass(
-                            owner,
-                            builderName,
-                            builderType,
-                            extendedHeader + typeSignature(superclass, 0),
-                            superclass,
-                            List.of("public", "static", "abstract"));
-            List<JavaDeclaration> builderMembers = new ArrayList<>(builderFormals);
-            method(
-                    builder,
-                    builderMembers,
-                    "<init>",
-                    List.of(),
-                    primitive(JavaType.Kind.VOID),
-                    "()V",
-                    List.of("public"),
-                    SourceSpan.ABSENT,
-                    "@SuperBuilder");
-            int constructor = builderMembers.size() - 1;
-            var implicit = builderMembers.get(constructor);
-            builderMembers.set(
-                    constructor,
-                    new JavaDeclaration(
-                            implicit.symbol(),
-                            implicit.canonicalName(),
-                            implicit.binaryName(),
-                            implicit.signature(),
-                            implicit.span(),
-                            JavaDeclaration.Origin.COMPILER_SYNTHETIC,
-                            implicit.superclass(),
-                            implicit.interfaces(),
-                            implicit.permitted(),
-                            implicit.annotations(),
-                            implicit.constant(),
-                            implicit.annotationDefault(),
-                            implicit.members(),
-                            implicit.incompleteReasons()));
-            generated.remove(canonical + "#" + builderName + "()");
-            for (var field : fields) {
-                if (field.symbol().modifiers().contains("static")
-                        || field.symbol().name().startsWith("$")
-                        || field.symbol().modifiers().contains("final")
-                                && initialized(field)
-                                && !hasAnnotation(field, "Llombok/Builder$Default;")) continue;
-                boolean defaulted = hasAnnotation(field, "Llombok/Builder$Default;");
-                int fieldType = writtenFieldType(field);
-                var storage =
-                        new JavaDeclaration(
-                                new JavaSymbol(
-                                        "FIELD",
-                                        canonical,
-                                        field.symbol().name() + (defaulted ? "$value" : ""),
-                                        descriptor(fieldType),
-                                        fieldType,
-                                        List.of("private"),
-                                        false),
-                                "",
-                                "",
-                                field.signature(),
-                                field.span(),
-                                JavaDeclaration.Origin.MODEL,
-                                -1,
-                                List.of(),
-                                List.of(),
-                                List.of(),
-                                null,
-                                null,
-                                List.of(),
-                                List.of());
-                builderMembers.add(storage);
-                generated.put(fieldId(builder, storage), origin("@SuperBuilder"));
-                if (defaulted) {
-                    int flagType = primitive(JavaType.Kind.BOOLEAN);
-                    var flag =
-                            new JavaDeclaration(
-                                    new JavaSymbol(
-                                            "FIELD",
-                                            canonical,
-                                            field.symbol().name() + "$set",
-                                            "Z",
-                                            flagType,
-                                            List.of("private"),
-                                            false),
-                                    "",
-                                    "",
-                                    "Z",
-                                    field.span(),
-                                    JavaDeclaration.Origin.MODEL,
-                                    -1,
-                                    List.of(),
-                                    List.of(),
-                                    List.of(),
-                                    null,
-                                    null,
-                                    List.of(),
-                                    List.of());
-                    builderMembers.add(flag);
-                    generated.put(fieldId(builder, flag), origin("@Builder.Default"));
-                }
-                method(
-                        builder,
-                        builderMembers,
-                        field.symbol().name(),
-                        List.of(field),
-                        self,
-                        "(" + field.signature() + ")T" + selfName + ";",
-                        List.of("public"),
-                        field.span(),
-                        "@SuperBuilder",
-                        copiedMethodAnnotations(field, false));
-            }
-            method(
-                    builder,
-                    builderMembers,
-                    "self",
-                    List.of(),
-                    self,
-                    "()T" + selfName + ";",
-                    List.of("protected", "abstract"),
-                    owner.span(),
-                    "@SuperBuilder");
-            method(
-                    builder,
-                    builderMembers,
-                    "build",
-                    List.of(),
-                    product,
-                    "()T" + productName + ";",
-                    List.of("public", "abstract"),
-                    owner.span(),
-                    "@SuperBuilder");
-            method(
-                    builder,
-                    builderMembers,
-                    "toString",
-                    List.of(),
-                    named("java.lang.String"),
-                    "()Ljava/lang/String;",
-                    List.of("public"),
-                    owner.span(),
-                    "@SuperBuilder");
-            members.add(copy(builder, builderMembers, List.of()));
-            generated.put(canonical, origin("@SuperBuilder"));
-            int wildcard = types.size();
-            types.add(
-                    new JavaType(
-                            JavaType.Kind.WILDCARD,
-                            "?",
-                            "?",
-                            -1,
-                            List.of(),
-                            List.of(),
-                            -1,
-                            -1,
-                            List.of(),
-                            -1,
-                            List.of()));
-            var publicArguments =
-                    new ArrayList<>(
-                            formals.stream()
-                                    .map(formal -> formal.symbol().declaredType())
-                                    .toList());
-            publicArguments.add(wildcard);
-            publicArguments.add(wildcard);
-            int publicBuilder = declaredType(canonical, binary, publicArguments);
-            String publicSignature = typeSignature(publicBuilder, 0);
-            members.removeIf(
-                    member ->
-                            member.symbol().kind().equals("CONSTRUCTOR")
-                                    && member.origin()
-                                            == JavaDeclaration.Origin.COMPILER_SYNTHETIC);
-            method(
-                    owner,
-                    members,
-                    "<init>",
-                    List.of(parameter(owner, "b", publicBuilder)),
-                    primitive(JavaType.Kind.VOID),
-                    "(" + publicSignature + ")V",
-                    List.of("protected"),
-                    owner.span(),
-                    "@SuperBuilder");
-            if (!owner.symbol().modifiers().contains("abstract")) {
-                String implName = owner.symbol().name() + "BuilderImpl",
-                        implBinary = owner.binaryName() + "$" + implName;
-                int implType =
-                        declaredType(
-                                owner.canonicalName() + "." + implName,
-                                implBinary,
-                                formals.stream()
-                                        .map(formal -> formal.symbol().declaredType())
-                                        .toList());
-                var concreteArguments =
-                        new ArrayList<>(
-                                formals.stream()
-                                        .map(formal -> formal.symbol().declaredType())
-                                        .toList());
-                concreteArguments.add(owner.symbol().declaredType());
-                concreteArguments.add(implType);
-                int concreteBuilder = declaredType(canonical, binary, concreteArguments);
-                var impl =
-                        modeledClass(
-                                owner,
-                                implName,
-                                implType,
-                                header + typeSignature(concreteBuilder, 0),
-                                concreteBuilder,
-                                List.of("private", "static", "final"));
-                var implMembers =
-                        new ArrayList<>(
-                                formals.stream()
-                                        .map(formal -> modeledFormal(formal, impl.canonicalName()))
-                                        .toList());
-                method(
-                        impl,
-                        implMembers,
-                        "<init>",
-                        List.of(),
-                        primitive(JavaType.Kind.VOID),
-                        "()V",
-                        List.of("private"),
-                        owner.span(),
-                        "@SuperBuilder");
-                method(
-                        impl,
-                        implMembers,
-                        "self",
-                        List.of(),
-                        implType,
-                        "()" + typeSignature(implType, 0),
-                        List.of("protected"),
-                        owner.span(),
-                        "@SuperBuilder");
-                method(
-                        impl,
-                        implMembers,
-                        "build",
-                        List.of(),
-                        owner.symbol().declaredType(),
-                        "()" + ownerSignature,
-                        List.of("public"),
-                        owner.span(),
-                        "@SuperBuilder");
-                members.add(copy(impl, implMembers, List.of()));
-                generated.put(impl.canonicalName(), origin("@SuperBuilder"));
-                method(
-                        owner,
-                        members,
-                        "builder",
-                        List.of(),
-                        publicBuilder,
-                        header + "()" + publicSignature,
-                        List.of("public", "static"),
-                        owner.span(),
-                        "@SuperBuilder");
-                methodFormals(members, formals);
-            }
-            aggregate.complete("super_builder");
+            lombokBuilderRules.superBuilder(owner, annotations, fields, members, policy, aggregate);
         }
 
-        private static String freshFormal(String base, Set<String> names) {
-            String name = base;
-            for (int suffix = 2; !names.add(name); suffix++) name = base + suffix;
-            return name;
+        static String freshFormal(String base, Set<String> names) {
+            return LombokBuilderRules.freshFormal(base, names);
         }
 
-        private int declaredType(String canonical, String binary, List<Integer> arguments) {
-            int reference = types.size();
-            types.add(
-                    new JavaType(
-                            JavaType.Kind.DECLARED,
-                            canonical,
-                            canonical,
-                            -1,
-                            arguments,
-                            List.of(),
-                            -1,
-                            -1,
-                            List.of(),
-                            -1,
-                            List.of(),
-                            List.of(),
-                            binary));
-            return reference;
+        int declaredType(String canonical, String binary, List<Integer> arguments) {
+            return lombokBuilderRules.declaredType(canonical, binary, arguments);
         }
 
-        private JavaDeclaration modeledClass(
+        JavaDeclaration modeledClass(
                 JavaDeclaration owner,
                 String name,
                 int type,
                 String signature,
                 int superclass,
                 List<String> modifiers) {
-            var declared = types.get(type);
-            return new JavaDeclaration(
-                    new JavaSymbol(
-                            "CLASS",
-                            owner.canonicalName(),
-                            name,
-                            descriptor(type),
-                            type,
-                            modifiers,
-                            false),
-                    declared.name(),
-                    declared.binaryName(),
-                    signature,
-                    owner.span(),
-                    JavaDeclaration.Origin.MODEL,
-                    superclass,
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    null,
-                    null,
-                    List.of(),
-                    List.of());
+            return lombokBuilderRules.modeledClass(
+                    owner, name, type, signature, superclass, modifiers);
         }
 
-        private JavaDeclaration typeFormal(String owner, String name, int type) {
-            return new JavaDeclaration(
-                    new JavaSymbol(
-                            "TYPE_PARAMETER",
-                            owner,
-                            name,
-                            descriptor(type),
-                            type,
-                            List.of(),
-                            false),
-                    "",
-                    "",
-                    "T" + name + ";",
-                    SourceSpan.ABSENT,
-                    JavaDeclaration.Origin.MODEL,
-                    -1,
-                    List.of(),
-                    List.of(),
-                    List.of(),
-                    null,
-                    null,
-                    List.of(),
-                    List.of());
+        JavaDeclaration typeFormal(String owner, String name, int type) {
+            return lombokBuilderRules.typeFormal(owner, name, type);
         }
 
-        private String typeSignature(int reference, int depth) {
-            if (depth >= 128)
-                throw new IllegalArgumentException("SuperBuilder signature exceeds budget");
-            var type = types.get(reference);
-            return switch (type.kind()) {
-                case TYPEVAR -> "T" + type.name() + ";";
-                case ARRAY -> "[" + typeSignature(type.component(), depth + 1);
-                case WILDCARD ->
-                        type.lowerBound() >= 0
-                                ? "-" + typeSignature(type.lowerBound(), depth + 1)
-                                : type.upperBounds().isEmpty()
-                                        ? "*"
-                                        : "+"
-                                                + typeSignature(
-                                                        type.upperBounds().getFirst(), depth + 1);
-                case DECLARED ->
-                        "L"
-                                + (type.binaryName().isEmpty() ? type.name() : type.binaryName())
-                                        .replace('.', '/')
-                                + (type.arguments().isEmpty()
-                                        ? ""
-                                        : "<"
-                                                + String.join(
-                                                        "",
-                                                        type.arguments().stream()
-                                                                .map(
-                                                                        argument ->
-                                                                                typeSignature(
-                                                                                        argument,
-                                                                                        depth + 1))
-                                                                .toList())
-                                                + ">")
-                                + ";";
-                default -> descriptor(reference);
-            };
+        String typeSignature(int reference, int depth) {
+            return lombokBuilderRules.typeSignature(reference, depth);
         }
 
-        private static boolean hasNamedMethod(List<JavaDeclaration> members, String name) {
-            return members.stream()
-                    .anyMatch(
-                            member ->
-                                    member.symbol().kind().equals("METHOD")
-                                            && member.symbol().name().equals(name));
+        static boolean hasNamedMethod(List<JavaDeclaration> members, String name) {
+            return LombokBuilderRules.hasNamedMethod(members, name);
         }
 
-        private void methodFormals(List<JavaDeclaration> members, List<JavaDeclaration> formals) {
-            if (formals.isEmpty()) return;
-            int index = members.size() - 1;
-            var method = members.get(index);
-            var children = new ArrayList<>(method.members());
-            children.addAll(
-                    formals.stream()
-                            .map(formal -> modeledFormal(formal, method.symbol().owner()))
-                            .toList());
-            members.set(index, copy(method, children, method.incompleteReasons()));
+        void methodFormals(List<JavaDeclaration> members, List<JavaDeclaration> formals) {
+            lombokBuilderRules.methodFormals(members, formals);
         }
 
-        private static JavaDeclaration modeledFormal(JavaDeclaration formal, String owner) {
-            var symbol = formal.symbol();
-            return new JavaDeclaration(
-                    new JavaSymbol(
-                            symbol.kind(),
-                            owner,
-                            symbol.name(),
-                            symbol.descriptor(),
-                            symbol.declaredType(),
-                            symbol.modifiers(),
-                            symbol.variadic()),
-                    formal.canonicalName(),
-                    formal.binaryName(),
-                    formal.signature(),
-                    formal.span(),
-                    JavaDeclaration.Origin.MODEL,
-                    formal.superclass(),
-                    formal.interfaces(),
-                    formal.permitted(),
-                    formal.annotations(),
-                    formal.constant(),
-                    formal.annotationDefault(),
-                    formal.members(),
-                    formal.incompleteReasons());
+        static JavaDeclaration modeledFormal(JavaDeclaration formal, String owner) {
+            return LombokBuilderRules.modeledFormal(formal, owner);
         }
 
-        private static String genericTypeSignature(String binary, List<JavaDeclaration> formals) {
-            return "L"
-                    + binary.replace('.', '/')
-                    + (formals.isEmpty()
-                            ? ""
-                            : "<"
-                                    + String.join(
-                                            "",
-                                            formals.stream()
-                                                    .map(
-                                                            formal ->
-                                                                    "T"
-                                                                            + formal.symbol().name()
-                                                                            + ";")
-                                                    .toList())
-                                    + ">")
-                    + ";";
+        static String genericTypeSignature(String binary, List<JavaDeclaration> formals) {
+            return LombokBuilderRules.genericTypeSignature(binary, formals);
         }
 
-        private static String returnSignature(String signature) {
-            int close = signature.indexOf(')');
-            if (close < 0 || close + 1 >= signature.length())
-                throw new IllegalArgumentException("Incomplete Lombok method signature");
-            int exception = signature.indexOf('^', close + 1);
-            return signature.substring(close + 1, exception < 0 ? signature.length() : exception);
+        static String returnSignature(String signature) {
+            return LombokBuilderRules.returnSignature(signature);
         }
 
-        private static String formalHeader(String signature) {
-            if (signature == null || !signature.startsWith("<")) return "";
-            int depth = 0;
-            for (int i = 0; i < signature.length(); i++) {
-                if (i > 100_000)
-                    throw new IllegalArgumentException("Lombok formal signature exceeds budget");
-                if (signature.charAt(i) == '<') depth++;
-                else if (signature.charAt(i) == '>' && --depth == 0)
-                    return signature.substring(0, i + 1);
-            }
-            throw new IllegalArgumentException("Incomplete Lombok formal signature");
+        static String formalHeader(String signature) {
+            return LombokBuilderRules.formalHeader(signature);
         }
 
-        private boolean identifier(String value, boolean emptyAllowed) {
-            return value.isEmpty()
-                    ? emptyAllowed
-                    : value.matches("[A-Za-z_$][A-Za-z0-9_$]*")
-                            && !Set.of(
-                                            "abstract",
-                                            "assert",
-                                            "boolean",
-                                            "break",
-                                            "byte",
-                                            "case",
-                                            "catch",
-                                            "char",
-                                            "class",
-                                            "const",
-                                            "continue",
-                                            "default",
-                                            "do",
-                                            "double",
-                                            "else",
-                                            "enum",
-                                            "extends",
-                                            "final",
-                                            "finally",
-                                            "float",
-                                            "for",
-                                            "goto",
-                                            "if",
-                                            "implements",
-                                            "import",
-                                            "instanceof",
-                                            "int",
-                                            "interface",
-                                            "long",
-                                            "native",
-                                            "new",
-                                            "package",
-                                            "private",
-                                            "protected",
-                                            "public",
-                                            "return",
-                                            "short",
-                                            "static",
-                                            "strictfp",
-                                            "super",
-                                            "switch",
-                                            "synchronized",
-                                            "this",
-                                            "throw",
-                                            "throws",
-                                            "transient",
-                                            "try",
-                                            "void",
-                                            "volatile",
-                                            "while",
-                                            "true",
-                                            "false",
-                                            "null",
-                                            "_")
-                                    .contains(value);
+        boolean identifier(String value, boolean emptyAllowed) {
+            return lombokBuilderRules.identifier(value, emptyAllowed);
         }
 
-        private JavaDeclaration compiledType(JavaDeclaration owner) {
+        JavaDeclaration compiledType(JavaDeclaration owner) {
             var reference = references.get(owner);
             JavaDeclaration sourceOwner = owner;
             if (owner.origin() != JavaDeclaration.Origin.SOURCE && reference != null) {
@@ -2143,8 +727,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     : copy(owner, members, owner.incompleteReasons());
         }
 
-        private JavaDeclaration compiledOrigin(
-                JavaDeclaration value, List<JavaDeclaration> members) {
+        JavaDeclaration compiledOrigin(JavaDeclaration value, List<JavaDeclaration> members) {
             return new JavaDeclaration(
                     value.symbol(),
                     value.canonicalName(),
@@ -2166,7 +749,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     value.deprecated());
         }
 
-        private JavaGeneratedOrigin compiledOrigin() {
+        JavaGeneratedOrigin compiledOrigin() {
             return new JavaGeneratedOrigin(
                     ProducerIds.LOMBOK_AST,
                     "lombok",
@@ -2176,11 +759,11 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     false);
         }
 
-        private boolean partialProcessor() {
+        boolean partialProcessor() {
             return unit.extensions().counters().containsKey("lombok_processor_partial");
         }
 
-        private Map<String, JavaAnnotation> annotations(JavaDeclaration declaration) {
+        Map<String, JavaAnnotation> annotations(JavaDeclaration declaration) {
             return effectiveAnnotations.computeIfAbsent(
                     declaration,
                     value -> {
@@ -2223,7 +806,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     });
         }
 
-        private Map<String, JavaAnnotation> compiledAnnotations(JavaDeclaration declaration) {
+        Map<String, JavaAnnotation> compiledAnnotations(JavaDeclaration declaration) {
             if (compiledAnnotations == null)
                 compiledAnnotations =
                         new JavaModelAnnotations(
@@ -2244,196 +827,27 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                             compiledAnnotations.annotations(reference));
         }
 
-        private void constructors(
+        void constructors(
                 JavaDeclaration owner,
                 Map<String, JavaAnnotation> annotations,
                 List<JavaDeclaration> fields,
                 List<JavaDeclaration> members,
                 LombokCapabilitySummary policy,
                 LombokCapabilitySummary aggregate) {
-            boolean explicit =
-                    owner.members().stream()
-                            .anyMatch(
-                                    member ->
-                                            member.symbol().kind().equals("CONSTRUCTOR")
-                                                    && member.origin()
-                                                            == JavaDeclaration.Origin.SOURCE);
-            boolean explicitPolicy =
-                    annotations.containsKey("NoArgsConstructor")
-                            || annotations.containsKey("RequiredArgsConstructor")
-                            || annotations.containsKey("AllArgsConstructor")
-                            || annotations.containsKey("Builder")
-                            || annotations.containsKey("SuperBuilder");
-            for (String kind :
-                    List.of("NoArgsConstructor", "RequiredArgsConstructor", "AllArgsConstructor")) {
-                String capability =
-                        switch (kind) {
-                            case "NoArgsConstructor" -> LombokCapabilitySummary.NO_ARGS_CONSTRUCTOR;
-                            case "RequiredArgsConstructor" ->
-                                    LombokCapabilitySummary.REQUIRED_CONSTRUCTOR;
-                            default -> LombokCapabilitySummary.ALL_ARGS_CONSTRUCTOR;
-                        };
-                var annotation = annotations.get(kind);
-                String from = "@" + kind;
-                if (annotation == null && !explicit && !explicitPolicy) {
-                    if (kind.equals("RequiredArgsConstructor") && annotations.containsKey("Data")) {
-                        annotation = annotations.get("Data");
-                        from = "@Data";
-                    } else if (kind.equals("AllArgsConstructor")
-                            && annotations.containsKey("Value")) {
-                        annotation = annotations.get("Value");
-                        from = "@Value";
-                    }
-                }
-                if (annotation == null || policy.isPartial(capability)) continue;
-                var access = access(annotation, "access");
-                if (access == null
-                        || !string(annotation, "staticName", "").isEmpty()
-                        || !string(annotation, "staticConstructor", "").isEmpty()) {
-                    aggregate.partial(capability);
-                    unsupported(owner, from + " options");
-                    continue;
-                }
-                if (access.equals("NONE")) continue;
-                List<JavaDeclaration> parameters =
-                        fields.stream()
-                                .filter(
-                                        field ->
-                                                !field.symbol().modifiers().contains("static")
-                                                        && !field.symbol().name().startsWith("$"))
-                                .filter(field -> !kind.equals("NoArgsConstructor"))
-                                .filter(
-                                        field ->
-                                                !field.symbol().modifiers().contains("final")
-                                                        || !initialized(field))
-                                .filter(
-                                        field ->
-                                                !kind.equals("RequiredArgsConstructor")
-                                                        || (field.symbol()
-                                                                                .modifiers()
-                                                                                .contains("final")
-                                                                        || annotations(field)
-                                                                                .containsKey(
-                                                                                        "NonNull"))
-                                                                && !initialized(field))
-                                .toList();
-                if (parameters.stream().anyMatch(field -> !field.complete())) {
-                    aggregate.partial(capability);
-                    continue;
-                }
-                if (kind.equals("NoArgsConstructor")
-                        && !bool(annotation, "force", false)
-                        && fields.stream()
-                                .anyMatch(
-                                        field ->
-                                                field.symbol().modifiers().contains("final")
-                                                        && !field.symbol()
-                                                                .modifiers()
-                                                                .contains("static")
-                                                        && !initialized(field))) {
-                    aggregate.partial(capability);
-                    unsupported(owner, "uninitialized final fields without force");
-                    continue;
-                }
-                members.removeIf(
-                        member ->
-                                member.symbol().kind().equals("CONSTRUCTOR")
-                                        && member.origin()
-                                                == JavaDeclaration.Origin.COMPILER_SYNTHETIC);
-                String signature =
-                        "("
-                                + String.join(
-                                        "",
-                                        parameters.stream()
-                                                .map(JavaDeclaration::signature)
-                                                .toList())
-                                + ")V";
-                var parameterTypes =
-                        parameters.stream().map(field -> field.symbol().declaredType()).toList();
-                String erasedConstructor =
-                        "("
-                                + String.join(
-                                        "", parameterTypes.stream().map(this::descriptor).toList())
-                                + ")V";
-                if (members.stream()
-                        .anyMatch(
-                                member ->
-                                        member.symbol().kind().equals("CONSTRUCTOR")
-                                                && member.symbol()
-                                                        .descriptor()
-                                                        .equals(erasedConstructor))) {
-                    aggregate.partial(capability);
-                    unsupported(owner, "duplicate constructor signature");
-                    continue;
-                }
-                method(
-                        owner,
-                        members,
-                        "<init>",
-                        parameters,
-                        primitive(JavaType.Kind.VOID),
-                        signature,
-                        modifiers(owner.symbol().kind().equals("ENUM") ? "PRIVATE" : access, false),
-                        owner.span(),
-                        from);
-            }
+            lombokDeclarationRules.constructors(
+                    owner, annotations, fields, members, policy, aggregate);
         }
 
-        private void logger(
+        void logger(
                 JavaDeclaration owner,
                 Map<String, JavaAnnotation> annotations,
                 List<JavaDeclaration> members,
                 LombokCapabilitySummary policy,
                 LombokCapabilitySummary aggregate) {
-            if (policy.isPartial(LombokCapabilitySummary.LOGGER_FIELD)) return;
-            for (var log : LOG_TYPES.entrySet())
-                if (annotations.containsKey(log.getKey())) {
-                    if (members.stream()
-                            .anyMatch(
-                                    member ->
-                                            member.symbol().kind().equals("FIELD")
-                                                    && member.symbol()
-                                                            .name()
-                                                            .equals(configuration.logFieldName())))
-                        return;
-                    if (binaries == null || binaries.find(log.getValue()).isEmpty()) {
-                        aggregate.partial(LombokCapabilitySummary.LOGGER_FIELD);
-                        unsupported(owner, "missing logger type " + log.getValue());
-                        return;
-                    }
-                    int type = named(log.getValue());
-                    List<String> modifiers = new ArrayList<>(List.of("private", "final"));
-                    if (configuration.logFieldStatic()) modifiers.add("static");
-                    var field =
-                            new JavaDeclaration(
-                                    new JavaSymbol(
-                                            "FIELD",
-                                            owner.canonicalName(),
-                                            configuration.logFieldName(),
-                                            descriptor(type),
-                                            type,
-                                            modifiers,
-                                            false),
-                                    "",
-                                    "",
-                                    descriptor(type),
-                                    owner.span(),
-                                    JavaDeclaration.Origin.MODEL,
-                                    -1,
-                                    List.of(),
-                                    List.of(),
-                                    List.of(),
-                                    null,
-                                    null,
-                                    List.of(),
-                                    List.of());
-                    members.add(field);
-                    generated.put(fieldId(owner, field), origin("@" + log.getKey()));
-                    return;
-                }
+            lombokDeclarationRules.logger(owner, annotations, members, policy, aggregate);
         }
 
-        private void method(
+        void method(
                 JavaDeclaration owner,
                 List<JavaDeclaration> members,
                 String name,
@@ -2443,20 +857,11 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 List<String> modifiers,
                 SourceSpan span,
                 String from) {
-            method(
-                    owner,
-                    members,
-                    name,
-                    parameters,
-                    returns,
-                    signature,
-                    modifiers,
-                    span,
-                    from,
-                    List.of());
+            lombokGeneratedMembers.method(
+                    owner, members, name, parameters, returns, signature, modifiers, span, from);
         }
 
-        private void method(
+        void method(
                 JavaDeclaration owner,
                 List<JavaDeclaration> members,
                 String name,
@@ -2467,379 +872,102 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 SourceSpan span,
                 String from,
                 List<JavaAnnotation> methodAnnotations) {
-            var parameterTypes = parameters.stream().map(this::generatedType).toList();
-            int executable = types.size();
-            types.add(
-                    new JavaType(
-                            JavaType.Kind.EXECUTABLE,
-                            "",
-                            signature,
-                            -1,
-                            List.of(),
-                            List.of(),
-                            -1,
-                            -1,
-                            parameterTypes,
-                            returns,
-                            List.of()));
-            String descriptor =
-                    "("
-                            + String.join(
-                                    "", parameterTypes.stream().map(this::descriptor).toList())
-                            + ")"
-                            + descriptor(returns);
-            String kind = name.equals("<init>") ? "CONSTRUCTOR" : "METHOD";
-            var method =
-                    new JavaDeclaration(
-                            new JavaSymbol(
-                                    kind,
-                                    owner.canonicalName(),
-                                    name,
-                                    descriptor,
-                                    executable,
-                                    modifiers,
-                                    false),
-                            "",
-                            "",
-                            signature,
-                            span,
-                            JavaDeclaration.Origin.MODEL,
-                            -1,
-                            List.of(),
-                            List.of(),
-                            methodAnnotations,
-                            null,
-                            null,
-                            parameters.stream()
-                                    .map(
-                                            parameter ->
-                                                    parameter(
-                                                            owner,
-                                                            parameter.symbol().name(),
-                                                            generatedType(parameter),
-                                                            copiedParameterAnnotations(parameter)))
-                                    .toList(),
-                            List.of());
-            members.add(method);
-            String id =
-                    owner.canonicalName()
-                            + "#"
-                            + (kind.equals("CONSTRUCTOR") ? owner.symbol().name() : name)
-                            + "("
-                            + String.join(
-                                    ",",
-                                    parameterTypes.stream()
-                                            .map(
-                                                    type ->
-                                                            JavaTypeNames.erased(
-                                                                    new JavaTypes(types), type))
-                                            .toList())
-                            + ")";
-            generated.put(id, origin(from));
+            lombokGeneratedMembers.method(
+                    owner,
+                    members,
+                    name,
+                    parameters,
+                    returns,
+                    signature,
+                    modifiers,
+                    span,
+                    from,
+                    methodAnnotations);
         }
 
-        private JavaDeclaration parameter(JavaDeclaration owner, String name, int type) {
-            return parameter(owner, name, type, List.of());
+        JavaDeclaration parameter(JavaDeclaration owner, String name, int type) {
+            return lombokGeneratedMembers.parameter(owner, name, type);
         }
 
-        private JavaDeclaration parameter(
+        JavaDeclaration parameter(
                 JavaDeclaration owner, String name, int type, List<JavaAnnotation> annotations) {
-            return new JavaDeclaration(
-                    new JavaSymbol(
-                            "PARAMETER",
-                            owner.canonicalName(),
-                            name,
-                            descriptor(type),
-                            type,
-                            List.of(),
-                            false),
-                    "",
-                    "",
-                    descriptor(type),
-                    SourceSpan.ABSENT,
-                    JavaDeclaration.Origin.MODEL,
-                    -1,
-                    List.of(),
-                    List.of(),
-                    annotations,
-                    null,
-                    null,
-                    List.of(),
-                    List.of());
+            return lombokGeneratedMembers.parameter(owner, name, type, annotations);
         }
 
         /** Lombok copies the written field type, excluding annotations in its modifier list. */
-        private boolean needsAnnotationCopies(JavaDeclaration declaration) {
-            if (declaration.annotations().stream().anyMatch(this::annotationCopyNeedsModel))
-                return true;
-            if (!hasBaseAnnotations(declaration.symbol().declaredType(), 0)) return false;
-            var reference = references.get(declaration);
-            if (reference == null)
-                return declaration.annotations().stream().anyMatch(this::annotationCopyNeedsModel);
-            if (compiledAnnotations == null) compiledAnnotations(declaration);
-            return compiledAnnotations.annotations(reference).stream()
-                    .anyMatch(this::annotationCopyNeedsModel);
+        boolean needsAnnotationCopies(JavaDeclaration declaration) {
+            return lombokGeneratedMembers.needsAnnotationCopies(declaration);
         }
 
-        private boolean annotationCopyNeedsModel(JavaAnnotation annotation) {
-            return !annotation.descriptor().equals("Ljava/lang/Deprecated;")
-                    && LombokAnnotationCopies.needsModel(annotation);
+        boolean annotationCopyNeedsModel(JavaAnnotation annotation) {
+            return lombokGeneratedMembers.annotationCopyNeedsModel(annotation);
         }
 
-        private int generatedType(JavaDeclaration declaration) {
-            if (!declaration.symbol().kind().equals("FIELD"))
-                return declaration.symbol().declaredType();
-            if (!hasBaseAnnotations(declaration.symbol().declaredType(), 0))
-                return declaration.symbol().declaredType();
-            return generatedTypes.computeIfAbsent(
-                    declaration,
-                    field -> {
-                        var reference = references.get(field);
-                        if (reference == null) return field.symbol().declaredType();
-                        if (compiledAnnotations == null) compiledAnnotations(field);
-                        Set<String> excluded = new HashSet<>();
-                        for (var annotation : compiledAnnotations.annotations(reference))
-                            if (!LombokAnnotationCopies.willCopy(annotation))
-                                excluded.add(annotation.descriptor());
-                        return writtenType(field.symbol().declaredType(), excluded, 0);
-                    });
+        int generatedType(JavaDeclaration declaration) {
+            return lombokGeneratedMembers.generatedType(declaration);
         }
 
-        private int writtenFieldType(JavaDeclaration field) {
-            if (!field.symbol().kind().equals("FIELD")
-                    || !hasBaseAnnotations(field.symbol().declaredType(), 0))
-                return field.symbol().declaredType();
-            var reference = references.get(field);
-            if (reference == null) return field.symbol().declaredType();
-            if (compiledAnnotations == null) compiledAnnotations(field);
-            Set<String> excluded = new HashSet<>();
-            for (var annotation : compiledAnnotations.annotations(reference))
-                excluded.add(annotation.descriptor());
-            return writtenType(field.symbol().declaredType(), excluded, 0);
+        int writtenFieldType(JavaDeclaration field) {
+            return lombokGeneratedMembers.writtenFieldType(field);
         }
 
-        private List<JavaAnnotation> copiedMethodAnnotations(
-                JavaDeclaration field, boolean getter) {
-            var copied =
-                    new ArrayList<>(
-                            field.annotations().stream()
-                                    .filter(
-                                            annotation ->
-                                                    annotation
-                                                                            .descriptor()
-                                                                            .equals(
-                                                                                    "Ljava/lang/Deprecated;")
-                                                                    && annotation.values().isEmpty()
-                                                            || getter
-                                                                    && annotation
-                                                                            .descriptor()
-                                                                            .equals(
-                                                                                    "Llombok/NonNull;"))
-                                    .toList());
-            if ((field.deprecated()
-                            || field.annotations().stream()
-                                    .anyMatch(
-                                            annotation ->
-                                                    annotation
-                                                            .descriptor()
-                                                            .equals("Ljava/lang/Deprecated;")))
-                    && copied.stream()
-                            .noneMatch(
-                                    annotation ->
-                                            annotation
-                                                    .descriptor()
-                                                    .equals("Ljava/lang/Deprecated;"))) {
-                copied.add(
-                        new JavaAnnotation(
-                                "Ljava/lang/Deprecated;",
-                                JavaAnnotation.Retention.RUNTIME,
-                                Map.of()));
-            }
-            return List.copyOf(copied);
+        List<JavaAnnotation> copiedMethodAnnotations(JavaDeclaration field, boolean getter) {
+            return lombokGeneratedMembers.copiedMethodAnnotations(field, getter);
         }
 
-        private List<JavaAnnotation> copiedParameterAnnotations(JavaDeclaration field) {
-            return field.annotations().stream()
-                    .filter(annotation -> annotation.descriptor().equals("Llombok/NonNull;"))
-                    .toList();
+        List<JavaAnnotation> copiedParameterAnnotations(JavaDeclaration field) {
+            return lombokGeneratedMembers.copiedParameterAnnotations(field);
         }
 
-        private int writtenType(int reference, Set<String> excluded, int depth) {
-            if (depth > 128)
-                throw new IllegalArgumentException("Lombok written type exceeds depth budget");
-            JavaType type = types.get(reference);
-            int component = type.component();
-            int enclosing = type.enclosing();
-            List<JavaAnnotation> annotations = type.annotations();
-            if (type.kind() == JavaType.Kind.ARRAY)
-                component = writtenType(component, excluded, depth + 1);
-            else {
-                annotations =
-                        annotations.stream()
-                                .filter(annotation -> !excluded.contains(annotation.descriptor()))
-                                .toList();
-                if (enclosing >= 0 && type.kind() == JavaType.Kind.DECLARED)
-                    enclosing = writtenType(enclosing, excluded, depth + 1);
-            }
-            if (component == type.component()
-                    && enclosing == type.enclosing()
-                    && annotations.equals(type.annotations())) return reference;
-            int index = types.size();
-            types.add(
-                    new JavaType(
-                            type.kind(),
-                            type.name(),
-                            type.display(),
-                            enclosing,
-                            type.arguments(),
-                            type.upperBounds(),
-                            type.lowerBound(),
-                            component,
-                            type.parameters(),
-                            type.returns(),
-                            type.exceptions(),
-                            annotations,
-                            type.binaryName()));
-            return index;
+        int writtenType(int reference, Set<String> excluded, int depth) {
+            return lombokGeneratedMembers.writtenType(reference, excluded, depth);
         }
 
-        private boolean hasBaseAnnotations(int reference, int depth) {
-            if (depth > 128)
-                throw new IllegalArgumentException("Lombok written type exceeds depth budget");
-            JavaType type = types.get(reference);
-            if (type.kind() == JavaType.Kind.ARRAY)
-                return hasBaseAnnotations(type.component(), depth + 1);
-            return !type.annotations().isEmpty()
-                    || type.kind() == JavaType.Kind.DECLARED
-                            && type.enclosing() >= 0
-                            && hasBaseAnnotations(type.enclosing(), depth + 1);
+        boolean hasBaseAnnotations(int reference, int depth) {
+            return lombokGeneratedMembers.hasBaseAnnotations(reference, depth);
         }
 
-        private String descriptor(int reference) {
-            return descriptor(reference, 0);
+        String descriptor(int reference) {
+            return lombokGeneratedMembers.descriptor(reference);
         }
 
-        private String descriptor(int reference, int depth) {
-            if (depth > 128)
-                throw new IllegalArgumentException("modeled signature exceeds depth budget");
-            JavaType type = types.get(reference);
-            return switch (type.kind()) {
-                case VOID -> "V";
-                case BOOLEAN -> "Z";
-                case BYTE -> "B";
-                case SHORT -> "S";
-                case INT -> "I";
-                case LONG -> "J";
-                case CHAR -> "C";
-                case FLOAT -> "F";
-                case DOUBLE -> "D";
-                case ARRAY -> "[" + descriptor(type.component(), depth + 1);
-                case DECLARED ->
-                        "L"
-                                + (type.binaryName().isEmpty() ? type.name() : type.binaryName())
-                                        .replace('.', '/')
-                                + ";";
-                case TYPEVAR, INTERSECTION -> descriptor(type.upperBounds().getFirst(), depth + 1);
-                default ->
-                        throw new IllegalArgumentException(
-                                "unavailable modeled signature type: " + type.kind());
-            };
+        String descriptor(int reference, int depth) {
+            return lombokGeneratedMembers.descriptor(reference, depth);
         }
 
-        private int primitive(JavaType.Kind kind) {
-            for (int i = 0; i < types.size(); i++)
-                if (types.get(i).kind() == kind && types.get(i).annotations().isEmpty()) return i;
-            int index = types.size();
-            String name = kind.name().toLowerCase(Locale.ROOT);
-            types.add(
-                    new JavaType(
-                            kind, name, name, -1, List.of(), List.of(), -1, -1, List.of(), -1,
-                            List.of()));
-            return index;
+        int primitive(JavaType.Kind kind) {
+            return lombokGeneratedMembers.primitive(kind);
         }
 
-        private int named(String name) {
-            for (int i = 0; i < types.size(); i++)
-                if (types.get(i).kind() == JavaType.Kind.DECLARED
-                        && types.get(i).name().equals(name)
-                        && types.get(i).arguments().isEmpty()
-                        && types.get(i).annotations().isEmpty()) return i;
-            int index = types.size();
-            types.add(
-                    new JavaType(
-                            JavaType.Kind.DECLARED,
-                            name,
-                            name,
-                            -1,
-                            List.of(),
-                            List.of(),
-                            -1,
-                            -1,
-                            List.of(),
-                            -1,
-                            List.of(),
-                            List.of(),
-                            name));
-            return index;
+        int named(String name) {
+            return lombokGeneratedMembers.named(name);
         }
 
-        private boolean initialized(JavaDeclaration field) {
-            var reference = references.get(field);
-            return reference != null
-                    && model.syntax(reference)
-                            .map(syntax -> syntax.tree("getInitializer") != null)
-                            .orElse(false);
+        boolean initialized(JavaDeclaration field) {
+            return lombokGeneratedMembers.initialized(field);
         }
 
-        private boolean hasAny(List<JavaDeclaration> members, List<String> names, int arity) {
-            return members.stream()
-                    .anyMatch(
-                            member ->
-                                    member.symbol().kind().equals("METHOD")
-                                            && names.stream()
-                                                    .anyMatch(
-                                                            name ->
-                                                                    name.equalsIgnoreCase(
-                                                                            member.symbol().name()))
-                                            && types.get(member.symbol().declaredType())
-                                                            .parameters()
-                                                            .size()
-                                                    == arity);
+        boolean hasAny(List<JavaDeclaration> members, List<String> names, int arity) {
+            return lombokGeneratedMembers.hasAny(members, names, arity);
         }
 
-        private String getterName(JavaDeclaration field) {
-            return primitiveBoolean(field) && !configuration.noIsPrefix()
-                    ? "is" + booleanStem(field)
-                    : "get" + capitalize(field.symbol().name());
+        String getterName(JavaDeclaration field) {
+            return lombokDeclarationRules.getterName(field);
         }
 
-        private List<String> getterAlternatives(JavaDeclaration field) {
-            String name = field.symbol().name();
-            if (!primitiveBoolean(field) || configuration.noIsPrefix())
-                return List.of(getterName(field));
-            return List.of(
-                    "is" + capitalize(name),
-                    "get" + capitalize(name),
-                    "is" + booleanStem(field),
-                    "get" + booleanStem(field));
+        List<String> getterAlternatives(JavaDeclaration field) {
+            return lombokDeclarationRules.getterAlternatives(field);
         }
 
-        private String booleanStem(JavaDeclaration field) {
-            String name = field.symbol().name();
-            return primitiveBoolean(field)
-                            && !configuration.noIsPrefix()
-                            && name.startsWith("is")
-                            && name.length() > 2
-                            && !Character.isLowerCase(name.charAt(2))
-                    ? name.substring(2)
-                    : capitalize(name);
+        String booleanStem(JavaDeclaration field) {
+            return lombokDeclarationRules.booleanStem(field);
         }
 
-        private boolean primitiveBoolean(JavaDeclaration field) {
-            return types.get(field.symbol().declaredType()).kind() == JavaType.Kind.BOOLEAN;
+        boolean primitiveBoolean(JavaDeclaration field) {
+            return lombokDeclarationRules.primitiveBoolean(field);
         }
 
-        private LombokCapabilitySummary summary(Map<String, JavaAnnotation> annotations) {
+        LombokCapabilitySummary summary(Map<String, JavaAnnotation> annotations) {
             var summary = new LombokCapabilitySummary();
             annotations.forEach(
                     (name, annotation) -> {
@@ -2856,7 +984,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
             return summary;
         }
 
-        private void unsupported(JavaDeclaration owner, String feature) {
+        void unsupported(JavaDeclaration owner, String feature) {
             increment("lombok_unsupported_features", 1);
             diagnostic(
                     "LOMBOK_FEATURE_UNSUPPORTED",
@@ -2864,7 +992,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     "Detached Lombok model does not yet cover " + feature + ".");
         }
 
-        private void diagnostic(String code, String symbol, String sample) {
+        void diagnostic(String code, String symbol, String sample) {
             var identity = context.identity(unit.path());
             diagnostics.add(
                     new IndexDiagnostic(
@@ -2881,22 +1009,22 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                             sample));
         }
 
-        private void put(String id, String key, Object value) {
+        void put(String id, String key, Object value) {
             var row = new LinkedHashMap<>(metadata.getOrDefault(id, Map.of()));
             row.put(key, value);
             metadata.put(id, row);
         }
 
-        private void increment(String key, long value) {
+        void increment(String key, long value) {
             counters.merge(key, value, Long::sum);
         }
     }
 
-    private static Map<String, JavaAnnotation> annotations(JavaDeclaration declaration) {
+    static Map<String, JavaAnnotation> annotations(JavaDeclaration declaration) {
         return annotations(declaration.annotations());
     }
 
-    private static Map<String, JavaAnnotation> annotations(List<JavaAnnotation> declared) {
+    static Map<String, JavaAnnotation> annotations(List<JavaAnnotation> declared) {
         Map<String, JavaAnnotation> annotations = new LinkedHashMap<>();
         for (var annotation : declared) {
             String name = annotation.descriptor();
@@ -2909,7 +1037,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         return annotations;
     }
 
-    private static String annotationPackage(String name) {
+    static String annotationPackage(String name) {
         return switch (name) {
             case "Accessors",
                     "SuperBuilder",
@@ -2928,7 +1056,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         };
     }
 
-    private static String access(JavaAnnotation annotation, String attribute) {
+    static String access(JavaAnnotation annotation, String attribute) {
         if (annotation == null || !annotation.values().containsKey(attribute)) return "PUBLIC";
         var value = annotation.values().get(attribute);
         if (value instanceof JavaBinaryType.EnumValue enumeration
@@ -2940,7 +1068,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         return null;
     }
 
-    private static boolean bool(JavaAnnotation annotation, String name, boolean fallback) {
+    static boolean bool(JavaAnnotation annotation, String name, boolean fallback) {
         var value = annotation.values().get(name);
         return value instanceof JavaBinaryType.Scalar scalar
                         && scalar.value() instanceof Boolean flag
@@ -2948,7 +1076,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 : fallback;
     }
 
-    private static String string(JavaAnnotation annotation, String name, String fallback) {
+    static String string(JavaAnnotation annotation, String name, String fallback) {
         var value = annotation.values().get(name);
         return value instanceof JavaBinaryType.Scalar scalar
                         && scalar.value() instanceof String text
@@ -2956,7 +1084,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 : fallback;
     }
 
-    private static List<String> modifiers(String access, boolean isStatic) {
+    static List<String> modifiers(String access, boolean isStatic) {
         List<String> modifiers = new ArrayList<>();
         if (Set.of("PUBLIC", "PROTECTED", "PRIVATE").contains(access))
             modifiers.add(access.toLowerCase(Locale.ROOT));
@@ -2964,7 +1092,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         return modifiers;
     }
 
-    private static String capitalize(String name) {
+    static String capitalize(String name) {
         if (name.isEmpty()) return name;
         char first = name.charAt(0);
         if (Character.isLowerCase(first)) {
@@ -2978,22 +1106,22 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         return first + name.substring(1);
     }
 
-    private static String fieldId(JavaDeclaration owner, JavaDeclaration field) {
+    static String fieldId(JavaDeclaration owner, JavaDeclaration field) {
         return owner.canonicalName() + "#" + field.symbol().name();
     }
 
-    private static JavaGeneratedOrigin origin(String from) {
+    static JavaGeneratedOrigin origin(String from) {
         return new JavaGeneratedOrigin(
                 ProducerIds.LOMBOK_AST, "lombok", "ast", from, "INFERRED", false);
     }
 
-    private static JavaDeclaration incomplete(JavaDeclaration value, String reason) {
+    static JavaDeclaration incomplete(JavaDeclaration value, String reason) {
         var reasons = new ArrayList<>(value.incompleteReasons());
         if (!reasons.contains(reason)) reasons.add(reason);
         return copy(value, value.members(), reasons);
     }
 
-    private static JavaDeclaration copy(
+    static JavaDeclaration copy(
             JavaDeclaration value, List<JavaDeclaration> members, List<String> reasons) {
         return new JavaDeclaration(
                 value.symbol(),

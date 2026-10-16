@@ -442,8 +442,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "sha256": "6290581902cb59f869e72e215a5e015b02b4f02e222e7a3a4f49acefb52fc67d",
-      "migrated_sha256": "64fe348521d833bb53d5a09feaed0c085bf937d3613228a9bed5b46000b6e737",
-      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB–2 GiB decode admission does not change semantic rules or fingerprints.",
+      "migrated_sha256": "44acf9e0e896fbc3481afe5e2a6db135efe32306f2534d0d7e0400ea40c9b549",
+      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB–2 GiB decode admission does not change semantic rules or fingerprints.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -655,7 +655,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java",
       "sha256": "f74c0be602afc6ae639fe0c1c7ffaf0035733a106f3d669eeb479820f88e8a15",
-      "migrated_sha256": "f74c0be602afc6ae639fe0c1c7ffaf0035733a106f3d669eeb479820f88e8a15"
+      "migrated_sha256": "84d006307cddd8c2e962af96152415c29ad5cf423e7b5ccf55158060aa2d21da",
+      "adaptation": "; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaOverrideFacts.java",
@@ -863,8 +864,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "sha256": "d2d506432acc3beb99b7b1bcfb11700bebf3cb184d04e7f6a47973b46df5390f",
-      "migrated_sha256": "f54da7e6ca846ba9c983f4b0e51205ea187c87fc719fd5e3e1be004722e65f77",
-      "adaptation": "Inject captured Lombok configuration inventory.",
+      "migrated_sha256": "5587da21c454414398b5c70160ee0699eff557db71874d1320b419f12d76fd37",
+      "adaptation": "Inject captured Lombok configuration inventory.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -3316,6 +3317,106 @@
       "migrated_sha256": "858d77814ec9402442e92dde7f7a6b40bb10acd17690e9e93db0527e4938b19b",
       "origin": "codeana",
       "reason": "Code-ana compact-storage implementation 9b0008e: bounded direct-parent cache and independent limit/immutability regression, in the core package for package-private access."
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacModelConsumer.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "bea546b8c7217298099d57e67ccf155aec17fba951324063a9dbb779850ff173",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacRunConfiguration.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "4fb11dc74ee2dee3985ba5d03231c558002990ff7ddc4d6f8cd75ad693c70f8f",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacWorkerPool.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "528b98aed981629da5dccf6a598110a580d8544aef152d42178debe6c9502291",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/extract/ModeledCandidates.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "ebc7e4cf0286c2408c657542e1dd15b20f648c1cb7ad5ed6c793f698902a3a95",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/extract/ModeledInference.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "6acca512f41c6d62ccd5c02fee4326391eabeb618cce8980acb26884ef537e13",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/extract/ModeledSelection.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "4db09a5124d192f04f672d3bda0bc9b62d8862bb628398837466c31c905300be",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/extract/ModeledTypeOps.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "17a083a4f1e1fcc1ff693998dfbc0c265502d396c04be6be7f6c510c4a32731b",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokBuilderRules.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "4497d78e499004b076045e32de79fc337b2c1fea0c365b9421815393a07205b3",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokDeclarationRules.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "2dabb6138dd245fa40ffbea3dbef2c9998ea3ccabff50a52dae9f3f41cf1e3d5",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokGeneratedMembers.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "47f07a1245f54deba5718ab958eaf313cc51a54834cd2ae1db8bf3c28a134c88",
+      "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
+    },
+    {
+      "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisRequest.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "5aab38ab650da5d7e0470dfdf19fa80461da9f590825cb6431e23b9c9f755886"
+    },
+    {
+      "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisResult.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "47a28484cb702b11688fddeba1a7961e5243c44d909f81e4080357b0d4cd9c58"
+    },
+    {
+      "destination": "java-bridge/src/main/java/dev/codeana/adapter/BaselineDescriptor.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "493f4024b561ef4827c2dc3a16bb8fa5158d1ef76ee20cd4676120dc62d1e281"
+    },
+    {
+      "destination": "java-bridge/src/main/java/dev/codeana/adapter/ContextOptions.java",
+      "origin": "codeana",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
+      "migrated_sha256": "482c8bea3152ccc7975c7e9f87c68651cc470df846edb6fd183d0be9e89c3c0b"
+    },
+    {
+      "destination": "java-bridge/src/test/java/dev/codeana/adapter/AnalysisRequestTest.java",
+      "origin": "codeana",
+      "reason": "Captured DTO defaults, exact numeric fields, compact input roles and verified baseline ownership.",
+      "migrated_sha256": "6d678ee7a7e598c8eba3e67073f3a1f0d9a33937891e46fe3a4cfc8e44b04fe3"
     }
   ],
   "supplemental_references": [

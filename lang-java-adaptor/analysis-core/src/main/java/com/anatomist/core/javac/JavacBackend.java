@@ -18,38 +18,65 @@ import java.util.*;
 
 /** Target-JDK javac worker backend. Trees are detached before compiler resources are released. */
 public final class JavacBackend implements JavaSemanticBackend {
+    private final JavacModelConsumer modelConsumer = new JavacModelConsumer(this);
     public static final String MODEL_VERSION = "javac-model-v50";
-    private final Path projectRoot;
+    final Path projectRoot;
     private final List<SourceRoot> sourceRoots;
-    private final JavacToolchain toolchain;
-    private final List<Path> classpath;
-    private final JavacOptions config;
+    final JavacToolchain toolchain;
+    final List<Path> classpath;
+    final JavacOptions config;
     private ParserResourceLimits resourceLimits = ParserResourceLimits.DEFAULT;
-    private IndexTimings timings;
-    private ScanPolicy policy;
+    IndexTimings timings;
+    ScanPolicy policy;
     private String identity;
     private JavaSourceDiscovery sourceDiscovery = new JavaSourceDiscovery();
-    private JavaSourcePlan sourcePlan;
+    JavaSourcePlan sourcePlan;
     private long environmentBuilds;
-    private WorkerScope activeWorkers;
+    private JavacWorkerPool activeWorkers;
     private JavaBinarySources.Session binaryInventories;
     private int completedWorkerLaunches;
-    private JavacMavenInputs mavenInputs;
-    private List<JavacContexts.Context> sealedContexts;
+    JavacMavenInputs mavenInputs;
+    List<JavacContexts.Context> sealedContexts;
+
+    public static JavacBackend captured(
+            Path root,
+            JavacToolchain toolchain,
+            List<SourceRoot> roots,
+            JavacOptions options,
+            JavacRunConfiguration run) {
+        var backend = new JavacBackend(root, toolchain, List.of(), roots, options);
+        backend.setTimings(run.timings());
+        backend.setModelBudgets(run.modelBudgets());
+        backend.setDecodeBudgetBytes(run.decodeBudgetBytes());
+        backend.setSourceSignatures(run.sourceSignatures());
+        backend.setBatchTimeout(run.batchTimeout());
+        backend.setDeclarationOverlay(run.overlay());
+        backend.setCapturedInputs(run.contexts(), run.sourcePlan(), run.moduleInputs());
+        return backend;
+    }
+
+    private void requireIdle() {
+        if (activeWorkers != null) throw new IllegalStateException("analysis already running");
+    }
 
     /** Captured by the Rust coordinator. No discovery or Maven execution is allowed here. */
-    public record CapturedContext(String module, SourceScope scope, List<Path> sources,
-            Set<Path> publish, Set<String> dependencyModules) {
+    public record CapturedContext(
+            String module,
+            SourceScope scope,
+            List<Path> sources,
+            Set<Path> publish,
+            Set<String> dependencyModules) {
         public CapturedContext {
             sources = List.copyOf(sources);
             publish = Set.copyOf(publish);
             dependencyModules = Set.copyOf(dependencyModules);
-            if (!sources.containsAll(publish)) throw new IllegalArgumentException("publication outside captured input");
+            if (!sources.containsAll(publish))
+                throw new IllegalArgumentException("publication outside captured input");
         }
     }
 
-    public void setCapturedInputs(List<CapturedContext> contexts, JavaSourcePlan plan,
-            JavacMavenInputs inputs) {
+    public void setCapturedInputs(
+            List<CapturedContext> contexts, JavaSourcePlan plan, JavacMavenInputs inputs) {
         if (activeWorkers != null) throw new IllegalStateException("analysis already running");
         if (toolchain.release() != 8 || config.lombokCompile())
             throw new IllegalArgumentException("CODEANA_JAVA8_STATIC_ONLY");
@@ -58,23 +85,35 @@ public final class JavacBackend implements JavaSemanticBackend {
             throw new IllegalArgumentException("context outside captured inventory");
         mavenInputs = Objects.requireNonNull(inputs);
         sourcePlan = Objects.requireNonNull(plan);
-        sealedContexts = contexts.stream().map(c -> new JavacContexts.Context(
-                c.module(), c.scope(), c.sources(), c.publish(), c.dependencyModules())).toList();
+        sealedContexts =
+                contexts.stream()
+                        .map(
+                                c ->
+                                        new JavacContexts.Context(
+                                                c.module(),
+                                                c.scope(),
+                                                c.sources(),
+                                                c.publish(),
+                                                c.dependencyModules()))
+                        .toList();
         identity = null;
     }
 
     public record ModelBudget(long bytes, long records) {
         public ModelBudget {
-            if(bytes<1||records<1)throw new IllegalArgumentException("JAVA_MODEL_BUDGET_RANGE");
+            if (bytes < 1 || records < 1)
+                throw new IllegalArgumentException("JAVA_MODEL_BUDGET_RANGE");
         }
     }
-    private Map<String,ModelBudget> modelBudgets=Map.of();
-    public void setModelBudgets(Map<String,ModelBudget> budgets) {
-        if(activeWorkers!=null)throw new IllegalStateException("analysis already running");
-        modelBudgets=Map.copyOf(budgets);
+
+    Map<String, ModelBudget> modelBudgets = Map.of();
+
+    public void setModelBudgets(Map<String, ModelBudget> budgets) {
+        if (activeWorkers != null) throw new IllegalStateException("analysis already running");
+        modelBudgets = Map.copyOf(budgets);
     }
 
-    private long decodeBudgetBytes = JavacDecodeBudget.DEFAULT_BYTES;
+    long decodeBudgetBytes = JavacDecodeBudget.DEFAULT_BYTES;
 
     /** Resource admission only; does not alter the compiler model or semantic fingerprint. */
     public void setDecodeBudgetBytes(long bytes) {
@@ -91,14 +130,14 @@ public final class JavacBackend implements JavaSemanticBackend {
         batchTimeout = timeout;
     }
 
-    private String classpathSource = "explicit-or-detected";
+    String classpathSource = "explicit-or-detected";
     private final List<JavacBatchMetrics> batchEvidence = new ArrayList<>();
 
     public List<JavacBatchMetrics> batchEvidence() {
         return List.copyOf(batchEvidence);
     }
 
-    private final Map<Integer, Map<String, Object>> diagnosticsEvidence = new TreeMap<>();
+    final Map<Integer, Map<String, Object>> diagnosticsEvidence = new TreeMap<>();
 
     public List<Map<String, Object>> diagnosticEvidence() {
         return List.copyOf(diagnosticsEvidence.values());
@@ -126,13 +165,13 @@ public final class JavacBackend implements JavaSemanticBackend {
                 "");
     }
 
-    private final Map<Integer, Map<String, Object>> classpathEvidence = new TreeMap<>();
+    final Map<Integer, Map<String, Object>> classpathEvidence = new TreeMap<>();
 
     public List<Map<String, Object>> taskClasspathEvidence() {
         return List.copyOf(classpathEvidence.values());
     }
 
-    private JavaDeclarationOverlay modelExtensions = JavaDeclarationOverlay.NONE;
+    JavaDeclarationOverlay modelExtensions = JavaDeclarationOverlay.NONE;
 
     public void setDeclarationOverlay(JavaDeclarationOverlay overlay) {
         if (activeWorkers != null)
@@ -181,32 +220,38 @@ public final class JavacBackend implements JavaSemanticBackend {
         classpathSource = Objects.requireNonNull(source);
     }
 
-    private List<JavaClasspathEntry> classpathEntries(
-            JavacContexts.Context context, JavacSignaturePlan signatures,
-            List<Path> compilerClasspath) throws IOException {
+    List<JavaClasspathEntry> classpathEntries(
+            JavacContexts.Context context,
+            JavacSignaturePlan signatures,
+            List<Path> compilerClasspath)
+            throws IOException {
         Map<Path, String> coordinates = new HashMap<>();
         if (mavenInputs != null && mavenInputs.resolvedClasspath())
             for (var dependency :
                     mavenInputs.module(context.module()).dependencies(context.scope()))
                 if (dependency instanceof JavacMavenInputs.ExternalDependency external)
                     coordinates.put(external.archive(), external.coordinate());
-        var declared = signatures.classpathEvidence(context).stream()
-                .map(
-                        item -> {
-                            Path path = Path.of(item.path());
-                            return new JavaClasspathEntry(
-                                    path, coordinates.getOrDefault(path, ""), item.sha256(),
-                                    sealedContexts == null ? path.toAbsolutePath().normalize().toString()
-                                            : "capture-sha256:" + item.sha256());
-                        })
-                .toList();
+        var declared =
+                signatures.classpathEvidence(context).stream()
+                        .map(
+                                item -> {
+                                    Path path = Path.of(item.path());
+                                    return new JavaClasspathEntry(
+                                            path,
+                                            coordinates.getOrDefault(path, ""),
+                                            item.sha256(),
+                                            sealedContexts == null
+                                                    ? path.toAbsolutePath().normalize().toString()
+                                                    : "capture-sha256:" + item.sha256());
+                                })
+                        .toList();
         if (sealedContexts == null) return declared;
         Map<Path, JavaClasspathEntry> known = new HashMap<>();
-        declared.forEach(entry -> known.put(entry.path(),entry));
+        declared.forEach(entry -> known.put(entry.path(), entry));
         List<JavaClasspathEntry> effective = new ArrayList<>();
         for (Path value : compilerClasspath) {
-            Path path=value.toAbsolutePath().normalize();
-            var entry=known.get(path);
+            Path path = value.toAbsolutePath().normalize();
+            var entry = known.get(path);
             if (entry != null) {
                 effective.add(entry);
                 continue;
@@ -215,14 +260,21 @@ public final class JavacBackend implements JavaSemanticBackend {
             // bytes and order without using the disposable task/cache location as identity.
             String digest;
             if (Files.isDirectory(path)) {
-                String contents=JavacSignatureInputs.files(List.of(path)).stream()
-                        .filter(item -> !"directory".equals(item.sha256()))
-                        .map(item -> path.relativize(Path.of(item.path())).toString().replace('\\','/')
-                                + "=" + item.sha256())
-                        .sorted().collect(java.util.stream.Collectors.joining("\n"));
-                digest=ContentHash.sha256(contents);
-            } else digest=ContentHash.sha256(path);
-            effective.add(new JavaClasspathEntry(path,"",digest,"capture-sha256:"+digest));
+                String contents =
+                        JavacSignatureInputs.files(List.of(path)).stream()
+                                .filter(item -> !"directory".equals(item.sha256()))
+                                .map(
+                                        item ->
+                                                path.relativize(Path.of(item.path()))
+                                                                .toString()
+                                                                .replace('\\', '/')
+                                                        + "="
+                                                        + item.sha256())
+                                .sorted()
+                                .collect(java.util.stream.Collectors.joining("\n"));
+                digest = ContentHash.sha256(contents);
+            } else digest = ContentHash.sha256(path);
+            effective.add(new JavaClasspathEntry(path, "", digest, "capture-sha256:" + digest));
         }
         return List.copyOf(effective);
     }
@@ -232,7 +284,7 @@ public final class JavacBackend implements JavaSemanticBackend {
      * no local compiler errors can still carry processor-created signatures that were absent from
      * the clean fallback task. Keep that evidence separate from successful compilation.
      */
-    private static void restorePartialProcessorDeclarations(
+    static void restorePartialProcessorDeclarations(
             List<JavaUnit> attempted, JavacProtocol.Result failed, List<JavaUnit> fallback) {
         if (!failed.failure().isEmpty()) return;
         if (failed.diagnostics().stream()
@@ -271,7 +323,7 @@ public final class JavacBackend implements JavaSemanticBackend {
         }
     }
 
-    private static boolean declarationOnlySource(JavaUnit unit) {
+    static boolean declarationOnlySource(JavaUnit unit) {
         for (var node : new JavaSyntax(unit.tree()).nodes())
             if (Set.of("METHOD_INVOCATION", "NEW_CLASS", "MEMBER_REFERENCE", "LAMBDA_EXPRESSION")
                     .contains(node.kind())) return false;
@@ -319,7 +371,7 @@ public final class JavacBackend implements JavaSemanticBackend {
         return openBinaries(entries);
     }
 
-    private com.anatomist.core.asmsolver.JavaBinaryRepository openBinaries(List<Path> entries) {
+    com.anatomist.core.asmsolver.JavaBinaryRepository openBinaries(List<Path> entries) {
         return binaryInventories == null
                 ? JavaBinarySources.open(
                         entries, toolchain.home(), toolchain.release(), effectiveAsmCacheMaxBytes())
@@ -366,6 +418,7 @@ public final class JavacBackend implements JavaSemanticBackend {
     }
 
     public void setSourceSignatures(boolean enabled) {
+        requireIdle();
         sourceSignatures = enabled;
     }
 
@@ -396,16 +449,18 @@ public final class JavacBackend implements JavaSemanticBackend {
     }
 
     private final class WorkerScope implements AutoCloseable {
-        private final List<JavacWorkerSession> workers = new ArrayList<>();
-        private final java.util.concurrent.ExecutorService executor =
-                java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor();
         private boolean closed;
 
-        private WorkerScope() {
+        WorkerScope() {
             if (activeWorkers != null)
                 throw new IllegalStateException("javac parsing session already active");
             try {
-                String workerPath = worker(sealedContexts == null ? config.cacheDirectory() : config.cacheDirectory().resolve(".runtime")).toString();
+                String workerPath =
+                        worker(
+                                        sealedContexts == null
+                                                ? config.cacheDirectory()
+                                                : config.cacheDirectory().resolve(".runtime"))
+                                .toString();
                 List<String> command =
                         new ArrayList<>(
                                 List.of(
@@ -415,58 +470,15 @@ public final class JavacBackend implements JavaSemanticBackend {
                     workerPath += File.pathSeparator + toolchain.home().resolve("lib/tools.jar");
                 else command.addAll(List.of("--add-modules", "jdk.compiler"));
                 command.addAll(List.of("-cp", workerPath, "com.anatomist.worker.JavacWorker", "1"));
-                for (int slot = 0; slot < config.analysisThreads(); slot++)
-                    workers.add(
-                            new JavacWorkerSession(command, projectRoot, batchTimeout));
-                activeWorkers = this;
+                activeWorkers =
+                        new JavacWorkerPool(
+                                command,
+                                projectRoot,
+                                batchTimeout,
+                                config.analysisThreads(),
+                                timings);
             } catch (IOException failure) {
                 throw new IllegalStateException("failed to prepare javac worker", failure);
-            }
-        }
-
-        void execute(List<JavacAnalysisAttempt> attempts) throws IOException {
-            long started = System.nanoTime();
-            List<java.util.concurrent.Future<?>> pending = new ArrayList<>();
-            try {
-                for (int slot = 0; slot < attempts.size(); slot++) {
-                    var attempt = attempts.get(slot);
-                    if (attempt.cached()) continue;
-                    var worker = workers.get(slot);
-                    pending.add(
-                            executor.submit(
-                                    () -> {
-                                        attempt.received(
-                                                worker.executeBatch(List.of(attempt.request()))
-                                                        .getFirst());
-                                        return null;
-                                    }));
-                }
-                for (var future : pending) future.get();
-            } catch (InterruptedException failure) {
-                abort(pending, failure);
-                Thread.currentThread().interrupt();
-                throw new IOException("javac batch interrupted", failure);
-            } catch (java.util.concurrent.ExecutionException failure) {
-                abort(pending, failure);
-                if (failure.getCause() instanceof IOException io) throw io;
-                if (failure.getCause() instanceof RuntimeException runtime) throw runtime;
-                if (failure.getCause() instanceof Error error) throw error;
-                throw new IOException("javac batch failed", failure.getCause());
-            } catch (RuntimeException | Error failure) {
-                abort(pending, failure);
-                throw failure;
-            } finally {
-                pending.forEach(future -> future.cancel(true));
-                if (timings != null) timings.stop("javac_worker_wait", started);
-            }
-        }
-
-        private void abort(List<java.util.concurrent.Future<?>> pending, Throwable failure) {
-            pending.forEach(future -> future.cancel(true));
-            try {
-                close();
-            } catch (Throwable cleanup) {
-                failure.addSuppressed(cleanup);
             }
         }
 
@@ -474,24 +486,17 @@ public final class JavacBackend implements JavaSemanticBackend {
         public void close() {
             if (closed) return;
             closed = true;
-            Throwable failure = null;
-            executor.shutdownNow();
-            for (var worker : workers) {
-                try {
-                    worker.close();
-                } catch (Throwable cleanup) {
-                    if (failure == null) failure = cleanup;
-                    else failure.addSuppressed(cleanup);
-                } finally {
+            var pool = activeWorkers;
+            try {
+                pool.close();
+            } finally {
+                for (var worker : pool.workers) {
                     executions.addAll(worker.executions());
                     batchEvidence.addAll(worker.batches());
                     completedWorkerLaunches += worker.launches();
                 }
+                activeWorkers = null;
             }
-            executor.close();
-            activeWorkers = null;
-            if (failure != null)
-                throw new IllegalStateException("failed to close javac workers", failure);
         }
     }
 
@@ -510,6 +515,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                     System.getProperty("anatomist.javac.dependencyDeclarations", "true"));
 
     void setDependencyDeclarations(boolean enabled) {
+        requireIdle();
         dependencyDeclarations = enabled;
         identity = null;
     }
@@ -562,12 +568,14 @@ public final class JavacBackend implements JavaSemanticBackend {
 
     @Override
     public void setTimings(IndexTimings value) {
+        requireIdle();
         timings = value;
         sourceDiscovery.setTimings(value);
     }
 
     @Override
     public void setSourcePolicy(ScanPolicy value) {
+        requireIdle();
         if (policy != null
                 && value != null
                 && policy.canonical(sourceRoots, List.of())
@@ -579,6 +587,7 @@ public final class JavacBackend implements JavaSemanticBackend {
 
     @Override
     public void setResourceLimits(ParserResourceLimits value) {
+        requireIdle();
         resourceLimits = value == null ? ParserResourceLimits.DEFAULT : value;
     }
 
@@ -603,7 +612,11 @@ public final class JavacBackend implements JavaSemanticBackend {
             long started = System.nanoTime();
             environmentBuilds++;
             try {
-                Path worker = worker(sealedContexts == null ? config.cacheDirectory() : config.cacheDirectory().resolve(".runtime"));
+                Path worker =
+                        worker(
+                                sealedContexts == null
+                                        ? config.cacheDirectory()
+                                        : config.cacheDirectory().resolve(".runtime"));
                 String material =
                         MODEL_VERSION
                                 + "|contract="
@@ -613,7 +626,11 @@ public final class JavacBackend implements JavaSemanticBackend {
                                 + "|maven="
                                 + (mavenInputs == null ? "direct-pom" : mavenInputs.fingerprint())
                                 + "|maven-worker="
-                                + (sealedContexts != null ? "rust-captured-v1" : mavenInputs == null ? "" : JavacMavenInputs.workerFingerprint())
+                                + (sealedContexts != null
+                                        ? "rust-captured-v1"
+                                        : mavenInputs == null
+                                                ? ""
+                                                : JavacMavenInputs.workerFingerprint())
                                 + "|support="
                                 + supportFingerprint()
                                 + "|declarations="
@@ -644,6 +661,7 @@ public final class JavacBackend implements JavaSemanticBackend {
     }
 
     public void setSourceDiscovery(JavaSourceDiscovery discovery) {
+        requireIdle();
         sourceDiscovery = Objects.requireNonNull(discovery);
         sourcePlan = null;
         identity = null;
@@ -662,7 +680,7 @@ public final class JavacBackend implements JavaSemanticBackend {
         return Map.copyOf(counts);
     }
 
-    private JavaSourcePlan sourcePlan() {
+    JavaSourcePlan sourcePlan() {
         if (sourcePlan == null) {
             var selected =
                     new ProjectScanner(Set.of(), policy, sourceDiscovery)
@@ -691,7 +709,16 @@ public final class JavacBackend implements JavaSemanticBackend {
         StringBuilder material = new StringBuilder();
         for (Path source : sourcePlan().visibleFiles())
             if (!selected.contains(source))
-                material.append(sealedContexts == null ? source : projectRoot.toAbsolutePath().normalize().relativize(source.toAbsolutePath().normalize())).append('=').append(ContentHash.sha256(source)).append('\n');
+                material.append(
+                                sealedContexts == null
+                                        ? source
+                                        : projectRoot
+                                                .toAbsolutePath()
+                                                .normalize()
+                                                .relativize(source.toAbsolutePath().normalize()))
+                        .append('=')
+                        .append(ContentHash.sha256(source))
+                        .append('\n');
         return ContentHash.sha256(material.toString());
     }
 
@@ -715,7 +742,9 @@ public final class JavacBackend implements JavaSemanticBackend {
                 "java_model_version",
                 MODEL_VERSION,
                 "maven_input_worker_fingerprint",
-                sealedContexts != null ? "rust-captured-v1" : mavenInputs == null ? "" : JavacMavenInputs.workerFingerprint());
+                sealedContexts != null
+                        ? "rust-captured-v1"
+                        : mavenInputs == null ? "" : JavacMavenInputs.workerFingerprint());
     }
 
     public static String workerFingerprint() {
@@ -746,7 +775,8 @@ public final class JavacBackend implements JavaSemanticBackend {
         // No consumer publication means there is no model to produce. Auxiliary
         // contexts are prerequisites of a requested target, never standalone work.
         if (targets.isEmpty()) return ParseInventory.complete(0);
-        List<SourceRoot> visibleRoots = sealedContexts == null ? visibleRoots(targets) : sourceRoots;
+        List<SourceRoot> visibleRoots =
+                sealedContexts == null ? visibleRoots(targets) : sourceRoots;
         LinkedHashSet<Path> visible =
                 new LinkedHashSet<>(
                         sourcePlan().visibleFiles().stream()
@@ -777,8 +807,10 @@ public final class JavacBackend implements JavaSemanticBackend {
             signatures.setTimings(timings);
             if (timings != null) timings.stop("javac_signature_prepare", preparationStarted);
             long planStarted = timings == null ? 0 : timings.start();
-            var contexts = sealedContexts == null ? signatures.contexts(input, targets)
-                    : signatures.capturedContexts(sealedContexts);
+            var contexts =
+                    sealedContexts == null
+                            ? signatures.contexts(input, targets)
+                            : signatures.capturedContexts(sealedContexts);
             if (timings != null) timings.stop("javac_signature_plan", planStarted);
             var inventory = new AnalysisInventory();
             JavacAnalysisCoordinator.run(
@@ -809,7 +841,7 @@ public final class JavacBackend implements JavaSemanticBackend {
         }
     }
 
-    private List<SourceRoot> compilationRoots() {
+    List<SourceRoot> compilationRoots() {
         Map<Path, SourceRoot> roots = new LinkedHashMap<>();
         sourceRoots.forEach(root -> roots.put(root.path(), root));
         if (mavenInputs != null) {
@@ -1021,101 +1053,7 @@ public final class JavacBackend implements JavaSemanticBackend {
             java.util.function.Consumer<JavaAnalysisContext> consumer,
             AnalysisInventory inventory)
             throws IOException {
-        JavacCancellation.check();
-        ModelBudget budget=modelBudgets.get(task.context().module()+"@"+task.context().scope());
-        if(budget!=null&&Files.size(attempt.request().result())>budget.bytes())
-            throw new IOException("JAVA_MODEL_ARCHIVE_BYTES");
-        List<JavaUnit> units = new ArrayList<>();
-        final List<JavaUnit> decodedUnits=units;
-        long[] records={0};
-        java.util.function.Consumer<JavaUnit> collect=unit->{
-            if(budget!=null) {
-                records[0]+=new JavaSyntax(unit.tree()).nodes().size()+unit.bindings().size()+unit.types().entries().size();
-                var declarations=new ArrayDeque<>(unit.declarationInventory());
-                while(!declarations.isEmpty()){records[0]++;declarations.addAll(declarations.removeFirst().members());}
-                if(records[0]>budget.records())throw new IllegalArgumentException("JAVA_MODEL_RECORD_LIMIT");
-            }
-            decodedUnits.add(unit);
-        };
-        JavacProtocol.Result response;
-        if (attempt.received() != null) {
-            response =
-                    JavacProtocol.response(attempt.received(), collect, attempt.declarations(), decodeBudgetBytes);
-        } else {
-            try (InputStream input = Files.newInputStream(attempt.request().result())) {
-                response = JavacProtocol.response(input, collect, attempt.declarations(), 0, true, decodeBudgetBytes);
-            }
-        }
-        if (timings != null) response.timingsNanos().forEach(timings::addNanos);
-        String compileFailure = "";
-        boolean compiled = attempt.processing() && response.compileSucceeded();
-        if (config.lombokCompile()) {
-            boolean missingProcessor =
-                    !attempt.processing()
-                            && (units.stream()
-                                            .anyMatch(
-                                                    unit ->
-                                                            JavacSignaturePlan.lombok(
-                                                                    unit.declarationInventory()))
-                                    || response.diagnostics().stream()
-                                            .anyMatch(
-                                                    d ->
-                                                            d.kind().equals("ERROR")
-                                                                    && d.message()
-                                                                            .contains("lombok")));
-            if (missingProcessor || attempt.processing() && !compiled) {
-                compileFailure =
-                        missingProcessor
-                                ? "Lombok processor is unavailable"
-                                : "Lombok compiler failed: "
-                                        + response.failure()
-                                        + " "
-                                        + response.diagnostics().stream()
-                                                .filter(d -> d.kind().equals("ERROR"))
-                                                .limit(5)
-                                                .map(JavaDiagnostic::message)
-                                                .toList();
-                if (attempt.processing()) {
-                    var attempted =
-                            units.stream()
-                                    .filter(
-                                            unit ->
-                                                    unit.hasProcessorEvidence()
-                                                            && declarationOnlySource(unit))
-                                    .toList();
-                    var failed = response;
-                    units.clear();
-                    attempt.declarations().close();
-                    response =
-                            execute(task, attempt.input(), 1, false, null, null, null, units::add);
-                    restorePartialProcessorDeclarations(attempted, failed, units);
-                }
-            }
-            if (compiled && !attempt.cached()) {
-                Files.copy(attempt.request().result(), attempt.directory().resolve("analysis.bin"));
-                Files.createDirectories(attempt.compilationTarget().getParent());
-                JavacCompilationCache.publish(attempt.directory(), attempt.compilationTarget());
-            }
-        }
-        if (compiled)
-            units =
-                    new ArrayList<>(
-                            JavacCompiledDeclarations.merge(attempt.compilationTarget(), units));
-        if (signatures.conflicts(attempt.input(), units)) {
-            signatures.discarded(attempt.input());
-            return false;
-        }
-        processContext(
-                task,
-                attempt.input(),
-                units,
-                response,
-                compileFailure,
-                signatures,
-                consumer,
-                inventory);
-        if (!attempt.processing() || compiled) attempt.declarations().commit();
-        return true;
+        return modelConsumer.consumeAttempt(task, attempt, signatures, consumer, inventory);
     }
 
     private static final class AttemptBatch implements AutoCloseable {
@@ -1150,178 +1088,23 @@ public final class JavacBackend implements JavaSemanticBackend {
             java.util.function.Consumer<JavaAnalysisContext> consumer,
             AnalysisInventory inventory)
             throws IOException {
-        JavacCancellation.check();
-        var context = task.context();
-        Set<Path> received = new HashSet<>();
-        for (JavaUnit unit : units) {
-            if (!compilerInput.context().sources().contains(unit.path()))
-                throw new IllegalStateException(
-                        "JAVAC_PROTOCOL_INVALID: unexpected source " + unit.path());
-            received.add(unit.path());
-        }
-        for (Path path : context.publish()) {
-            if (received.contains(path)) inventory.parsed++;
-            else inventory.failures.put(path, List.of("javac produced no compilation unit"));
-        }
-        List<JavaDiagnostic> diagnostics = new ArrayList<>(response.diagnostics());
-        if (policy != null && mavenInputs != null) {
-            for (String dependency : context.dependencyModules().stream().sorted().toList()) {
-                var module = mavenInputs.module(dependency);
-                boolean excluded =
-                        java.util.stream.Stream.concat(
-                                        module.mainRoots().stream(),
-                                        module.generatedMainRoots().stream())
-                                .filter(Files::isDirectory)
-                                .anyMatch(policy::excludes);
-                boolean available =
-                        java.util.stream.Stream.concat(
-                                        compilerInput.context().sources().stream(),
-                                        compilerInput.catalogues().stream().map(JavaUnit::path))
-                                .anyMatch(
-                                        path ->
-                                                mavenInputs
-                                                        .owningModule(path)
-                                                        .name()
-                                                        .equals(dependency));
-                if (excluded && !available)
-                    diagnostics.add(
-                            new JavaDiagnostic(
-                                    null,
-                                    "ERROR",
-                                    "SOURCE_DEPENDENCY_EXCLUDED",
-                                    -1,
-                                    -1,
-                                    "Required module '"
-                                            + dependency
-                                            + "' has no eligible MAIN sources after scan exclusions; dependency declarations are incomplete."));
-            }
-        }
-        if (!compileFailure.isEmpty())
-            diagnostics.add(
-                    new JavaDiagnostic(
-                            null, "ERROR", "JAVAC_LOMBOK_COMPILE_FAILED", -1, -1, compileFailure));
-        diagnosticsEvidence.put(
-                task.ordinal(),
-                Map.of(
-                        "module",
-                        context.module(),
-                        "scope",
-                        context.scope().name(),
-                        "diagnostics",
-                        diagnostics.stream()
-                                .map(
-                                        diagnostic ->
-                                                Map.of(
-                                                        "path",
-                                                        diagnostic.path() == null
-                                                                ? ""
-                                                                : diagnostic.path().toString(),
-                                                        "kind",
-                                                        diagnostic.kind(),
-                                                        "code",
-                                                        diagnostic.code(),
-                                                        "line",
-                                                        diagnostic.line(),
-                                                        "column",
-                                                        diagnostic.column(),
-                                                        "message",
-                                                        diagnostic.message()))
-                                .toList()));
-        units.addAll(compilerInput.catalogues());
-        var sourceIdentities = SourceIdentityResolver.fromRoots(projectRoot, compilationRoots());
-        Map<Path, SourceIdentity> unitIdentities = new LinkedHashMap<>();
-        for (JavaUnit unit : units)
-            unitIdentities.put(unit.path(), sealedContexts == null
-                    ? sourceIdentities.resolve(unit.path().toString())
-                    : Objects.requireNonNull(sourcePlan.identities().get(unit.path()), "uncaptured source identity"));
-        JavaAnalysisContext analysis =
-                new JavaAnalysisContext(
-                        context.module(),
-                        context.scope(),
-                        units,
-                        context.publish(),
-                        diagnostics,
-                        response.failure(),
-                        unitIdentities,
-                        compilerInput.classpath(),
-                        mavenInputs != null && mavenInputs.resolvedClasspath()
-                                ? "maven-effective"
-                                : classpath.isEmpty() ? "empty" : classpathSource,
-                        classpathEntries(context, signatures, compilerInput.classpath()),
-                        toolchain.release());
-        List<Map<String, Object>> entries = new ArrayList<>();
-        for (int ordinal = 0; ordinal < analysis.classpathEntries().size(); ordinal++) {
-            var entry = analysis.classpathEntries().get(ordinal);
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("ordinal", ordinal);
-            item.put("path", entry.path().toString());
-            item.put("sha256", entry.sha256());
-            if (!entry.coordinate().isEmpty()) item.put("coordinate", entry.coordinate());
-            entries.add(item);
-        }
-        classpathEvidence.put(
-                task.ordinal(),
-                Map.of(
-                        "module", context.module(),
-                        "scope", context.scope().name(),
-                        "target_jdk", toolchain.release(),
-                        "origin", analysis.classpathSource(),
-                        "entries", List.copyOf(entries),
-                        "analysis",
-                                Map.of(
-                                        "task_id",
-                                        task.id(),
-                                        "input_files",
-                                        compilerInput.context().sources().size(),
-                                        "published_files",
-                                        context.publish().size(),
-                                        "support_files",
-                                        compilerInput.context().sources().stream()
-                                                .filter(path -> !context.publish().contains(path))
-                                                .map(Path::toString)
-                                                .toList(),
-                                        "archived_modules",
-                                        compilerInput.archivedModules(),
-                                        "response_bytes",
-                                        response.bytes(),
-                                        "decode_bytes",
-                                        response.decodeUsage().toMap())));
-        JavacCancellation.check();
-        if (!modelExtensions.isEmpty()) {
-            long overlayStarted = timings == null ? 0 : timings.start();
-            try (var binaries = openBinaries(compilerInput.classpath())) {
-                analysis = modelExtensions.augment(analysis, binaries, timings);
-            }
-            if (timings != null) timings.stop("javac_overlay", overlayStarted);
-        }
-        JavacCancellation.check();
-        long signatureStarted = timings == null ? 0 : timings.start();
-        signatures.completed(
-                context,
+        modelConsumer.processContext(
+                task,
                 compilerInput,
-                analysis.units(),
-                !compileFailure.isEmpty()
-                        ? compileFailure
-                        : diagnostics.stream()
-                                        .anyMatch(
-                                                d ->
-                                                        d.code().equals("JAVAC_PARSE_FAILED")
-                                                                || config.lombokCompile()
-                                                                        && d.kind().equals("ERROR"))
-                                ? "source compilation failed"
-                                : response.failure());
-        if (timings != null) timings.stop("javac_signature_publish", signatureStarted);
-        JavacCancellation.check();
-        if (sealedContexts != null || !context.publish().isEmpty()) consumer.accept(analysis);
-        JavacCancellation.check();
+                units,
+                response,
+                compileFailure,
+                signatures,
+                consumer,
+                inventory);
     }
 
-    private static final class AnalysisInventory {
-        private int parsed;
-        private final Map<Path, List<String>> failures = new LinkedHashMap<>();
+    static final class AnalysisInventory {
+        int parsed;
+        final Map<Path, List<String>> failures = new LinkedHashMap<>();
     }
 
-    private JavacProtocol.Result execute(
+    JavacProtocol.Result execute(
             JavacAnalysisPlanner.Task task,
             JavacSignaturePlan.Input input,
             int attemptId,
@@ -1342,7 +1125,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                 frames);
     }
 
-    private JavacProtocol.Result execute(
+    JavacProtocol.Result execute(
             long taskId,
             int attemptId,
             JavacContexts.Context context,

@@ -2,7 +2,9 @@ package dev.codeana.adapter;
 
 import com.anatomist.core.*;
 import com.anatomist.core.javac.*;
+
 import dev.codeana.common.Json;
+
 import java.io.*;
 import java.nio.charset.*;
 import java.nio.file.*;
@@ -32,92 +34,79 @@ public final class CapturedProject {
             List<Source> resources,
             List<Path> classpath,
             Set<String> dependencies,
-            Map<String, Object> options) {}
+            ContextOptions options) {}
 
     public final Path root;
     public final Path diagnosticRoot;
     public final boolean deferFactDedup;
     public final String dependencyMode;
-    public final Map<String, Object> dependencyFailure;
+    public final AnalysisRequest.DependencyFailure dependencyFailure;
     public final Map<String, Source> sources = new LinkedHashMap<>();
     private final Map<Path, Source> physicalSources = new HashMap<>();
     public final List<Context> contexts;
     private final List<SourceRoot> sourceRoots;
 
     public CapturedProject(Map<String, Object> request) throws IOException {
-        dependencyMode = Objects.toString(request.get("dependency_mode"), "resolved");
-        if (!Set.of("resolved", "source_only_requested", "source_only_fallback").contains(dependencyMode))
+        this(AnalysisRequest.capture(request));
+    }
+
+    CapturedProject(AnalysisRequest request) throws IOException {
+        dependencyMode = request.dependencyMode();
+        if (!Set.of("resolved", "source_only_requested", "source_only_fallback")
+                .contains(dependencyMode))
             throw new IllegalArgumentException("JAVA_DEPENDENCY_MODE");
-        dependencyFailure = request.get("dependency_failure") instanceof Map<?, ?>
-                ? Json.map(request.get("dependency_failure")) : Map.of();
-        if (dependencyMode.equals("source_only_fallback") != !dependencyFailure.isEmpty())
+        dependencyFailure = request.dependencyFailure();
+        if (dependencyMode.equals("source_only_fallback") != (dependencyFailure != null))
             throw new IllegalArgumentException("JAVA_DEPENDENCY_FAILURE");
-        root =
-                Files.createDirectory(
-                        Path.of(Json.string(request, "scratch")).resolve("anatomist-inputs"));
-        diagnosticRoot =
-                Path.of(
-                        Objects.toString(
-                                request.get("diagnostic_scratch"),
-                                Json.string(request, "scratch")));
-        deferFactDedup = Boolean.TRUE.equals(request.get("defer_fact_dedup"));
-        ContextInputs resolver = new ContextInputs(request);
+        root = Files.createDirectory(request.scratch().resolve("anatomist-inputs"));
+        diagnosticRoot = request.diagnosticScratch();
+        deferFactDedup = request.deferFactDedup();
         List<Context> contexts = new ArrayList<>();
         Set<String> worlds = new HashSet<>(), ids = new HashSet<>();
-        for (Object raw : Json.list(request.get("contexts"))) {
-            Map<String, Object> c = resolver.resolve(Json.map(raw));
-            String world = Json.string(c, "world"), id = Json.string(c, "context");
+        for (var c : request.contexts()) {
+            String world = c.world(), id = c.id();
             if (!worlds.add(world) || !ids.add(id))
                 throw new IllegalArgumentException("DUPLICATE_CONTEXT");
             List<Source> visible = new ArrayList<>(), resources = new ArrayList<>();
             Set<Path> publish = new LinkedHashSet<>();
-            for (Object value : Json.list(c.get("sources"))) {
-                Map<String, Object> row = Json.map(value);
-                Source s = capture(row, false);
-                visible.add(s);
-                if (Boolean.TRUE.equals(row.get("publish"))) {
-                    if (s.auxiliary() || !s.world().equals(world))
+            for (var row : c.sources()) {
+                Source source = capture(row, false);
+                visible.add(source);
+                if (row.publish()) {
+                    if (source.auxiliary() || !source.world().equals(world))
                         throw new IllegalArgumentException("JAVA_PUBLICATION_IDENTITY");
-                    publish.add(s.file());
+                    publish.add(source.file());
                 }
             }
-            for (Object value : list(c.get("resources"))) {
-                Map<String, Object> row = Json.map(value),
-                        unit = new LinkedHashMap<>(Json.map(row.get("unit")));
-                unit.put("input", row.get("input"));
-                Source source = capture(unit, true);
+            for (var row : c.resources()) {
+                Source source = capture(row, true);
                 if (source.auxiliary())
                     throw new IllegalArgumentException("RESOURCE_PUBLICATION_IDENTITY");
                 resources.add(source);
             }
-            List<Path> cp =
-                    list(c.get("classpath")).stream()
-                            .map(v -> Path.of((String) v).toAbsolutePath().normalize())
-                            .toList();
-            if (!dependencyMode.equals("resolved") && !cp.isEmpty())
+            if (!dependencyMode.equals("resolved") && !c.classpath().isEmpty())
                 throw new IllegalArgumentException("JAVA_SOURCE_ONLY_CLASSPATH");
-            Set<String> dependencies = new LinkedHashSet<>();
-            for (Object d : list(c.get("dependency_modules"))) dependencies.add((String) d);
-            dependencies.remove(Json.string(c, "module"));
+            Set<String> dependencies = new LinkedHashSet<>(c.dependencies());
+            dependencies.remove(c.module());
             contexts.add(
                     new Context(
                             id,
-                            Json.string(c, "module"),
+                            c.module(),
                             world,
-                            SourceScope.valueOf(Json.string(c, "scope")),
-                            Json.string(c, "digest"),
+                            SourceScope.valueOf(c.scope()),
+                            c.digest(),
                             List.copyOf(visible),
                             Set.copyOf(publish),
                             List.copyOf(resources),
-                            cp,
+                            c.classpath(),
                             Set.copyOf(dependencies),
-                            Map.copyOf(c)));
+                            c.options()));
         }
         this.contexts = List.copyOf(contexts);
         Set<SourceRoot> roots = new LinkedHashSet<>();
         Set<String> described = new HashSet<>();
         for (var context : contexts) {
-            List<Object> declared = list(context.options().get("source_roots"));
+            List<String> declared = context.options().sourceRoots();
             if (declared.isEmpty()) continue;
             described.add(context.module() + "\n" + context.scope());
             for (Object value : declared) {
@@ -147,23 +136,23 @@ public final class CapturedProject {
         sourceRoots = List.copyOf(roots);
     }
 
-    private Source capture(Map<String, Object> row, boolean resource) throws IOException {
-        String name = Json.string(row, "path");
+    private Source capture(AnalysisRequest.SourceInput row, boolean resource) throws IOException {
+        String name = row.path();
         Path relative = Path.of(name);
         if (relative.isAbsolute()
                 || name.isBlank()
                 || !relative.normalize().equals(relative)
                 || relative.startsWith("..")) throw new IllegalArgumentException("CAPTURE_PATH");
-        String hash = Json.string(row, "hash");
+        String hash = row.hash();
         Source old = sources.get(name);
         if (old != null) {
             if (!old.hash().equals(hash)
-                    || !old.world().equals(Json.string(row, "world"))
+                    || !old.world().equals(row.world())
                     || old.resource() != resource)
                 throw new IllegalArgumentException("CAPTURE_IDENTITY");
             return old;
         }
-        byte[] bytes = Json.read(Path.of(Json.string(row, "input")));
+        byte[] bytes = Json.read(row.input());
         if (!Json.sha(bytes).equals(hash)) throw new IOException("CAPTURE_HASH_MISMATCH");
         boolean valid = true;
         try {
@@ -178,22 +167,20 @@ public final class CapturedProject {
                 new Source(
                         name,
                         hash,
-                        Json.string(row, "module"),
-                        Json.string(row, "world"),
-                        Json.string(row, "scope"),
+                        row.module(),
+                        row.world(),
+                        row.scope(),
                         file,
                         resource,
                         valid,
-                        Boolean.TRUE.equals(row.get("auxiliary")));
+                        row.auxiliary());
         sources.put(name, s);
         physicalSources.put(s.file(), s);
         return s;
     }
 
     public Source source(Path file) {
-        return Objects.requireNonNull(
-                physicalSources.get(file),
-                "uncaptured source");
+        return Objects.requireNonNull(physicalSources.get(file), "uncaptured source");
     }
 
     public List<SourceRoot> roots() {
@@ -201,8 +188,14 @@ public final class CapturedProject {
     }
 
     private Set<String> publishFilter;
-    public void publishedSources(Set<String> sources) { publishFilter=Set.copyOf(sources); }
-    public boolean publishes(Path path) { return publishFilter==null || publishFilter.contains(source(path).path()); }
+
+    public void publishedSources(Set<String> sources) {
+        publishFilter = Set.copyOf(sources);
+    }
+
+    public boolean publishes(Path path) {
+        return publishFilter == null || publishFilter.contains(source(path).path());
+    }
 
     public JavaSourcePlan sourcePlan(Set<String> dirty) {
         List<Path> publish =
@@ -253,7 +246,10 @@ public final class CapturedProject {
                                                 .toList(),
                                         dirty.contains(c.world())
                                                 ? c.publish().stream()
-                                                        .filter(p -> source(p).validEncoding() && publishes(p))
+                                                        .filter(
+                                                                p ->
+                                                                        source(p).validEncoding()
+                                                                                && publishes(p))
                                                         .collect(
                                                                 java.util.stream.Collectors.toSet())
                                                 : Set.of(),

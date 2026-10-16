@@ -9,7 +9,9 @@ import com.anatomist.framework.*;
 import com.anatomist.framework.lombok.*;
 import com.anatomist.framework.sofa.SofaFrameworkPlugin;
 import com.anatomist.model.*;
+
 import dev.codeana.common.*;
+
 import java.io.*;
 import java.nio.file.*;
 import java.util.*;
@@ -17,7 +19,7 @@ import java.util.*;
 /** Task lifetime at the native boundary. All semantics belong to the migrated core. */
 public final class AnalysisSession implements AutoCloseable {
     public static final String IDENTITY = "anatomist-4a903272-codeana-graph2-maven-fallback1";
-    private final Map<String, Object> request;
+    private final AnalysisRequest request;
     private final AnalysisLimits limits;
     private final Path taskRoot;
     private GraphArchive output;
@@ -32,13 +34,23 @@ public final class AnalysisSession implements AutoCloseable {
     public AnalysisSession(Map<String, Object> request, AnalysisObserver observer)
             throws IOException {
         this.observer = Objects.requireNonNull(observer);
-        limits = new AnalysisLimits(request);
-        this.request = new LinkedHashMap<>(request);
-        this.request.put("diagnostic_scratch", Json.string(request, "scratch"));
+        var input = new LinkedHashMap<>(request);
+        input.put("diagnostic_scratch", Json.string(request, "scratch"));
         taskRoot =
                 Files.createTempDirectory(
                         Path.of(Json.string(request, "scratch")), "anatomist-task-");
-        this.request.put("scratch", taskRoot.toString());
+        input.put("scratch", taskRoot.toString());
+        try {
+            this.request = AnalysisRequest.parse(input);
+        } catch (IOException | RuntimeException failure) {
+            try {
+                Files.deleteIfExists(taskRoot);
+            } catch (IOException cleanup) {
+                failure.addSuppressed(cleanup);
+            }
+            throw failure;
+        }
+        limits = this.request.limits();
     }
 
     public void cancel() {
@@ -53,7 +65,7 @@ public final class AnalysisSession implements AutoCloseable {
     }
 
     public Map<String, Object> analyze() throws Exception {
-        try (var recording = AllocationRecording.open(Path.of(Json.string(request, "diagnostic_scratch")))) {
+        try (var recording = AllocationRecording.open(request.diagnosticScratch())) {
             return analyzeCaptured();
         }
     }
@@ -61,135 +73,140 @@ public final class AnalysisSession implements AutoCloseable {
     private Map<String, Object> analyzeCaptured() throws Exception {
         executing = Thread.currentThread();
         check();
-        if (Json.number(request, "version") != 10)
-            throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        if (request.version() != 10) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        var plan = prepareAnalysis();
+        extractJava(plan);
+        extractResources(plan);
+        return sealAnalysis(plan).wire();
+    }
+
+    private record Plan(
+            CapturedProject project,
+            Set<String> dirty,
+            AnatomistRows projection,
+            ProjectView view,
+            JavacBackend backend,
+            IndexTimings timings,
+            Map<String, JavaFrameworkContext> frameworks,
+            Map<String, JavaModelAnalyzerRegistry> registries) {}
+
+    private Plan prepareAnalysis() throws Exception {
         observer.phase("capture", "", true);
         CapturedProject project = new CapturedProject(request);
         observer.phase("capture", "", false);
-        boolean full = !Boolean.FALSE.equals(request.get("full"));
-        Map<String,Object> summary = request.get("baseline_summary") instanceof Map<?,?>
-            ? Json.map(request.get("baseline_summary")) : Map.of();
-        if(summary.get("path") instanceof String path) {
-            Path source=Path.of(path).toRealPath();
-            Path root=Path.of(Json.string(request,"diagnostic_scratch")).toRealPath();
-            if(!source.startsWith(root)) throw new IOException("GRAPH_BASELINE_PATH");
-            byte[] bytes=Json.read(source);
-            if(bytes.length!=Json.number(summary,"bytes") || !Json.sha(bytes).equals(Json.string(summary,"sha256"))) throw new IOException("GRAPH_BASELINE_IDENTITY");
-            summary=Json.map(Json.parse(bytes));
-        }
-        Map<String,Object> previous = summary.get("contexts") instanceof Map<?,?>
-            ? Json.map(summary.get("contexts")) : Map.of();
-        Set<String> changedSources=new HashSet<>();
-        for(Object value:CapturedProject.list(summary.get("changed_sources"))) changedSources.add((String)value);
-        if(full) changedSources.addAll(project.sources.keySet());
-        if(!full) project.publishedSources(changedSources);
+        boolean full = request.full();
+        var summary = request.baseline().read();
+        var previous = summary.contexts();
+        Set<String> changedSources = new HashSet<>(summary.changedSources());
+        if (full) changedSources.addAll(project.sources.keySet());
+        if (!full) project.publishedSources(changedSources);
 
         Set<String> dirty = new HashSet<>();
-        for(var c:project.contexts) if(full || !c.digest().equals(previous.get(c.world()))) dirty.add(c.world());
-        if(!dirty.isEmpty()) for(var c:project.contexts) if(!c.resources().isEmpty()) dirty.add(c.world());
-        output = new GraphArchive(Path.of(Json.string(request,"scratch")).resolve("anatomist-rows.bin"),limits.bytes,limits.facts);
-        AnatomistRows projection = new AnatomistRows(project,output);
-        projection.row(dev.codeana.graph.GraphRecords.Table.PROJECT_META, "analysis_mode",
+        for (var c : project.contexts)
+            if (full || !c.digest().equals(previous.get(c.world()))) dirty.add(c.world());
+        if (!dirty.isEmpty())
+            for (var c : project.contexts) if (!c.resources().isEmpty()) dirty.add(c.world());
+        output =
+                new GraphArchive(
+                        request.scratch().resolve("anatomist-rows.bin"),
+                        limits.bytes,
+                        limits.facts);
+        AnatomistRows projection = new AnatomistRows(project, output);
+        projection.row(
+                dev.codeana.graph.GraphRecords.Table.PROJECT_META,
+                "analysis_mode",
                 project.dependencyMode.equals("resolved") ? "semantic" : "source_only");
-        projection.row(dev.codeana.graph.GraphRecords.Table.PROJECT_META, "classpath_status",
+        projection.row(
+                dev.codeana.graph.GraphRecords.Table.PROJECT_META,
+                "classpath_status",
                 project.dependencyMode.equals("resolved") ? "available" : "unavailable");
-        projection.row(dev.codeana.graph.GraphRecords.Table.PROJECT_META, "dependency_mode", project.dependencyMode);
+        projection.row(
+                dev.codeana.graph.GraphRecords.Table.PROJECT_META,
+                "dependency_mode",
+                project.dependencyMode);
         if (project.dependencyMode.equals("source_only_fallback")) {
             var failure = project.dependencyFailure;
-            String sample = "Maven external dependency resolution failed; continuing source analysis without external classpath. "
-                    + "Type and call relationships may be incomplete. Module: " + Json.string(failure, "module")
-                    + "; POM: " + Json.string(failure, "pom") + "; dependency: " + Json.string(failure, "coordinate")
-                    + "; " + Json.string(failure, "reason");
+            String sample =
+                    "Maven external dependency resolution failed; continuing source analysis"
+                            + " without external classpath. Type and call relationships may be"
+                            + " incomplete. Module: "
+                            + failure.module()
+                            + "; POM: "
+                            + failure.pom()
+                            + "; dependency: "
+                            + failure.coordinate()
+                            + "; "
+                            + failure.reason();
             for (var c : project.contexts)
-                projection.diagnostic(new IndexDiagnostic("warning", "CLASSPATH_UNAVAILABLE", "CLASSPATH",
-                        null, c.module(), c.scope().name(), Json.string(failure, "coordinate"), 1, sample));
+                projection.diagnostic(
+                        new IndexDiagnostic(
+                                "warning",
+                                "CLASSPATH_UNAVAILABLE",
+                                "CLASSPATH",
+                                null,
+                                c.module(),
+                                c.scope().name(),
+                                failure.coordinate(),
+                                1,
+                                sample));
         }
         ProjectView view = new ProjectView(project);
-        for(var c:project.contexts) {
-            if(dirty.contains(c.world())) {
-                for(var source:c.sources()) if(c.publish().contains(source.file()) && project.publishes(source.file())) projection.replace(source);
-                for(var source:c.resources()) projection.replace(source);
+        for (var c : project.contexts) {
+            if (dirty.contains(c.world())) {
+                for (var source : c.sources())
+                    if (c.publish().contains(source.file()) && project.publishes(source.file()))
+                        projection.replace(source);
+                for (var source : c.resources()) projection.replace(source);
             }
-            projection.row(dev.codeana.graph.GraphRecords.Table.PROJECT_META,"codeana.context."+c.world(),c.digest());
+            projection.row(
+                    dev.codeana.graph.GraphRecords.Table.PROJECT_META,
+                    "codeana.context." + c.world(),
+                    c.digest());
         }
-        for(Object file:CapturedProject.list(summary.get("files"))) {
-            var old=Json.map(file);String path=Json.string(old,"path");
-            if(!project.sources.containsKey(path)) projection.replaceDeleted(path,Json.string(old,"world"));
-        }
-        for(Object node:CapturedProject.list(summary.get("nodes"))) {
-            var n=Json.map(node);
-            if(!changedSources.contains(Json.string(n,"source_file"))) view.symbol(new SymbolFact(Json.string(n,"id"),Json.string(n,"symbol_id"),Json.string(n,"kind"),Json.string(n,"module"),Json.string(n,"scope"),Json.string(n,"source_file"),Objects.toString(n.get("metadata"),"{}")));
-        }
-        for(Object relation:CapturedProject.list(summary.get("type_relations"))) {
-            var edge=Json.map(relation);
-            if(!changedSources.contains(Json.string(edge,"source_file")))
-                view.relations.add(new TypeRelationFact(Json.string(edge,"source_symbol"),Json.string(edge,"target_symbol"),Json.string(edge,"relation")));
-        }
-        Path home = Path.of(Json.string(request, "java_home"));
+        for (var old : summary.files())
+            if (!project.sources.containsKey(old.path()))
+                projection.replaceDeleted(old.path(), old.world());
+        for (var symbol : summary.symbols())
+            if (!changedSources.contains(symbol.sourceFile())) view.symbol(symbol);
+        for (var relation : summary.relations())
+            if (!changedSources.contains(relation.sourceFile()))
+                view.relations.add(relation.fact());
+        Path home = request.javaHome();
         Path cache =
-                request.get("cache_root") instanceof String p
-                        ? Path.of(p)
-                        : Files.createDirectory(
-                                Path.of(Json.string(request, "scratch"))
-                                        .resolve("anatomist-cache"));
-        // Rust owns this task copy; only complete signature entries are committed after publish
-        // Ack.
+                request.cacheRoot() != null
+                        ? request.cacheRoot()
+                        : Files.createDirectory(request.scratch().resolve("anatomist-cache"));
         cache = Files.createDirectories(cache);
-        int threads =
-                request.get("parallelism") instanceof Number n ? Math.max(1, n.intValue()) : 1;
-        int heap =
-                request.get("compiler_heap_bytes") instanceof Number n && n.longValue() > 0
-                        ? (int) (n.longValue() / (1 << 20))
-                        : 512;
+        int threads = request.parallelism();
+        int heap = request.compilerHeapMb();
         JavacOptions options =
                 new JavacOptions(home, true, true, false, false, cache, threads, heap);
         var toolchain = JavacToolchain.resolve(options, 8, null);
-        var backend =
-                new JavacBackend(project.root, toolchain, List.of(), project.roots(), options);
         var timings = observer.timings();
-        backend.setTimings(timings);
         Map<String, JavacBackend.ModelBudget> modelBudgets = new HashMap<>();
         for (var c : project.contexts)
             modelBudgets.put(
                     c.module() + "@" + c.scope(),
                     new JavacBackend.ModelBudget(
-                            c.options().get("model_archive_bytes") instanceof Number n
-                                    ? n.longValue()
-                                    : 64L << 20,
-                            c.options().get("model_record_limit") instanceof Number n
-                                    ? n.longValue()
-                                    : 100000));
-        backend.setModelBudgets(modelBudgets);
-        var decodeBudgets = project.contexts.stream()
-                .map(c -> c.options().get("model_decode_bytes") instanceof Number n
-                        ? n.longValue() : 512L << 20)
-                .distinct().toList();
+                            c.options().modelArchiveBytes(), c.options().modelRecordLimit()));
+        var decodeBudgets =
+                project.contexts.stream()
+                        .map(c -> c.options().modelDecodeBytes())
+                        .distinct()
+                        .toList();
         if (decodeBudgets.size() > 1)
             throw new IllegalArgumentException("JAVA_MODEL_DECODE_BUDGET_CONFLICT");
-        if (!decodeBudgets.isEmpty()) backend.setDecodeBudgetBytes(decodeBudgets.getFirst());
-        backend.setSourceSignatures(!Boolean.FALSE.equals(request.get("signature_cache")));
-        backend.setBatchTimeout(
-                java.time.Duration.ofSeconds(
-                        request.get("compiler_timeout_seconds") instanceof Number n
-                                ? n.longValue()
-                                : 120));
-        backend.setCapturedInputs(
-                project.compilerContexts(dirty), project.sourcePlan(dirty), project.moduleInputs());
-        Map<String, CapturedProject.Context> contexts = new HashMap<>();
         Map<String, JavaFrameworkContext> frameworks = new HashMap<>();
         Map<String, JavaModelAnalyzerRegistry> registries = new HashMap<>();
         for (var c : project.contexts) {
             String key = c.module() + "@" + c.scope();
-            contexts.put(key, c);
             ProjectConfig config = new ProjectConfig();
             config.setJavaVersion(8);
-            config.setLombokMode("model".equals(c.options().get("lombok")) ? "ast" : "off");
-            config.setLombokStrict(Boolean.TRUE.equals(c.options().get("lombok_strict")));
-            config.setSpringXml(Boolean.TRUE.equals(c.options().get("spring_xml")));
-            if (Boolean.TRUE.equals(c.options().get("external_policy_configured")))
-                config.setExternalExcludePatterns(
-                        CapturedProject.list(c.options().get("external_exclude_patterns")).stream()
-                                .map(String.class::cast).toList());
+            config.setLombokMode("model".equals(c.options().lombok()) ? "ast" : "off");
+            config.setLombokStrict(c.options().lombokStrict());
+            config.setSpringXml(c.options().springXml());
+            if (c.options().externalPolicyConfigured())
+                config.setExternalExcludePatterns(c.options().externalExcludePatterns());
             JavaFrameworkContext f =
                     new JavaFrameworkContext(
                             project.root,
@@ -199,7 +216,7 @@ public final class AnalysisSession implements AutoCloseable {
             frameworks.put(key, f);
             registries.put(key, registry(project, c, f));
         }
-        backend.setDeclarationOverlay(
+        var overlay =
                 new JavaDeclarationOverlay() {
                     public String fingerprint() {
                         return Json.key(
@@ -222,8 +239,39 @@ public final class AnalysisSession implements AutoCloseable {
                                 .overlays()
                                 .augment(c, b);
                     }
-                });
-        Set<String> partial = new HashSet<>();
+                };
+        var run =
+                new JavacRunConfiguration(
+                        modelBudgets,
+                        decodeBudgets.isEmpty() ? 512L << 20 : decodeBudgets.getFirst(),
+                        request.signatureCache(),
+                        request.compilerTimeout(),
+                        timings,
+                        overlay,
+                        project.compilerContexts(dirty),
+                        project.sourcePlan(dirty),
+                        project.moduleInputs());
+        var backend = JavacBackend.captured(project.root, toolchain, project.roots(), options, run);
+        return new Plan(
+                project,
+                Set.copyOf(dirty),
+                projection,
+                view,
+                backend,
+                timings,
+                frameworks,
+                registries);
+    }
+
+    private void extractJava(Plan plan) {
+        var project = plan.project();
+        var dirty = plan.dirty();
+        var projection = plan.projection();
+        var view = plan.view();
+        var backend = plan.backend();
+        var timings = plan.timings();
+        var frameworks = plan.frameworks();
+        var registries = plan.registries();
         observer.phase("backend_total", "", true);
         try {
             var sourcePlan = project.sourcePlan(dirty);
@@ -231,10 +279,13 @@ public final class AnalysisSession implements AutoCloseable {
             // A resource-only consumer still needs the Java catalogue used by
             // copied XML resolvers. Captured publish flags remain unchanged.
             if (compilerTargets.isEmpty()
-                    && project.contexts.stream().anyMatch(c -> dirty.contains(c.world())
-                            && !c.resources().isEmpty()
-                            && (Boolean.TRUE.equals(c.options().get("spring_xml"))
-                                || Boolean.TRUE.equals(c.options().get("sofa")))))
+                    && project.contexts.stream()
+                            .anyMatch(
+                                    c ->
+                                            dirty.contains(c.world())
+                                                    && !c.resources().isEmpty()
+                                                    && (c.options().springXml()
+                                                            || c.options().sofa())))
                 compilerTargets = sourcePlan.visibleFiles();
             backend.analyzeFiles(
                     compilerTargets,
@@ -242,11 +293,6 @@ public final class AnalysisSession implements AutoCloseable {
                         check();
                         observer.model(analysis);
                         String key = analysis.module() + "@" + analysis.scope();
-                        var c = contexts.get(key);
-                        projection.context(c);
-                        for (var diagnostic : analysis.diagnostics())
-                            if (diagnostic.path() != null && diagnostic.kind().equals("ERROR"))
-                                partial.add(project.source(diagnostic.path()).path());
                         observer.phase("extraction_total", key, true);
                         try (var binaries = backend.openBinaryRepository(analysis)) {
                             new JavaModelExtractor(
@@ -260,9 +306,6 @@ public final class AnalysisSession implements AutoCloseable {
                                                 observer.extraction(unit.facts());
                                                 view.add(unit.facts());
                                                 projection.unit(unit);
-                                                for (var diagnostic : unit.diagnostics())
-                                                    if (diagnostic.sourceFile() != null)
-                                                        partial.add(diagnostic.sourceFile());
                                             });
                         } finally {
                             projection.flush();
@@ -279,15 +322,29 @@ public final class AnalysisSession implements AutoCloseable {
                             backend.batchEvidence().stream().map(b -> b.toMap()).toList()));
             observer.phase("backend_total", "", false);
         }
+    }
+
+    private void extractResources(Plan plan) {
+        var project = plan.project();
+        var dirty = plan.dirty();
+        var projection = plan.projection();
+        var view = plan.view();
+        var frameworks = plan.frameworks();
+        var registries = plan.registries();
         // Register resource declarations before resolving references in any consumer context.
         // The same upstream resource analyzers build both the catalogue and published facts.
         for (var c : project.contexts) {
             if (!dirty.contains(c.world()) || c.resources().isEmpty()) continue;
             check();
             var declarations = new ExtractionResult();
-            new ProjectAnalysisRunner().run(registries.get(c.module() + "@" + c.scope()),
-                    frameworks.get(c.module() + "@" + c.scope()), resourceInventory(c),
-                    view.snapshot(c, true), declarations, new ExtensionReport());
+            new ProjectAnalysisRunner()
+                    .run(
+                            registries.get(c.module() + "@" + c.scope()),
+                            frameworks.get(c.module() + "@" + c.scope()),
+                            resourceInventory(c),
+                            view.snapshot(c, true),
+                            declarations,
+                            new ExtensionReport());
             for (var node : declarations.nodes) {
                 node.module = c.module();
                 node.scope = c.scope().name();
@@ -297,7 +354,6 @@ public final class AnalysisSession implements AutoCloseable {
         for (var c : project.contexts)
             if (dirty.contains(c.world())) {
                 check();
-                projection.context(c);
                 for (var source : c.sources())
                     if (c.publish().contains(source.file()) && project.publishes(source.file())) {
                         if (!source.validEncoding()) {
@@ -312,9 +368,7 @@ public final class AnalysisSession implements AutoCloseable {
                                             null,
                                             1,
                                             "Original captured bytes are not valid UTF-8"));
-                            partial.add(source.path());
                         }
-                        projection.coverage(source, partial.contains(source.path()));
                     }
                 if (!c.resources().isEmpty()) {
                     String key = c.module() + "@" + c.scope();
@@ -332,36 +386,34 @@ public final class AnalysisSession implements AutoCloseable {
                                     result,
                                     report);
                     observer.extraction(result);
-                    projection.extraction(result,c);
+                    projection.extraction(result, c);
                     report.diagnostics().forEach(projection::diagnostic);
-                    for (var source : c.resources())
-                        projection.coverage(
-                                source,
-                                report.diagnostics().stream()
-                                        .anyMatch(d -> source.path().equals(d.sourceFile())));
                     observer.phase("resources", key, false);
                 }
                 projection.provenance(IDENTITY);
             }
+    }
+
+    private AnalysisResult sealAnalysis(Plan plan) throws IOException {
+        var projection = plan.projection();
+        var project = plan.project();
+        boolean full = request.full();
         projection.finish();
         project.verify();
         observer.projectionStatistics(projection.statistics());
         check();
-        return Json.object(
-                "version",
-                10,
-                "mode",
-                full ? "full" : "delta",
-                "replacements",
-                full ? List.of() : projection.owners(),
-                "facts",
-                output);
+        return new AnalysisResult(
+                full ? "full" : "delta", full ? List.of() : projection.owners(), output);
     }
 
     private static List<ProjectResource> resourceInventory(CapturedProject.Context context) {
         return context.resources().stream()
-                .filter(s -> s.path().endsWith(".xml") && SpringBeanParser.isSpringBeansFile(s.file()))
-                .map(s -> new ProjectResource(s.file(), s.path(), "spring-xml")).toList();
+                .filter(
+                        s ->
+                                s.path().endsWith(".xml")
+                                        && SpringBeanParser.isSpringBeansFile(s.file()))
+                .map(s -> new ProjectResource(s.file(), s.path(), "spring-xml"))
+                .toList();
     }
 
     private static JavaModelAnalyzerRegistry registry(
@@ -378,39 +430,53 @@ public final class AnalysisSession implements AutoCloseable {
                 }
             }
         List<JavaFrameworkPlugin> plugins = new ArrayList<>();
-        if (Boolean.TRUE.equals(c.options().get("spring"))
-                || Boolean.TRUE.equals(c.options().get("spring_xml"))
-                || Boolean.TRUE.equals(c.options().get("sofa")))
-            plugins.add(new CapturedSpringPlugin(
-                    Boolean.TRUE.equals(c.options().get("spring")),
-                    Boolean.TRUE.equals(c.options().get("spring_xml"))));
-        if (Boolean.TRUE.equals(c.options().get("sofa"))) plugins.add(new SofaFrameworkPlugin());
+        if (c.options().spring() || c.options().springXml() || c.options().sofa())
+            plugins.add(new CapturedSpringPlugin(c.options().spring(), c.options().springXml()));
+        if (c.options().sofa()) plugins.add(new SofaFrameworkPlugin());
         return new com.anatomist.application.FrameworkPlugins(plugins)
                 .prepareDetached(f, configurations);
     }
 
     private static final class ProjectView {
         private final CapturedProject project;
-        private final Map<CapturedProject.Context, Set<String>> visibility = new IdentityHashMap<>();
+        private final Map<CapturedProject.Context, Set<String>> visibility =
+                new IdentityHashMap<>();
         private final Set<String> allSources = new HashSet<>();
 
         ProjectView(CapturedProject project) {
             this.project = project;
             for (var candidate : project.contexts) {
-                for (var source : candidate.sources()) allSources.add(source.module() + "\n" + source.scope() + "\n" + source.path());
-                for (var source : candidate.resources()) allSources.add(candidate.module() + "\n" + candidate.scope() + "\n" + source.path());
+                for (var source : candidate.sources())
+                    allSources.add(source.module() + "\n" + source.scope() + "\n" + source.path());
+                for (var source : candidate.resources())
+                    allSources.add(
+                            candidate.module() + "\n" + candidate.scope() + "\n" + source.path());
             }
             for (var context : project.contexts) {
                 Set<String> visible = new HashSet<>();
-                for (var source : context.sources()) visible.add(source.module() + "\n" + source.scope() + "\n" + source.path());
+                for (var source : context.sources())
+                    visible.add(source.module() + "\n" + source.scope() + "\n" + source.path());
                 for (var candidate : project.contexts) {
-                    boolean own = candidate.module().equals(context.module()) && (candidate.scope() == context.scope() || candidate.scope() == SourceScope.MAIN);
-                    boolean dependency = context.dependencies().contains(candidate.module()) && candidate.scope() == SourceScope.MAIN;
-                    if (own || dependency) for (var source : candidate.resources()) visible.add(candidate.module() + "\n" + candidate.scope() + "\n" + source.path());
+                    boolean own =
+                            candidate.module().equals(context.module())
+                                    && (candidate.scope() == context.scope()
+                                            || candidate.scope() == SourceScope.MAIN);
+                    boolean dependency =
+                            context.dependencies().contains(candidate.module())
+                                    && candidate.scope() == SourceScope.MAIN;
+                    if (own || dependency)
+                        for (var source : candidate.resources())
+                            visible.add(
+                                    candidate.module()
+                                            + "\n"
+                                            + candidate.scope()
+                                            + "\n"
+                                            + source.path());
                 }
                 visibility.put(context, Set.copyOf(visible));
             }
         }
+
         final Map<String, SymbolFact> symbols = new LinkedHashMap<>();
         final Set<TypeRelationFact> relations = new LinkedHashSet<>();
         final Map<String, BeanRefTarget> beans = new LinkedHashMap<>();
@@ -460,7 +526,13 @@ public final class AnalysisSession implements AutoCloseable {
             for (Node n : result.nodes) {
                 String metadata = n.metadata;
                 if ("BEAN".equals(n.kind)) {
-                    var fields = new TreeMap<>(Json.map(Json.parse(metadata.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+                    var fields =
+                            new TreeMap<>(
+                                    Json.map(
+                                            Json.parse(
+                                                    metadata.getBytes(
+                                                            java.nio.charset.StandardCharsets
+                                                                    .UTF_8))));
                     fields.put("bean_name", n.label);
                     metadata = Json.write(fields);
                 }
@@ -473,7 +545,9 @@ public final class AnalysisSession implements AutoCloseable {
                     relations.add(
                             new TypeRelationFact(
                                     NodeKeyFactory.symbolId(e.sourceId),
-                                    e.isExternal ? e.externalTargetFqn : NodeKeyFactory.symbolId(e.targetId),
+                                    e.isExternal
+                                            ? e.externalTargetFqn
+                                            : NodeKeyFactory.symbolId(e.targetId),
                                     e.relation));
         }
 
@@ -516,8 +590,9 @@ public final class AnalysisSession implements AutoCloseable {
                 if (!"BEAN".equals(symbol.kind())) continue;
                 // XML callable lookup uses the merged project declarations. Bean
                 // names retain the consumer's module/MAIN/TEST resource visibility.
-                if (!beanVisible.contains(symbol.module() + "\n" + symbol.scope()
-                        + "\n" + symbol.sourceFile())) continue;
+                if (!beanVisible.contains(
+                        symbol.module() + "\n" + symbol.scope() + "\n" + symbol.sourceFile()))
+                    continue;
                 Map<String, Object> metadata =
                         Json.map(
                                 Json.parse(

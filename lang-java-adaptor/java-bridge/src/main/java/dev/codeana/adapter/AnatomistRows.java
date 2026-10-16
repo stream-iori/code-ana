@@ -3,11 +3,12 @@ package dev.codeana.adapter;
 import com.anatomist.core.*;
 import com.anatomist.model.*;
 import com.anatomist.provider.FactDefaults;
+
 import dev.codeana.common.GraphArchive;
 import dev.codeana.common.Json;
 import dev.codeana.graph.GraphRecords;
+
 import java.io.*;
-import java.nio.file.Path;
 import java.util.*;
 
 /** Anatomist dff2e395 staging bind order, transported without JDBC or Fact IR. */
@@ -17,127 +18,311 @@ public final class AnatomistRows {
     private final SourceIdentityResolver identities;
     private final ExtractionResult batch = new ExtractionResult();
     private int files;
-    private final List<IndexDiagnostic> diagnostics=new ArrayList<>();
-    private final Map<String,Map<String,Object>> replacements = new LinkedHashMap<>();
-    private Map<String,SourceIdentity> resourceIdentities=Map.of();
+    private final List<IndexDiagnostic> diagnostics = new ArrayList<>();
+    private final Map<String, Map<String, Object>> replacements = new LinkedHashMap<>();
+    private Map<String, SourceIdentity> resourceIdentities = Map.of();
+
     public AnatomistRows(CapturedProject project, GraphArchive output) {
-        this.project=project; this.output=output;
-        List<SourceRoot> roots=new ArrayList<>(project.roots());
-        for(var context:project.contexts) for(var resource:context.resources())
-            roots.add(new SourceRoot(resource.file(),context.module(),context.scope()));
-        identities=SourceIdentityResolver.fromRoots(project.root, roots);
+        this.project = project;
+        this.output = output;
+        List<SourceRoot> roots = new ArrayList<>(project.roots());
+        for (var context : project.contexts)
+            for (var resource : context.resources())
+                roots.add(new SourceRoot(resource.file(), context.module(), context.scope()));
+        identities = SourceIdentityResolver.fromRoots(project.root, roots);
     }
+
     private SourceIdentity identity(String source) {
-        SourceIdentity resource=source==null?null:resourceIdentities.get(source);
-        return resource==null?identities.resolve(source):resource;
+        SourceIdentity resource = source == null ? null : resourceIdentities.get(source);
+        return resource == null ? identities.resolve(source) : resource;
     }
-    public void extraction(ExtractionResult result,CapturedProject.Context context) {
-        Map<String,SourceIdentity> identities=new HashMap<>();
-        for(var source:context.resources()) identities.put(source.path(),new SourceIdentity(context.module(),context.scope()));
-        resourceIdentities=identities;
-        try {extraction(result);} finally {resourceIdentities=Map.of();}
+
+    public void extraction(ExtractionResult result, CapturedProject.Context context) {
+        Map<String, SourceIdentity> identities = new HashMap<>();
+        for (var source : context.resources())
+            identities.put(source.path(), new SourceIdentity(context.module(), context.scope()));
+        resourceIdentities = identities;
+        try {
+            extraction(result);
+        } finally {
+            resourceIdentities = Map.of();
+        }
     }
+
     private final class Values {
         final GraphRecords.Row.Builder row;
-        Values(GraphRecords.Table table) { row=GraphRecords.Row.newBuilder().setTable(table); }
-        void put(int i, GraphRecords.Cell value) {
-            while(row.getCellsCount()<i) row.addCells(GraphRecords.Cell.getDefaultInstance());
-            row.setCells(i-1,value);
+
+        Values(GraphRecords.Table table) {
+            row = GraphRecords.Row.newBuilder().setTable(table);
         }
-        void setString(int i,String value) { put(i,value==null?GraphRecords.Cell.getDefaultInstance():GraphRecords.Cell.newBuilder().setText(value).build()); }
-        void setInt(int i,int value) { setLong(i,value); }
-        void setLong(int i,long value) { put(i,GraphRecords.Cell.newBuilder().setInteger(value).build()); }
-        void setNull(int i,int ignored) { put(i,GraphRecords.Cell.getDefaultInstance()); }
-        void addBatch() throws IOException { output.add(row.build()); }
+
+        void put(int i, GraphRecords.Cell value) {
+            while (row.getCellsCount() < i) row.addCells(GraphRecords.Cell.getDefaultInstance());
+            row.setCells(i - 1, value);
+        }
+
+        void setString(int i, String value) {
+            put(
+                    i,
+                    value == null
+                            ? GraphRecords.Cell.getDefaultInstance()
+                            : GraphRecords.Cell.newBuilder().setText(value).build());
+        }
+
+        void setInt(int i, int value) {
+            setLong(i, value);
+        }
+
+        void setLong(int i, long value) {
+            put(i, GraphRecords.Cell.newBuilder().setInteger(value).build());
+        }
+
+        void setNull(int i, int ignored) {
+            put(i, GraphRecords.Cell.getDefaultInstance());
+        }
+
+        void addBatch() throws IOException {
+            output.add(row.build());
+        }
     }
-    public void row(GraphRecords.Table table,Object... values) {
+
+    public void row(GraphRecords.Table table, Object... values) {
         try {
-            Values row=new Values(table);
-            for(int i=0;i<values.length;i++) {
-                Object value=values[i];
-                if(value instanceof Number n) row.setLong(i+1,n.longValue());
-                else row.setString(i+1,value==null?null:value.toString());
+            Values row = new Values(table);
+            for (int i = 0; i < values.length; i++) {
+                Object value = values[i];
+                if (value instanceof Number n) row.setLong(i + 1, n.longValue());
+                else row.setString(i + 1, value == null ? null : value.toString());
             }
             row.addBatch();
-        } catch(IOException e) { throw new UncheckedIOException(e); }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
+
     public void unit(com.anatomist.extract.JavaModelExtractor.UnitFacts unit) {
-        var source=project.source(unit.source());
-        for(var diagnostic:unit.diagnostics()) diagnostic(diagnostic);
-        row(GraphRecords.Table.FILE_CACHE,"java-core",source.path(),source.hash(),33,
-            unit.facts().nodes.size(),unit.facts().edges.size(),java.nio.file.Path.of(source.file().toString()).toFile().length(),unit.contractHash());
+        var source = project.source(unit.source());
+        for (var diagnostic : unit.diagnostics()) diagnostic(diagnostic);
+        row(
+                GraphRecords.Table.FILE_CACHE,
+                "java-core",
+                source.path(),
+                source.hash(),
+                33,
+                unit.facts().nodes.size(),
+                unit.facts().edges.size(),
+                java.nio.file.Path.of(source.file().toString()).toFile().length(),
+                unit.contractHash());
         batch.addFacts(unit.facts());
-        if(++files>=32 || batch.factCount()>=10000) flush();
+        if (++files >= 32 || batch.factCount() >= 10000) flush();
     }
-    public void flush() { if(batch.factCount()>0) { extraction(batch);batch.clearFacts(); } files=0; }
+
+    public void flush() {
+        if (batch.factCount() > 0) {
+            extraction(batch);
+            batch.clearFacts();
+        }
+        files = 0;
+    }
+
     public void extraction(ExtractionResult result) {
         FactDefaults.normalize(result);
-        Map<String,Declaration> ranges=new HashMap<>();
-        Map<String,String> sourceFiles=new HashMap<>();
-        for(Declaration d:result.declarations)
-            if(d.symbolId!=null && d.beginLine!=null) ranges.putIfAbsent(d.symbolId+"\n"+d.sourceFile,d);
-        for(Node n:result.nodes) {
-            String symbol=symbolOf(n);Declaration d=ranges.get(symbol+"\n"+n.sourceFile);
-            if(d!=null && n.beginLine==null) {
-                n.beginLine=d.beginLine;n.beginColumn=d.beginColumn;n.endLine=d.endLine;n.endColumn=d.endColumn;n.sourceOrdinal=0;
+        Map<String, Declaration> ranges = new HashMap<>();
+        Map<String, String> sourceFiles = new HashMap<>();
+        for (Declaration d : result.declarations)
+            if (d.symbolId != null && d.beginLine != null)
+                ranges.putIfAbsent(d.symbolId + "\n" + d.sourceFile, d);
+        for (Node n : result.nodes) {
+            String symbol = symbolOf(n);
+            Declaration d = ranges.get(symbol + "\n" + n.sourceFile);
+            if (d != null && n.beginLine == null) {
+                n.beginLine = d.beginLine;
+                n.beginColumn = d.beginColumn;
+                n.endLine = d.endLine;
+                n.endColumn = d.endColumn;
+                n.sourceOrdinal = 0;
             }
-            if(symbol!=null && n.sourceFile!=null)sourceFiles.putIfAbsent(symbol,n.sourceFile);
-            if(n.id!=null && n.sourceFile!=null)sourceFiles.putIfAbsent(n.id,n.sourceFile);
+            if (symbol != null && n.sourceFile != null)
+                sourceFiles.putIfAbsent(symbol, n.sourceFile);
+            if (n.id != null && n.sourceFile != null) sourceFiles.putIfAbsent(n.id, n.sourceFile);
         }
         try {
-            for(Node n:result.nodes) bindNode(new Values(GraphRecords.Table.NODE),n,false);
-            for(Edge e:result.edges) bindEdge(new Values(GraphRecords.Table.EDGE),e,false);
-            for(Declaration d:result.declarations) bindDeclaration(new Values(GraphRecords.Table.DECLARATION),d);
-            for(Annotation a:result.annotations) bindAnnotation(new Values(GraphRecords.Table.ANNOTATION),a,false);
-            for(AnnotationMetaRelation a:result.annotationMetaRelations) bindAnnotationMeta(new Values(GraphRecords.Table.ANNOTATION_META),a);
-            for(SemanticAnnotation a:result.semanticAnnotations) bindSemantic(new Values(GraphRecords.Table.SEMANTIC_ANNOTATION),a,a.sourceFile==null?sourceFiles.get(a.nodeId):a.sourceFile,false);
-            for(UnresolvedCallSite site:result.unresolvedCallSites) {
-                SourceIdentity identity=identity(site.sourceFile());
-                row(GraphRecords.Table.UNRESOLVED_CALL,site.callerId(),site.sourceFile(),site.beginLine(),site.beginColumn(),site.endLine(),site.endColumn(),site.ordinal(),site.syntaxTarget(),site.receiverStaticType(),site.dispatchKind(),site.context(),site.metadata(),site.producerId(),identity.module(),identity.scope().name(),NodeKeyFactory.isKey(site.callerId())?site.callerId():null);
+            for (Node n : result.nodes) bindNode(new Values(GraphRecords.Table.NODE), n, false);
+            for (Edge e : result.edges) bindEdge(new Values(GraphRecords.Table.EDGE), e, false);
+            for (Declaration d : result.declarations)
+                bindDeclaration(new Values(GraphRecords.Table.DECLARATION), d);
+            for (Annotation a : result.annotations)
+                bindAnnotation(new Values(GraphRecords.Table.ANNOTATION), a, false);
+            for (AnnotationMetaRelation a : result.annotationMetaRelations)
+                bindAnnotationMeta(new Values(GraphRecords.Table.ANNOTATION_META), a);
+            for (SemanticAnnotation a : result.semanticAnnotations)
+                bindSemantic(
+                        new Values(GraphRecords.Table.SEMANTIC_ANNOTATION),
+                        a,
+                        a.sourceFile == null ? sourceFiles.get(a.nodeId) : a.sourceFile,
+                        false);
+            for (UnresolvedCallSite site : result.unresolvedCallSites) {
+                SourceIdentity identity = identity(site.sourceFile());
+                row(
+                        GraphRecords.Table.UNRESOLVED_CALL,
+                        site.callerId(),
+                        site.sourceFile(),
+                        site.beginLine(),
+                        site.beginColumn(),
+                        site.endLine(),
+                        site.endColumn(),
+                        site.ordinal(),
+                        site.syntaxTarget(),
+                        site.receiverStaticType(),
+                        site.dispatchKind(),
+                        site.context(),
+                        site.metadata(),
+                        site.producerId(),
+                        identity.module(),
+                        identity.scope().name(),
+                        NodeKeyFactory.isKey(site.callerId()) ? site.callerId() : null);
             }
-        } catch(IOException e) { throw new UncheckedIOException(e); }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
+
     public void diagnostic(IndexDiagnostic d) {
         diagnostics.add(d);
     }
+
     private void storedDiagnostic(IndexDiagnostic d) {
-        row(GraphRecords.Table.DIAGNOSTIC,d.severity(),d.code(),d.phase(),d.sourceFile(),d.module(),d.scope(),d.symbol(),d.language(),d.providerId(),d.providerReason(),d.reasonCode(),d.sampleDetails(),d.count(),d.sample());
+        row(
+                GraphRecords.Table.DIAGNOSTIC,
+                d.severity(),
+                d.code(),
+                d.phase(),
+                d.sourceFile(),
+                d.module(),
+                d.scope(),
+                d.symbol(),
+                d.language(),
+                d.providerId(),
+                d.providerReason(),
+                d.reasonCode(),
+                d.sampleDetails(),
+                d.count(),
+                d.sample());
     }
 
-    public void coverage(CapturedProject.Source s,boolean partial) { }
     public void finish() {
-        long unresolved=0;
-        for(var c:AnalysisCoverage.summarize(diagnostics)) {
-            row(GraphRecords.Table.COVERAGE,c.sourceFile(),c.module(),c.scope(),c.language(),c.providerId(),c.capability(),c.status(),c.occurrences(),c.groups(),c.codes(),c.codeCounts(),c.detailsTruncated()?1:0);
-            if(c.capability().equals("AGGREGATE")) for(var count:Json.map(com.anatomist.json.Json.parseTree(c.codeCounts())).entrySet())
-                if(ResolutionDiagnostics.isReasonCode(count.getKey())) unresolved+=((Number)count.getValue()).longValue();
+        long unresolved = 0;
+        for (var c : AnalysisCoverage.summarize(diagnostics)) {
+            row(
+                    GraphRecords.Table.COVERAGE,
+                    c.sourceFile(),
+                    c.module(),
+                    c.scope(),
+                    c.language(),
+                    c.providerId(),
+                    c.capability(),
+                    c.status(),
+                    c.occurrences(),
+                    c.groups(),
+                    c.codes(),
+                    c.codeCounts(),
+                    c.detailsTruncated() ? 1 : 0);
+            if (c.capability().equals("AGGREGATE"))
+                for (var count :
+                        Json.map(com.anatomist.json.Json.parseTree(c.codeCounts())).entrySet())
+                    if (ResolutionDiagnostics.isReasonCode(count.getKey()))
+                        unresolved += ((Number) count.getValue()).longValue();
         }
         IndexDiagnosticRetention.retain(diagnostics).forEach(this::storedDiagnostic);
-        if(unresolved>0) storedDiagnostic(new IndexDiagnostic("info","UNRESOLVED_SYMBOLS","RESOLUTION",null,null,null,null,unresolved,"Aggregate of lossless file resolution coverage."));
-        for(var provider:com.anatomist.provider.LanguageProviderRegistry.builtIns().providers()) {
-            var d=provider.descriptor();
-            var limitations=new TreeMap<String,List<String>>();d.limitations().forEach((key,value)->limitations.put(key,value.stream().sorted().toList()));
-            String operations=com.anatomist.json.Json.writeCompact(d.operations().stream().sorted().toList());
-            String limits=com.anatomist.json.Json.writeCompact(limitations);
-            String extensions=com.anatomist.json.Json.writeCompact(d.fileExtensions().stream().sorted().toList());
-            String hash="sha256:"+Json.sha(String.join("\n",d.providerId(),d.language(),d.version(),extensions,operations,limits).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-            row(GraphRecords.Table.PROVIDER,d.providerId(),d.language(),d.version(),operations,limits,hash);
+        if (unresolved > 0)
+            storedDiagnostic(
+                    new IndexDiagnostic(
+                            "info",
+                            "UNRESOLVED_SYMBOLS",
+                            "RESOLUTION",
+                            null,
+                            null,
+                            null,
+                            null,
+                            unresolved,
+                            "Aggregate of lossless file resolution coverage."));
+        for (var provider :
+                com.anatomist.provider.LanguageProviderRegistry.builtIns().providers()) {
+            var d = provider.descriptor();
+            var limitations = new TreeMap<String, List<String>>();
+            d.limitations()
+                    .forEach(
+                            (key, value) -> limitations.put(key, value.stream().sorted().toList()));
+            String operations =
+                    com.anatomist.json.Json.writeCompact(d.operations().stream().sorted().toList());
+            String limits = com.anatomist.json.Json.writeCompact(limitations);
+            String extensions =
+                    com.anatomist.json.Json.writeCompact(
+                            d.fileExtensions().stream().sorted().toList());
+            String hash =
+                    "sha256:"
+                            + Json.sha(
+                                    String.join(
+                                                    "\n",
+                                                    d.providerId(),
+                                                    d.language(),
+                                                    d.version(),
+                                                    extensions,
+                                                    operations,
+                                                    limits)
+                                            .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            row(
+                    GraphRecords.Table.PROVIDER,
+                    d.providerId(),
+                    d.language(),
+                    d.version(),
+                    operations,
+                    limits,
+                    hash);
         }
     }
-    public void context(CapturedProject.Context c) { }
+
     public void provenance(String adapter) {
-        row(GraphRecords.Table.PROJECT_META,"adapter",adapter);
+        row(GraphRecords.Table.PROJECT_META, "adapter", adapter);
     }
-    public List<Map<String,Object>> owners() { return List.copyOf(replacements.values()); }
+
+    public List<Map<String, Object>> owners() {
+        return List.copyOf(replacements.values());
+    }
+
     public void replace(CapturedProject.Source s) {
-        replacements.put(s.world()+"\n"+s.path(),Json.object("world",s.world(),"producer","javac-java8-v2","kind","source","id",s.path()));
+        replacements.put(
+                s.world() + "\n" + s.path(),
+                Json.object(
+                        "world",
+                        s.world(),
+                        "producer",
+                        "javac-java8-v2",
+                        "kind",
+                        "source",
+                        "id",
+                        s.path()));
     }
-    public void replaceDeleted(String path,String world) {
-        replacements.put(world+"\n"+path,Json.object("world",world,"producer","javac-java8-v2","kind","source","id",path));
+
+    public void replaceDeleted(String path, String world) {
+        replacements.put(
+                world + "\n" + path,
+                Json.object(
+                        "world",
+                        world,
+                        "producer",
+                        "javac-java8-v2",
+                        "kind",
+                        "source",
+                        "id",
+                        path));
     }
-    public Map<String,Object> statistics() { return Json.object("graph_records",output.size(),"graph_bytes",output.bytes()); }
-    private void bindNode(Values statement, Node node, boolean normalized)
-            throws IOException {
+
+    public Map<String, Object> statistics() {
+        return Json.object("graph_records", output.size(), "graph_bytes", output.bytes());
+    }
+
+    private void bindNode(Values statement, Node node, boolean normalized) throws IOException {
         String symbol = symbolOf(node);
         SourceIdentity identity =
                 normalized ? NodeKeyFactory.identity(node.id) : identity(node.sourceFile);
@@ -170,8 +355,7 @@ public final class AnatomistRows {
         statement.addBatch();
     }
 
-    private void bindEdge(Values statement, Edge edge, boolean normalized)
-            throws IOException {
+    private void bindEdge(Values statement, Edge edge, boolean normalized) throws IOException {
         SourceIdentity identity = identity(edge.sourceFile);
         com.anatomist.model.EdgeTarget target = edge.target();
         String internalTarget =
@@ -232,8 +416,7 @@ public final class AnatomistRows {
         statement.addBatch();
     }
 
-    private void bindAnnotation(
-            Values statement, Annotation annotation, boolean normalized)
+    private void bindAnnotation(Values statement, Annotation annotation, boolean normalized)
             throws IOException {
         SourceIdentity identity = identity(annotation.sourceFile);
         boolean key = normalized || NodeKeyFactory.isKey(annotation.nodeId);
@@ -266,8 +449,8 @@ public final class AnatomistRows {
         statement.addBatch();
     }
 
-    private static void bindAnnotationMeta(
-            Values statement, AnnotationMetaRelation relation) throws IOException {
+    private static void bindAnnotationMeta(Values statement, AnnotationMetaRelation relation)
+            throws IOException {
         int i = 1;
         statement.setString(i++, relation.annotationFqn);
         statement.setString(i++, relation.metaAnnotationFqn);
@@ -286,10 +469,7 @@ public final class AnatomistRows {
     }
 
     private void bindSemantic(
-            Values statement,
-            SemanticAnnotation semantic,
-            String sourceFile,
-            boolean normalized)
+            Values statement, SemanticAnnotation semantic, String sourceFile, boolean normalized)
             throws IOException {
         SourceIdentity identity = identity(sourceFile);
         boolean key = normalized || NodeKeyFactory.isKey(semantic.nodeId);
@@ -310,8 +490,7 @@ public final class AnatomistRows {
         statement.addBatch();
     }
 
-    private void bindDeclaration(Values statement, Declaration declaration)
-            throws IOException {
+    private void bindDeclaration(Values statement, Declaration declaration) throws IOException {
         SourceIdentity identity = identity(declaration.sourceFile);
         int i = 1;
         statement.setString(i++, declaration.symbolId);
