@@ -22,6 +22,7 @@ def main():
     for name in ['runtime', 'project', 'home', 'evidence', 'expected-graph', 'query-plan']:
         parser.add_argument('--' + name, type=pathlib.Path, required=True)
     parser.add_argument('--build-receipt',type=pathlib.Path,required=True)
+    parser.add_argument('--deadline-seconds',type=int,default=3600)
     args = parser.parse_args()
     args.evidence = args.evidence.resolve()
     args.evidence.mkdir(parents=True, exist_ok=False)
@@ -65,7 +66,7 @@ def main():
             time.sleep(.05)
         start = time.monotonic()
         with (args.evidence / 'index.stdout').open('wb') as out, (args.evidence / 'index.stderr').open('wb') as err:
-            execution = subprocess.run(command + ['index', '--full', '--deadline-seconds', '86400'], stdout=out, stderr=err, timeout=86430)
+            execution = subprocess.run(command + ['index', '--full', '--deadline-seconds', str(args.deadline_seconds)], stdout=out, stderr=err, timeout=args.deadline_seconds+30)
         row['index_seconds'] = time.monotonic() - start
         lines = (args.evidence / 'index.stdout').read_text().splitlines()
         terminal = [json.loads(line[9:]) for line in lines if line.startswith('terminal ')]
@@ -79,7 +80,7 @@ def main():
             raise ValueError('TYPED_LOGICAL_GRAPH_BASELINE_REQUIRED')
         spec=importlib.util.spec_from_file_location('graph_storage',ROOT/'scripts/java-graph-storage-acceptance.py')
         graph_storage=importlib.util.module_from_spec(spec);spec.loader.exec_module(graph_storage)
-        row['graph']=graph_storage.graph(database,ignore_execution_provenance=True)
+        row['graph']=graph_storage.graph(database,ignore_execution_provenance=True,raw_metadata=expected.get('raw_metadata',False))
         row['graph_verification_seconds'] = time.monotonic() - start
         if row['graph'] != expected['graphs'][args.backend]:
             raise ValueError('PERFORMANCE_FACT_GRAPH_DRIFT')

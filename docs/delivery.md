@@ -83,3 +83,11 @@ Native 没有冷热分类。应用缓存状态与 worker 复用是独立条件�
 只修改文档时运行相关校验，不因文档同步重跑大型索引或 Native 构建。
 
 Maven schema 4 的导出协议与 Resolver fixture 走 `just test-java-maven`；图产品套件覆盖依赖失效/恢复、源码模式、严格门禁和增量/全量一致。真实 SIGSEGV 测试会临时替换已安装库，必须与其他产品测试串行；启动和替换前检查 `STOP_RUNTIME_BEFORE_NATIVE_FAULT_TEST`，禁止带活跃 runtime 注入。
+
+## 本轮整改验收入口（2026-10-16）
+
+真实项目单轮脚本显式接收 `--graph-gate`、`--lifecycle-gate`、`--release-gate`，分别指向本轮完整 Native graph/lifecycle 与 release 回执。它核对完整用例清单、当前文件 SHA 和 release 输入，不再使用历史固定回执或用例数。`--deadline-seconds` 默认 3600。
+
+改代码前先封存当前 JVM 正确性基线；最终 Native 使用同一冻结提交、MAIN/TEST、配置与依赖。12 表多重集比较保留 metadata 原文，仅排除明确的运行时 classpath 摘要证据。测量前可修复未启动测量阶段的准备失败并保留回执；测量开始后的失败不可通过提高预算/重跑替换。
+
+固定预算：worker 4 GiB，宿主堆 1 GiB，javac 堆 512 MiB、并行 2；模型归档 256 MiB/context、解码 512 MiB/context、记录 100 万/context；结果 1 GiB、事实 500 万、scratch 16 GiB；编译上下文 120 秒、任务 3600 秒。全量索引只有一轮 Native/G1、独立空应用状态，不给稳定性能承诺。

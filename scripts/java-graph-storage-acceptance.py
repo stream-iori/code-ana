@@ -5,7 +5,7 @@ ROOT=pathlib.Path(__file__).resolve().parents[1]
 TABLES=('nodes','edges','annotations','annotation_meta_relations','semantic_annotations',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
-def graph(path,ignore_execution_provenance=False):
+def graph(path,ignore_execution_provenance=False,raw_metadata=False):
     result={}
     with sqlite3.connect('file:'+str(path.resolve())+'?mode=ro',uri=True) as db:
         for table in TABLES:
@@ -18,10 +18,16 @@ def graph(path,ignore_execution_provenance=False):
                 values=[]
                 for c,v in zip(cols,row):
                     if isinstance(v,bytes):v={'hex':v.hex()}
-                    elif isinstance(v,str) and c in ('metadata','attributes','modifiers','declared_modifiers','implicit_modifiers','codes','code_counts','operations','limitations','sample_details'):
+                    elif isinstance(v,str) and not raw_metadata and c in ('metadata','attributes','modifiers','declared_modifiers','implicit_modifiers','codes','code_counts','operations','limitations','sample_details'):
                         try:v=json.loads(v)
                         except ValueError:pass
-                    if ignore_execution_provenance and c=='sample_details' and isinstance(v,dict):v.pop('classpath_order_sha256',None)
+                    if ignore_execution_provenance and c=='sample_details':
+                        try:
+                            details=json.loads(v) if isinstance(v,str) else v
+                            if isinstance(details,dict) and 'classpath_order_sha256' in details:
+                                details.pop('classpath_order_sha256')
+                                v=json.dumps(details,ensure_ascii=False,sort_keys=True,separators=(',',':')) if raw_metadata else details
+                        except (ValueError,TypeError):pass
                     values.append(v)
                 data=json.dumps(values,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()
                 records.append(hashlib.sha256(data).digest());count+=1
@@ -34,7 +40,7 @@ def graph(path,ignore_execution_provenance=False):
             digest=hashlib.sha256();count=0;records=[]
             for row in db.execute(sql):
                 values=list(row)
-                if table=='call_sites' and values[12] is not None:
+                if table=='call_sites' and values[12] is not None and not raw_metadata:
                     values[12]=json.loads(values[12])
                 data=json.dumps(values,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode();records.append(hashlib.sha256(data).digest());count+=1
             for value in sorted(records):digest.update(value)

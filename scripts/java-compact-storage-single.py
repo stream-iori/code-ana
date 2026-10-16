@@ -15,10 +15,40 @@ from acceptance_support import sha256
 from java_release import atomic_binary_copy
 
 
+def verified_gates(graph,lifecycle,release):
+    paths={'graph':graph,'lifecycle':lifecycle}
+    gates={}
+    for name in ('graph','lifecycle'):
+        path=paths[name].resolve()
+        gate=json.loads(path.read_text())
+        if (gate.get('status')!='passed' or gate.get('backend')!='native'
+                or gate.get('group')!=name or gate.get('complete_group_gate') is not True
+                or gate.get('executed_count')!=gate.get('expected_count')
+                or gate.get('expected_count')!=gate.get('total_group_cases')
+                or not gate.get('expected_count') or gate.get('missing') or gate.get('duplicate')
+                or gate.get('artifact_drift') or gate.get('unexpected') or gate.get('expected_duplicate')):
+            raise ValueError('CURRENT_COMPLETE_FIXTURE_GATE_REQUIRED: '+name)
+        identities=gate.get('sources_and_artifacts',{})
+        if not identities or any(not pathlib.Path(file).is_file() or sha256(pathlib.Path(file))!=digest for file,digest in identities.items()):
+            raise ValueError('FIXTURE_GATE_ARTIFACT_DRIFT: '+name)
+        gates[name]={'path':str(path),'sha256':sha256(path)}
+    package_path=release.resolve()
+    package_gate=json.loads(package_path.read_text())
+    if package_gate.get('all_ok') is not True:raise ValueError('CURRENT_RELEASE_GATE_REQUIRED')
+    inputs=package_gate.get('inputs',{})
+    if not inputs or any(not (ROOT/file).is_file() or sha256(ROOT/file)!=digest for file,digest in inputs.items()):
+        raise ValueError('RELEASE_GATE_INPUT_DRIFT')
+    gates['release']={'path':str(package_path),'sha256':sha256(package_path)}
+    return gates
+
+
 def main():
     parser=argparse.ArgumentParser()
     for name in ('project','baseline','query-plan','evidence'):
         parser.add_argument('--'+name,type=pathlib.Path,required=True)
+    for name in ('graph-gate','lifecycle-gate','release-gate'):
+        parser.add_argument('--'+name,type=pathlib.Path,required=True)
+    parser.add_argument('--deadline-seconds',type=int,default=3600)
     parser.add_argument('--retry-preflight',action='store_true',help='Retry only when no measured phase was started')
     args=parser.parse_args()
     base=args.evidence.resolve()
@@ -27,21 +57,17 @@ def main():
         if previous.get('status')!='failed' or (base/'phase').exists() or (base/'monitor').exists():
             raise ValueError('PREFLIGHT_RETRY_REQUIRES_NO_MEASURED_PHASE')
         shutil.copy2(base/'receipt.json',base/'preflight-failure.json')
-        shutil.copy2(base/'run.log',base/'preflight-failure.log')
+        if (base/'run.log').exists():shutil.copy2(base/'run.log',base/'preflight-failure.log')
+        else:(base/'preflight-failure.log').write_text(str(previous.get('error','preflight failed'))+'\n')
     else:base.mkdir(parents=True,exist_ok=False)
-    for name,count in (('graph',6),('lifecycle',8)):
-        gate=json.loads((ROOT/('target/compact-'+name+'-gate/receipt.json')).read_text())
-        if gate.get('status')!='passed' or gate.get('executed_count')!=count:
-            raise ValueError('COMPACT_FIXTURE_GATE_REQUIRED: '+name)
-    package_gate=json.loads((ROOT/'target/compact-release-gate/receipt.json').read_text())
-    if package_gate.get('all_ok') is not True:raise ValueError('COMPACT_RELEASE_GATE_REQUIRED')
+    gates=verified_gates(args.graph_gate,args.lifecycle_gate,args.release_gate)
     spec=importlib.util.spec_from_file_location('logical_graph',ROOT/'scripts/java-graph-storage-acceptance.py')
     graphs=importlib.util.module_from_spec(spec);spec.loader.exec_module(graphs)
     baseline=args.baseline.resolve()
     baseline_sha=sha256(baseline)
     expected=base/'expected-graph.json'
     expected.write_text(json.dumps(dict(status='passed',graph_storage_correctness_eligible=True,
-        graph_encoding='anatomist-logical-rows',graphs={'native':graphs.graph(baseline,True)},
+        graph_encoding='anatomist-logical-rows',raw_metadata=True,graphs={'native':graphs.graph(baseline,True,raw_metadata=True)},
         baseline_database=str(baseline),baseline_sha256=baseline_sha),indent=2)+'\n')
     project=args.project.resolve()
     # Existing captured source/config paths are preserved, not copied or edited.
@@ -66,7 +92,7 @@ def main():
     names=('codeana-cli','codeana-daemon','codeana-java-worker')
     originals={name:sha256(binaries/name) for name in names}
     report=dict(status='running',gc='G1',rounds=1,native_accepted=False,performance_accepted=False,
-        source_inputs=source_inputs,baseline_bytes=baseline.stat().st_size,baseline_sha256=baseline_sha)
+        source_inputs=source_inputs,gates=gates,deadline_seconds=args.deadline_seconds,baseline_bytes=baseline.stat().st_size,baseline_sha256=baseline_sha)
     touched=[]
     try:
         for name in names:
@@ -82,7 +108,7 @@ def main():
         (home/'config.toml').write_text('schema_version=1\nkind="user"\n[limits]\nmax_workers=1\nmax_worker_memory_bytes=4294967296\nmax_total_worker_memory_bytes=4294967296\n[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(str(jdk))+'\n')
         command=[sys.executable,str(ROOT/'scripts/java-performance-phase-single-v2.py'),'--backend','native',
             '--runtime',str(runtime),'--build-receipt',str(build),'--project',str(project),'--home',str(home),
-            '--evidence',str(base/'phase'),'--expected-graph',str(expected),'--query-plan',str(args.query_plan.resolve())]
+            '--evidence',str(base/'phase'),'--deadline-seconds',str(args.deadline_seconds),'--expected-graph',str(expected),'--query-plan',str(args.query_plan.resolve())]
         monitor_spec=base/'monitor-spec.json'
         monitor_spec.write_text(json.dumps(dict(command=command,cwd=str(ROOT),env={},backend='native',gc='G1',cache_policy='independent_empty_application_state',disk_roots=[str(base)]),indent=2)+'\n')
         with (base/'run.log').open('wb') as log:
@@ -111,4 +137,13 @@ def main():
     return 0 if report['status']=='passed' else 1
 
 
-if __name__=='__main__':raise SystemExit(main())
+if __name__=='__main__':
+    try:
+        raise SystemExit(main())
+    except Exception as error:
+        if '--evidence' in sys.argv:
+            directory=pathlib.Path(sys.argv[sys.argv.index('--evidence')+1]).resolve()
+            if directory.is_dir() and not (directory/'receipt.json').exists():
+                (directory/'receipt.json').write_text(json.dumps(dict(status='failed',phase='preflight',
+                    error=str(error),rounds=0,native_accepted=False,performance_accepted=False),indent=2)+'\n')
+        raise

@@ -34,7 +34,7 @@ Rust、daemon、SQLite 都是实现选择；正确性首先由输入捕获、事
 | daemon 执行整条 pipeline | 合理但性能待验证 | 参考项目单条 pipeline 已共享连接；新增收益主要是跨命令复用与统一调度 |
 | 公共模型区分 world / snapshot / profile | 必须保留 | 同文件可能在不同构建上下文中产生不同事实，源码相同不代表语义相同 |
 | Java 优先，P2 完善产品能力 | 合理 | 报告、历史、恢复、标注保全仍需验证；无旧版替换门禁 |
-| 多语言模型，Rust 后续实现 | 用户已确定 Java 优先 | P0 保留 language/world 扩展边界；Rust 原型不阻塞 Java fixture 闭环 |
+| 多语言模型，Rust 后续实现 | 用户已确定 Java 优先 | P0 保留 language/world 扩展边界；Rust 冻结输入 adapter 已接入，Java fixture 优先的验证顺序保持 |
 
 ## 3. 决策登记
 
@@ -47,7 +47,7 @@ Rust、daemon、SQLite 都是实现选择；正确性首先由输入捕获、事
 | D03 | revision 物理存储 | 不可变 SQLite generation；delta backup，私有候选，catalog CAS | 已落地；当前图物理 schema 9 / 逻辑 33；复制和磁盘峰值单独记录，失败保旧版 |
 | D04 | Java 容量边界 | 进程树 RSS、heap、解码/结果/暂存分别限额 | fixture 和冻结 iopengw 单轮已验证；正式容量承诺未完成，不把 heap 当 RSS |
 | D05 | 基线与重规划 | 固定 revision/profile；归属替换、有界重规划 | 已落地；旧格式要求全量，worker 不读半成品 |
-| D06 | 语言查询策略 | Rust 只读逻辑投影与公共事实，Java 层级/CHA 不重跑 javac | 查询/pipeline 与固定图门禁已实现；raw type/binding/syntax 图查询不支持；Rust 分析仍待实现 |
+| D06 | 语言查询策略 | Rust 只读逻辑投影与公共事实，Java 层级/CHA 不重跑 javac | 查询/pipeline 与固定图门禁已实现；raw type/binding/syntax 图查询不支持；Rust 冻结输入 adapter 已接入，语义缺口见 Rust worker 模块 |
 | D07 | 身份与归属 | 公开 ID/hash/ordinal 与源/module/scope/world/producer 归属 | GRA1 与紧凑布局已验证；内部整数主键不成为公开身份；完整来源覆盖仍有门禁 |
 | D08 | 产品与兼容范围 | 全新产品，独立定义 CLI/输出/配置/存储；不做旧版兼容或迁移 | 用户已确认；Anatomist 只提供设计、代码和 fixture 参考 |
 | D09 | 目标项目构建 | 读取已有可验证产物；缺失时返回 cwd/argv/目的/预期产物，Agent 或人类自行执行后重试 | 用户已确认；产品不执行 Maven/Gradle/Cargo 编译、build.rs、过程宏或代码生成，不提供 allow 自动执行开关 |
