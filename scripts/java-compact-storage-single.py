@@ -42,6 +42,31 @@ def verified_gates(graph,lifecycle,release):
     return gates
 
 
+def frozen_inputs(project, revision):
+    metadata=json.loads((project/'.code-ana/java-inputs-v2.json').read_text())
+    expected={}
+    def add(path, digest):
+        path=pathlib.Path(path)
+        key=str(path)
+        if key in expected and expected[key]!=digest:raise ValueError('FROZEN_INPUT_IDENTITY_CONFLICT: '+key)
+        expected[key]=digest
+    for path,digest in metadata['controls'].items():add(project/path,digest)
+    for path,digest in metadata.get('external_controls',{}).items():add(path,digest)
+    dependencies=set()
+    for module in metadata['modules']:
+        for scope in module.get('classpath',{}).values():
+            for artifact in scope:
+                add(artifact['path'],artifact['sha256']);dependencies.add(artifact['sha256'])
+    for source in revision['manifest']['files']:
+        if source['scope']=='DEPENDENCY':
+            if source['hash'] not in dependencies:raise ValueError('FROZEN_DEPENDENCY_UNDECLARED: '+source['path'])
+        else:add(project/source['path'],source['hash'])
+    for path,digest in expected.items():
+        if not pathlib.Path(path).is_file() or sha256(pathlib.Path(path))!=digest:
+            raise ValueError('FROZEN_PROJECT_INPUT_DRIFT: '+path)
+    return expected
+
+
 def main():
     parser=argparse.ArgumentParser()
     for name in ('project','baseline','query-plan','evidence'):
@@ -80,12 +105,7 @@ def main():
     source_inputs.update({str(project/'.code-ana/config.toml'):sha256(project/'.code-ana/config.toml'),
         str(project/'.code-ana/java-inputs-v2.json'):sha256(project/'.code-ana/java-inputs-v2.json')})
     revision=json.loads((baseline.parent/'revision.json').read_text())
-    for source in revision['manifest']['files']:
-        path=project/source['path']
-        if path.is_file():
-            digest=sha256(path)
-            if digest!=source['hash']:raise ValueError('FROZEN_PROJECT_INPUT_DRIFT: '+source['path'])
-            source_inputs[str(path)]=digest
+    source_inputs.update(frozen_inputs(project,revision))
     binaries=ROOT/'target/debug';release=ROOT/'target/release'
     for line in subprocess.check_output(['ps','-axo','pid=,comm='],text=True).splitlines():
         fields=line.strip().split(None,1)
