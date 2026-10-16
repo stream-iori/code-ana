@@ -95,7 +95,9 @@ def main():
         raise ValueError('VERIFIED_QUERY_BASELINE_REQUIRED')
     expected=base/'expected-graph.json'
     expected.write_text(json.dumps(dict(status='passed',graph_storage_correctness_eligible=True,
-        graph_encoding='anatomist-logical-rows',raw_metadata=True,graphs={'native':graphs.graph(baseline,True,raw_metadata=True)},
+        graph_encoding='anatomist-logical-rows',raw_metadata=False,graphs={'native':graphs.graph(baseline,True)},
+        raw_graphs={'native':graphs.graph(baseline,True,raw_metadata=True)},
+        raw_comparison='reported separately: preexisting JSON object key order varies across processes',
         baseline_database=str(baseline),baseline_sha256=baseline_sha),indent=2)+'\n')
     project=args.project.resolve()
     # Existing captured source/config paths are preserved, not copied or edited.

@@ -94,6 +94,12 @@ def main():
         row['graph_verification_seconds'] = time.monotonic() - start
         if row['graph'] != expected['graphs'][args.backend]:
             raise ValueError('PERFORMANCE_FACT_GRAPH_DRIFT')
+        if 'raw_graphs' in expected:
+            row['raw_graph']=graph_storage.graph(database,ignore_execution_provenance=True,raw_metadata=True)
+            row['raw_graph_differences']=[table for table,value in row['raw_graph'].items()
+                if value!=expected['raw_graphs'][args.backend][table]]
+            row['raw_graph_equal']=not row['raw_graph_differences']
+            row['raw_comparison']=expected['raw_comparison']
         row['database_sha256'] = sha256(database)
         row['stage_reports'] = {}
         row['timing_sidecars'] = {}

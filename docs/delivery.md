@@ -1,6 +1,6 @@
 # 实施与验收
 
-对齐 2026-10-14：先 Java fixture，再冻结真实项目；开发构建、产品回归、真实项目观测与正式验收分开。已执行范围、测量口径及原回执路径见 [当前实现](current-state.md)。
+对齐 2026-10-16：先 Java fixture，再冻结真实项目；开发构建、产品回归、真实项目观测与正式验收分开。已执行范围、测量口径及原回执路径见 [当前实现](current-state.md)。
 
 ## 1. 当前状态
 
@@ -10,7 +10,7 @@
 | Java 8 javac、Java 25 Native/G1、C ABI、NoCode、框架静态图 | 目标 Java 17/25、Gradle、Linux、完整框架覆盖 |
 | GRA1 行交付、物理 schema 9、逻辑 schema 33、FTS | 当前版本完整语义/来源覆盖验收；过期 raw transport 测试已删除 |
 | 查询/pipeline、源码、快照/diff、报告、GC、独立人工标注 | 标注接入 typed pipeline、跨语言语义 |
-| 冻结 iopengw 一轮：214.28 s、facts.db 233.49 MB | 独占容量/稳定性能承诺；native_accepted/performance_accepted 仍 false |
+| 冻结 iopengw 单轮观测，逐轮输入和产物见当前实现 | 独占容量/稳定性能承诺；native_accepted/performance_accepted 仍 false |
 | 独立 mock、真实 Rust fixture、一层依赖与过滤/预算回归 | 完整 Rust sysroot/过程宏/动态派发；Linux、稳定性能 |
 
 旧版本 complete 回执不能放行新版本。图 fixture 不替代 raw model/AST 门禁；Hello 只证明接入，build-only 只证明构建与其实际运行过的测试。
@@ -66,7 +66,7 @@ fixture 的预期来自源码语义、人工断言或固定参考多重集；必
 
 Native 没有冷热分类。应用缓存状态与 worker 复用是独立条件，记录即可；本次只做一轮，不要求三轮测量。启动时间、全量、增量和查询分别解释，阶段重叠不能直接相加。
 
-214.28 s 是本轮唯一实际索引流程，随后同库查询修复未重索引。233.49 MB 是发布的单个 SQLite 图，不是 GRA1 传输字节、分析临时目录或整个 home；索引时存在捕获、归档、candidate、backup 和旧 revision，磁盘峰值另记。比较不同 GC/后端/源码版本的单点不能全部归因到单项优化。
+历史 214.28 s 记录只有一轮实际索引，随后同库查询修复未重索引；对应 233.49 MB 是发布的单个 SQLite 图。它不代表 GRA1 传输字节、分析临时目录或整个 home；索引时存在捕获、归档、candidate、backup 和旧 revision，磁盘峰值另记。不同轮次的预算、GC/后端/源码可能不同，不能将单点差异归因到单项优化。
 
 当前 854 个 partial 文件保留，不能写成完整语义覆盖；当前 native_accepted/performance_accepted 未关闭。
 
@@ -88,6 +88,8 @@ Maven schema 4 的导出协议与 Resolver fixture 走 `just test-java-maven`；
 
 真实项目单轮脚本显式接收 `--graph-gate`、`--lifecycle-gate`、`--release-gate`，分别指向本轮完整 Native graph/lifecycle 与 release 回执。它核对完整用例清单、当前文件 SHA 和 release 输入，不再使用历史固定回执或用例数。`--deadline-seconds` 默认 3600。
 
-改代码前先封存当前 JVM 正确性基线；最终 Native 使用同一冻结提交、MAIN/TEST、配置与依赖。12 表多重集比较保留 metadata 原文，仅排除明确的运行时 classpath 摘要证据。测量前可修复未启动测量阶段的准备失败并保留回执；测量开始后的失败不可通过提高预算/重跑替换。
+改代码前先封存当前 JVM 正确性基线；最终 Native 使用同一冻结提交、MAIN/TEST、配置与依赖。12 表按逻辑多重集比较，保留重复、NULL、数组顺序及字段值，仅排除明确的运行时 classpath 摘要证据。原实现重放已证明 JSON 对象键顺序跨进程变化，因此对象按键比较，原文摘要另行记录差异，不能声称原字节一致；存储仍保留输入 metadata 原文。测量前可修复未启动测量阶段的准备失败并保留回执；测量开始后的失败不可通过提高预算/重跑替换。
+
+测量前后核对 Maven controls、external_controls、按顺序声明的 classpath JAR 以及捕获文件的 SHA。外部导出器须引用已冻结的原字节，不能依赖后续 SDK 安装会覆盖的路径；若仅变更该控制路径，也先重放改造前 JVM，确认逻辑图不变，再封存查询基线。公开查询比较 resolve、structure、source、search-code、search-text、overview 的记录多重集，保留重复和源码位置；仅 overview 顶层 profile 排除 JVM/Native 宿主身份差异。
 
 固定预算：worker 4 GiB，宿主堆 1 GiB，javac 堆 512 MiB、并行 2；模型归档 256 MiB/context、解码 512 MiB/context、记录 100 万/context；结果 1 GiB、事实 500 万、scratch 16 GiB；编译上下文 120 秒、任务 3600 秒。全量索引只有一轮 Native/G1、独立空应用状态，不给稳定性能承诺。
