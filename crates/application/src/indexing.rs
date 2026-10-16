@@ -115,7 +115,13 @@ impl Engine {
         let publishing = Instant::now();
         let revision = self
             .index
-            .publish(candidate, TaskId::from(id), blobs, cancel.clone())
+            .publish(
+                candidate,
+                TaskId::from(id),
+                blobs,
+                cancel.clone(),
+                self.publication_fence(id)?,
+            )
             .await?;
         let publish_ms = publishing.elapsed().as_millis() as u64;
         if let Some(timings) = &mut timings {

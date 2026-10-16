@@ -1,4 +1,6 @@
 //! Storage- and transport-independent analysis facts and product contracts.
+mod publication;
+pub use publication::PublicationFence;
 mod commands;
 pub use commands::*;
 mod identity;

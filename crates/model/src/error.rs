@@ -15,6 +15,7 @@ macro_rules! codes {
 }
 codes! {
     InvalidMode = "INVALID_MODE",
+    InvalidQueryLimit = "INVALID_QUERY_LIMIT",
     SystemIoFailure = "SYSTEM_IO_FAILURE",
     ReadOnly = "READ_ONLY",
     OperationInterrupted = "OPERATION_INTERRUPTED",

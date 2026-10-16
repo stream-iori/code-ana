@@ -178,6 +178,88 @@ class GraphProduct(product_support.MockProductHarness):
                          '--after-seq', self.task(task_id)['last_seq'] + 1, code=1, raw=True))
 
 
+    def assert_cancel_publication(self, point, published, timeout=False):
+        self.require_debug_faults()
+        old = self.cli('index')[1]['revision']
+        self.stop()
+        self.state('edited')
+        self.start('pause:' + point)
+        argv = ['index', '--background'] + (['--deadline-seconds', '1'] if timeout else [])
+        task = json.loads(self.cli(*argv, raw=True))['task_id']
+        until = time.monotonic() + 8
+        while not (self.home / 'test-fault-reached').exists():
+            self.assertLess(time.monotonic(), until, self.daemon_log())
+            time.sleep(.02)
+        if timeout:
+            time.sleep(1.2)
+        else:
+            self.cli('task', 'cancel', task, raw=True)
+        # An active storage operation cannot outlive its saved task terminal.
+        self.assertNotEqual(self.task(task)['state'], 'terminal')
+        (self.home / 'test-fault-release').write_text('release')
+        status = self.wait_task(task, 'terminal')['terminal']
+        head = self.cli('overview')[1]['revision']
+        if published:
+            self.assertNotEqual(head, old)
+            self.assertEqual((status['publication'], status['revision']), ('published', head))
+        else:
+            self.assertEqual(head, old)
+            self.assertEqual(status['code'], 'TIMEOUT' if timeout else 'CANCELLED')
+        self.stop()
+        self.start()
+        self.assertEqual(self.task(task)['terminal'], status)
+        self.assertEqual(self.cli('overview')[1]['revision'], head)
+
+    def test_cancel_before_commit_retains_head(self):
+        self.assert_cancel_publication('candidate_synced', False)
+
+    def test_timeout_before_commit_retains_head(self):
+        self.assert_cancel_publication('candidate_synced', False, timeout=True)
+
+    def test_cancel_during_commit_reports_publication(self):
+        self.assert_cancel_publication('before_catalog_commit', True)
+
+    def test_cancel_after_commit_reports_publication(self):
+        self.assert_cancel_publication('catalog_committed', True)
+
+    def test_concurrent_idempotent_submit_registers_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+        self.state('hang')
+        def submit(_):
+            return json.loads(self.cli('index', '--background', '--request-id', 'concurrent-repeat', raw=True))['task_id']
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            tasks = list(pool.map(submit, range(6)))
+        self.assertEqual(len(set(tasks)), 1)
+        with sqlite3.connect(self.home / 'catalog.db') as db:
+            self.assertEqual(db.execute("SELECT count(*) FROM tasks WHERE request_id='concurrent-repeat'").fetchone()[0], 1)
+        self.cli('task', 'cancel', tasks[0], raw=True)
+        self.wait_task(tasks[0], 'terminal')
+        self.state('base')
+        self.assertEqual(self.cli('index')[1]['publication'], 'published')
+
+    def test_analysis_saturation_preserves_query_and_idempotency(self):
+        old = self.cli('index')[1]['revision']
+        self.stop()
+        (self.home / 'config.toml').write_text('schema_version=1\nkind="user"\n[limits]\nmax_workers=1\nmax_query_tasks=1\n')
+        self.start()
+        self.state('hang')
+        tasks = []
+        try:
+            for i in range(8):
+                tasks.append(json.loads(self.cli('index', '--background', '--request-id', f'saturated-{i}', raw=True))['task_id'])
+            self.wait_task(tasks[0])
+            retry = json.loads(self.cli('index', '--background', '--request-id', 'saturated-0', raw=True))['task_id']
+            self.assertEqual(retry, tasks[0])
+            conflict = self.cli('index', '--background', '--request-id', 'saturated-0', '--full', code=1, raw=True)
+            self.assertIn('REQUEST_ID_CONFLICT', conflict)
+            self.assertEqual(self.cli('overview', '--revision', old, '--deadline-seconds', '2')[1]['revision'], old)
+            self.assertIn('QUEUE_BUDGET', self.cli('index', '--background', '--request-id', 'rejected', code=1, raw=True))
+            with sqlite3.connect(self.home / 'catalog.db') as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM tasks WHERE request_id='rejected'").fetchone()[0], 0)
+        finally:
+            for task in tasks:
+                self.cli('task', 'cancel', task, raw=True)
+
     def test_candidate_sync_crash(self):
         self.assert_crash_boundary('candidate_synced', False)
 

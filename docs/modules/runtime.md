@@ -112,3 +112,9 @@ JVM 回放阶段使用 `jvm_started/jvm_finished`，独立探针超时为 `JVM_T
 ## G1 的恢复边界
 
 Native 默认 G1。一个 worker 进程仅创建一次 isolate，健康任务复用；teardown 后也不进程内重建。终态通过非阻塞 socket 异步等待，不周期 poll；取消/致命失败退出 worker，由 supervisor 启动新进程。缺失/未知 GC manifest 拒绝加载。RSS 按同时刻 worker 整个进程树采样，超额终止；这是应用级预算执行，不是内核硬隔离。
+
+## 任务所有权与调度隔离（2026-10-16）
+
+`Engine` 装配 `TaskRunner`、`Scheduler`、`PublicationCoordinator`。TaskRunner 持有任务 future，取消后继续 join 可能写存储的 blocking 操作，再持久化终态、释放许可。Scheduler 将分析、只读和维护写入分成三个有界通道（在途各 8）；并发依次为 max_workers、max_query_tasks（默认 2）和 1。项目分析与写锁可取消地等待。
+
+`PublicationFence` 用原子状态在取消和开始提交之间裁决。存储在复制/同步后、catalog 写入前检查屏障；提交开始后的取消不能撤销 revision。提交出错后的 durable commit 检查发生在 join 完成之后。幂等查重先于队列准入；拒绝新请求不会登记 queued 任务。

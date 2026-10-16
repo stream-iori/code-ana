@@ -7,8 +7,11 @@ mod java;
 pub mod maven_inputs;
 mod output;
 pub mod ports;
+mod publication;
 mod reports;
 mod rust_indexing;
+mod scheduler;
+mod task_runner;
 use ports::TaskRepository;
 use ports::{IndexRepository, IndexService};
 mod timings;
@@ -88,7 +91,7 @@ impl Event {
 }
 struct Job {
     _queue_permit: OwnedSemaphorePermit,
-    pub cancel: CancellationToken,
+    pub control: task_runner::TaskControl,
     pub watchers: AtomicUsize,
     pub detached: bool,
     pub disconnected: Mutex<Instant>,
@@ -115,10 +118,7 @@ pub struct Engine {
     mock: Option<PathBuf>,
     generation: String,
     jobs: Mutex<BTreeMap<TaskId, Arc<Job>>>,
-    slots: Arc<Semaphore>,
-    queue: Arc<Semaphore>,
-    projects: Mutex<BTreeMap<String, Weak<Semaphore>>>,
-    analysis_projects: Mutex<BTreeMap<String, Weak<Semaphore>>>,
+    scheduler: scheduler::Scheduler,
     draining: AtomicBool,
     shutdown: CancellationToken,
     last_activity: Mutex<Instant>,
@@ -155,10 +155,10 @@ impl Engine {
             mock,
             generation: new_id("generation"),
             jobs: Mutex::default(),
-            slots: Arc::new(Semaphore::new(user.limits.max_workers.unwrap_or(2))),
-            queue: Arc::new(Semaphore::new(8)),
-            projects: Mutex::default(),
-            analysis_projects: Mutex::default(),
+            scheduler: scheduler::Scheduler::new(
+                user.limits.max_workers.unwrap_or(2),
+                user.limits.max_query_tasks.unwrap_or(2),
+            ),
             draining: AtomicBool::new(false),
             shutdown: CancellationToken::new(),
             last_activity: Mutex::new(Instant::now()),
@@ -207,7 +207,7 @@ impl Engine {
     pub fn cancel_all(&self) {
         self.drain();
         for job in self.jobs.lock().unwrap().values() {
-            job.cancel.cancel();
+            job.control.cancel();
         }
     }
     pub fn shutdown_token(&self) -> CancellationToken {
@@ -230,302 +230,22 @@ impl Engine {
     pub fn touch(&self) {
         *self.last_activity.lock().unwrap() = Instant::now();
     }
-    fn gate(&self, map: &Mutex<BTreeMap<String, Weak<Semaphore>>>, key: String) -> Arc<Semaphore> {
-        let mut gates = map.lock().unwrap();
-        gates.retain(|_, gate| gate.strong_count() > 0);
-        if let Some(gate) = gates.get(&key).and_then(Weak::upgrade) {
-            return gate;
-        }
-        let gate = Arc::new(Semaphore::new(1));
-        gates.insert(key, Arc::downgrade(&gate));
-        gate
-    }
     pub fn active(&self) -> usize {
         self.jobs.lock().unwrap().len()
     }
-    pub fn submit(self: &Arc<Self>, mut req: Request) -> Result<String> {
-        self.touch();
-        ensure!(
-            !self.draining.load(Ordering::SeqCst),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::DaemonDraining, "")
-        );
-        ensure!(
-            !req.request_id.is_empty(),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::RequestIdRequired, "")
-        );
-        let queue_permit = self.queue.clone().try_acquire_owned().map_err(|_| {
-            anyhow::anyhow!(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::QueueBudget,
-                ""
-            ))
-        })?;
-        ensure!(
-            req.deadline_seconds <= MAX_TASK_DEADLINE_SECONDS,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::DeadlineBudget, "")
-        );
-        ensure!(
-            req.max_output_bytes <= 8 * 1024 * 1024,
-            codeana_model::DomainError::new(
-                codeana_model::ErrorCode::OutputBudget,
-                "maximum 8 MiB".to_string()
-            )
-        );
-        codeana_query::preflight(&req)?;
-        let input = PathBuf::from(&req.project);
-        let root = project_path(&input)?;
-        if root.exists() {
-            let (project, checkout) = codeana_config::identity(&root);
-            self.store.register_project(
-                root.to_str().context(codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::NonUtf8Project,
-                    "",
-                ))?,
-                &project,
-                &checkout,
-            )?;
-        } else {
-            self.store
-                .project_path(root.to_str().context(codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::NonUtf8Project,
-                    "",
-                ))?)?;
-        }
-        req.project = root
-            .to_str()
-            .context(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::NonUtf8Project,
-                "",
-            ))?
-            .into();
-        let id = new_id("task");
-        let (id, new) = self.tasks.register(&TaskId::from(id), &req)?;
-        if !new {
-            return Ok(id.into());
-        }
-        // Freeze project config and source bytes before queueing indexing work.
-        let mut capture_timings = if matches!(req.operation.as_str(), "index" | "snapshot") {
-            timings::IndexTimings::capture(&id)
-        } else {
-            None
-        };
-        let capture = if matches!(req.operation.as_str(), "index" | "snapshot" | "search-text")
-            && (req.target.is_empty() || req.target == "WORKTREE")
-            && (req.operation != codeana_model::Operation::SearchText
-                || (req.revision.is_empty() && req.cursor.is_empty()))
-        {
-            Some(codeana_config::capture(&root, &req))
-        } else {
-            None
-        };
-        if let Some(timings) = &mut capture_timings {
-            timings.phase("captured");
-        }
-        drop(capture_timings);
-        let job = Arc::new(Job {
-            _queue_permit: queue_permit,
-            cancel: CancellationToken::new(),
-            watchers: AtomicUsize::new(0),
-            detached: req.background,
-            disconnected: Mutex::new(Instant::now()),
-        });
-        self.jobs.lock().unwrap().insert(id.clone(), job.clone());
-        let engine = self.clone();
-        let task = id.clone();
-        tokio::spawn(async move {
-            let result = engine
-                .run_task(&task, &req, capture, job.clone())
-                .await
-                .unwrap_or_else(|e| {
-                    let message = format!("{e:#}");
-                    let code = e
-                        .downcast_ref::<DomainError>()
-                        .map(|e| e.code.as_str())
-                        .unwrap_or("FAILED");
-                    TaskResult::failure(
-                        code,
-                        &message,
-                        if code == "CANCELLED" {
-                            130
-                        } else if matches!(code, "TIMEOUT" | "CAPTURE_TIMEOUT") {
-                            124
-                        } else {
-                            1
-                        },
-                    )
-                });
-            let mut result = result;
-            // A timeout/disconnect after catalog commit cannot revoke publication.
-            if result.publication != codeana_model::PublicationState::Published
-                && let Ok(Some(revision)) = engine.tasks.committed(&task)
-            {
-                let reason = result.message.clone();
-                if let Ok(read) = engine.store.read(&revision) {
-                    result = TaskResult::success(Output {
-                        revision: revision.into(),
-                        producer: read.revision().producer.clone(),
-                        evidence: Evidence {
-                            enumeration: false,
-                            semantic: false,
-                            reasons: vec!["post_publication_interruption".into()],
-                            limits: vec![],
-                        },
-                        ..Default::default()
-                    });
-                    result.publication = codeana_model::PublicationState::Published;
-                    result.message = reason;
-                }
-            }
-            if let Err(e) = engine.render(&task, &req, &mut result) {
-                if result.publication == codeana_model::PublicationState::Published {
-                    result.code = "OUTPUT_FAILURE".into();
-                    result.message = e.to_string();
-                    result.exit_code = 1;
-                } else {
-                    result = TaskResult::failure("OUTPUT_FAILURE", e.to_string(), 1);
-                }
-            }
-            if let Err(e) = engine.tasks.finish(
-                &task,
-                &result,
-                &Event::Terminal(Box::new(terminal(&result))),
-            ) {
-                eprintln!("task persistence failed: {e}");
-            }
-            engine.jobs.lock().unwrap().remove(&task);
-            engine.touch();
-        });
-        Ok(id.into())
+    pub fn submit(self: &Arc<Self>, req: Request) -> Result<String> {
+        task_runner::TaskRunner::submit(self, req)
     }
-    async fn run_task(
-        self: &Arc<Self>,
-        id: &str,
-        req: &Request,
-        capture: Option<Result<Capture>>,
-        job: Arc<Job>,
-    ) -> Result<TaskResult> {
-        self.tasks
-            .event(&TaskId::from(id), &Event::Progress("queued".into()))?;
-        let project = self.store.project_path(&req.project)?.0;
-        let command = TaskCommand::try_from(req)?;
-        let analysis = command.requires_analysis();
-        let analysis_gate = self.gate(&self.analysis_projects, project.clone());
-        let writer = command.requires_writer();
-        let lock_key = if matches!(req.operation.as_str(), "index" | "snapshot") {
-            capture
-                .as_ref()
-                .and_then(|r| r.as_ref().ok())
-                .map(|c| c.target.clone())
-                .unwrap_or_else(|| project.clone())
-        } else {
-            project
-        };
-        let gate = self.gate(&self.projects, lock_key);
-        let work = async {
-            let _analysis = if analysis {
-                Some(analysis_gate.acquire().await?)
-            } else {
-                None
-            };
-            let _project = if writer {
-                Some(gate.acquire().await?)
-            } else {
-                None
-            };
-            let _slot = self.slots.acquire().await?;
-            ensure!(
-                !job.cancel.is_cancelled(),
-                codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-            );
-            self.tasks.running(&TaskId::from(id))?;
-            self.tasks
-                .event(&TaskId::from(id), &Event::Progress("running".into()))?;
-            let capture = capture.transpose()?;
-            let mut result = match req.operation {
-                Operation::Index => {
-                    self.index(
-                        id,
-                        &IndexCommand::from(req),
-                        capture.context(codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::CaptureRequired,
-                            "",
-                        ))?,
-                        &job.cancel,
-                    )
-                    .await?
-                }
-                Operation::Snapshot => self.snapshot(id, req, capture, &job.cancel).await?,
-                Operation::SearchText if req.revision.is_empty() && req.cursor.is_empty() => {
-                    let c = capture.context(codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::CaptureRequired,
-                        "",
-                    ))?;
-                    let request = req.clone();
-                    let engine = self.clone();
-                    let cancellation = job.cancel.clone();
-                    tokio::task::spawn_blocking(move || {
-                        ensure!(
-                            !cancellation.is_cancelled(),
-                            codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::Cancelled,
-                                ""
-                            )
-                        );
-                        let profile = digest(&(
-                            c.effective.capture_digest.clone(),
-                            &c.effective.config.search.text.include,
-                        ));
-                        let reader = FilesReader(Revision {
-                            id: key("worktree_text", &[&c.manifest.id(), &profile]),
-                            target: c.target,
-                            project: c.project.clone(),
-                            checkout: c.checkout,
-                            manifest: c.manifest,
-                            profile,
-                            producer: "rust-text-v1".into(),
-                            created: now(),
-                        });
-                        engine.text_page(
-                            &request,
-                            &reader,
-                            &|s| {
-                                ensure!(
-                                    !cancellation.is_cancelled(),
-                                    codeana_model::DomainError::new(
-                                        codeana_model::ErrorCode::Cancelled,
-                                        ""
-                                    )
-                                );
-                                c.blobs
-                                    .get(&s.hash)
-                                    .context(codeana_model::DomainError::new(
-                                        codeana_model::ErrorCode::CaptureBlobMissing,
-                                        "",
-                                    ))?
-                                    .read(MAX_FRAME)
-                            },
-                            vec![],
-                            &cancellation,
-                        )
-                    })
-                    .await??
-                }
-                _ => {
-                    let request = req.clone();
-                    let engine = self.clone();
-                    let cancellation = job.cancel.clone();
-                    tokio::task::spawn_blocking(move || engine.execute(&request, &cancellation))
-                        .await??
-                }
-            };
-            if req.strict
-                && (!result.output.evidence.semantic || !result.output.evidence.enumeration)
-            {
-                result.gate = codeana_model::GateState::Rejected;
-                result.exit_code = 3;
-            }
-            Ok::<_, anyhow::Error>(result)
-        };
-        tokio::select! {r=tokio::time::timeout(Duration::from_secs(if req.deadline_seconds==0{120}else{req.deadline_seconds}),work)=>match r {Ok(result)=>result,Err(_)=>{job.cancel.cancel();bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Timeout, ""))}},_=job.cancel.cancelled()=>bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""))}
+    fn publication_fence(&self, id: &str) -> Result<Arc<PublicationFence>> {
+        self.jobs
+            .lock()
+            .unwrap()
+            .get(id)
+            .map(|job| job.control.publication.clone())
+            .context(DomainError::new(
+                ErrorCode::TaskNotFound,
+                "publication owner",
+            ))
     }
     fn execute(&self, req: &Request, cancel: &CancellationToken) -> Result<TaskResult> {
         ensure!(
@@ -737,7 +457,7 @@ impl Engine {
     pub fn cancel(&self, id: &str) -> Result<()> {
         self.task(id)?;
         if let Some(job) = self.jobs.lock().unwrap().get(id) {
-            job.cancel.cancel();
+            job.control.cancel();
         }
         Ok(())
     }
@@ -754,7 +474,7 @@ impl Engine {
                         && j.watchers.load(Ordering::SeqCst) == 0
                         && j.disconnected.lock().unwrap().elapsed() > Duration::from_secs(10)
                     {
-                        j.cancel.cancel();
+                        j.control.cancel();
                     }
                 }
                 if e.active() == 0

@@ -119,6 +119,10 @@ pub fn load_user(home: &Path) -> Result<UserConfig> {
         (1..=8).contains(workers),
         codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidWorkerLimit, "")
     );
+    ensure!(
+        (1..=8).contains(u.limits.max_query_tasks.get_or_insert(2)),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidQueryLimit, "")
+    );
     for t in u.toolchains.values() {
         ensure!(
             Path::new(&t.home).is_absolute(),
@@ -2155,6 +2159,32 @@ source_roots=[{path="src",scope="MAIN",label="api"},{path="bridge",scope="MAIN",
                 load_user(dir.path()).is_ok(),
                 accepted,
                 "max_workers={workers}"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod query_limit_tests {
+    #[test]
+    fn user_query_capacity_is_bounded_and_defaults_independently_of_workers() {
+        let home = tempfile::tempdir().unwrap();
+        assert_eq!(
+            super::load_user(home.path())
+                .unwrap()
+                .limits
+                .max_query_tasks,
+            Some(2)
+        );
+        for value in [0, 1, 8, 9] {
+            std::fs::write(
+                home.path().join("config.toml"),
+                format!("schema_version=1\nkind=\"user\"\n[limits]\nmax_query_tasks={value}\n"),
+            )
+            .unwrap();
+            assert_eq!(
+                super::load_user(home.path()).is_ok(),
+                (1..=8).contains(&value)
             );
         }
     }

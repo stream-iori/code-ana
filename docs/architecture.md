@@ -126,3 +126,7 @@ graph/catalog/人工标注分别版本化。源码 blobs、分页结果、snapsh
 Maven 外部准备借鉴 Anatomist `e8a940557c9365084cdd5318ed2be3d147697113` 的依赖失败回执；仅迁入行为，不改整体上游基线。有效模型与依赖可用性分离，源码降级仍走同一 javac / GRA1 / candidate / CAS 链路。索引不启动 Maven，超时不降级。详见 [配置](configuration.md#maven-依赖失败与源码模式)。
 
 Rust 单语言复用有界 GraphStream，blocking 记录生成、异步 IPC 和 blocking SQLite 可重叠；混合语言保留封口归档合并。队列按批数和估算字节限流，控制读取与数据发送分离；内部 VerifiedEnd 前不允许发布。CPU/文件/SQLite 工作保持在受限 blocking 工作中，不使用无界任务或额外无锁队列。存储和诊断细节见公共契约及 Rust worker 模块。
+
+## 任务与发布职责（2026-10-16）
+
+Engine 只装配任务生命周期和业务服务。TaskRunner 管捕获、执行、join 与终态；Scheduler 管分析/只读/维护三个有界通道及项目许可；PublicationCoordinator 管 blocking 发布的完成等待。存储通过任务共享 PublicationFence 裁决取消与提交，catalog 仍是发布事实的依据。取消后不分离存储线程，任务结束时不存在可继续切换 head 的后台工作。

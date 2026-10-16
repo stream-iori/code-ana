@@ -1,6 +1,27 @@
 //! Tasks persistence over the shared catalog coordination.
 use super::*;
 impl Store {
+    pub fn find_task(&self, request: &Request) -> Result<Option<String>> {
+        let mut normalized = request.clone();
+        normalized.request_id.clear();
+        let found: Option<(String, String)> = self
+            .catalog()?
+            .query_row(
+                "SELECT id,request_hash FROM tasks WHERE request_id=?",
+                [request.request_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        found
+            .map(|(id, hash)| {
+                ensure!(
+                    hash == digest(&normalized),
+                    DomainError::new(ErrorCode::RequestIdConflict, "")
+                );
+                Ok(id)
+            })
+            .transpose()
+    }
     pub fn register_task(&self, id: &str, r: &Request) -> Result<(String, bool)> {
         let mut normalized = r.clone();
         normalized.request_id.clear();

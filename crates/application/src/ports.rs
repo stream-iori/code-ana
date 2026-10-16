@@ -40,6 +40,7 @@ impl TaskPhase {
     }
 }
 pub trait TaskRepository: Send + Sync {
+    fn find(&self, request: &Request) -> Result<Option<TaskId>>;
     fn register(&self, id: &TaskId, request: &Request) -> Result<(TaskId, bool)>;
     fn running(&self, id: &TaskId) -> Result<()>;
     fn event(&self, id: &TaskId, event: &Event) -> Result<u64>;
@@ -73,6 +74,7 @@ pub trait IndexRepository: Clone + Send + Sync + 'static {
         task: &TaskId,
         blobs: BTreeMap<String, CapturedBlob>,
         cancel: &CancellationToken,
+        fence: &PublicationFence,
     ) -> Result<Revision>;
 }
 pub struct StageRequest<'a> {
@@ -131,19 +133,17 @@ impl<R: IndexRepository> IndexService<R> {
         task: TaskId,
         blobs: BTreeMap<String, CapturedBlob>,
         cancel: CancellationToken,
+        fence: std::sync::Arc<PublicationFence>,
     ) -> Result<Revision> {
-        let repository = self.repository.clone();
-        tokio::task::spawn_blocking(move || {
-            let diagnostics = codeana_contracts::performance::Report::new("publish-detail");
-            diagnostics.capture.sync(|| {
-                ensure!(
-                    !cancel.is_cancelled(),
-                    DomainError::new(ErrorCode::Cancelled, "")
-                );
-                repository.persist_and_publish(candidate, &task, blobs, &cancel)
-            })
-        })
-        .await?
+        crate::publication::PublicationCoordinator::publish(
+            self.repository.clone(),
+            candidate,
+            task,
+            blobs,
+            cancel,
+            fence,
+        )
+        .await
     }
 }
 
@@ -191,6 +191,7 @@ pub(super) mod storage {
             task: &TaskId,
             blobs: BTreeMap<String, CapturedBlob>,
             cancel: &CancellationToken,
+            fence: &PublicationFence,
         ) -> Result<Revision> {
             ensure!(
                 !cancel.is_cancelled(),
@@ -203,7 +204,7 @@ pub(super) mod storage {
                 !cancel.is_cancelled(),
                 DomainError::new(ErrorCode::Cancelled, "")
             );
-            self.0.publish_staged(candidate, task)
+            self.0.publish_staged_controlled(candidate, task, fence)
         }
     }
     impl IndexBaselineReader for ReadContext {
@@ -215,6 +216,9 @@ pub(super) mod storage {
         }
     }
     impl TaskRepository for Store {
+        fn find(&self, request: &Request) -> Result<Option<TaskId>> {
+            Ok(self.find_task(request)?.map(Into::into))
+        }
         fn get(&self, id: &TaskId) -> Result<TaskSnapshot> {
             let (state, result, last_seq) = Store::task(self, id)?;
             Ok(TaskSnapshot {
@@ -326,6 +330,7 @@ mod tests {
             _: &TaskId,
             _: BTreeMap<String, CapturedBlob>,
             _: &CancellationToken,
+            _: &PublicationFence,
         ) -> Result<Revision> {
             ensure!(
                 !self.conflict,
@@ -362,7 +367,13 @@ mod tests {
                 cancel.cancel();
             }
             let result = service
-                .publish(candidate, "task".into(), BTreeMap::new(), cancel)
+                .publish(
+                    candidate,
+                    "task".into(),
+                    BTreeMap::new(),
+                    cancel,
+                    std::sync::Arc::new(PublicationFence::default()),
+                )
                 .await;
             assert_eq!(result.is_ok(), !cancelled && !conflict);
             assert_eq!(

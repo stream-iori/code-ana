@@ -71,6 +71,15 @@ fn prepare_statistics(
 }
 impl Store {
     pub fn publish_staged(&self, candidate: StagedCandidate, task: &str) -> Result<Revision> {
+        self.publish_staged_controlled(candidate, task, &PublicationFence::default())
+    }
+    pub fn publish_staged_controlled(
+        &self,
+        candidate: StagedCandidate,
+        task: &str,
+        fence: &PublicationFence,
+    ) -> Result<Revision> {
+        fence.check()?;
         let revision = &candidate.revision;
         let _pins = self.pin_blobs(revision.manifest.files.iter().map(|s| &s.hash));
         ensure!(
@@ -80,6 +89,7 @@ impl Store {
         use codeana_contracts::performance::{Metric, measure};
         measure(Metric::PublishBlobCheck, 0, false, || -> Result<()> {
             for source in &revision.manifest.files {
+                fence.check()?;
                 ensure!(
                     hash_file(&self.home.join("blobs").join(&source.hash))? == source.hash,
                     DomainError::new(ErrorCode::CorruptBlob, "")
@@ -96,6 +106,7 @@ impl Store {
         )?;
         sync_dir(candidate.directory.path())?;
         test_fault(&self.home, "candidate_synced")?;
+        fence.check()?;
         let mut lock = self.coord.lock().unwrap();
         ensure!(
             self.head(&revision.target)? == candidate.expected,
@@ -123,6 +134,8 @@ impl Store {
             actual == candidate.expected,
             codeana_model::DomainError::new(codeana_model::ErrorCode::HeadConflict, "")
         );
+        fence.begin_commit()?;
+        test_fault(&self.home, "before_catalog_commit")?;
         tx.execute(
             "INSERT INTO revisions VALUES(?,?,?,?)",
             params![
@@ -141,6 +154,7 @@ impl Store {
             params![task, revision.id],
         )?;
         measure(Metric::CatalogCommit, 0, false, || tx.commit())?;
+        fence.committed();
         test_fault(&self.home, "catalog_committed")?;
         for source in &revision.manifest.files {
             lock.staged_blobs.remove(&source.hash);

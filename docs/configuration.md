@@ -48,6 +48,7 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 | `daemon.idle_timeout_seconds` | 整数秒；默认 600，0 关闭空闲退出；仅无活动任务/读者时退出 |
 | `daemon.java_warm_workers` | 布尔值，默认 true；仅复用已确认发布且身份匹配的单个空闲 Java worker，60 秒过期 |
 | `daemon.java_signature_cache` | 布尔值，默认 true；启用安全子集的 NoCode 签名缓存，缺失/损坏自动回退完整源码分析 |
+| `limits.max_query_tasks` | 1–8，默认 2；只读查询和不要求写锁的运维任务并发，与分析槽位隔离 |
 | `limits.max_workers` | 1–8，默认 2；全部项目合计的顶层 worker 槽位；每槽允许的编译器子进程数另由执行策略固定，不能无限派生 |
 | `limits.max_worker_memory_bytes` | 正整数字节；每 worker 进程树的最大可申请预算（Java host/原生库与目标 JDK 子进程合计） |
 | `limits.max_total_worker_memory_bytes` | 正整数字节；worker 合计预算，默认 4 GiB，调度时按任务预约；不包含 daemon 自身 RSS |
@@ -382,3 +383,9 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 Rust 项目 `resources.index.worker_memory_bytes` 默认 268435456（256 MiB），范围 16 MiB–4 GiB；用户 home `[limits].max_worker_memory_bytes` 控制上限，省略同样为 256 MiB。项目不得超过服务上限；用户提高上限后项目仍默认请求 256 MiB。预算改动不要求重新导出；过滤、scope/world、语言语义设置变化要求重导 schema 2 输入。
 
 导出器与捕获共用 Rust worker 的准备入口和 globset；旧 schema 1 输入明确要求重导。诊断和单轮测量入口见 [Rust worker](modules/rust-worker.md)。
+
+## 任务准入与提交裁决
+
+分析、只读查询、维护写入各有 8 个在途名额；执行并发分别为 `max_workers`、`max_query_tasks` 和 1。分析饱和不占用其他通道。每项目分析和同目标写入约束继续生效。重复 request ID 先按规范化参数查重，已有任务不占新名额；参数不一致拒绝。
+
+取消和 deadline 停止未开始的工作。发布进入 catalog 提交屏障后等待真实结果；任务仍占用执行许可，直到后台存储操作结束。此时 deadline 不能使任务提前宣告未发布。

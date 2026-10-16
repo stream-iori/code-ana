@@ -231,6 +231,7 @@ pub struct DaemonPolicy {
 #[serde(default, deny_unknown_fields)]
 pub struct Limits {
     pub max_workers: Option<usize>,
+    pub max_query_tasks: Option<usize>,
     pub max_worker_memory_bytes: Option<u64>,
     pub max_total_worker_memory_bytes: Option<u64>,
 }

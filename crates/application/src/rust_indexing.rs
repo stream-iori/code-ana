@@ -99,7 +99,13 @@ impl Engine {
         let blobs = std::mem::take(&mut capture.blobs);
         let revision = self
             .index
-            .publish(candidate, TaskId::from(id), blobs, cancel.clone())
+            .publish(
+                candidate,
+                TaskId::from(id),
+                blobs,
+                cancel.clone(),
+                self.publication_fence(id)?,
+            )
             .await?;
         let mut ack = if attempt.baseline.unchanged {
             None

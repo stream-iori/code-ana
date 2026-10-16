@@ -155,3 +155,9 @@ Rust 单语言由 blocking 记录生成器直接送入 IPC，daemon 复用 `anal
 只有独立校验过的 End 才产生内部 `VerifiedEnd`；断流、错序、摘要错误或取消均不可封存候选。队列等待和终态发送可取消；worker 独立读半帧保留的控制流，写阻塞不阻止取消。混合 Java/Rust 使用已验证归档合并，全部成功后一次 CAS。
 
 物理 schema 9 将 Rust 路径/world/key 转为内部整数引用，依赖只存在类型化表中；状态 JSON 不再包含 dependencies。baseline 批量关联重建完整 SourceState，公开 ID、worker 20 和 graph model 3 保持。旧图必须全量重建。
+
+## 10. 取消与提交的裁决
+
+任务级 PublicationFence 只有一个所有者。Preparing 阶段取消赢得裁决则不能开始提交；Committing 阶段等待真实事务结果，再以 durable commit 生成终态。取消/超时不丢弃仍可能写存储的 future，也不提前释放项目/执行许可。取消发生在事务提交前的文件准备阶段时，旧 head 保留；提交开始后的取消只终止后处理，成功提交必须公开 published。
+
+重复 request ID 在新任务准入前检查规范化参数摘要；重试可在通道饱和或 drain 时读取原任务。不同参数拒绝，新请求无名额时不登记任务。daemon/worker/ABI/GRA1 编码和 schema 版本保持。
