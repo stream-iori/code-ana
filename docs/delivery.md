@@ -86,7 +86,7 @@ Maven schema 4 的导出协议与 Resolver fixture 走 `just test-java-maven`；
 
 ## 本轮整改验收入口（2026-10-16）
 
-真实项目单轮脚本显式接收 `--graph-gate`、`--lifecycle-gate`、`--release-gate`，分别指向本轮完整 Native graph/lifecycle 与 release 回执。它核对完整用例清单、当前文件 SHA 和 release 输入，不再使用历史固定回执或用例数。`--deadline-seconds` 默认 3600。
+真实项目单轮脚本显式接收 `--graph-gate`、`--lifecycle-gate`、`--release-gate`，分别指向本轮完整 Native graph/lifecycle 与 release 回执。它核对完整用例清单、当前文件 SHA 和 release 输入，不再使用历史固定回执或用例数。`--deadline-seconds` 默认 3600。运行目录由产品组准备，性能阶段从 runtime manifest 的 binary_directory 读取并核对原 target/debug 路径，不依赖复制可执行文件或 runtime/target 链接。
 
 改代码前先封存当前 JVM 正确性基线；最终 Native 使用同一冻结提交、MAIN/TEST、配置与依赖。12 表按逻辑多重集比较，保留重复、NULL、数组顺序及字段值，仅排除明确的运行时 classpath 摘要证据。原实现重放已证明 JSON 对象键顺序跨进程变化，因此对象按键比较，原文摘要另行记录差异，不能声称原字节一致；存储仍保留输入 metadata 原文。测量前可修复未启动测量阶段的准备失败并保留回执；测量开始后的失败不可通过提高预算/重跑替换。
 

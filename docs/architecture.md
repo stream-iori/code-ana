@@ -1,6 +1,6 @@
 # 总体架构
 
-对齐 2026-10-15。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
+对齐 2026-10-16。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
 CLI

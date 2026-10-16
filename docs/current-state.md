@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-10-15。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-10-16。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -13,6 +13,41 @@
 | 紧凑布局 | 整数引用、路径/外部目标字典、重复大 metadata 共享、元注解定义/归属分离 | `crates/storage/src/compact-schema.sql`、`compact-meta.sql` |
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
+
+## 架构整改与真实项目复验（2026-10-16）
+
+| 改动 | 结果 |
+|---|---|
+| Rust 任务所有权 | TaskRunner 持有完整任务；取消/超时后等 blocking 工作退出再写终态、释放许可，避免取消后后台切换 head |
+| 调度与幂等 | 分析、只读和维护独立有界通道；max_query_tasks 默认 2；先查重再准入，重复请求可取消捕获中的原任务 |
+| 发布裁决 | PublicationFence 在取消与开始提交之间原子裁决；提交完成后按 durable commit 返回已发布结果 |
+| Java 可维护性 | 请求/结果/上下文改为不可变 DTO；拆分调用恢复、Lombok 规则、编译器池与模型消费；保留资源所有权、诊断路径校验和规则顺序 |
+| 兼容边界 | 原入口与可执行文件路径不变；公开身份、协议和图库版本不变，Rust 不重编码 Java metadata |
+
+| 本轮回归 | 结果 |
+|---|---|
+| Rust | workspace 182 项通过、1 项需 G1 的测试跳过；图 20、真实 Rust 5、文本 2、标注 4，以及 fmt / DDL / clippy 通过 |
+| Java | fixture 641 项通过；源码审计通过，来源清单 561 个文件、24 个适配文件校验通过 |
+| JVM / Native | JVM 图 7；Native manifest 5、ABI 生命周期 8、图 8、错误 JDK 与真实 SIGSEGV 恢复通过 |
+| 分发与验收工具 | release 包、原路径产品图/错误 JDK/随包 fixture 通过；当前门禁、查询多重集和运行路径回归 8 项通过 |
+| 冻结真实项目 | 12 张逻辑表及 6 类公开查询与改造前 JVM 基线一致；重复记录、NULL、数组顺序和源码位置保留 |
+
+| Native/G1 唯一一轮 | 观测 |
+|---|---:|
+| index 命令墙钟 | 214.548 s |
+| 发布 facts.db | 233,615,360 bytes / 233.62 MB |
+| 同时刻进程树 RSS 采样峰值 | 2,715,762,688 bytes / 2.53 GiB |
+| 证据目录磁盘采样峰值 | 2,439,239,085 逻辑 bytes / 2,481,790,976 分配 bytes |
+| 全流程监控墙钟（含启动、查询与图校验） | 230.883 s |
+| partial 文件 | 854，保留原覆盖缺口 |
+
+输入为 iopengw 冻结提交 `267c7ced4993aa88613f8f17a8099943fec98159` 的独立副本，仅已提交内容、MAIN+TEST；原目录 `/Users/stream/codes/antcodes/ipay/gw-group/iopengw` 未修改。改造前源码固定 `e4230c2`，先封存 JVM 基线，再在最终冻结输入上重放。外部 Maven 导出器原字节独立封存，避免 SDK 安装覆盖控制输入；实际 5,983 个输入文件及源码/产物的 SHA 均核对。预算见 [实施与验收](delivery.md#本轮整改验收入口2026-10-16)，应用状态独立且为空；OS 页缓存未控制，进程采样 1 秒、磁盘采样 10 秒。磁盘范围含本轮证据、暂存和原二进制备份，不能与单个 facts.db 混比；RSS 是同一时刻进程树之和，不是独立峰值相加。
+
+原实现两次重放的 nodes/edges/call_sites 原文摘要不同，取证为 JSON 对象键顺序跨进程变化；解析后的 12 表多重集相同。最终 Native 也单独记录这三表的原文差异，不宣称字节等价。逻辑比较只规范 JSON 对象键并排除运行时 classpath 摘要；数组及字段值仍严格比较，存储不改写 metadata。公开查询只额外排除 overview 顶层宿主 profile。
+
+证据根目录为 `target/architecture-hardening/20261016T031030Z/`：汇总 `validation.json`，本轮 `iopengw-native-single/receipt.json`，原实现重放与差异 `baseline/replay/receipt.json`、`baseline/replay-equivalence.json`。安全拦截、来源清单准备失败和未启动索引的运行路径失败均保留；实际 Native 全量只有一轮，结束后原 debug 字节已恢复。运行路径准备问题随后由 manifest 直接定位原执行目录解决，并补回归；没有重跑测量或修改分析产物。
+
+本轮完成整改和上述回归，未签正式完整语义、容量或稳定性能放行，`native_accepted=false`、`performance_accepted=false`。历史 214.28 s / 233.49 MB 回执保留，不能将不同预算的单轮差值解释为提速或回退。Linux、目标 Java 17/25、完整 Rust 语义/来源覆盖等未完成项保持。
 
 ## Java 目录命名（2026-10-15）
 
