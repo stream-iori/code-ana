@@ -92,6 +92,7 @@ impl Event {
 struct Job {
     _queue_permit: OwnedSemaphorePermit,
     pub control: task_runner::TaskControl,
+    pub submitting: AtomicBool,
     pub watchers: AtomicUsize,
     pub detached: bool,
     pub disconnected: Mutex<Instant>,
@@ -118,6 +119,7 @@ pub struct Engine {
     mock: Option<PathBuf>,
     generation: String,
     jobs: Mutex<BTreeMap<TaskId, Arc<Job>>>,
+    submissions: Mutex<()>,
     scheduler: scheduler::Scheduler,
     draining: AtomicBool,
     shutdown: CancellationToken,
@@ -155,6 +157,7 @@ impl Engine {
             mock,
             generation: new_id("generation"),
             jobs: Mutex::default(),
+            submissions: Mutex::default(),
             scheduler: scheduler::Scheduler::new(
                 user.limits.max_workers.unwrap_or(2),
                 user.limits.max_query_tasks.unwrap_or(2),
@@ -471,6 +474,7 @@ impl Engine {
                 }
                 for j in e.jobs.lock().unwrap().values() {
                     if !j.detached
+                        && !j.submitting.load(Ordering::SeqCst)
                         && j.watchers.load(Ordering::SeqCst) == 0
                         && j.disconnected.lock().unwrap().elapsed() > Duration::from_secs(10)
                     {

@@ -55,6 +55,7 @@ impl TaskRunner {
                 "",
             ))?
             .into();
+        let admission = engine.submissions.lock().unwrap();
         if let Some(id) = engine.tasks.find(&req)? {
             return Ok(id.into());
         }
@@ -77,6 +78,17 @@ impl TaskRunner {
         if !new {
             return Ok(id.into());
         }
+        let job = Arc::new(Job {
+            _queue_permit: queue_permit,
+            control: TaskControl::default(),
+            submitting: AtomicBool::new(true),
+            watchers: AtomicUsize::new(0),
+            detached: req.background,
+            disconnected: Mutex::new(Instant::now()),
+        });
+        engine.jobs.lock().unwrap().insert(id.clone(), job.clone());
+        drop(admission);
+        let capture_fault = codeana_storage::test_fault(&engine.store.home, "before_capture");
         // Freeze project config and source bytes before queueing indexing work.
         let mut capture_timings = if matches!(req.operation.as_str(), "index" | "snapshot") {
             timings::IndexTimings::capture(&id)
@@ -88,7 +100,13 @@ impl TaskRunner {
             && (req.operation != codeana_model::Operation::SearchText
                 || (req.revision.is_empty() && req.cursor.is_empty()))
         {
-            Some(codeana_config::capture(&root, &req))
+            Some(if let Err(error) = capture_fault {
+                Err(error)
+            } else if job.control.token.is_cancelled() {
+                Err(DomainError::new(ErrorCode::Cancelled, "").into())
+            } else {
+                codeana_config::capture(&root, &req)
+            })
         } else {
             None
         };
@@ -96,14 +114,8 @@ impl TaskRunner {
             timings.phase("captured");
         }
         drop(capture_timings);
-        let job = Arc::new(Job {
-            _queue_permit: queue_permit,
-            control: TaskControl::default(),
-            watchers: AtomicUsize::new(0),
-            detached: req.background,
-            disconnected: Mutex::new(Instant::now()),
-        });
-        engine.jobs.lock().unwrap().insert(id.clone(), job.clone());
+        *job.disconnected.lock().unwrap() = Instant::now();
+        job.submitting.store(false, Ordering::SeqCst);
         let engine = engine.clone();
         let task = id.clone();
         tokio::spawn(async move {

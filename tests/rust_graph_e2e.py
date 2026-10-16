@@ -222,6 +222,31 @@ class GraphProduct(product_support.MockProductHarness):
     def test_cancel_after_commit_reports_publication(self):
         self.assert_cancel_publication('catalog_committed', True)
 
+    def test_duplicate_can_cancel_a_capture_before_first_submit_returns(self):
+        self.require_debug_faults()
+        old = self.cli('index')[1]['revision']
+        self.stop()
+        self.state('edited')
+        self.start('pause:before_capture')
+        process = subprocess.Popen([str(BIN / 'codeana-cli'), '--home', str(self.home), '--project', str(self.project),
+                                    'index', '--background', '--request-id', 'capturing'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        try:
+            until = time.monotonic() + 8
+            while not (self.home / 'test-fault-reached').exists():
+                self.assertLess(time.monotonic(), until, self.daemon_log())
+                time.sleep(.02)
+            duplicate = json.loads(self.cli('index', '--background', '--request-id', 'capturing', raw=True))['task_id']
+            self.cli('task', 'cancel', duplicate, raw=True)
+            (self.home / 'test-fault-release').write_text('release')
+            out, err = process.communicate(timeout=10)
+            self.assertEqual(process.returncode, 0, err)
+            self.assertEqual(json.loads(out)['task_id'], duplicate)
+            self.assertEqual(self.wait_task(duplicate, 'terminal')['terminal']['code'], 'CANCELLED')
+            self.assertEqual(self.cli('overview')[1]['revision'], old)
+        finally:
+            if process.poll() is None:
+                process.kill(); process.communicate()
+
     def test_concurrent_idempotent_submit_registers_once(self):
         from concurrent.futures import ThreadPoolExecutor
         self.state('hang')
