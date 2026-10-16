@@ -1,6 +1,7 @@
 package dev.codeana.adapter;
 
 import com.anatomist.core.*;
+import com.anatomist.core.java.JavaDiagnostic;
 import com.anatomist.core.javac.*;
 
 import dev.codeana.common.Json;
@@ -181,6 +182,13 @@ public final class CapturedProject {
 
     public Source source(Path file) {
         return Objects.requireNonNull(physicalSources.get(file), "uncaptured source");
+    }
+
+    /** Preserve the compiler error ownership check even though coverage is diagnostic-driven. */
+    void verifyDiagnostics(List<JavaDiagnostic> diagnostics) {
+        for (var diagnostic : diagnostics)
+            if (diagnostic.path() != null && diagnostic.kind().equals("ERROR"))
+                source(diagnostic.path());
     }
 
     public List<SourceRoot> roots() {

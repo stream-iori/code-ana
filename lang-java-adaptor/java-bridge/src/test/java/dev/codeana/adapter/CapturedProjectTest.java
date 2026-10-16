@@ -3,10 +3,12 @@ package dev.codeana.adapter;
 import static org.junit.jupiter.api.Assertions.*;
 
 import dev.codeana.common.Json;
-import java.nio.file.*;
-import java.util.*;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+
+import java.nio.file.*;
+import java.util.*;
 
 class CapturedProjectTest {
     @TempDir Path temporary;
@@ -73,18 +75,56 @@ class CapturedProjectTest {
     }
 
     @Test
-    void dependencyModesSeparateSignatureIdentityWithoutChangingTopologyAvailability() throws Exception {
+    void dependencyModesSeparateSignatureIdentityWithoutChangingTopologyAvailability()
+            throws Exception {
         Set<String> fingerprints = new HashSet<>();
         for (String mode : List.of("resolved", "source_only_requested", "source_only_fallback")) {
             var req = request("module/src/main/java");
             req.put("dependency_mode", mode);
-            if (mode.equals("source_only_fallback")) req.put("dependency_failure", Json.object(
-                    "module", "module", "pom", "module/pom.xml", "coordinate", "fixture:missing:1", "reason", "offline", "round", 0));
+            if (mode.equals("source_only_fallback"))
+                req.put(
+                        "dependency_failure",
+                        Json.object(
+                                "module",
+                                "module",
+                                "pom",
+                                "module/pom.xml",
+                                "coordinate",
+                                "fixture:missing:1",
+                                "reason",
+                                "offline",
+                                "round",
+                                0));
             var project = new CapturedProject(req);
-            assertTrue(project.moduleInputs().resolvedClasspath(), "captured module topology remains usable");
+            assertTrue(
+                    project.moduleInputs().resolvedClasspath(),
+                    "captured module topology remains usable");
             fingerprints.add(project.moduleInputs().fingerprint());
         }
         assertEquals(3, fingerprints.size());
+    }
+
+    @Test
+    void compilerErrorsMustBelongToCapturedSources() throws Exception {
+        var project = new CapturedProject(request("module/src/main/java"));
+        Path captured = project.sourcePlan(Set.of("main")).visibleFiles().getFirst();
+        project.verifyDiagnostics(
+                List.of(
+                        new com.anatomist.core.java.JavaDiagnostic(
+                                captured, "ERROR", "fixture", 1, 1, "captured")));
+        var outside =
+                new com.anatomist.core.java.JavaDiagnostic(
+                        temporary.resolve("Other.java"), "ERROR", "fixture", 1, 1, "uncaptured");
+        assertThrows(NullPointerException.class, () -> project.verifyDiagnostics(List.of(outside)));
+        project.verifyDiagnostics(
+                List.of(
+                        new com.anatomist.core.java.JavaDiagnostic(
+                                temporary.resolve("Other.java"),
+                                "INFO",
+                                "fixture",
+                                1,
+                                1,
+                                "informational")));
     }
 
     @Test

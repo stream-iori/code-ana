@@ -292,6 +292,7 @@ public final class AnalysisSession implements AutoCloseable {
                     analysis -> {
                         check();
                         observer.model(analysis);
+                        project.verifyDiagnostics(analysis.diagnostics());
                         String key = analysis.module() + "@" + analysis.scope();
                         observer.phase("extraction_total", key, true);
                         try (var binaries = backend.openBinaryRepository(analysis)) {
