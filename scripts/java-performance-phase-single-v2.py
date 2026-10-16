@@ -16,6 +16,16 @@ from acceptance_support import sha256
 from acceptance_support import atomic_json
 
 
+def canonical_query_records(records, operation):
+    values=[]
+    for record in records:
+        item=dict(record)
+        # Native and JVM host identities intentionally produce different profiles.
+        if operation=='overview':item.pop('profile',None)
+        values.append(json.dumps(item,ensure_ascii=False,sort_keys=True,separators=(',',':')))
+    return sorted(values)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--backend', choices=['jvm', 'native'], required=True)
@@ -116,6 +126,11 @@ def main():
             if (result.returncode or len(terminals) != 1 or terminals[0]['revision'] != row['revision']
                     or not any(line.startswith('record ') for line in result.stdout.splitlines())):
                 raise ValueError('PERFORMANCE_QUERY_FAILED: ' + name)
+            actual_records=[json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith('record ')]
+            if 'expected_records' in plan:
+                expected_records=plan['expected_records'].get(name)
+                if expected_records is None or canonical_query_records(actual_records,name)!=canonical_query_records(expected_records,name):
+                    raise ValueError('PERFORMANCE_QUERY_RESULT_DRIFT: '+name)
             row['queries'].append(dict(id=name, seconds=elapsed, records=sum(line.startswith('record ') for line in result.stdout.splitlines()), terminal=terminals[0]))
         start = time.monotonic()
         with sqlite3.connect('file:' + str(database.resolve()) + '?mode=ro', uri=True) as connection:

@@ -65,6 +65,9 @@ def main():
     graphs=importlib.util.module_from_spec(spec);spec.loader.exec_module(graphs)
     baseline=args.baseline.resolve()
     baseline_sha=sha256(baseline)
+    query_plan=json.loads(args.query_plan.read_text())
+    if query_plan.get('baseline_database_sha256')!=baseline_sha or set(query_plan.get('expected_records',{}))!={'resolve','structure','source','search-code','search-text','overview'}:
+        raise ValueError('VERIFIED_QUERY_BASELINE_REQUIRED')
     expected=base/'expected-graph.json'
     expected.write_text(json.dumps(dict(status='passed',graph_storage_correctness_eligible=True,
         graph_encoding='anatomist-logical-rows',raw_metadata=True,graphs={'native':graphs.graph(baseline,True,raw_metadata=True)},

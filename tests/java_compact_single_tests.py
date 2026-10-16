@@ -37,4 +37,21 @@ class CurrentGates(unittest.TestCase):
         p=self.paths['release'];value=json.loads(p.read_text());value['inputs']['source']='0'*64;p.write_text(json.dumps(value))
         with self.assertRaisesRegex(ValueError,'RELEASE_GATE_INPUT_DRIFT'):self.verify()
 
+class QueryMultisets(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location('performance_phase',ROOT/'scripts/java-performance-phase-single-v2.py')
+        cls.phase=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.phase)
+    def test_duplicate_records_and_source_coordinates_are_significant(self):
+        row={'id':'public','span':{'start':1},'attributes':{'profile':'semantic'}}
+        normalize=self.phase.canonical_query_records
+        self.assertNotEqual(normalize([row,row],'resolve'),normalize([row],'resolve'))
+        self.assertNotEqual(normalize([row],'resolve'),normalize([dict(row,span={'start':2})],'resolve'))
+        self.assertNotEqual(normalize([row],'resolve'),normalize([dict(row,attributes={'profile':'changed'})],'resolve'))
+    def test_only_overview_host_profile_is_execution_specific(self):
+        normalize=self.phase.canonical_query_records
+        self.assertEqual(normalize([{'profile':'jvm','counts':{'class':2}}],'overview'),normalize([{'profile':'native','counts':{'class':2}}],'overview'))
+        self.assertNotEqual(normalize([{'profile':'jvm'}],'resolve'),normalize([{'profile':'native'}],'resolve'))
+
+
 if __name__=='__main__':unittest.main()
