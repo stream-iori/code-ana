@@ -53,5 +53,28 @@ class QueryMultisets(unittest.TestCase):
         self.assertEqual(normalize([{'profile':'jvm','counts':{'class':2}}],'overview'),normalize([{'profile':'native','counts':{'class':2}}],'overview'))
         self.assertNotEqual(normalize([{'profile':'jvm'}],'resolve'),normalize([{'profile':'native'}],'resolve'))
 
+class StableRuntime(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec=importlib.util.spec_from_file_location('performance_phase_paths',ROOT/'scripts/java-performance-phase-single-v2.py')
+        cls.phase=importlib.util.module_from_spec(spec);spec.loader.exec_module(cls.phase)
+    def test_manifest_uses_original_binaries_without_a_runtime_target_link(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=pathlib.Path(temporary);binaries=root/'target/debug';binaries.mkdir(parents=True)
+            runtime=root/'target/runtime';runtime.mkdir()
+            (runtime/'runtime-native.json').write_text(json.dumps({'binary_directory':str(binaries)}))
+            with patch.object(self.phase,'ROOT',root):
+                actual,_=self.phase.stable_binaries(runtime,'native')
+            self.assertEqual(actual,binaries.resolve())
+            self.assertFalse((runtime/'target').exists())
+    def test_relocated_executable_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root=pathlib.Path(temporary);(root/'target/debug').mkdir(parents=True)
+            relocated=root/'relocated';relocated.mkdir();runtime=root/'target/runtime';runtime.mkdir()
+            (runtime/'runtime-native.json').write_text(json.dumps({'binary_directory':str(relocated)}))
+            with patch.object(self.phase,'ROOT',root):
+                with self.assertRaisesRegex(ValueError,'STABLE_RUNTIME_BINARY_PATH_DRIFT'):
+                    self.phase.stable_binaries(runtime,'native')
+
 
 if __name__=='__main__':unittest.main()

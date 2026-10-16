@@ -26,6 +26,14 @@ def canonical_query_records(records, operation):
     return sorted(values)
 
 
+def stable_binaries(runtime, backend):
+    installation=json.loads((runtime/('runtime-'+backend+'.json')).read_text())
+    binaries=pathlib.Path(installation['binary_directory']).resolve(strict=True)
+    if binaries!=(ROOT/'target/debug').resolve(strict=True):
+        raise ValueError('STABLE_RUNTIME_BINARY_PATH_DRIFT')
+    return binaries,installation
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--backend', choices=['jvm', 'native'], required=True)
@@ -45,7 +53,7 @@ def main():
     java_options = (os.environ.get('JAVA_TOOL_OPTIONS', '')
                     + ' -Djava.io.tmpdir="' + str(scratch) + '"').strip()
     runtime = args.runtime.resolve()
-    binaries = (runtime / 'target/debug').resolve(strict=True)
+    binaries,installation = stable_binaries(runtime,args.backend)
     build=json.loads(args.build_receipt.read_text())
     if build.get('build_profile') != 'release' or any(build['binaries'].get(str((binaries/name).resolve())) != sha256(binaries/name) for name in ('codeana-cli','codeana-daemon','codeana-java-worker')): raise ValueError('RELEASE_BUILD_DRIFT')
     command = [str(binaries / 'codeana-cli'), '--home', str(args.home.resolve()), '--project', str(args.project.resolve())]
@@ -56,8 +64,6 @@ def main():
                queries=[], performance_accepted=False, native_accepted=False,
                measurement_scope='index command measured separately; monitor includes startup, queries and post-index verification')
     inputs = {str(path): sha256(path) for path in runtime.rglob('*') if path.is_file()}
-    installation=json.loads((runtime/('runtime-'+args.backend+'.json')).read_text())
-    if installation['binary_directory'] != str(binaries): raise ValueError('STABLE_RUNTIME_BINARY_PATH_DRIFT')
     for name,digest in installation['installed_files'].items():
         if sha256(name) != digest: raise ValueError('STABLE_RUNTIME_BUNDLE_DRIFT')
         inputs[name]=digest
