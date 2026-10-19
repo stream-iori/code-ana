@@ -1,8 +1,11 @@
 # 诊断、报告与人工标注
 
+现行报告 schema 2 为全局摘要：JSON/Markdown 同源，不内嵌完整配置、逐文件诊断或日志，不新增 JSONL。失败、取消、strict 拒绝也保存可用摘要；最终计数不可得用 measurements_available=false 表达。旧报告仍可读，off/basic/full 配置接受但新报告均不携带诊断明细。具体排查使用 CLI 和日志；详见 [统一输入准备](inputs.md)。
+
+
 > 对齐 2026-10-14。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
-当前 `doctor` 返回生效 generation、字段来源与能力；报告支持 off/basic/full、诊断计数/分组/样例上限、可比指标差值，导出只写新路径。标注库单独迁移并保存 annotation revision 与事实锚点；list 固定一次标注读取和指定图 revision。真实 javac 诊断已进入图与报告，包含当前冻结项目的 partial 结果；标注进入 typed pipeline、完整诊断/迁移覆盖仍待完成。
+当前 `doctor` 返回生效 generation、字段来源与能力；报告接受 off/basic/full 配置，保存全局诊断计数/分组和可比指标差值，导出只写新路径。标注库单独迁移并保存 annotation revision 与事实锚点；list 固定一次标注读取和指定图 revision。真实 javac 诊断已进入图与报告，保留当前冻结项目的 partial 结果；标注进入 typed pipeline、完整诊断/迁移覆盖仍待完成。
 
 **执行、质量、门禁、发布和报告是五个独立结果；人工内容不属于可重建分析事实。**
 
@@ -29,7 +32,7 @@
 | DiagnosticCollector | producer 诊断事件 | 总量、分组、样例、被省略数量 |
 | HealthEvaluator | 原始质量事实、policy | assessment + gate，质量本身不变 |
 | DoctorService | revision/snapshot、检查范围 | 配置、就绪性、能力、完整性和恢复动作；配置明细按语言/module/world 返回 EffectiveConfig、字段来源与生效 generation |
-| ReportStore | 提交身份、阶段状态、计时、诊断 | 版本化内部报告，可选完整文件级诊断基线 |
+| ReportStore | 提交身份、阶段状态、计时、诊断 | 版本化全局摘要，不保存文件级诊断明细 |
 | ReportReader / compare | 保存的报告 ID | 有界阅读和可比性结果，不重新执行索引 |
 | AnnotationStore | 用户文本、来源、锚点、绑定要求 | 独立 annotation ID、内容版本、绑定状态 |
 
@@ -53,7 +56,7 @@
 | 行为 | 约束 |
 |---|---|
 | stdout / stderr | 数据命令使用本项目文本契约；进度/人工诊断走 stderr；quiet 的实际参数以 CLI help 为准 |
-| 报告级别 | off/basic/full 保留含义；内部调度 ID 不强制公开成 run_id |
+| 报告级别 | off 关闭；basic/full 均保存全局摘要；内部调度 ID 不强制公开成 run_id |
 | 自动报告 | 采用本项目声明的大小/数量预算；独立于语义事实生命周期 |
 | 显式导出 | 新路径、禁止覆盖；不参与自动报告 GC |
 | 写报告失败 | 返回失败状态/非零退出；同时保留真实 published revision |
@@ -91,7 +94,7 @@ Annotation（独立正文与用户来源）
 |---|---|
 | 分析完成但门禁拒绝 | assessment 不变，旧 revision 标为 retained |
 | 发布成功后报告磁盘写失败 | 非零退出与 published=true 同时可解释 |
-| basic/full 报告对比 | 能力不同正确拒绝，不重跑分析 |
+| 旧版 basic/full 报告对比 | 能力不兼容时明确拒绝，不重跑分析 |
 | full rebuild / schema migration | 人工正文与 ID 保留 |
 | 符号删除/重命名/多 world 歧义 | 绑定失效可见，不丢内容、不乱绑 |
 | 标注 list 与编辑并发 | list 固定一次标注读取；标注接入 pipeline 仍未实现 |

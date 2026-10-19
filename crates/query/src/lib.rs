@@ -370,6 +370,9 @@ pub fn resolve(r: &dyn GraphAccess, selector: &str, unique: bool) -> Result<Vec<
     } else {
         exact
     };
+    if facts.is_empty() {
+        require_available_inputs(r, &Request::default(), selector)?;
+    }
     ensure!(
         !facts.is_empty(),
         codeana_model::DomainError::new(
@@ -469,6 +472,9 @@ fn resolve_scoped(r: &dyn GraphAccess, req: &Request) -> Result<Vec<Fact>> {
                 .collect();
         }
     }
+    if facts.is_empty() {
+        require_available_inputs(r, req, selector)?;
+    }
     ensure!(
         !facts.is_empty(),
         codeana_model::DomainError::new(
@@ -505,6 +511,23 @@ fn selection_evidence(r: &dyn SourceContext, req: &Request) -> Evidence {
     }
 
     e
+}
+fn require_available_inputs(r: &dyn GraphAccess, req: &Request, selector: &str) -> Result<()> {
+    let mut filter = scope_filter(req);
+    filter.kinds = vec![FactKind::Coverage];
+    let unavailable = select(r, filter)?
+        .iter()
+        .any(|f| f.owner.producer == "codeana-inputs" && f.status != "complete");
+    ensure!(
+        !unavailable,
+        codeana_model::DomainError::new(
+            codeana_model::ErrorCode::SemanticInputsUnavailable,
+            format!(
+                "{selector}: selected inputs lack semantic context; inspect report/doctor and preparation logs"
+            )
+        )
+    );
+    Ok(())
 }
 fn coverage(r: &dyn GraphAccess, req: &Request) -> Result<Evidence> {
     let mut e = selection_evidence(r, req);

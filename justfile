@@ -127,3 +127,36 @@ test-java-release:
   cargo build --release --workspace --locked
   python3 scripts/install-java-native.py
   python3 tests/java_release.py --bin-root "$PWD/target/debug" --stage-release
+
+# Separate Cargo workspace preserves rust-analyzer's Unicode dependency pin.
+build-python:
+  ./scripts/build-python.sh
+
+test-python-core:
+  python3 tests/python_inputs_test.py
+  cargo fmt --manifest-path lang-python-adaptor/Cargo.toml --all -- --check
+  cargo test --manifest-path lang-python-adaptor/Cargo.toml --workspace --locked
+  cargo clippy --manifest-path lang-python-adaptor/Cargo.toml --workspace --all-targets --locked -- -D warnings
+
+test-python:
+  just test-java
+  just test-python-core
+  cargo build --workspace --locked
+  ./scripts/build-python.sh
+  python3 tests/python_language_e2e.py
+  python3 tests/prepared_inputs_e2e.py
+
+package-python output:
+  cargo build --release --workspace --locked
+  ./scripts/build-python.sh --release
+  python3 scripts/package-python.py --output '{{output}}'
+
+test-python-release package:
+  cd '{{package}}' && shasum -a 256 -c SHA256SUMS
+  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/python_language_e2e.py
+  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/prepared_inputs_e2e.py
+
+# Java combinations require the matching installed Native SDK.
+test-python-mixed:
+  python3 tests/python_language_e2e.py PythonJava.test_java_python_and_three_language_publication
+  CODEANA_TEST_REAL_JAVA=1 python3 tests/prepared_inputs_e2e.py PreparedInputs.test_independent_maven_reactors_and_three_languages

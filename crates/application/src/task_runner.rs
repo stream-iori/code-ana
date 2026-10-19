@@ -119,6 +119,7 @@ impl TaskRunner {
         let engine = engine.clone();
         let task = id.clone();
         tokio::spawn(async move {
+            let report_capture = capture.as_ref().and_then(|c| c.as_ref().ok()).cloned();
             let result = Self::run(&engine, &task, &req, capture, job.clone())
                 .await
                 .unwrap_or_else(|e| {
@@ -159,6 +160,16 @@ impl TaskRunner {
                     });
                     result.publication = codeana_model::PublicationState::Published;
                     result.message = reason;
+                }
+            }
+            if let Err(error) =
+                engine.save_unpublished_report(&task, &req, report_capture.as_ref(), &mut result)
+            {
+                result.report = codeana_model::ReportState::Pending;
+                if result.exit_code == 0 {
+                    result.code = "REPORT_WRITE_FAILED".into();
+                    result.message = error.to_string();
+                    result.exit_code = 1;
                 }
             }
             if let Err(e) = engine.render(&task, &req, &mut result) {

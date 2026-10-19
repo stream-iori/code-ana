@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-10-16。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-10-19。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -13,6 +13,62 @@
 | 紧凑布局 | 整数引用、路径/外部目标字典、重复大 metadata 共享、元注解定义/归属分离 | `crates/storage/src/compact-schema.sql`、`compact-meta.sql` |
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
+| Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
+
+## 统一输入准备（2026-10-19，Python v3）
+
+| 项目 | 当前结果 |
+|---|---|
+| 产品入口 | 仅新增 `index --prepare`；普通 index 消费冻结输入；doctor 静态检查，不执行构建工具 |
+| 配置 | `[inputs]` 声明多语言入口；独立 Maven reactor / Cargo workspace 分开展开；Python 默认隔离、显式依赖或共享环境 |
+| Python 元数据 | 默认静态读取入口 pyproject，显式 module 源码根优先；没有 pyproject 仍可索引。schema 3 兼容 1/2，adapter v3；worker/graph/存储协议不变 |
+| 降级 | 可信模型但依赖缺失保留 partial；无可信模型时只保留文件/文本，查询明确语义不可用；strict 拒绝保留旧 head，恢复后重建替换旧事实 |
+| 故障 | 工具崩溃、超时、取消、清单损坏和配置冲突失败，不伪装为降级成功；准备清单和索引 head 各自原子提交 |
+| 报告 | schema 2 全局摘要；JSON / Markdown 同源，不保存逐文件明细和完整配置，不新增 JSONL；真实项目 JSON 约 4.7 KB |
+| 门禁 | `just test-rust`、Java fixture 641 项、Python 核心 20 项与导出器 5 项通过；独立工作区、三语言 Native、降级/strict/恢复、无 pyproject 显式根均有 fixture |
+| 冻结项目 | 分发包经 `index --prepare` 重放同一 diorama-sdd 提交、615 文件，25/25 导航及三个公开查询通过；integrity=ok、FK 违规 0 |
+| 完整性边界 | 与 v2 一致：30 complete、585 partial；保留 5 个真实源码外部缺失名称；未新增完整语义或性能认证 |
+
+使用说明：[统一输入准备](modules/inputs.md)。本轮独立回执：[2026-10-19-unified-inputs](../lang-python-adaptor/validation/2026-10-19-unified-inputs/receipt.json)。安全机制 SIGKILL 原日志和重试日志均保留，可执行路径沿用；Java SDK 仍单独安装。v2 历史回执不改写。
+
+## Python 配置与完整性修复（2026-10-19，v2）
+
+| 项目 | 当前结果 |
+|---|---|
+| 可选元数据 | 显式 --pyproject 静态读取；无该文件时保留显式根流程。标准字段、setuptools 常规布局、TEST 的 pytest pythonpath；动态字段不执行，依赖版本不宣称已核验 |
+| 冻结与兼容 | 输入 schema 2，接受旧 schema 1；读取的配置进入 CONTROL，变更要求重新导出。adapter v2 和后端提交严格核对；worker 21、graph 3、物理 schema 10 不变，v1 profile 不复用 |
+| 完整性归因 | 全部诊断保留，区分 source / auxiliary / backend；后端来源不冒充捕获文件。使用实际反向依赖传播，未知影响单列上下文 partial，不广播到全部文件 |
+| 提取修复 | 赋值左侧不记作读取引用；except 的 as 变量补齐声明。每 world 保存每类最多 3 个定位样本和后端目标证据 |
+| 仓库门禁 | Java 641 项、Python 核心 20 项（含 subprocess helper）及导出器 5 项、共享 Rust 门禁、独立 Release 7 项 CLI、Native Java/Python 与三语言发布通过 |
+| 冻结项目 | 同一 diorama-sdd 提交 31259b761a5ea77672d0e90bc9e2776e4dfe397e、615 物理文件；TEST 显式加入 tests 和 fixtures/e2e/layout13，25/25 导航与三个公开查询通过 |
+| 缺失模块 | helpers / seed_remote_knowledge / update_remote_knowledge 在项目上下文中已解析；保留 jury/Codex 的 5 个外部名称。另完整暴露 25 个辅助依赖缺失名称，不能与旧的源码诊断口径混比 |
+| coverage | 30 complete、585 partial；378 文件有带来源证据的依赖缺口，未知影响上下文 0、无证据传播标记 0。原先仅全局标记的 41 文件中，30 已完整，11 有实际依赖缺口 |
+| 剩余提取缺口 | reference_target_not_extracted 涉及文件从 220 降至 153；Any、合成 callable 和其他未知仍明确保留，不代表完整语义或全库准确率 |
+| 图规模 | 57,375 节点、264,013 条非调用边、66,775 调用位置、50,504 调用目标；4,019 诊断包含源码 1,689、辅助 2,319、后端 11；integrity=ok、FK 违规 0 |
+| 性能边界 | 本轮只做功能重放，measured=false；没有新增正式性能测量，下面 v1 的 38.458 s 不能作为 v2 性能 |
+
+最新回执：[2026-10-19](../lang-python-adaptor/validation/2026-10-19/receipt.json)。原始安全机制 SIGKILL、配置/测试失败和修复前功能回执均保留；可执行文件路径和名称沿用，旧 Release 字节另存本机备份。配置及查询边界见 [Python worker](modules/python-worker.md)。
+
+## Python 初轮验收（2026-10-17，v1 历史）
+
+| 项目 | 结果 |
+|---|---|
+| 核心实现 | 固定 Pyrefly 1.4.0，独立 Cargo workspace / worker；显式清单冻结；GRA1；Python 查询策略；多语言单次发布与完全相同输入复用路径 |
+| 存储迁移 | 物理 schema 10 接受 Python 声明种类；禁止按同名为 Python 补边；旧图需 `index --full` |
+| 已验证 | Java fixture（worker 21）、Native 生命周期/图库、Python CLI 六项（含九个探针）、Native/JVM 混合组合；核心和共享门禁见最新回执 |
+| 分发 | 原路径 Release 构建和独立 home 的随包六项 CLI 通过；Rust/Python 包含锁文件、许可证清单、fixture 与 SHA256SUMS，Java SDK 单独安装 |
+| 真实项目功能 | diorama-sdd 冻结提交 `31259b761a5ea77672d0e90bc9e2776e4dfe397e`，615 文件；23 个调用与 2 个字段引用共 25/25；Python 3.12/darwin 声明依赖的 wheel 字节冻结，不执行目标代码 |
+| 失败保留 | 安全机制 SIGKILL、默认栈溢出、超时、图目标约束及验收脚本选错导航/selector 的原回执均保留；没有重标原失败 |
+| 单轮测量 | 隔离 Release、空应用状态、4 GiB worker / 512 MiB 输出 / 2 GiB scratch：CLI 全流程 38.458 s，进程树峰值 2.034 GiB，图库 168.742 MiB |
+| 图规模 | 57,086 节点、295,695 条非调用边、66,775 调用位置、50,233 调用目标；integrity=ok，FK 违规 0 |
+| 调用分母 | 66,775 位置中 exact 48,382、heuristic 1,793、ambiguous 23、unresolved 16,577；这是存储分布，不是准确率 |
+| 未关闭 | 615 文件均为 partial；8 个缺失模块名含 5 个可选外部名称及 3 个运行时搜索路径名称；不认证完整 Python 语义、Linux 或容量/稳定性能 |
+
+capture 0.732 s；分析及入库 25.436 s；发布 12.202 s。后端 solve / facts 为 4.696 / 0.364 s；交付和写库重叠，不能与上述阶段再累加。OS 页缓存未控制，RSS 每 0.2 s 采样同一时刻 daemon 及子进程之和。仅正式测量一轮，前面的功能重放不计作性能样本。
+
+该轮范围验收回执：[2026-10-17](../lang-python-adaptor/validation/2026-10-17/receipt.json)，包含冻结输入、wheel 哈希、原失败、同库复查和制品哈希；大型原始 JSON 无损 gzip 保存。当前 dist 已更新为 v3，不能用其字节冒充旧测量；原产物另存本机备份。
+
+配置、能力限制和命令见 [Python worker](modules/python-worker.md)。后续历史 Java/Rust 回执保持原协议和产物含义，不构成 worker 21 / schema 10 的 Java Native 正式放行；Python 本轮仅签上述冻结范围。
 
 ## 架构整改与真实项目复验（2026-10-16）
 
@@ -152,7 +208,7 @@ JVM 回归曾被生成脚本写死 graph model 2 阻塞；已让 JVM/Native mani
 
 dogfood 使用独立 home、4 GiB worker 预算、512 MiB 结果预算及 2,000,000 fact 上限。功能回执保存在 `target/rust-dogfood/functional-receipt.json`，包含失败尝试及成功产物 SHA；快照早于最后的模块包含关系修正，不冒充最终源码逐字验收。默认 256 MiB 的首次性能尝试以 `WORKER_MEMORY_BUDGET` 失败，原回执 `target/rust-dogfood/receipt.json` 保留；后续仅功能验证，不报告性能通过或稳定容量结论。
 
-当前 worker 20 / graph model 3 / 物理 schema 9 需要配套重建；旧图执行 `index --full`。下文 Java Native / release / 性能回执属于各自历史产物，不构成本次版本的正式放行。
+当前 worker 21 / graph model 3 / 物理 schema 10 需要配套重建；旧图执行 `index --full`。下文 Java Native / release / 性能回执属于各自历史产物，不构成本次版本的正式放行。
 
 Rust 分发脚本已包含真实 worker、导出器、fixture 和语言文档，release 门禁已增加真实 Rust E2E；本轮验证 debug 构建及脚本语法，未重新执行 release 构建和分发验收。
 
@@ -198,12 +254,12 @@ Native 首次安装因活跃 JVM 触发 `STOP_RUNTIME_BEFORE_NATIVE_INSTALL:9792
 | 项目 | 当前值 | 说明 |
 |---|---|---|
 | CLI-daemon handshake | 3 | `DAEMON_PROTOCOL_VERSION` |
-| worker protocol | 20 | `WORKER_PROTOCOL_VERSION` |
+| worker protocol | 21 | `WORKER_PROTOCOL_VERSION` |
 | graph model | 3 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
 | analysis request/result | 10 | Java bridge 与 Rust host 必须成套 |
 | C ABI | 4 | 共享库/header/host 必须成套 |
 | javac 模型 / compiler batch | javac-model-v50 / 2 | 与 worker 协议独立 |
-| 图库物理格式 | user_version 9 | Rust 紧凑布局 |
+| 图库物理格式 | user_version 10 | 增加 Python 声明约束，Rust 紧凑布局保留 |
 | 上游逻辑格式 | schema 33 / GraphSemantics 26 | `project_meta.schema_version` 与物理格式不是同一个版本 |
 | adapter | anatomist-4a903272-codeana-graph2-maven-fallback1 | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
 | catalog / 人工标注库 | 2 / 2 | 独立事务升级，保留人工正文 |

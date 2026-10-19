@@ -26,6 +26,7 @@ const MAX_LOG: usize = 32 * 1024 * 1024;
 #[derive(Debug, Clone)]
 pub struct ExportOptions {
     pub project: PathBuf,
+    pub manifest: Option<PathBuf>,
     pub output: PathBuf,
     pub maven: String,
     pub settings: Option<PathBuf>,
@@ -600,63 +601,7 @@ fn unique(values: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// Keep bounded actionable text without repository URLs or JVM option echoes.
-fn failure_details(text: &str) -> String {
-    let mut plain = String::new();
-    let mut escape = false;
-    for c in text.chars() {
-        if c == '\u{1b}' {
-            escape = true;
-            continue;
-        }
-        if escape {
-            if c.is_ascii_alphabetic() {
-                escape = false;
-            }
-            continue;
-        }
-        plain.push(c);
-    }
-    let mut result = plain
-        .lines()
-        .filter(|line| {
-            let line = line.trim().trim_start_matches("[ERROR]").trim();
-            !line.is_empty()
-                && ![
-                    "To see the full stack trace",
-                    "Re-run Maven using",
-                    "For more information",
-                    "[Help ",
-                    "NOTE: Picked up ",
-                    "Picked up ",
-                ]
-                .iter()
-                .any(|prefix| line.starts_with(prefix))
-        })
-        .map(|line| {
-            line.split_whitespace()
-                .map(|word| {
-                    if ["http://", "https://", "file://"]
-                        .iter()
-                        .any(|prefix| word.to_ascii_lowercase().contains(prefix))
-                    {
-                        "<repository>"
-                    } else {
-                        word
-                    }
-                })
-                .collect::<Vec<_>>()
-                .join(" ")
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    let mut end = result.len().min(4096);
-    while !result.is_char_boundary(end) {
-        end -= 1;
-    }
-    result.truncate(end);
-    result
-}
+pub(crate) use crate::input_process::failure_details;
 
 #[allow(clippy::too_many_arguments)] // Receipt identity spans the immutable export attempt and its current selection.
 fn dependency_failure(
@@ -784,7 +729,14 @@ fn prepare_export(options: &ExportOptions) -> Result<PreparedExport> {
     let root = options.project.canonicalize()?;
     let output = resolve(&options.output)?;
     ensure!(!output.exists(), "output must not exist");
-    ensure!(root.join("pom.xml").is_file(), "pom.xml required");
+    let manifest = options
+        .manifest
+        .clone()
+        .unwrap_or_else(|| root.join("pom.xml"));
+    ensure!(
+        manifest.is_file() && manifest.canonicalize()?.starts_with(&root),
+        "pom.xml required inside project"
+    );
     ensure!(
         (1..=3600).contains(&options.timeout),
         "timeout must be 1..3600 seconds"
@@ -844,7 +796,15 @@ fn prepare_export(options: &ExportOptions) -> Result<PreparedExport> {
             external.insert(p.to_string_lossy().into_owned(), hash_file(&p)?);
         }
     }
-    let control = controls(&root)?;
+    let mut control = controls(&root)?;
+    let entry = manifest.parent().context("MAVEN_ENTRY_PARENT")?;
+    for directory in entry.ancestors().take_while(|p| p.starts_with(&root)) {
+        if directory != root {
+            for (path, sha) in controls(directory)? {
+                control.insert(relative(&root, &directory.join(path))?, sha);
+            }
+        }
+    }
     let tmp = tempfile::Builder::new()
         .prefix("codeana-maven-export-")
         .tempdir()?;
@@ -852,7 +812,7 @@ fn prepare_export(options: &ExportOptions) -> Result<PreparedExport> {
     let tests = scopes.iter().any(|s| s == "TEST");
     let mut command = Command::new(&maven);
     command
-        .current_dir(&root)
+        .current_dir(entry)
         .args(["-B", "-q", "-Dstyle.color=never"]);
     for key in [
         "JAVA_TOOL_OPTIONS",
@@ -879,7 +839,7 @@ fn prepare_export(options: &ExportOptions) -> Result<PreparedExport> {
     if options.offline {
         command.arg("-o");
     }
-    command.arg("-f").arg(root.join("pom.xml"));
+    command.arg("-f").arg(&manifest);
     command
         .arg(format!("-Dmaven.ext.class.path={}", extension.display()))
         .arg(format!("-Dcodeana.inputs.output={}", tmp.path().display()))

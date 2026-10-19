@@ -15,6 +15,7 @@ cp scripts/export-rust-inputs.py "$package_dir/bin/codeana-export-rust-inputs"
 cp -R fixtures/rust "$package_dir/fixtures/rust"
 cp docs/rust-first.md "$package_dir/README.md"
 cp docs/modules/rust-worker.md "$package_dir/modules/"
+cp docs/modules/inputs.md "$package_dir/modules/"
 python3 - "$repo_root" "$package_dir" "$(uname -s)" "$(uname -m)" <<'PY_MANIFEST'
 import json
 import pathlib

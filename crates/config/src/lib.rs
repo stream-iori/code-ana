@@ -1,6 +1,8 @@
 //! Strict project configuration and bounded, immutable source capture.
+pub mod inputs;
 pub mod java_inputs;
 mod lombok;
+pub mod python_inputs;
 pub mod rust_inputs;
 mod schema;
 use anyhow::{Context, Result, ensure};
@@ -86,6 +88,10 @@ pub struct Effective {
     pub java_inputs: Option<JavaInputs>,
     #[serde(default)]
     pub rust_inputs: Option<codeana_model::rust::Inputs>,
+    #[serde(default)]
+    pub python_inputs: Option<codeana_model::python::Inputs>,
+    #[serde(default)]
+    pub input_units: Vec<inputs::EffectiveUnit>,
 }
 #[derive(Debug, Clone)]
 pub struct Capture {
@@ -162,10 +168,23 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         codeana_model::ErrorCode::InvalidProjectConfigEncoding,
         "",
     ))?;
+    resolve_text(root, request, language_required, text, true)
+}
+
+pub(crate) fn resolve_text(
+    root: &Path,
+    request: &Request,
+    language_required: bool,
+    text: &str,
+    catalog: bool,
+) -> Result<Effective> {
     let mut c: ProjectConfig = toml::from_str(text).context(codeana_model::DomainError::new(
         codeana_model::ErrorCode::InvalidProjectConfig,
         "",
     ))?;
+    if catalog && c.inputs.is_some() {
+        return inputs::resolve(root, request, language_required, c, text);
+    }
     let rust_policy = c
         .languages
         .rust
@@ -192,6 +211,7 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
     resolve_languages(&mut c, request, &mut origins, language_required)?;
     let java_inputs = discover_java(root, &mut c, language_required)?;
     let rust_inputs = discover_rust(root, &mut c, language_required, rust_policy.as_ref())?;
+    let python_inputs = python_inputs::discover(root, &c, language_required)?;
     resolve_modules(&mut c, request, java_inputs.is_some())?;
     glob(&c.scan.include)?;
     glob(&c.scan.exclude)?;
@@ -222,6 +242,8 @@ fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Resul
         capture_digest,
         java_inputs,
         rust_inputs,
+        python_inputs,
+        input_units: vec![],
     })
 }
 fn resolve_common(c: &mut ProjectConfig, origins: &mut BTreeMap<String, String>) -> Result<()> {
@@ -358,6 +380,10 @@ fn resolve_languages(
             || c.languages
                 .rust
                 .as_ref()
+                .is_some_and(|l| l.enabled == Some(true))
+            || c.languages
+                .python
+                .as_ref()
                 .is_some_and(|l| l.enabled == Some(true)),
         codeana_model::DomainError::new(codeana_model::ErrorCode::NoEnabledLanguage, "")
     );
@@ -442,6 +468,12 @@ fn resolve_languages(
                 );
             }
         }
+    }
+    if let Some(python) = &c.languages.python {
+        ensure!(
+            python.enabled.is_some(),
+            "LANGUAGE_ENABLED_REQUIRED: python"
+        );
     }
     Ok(())
 }
@@ -556,6 +588,22 @@ fn resolve_modules(c: &mut ProjectConfig, request: &Request, has_java_inputs: bo
             entries.insert((m.language.clone(), m.root.clone(), m.manifest.clone())),
             codeana_model::DomainError::new(codeana_model::ErrorCode::DuplicateModuleEntry, "")
         );
+        if m.language == "python" {
+            ensure!(
+                c.languages
+                    .python
+                    .as_ref()
+                    .is_some_and(|p| p.enabled == Some(true)),
+                "MODULE_LANGUAGE_NOT_ENABLED: python"
+            );
+            for source in &m.source_roots {
+                ensure!(
+                    relative(&source.path) && matches!(source.scope.as_str(), "MAIN" | "TEST"),
+                    "PYTHON_SOURCE_ROOT"
+                );
+            }
+            continue;
+        }
         let l = match m.language.as_str() {
             "java" => c.languages.java.as_ref(),
             "rust" => c.languages.rust.as_ref(),
@@ -1018,6 +1066,12 @@ fn capture_workspace(
         if !files_only && effective.rust_inputs.is_some() && p.ends_with(".rs") {
             continue; // Rust capture applies its filters before reading any source bytes.
         }
+        if !files_only
+            && effective.python_inputs.is_some()
+            && (p.ends_with(".py") || p.ends_with(".pyi") || p.ends_with("py.typed"))
+        {
+            continue;
+        }
         ensure!(
             !entry.file_type().is_symlink(),
             codeana_model::DomainError::new(
@@ -1421,6 +1475,23 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
     };
     capture_workspace(&policy, &mut accumulator)?;
     capture_java_metadata(&policy, &mut accumulator)?;
+    for unit in &effective.input_units {
+        if let Some(child) = &unit.effective {
+            let child_policy = CaptureSelection {
+                effective: child,
+                root: &root,
+                includes: policy.includes.clone(),
+                excludes: policy.excludes.clone(),
+                text_only: policy.text_only.clone(),
+                text_include: policy.text_include.clone(),
+                text_search,
+                files_only,
+                started,
+                deadline,
+            };
+            capture_java_metadata(&child_policy, &mut accumulator)?;
+        }
+    }
     let CaptureAccumulator {
         mut manifest,
         mut blobs,
@@ -1489,12 +1560,23 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
                 !c.scan.scopes.contains(&source.scope)
                     || (!module.scan.scopes.is_empty()
                         && !module.scan.scopes.contains(&source.scope))
-                    || effective.java_inputs.as_ref().is_some_and(|inputs| {
-                        inputs
-                            .modules
-                            .iter()
-                            .any(|m| m.id == module.id && !m.selected)
-                    })
+                    || effective
+                        .java_inputs
+                        .as_ref()
+                        .or_else(|| {
+                            effective
+                                .input_units
+                                .iter()
+                                .filter_map(|u| u.effective.as_ref())
+                                .filter_map(|e| e.java_inputs.as_ref())
+                                .find(|inputs| inputs.modules.iter().any(|m| m.id == module.id))
+                        })
+                        .is_some_and(|inputs| {
+                            inputs
+                                .modules
+                                .iter()
+                                .any(|m| m.id == module.id && !m.selected)
+                        })
             });
         }
     }
@@ -1507,6 +1589,96 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
             &mut total,
             &spool,
         )?;
+        python_inputs::capture(
+            &root,
+            &effective,
+            &mut manifest,
+            &mut blobs,
+            &mut total,
+            &spool,
+        )?;
+        for unit in &effective.input_units {
+            if let Some(child) = &unit.effective {
+                if child
+                    .config
+                    .modules
+                    .iter()
+                    .any(|m| m.language == "java" && m.lombok.mode.as_deref() == Some("model"))
+                {
+                    lombok::capture(
+                        &root,
+                        &mut manifest,
+                        &mut blobs,
+                        &mut total,
+                        &spool,
+                        excludes,
+                        (started, deadline),
+                    )?;
+                }
+                rust_inputs::capture(&root, child, &mut manifest, &mut blobs, &mut total, &spool)?;
+                python_inputs::capture(
+                    &root,
+                    child,
+                    &mut manifest,
+                    &mut blobs,
+                    &mut total,
+                    &spool,
+                )?;
+            }
+        }
+        if let Some(preparation) = &c.inputs {
+            let path = &preparation.manifest;
+            ensure!(!excludes.is_match(path), "CONTROL_INPUT_EXCLUDED: {path}");
+            let bytes = bounded_read(&root.join(path), 32 << 20)?;
+            let catalog: inputs::InputCatalog = serde_json::from_slice(&bytes)?;
+            ensure!(
+                catalog.units.len() == effective.input_units.len()
+                    && catalog
+                        .units
+                        .iter()
+                        .zip(&effective.input_units)
+                        .all(|(a, b)| digest(a) == digest(&b.prepared)),
+                "INPUT_CATALOG_CHANGED"
+            );
+            add_captured(
+                &mut manifest,
+                &mut blobs,
+                &mut total,
+                &spool,
+                path.clone(),
+                bytes,
+                (
+                    String::new(),
+                    "CONTROL".into(),
+                    String::new(),
+                    String::new(),
+                ),
+            )?;
+            for unit in &effective.input_units {
+                for artifact in unit.prepared.config.iter().chain(&unit.prepared.artifacts) {
+                    ensure!(
+                        !excludes.is_match(&artifact.path),
+                        "CONTROL_INPUT_EXCLUDED: {}",
+                        artifact.path
+                    );
+                    let bytes = inputs::read_artifact(&root, artifact)?;
+                    add_captured(
+                        &mut manifest,
+                        &mut blobs,
+                        &mut total,
+                        &spool,
+                        artifact.path.clone(),
+                        bytes,
+                        (
+                            String::new(),
+                            "CONTROL".into(),
+                            String::new(),
+                            String::new(),
+                        ),
+                    )?;
+                }
+            }
+        }
     }
     manifest
         .files

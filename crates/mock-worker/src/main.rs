@@ -62,6 +62,7 @@ async fn main() -> Result<()> {
                 .await?;
             }
             Some(Body::Discover(d)) => {
+                ensure!(d.python.is_none(), "MOCK_PYTHON_UNSUPPORTED");
                 let manifest: Manifest = map(&d.manifest.ok_or_else(|| {
                     anyhow::anyhow!(codeana_model::DomainError::new(
                         codeana_model::ErrorCode::ManifestRequired,

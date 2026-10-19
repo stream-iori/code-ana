@@ -55,6 +55,12 @@ impl Engine {
         mut c: Capture,
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
+        if !c.effective.input_units.is_empty() {
+            return self.index_prepared(id, req, c, cancel).await;
+        }
+        if c.effective.python_inputs.is_some() {
+            return self.index_python(id, req, c, cancel).await;
+        }
         if c.effective.rust_inputs.is_some() {
             return self.index_rust(id, req, c, cancel).await;
         }
@@ -672,26 +678,20 @@ impl Engine {
                 "full" | "detailed"
             );
             let report = ReportDocument {
+                schema_version: 2,
+                global: crate::reports::GlobalReport::from_capture(c, true),
                 id: id.into(),
                 created: now(),
                 revision: revision.id.clone(),
                 level: if full { "full" } else { "basic" }.into(),
                 summary: report_summary,
                 result: t.clone(),
-                effective: if full {
-                    ReportConfig::Full(Box::new(c.effective.clone()))
-                } else {
-                    ReportConfig::Basic {
-                        config_digest: c.effective.config_digest.clone(),
-                        origins: c.effective.origins.clone(),
-                    }
+                effective: ReportConfig::Basic {
+                    config_digest: c.effective.config_digest.clone(),
+                    origins: BTreeMap::new(),
                 },
                 context: worker_context,
-                diagnostics: if full {
-                    summary.diagnostic_samples.clone()
-                } else {
-                    vec![]
-                },
+                diagnostics: vec![],
             };
             let store = self.store.clone();
             let report_id = id.to_owned();
@@ -741,5 +741,204 @@ impl Engine {
             }
         }
         Ok(t)
+    }
+}
+
+pub(super) struct StreamRequest<'a> {
+    pub manifest: &'a Manifest,
+    pub revision: Revision,
+    pub expected: &'a RevisionId,
+    pub baseline: Option<&'a BaselineInput>,
+    pub full: bool,
+}
+
+impl Engine {
+    pub(super) async fn stage_language_stream(
+        &self,
+        id: &str,
+        worker: &mut worker::Worker,
+        request: StreamRequest<'_>,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, StagedCandidate)> {
+        self.stage_language_stream_rows(id, worker, request, vec![], cancel)
+            .await
+    }
+    pub(super) async fn stage_language_stream_rows(
+        &self,
+        id: &str,
+        worker: &mut worker::Worker,
+        request: StreamRequest<'_>,
+        additional_rows: Vec<codeana_contracts::graph::Row>,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, StagedCandidate)> {
+        let mut staging = None;
+        let mut metrics = None;
+        let profile = request.revision.profile.clone();
+        let header = worker
+            .analyze_into(
+                request.manifest,
+                &profile,
+                request.expected,
+                request.baseline,
+                request.full,
+                cancel,
+                |header| {
+                    let (sender, records) = codeana_contracts::stream::GraphStream::channel();
+                    metrics = Some(sender.metrics.clone());
+                    let store = self.index.clone();
+                    let revision = request.revision.clone();
+                    let mut header = header.clone();
+                    // The worker receipt binds its language view. Storage owns
+                    // the complete revision, including captured resources.
+                    header.manifest = revision.manifest.id();
+                    header.producer = revision.producer.clone();
+                    let additional = additional_rows.clone();
+                    let baseline = request.expected.clone();
+                    let cancellation = cancel.clone();
+                    staging = Some(tokio::task::spawn_blocking(move || {
+                        store.stage_graph_records(
+                            revision,
+                            &header,
+                            records.chain(additional.into_iter().map(Ok)),
+                            &baseline,
+                            || {
+                                ensure!(
+                                    !cancellation.is_cancelled(),
+                                    DomainError::new(ErrorCode::Cancelled, "")
+                                );
+                                Ok(())
+                            },
+                            |_| Ok(()),
+                        )
+                    }));
+                    Ok(sender)
+                },
+            )
+            .await;
+        // Always join storage, including failed/cancelled delivery.
+        let staged = match staging {
+            Some(task) => Some(task.await?),
+            None => None,
+        };
+        let (header, candidate) = match (header, staged) {
+            (Err(transport), Some(Err(storage)))
+                if transport
+                    .downcast_ref::<DomainError>()
+                    .is_some_and(|error| error.code == ErrorCode::CandidateStreamClosed) =>
+            {
+                return Err(storage);
+            }
+            (Err(error), _) => return Err(error),
+            (Ok(header), Some(candidate)) => (header, candidate?),
+            (Ok(_), None) => anyhow::bail!("CANDIDATE_STREAM_NOT_STARTED"),
+        };
+        if let Some(metrics) = metrics {
+            self.tasks.event(
+                &TaskId::from(id),
+                &Event::Progress(format!(
+                    "{}_stream {}",
+                    worker.context.language,
+                    serde_json::to_string(&metrics.summary())?
+                )),
+            )?;
+        }
+        Ok((header.mode, candidate))
+    }
+}
+
+impl Engine {
+    /// All End receipts are verified before a combined candidate can be staged.
+    /// Used for any language set that requires a conservative full rebuild.
+    pub(super) async fn stage_full_languages(
+        &self,
+        sessions: &mut [(worker::Worker, Manifest)],
+        revision: Revision,
+        expected: &RevisionId,
+        scratch: &Path,
+        limits: codeana_contracts::graph_archive::OutputLimits,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, StagedCandidate)> {
+        self.stage_full_language_rows(
+            sessions,
+            revision,
+            expected,
+            scratch,
+            limits,
+            vec![],
+            cancel,
+        )
+        .await
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn stage_full_language_rows(
+        &self,
+        sessions: &mut [(worker::Worker, Manifest)],
+        revision: Revision,
+        expected: &RevisionId,
+        scratch: &Path,
+        limits: codeana_contracts::graph_archive::OutputLimits,
+        additional_rows: Vec<codeana_contracts::graph::Row>,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, StagedCandidate)> {
+        let mut archives = Vec::new();
+        let mut replacements = Vec::new();
+        for (worker, manifest) in sessions {
+            let result = worker
+                .analyze(manifest, &revision.profile, expected, None, true, cancel)
+                .await?;
+            ensure!(
+                result.header.mode == AnalysisMode::Full,
+                "FULL_ANALYSIS_REQUIRED"
+            );
+            replacements.extend(result.header.replacements);
+            archives.push(result.records);
+        }
+        replacements.sort();
+        replacements.dedup();
+        let header = AnalysisHeader {
+            mode: AnalysisMode::Full,
+            baseline: expected.to_string(),
+            manifest: revision.manifest.id(),
+            profile: revision.profile.clone(),
+            producer: revision.producer.clone(),
+            replacements,
+        };
+        let store = self.index.clone();
+        let expected = expected.clone();
+        let cancel = cancel.clone();
+        let scratch = scratch.to_path_buf();
+        let candidate = tokio::task::spawn_blocking(move || -> Result<_> {
+            // Worker output bounds have already been enforced independently.
+            let mut archive = GraphArchiveBuilder::new(Some(&scratch), limits.bytes, limits.facts)?;
+            for result in archives {
+                for row in result.records()? {
+                    ensure!(
+                        !cancel.is_cancelled(),
+                        DomainError::new(ErrorCode::Cancelled, "")
+                    );
+                    archive.push(&row?)?;
+                }
+            }
+            for row in additional_rows {
+                archive.push(&row)?;
+            }
+            let archive = archive.seal()?;
+            store.stage_graph_records(
+                revision,
+                &header,
+                archive.records()?,
+                &expected,
+                || {
+                    ensure!(
+                        !cancel.is_cancelled(),
+                        DomainError::new(ErrorCode::Cancelled, "")
+                    );
+                    Ok(())
+                },
+                |_| Ok(()),
+            )
+        })
+        .await??;
+        Ok((AnalysisMode::Full, candidate))
     }
 }

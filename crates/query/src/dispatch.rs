@@ -514,6 +514,42 @@ pub(super) fn run(
                     ..Default::default()
                 },
             )?;
+            if root.attributes.language.as_ref().map(String::as_str) == Some("python") {
+                ensure!(
+                    req.algorithm != codeana_model::DispatchAlgorithm::Cha,
+                    "PYTHON_CHA_UNSUPPORTED"
+                );
+                if targets.is_empty() {
+                    evidence.semantic = false;
+                    evidence
+                        .reasons
+                        .push(format!("python_unresolved_call:{}", root.id));
+                }
+                for target in targets {
+                    let exact = target.status == "resolved" && target.declaration_resolved;
+                    if !exact {
+                        evidence.semantic = false;
+                        evidence
+                            .reasons
+                            .push(format!("python_partial_binding:{}", target.id));
+                    }
+                    if req.algorithm == codeana_model::DispatchAlgorithm::Exact && !exact {
+                        continue;
+                    }
+                    records.push(Record::Dispatch(DispatchCandidate {
+                        call_site: root.id.to_string(),
+                        target: (!target.target.is_empty()).then_some(target.target),
+                        binding: Some(target.status),
+                        proof: vec![target.id.to_string()],
+                        possible: !exact,
+                        candidate: Some(if exact { "resolved" } else { "possible" }.into()),
+                        algorithm: Some("pyrefly-static".into()),
+                        world: target.owner.world.to_string(),
+                        ..Default::default()
+                    }));
+                }
+                continue;
+            }
             if targets.is_empty() {
                 evidence.semantic = false;
                 evidence

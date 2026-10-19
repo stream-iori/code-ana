@@ -69,6 +69,8 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 ## 2. 输入与分析
 
+显式 `index --prepare` 在 CLI 本地通过类型化 provider 准备 Java/Rust/Python 输入，保留各原生工作区回执并原子更新公共清单。daemon 不运行这些工具；捕获阶段验证公共清单及各配置视图，分析单元各持上下文，全部验证后一次 CAS。上下文不可得的入口只保留文件/文本及不可用 coverage；新模式保守全量或相同输入复用。见 [统一输入准备](modules/inputs.md)。
+
 | 阶段 | 实现 |
 |---|---|
 | 配置 | 用户服务/工具链 + 项目公共策略 + 语言/module/world + 显式 CLI 覆盖；校验后冻结 |
@@ -97,7 +99,7 @@ delta: SQLite backup(兼容 baseline) → 替换归属 → 同样封存校验
                      老读者保留旧 revision；新查询固定新 head
 ```
 
-物理 schema 9，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 33。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
+物理 schema 10，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 33。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
 
 graph/catalog/人工标注分别版本化。源码 blobs、分页结果、snapshot/diff/report 等仍由 Rust 生命周期和引用保护管理；人工正文不随图重建删除。
 
@@ -130,3 +132,9 @@ Rust 单语言复用有界 GraphStream，blocking 记录生成、异步 IPC 和 
 ## 任务与发布职责（2026-10-16）
 
 Engine 只装配任务生命周期和业务服务。TaskRunner 管捕获、执行、join 与终态；Scheduler 管分析/只读/维护三个有界通道及项目许可；PublicationCoordinator 管 blocking 发布的完成等待。存储通过任务共享 PublicationFence 裁决取消与提交，catalog 仍是发布事实的依据。取消后不分离存储线程，任务结束时不存在可继续切换 head 的后台工作。
+
+## Python 进程边界
+
+Python 通过独立 Rust worker 嵌入固定 Pyrefly，构建位于独立 Cargo workspace，以隔离 Unicode 依赖版本。输入先捕获再在私有目录恢复，禁止目标解释器/主机环境补全。Python 单语言复用有界候选行流；多语言逐个验证输出后合并，只有一次 CAS。Java isolate 生命周期保持。详见 [Python worker](modules/python-worker.md)。
+
+adapter v2 可在导出阶段显式读取 pyproject 静态元数据；没有该文件的项目继续使用显式输入。配置本身进入 CONTROL 冻结。诊断来源和影响在持有 Pyrefly 事务时按实际反向依赖取得，随后仅交付自有类型；文件级缺口与未知上下文影响分开，辅助及后端诊断均保留。

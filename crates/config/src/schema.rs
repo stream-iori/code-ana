@@ -16,6 +16,7 @@ pub struct ProjectConfig {
     pub observability: Observability,
     pub languages: Languages,
     pub modules: Vec<Module>,
+    pub inputs: Option<crate::inputs::InputPreparation>,
     pub versions: Versions,
     pub search: Search,
 }
@@ -61,6 +62,9 @@ pub struct IndexResources {
     pub worker_memory_bytes: Option<u64>,
     pub rust_result_bytes: Option<u64>,
     pub rust_fact_limit: Option<u64>,
+    pub python_result_bytes: Option<u64>,
+    pub python_fact_limit: Option<u64>,
+    pub python_scratch_bytes: Option<u64>,
     pub java_compiler_heap_bytes: Option<u64>,
     pub java_parallelism: Option<u32>,
     pub java_model_record_limit: Option<u32>,
@@ -93,6 +97,18 @@ pub struct Observability {
 pub struct Languages {
     pub java: Option<Language>,
     pub rust: Option<Language>,
+    pub python: Option<PythonLanguage>,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PythonLanguage {
+    pub enabled: Option<bool>,
+    pub discovery: PythonDiscovery,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct PythonDiscovery {
+    pub inputs_manifest: Option<String>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]

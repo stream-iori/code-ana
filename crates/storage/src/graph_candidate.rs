@@ -253,7 +253,7 @@ impl Store {
                 .push(format!("coverage:partial_files:{incomplete}"));
         }
         let incomplete_contexts: i64 = db.query_row(
-            "SELECT count(*) FROM (SELECT DISTINCT module,scope,language,provider_id FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') IN ('','*'))",
+            "SELECT count(*) FROM (SELECT DISTINCT module,scope,language,provider_id,world FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') IN ('','*'))",
             [], |r| r.get(0))?;
         if incomplete_contexts > 0 {
             summary.evidence.semantic = false;
@@ -293,6 +293,16 @@ impl Store {
             [],
             |r| r.get::<_, i64>(0),
         )? as u64;
+        summary.diagnostic_groups = db
+            .prepare("SELECT code,sum(occurrence_count) FROM index_diagnostics GROUP BY code ORDER BY sum(occurrence_count) DESC,code LIMIT 20")?
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)))?
+            .collect::<rusqlite::Result<_>>()?;
+        let group_count = db.query_row(
+            "SELECT count(DISTINCT code) FROM index_diagnostics",
+            [],
+            |r| r.get::<_, i64>(0),
+        )? as u64;
+        summary.diagnostic_groups_omitted = group_count.saturating_sub(20);
         phase_ms.insert(
             "graph_integrity_summary".into(),
             started.elapsed().as_millis() as u64,

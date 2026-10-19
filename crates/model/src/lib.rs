@@ -10,6 +10,7 @@ pub use operations::*;
 mod baseline;
 pub use baseline::*;
 mod attributes;
+pub mod python;
 pub mod rust;
 pub use attributes::*;
 mod reader;
@@ -28,7 +29,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const VERSION: u32 = 3;
-pub const WORKER_PROTOCOL_VERSION: u32 = 20;
+pub const WORKER_PROTOCOL_VERSION: u32 = 21;
 pub const DAEMON_PROTOCOL_VERSION: u32 = 3;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;

@@ -24,7 +24,8 @@ def identity(*parts):
 def run(argv, cwd):
     result = subprocess.run(argv, cwd=cwd, capture_output=True, timeout=120, check=False)
     if result.returncode:
-        raise ValueError(f'RUST_INPUT_EXPORT_COMMAND_FAILED: {argv[0]} {argv[1]} (exit {result.returncode}); prepare dependencies explicitly and retry')
+        code = 'RUST_INPUT_TOOL_CRASHED' if result.returncode < 0 else 'RUST_INPUT_EXPORT_COMMAND_FAILED'
+        raise ValueError(f'{code}: {argv[0]} {argv[1]} (exit {result.returncode}); '+result.stderr.decode(errors='replace')[-4096:])
     if len(result.stdout) > 64 << 20:
         raise ValueError('RUST_INPUT_EXPORT_BUDGET')
     return result.stdout
@@ -54,17 +55,20 @@ def source_paths(directory):
         yield path
 
 
-def export(root, output, cargo='cargo', rustc='rustc', build_messages=None, cargo_configs=(), worker=None):
+def export(root, output, cargo='cargo', rustc='rustc', build_messages=None, cargo_configs=(), worker=None,
+           entry_manifest=None, namespace=None, config_file=None):
     root = root.resolve()
     output = output.resolve()
     output.relative_to(root)
-    config = tomllib.loads((root / '.code-ana/config.toml').read_text())
+    native_cwd = (root / entry_manifest).resolve().parent if entry_manifest else root
+    native_cwd.relative_to(root)
+    config = tomllib.loads(pathlib.Path(config_file or root / '.code-ana/config.toml').read_text())
     language = config.get('languages', {}).get('rust', {})
     if not language.get('enabled'):
         raise ValueError('RUST_LANGUAGE_NOT_ENABLED')
     policy = prepare(config, [], worker)['policy']
     bundle = output.parent / (output.stem + '-sources')
-    toolchain = run([rustc, '-vV'], root).decode().strip()
+    toolchain = run([rustc, '-vV'], native_cwd).decode().strip()
     host = next(line.split(': ', 1)[1] for line in toolchain.splitlines() if line.startswith('host: '))
     configured = [m for m in config.get('modules', []) if m.get('language') == 'rust']
     for analysis in [language.get('analysis', {})] + [m.get('analysis', {}) for m in configured]:
@@ -79,6 +83,9 @@ def export(root, output, cargo='cargo', rustc='rustc', build_messages=None, carg
             module_variants.setdefault(module['id'], set()).add(identity(spec))
     if not variants:
         variants[identity('default', host)] = {'id': 'default', 'target': host}
+    if namespace:
+        variants = {identity(namespace, key): value for key, value in variants.items()}
+        module_variants = {name: {identity(namespace, key) for key in values} for name, values in module_variants.items()}
     if build_messages and len(variants) != 1:
         raise ValueError('RUST_BUILD_MESSAGES_WORLD_AMBIGUOUS: export one world with matching build messages')
     controls, crates, generated, dependency_sources, omitted = {}, [], {}, {}, {}
@@ -91,16 +98,18 @@ def export(root, output, cargo='cargo', rustc='rustc', build_messages=None, carg
                 builds[message['package_id']] = message
     for variant_key, variant in sorted(variants.items()):
         args = [cargo] + [arg for value in cargo_configs for arg in ('--config', value)] + ['metadata', '--offline', '--locked', '--format-version', '1', '--filter-platform', variant['target']]
+        if entry_manifest:
+            args += ['--manifest-path', str(root / entry_manifest)]
         if not variant.get('default_features', True):
             args.append('--no-default-features')
         if variant.get('features'):
             args += ['--features', ','.join(variant['features'])]
-        metadata = json.loads(run(args, root))
+        metadata = json.loads(run(args, native_cwd))
         if not metadata.get('resolve'):
             raise ValueError('RUST_RESOLVED_GRAPH_REQUIRED')
         nodes = {n['id']: n for n in metadata['resolve']['nodes']}
         members = set(metadata['workspace_members'])
-        cfg = run([rustc, '--print', 'cfg', '--target', variant['target']], root).decode().splitlines()
+        cfg = run([rustc, '--print', 'cfg', '--target', variant['target']], native_cwd).decode().splitlines()
         for requested in variant.get('cfg', []):
             name, _, value = requested.partition('=')
             if not re.fullmatch(r'[A-Za-z_][A-Za-z_0-9]*', name) or ('=' in requested and not isinstance(json.loads(value), str)):
@@ -112,7 +121,10 @@ def export(root, output, cargo='cargo', rustc='rustc', build_messages=None, carg
             own = package['id'] in members
             directory = pathlib.Path(package['manifest_path']).resolve().parent
             module = next((m for m in configured if (root / m['root']).resolve() == directory), None)
-            selected = own and (not configured or module is not None and variant_key in module_variants[module['id']])
+            selected = own and (bool(namespace) or not configured or module is not None and variant_key in module_variants[module['id']])
+            if namespace and module is None and own:
+                base = (root / entry_manifest).parent.resolve()
+                module = dict(id=namespace if directory == base else namespace+'-'+identity(relative(root, directory))[:16], root=relative(root, directory))
             destination = directory if own else bundle / 'dependencies' / identity(package['id'])[:20]
             for target in package['targets']:
                 if 'custom-build' in target['kind']:
@@ -249,6 +261,11 @@ def export(root, output, cargo='cargo', rustc='rustc', build_messages=None, carg
         path = root / name
         if path.is_file():
             controls[name] = digest(path.read_bytes())
+        if entry_manifest:
+            for directory in ((root / entry_manifest).parent, pathlib.Path(metadata['workspace_root'])):
+                path = directory / name
+                if path.is_file():
+                    controls[relative(root, path)] = digest(path.read_bytes())
     result = dict(schema_version=2, toolchain=toolchain, policy=policy, crates=crates,
                   controls=controls, generated=generated, dependency_sources=dependency_sources,
                   omitted_dependencies=omitted, selection=selection)
@@ -266,7 +283,11 @@ if __name__ == '__main__':
     parser.add_argument('--build-messages', type=pathlib.Path)
     parser.add_argument('--cargo-config', action='append', default=[])
     parser.add_argument('--worker', type=pathlib.Path)
+    parser.add_argument('--entry-manifest')
+    parser.add_argument('--namespace')
+    parser.add_argument('--config-file', type=pathlib.Path)
     options = parser.parse_args()
     project = options.project.resolve()
-    result = export(project, options.output or project / '.code-ana/rust-inputs.json', options.cargo, options.rustc, options.build_messages, options.cargo_config, options.worker)
+    result = export(project, options.output or project / '.code-ana/rust-inputs.json', options.cargo, options.rustc, options.build_messages, options.cargo_config, options.worker,
+                    options.entry_manifest, options.namespace, options.config_file)
     print(json.dumps({'crates': len(result['crates']), 'schema_version': result['schema_version']}))

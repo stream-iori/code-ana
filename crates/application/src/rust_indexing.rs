@@ -14,11 +14,11 @@ struct InputSummary {
     selection: codeana_model::rust::SelectionSummary,
 }
 
-struct RustInput {
+pub(super) struct RustInput {
     scratch: tempfile::TempDir,
     config: AnalysisConfig,
-    descriptor: RustConfig,
-    manifest: Manifest,
+    pub(super) descriptor: RustConfig,
+    pub(super) manifest: Manifest,
     memory: u64,
 }
 struct RustWorkers {
@@ -146,7 +146,11 @@ impl Engine {
         )
         .await
     }
-    async fn prepare_rust_inputs(&self, id: &str, capture: &Capture) -> Result<RustInput> {
+    pub(super) async fn prepare_rust_inputs(
+        &self,
+        id: &str,
+        capture: &Capture,
+    ) -> Result<RustInput> {
         let scratch = tempfile::Builder::new()
             .prefix("rust-index-")
             .tempdir_in(self.index.home())?;
@@ -300,8 +304,7 @@ impl Engine {
         let memory = input.memory;
         let rust_worker = worker::Worker::start_language(
             None,
-            None,
-            Some(descriptor),
+            worker::Language::Rust(descriptor),
             &capture.root,
             rust_manifest,
             cancel,
@@ -396,7 +399,7 @@ impl Engine {
             config.inputs.semantic_digest(),
             &rust_worker.context,
             java_worker.as_ref().map(|w| &w.context),
-            "graph3-schema9",
+            "graph3-schema10",
         ));
         let mut full =
             req.full || expected.is_empty() || capture.effective.config.index.mode == "full";
@@ -540,69 +543,19 @@ impl Engine {
         revision: Revision,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
-        let rust_worker = &mut attempt.workers.rust;
-        let rust_manifest = &attempt.input.manifest;
-        let old = &attempt.baseline.old;
-        let full = attempt.baseline.full;
-        let expected = attempt.baseline.expected.clone();
-        let profile = attempt.baseline.profile.clone();
-
-        let mut staging = None;
-        let mut stream_metrics = None;
-        let header = rust_worker
-            .analyze_into(
-                rust_manifest,
-                &profile,
-                &expected,
-                old.as_ref(),
-                full,
-                cancel,
-                |header| {
-                    let (sender, records) = codeana_contracts::stream::GraphStream::channel();
-                    stream_metrics = Some(sender.metrics.clone());
-                    let store = self.index.clone();
-                    let revision = revision.clone();
-                    let header = header.clone();
-                    let baseline = expected.clone();
-                    let cancellation = cancel.clone();
-                    staging = Some(tokio::task::spawn_blocking(move || {
-                        store.stage_graph_records(
-                            revision,
-                            &header,
-                            records,
-                            &baseline,
-                            || {
-                                ensure!(
-                                    !cancellation.is_cancelled(),
-                                    DomainError::new(ErrorCode::Cancelled, "")
-                                );
-                                Ok(())
-                            },
-                            |_| Ok(()),
-                        )
-                    }));
-                    Ok(sender)
-                },
-            )
-            .await;
-        let staged = match staging {
-            Some(task) => Some(task.await?),
-            None => None,
-        };
-        let header = header?;
-        if let Some(metrics) = stream_metrics {
-            self.tasks.event(
-                &TaskId::from(id),
-                &Event::Progress(format!(
-                    "rust_stream {}",
-                    serde_json::to_string(&metrics.summary())?
-                )),
-            )?;
-        }
-        Ok((
-            header.mode,
-            staged.context("CANDIDATE_STREAM_NOT_STARTED")??,
-        ))
+        self.stage_language_stream(
+            id,
+            &mut attempt.workers.rust,
+            crate::indexing::StreamRequest {
+                manifest: &attempt.input.manifest,
+                revision,
+                expected: &attempt.baseline.expected,
+                baseline: attempt.baseline.old.as_ref(),
+                full: attempt.baseline.full,
+            },
+            cancel,
+        )
+        .await
     }
     async fn stage_mixed_languages(
         &self,

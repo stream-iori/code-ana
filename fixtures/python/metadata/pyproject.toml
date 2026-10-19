@@ -1,0 +1,16 @@
+[build-system]
+build-backend = "setuptools.build_meta"
+[project]
+name = "codeana-fixture-metadata"
+dynamic = ["version"]
+requires-python = ">=3.12"
+dependencies = ["example-runtime>=1"]
+[project.optional-dependencies]
+dev = ["example-dev>=2"]
+[tool.setuptools.packages.find]
+where = ["src"]
+[tool.setuptools.dynamic]
+version = {attr = "sample.VERSION"}
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]

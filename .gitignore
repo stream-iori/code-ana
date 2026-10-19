@@ -10,3 +10,4 @@ __pycache__/
 
 /lang-java-adaptor/**/target/
 /lang-java-adaptor/target/
+/lang-python-adaptor/target/

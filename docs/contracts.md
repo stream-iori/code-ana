@@ -14,7 +14,7 @@
 | profile / 输入 digest | 包含实际工具链、依赖顺序、adapter/模型/规则及语义配置；执行预算另记录 |
 | replacement owners | 源文件/资源/producer 的替换范围包含删除和零输出，避免留下旧事实 |
 
-当前 graph model 3、worker 20、analysis request/result 10、C ABI 4、daemon handshake 3；javac-model-v50、compiler batch 2。图库物理 user_version 9，上游逻辑 schema 33、GraphSemantics 26，adapter `anatomist-4a903272-codeana-graph2-maven-fallback1`。catalog/annotations 均为 2，彼此独立。
+当前 graph model 3、worker 21、analysis request/result 10、C ABI 4、daemon handshake 3；javac-model-v50、compiler batch 2。图库物理 user_version 10，上游逻辑 schema 33、GraphSemantics 26，adapter `anatomist-4a903272-codeana-graph2-maven-fallback1`。catalog/annotations 均为 2，彼此独立。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
 
@@ -131,7 +131,7 @@ pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续�
 
 导出 XML `maven-inputs-v2`、manifest schema 4；旧 schema 3 要求重新导出。三态 `resolved` / `source_only_requested` / `source_only_fallback` 与 `resolved_classpath` 一致，源码模式不允许外部 classpath。失败模式必须包含模块、实际 POM、坐标、原因、轮次及失败回执 SHA。schema 4 的 inputs SHA 在降级时指向本次已验证 metadata；失败回执另有独立 SHA。
 
-worker 20 的 JavaConfig 与 analysis request/result 10 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。当前 C ABI 4、graph model 3、图库 schema 9、compiler batch 2。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
+worker 21 的 JavaConfig 与 analysis request/result 10 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。当前 C ABI 4、graph model 3、图库 schema 10、compiler batch 2。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
 
 全局 coverage 使用 `*` 来源；模块级缺口同样影响 semantic evidence，不计作真实源码文件。SQL NULL 来源仍受现有图库 NOT NULL 约束拒绝。增量替换全局降级覆盖与诊断，不随任务次数重复累加；模式切换全量重建。报告新增可选 `analysis_mode/classpath_status`，旧报告缺字段仍可读取。
 
@@ -154,10 +154,18 @@ Rust 单语言由 blocking 记录生成器直接送入 IPC，daemon 复用 `anal
 
 只有独立校验过的 End 才产生内部 `VerifiedEnd`；断流、错序、摘要错误或取消均不可封存候选。队列等待和终态发送可取消；worker 独立读半帧保留的控制流，写阻塞不阻止取消。混合 Java/Rust 使用已验证归档合并，全部成功后一次 CAS。
 
-物理 schema 9 将 Rust 路径/world/key 转为内部整数引用，依赖只存在类型化表中；状态 JSON 不再包含 dependencies。baseline 批量关联重建完整 SourceState，公开 ID、worker 20 和 graph model 3 保持。旧图必须全量重建。
+物理 schema 10 沿用 schema 9 引入的 Rust 路径/world/key 内部整数引用，依赖只存在类型化表中；状态 JSON 不再包含 dependencies。baseline 批量关联重建完整 SourceState，公开 ID、worker 21 和 graph model 3 保持。旧图必须全量重建。
 
 ## 10. 取消与提交的裁决
 
 任务级 PublicationFence 只有一个所有者。Preparing 阶段取消赢得裁决则不能开始提交；Committing 阶段等待真实事务结果，再以 durable commit 生成终态。取消/超时不丢弃仍可能写存储的 future，也不提前释放项目/执行许可。取消发生在事务提交前的文件准备阶段时，旧 head 保留；提交开始后的取消只终止后处理，成功提交必须公开 published。
 
 重复 request ID 在新任务准入前检查规范化参数摘要；重试可在通道饱和或 drain 时读取原任务。不同参数拒绝，新请求无名额时不登记任务。daemon/worker/ABI/GRA1 编码和 schema 版本保持。
+
+## Python 输入与版本
+
+worker 21 的 `Discover.python` 与 Java/Rust 描述符互斥，携带冻结配置文件的路径、SHA-256、长度及结果/事实/scratch 预算。PythonConfig 不改变 Java ABI 或请求版本。Python world 包含显式上下文和根身份顺序；公共位置是一基 UTF-16 列，偏移来自原始 UTF-8 字节。
+
+Python 当前输入 schema 3，兼容 1/2；新增根 module、模块元数据和上下文发布范围/缺口。独立导出器仍可用 --pyproject 读取可选静态配置，统一准备默认检查入口根；没有 pyproject 不构成前置条件。adapter v3 与固定后端提交严格核对，旧 worker 拒绝；新 profile 不复用旧结果。诊断仍按实际反向依赖归因，辅助/后端来源和未知影响保留。公共准备清单 schema 1、报告 schema 2 独立版本化，不升级 worker/daemon/GRA1/图库协议。详见 [统一输入准备](modules/inputs.md)。
+
+物理 schema 10 在保持 schema 9 紧凑表结构的基础上扩展 Python 声明约束，逻辑 schema 33 不变。Python 只发布已绑定目标，不按同名函数跨 world/语言补边。未解析调用继承已验证 source 的 language/provider。缺模块即使被源码 ignore 也计入完整性；严格模式拒绝 partial。旧 revision 查询/增量必须先 `index --full`。详见 [Python worker](modules/python-worker.md)。

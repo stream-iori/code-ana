@@ -1,5 +1,7 @@
 # 索引编排与增量
 
+配置公共输入清单时走多分析单元路径：CLI 可显式准备，daemon 统一捕获并分别分析；有效降级进入 partial，strict 拒绝。模式切换全量清旧绑定；失败/取消/拒绝也有全局摘要。旧单语言流式路径保留。详见 [统一输入准备](inputs.md)。
+
 > 对齐 2026-10-15。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 当前 Discover 响应可为 BuildContext 或结构化 BuildAdvice。Java 支持 plain 显式根，以及有外部 inputs_manifest 的 Maven auto 模块展开；无 metadata 的 auto 明确拒绝。mock 只按已知 fixture 输入 hash 回放。FILES 和工作区文本搜索不进入语言发现。
@@ -134,8 +136,12 @@ daemon 不自行实现 Java 名称求解或 Rust 宏失效。adapter 负责解�
 
 ## 当前交付与存储边界
 
-Java 封存 GRA1/protobuf rows，worker 20 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 9，查询以逻辑 schema 33 读取；不再经过 CAF1 / Fact JSON 去重数据库。
+Java 封存 GRA1/protobuf rows，worker 21 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 10，查询以逻辑 schema 33 读取；不再经过 CAF1 / Fact JSON 去重数据库。
 
 增量对兼容基线使用 SQLite backup，保持未变节点整数主键并重映射新暂存引用，封存时回收孤立字典/元注解定义并重建索引/FTS。旧格式 delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 只固定旧 head 的 CAS 身份，建新库成功后切入口。G1 worker 复用健康 isolate，失败恢复换进程。
 
 Maven manifest schema 4 记录外部依赖三态。自动源码降级仍通过候选完整性检查；模块级 coverage 参与严格门禁，失败保留旧 head。模式改变使 Java 语义身份变化并全量重建，恢复后补齐关系、再次失效时清旧绑定；无变更不自动运行 Maven。详见 [配置](../configuration.md#maven-依赖失败与源码模式)。
+
+## Python 与混合语言
+
+Python 只读取显式清单并验证全部来源哈希。完全相同的 manifest/profile 可复用；变更后全量重算。含 Python 的多语言任务在所有独立 worker 返回有效 End 后才构造统一候选，严格门禁后一次 CAS；ACK 失败只产生提交后的警告。Python 不写入 Rust 增量元数据表。源码和预算见 [Python worker](python-worker.md)，产品验收状态以该页和当前实现为准。

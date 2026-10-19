@@ -1,5 +1,7 @@
 # config.toml：配置与当前执行边界
 
+统一准备入口为 `index --prepare`，配置 `[inputs]` 和 `[[inputs.entries]]` 后可接入多个独立工作区；`doctor` 只预览。旧 inputs_manifest 流程保留，两种模式互斥。完整配置、Python 环境及降级规则见 [统一输入准备](modules/inputs.md)。
+
 **公共配置管扫描、预算和版本；语言配置管分析语义；模块与 world 表达同仓库中的不同构建上下文。**
 
 状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与捕获已实现；Rust 语言分析使用外部输入清单和独立 rust-analyzer worker，Java 8 支持显式 plain 和外部 Maven metadata，现行边界见 [当前实现](current-state.md) 和 [Java worker](modules/java-worker.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；Rust 最小可运行配置与导出命令见 [Rust worker](modules/rust-worker.md)。
@@ -389,3 +391,9 @@ Rust 项目 `resources.index.worker_memory_bytes` 默认 268435456（256 MiB）�
 分析、只读查询、维护写入各有 8 个在途名额；执行并发分别为 `max_workers`、`max_query_tasks` 和 1。分析饱和不占用其他通道。每项目分析和同目标写入约束继续生效。重复 request ID 先按规范化参数查重，已有任务不占新名额；参数不一致拒绝。
 
 取消和 deadline 停止未开始的工作。发布进入 catalog 提交屏障后等待真实结果；任务仍占用执行许可，直到后台存储操作结束。此时 deadline 不能使任务提前宣告未发布。
+
+## Python
+
+`[languages.python] enabled=true` 与 `[languages.python.discovery] inputs_manifest=".code-ana/python-inputs.json"` 同时显式配置。清单由 `scripts/export-python-inputs.py` 从外部准备的源码/依赖根导出，目标先固定 3.12/darwin；不会运行目标解释器。资源字段为 `python_result_bytes`、`python_fact_limit`、`python_scratch_bytes`，worker 内存沿用公共上限。完整示例和边界见 [Python worker](modules/python-worker.md)。
+
+导出器可选 `--pyproject PATH` 静态读取标准项目字段、setuptools 布局和 TEST 的 pytest pythonpath；无 pyproject 时继续显式根流程。`--extra` 选择可选依赖，`--scope` 默认 MAIN。显式根覆盖全部推导根；动态元数据不求值。schema 2 冻结被读取配置的哈希，仍接受 schema 1；控制文件变更要求重新导出，不能沿用旧基线。依赖请求和版本范围只作说明，不代表已满足。

@@ -60,7 +60,7 @@ CREATE TABLE nodes (
          AND nesting_depth IS NULL AND direct_member IS NULL
          AND synthetic IS NULL AND binding_resolved IS NULL)
         OR
-        ((declaration_kind IN ('type','method','constructor','field','enum_constant','record_component','initializer') OR language='rust' AND declaration_kind IN ('function','struct','enum','trait','union','type_alias','constant','static','module','variant','macro','impl'))
+        ((declaration_kind IN ('type','method','constructor','field','enum_constant','record_component','initializer') OR language='rust' AND declaration_kind IN ('function','struct','enum','trait','union','type_alias','constant','static','module','variant','macro','impl') OR language='python' AND declaration_kind IN ('module','class','function','variable','parameter','import'))
          AND (type_kind IS NULL OR type_kind IN ('class','interface','enum','record','annotation'))
          AND (visibility IN ('public','protected','private','package') OR language='rust' AND visibility IN ('crate','restricted'))
          AND modifiers IS NOT NULL AND declared_modifiers IS NOT NULL AND implicit_modifiers IS NOT NULL

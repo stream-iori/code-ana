@@ -24,6 +24,7 @@ pub mod java;
 mod mapping;
 pub mod performance;
 pub mod stream;
+pub mod worker_rows;
 use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;
@@ -528,6 +529,7 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                python: None,
                 rust: None,
                 manifest: None,
                 java: Some(config),
@@ -552,6 +554,7 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                python: None,
                 rust: None,
                 manifest: None,
                 java: Some(java),

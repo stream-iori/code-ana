@@ -37,6 +37,9 @@ fn limit(evidence: &mut Evidence, name: &str) {
 }
 
 pub(super) fn instantiability(fact: &Fact) -> (&'static str, &'static str) {
+    if fact.attributes.language.as_ref().map(String::as_str) == Some("python") {
+        return ("unknown", "python.runtime_instantiability_unknown");
+    }
     let modifier = |name| {
         fact.attributes
             .modifiers
@@ -89,6 +92,10 @@ pub(super) fn runtime(
         evidence.reasons.push("static_candidates_open_world".into());
     }
     for root in roots {
+        ensure!(
+            root.attributes.language.as_ref().map(String::as_str) != Some("python"),
+            "PYTHON_RUNTIME_IMPLEMENTATIONS_UNSUPPORTED"
+        );
         ensure!(
             root.is_public_entity()
                 && (root.attributes.entity_kind.as_ref().map(String::as_str) == Some("type")

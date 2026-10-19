@@ -1,0 +1,118 @@
+[
+  {
+    "id": "direct",
+    "file": "probe.py",
+    "line": 32,
+    "character": 11,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 4
+      }
+    ],
+    "source_line": "direct.run() # direct"
+  },
+  {
+    "id": "typed_factory",
+    "file": "probe.py",
+    "line": 34,
+    "character": 10,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 4
+      }
+    ],
+    "source_line": "typed.run() # typed_factory"
+  },
+  {
+    "id": "untyped_factory",
+    "file": "probe.py",
+    "line": 36,
+    "character": 12,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 4
+      }
+    ],
+    "source_line": "untyped.run() # untyped_factory"
+  },
+  {
+    "id": "inheritance",
+    "file": "probe.py",
+    "line": 38,
+    "character": 10,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 4
+      }
+    ],
+    "source_line": "child.run() # inheritance"
+  },
+  {
+    "id": "union",
+    "file": "probe.py",
+    "line": 40,
+    "character": 10,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 4
+      },
+      {
+        "file": "probe.py",
+        "line": 8
+      }
+    ],
+    "source_line": "union.run() # union"
+  },
+  {
+    "id": "higher_order",
+    "file": "probe.py",
+    "line": 43,
+    "character": 13,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 4
+      }
+    ],
+    "source_line": "returned.run() # higher_order"
+  },
+  {
+    "id": "dataclass",
+    "file": "probe.py",
+    "line": 45,
+    "character": 16,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 4
+      }
+    ],
+    "source_line": "box.service.run() # dataclass"
+  },
+  {
+    "id": "protocol",
+    "file": "probe.py",
+    "line": 46,
+    "character": 13,
+    "expected": [
+      {
+        "file": "probe.py",
+        "line": 24
+      }
+    ],
+    "source_line": "protocol.run() # protocol"
+  },
+  {
+    "id": "dynamic",
+    "file": "probe.py",
+    "line": 47,
+    "character": 12,
+    "expected": [],
+    "source_line": "dynamic.run() # dynamic"
+  }
+]

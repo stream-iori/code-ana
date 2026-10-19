@@ -48,6 +48,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     write_frame(&mut ipc,&envelope(&attempt,Body::Hello(w::Hello {protocol:WORKER_PROTOCOL_VERSION,fact_ir:VERSION,producer:"javac-java8-v1".into()}))).await?;
                 }
                 Body::Discover(d) => {
+                    ensure!(d.rust.is_none() && d.python.is_none(), "JAVA_DISCOVERY_CONFIG");
                     ensure!(hello && config.is_none() && !awaiting_ack, codeana_model::DomainError::new(codeana_model::ErrorCode::DiscoverState, ""));
                     let c = d.java.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaConfigRequired, ""))?;
                     ensure!(Path::new(&c.bridge).canonicalize()?==bridge, codeana_model::DomainError::new(codeana_model::ErrorCode::BridgeBundleMismatch, ""));

@@ -70,7 +70,10 @@ async fn session(socket: UnixStream) -> Result<()> {
             }
             Some(Body::Discover(d)) => {
                 eprintln!("codeana-rust-phase=inputs");
-                ensure!(d.java.is_none(), "RUST_DISCOVERY_CONFIG");
+                ensure!(
+                    d.java.is_none() && d.python.is_none(),
+                    "RUST_DISCOVERY_CONFIG"
+                );
                 let descriptor = d.rust.context("RUST_DISCOVERY_REQUIRED")?;
                 let config =
                     tokio::task::spawn_blocking(move || -> Result<rust::AnalysisConfig> {
@@ -172,12 +175,7 @@ async fn analyze_stream(
     attempt: String,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
 ) -> Result<()> {
-    use codeana_contracts::{
-        graph_archive::{MAGIC, update_digest},
-        stream::{BATCH_BYTES, BATCH_ROWS, GraphStream, GraphStreamEvent},
-    };
-    use prost::Message;
-    use sha2::{Digest, Sha256};
+    use codeana_contracts::stream::{GraphStream, GraphStreamEvent};
     let stopped = Arc::new(AtomicBool::new(false));
     let _stop = StopOnDrop(stopped.clone());
     let (header_tx, header_rx) = tokio::sync::oneshot::channel();
@@ -238,52 +236,18 @@ async fn analyze_stream(
             .map_err(|_| anyhow::anyhow!("CANCELLED"))?;
         eprintln!("codeana-rust-phase=records");
         let started = std::time::Instant::now();
-        let mut digest = Sha256::new();
-        digest.update(MAGIC);
-        let mut count = 0;
-        let mut bytes = 4u64;
-        let mut batch = Vec::new();
-        let mut batch_size = 0;
-        codeana_rust_adaptor::records::emit(&config, &analysis, &prepared, |row| {
-            check()?;
-            let encoded = row.encode_to_vec();
-            ensure!(
-                !encoded.is_empty() && encoded.len() + 128 <= MAX_FRAME,
-                "GRAPH_RECORD_BUDGET"
-            );
-            ensure!(
-                count < config.fact_limit
-                    && bytes + encoded.len() as u64 + 4 <= config.result_bytes,
-                "GRAPH_ARCHIVE_BUDGET"
-            );
-            if !batch.is_empty()
-                && (batch.len() == BATCH_ROWS || batch_size + encoded.len() > BATCH_BYTES)
-            {
-                sender
-                    .blocking_send(GraphStreamEvent::Batch(std::mem::take(&mut batch)))
-                    .map_err(|_| anyhow::anyhow!("CANDIDATE_STREAM_CLOSED"))?;
-                batch_size = 0;
-            }
-            update_digest(&mut digest, &encoded);
-            count += 1;
-            bytes += encoded.len() as u64 + 4;
-            batch_size += encoded.len();
-            batch.push(row);
-            Ok(())
-        })?;
-        if !batch.is_empty() {
-            sender
-                .blocking_send(GraphStreamEvent::Batch(batch))
-                .map_err(|_| anyhow::anyhow!("CANDIDATE_STREAM_CLOSED"))?;
-        }
-        sender
-            .blocking_send(GraphStreamEvent::VerifiedEnd)
-            .map_err(|_| anyhow::anyhow!("CANDIDATE_STREAM_CLOSED"))?;
+        let (count, checksum) = codeana_contracts::worker_rows::produce(
+            &sender,
+            config.result_bytes,
+            config.fact_limit,
+            &check,
+            |push| codeana_rust_adaptor::records::emit(&config, &analysis, &prepared, push),
+        )?;
         eprintln!(
             "codeana-rust-timing records_and_backpressure_ms={}",
             started.elapsed().as_millis()
         );
-        Ok((count, format!("{:x}", digest.finalize())))
+        Ok((count, checksum))
     });
     let header = match header_rx.await {
         Ok(header) => header,
@@ -410,6 +374,7 @@ mod tests {
             &envelope(
                 "discover",
                 Body::Discover(w::Discover {
+                    python: None,
                     manifest: Some(map(&manifest)?),
                     rust: Some(Box::new(w::RustConfig {
                         input: input.to_string_lossy().into_owned(),

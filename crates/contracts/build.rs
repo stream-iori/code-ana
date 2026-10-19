@@ -3,6 +3,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ["hello", "task", "worker", "graph"].map(|s| format!("../../proto/codeana/v1/{s}.proto"));
     tonic_prost_build::configure()
         .boxed("codeana.worker.v1.Discover.rust")
+        .boxed("codeana.worker.v1.Discover.python")
         .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
         .field_attribute(
             "codeana.worker.v1.SourceUnit.auxiliary",

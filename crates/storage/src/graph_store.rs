@@ -13,7 +13,7 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 9;
+pub const SCHEMA_VERSION: i64 = 10;
 pub const SOURCE_SCHEMA_VERSION: i64 = 33;
 pub const PAGE_SIZE: i64 = 4096;
 
@@ -223,7 +223,12 @@ fn resolve_reference(
         "n.scope='MAIN'",
         "1=1",
     ] {
-        let matches = format!("n.symbol_id=t.{reference} AND {candidate}");
+        let language = if matches!(table, "stage_edges" | "stage_call_sites") {
+            " AND t.language<>'python' AND n.language=t.language"
+        } else {
+            ""
+        };
+        let matches = format!("n.symbol_id=t.{reference} AND {candidate}{language}");
         db.execute_batch(&format!("UPDATE {table} AS t SET {output}=(SELECT min(n.id) FROM stage_nodes n WHERE {matches}) WHERE {output} IS NULL AND t.{reference} IS NOT NULL AND {additional} AND (SELECT count(*) FROM stage_nodes n WHERE {matches})=1"))?;
     }
     Ok(())
@@ -238,6 +243,8 @@ pub fn resolve(db: &Connection) -> Result<u64> {
         "source_ref",
         "1=1",
     )?;
+    // UNRESOLVED_CALL has no language columns; its verified source owns them.
+    db.execute_batch("UPDATE stage_call_sites SET language=(SELECT n.language FROM stage_nodes n WHERE n.id=resolved_source),provider_id=(SELECT n.provider_id FROM stage_nodes n WHERE n.id=resolved_source) WHERE resolved_source IS NOT NULL;")?;
     resolve_reference(
         db,
         "stage_edges",
@@ -266,7 +273,7 @@ pub fn resolve(db: &Connection) -> Result<u64> {
             "target_arity_key IS NOT NULL",
         ),
     ] {
-        db.execute_batch(&format!("UPDATE stage_edges SET resolved_target=(SELECT min(n.id) FROM stage_nodes n WHERE {match_key}),external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND {condition} AND (SELECT count(*) FROM stage_nodes n WHERE {match_key})=1"))?;
+        db.execute_batch(&format!("UPDATE stage_edges SET resolved_target=(SELECT min(n.id) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language),external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND language<>'python' AND {condition} AND (SELECT count(*) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language)=1"))?;
     }
     resolve_reference(db, "stage_annotations", "resolved_node", "node_ref", "1=1")?;
     resolve_reference(
@@ -386,6 +393,13 @@ mod tests {
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
             8
+        );
+        db.pragma_update(None, "user_version", 9)?;
+        assert!(
+            initialize(&db)
+                .unwrap_err()
+                .to_string()
+                .contains("run index --full")
         );
         db.pragma_update(None, "user_version", 0)?;
         initialize(&db)?;

@@ -13,6 +13,9 @@ members = [
     "crates/mock-worker",
     "lang-rust-adaptor",
 ]
+# Pyrefly requires Unicode 18; rust-analyzer's lexer is pinned to Unicode 17.
+# Process isolation also keeps their semver-compatible Cargo dependencies apart.
+exclude = ["lang-python-adaptor"]
 resolver = "2"
 
 [workspace.package]

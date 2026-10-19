@@ -14,6 +14,7 @@ macro_rules! codes {
     }
 }
 codes! {
+    SemanticInputsUnavailable = "SEMANTIC_INPUTS_UNAVAILABLE",
     InvalidMode = "INVALID_MODE",
     InvalidQueryLimit = "INVALID_QUERY_LIMIT",
     SystemIoFailure = "SYSTEM_IO_FAILURE",

@@ -1,5 +1,7 @@
 # Rust 源码分析
 
+统一入口 `index --prepare` 支持同仓库的多个独立 Cargo workspace，默认仍 offline/locked；拿不到可信依赖图时仅提供文件/文本及明确缺口，不伪造 crate/cfg。原导出器保持，见 [统一输入准备](inputs.md)。
+
 Rust 使用 `lang-rust-adaptor` 中的 rust-analyzer 0.0.349，由 `crates/rust-worker` 独立进程承载。CLI、任务调度、GRA1、图库、历史版本和查询沿用公共实现。
 
 ```text
@@ -90,7 +92,7 @@ coverage/diagnostics 按文件和 world 保存。任何 partial 使 `index --str
 | 公共产品路径 | `python3 tests/rust_language_e2e.py`：真实 worker、world、查询、delta/full、strict、过期清单；build.rs 陷阱证明未编译 |
 | 自身源码 | `scripts/rust-source-dogfood.py`；当前源码功能回执 `optimized-functional`，固定旧输入 512 MiB 单轮 `optimized-512m`；256 MiB 失败 `memory-v2` 保留 |
 
-物理 schema 9、graph model 3、worker 20。Java 公开 ID 算法不变；旧图库需 `index --full`，旧 bundle 必须按当前协议重建。开发回归和 dogfood 不等于 Java Native 正式验收、Linux 放行或完整 Rust 语义支持。
+物理 schema 10、graph model 3、worker 21。Java 公开 ID 算法不变；旧图库需 `index --full`，旧 bundle 必须按当前协议重建。开发回归和 dogfood 不等于 Java Native 正式验收、Linux 放行或完整 Rust 语义支持。
 
 ## 输入与预算边界
 
@@ -127,7 +129,7 @@ max_total_worker_memory_bytes = 536870912
 
 worker 内存错误包含 `limit_bytes/rss_bytes/peak_rss_bytes/stage/process_group`；峰值是 100 ms 采样结果，不能当绝对峰值。阶段包括输入、数据库加载、声明、绑定、归档和传输。任务进度同时记录 `rust_input_summary` 和成功后的 `rust_worker_memory`，失败前已有的进度也保留。
 
-`rust_result_bytes`（64 KiB–1 GiB）和 `rust_fact_limit`（1–2,000,000）控制输出预算，不进入符号身份。`RootDatabase` 的 LRU setter 在固定版本中为空实现，不作为内存限制。旧宏生成事实因 adapter/profile 变化首次全量重建后清除；物理 schema 升至 9；worker 20 / graph model 3 不变。
+`rust_result_bytes`（64 KiB–1 GiB）和 `rust_fact_limit`（1–2,000,000）控制输出预算，不进入符号身份。`RootDatabase` 的 LRU setter 在固定版本中为空实现，不作为内存限制。旧宏生成事实因 adapter/profile 变化首次全量重建后清除；物理 schema 升至 9；worker 21 / graph model 3 不变。
 
 ## 流水线与诊断
 

@@ -4,6 +4,11 @@ pub struct SpooledAnalysis {
     pub header: AnalysisHeader,
     pub records: GraphArchive,
 }
+pub enum Language<'a> {
+    Java(Option<&'a super::java::PreparedJava>),
+    Rust(&'a w::RustConfig),
+    Python(&'a w::PythonConfig),
+}
 use codeana_contracts::{
     envelope, map, read_frame, worker as w, worker::envelope::Body, write_frame,
 };
@@ -37,7 +42,9 @@ impl MemoryUsage {
     }
     fn observe_phase(&mut self, log: &[u8]) {
         for line in String::from_utf8_lossy(log).lines() {
-            if let Some(timing) = line.strip_prefix("codeana-rust-timing ")
+            if let Some(timing) = line
+                .strip_prefix("codeana-rust-timing ")
+                .or_else(|| line.strip_prefix("codeana-python-timing "))
                 && let Some((name, value)) = timing.split_once('=')
                 && let Ok(value) = value.parse::<u64>()
             {
@@ -48,10 +55,15 @@ impl MemoryUsage {
             {
                 self.stream = Some(value);
             }
-            if let Some(phase) = line.strip_prefix("codeana-rust-phase=")
+            if let Some(phase) = line
+                .strip_prefix("codeana-rust-phase=")
+                .or_else(|| line.strip_prefix("codeana-python-phase="))
                 && matches!(
                     phase,
-                    "inputs"
+                    "backend_run"
+                        | "backend_facts"
+                        | "analyze"
+                        | "inputs"
                         | "database_load"
                         | "declarations"
                         | "bindings"
@@ -132,8 +144,7 @@ impl Worker {
     ) -> Result<Self> {
         Self::start_language(
             fixtures,
-            java,
-            None,
+            Language::Java(java),
             checkout,
             manifest,
             cancel,
@@ -143,13 +154,17 @@ impl Worker {
     }
     pub async fn start_language(
         fixtures: Option<&Path>,
-        java: Option<&super::java::PreparedJava>,
-        rust: Option<&w::RustConfig>,
+        language: Language<'_>,
         checkout: &Path,
         manifest: &Manifest,
         cancel: &CancellationToken,
         memory_limit: u64,
     ) -> Result<Self> {
+        let (java, rust, python) = match language {
+            Language::Java(java) => (java, None, None),
+            Language::Rust(rust) => (None, Some(rust), None),
+            Language::Python(python) => (None, None, Some(python)),
+        };
         let (a, b) = std::os::unix::net::UnixStream::pair()?;
         a.set_nonblocking(true)?;
         let fd = b.as_raw_fd();
@@ -157,6 +172,8 @@ impl Worker {
             "codeana-mock-worker"
         } else if rust.is_some() {
             "codeana-rust-worker"
+        } else if python.is_some() {
+            "codeana-python-worker"
         } else {
             "codeana-java-worker"
         });
@@ -323,6 +340,17 @@ impl Worker {
                 facts: config.fact_limit,
             };
         }
+        if let Some(config) = python {
+            ensure!(
+                (65536..=1073741824).contains(&config.result_bytes)
+                    && (1..=2000000).contains(&config.fact_limit),
+                "PYTHON_OUTPUT_LIMIT_RANGE"
+            );
+            worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
+                bytes: config.result_bytes,
+                facts: config.fact_limit,
+            };
+        }
         worker
             .send(Body::Hello(w::Hello {
                 protocol: WORKER_PROTOCOL_VERSION,
@@ -339,6 +367,8 @@ impl Worker {
                             "mock-fixture-v1"
                         } else if rust.is_some() {
                             "rust-core"
+                        } else if python.is_some() {
+                            "python-core"
                         } else {
                             "javac-java8-v1"
                         },
@@ -354,6 +384,7 @@ impl Worker {
         };
         worker
             .send(Body::Discover(w::Discover {
+                python: python.cloned().map(Box::new),
                 rust: rust.cloned().map(Box::new),
                 manifest: Some(map(manifest)?),
                 java: java.map(|j| j.config.clone()),
@@ -412,6 +443,9 @@ impl Worker {
             fixtures.is_none() || worker.context.producer.starts_with("mock-"),
             codeana_model::DomainError::new(codeana_model::ErrorCode::MockProvenanceRequired, "")
         );
+        if python.is_some() {
+            validate_python_context(&worker.context)?;
+        }
         Ok(worker)
     }
     async fn send(&mut self, body: Body) -> Result<()> {
@@ -651,6 +685,7 @@ impl Worker {
             codeana_contracts::graph_archive::OutputLimits::from_config(&java.config)?;
         self.attempt = new_id("attempt");
         self.send(Body::Discover(w::Discover {
+            python: None,
             rust: None,
             manifest: Some(map(manifest)?),
             java: Some(java.config.clone()),
@@ -671,9 +706,46 @@ impl Worker {
     }
 }
 
+fn validate_python_context(context: &BuildContext) -> Result<()> {
+    ensure!(
+        context.language == "python"
+            && context.producer == codeana_model::python::PRODUCER
+            && context
+                .capabilities
+                .iter()
+                .any(|c| c == codeana_model::python::ADAPTER_VERSION)
+            && context
+                .capabilities
+                .iter()
+                .any(|c| c == &format!("pyrefly-{}", codeana_model::python::BACKEND_COMMIT)),
+        "PYTHON_WORKER_VERSION_MISMATCH"
+    );
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn python_worker_requires_current_adapter_and_pinned_backend() {
+        let mut context = BuildContext {
+            language: "python".into(),
+            producer: codeana_model::python::PRODUCER.into(),
+            modules: vec![],
+            source_version: "3.12".into(),
+            classpath: vec![],
+            capabilities: vec!["pyrefly-1.4.0-codeana-v1".into()],
+        };
+        assert!(validate_python_context(&context).is_err());
+        context.capabilities = vec![
+            codeana_model::python::ADAPTER_VERSION.into(),
+            format!("pyrefly-{}", codeana_model::python::BACKEND_COMMIT),
+        ];
+        validate_python_context(&context).unwrap();
+        context.capabilities[1] = "pyrefly-wrong-commit".into();
+        assert!(validate_python_context(&context).is_err());
+    }
+
     #[test]
     fn memory_samples_keep_peak_and_last_complete_phase() {
         let mut usage = MemoryUsage {

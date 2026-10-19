@@ -517,6 +517,7 @@ mod tests {
         let frame = crate::envelope(
             "a",
             w::envelope::Body::Discover(w::Discover {
+                python: None,
                 rust: None,
                 java: Some(config),
                 manifest: None,

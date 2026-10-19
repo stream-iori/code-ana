@@ -1,6 +1,6 @@
 # 存储与原子发布
 
-对齐 2026-10-14：图库物理 `user_version=9`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
+对齐 2026-10-16：图库物理 `user_version=10`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
 
 Rust 存储按 blob、task、object、annotation、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。对象和标注使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
 
@@ -38,7 +38,7 @@ home 共享 catalog，以身份隔离项目；不是每仓库一套 catalog。ma
 | metadata_values | metadata 逻辑列 | 仅原始 UTF-8 ≥256 bytes 且重复至少两次共享 |
 | node_names | FTS5 | external-content 为 graph_nodes，以 node_pk 连接；4096 字节页 |
 
-逻辑视图负责恢复字符串列，私有候选的写触发器负责翻译整数引用。查询只读逻辑投影，解码稳定属性时不输出 `site_pk`、`owner_pk` 等物理列。`facts(body)`、整条 Fact JSON、Java raw type/binding/syntax 表均不在产品图库中。schema 9 是 code-ana 的物理格式，不承诺与 Anatomist 物理数据库兼容。
+逻辑视图负责恢复字符串列，私有候选的写触发器负责翻译整数引用。查询只读逻辑投影，解码稳定属性时不输出 `site_pk`、`owner_pk` 等物理列。`facts(body)`、整条 Fact JSON、Java raw type/binding/syntax 表均不在产品图库中。schema 10 是 code-ana 的物理格式，不承诺与 Anatomist 物理数据库兼容。
 
 DDL 生成入口：[generate-compact-schema.py](../../scripts/generate-compact-schema.py) 从 [anatomist-schema.sql](../../crates/storage/src/anatomist-schema.sql) 和 [compact-meta.sql](../../crates/storage/src/compact-meta.sql) 生成 [compact-schema.sql](../../crates/storage/src/compact-schema.sql)。修改生成输入并运行生成器，不手改生成文件；`--check` 已纳入 `just test-rust`。
 

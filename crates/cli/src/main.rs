@@ -42,7 +42,7 @@ enum Command {
         #[arg(long, default_value_t = 0)]
         after_seq: u64,
     },
-    Index(QueryArgs),
+    Index(IndexArgs),
     Doctor(QueryArgs),
     Resolve(QueryArgs),
     SearchCode(QueryArgs),
@@ -64,7 +64,7 @@ enum Command {
     SnapshotList(QueryArgs),
     SnapshotRemove(QueryArgs),
     Diff(QueryArgs),
-    Report(QueryArgs),
+    Report(ReportArgs),
     Annotate(QueryArgs),
     Gc(QueryArgs),
     Recover(QueryArgs),
@@ -97,6 +97,20 @@ struct JavaInputsExport {
     extension: Option<PathBuf>,
     #[arg(long)]
     java_home: Option<PathBuf>,
+}
+#[derive(Args)]
+struct IndexArgs {
+    #[command(flatten)]
+    query: QueryArgs,
+    #[arg(long)]
+    prepare: bool,
+}
+#[derive(Args)]
+struct ReportArgs {
+    #[command(flatten)]
+    query: QueryArgs,
+    #[arg(long, value_parser = ["json", "markdown"], default_value = "json")]
+    format: String,
 }
 #[derive(Args, Default)]
 struct QueryArgs {
@@ -283,6 +297,7 @@ async fn watch(
     id: &str,
     after_seq: u64,
     export: Option<&Path>,
+    markdown: bool,
 ) -> Result<i32> {
     let mut stream = client
         .watch_task(authenticated(
@@ -307,7 +322,7 @@ async fn watch(
                 eprintln!("{}: {}", id, progress.phase)
             }
             Some(p::task_event::Event::Output(chunk)) => {
-                if export.is_some() {
+                if export.is_some() || markdown {
                     ensure!(
                         saved.len() + chunk.data.len() <= 8 * 1024 * 1024,
                         codeana_model::DomainError::new(codeana_model::ErrorCode::ExportBudget, "")
@@ -337,6 +352,17 @@ async fn watch(
             .terminal
             .context("EVENT_STREAM_INTERRUPTED: use task watch to reconnect")?
     };
+    if markdown && t.exit_code == 0 {
+        let text = std::str::from_utf8(&saved)?;
+        let value = text
+            .lines()
+            .find_map(|line| line.strip_prefix("record "))
+            .context("REPORT_OUTPUT_TRUNCATED: increase --max-output-bytes")?;
+        saved = codeana_application::report_markdown(serde_json::from_str(value)?)?.into_bytes();
+        if export.is_none() {
+            std::io::stdout().write_all(&saved)?;
+        }
+    }
     if let Some(path) = export {
         let mut output = std::fs::OpenOptions::new()
             .write(true)
@@ -367,6 +393,46 @@ async fn main() {
 }
 async fn run() -> Result<i32> {
     let cli = Cli::parse();
+    let markdown = matches!(&cli.command, Command::Report(args) if args.format == "markdown");
+    if let Command::Report(args) = &cli.command {
+        ensure!(
+            !markdown || args.query.base.is_empty(),
+            "--format markdown does not support --base"
+        );
+    }
+    if let Command::Index(args) = &cli.command
+        && args.prepare
+    {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicBool, Ordering},
+        };
+        let project = cli.project.clone();
+        let cancel = Arc::new(AtomicBool::new(false));
+        let task_cancel = cancel.clone();
+        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+        let mut task = tokio::task::spawn_blocking(move || {
+            codeana_application::inputs::prepare(&project, &task_cancel)
+        });
+        let prepared = tokio::select! {
+            result = &mut task => result?,
+            _ = tokio::signal::ctrl_c() => { cancel.store(true, Ordering::Release); task.await? },
+            _ = term.recv() => { cancel.store(true, Ordering::Release); task.await? },
+        };
+        if cancel.load(Ordering::Acquire) {
+            if let Err(error) = prepared {
+                eprintln!("{error:#}");
+            }
+            return Ok(130);
+        }
+        let prepared = prepared?;
+        eprintln!(
+            "input preparation: {}; units={}; report={}",
+            prepared.status,
+            prepared.units.len(),
+            prepared.report
+        );
+    }
     if let Command::JavaInputs {
         action: JavaInputsCommand::Export(args),
     } = &cli.command
@@ -378,6 +444,7 @@ async fn run() -> Result<i32> {
         };
         let options = ExportOptions {
             project: cli.project.clone(),
+            manifest: None,
             output: args.output.clone(),
             maven: args.maven.clone(),
             settings: args.settings.clone(),
@@ -490,7 +557,7 @@ async fn run() -> Result<i32> {
             after_seq,
         } => {
             if action == "watch" {
-                return watch(&mut client, &e, &id, after_seq, None).await;
+                return watch(&mut client, &e, &id, after_seq, None, false).await;
             }
             let r = if action == "cancel" {
                 client
@@ -504,7 +571,7 @@ async fn run() -> Result<i32> {
             println!("{}", serde_json::to_string(r.get_ref())?);
             return Ok(0);
         }
-        Command::Index(a) => ("index", a),
+        Command::Index(a) => ("index", a.query),
         Command::Doctor(a) => ("doctor", a),
         Command::Resolve(a) => ("resolve", a),
         Command::SearchCode(a) => ("search-code", a),
@@ -526,7 +593,7 @@ async fn run() -> Result<i32> {
         Command::SnapshotList(a) => ("snapshot-list", a),
         Command::SnapshotRemove(a) => ("snapshot-remove", a),
         Command::Diff(a) => ("diff", a),
-        Command::Report(a) => ("report", a),
+        Command::Report(a) => ("report", a.query),
         Command::Annotate(a) => ("annotate", a),
         Command::Gc(a) => ("gc", a),
         Command::Recover(a) => ("recover", a),
@@ -741,5 +808,13 @@ async fn run() -> Result<i32> {
         println!("{}", serde_json::to_string(&accepted)?);
         return Ok(0);
     }
-    watch(&mut client, &e, &accepted.task_id, 0, a.export.as_deref()).await
+    watch(
+        &mut client,
+        &e,
+        &accepted.task_id,
+        0,
+        a.export.as_deref(),
+        markdown,
+    )
+    .await
 }

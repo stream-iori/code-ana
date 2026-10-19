@@ -141,3 +141,7 @@ Bean、Spring/SOFA XML、MVC 和 handler 的公开配置节点保留 Facet 类�
 ## 紧凑图库与 FTS
 
 当前 `nodes` 是视图，没有可用于 FTS 联接的 rowid。`search-code` 先用 node_names 的 rowid 定位 `graph_nodes.node_pk`，再映射公开 id；读者只返回逻辑字符串列。FTS 仅为候选筛选，最终字面子串语义不变。公开 FTS 回归与同库六项查询已验证；内部整数主键不成为输出或分页身份。
+
+## Python 查询边界
+
+Python 导航/结构/调用使用已发布声明、包含、引用和直接继承事实。dispatch 保留 Pyrefly 静态目标和未知分支，不使用 Java CHA；显式 `cha` 和运行时实现枚举返回不支持。构造调用绑定类声明，不声称穷尽运行时 `__new__` / 元类行为。

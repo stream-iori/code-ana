@@ -1,0 +1,5 @@
+[project]
+name = "fixture-app-b"
+version = "0.0.0"
+[tool.setuptools.packages.find]
+where = ["."]
