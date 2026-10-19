@@ -1,0 +1,151 @@
+{
+  "context": {
+    "capabilities": [
+      "prepared-inputs-v1",
+      "semantic-inputs-available"
+    ],
+    "classpath": [],
+    "language": "multi",
+    "modules": [
+      "python"
+    ],
+    "producer": "codeana-prepared-inputs",
+    "source_version": ""
+  },
+  "created": 1792392452,
+  "diagnostics": [],
+  "effective": {
+    "config_digest": "564c7fda4acdb6ad13c989713aacf6475a48d4a1e4f7449d619e350142954d5d",
+    "origins": {}
+  },
+  "global": {
+    "analysis_instances": 615,
+    "auxiliary_instances": 2007,
+    "known_modules": 1,
+    "language_instances": {
+      "python": 615
+    },
+    "measurements_available": true,
+    "mode_counts": {
+      "python:Semantic": 1
+    },
+    "next_steps": [
+      "doctor: inspect configuration and input readiness",
+      "inspect task events and referenced preparation logs; after repairing inputs, run index --prepare"
+    ],
+    "physical_files": 2622,
+    "semantic_files": 615,
+    "units": [
+      {
+        "entries": [
+          "python"
+        ],
+        "id": "python",
+        "language": "python",
+        "log": ".code-ana/inputs/generation_6fa596e7bfa044b7a04fd314ee910a3b/python/prepare.log",
+        "mode": "semantic",
+        "reason_code": null
+      }
+    ],
+    "units_omitted": 0,
+    "units_total": 1
+  },
+  "id": "task_7742bd647a3747caa7c90766d76a02c5",
+  "level": "full",
+  "result": {
+    "assessment": "partial",
+    "code": "OK",
+    "execution": "completed",
+    "exit_code": 0,
+    "gate": "passed",
+    "message": "",
+    "output": {
+      "cursor": "",
+      "evidence": {
+        "enumeration": true,
+        "limits": [],
+        "reasons": [
+          "coverage:partial_files:585"
+        ],
+        "semantic": false
+      },
+      "producer": "codeana-prepared-inputs",
+      "records": [
+        {
+          "record": {
+            "ack_warning": null,
+            "facts": 438667,
+            "manifest": "274e592074bf470ea4468890781bb604d35b009fee07248d51fa4a409d6e774b",
+            "mode": "full",
+            "producer": "codeana-prepared-inputs",
+            "profile": "2d63029b8cd32433df9babce12edfc557cb1ad138d9e2656393a865bfc03c401",
+            "revision": "rev_8ad1e3f2b6a34cc4b0f771f09158d3b9",
+            "statistics": {
+              "analyzed_indexes": 55,
+              "elapsed_ms": 315,
+              "warnings": []
+            }
+          },
+          "record_type": "Display"
+        }
+      ],
+      "revision": "rev_8ad1e3f2b6a34cc4b0f771f09158d3b9"
+    },
+    "producer": "codeana-prepared-inputs",
+    "publication": "published",
+    "report": "task_7742bd647a3747caa7c90766d76a02c5",
+    "revision": "rev_8ad1e3f2b6a34cc4b0f771f09158d3b9"
+  },
+  "revision": "rev_8ad1e3f2b6a34cc4b0f771f09158d3b9",
+  "schema_version": 2,
+  "summary": {
+    "capture_digest": "2e5b4971d503f1e3ae8b09ff8cf9bc1d5595bd62383495ea23ea324c4b9c7528",
+    "counts": {
+      "annotation_meta_owned": 0,
+      "annotations": 0,
+      "call_site_targets": 50504,
+      "call_sites": 66775,
+      "edges": 264013,
+      "nodes": 57375
+    },
+    "diagnostics": {
+      "groups": {},
+      "groups_omitted": 0,
+      "omitted": 4019,
+      "omitted_rows": 4019,
+      "rows": 4019,
+      "sampled": 0,
+      "sampled_occurrences": 0,
+      "total": 4019
+    },
+    "evidence": {
+      "enumeration": true,
+      "limits": [],
+      "reasons": [
+        "coverage:partial_files:585"
+      ],
+      "semantic": false
+    },
+    "facts": 438667,
+    "files": 2628,
+    "profile": "2d63029b8cd32433df9babce12edfc557cb1ad138d9e2656393a865bfc03c401",
+    "statistics": {
+      "analyzed_indexes": 55,
+      "elapsed_ms": 315,
+      "warnings": []
+    },
+    "timing": {
+      "analyze_ms": 52276,
+      "index_elapsed_ms": 65844,
+      "publish_ms": 13390,
+      "storage_phase_ms": {
+        "candidate_setup_backup": 143,
+        "graph_integrity_summary": 2385,
+        "promotion_calls_wiring": 17500,
+        "record_validate_ingest": 23295,
+        "stage_resolve_identities": 8579,
+        "statistics_finalize": 329
+      }
+    }
+  }
+}

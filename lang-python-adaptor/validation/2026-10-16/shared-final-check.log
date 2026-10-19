@@ -1,0 +1,13 @@
+    Checking codeana-model v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/model)
+    Checking codeana-contracts v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/contracts)
+    Checking codeana-config v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/config)
+    Checking codeana-query v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/query)
+    Checking codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+    Checking codeana-rust-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-rust-adaptor)
+    Checking codeana-mock-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/mock-worker)
+    Checking codeana-rust-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/rust-worker)
+    Checking codeana-application v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/application)
+    Checking codeana-java-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/java-worker)
+    Checking codeana-cli v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/cli)
+    Checking codeana-daemon v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/daemon)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 3.18s

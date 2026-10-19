@@ -1,0 +1,3783 @@
+{
+  "repo": "/Users/stream/codes/antcodes/labs/diorama-parent/diorama-sdd",
+  "commit": "31259b761a5ea77672d0e90bc9e2776e4dfe397e",
+  "archive_sha256": "47c69c92123b496bd714e654f8e463e30e51cd6b95a77bd8a5c3e366b5273c2b",
+  "files": [
+    {
+      "path": ".agents/plugins/plugins/diorama-observability/scripts/collect_observation.py",
+      "bytes": 8431,
+      "lines": 228,
+      "sha256": "d9abd3edf850fbf900409cbb5348251cc539dbaebf283d97a399a2760ea736d1"
+    },
+    {
+      "path": ".agents/plugins/plugins/diorama-observability/scripts/install_hooks.py",
+      "bytes": 3746,
+      "lines": 98,
+      "sha256": "96503403aed08fa1e2350c376c4dc088d4d5a9f809e2f6ab73639f8aecab4d66"
+    },
+    {
+      "path": "fixtures/e2e/knowledge-business/setup.py",
+      "bytes": 10316,
+      "lines": 149,
+      "sha256": "446b6c0db3234d0be3d1d35bf9fb2b6ed6c340f6a9b9611ba9cc1d7dd90d47b3"
+    },
+    {
+      "path": "fixtures/e2e/knowledge-code/setup.py",
+      "bytes": 4634,
+      "lines": 73,
+      "sha256": "cfe33a772d26bcd26c4f017ba48d8f98ce4ae5b17135dd8bb9cd811676cbd18a"
+    },
+    {
+      "path": "fixtures/e2e/knowledge-navigation/setup.py",
+      "bytes": 3338,
+      "lines": 47,
+      "sha256": "544d0271c810ef712e5b60f9801ce4e9dc33a42a427312a9fea2a8596b6c2dd1"
+    },
+    {
+      "path": "fixtures/e2e/layout13/seed_codegen_instruction.py",
+      "bytes": 1331,
+      "lines": 26,
+      "sha256": "6efc2b589a065b49aea7c4c32a04b77b5a52d0b6c98864495c8ee4d501aa0f98"
+    },
+    {
+      "path": "fixtures/e2e/layout13/seed_coding_style.py",
+      "bytes": 6187,
+      "lines": 128,
+      "sha256": "da91ca77a408d75981da184811a6a07f164736d8b493070cde261a14e4d7ae24"
+    },
+    {
+      "path": "fixtures/e2e/layout13/seed_framework_source.py",
+      "bytes": 4998,
+      "lines": 67,
+      "sha256": "22da61745b0f3803581425f407b9dcf0493330fcef7f2559b4dd353458bb6270"
+    },
+    {
+      "path": "fixtures/e2e/layout13/seed_remote_knowledge.py",
+      "bytes": 4621,
+      "lines": 81,
+      "sha256": "2ab14ff482ae4f6e76c8be7dc59865d036dcddf319acffa5aeb8ed493a6fe051"
+    },
+    {
+      "path": "fixtures/e2e/layout13/seed_review_material.py",
+      "bytes": 10108,
+      "lines": 155,
+      "sha256": "704f841d6b0aaeb885f38947b903669bd380268676f65d17252b4510cdfd0cc0"
+    },
+    {
+      "path": "fixtures/e2e/layout13/seed_workflow_capabilities.py",
+      "bytes": 290,
+      "lines": 10,
+      "sha256": "cdf1958d94842d72c9cdf3129b9c8d2607838540817413a3f10600787df2803f"
+    },
+    {
+      "path": "fixtures/e2e/layout13/setup_case.py",
+      "bytes": 41593,
+      "lines": 657,
+      "sha256": "60881b1c1e41e68a9e345ddd86df8ee857a4d1ec1bd1c06138347721e178eff4"
+    },
+    {
+      "path": "fixtures/e2e/layout13/update_remote_knowledge.py",
+      "bytes": 6299,
+      "lines": 113,
+      "sha256": "8441ccead6a25c9f3c5da8fc10c5f6f621fc9e7471de42bb144e072fe42dea6b"
+    },
+    {
+      "path": "fixtures/java-fixture/quick-formatter/src/test/java/com/example/text/run_formatter_probe.py",
+      "bytes": 1180,
+      "lines": 26,
+      "sha256": "f4fdfb01a858252a5f745da24349aa578ff4046203efab4026152c4de2fe2afc"
+    },
+    {
+      "path": "scripts/__init__.py",
+      "bytes": 61,
+      "lines": 1,
+      "sha256": "2dcf283412bf909b271fe1c3f8f71e88076c9fabf042df7639c97eb80a9bf293"
+    },
+    {
+      "path": "scripts/anatomist_text_oracle.py",
+      "bytes": 4890,
+      "lines": 125,
+      "sha256": "169419931f3e3449bb22078f78d6fcf851fb31a862043bef9de62808cacffdc1"
+    },
+    {
+      "path": "scripts/build_readonly_sdk.py",
+      "bytes": 3558,
+      "lines": 61,
+      "sha256": "f9d6439fff8eed810bfa5191ab448e28e83e9de3b37ad4be1bce112cfc4d0a93"
+    },
+    {
+      "path": "scripts/build_runtime_binary.py",
+      "bytes": 4231,
+      "lines": 96,
+      "sha256": "9b753caab4680ee0851d023ee6eea826b902dcf73268fc60d3aa91c2c95f5dac"
+    },
+    {
+      "path": "scripts/check_anatomist_alignment.py",
+      "bytes": 11052,
+      "lines": 254,
+      "sha256": "e1eebba9500d2f9e83ee189d36e9a2b3251bafbf3330d36c23a8e56e72f1e739"
+    },
+    {
+      "path": "scripts/check_documentation_alignment.py",
+      "bytes": 9889,
+      "lines": 219,
+      "sha256": "81e01874b2fba8a3fcf813658a88b9638cb1553a67fab717a989a62b5fe9b2fe"
+    },
+    {
+      "path": "scripts/check_e2e_prerequisites.py",
+      "bytes": 13313,
+      "lines": 311,
+      "sha256": "1c9a56cbcd7a79b37d40ecc734a3e1fea0f14ee07e72f9dafde1ea029c1a3a69"
+    },
+    {
+      "path": "scripts/check_e2e_product_entry.py",
+      "bytes": 3064,
+      "lines": 66,
+      "sha256": "0e0d22a938c865b315f3684f40b7eb479bad521ce8f366d52fe434a96b067570"
+    },
+    {
+      "path": "scripts/check_pytest_partitions.py",
+      "bytes": 1768,
+      "lines": 50,
+      "sha256": "67ecd62df3240ce6955a64f50f49a396a3d6237a6ae69c2f7f53b3d1f629483f"
+    },
+    {
+      "path": "scripts/check_readonly_sdk_types.py",
+      "bytes": 1129,
+      "lines": 27,
+      "sha256": "9c3194e534ae0d32e9ddff5bf4618abca0936faf7760912b3daf5b2ff9d26a7c"
+    },
+    {
+      "path": "scripts/context_resource_evidence.py",
+      "bytes": 8500,
+      "lines": 169,
+      "sha256": "c4f3fb5be0d378da172e5b48dc83195576dd37d07ace535e0fc33321be6860fe"
+    },
+    {
+      "path": "scripts/diorama_jury_adapter.py",
+      "bytes": 50489,
+      "lines": 891,
+      "sha256": "1e01303d5acdceb530b044a96f47e2a95995ff785e8ce29df335c74200962635"
+    },
+    {
+      "path": "scripts/e2e/__init__.py",
+      "bytes": 83,
+      "lines": 1,
+      "sha256": "e1bf0a7186315ba3d8bc246c537933a2224487c169f5f5b5843d152367be0e78"
+    },
+    {
+      "path": "scripts/e2e/acceptance_archive.py",
+      "bytes": 13492,
+      "lines": 301,
+      "sha256": "db60b87f54418ed27ef895634e59c0f24207ddbf5c8fdd85029b772c242c5528"
+    },
+    {
+      "path": "scripts/e2e/anatomist_file_queries.py",
+      "bytes": 14436,
+      "lines": 272,
+      "sha256": "ae253e4ed34f0b4ea5d06fe43bc25df46e8193668305d32fb06fc8fb3c46b088"
+    },
+    {
+      "path": "scripts/e2e/anatomist_original_queries.py",
+      "bytes": 19113,
+      "lines": 376,
+      "sha256": "f06a8f67be6f0f6c795daf6d28f00d9632ebf156f5958c642e04f2e3ae761a1e"
+    },
+    {
+      "path": "scripts/e2e/anatomist_query_data.py",
+      "bytes": 1530,
+      "lines": 40,
+      "sha256": "70bbb9b83fbdd9976576e13813e7ae964d777cfbd8d63c17f173dc22ec6d051a"
+    },
+    {
+      "path": "scripts/e2e/anatomist_saved_calls.py",
+      "bytes": 36611,
+      "lines": 727,
+      "sha256": "5d499ae1c05d34b733c013e36d0d0d4c1af07426ec0e2cc6c8b01b493e45cf1a"
+    },
+    {
+      "path": "scripts/e2e/batch.py",
+      "bytes": 13368,
+      "lines": 249,
+      "sha256": "05f12ba20f6a27a36fc4e45f48940825f26a929dbf4a2c1205187a7c34f83719"
+    },
+    {
+      "path": "scripts/e2e/binary_review_transport.py",
+      "bytes": 9920,
+      "lines": 210,
+      "sha256": "b46ad90c22f8998f8c2e9760a9f7aea6d5aff781143d726293a305ea223f0ae8"
+    },
+    {
+      "path": "scripts/e2e/budget_evidence.py",
+      "bytes": 21782,
+      "lines": 431,
+      "sha256": "38181edab7e69987465be63fcdaef0985f8bbe83259f02d6cdcc6fa8e9cede7d"
+    },
+    {
+      "path": "scripts/e2e/budget_report.py",
+      "bytes": 15798,
+      "lines": 344,
+      "sha256": "21c5c953f7f38264015d7402b7629285ad520fbd279ffa7240650ddbf59d101c"
+    },
+    {
+      "path": "scripts/e2e/business_probe.py",
+      "bytes": 7151,
+      "lines": 156,
+      "sha256": "3efba7cca52d0dac74df4d9de52d5f39160c881af13b6360b187693ada4cf1a1"
+    },
+    {
+      "path": "scripts/e2e/business_queries.py",
+      "bytes": 1478,
+      "lines": 29,
+      "sha256": "6b957c9829d24166a807a74879bc367b53e1d142d6dd9438c848253fc1a97d7f"
+    },
+    {
+      "path": "scripts/e2e/candidate_capture.py",
+      "bytes": 3040,
+      "lines": 69,
+      "sha256": "213ccf939f0570d041ed5566c2e2ec418bea7f2c83c8397f516eb07e1b76a7d6"
+    },
+    {
+      "path": "scripts/e2e/candidate_transport.py",
+      "bytes": 46639,
+      "lines": 871,
+      "sha256": "0294f3596181f3d99001dbed8b8e8533e54f50ab2be22745f62b354d555a801e"
+    },
+    {
+      "path": "scripts/e2e/captured_stdout.py",
+      "bytes": 7841,
+      "lines": 180,
+      "sha256": "b8e6bf3d2a00fd72119aba82ef8f3675f039bbffcec55b69b75e476241cbc9ac"
+    },
+    {
+      "path": "scripts/e2e/catalog.py",
+      "bytes": 7276,
+      "lines": 167,
+      "sha256": "8322020ea1565d5aeacc4348ef4f59c57998955026eb0c300bd7850cd3f074f3"
+    },
+    {
+      "path": "scripts/e2e/concurrent_stdout.py",
+      "bytes": 1227,
+      "lines": 28,
+      "sha256": "470a0df8da5ac3baf56a3be332cf519300d96557e971a38b8655cae7b847e1f0"
+    },
+    {
+      "path": "scripts/e2e/constants.py",
+      "bytes": 452,
+      "lines": 23,
+      "sha256": "3fd10c6cf072d7c2534d2012d927ed21c8941dbbe952924e860ff68870a373a6"
+    },
+    {
+      "path": "scripts/e2e/enumerated_file_queries.py",
+      "bytes": 4486,
+      "lines": 96,
+      "sha256": "43380ac2c5221e7da100a7eea08bbf5cfa7a236142a4a334ce8b3e0c2887a0d1"
+    },
+    {
+      "path": "scripts/e2e/evidence.py",
+      "bytes": 25986,
+      "lines": 525,
+      "sha256": "ae53634b7015fba85ffbbb47169284d0652400a96e6a402e581235aef8f45168"
+    },
+    {
+      "path": "scripts/e2e/execution_correlation.py",
+      "bytes": 67110,
+      "lines": 1318,
+      "sha256": "d77aa283364a7bc6f46e635742c9991ea749dfd2840f86dea3700a19cf1bde1f"
+    },
+    {
+      "path": "scripts/e2e/external_transport.py",
+      "bytes": 7974,
+      "lines": 164,
+      "sha256": "574b4030e3e0f36ba82c1c61b5cba34327aebdfd65848556099c3aa67e7a3305"
+    },
+    {
+      "path": "scripts/e2e/file_query_dataflow.py",
+      "bytes": 20923,
+      "lines": 353,
+      "sha256": "0640ab43e5083e057a56d18eca1812c4ab4d91efc1431d571f7f04a844a81906"
+    },
+    {
+      "path": "scripts/e2e/fixture_state.py",
+      "bytes": 7710,
+      "lines": 175,
+      "sha256": "c395b5cc34ed5df3681dfcdbfb7b0665f97bd4f504eebdcbfd869ed517c5aca3"
+    },
+    {
+      "path": "scripts/e2e/framework_server.py",
+      "bytes": 1067,
+      "lines": 29,
+      "sha256": "03c1b6a980a3a25fa3599b4d534aa7c35b77440b1eff42ee8f2f153db09a884d"
+    },
+    {
+      "path": "scripts/e2e/generation_checks.py",
+      "bytes": 20684,
+      "lines": 368,
+      "sha256": "ae83c3cadfcee2c5f46560c026e3c4d86d736e45b101b0b1da5b0c30b630c744"
+    },
+    {
+      "path": "scripts/e2e/host_state.py",
+      "bytes": 9693,
+      "lines": 198,
+      "sha256": "c25da67d59e3730b51495cb37f7511c330d69fd3007e2ae222b30c2b279f7b57"
+    },
+    {
+      "path": "scripts/e2e/invocation_capture.py",
+      "bytes": 3759,
+      "lines": 85,
+      "sha256": "4c5cc8241c41056e7a57d215387857a1b0560789a80bd23007f0b33ca8383845"
+    },
+    {
+      "path": "scripts/e2e/knowledge_business.py",
+      "bytes": 31327,
+      "lines": 564,
+      "sha256": "ff902633af86d65aad5bd703b6db5f535e7fff4c49e593d4c77e75704f4960a9"
+    },
+    {
+      "path": "scripts/e2e/knowledge_checks.py",
+      "bytes": 30125,
+      "lines": 536,
+      "sha256": "c970bab83a83a936b867494cc73960942a936e9f8350cfe6a3f18ccfeb47aedd"
+    },
+    {
+      "path": "scripts/e2e/knowledge_code.py",
+      "bytes": 7918,
+      "lines": 158,
+      "sha256": "eb5fc561afaca03eda297a524145a55b741c5307f3cda7e58e84d6ed5c578117"
+    },
+    {
+      "path": "scripts/e2e/knowledge_documents.py",
+      "bytes": 4460,
+      "lines": 108,
+      "sha256": "c13a69c0599de26da54517c93887a501884cb418eb1e774a445ff756a67e0dfc"
+    },
+    {
+      "path": "scripts/e2e/knowledge_locator_evidence.py",
+      "bytes": 12386,
+      "lines": 217,
+      "sha256": "dc214d431df0a3f4b101448a9f23e3192ca2216f3cb2f158c334f2f94f8a5fb6"
+    },
+    {
+      "path": "scripts/e2e/knowledge_loop_transport.py",
+      "bytes": 24716,
+      "lines": 535,
+      "sha256": "3954309efc7c5a066041233f401d70d77a3c95ad99d71d5e87347fcccf00a0b0"
+    },
+    {
+      "path": "scripts/e2e/knowledge_navigation.py",
+      "bytes": 8605,
+      "lines": 152,
+      "sha256": "6892879ae5fb72ef305736d83aaae07db56797b5eab71f1ac3bfc30223d38b0d"
+    },
+    {
+      "path": "scripts/e2e/literal_read_prefix.py",
+      "bytes": 2882,
+      "lines": 74,
+      "sha256": "c76d7e48e6fc7c8d58d6098656d739ae7e86f3ec72120d7371a41ef2628d8a30"
+    },
+    {
+      "path": "scripts/e2e/material_files.py",
+      "bytes": 42241,
+      "lines": 846,
+      "sha256": "05202dd7338a281cc35f9da514e092e2c7a9aa05a35da6f0605cc0e12a5d5d32"
+    },
+    {
+      "path": "scripts/e2e/native_ast.py",
+      "bytes": 38770,
+      "lines": 847,
+      "sha256": "af9b46233bd7cf2dfb3ebf50d1c54afbbc3306c4c5bac42b9320f5c3f5ea0206"
+    },
+    {
+      "path": "scripts/e2e/native_checks.py",
+      "bytes": 16720,
+      "lines": 295,
+      "sha256": "15fbd5c8f9f319be3f06e346fed8fb51ccbbda15dfd8e90a2a38f1b7d50af212"
+    },
+    {
+      "path": "scripts/e2e/native_timing.py",
+      "bytes": 2061,
+      "lines": 41,
+      "sha256": "944754595f59bbe25b573f083f4635d3b2b94e75a0e0ea538a9faa998a792607"
+    },
+    {
+      "path": "scripts/e2e/native_transport.py",
+      "bytes": 69537,
+      "lines": 1472,
+      "sha256": "a95d53eda99a625ed72fe1fa0eb65c9b927e15ae4291c6e8d404ce60d67be751"
+    },
+    {
+      "path": "scripts/e2e/numbered_read_frames.py",
+      "bytes": 1804,
+      "lines": 44,
+      "sha256": "08f08da4abb5edb23ce8ab6980e4bf1f47b1e338aaf5a6ee76d0397c84c14ebd"
+    },
+    {
+      "path": "scripts/e2e/oracle_contracts.py",
+      "bytes": 5583,
+      "lines": 166,
+      "sha256": "e397d3ff0eadb96beef451af608ffe103516b0809608872670289b93634b9176"
+    },
+    {
+      "path": "scripts/e2e/oracles.py",
+      "bytes": 137515,
+      "lines": 2686,
+      "sha256": "bb430f331443c78f3555cde9c25df57c736c128fabcd4b2e317e2425901fc3f5"
+    },
+    {
+      "path": "scripts/e2e/python_command_reader.py",
+      "bytes": 57068,
+      "lines": 1166,
+      "sha256": "ff90c1c653ebc1c5739e0fb8e83b0b3c771829632155529e2b5022129d919e40"
+    },
+    {
+      "path": "scripts/e2e/python_commands.py",
+      "bytes": 2562,
+      "lines": 56,
+      "sha256": "5dffea31f2d9ac14c286e1ca90581044e4f3108c9c1d9b24658b8de13f6cf367"
+    },
+    {
+      "path": "scripts/e2e/python_guards.py",
+      "bytes": 28952,
+      "lines": 619,
+      "sha256": "edd9175a0b219d8e39782254c27f23d39009c553f7359f707c4e438de3324686"
+    },
+    {
+      "path": "scripts/e2e/python_text_readback.py",
+      "bytes": 3790,
+      "lines": 87,
+      "sha256": "d737780da5af72e72705448d0f008d6e917333faaeb76d8985d2d584334002cc"
+    },
+    {
+      "path": "scripts/e2e/read_locator_evidence.py",
+      "bytes": 3223,
+      "lines": 67,
+      "sha256": "51dd9a67f5daf88d7a53411b9ba87a9a40ad85d763ae334db6d18d0f2e9d18c5"
+    },
+    {
+      "path": "scripts/e2e/readonly_query_loop.py",
+      "bytes": 2068,
+      "lines": 49,
+      "sha256": "fe57e7db05fafe68edd99fb56fdba40564a0582539a59740e700ec25353e844a"
+    },
+    {
+      "path": "scripts/e2e/release_evidence.py",
+      "bytes": 7716,
+      "lines": 167,
+      "sha256": "01027cbefc511d70a8985f04e90886beffea72c8a290dde4249791471cf6c012"
+    },
+    {
+      "path": "scripts/e2e/repair_boundary.py",
+      "bytes": 7548,
+      "lines": 158,
+      "sha256": "bb6e801931dde447b4ff31b1f3d7d541f8cf8ac202f5259c49228a23a3db4d37"
+    },
+    {
+      "path": "scripts/e2e/retention.py",
+      "bytes": 7925,
+      "lines": 179,
+      "sha256": "ab7e7bbbb59e2cc116deff56833cb5df456cd344926caca45f0ee8eb3b3d89a5"
+    },
+    {
+      "path": "scripts/e2e/returned_action_evidence.py",
+      "bytes": 13162,
+      "lines": 290,
+      "sha256": "a17a464f8b761e2a6aade242e34abc67338c0842871a382a7f33f5fe4e35e881"
+    },
+    {
+      "path": "scripts/e2e/review_checks.py",
+      "bytes": 10522,
+      "lines": 186,
+      "sha256": "117b114d884c7c47a0a184678324ff7c8b020eec4f6281a0da35d41244746608"
+    },
+    {
+      "path": "scripts/e2e/review_file_lineage.py",
+      "bytes": 3459,
+      "lines": 83,
+      "sha256": "27da1f29478dea0ceecc61e884209d27940eaadc16fa244a703ffe3a6ebacad9"
+    },
+    {
+      "path": "scripts/e2e/review_queries.py",
+      "bytes": 14723,
+      "lines": 238,
+      "sha256": "42d7d7ed5b74267702b61a47bd58f4b5be0400ca0ac7b34d1ee7db878a4dea66"
+    },
+    {
+      "path": "scripts/e2e/review_records.py",
+      "bytes": 1969,
+      "lines": 47,
+      "sha256": "29ec3f25c92ffb53b1a4e7d4ab30d777b9e714de60289b168ed13b450c482130"
+    },
+    {
+      "path": "scripts/e2e/review_retention.py",
+      "bytes": 2559,
+      "lines": 55,
+      "sha256": "aa675d70df29caeb25e452e52986017ea4332f61b9d25f598c08b149f23a1e85"
+    },
+    {
+      "path": "scripts/e2e/review_transport.py",
+      "bytes": 24350,
+      "lines": 521,
+      "sha256": "a76fd6e2a37fa33c64bb43c4a322b998d5e676d2cb3b5979e21506c9285f0e35"
+    },
+    {
+      "path": "scripts/e2e/runner.py",
+      "bytes": 15173,
+      "lines": 333,
+      "sha256": "e8965fdf2518f063f86f91e47c00385f368353df39ecee782242c0ee9fede62d"
+    },
+    {
+      "path": "scripts/e2e/runner_config.py",
+      "bytes": 469,
+      "lines": 19,
+      "sha256": "a6d7f2a9335f61ae5cbb3334597f29eddede6f495af25c0673f3d312826f8116"
+    },
+    {
+      "path": "scripts/e2e/runner_lock.py",
+      "bytes": 1925,
+      "lines": 54,
+      "sha256": "71698233c2d41fce1894a5c710e4017f0e34dbd0c48fbc433e329066aacd561a"
+    },
+    {
+      "path": "scripts/e2e/runtime_evidence.py",
+      "bytes": 2699,
+      "lines": 51,
+      "sha256": "104d4c3ebc50f834988f772706e21d6f1bb711b49c222937cbfc56100a2c9b33"
+    },
+    {
+      "path": "scripts/e2e/saved_read_transport.py",
+      "bytes": 54584,
+      "lines": 1033,
+      "sha256": "116423f66323bf8fdce3b76d410b1ca8cedff5eeb016caf7cb8b38365b029bd2"
+    },
+    {
+      "path": "scripts/e2e/selected_slot_transport.py",
+      "bytes": 5328,
+      "lines": 114,
+      "sha256": "3575bcfd25da5e9bad2e41106495ed8c8a5c82ff6e16dba210c18ba6adb20709"
+    },
+    {
+      "path": "scripts/e2e/selection.py",
+      "bytes": 3276,
+      "lines": 90,
+      "sha256": "511d0abd79e21a6a15b892b0ead6d2b11dfba8b116355aaafd5b368b6836a3fc"
+    },
+    {
+      "path": "scripts/e2e/source_identity.py",
+      "bytes": 6685,
+      "lines": 192,
+      "sha256": "5ba107678f39164dcae7c319a128599ad0c084d55defe058022f2e5d0dd94162"
+    },
+    {
+      "path": "scripts/e2e/stable_cli.py",
+      "bytes": 8780,
+      "lines": 219,
+      "sha256": "ccf69367e804021d8f6dd64322bf007f7d45160d6c46eb27d943644492944b49"
+    },
+    {
+      "path": "scripts/e2e/stdout_frame_transport.py",
+      "bytes": 4524,
+      "lines": 98,
+      "sha256": "1775c8cfc956ea5889abe0534b76208bb774b037af7c2e8e56d20bd1338c7a23"
+    },
+    {
+      "path": "scripts/e2e/suite_results.py",
+      "bytes": 23556,
+      "lines": 433,
+      "sha256": "569a4e7fd312d37a8dc3c4514f3641ca3ef6c1b15302e923043695f0d2c5476f"
+    },
+    {
+      "path": "scripts/e2e/term_evidence.py",
+      "bytes": 5087,
+      "lines": 113,
+      "sha256": "6bd849825807ca9a834db3a146a3e9c8bf8936b465b020016ecefa148156f98f"
+    },
+    {
+      "path": "scripts/e2e/token_usage.py",
+      "bytes": 5745,
+      "lines": 116,
+      "sha256": "187e142d493a0892c2d7784ba10462c8c941a38fd1c071de967b606c7eb29543"
+    },
+    {
+      "path": "scripts/e2e/trace.py",
+      "bytes": 14644,
+      "lines": 347,
+      "sha256": "0fa2fa516ceb67af91b2c9bd3bb160e1c5efd9d7e35c24cb7f51f83c3d8f7975"
+    },
+    {
+      "path": "scripts/e2e/trace_types.py",
+      "bytes": 311,
+      "lines": 12,
+      "sha256": "441dbf6df66f1f71a66bccf8b9439a186d151c577dcb3f605bf0e25f63c26422"
+    },
+    {
+      "path": "scripts/e2e/unit_body_frames.py",
+      "bytes": 4367,
+      "lines": 95,
+      "sha256": "97ae77bd243315b434eef6fb380201876591a4f312e037e0f73ec577ec1cb6b8"
+    },
+    {
+      "path": "scripts/e2e/work_package_transport.py",
+      "bytes": 8636,
+      "lines": 165,
+      "sha256": "693388e1e535713c2e7a4fea93438e132f9028c49086e45f3e75cc03f9ea8ef0"
+    },
+    {
+      "path": "scripts/e2e/workflow_checks.py",
+      "bytes": 17454,
+      "lines": 342,
+      "sha256": "7916f73d3c2e80a5abc65dbfb7bc6c2c8fe8cb369c99e55970958798f376ea6b"
+    },
+    {
+      "path": "scripts/generation_report_probe.py",
+      "bytes": 1655,
+      "lines": 47,
+      "sha256": "90c444e1349f84eea45dd7cf4520e99d6e32a1964760bf86607667c4c30507fc"
+    },
+    {
+      "path": "scripts/init_diorama_runtime.py",
+      "bytes": 53943,
+      "lines": 1119,
+      "sha256": "3dcf72017093ba21fff61e0dbdba90a34b169194dab5c62baf4ebbd189d3950f"
+    },
+    {
+      "path": "scripts/knowledge_business_corpus.py",
+      "bytes": 5008,
+      "lines": 85,
+      "sha256": "3efefe219074987a0f249d68347d12f3955935e52f395f8b85031c1f52bb79eb"
+    },
+    {
+      "path": "scripts/knowledge_retrieval_benchmark.py",
+      "bytes": 5079,
+      "lines": 85,
+      "sha256": "0e08df08b8a2a4bf1209fa4add0e132057409bf29460b35cc2f12433d89851d4"
+    },
+    {
+      "path": "scripts/observability_hook_probe.py",
+      "bytes": 2473,
+      "lines": 70,
+      "sha256": "4aa90f0921471c19f83383b134b36391d4b0257c6460f348a0821c769a9cd876"
+    },
+    {
+      "path": "scripts/observability_hook_trust.py",
+      "bytes": 2943,
+      "lines": 64,
+      "sha256": "e147a1adb031ca4b00fd302456c74223497012afb1156f3f47a8eb4f8d539f25"
+    },
+    {
+      "path": "scripts/package_release.py",
+      "bytes": 10598,
+      "lines": 289,
+      "sha256": "4df78b2114903befeb4f88aa4b8d46e69fb25cf4841781e5b47515973745ebb5"
+    },
+    {
+      "path": "scripts/project_inventory.py",
+      "bytes": 20542,
+      "lines": 446,
+      "sha256": "2d56a8c7918d63b21545ad1f93595c5be7d34e1e319128136b8af5a882dadc75"
+    },
+    {
+      "path": "scripts/readonly_sdk_consumer.py",
+      "bytes": 5186,
+      "lines": 105,
+      "sha256": "8023f4761e284e14e554d67817f5c89dbcd736eced883d733a410adbe0d88053"
+    },
+    {
+      "path": "scripts/review_evidence_metrics.py",
+      "bytes": 2080,
+      "lines": 40,
+      "sha256": "ed0fd0eee9917d84a1ba8c86d47c7ce7d19878ea64eda9fb6535f0b8d704f27a"
+    },
+    {
+      "path": "scripts/run_e2e_catalog.py",
+      "bytes": 2522,
+      "lines": 63,
+      "sha256": "9aec9a7f4116448b0715fcbfb0ceb8bab1f674b69235c30bc428afcb82e1c4fa"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_commands.py",
+      "bytes": 52381,
+      "lines": 664,
+      "sha256": "d03b2fe322214aa09bf4e6d41a4b6723b10cd1f08da76a77e36132985ecfdd22"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_core.py",
+      "bytes": 1819,
+      "lines": 73,
+      "sha256": "10b1e5f609ef15c39627e72dca378a084cee92d2c354634b97939f954d4d9212"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_runtime.py",
+      "bytes": 205,
+      "lines": 14,
+      "sha256": "997a4e8cedefac2e0727b0230d721008eb9c9013d742a93dd88b7ee84dc725a4"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/__init__.py",
+      "bytes": 120,
+      "lines": 3,
+      "sha256": "97dee2634048f2699022757e683d04bcfc55fdbfcdeac30493cf163b8a113e5a"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/__init__.py",
+      "bytes": 72,
+      "lines": 1,
+      "sha256": "80c86e277bb888919de26331dbabd7a2ff0d278480070c1abe2ab753bea39ed9"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/bootstrap.py",
+      "bytes": 2264,
+      "lines": 50,
+      "sha256": "b3c515c3cf6496be7e8040f681ed9c069ce8ff09939df22cc93ab8b8eb4d5833"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/boundary_types.py",
+      "bytes": 3397,
+      "lines": 143,
+      "sha256": "f2f719f66e04af18a7db704b5cb8e257be70d34b39069da6cce9d40daa950c52"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/boundary_validation.py",
+      "bytes": 4745,
+      "lines": 91,
+      "sha256": "5c74d4f9cf1a081f8b904c1067cd2a36c4de82ec592e236829a911d9166cb7e7"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/cli_result.py",
+      "bytes": 7060,
+      "lines": 115,
+      "sha256": "4ffbbb6e8ff775d5d12289e0df9dd4fdbb7beae2ca0b4ffe55c714568c4edabe"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/command_guidance.py",
+      "bytes": 27462,
+      "lines": 355,
+      "sha256": "044461ed6686afb979cbe1199bc69e3f5e5a260ddaccdd63e06ef8626f4747d6"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/command_spec.py",
+      "bytes": 11146,
+      "lines": 198,
+      "sha256": "a1b94df3aa311699a4fa6d6633a4234f538c4666edeb3cbedadbe31f5ce906b0"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/configuration.py",
+      "bytes": 8243,
+      "lines": 158,
+      "sha256": "e402a8d6f58cd6a7bab3d6745cb805cc24c285291123843d0f600362044dc4a5"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/context_contract.py",
+      "bytes": 5236,
+      "lines": 88,
+      "sha256": "eb91682f0a8587156576bb9cf8fc1217c31489b4c28c1ad5759a3e00996f4916"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/context_identity.py",
+      "bytes": 833,
+      "lines": 22,
+      "sha256": "614ce15f7c922f3c9264d50b6cf9fc92657211c5e5e1e8c5c0cae30e2849c1f5"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/contracts.py",
+      "bytes": 5020,
+      "lines": 118,
+      "sha256": "c2e8d8a4ac7a3eacff57f786727bcaeb235a4cfae9d84481c04a351d380d7d13"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/encoding.py",
+      "bytes": 283,
+      "lines": 12,
+      "sha256": "d0bb2f7a2218e7bad5621cad3989026a3fd0ca75d6829b820048e05a5cb157ba"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/generation_reports.py",
+      "bytes": 16163,
+      "lines": 313,
+      "sha256": "16babceca9733282e5a9168f7fec1e822750af7687013e5a5e5c8ff5fb6fd4ce"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_code_query.py",
+      "bytes": 6087,
+      "lines": 105,
+      "sha256": "05d271ec5983035dd808490985c928c1899c176d69ab968c9f77604ac921722b"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_dependencies.py",
+      "bytes": 1507,
+      "lines": 34,
+      "sha256": "f37911e62f3e3b41b466eb5ad3694004d1dcf038bbe8cd39b134e1ec4ba831f1"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_document.py",
+      "bytes": 5029,
+      "lines": 109,
+      "sha256": "804d00a7c041c11aae21fd357b201dcb00065ddb0e3f34dc77960cd7d86a3233"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_identity.py",
+      "bytes": 1245,
+      "lines": 26,
+      "sha256": "cb018692657fb237a99c0ea5129a5026c84d45c9341b421275b4a96713a255a9"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_map.py",
+      "bytes": 2949,
+      "lines": 51,
+      "sha256": "01301b46bd731954711e5d666fec0053d109552c9a74dc514c8883107f7d1d81"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_model.py",
+      "bytes": 20980,
+      "lines": 353,
+      "sha256": "e81ce9fffc19685fc2d32f5191ef2556cb9f37311c365b8cc96d97cce566d8c5"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_navigation.py",
+      "bytes": 3011,
+      "lines": 69,
+      "sha256": "7ca6daf0ca91b34cd75d24330429850c9a0e25102fea7af56a0939bec327470a"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_query.py",
+      "bytes": 687,
+      "lines": 21,
+      "sha256": "df66dab2eb21b15d423fd77d9372aee4be4261de689f2713bfee81c77430c722"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_receipts.py",
+      "bytes": 960,
+      "lines": 17,
+      "sha256": "2706813415ea47b58adf9dca65102a8c80f2c08488bf093076f87a81885358f5"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_remote.py",
+      "bytes": 7384,
+      "lines": 128,
+      "sha256": "3d3f7fc49b2c4f115977821bd334fe851c786d122aeb68c0f210ca30108c00aa"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_retrieval.py",
+      "bytes": 26867,
+      "lines": 467,
+      "sha256": "84f52a8b5f9d58a8ca048befa7f424ee9c9c0a4aa0e4356f423336a22efb6c92"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_source_config.py",
+      "bytes": 6433,
+      "lines": 89,
+      "sha256": "dfafb56e80c63f0f4a0d1b3282b8f130ba405c327126ee53f210b81e98179352"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_token_stream.py",
+      "bytes": 3589,
+      "lines": 90,
+      "sha256": "341fb0fedce6304475128e15f1fedd8a60cef3f73bab04809f4301371041b74d"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_units.py",
+      "bytes": 5502,
+      "lines": 110,
+      "sha256": "8849194409c5b977edef2f9a95438b9660560e261d9fb79b9ec933fbf6520ef2"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/knowledge_work_context_contract.py",
+      "bytes": 1941,
+      "lines": 35,
+      "sha256": "bc713e1310e29b9f868cb26eeec8674c65b3d387be0f54fce3affeacb7acd21b"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/observation_config.py",
+      "bytes": 397,
+      "lines": 10,
+      "sha256": "e201b8eaf545663f1fee2e21d54275a747da362b1eb24178677e22e1ec5eaa12"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/observation_contracts.py",
+      "bytes": 6400,
+      "lines": 144,
+      "sha256": "1e61003c198331f7f39350e1050cd016b6c8cfe715729de4df51da1ac4e974a7"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/observation_diagnosis.py",
+      "bytes": 10363,
+      "lines": 193,
+      "sha256": "d479f79d72cae996a798cd2b3b6972d7b0a57f462f845b89ebb8484cc1277e21"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/observation_loading.py",
+      "bytes": 840,
+      "lines": 12,
+      "sha256": "2285b4dff99743b6bf7523e907ce958ed5f5c7f3ae4136a6afe5e3d6108574ef"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/observation_metrics.py",
+      "bytes": 21429,
+      "lines": 381,
+      "sha256": "dbd2f87cc1b6ae23496d7e9052c74f044a7751174409af544b5fb7b63983be50"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/observation_quality.py",
+      "bytes": 4382,
+      "lines": 94,
+      "sha256": "0aeb1868bfbc42ea226257f8f6e275c341253b92aa1fd67144a0453511a440d6"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/observation_traces.py",
+      "bytes": 5227,
+      "lines": 110,
+      "sha256": "246869af07d3ab9f4de7ee4af13b4911befa27812364ccd4bf9d467e6a0c0d02"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/plan_context_contract.py",
+      "bytes": 1351,
+      "lines": 25,
+      "sha256": "d4def35e6f6ee64728f9022ebee785f6e798819038c5cce5bccebbfa56907ac3"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/planning_state.py",
+      "bytes": 1891,
+      "lines": 29,
+      "sha256": "d0fe31ba7874ffcf4e47251282697c8ffbbb723e2b5fae8009f3ee9cca2692b6"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/protocol_identity.py",
+      "bytes": 548,
+      "lines": 12,
+      "sha256": "6c593175fb4ba83d2ec647e2d6db2ab4548190c040ad323de9a530be6c80d6ee"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/quick_checks.py",
+      "bytes": 966,
+      "lines": 22,
+      "sha256": "e2b5a501341f62eddb524fd9664b17cb9cf6e8f414bfbb5bc4da8326ad9b038f"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/quick_choices.py",
+      "bytes": 616,
+      "lines": 11,
+      "sha256": "76119ac2df4b1f1fb964e8cd155b21dbd76f91a3e6bbed9e2ef0ff310dff8e87"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/record_manifest.py",
+      "bytes": 1479,
+      "lines": 29,
+      "sha256": "651157bdf87c61716ee56460c873aa754b2baa878b1e186479317ec2820aeaa8"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/replan_validation.py",
+      "bytes": 2010,
+      "lines": 40,
+      "sha256": "2866635172b349e8756b1f8e7f234474097030b2a765d7f207f64ea2accbf76a"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/resource_catalog.py",
+      "bytes": 1840,
+      "lines": 45,
+      "sha256": "1caa194b904e8c8da8463e689e15de95a34086a656363434c1759a27cf5882bb"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/result.py",
+      "bytes": 773,
+      "lines": 26,
+      "sha256": "71e2ce5d690f5cb1d6e128e6c776afd277b80539da285321c064de69066a3f39"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/retention.py",
+      "bytes": 3354,
+      "lines": 74,
+      "sha256": "e986ad5ab74c9c25aeb8e040093a65c601bf2d5d159b6dd04ade884d0fdec2a8"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_audit.py",
+      "bytes": 2241,
+      "lines": 38,
+      "sha256": "61c26b85bf9048b60654691634b2526faaa338e4f7cd231ef84dc3d3da0e9f7f"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_authorization.py",
+      "bytes": 4237,
+      "lines": 61,
+      "sha256": "216df08e2795a2de3bc13a24092426b0507b1d75147261f44afcba86347cec4f"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_contract.py",
+      "bytes": 34131,
+      "lines": 407,
+      "sha256": "3b4f3343f2b1e9550ad39bff75e14aaf6aeb7178826f19da196ae7e82e15886b"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_followups.py",
+      "bytes": 6996,
+      "lines": 115,
+      "sha256": "19f3fea2c968aef8b46db3ef3a6df41cf7d9dfebbe28a4b4e85516a91e5f49fb"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_material_selection.py",
+      "bytes": 2326,
+      "lines": 40,
+      "sha256": "e792d237ff37b7890d00bd221ccf788762c11de919ceb36f70d1d6b438b0cc8f"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_metrics.py",
+      "bytes": 1359,
+      "lines": 26,
+      "sha256": "0de0c58c2697b76d9c0b729deeccc092d262f065fbb63ffffdf953b7ed175f66"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_output.py",
+      "bytes": 7587,
+      "lines": 111,
+      "sha256": "4ef558945430aa4fd99d2a5a53cf0a9a14d3180b6a6356fb0f71cb1bc49bfa00"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_progress.py",
+      "bytes": 18249,
+      "lines": 282,
+      "sha256": "9a249aaad8c403eebb62653ac6980a473830f42cfb204077c6e23ceefb7d9228"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_report.py",
+      "bytes": 3948,
+      "lines": 75,
+      "sha256": "23db250f9a53b09e2e07dfd2cdf7cd8fd3fab13415b3d6b4f996b1b7c0af5c99"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_source_config.py",
+      "bytes": 2167,
+      "lines": 48,
+      "sha256": "dc1805ef04537874a0af2117ae7180c019881ba8e84f90b8bdb02f6b5e031673"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_status.py",
+      "bytes": 1846,
+      "lines": 20,
+      "sha256": "05c67aaa5e43eb36b6f91dcfc70826d788254a9cdc324bc516bbc9107d9fb968"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_timeline.py",
+      "bytes": 2395,
+      "lines": 36,
+      "sha256": "b3cec579c66ca07d7bcb39a56480eae8d6ec1e71ae82ed33acf107c5cf75bc9e"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_timing.py",
+      "bytes": 2569,
+      "lines": 49,
+      "sha256": "d1d77d5de116a00c3d3bbda558a2b0f005b4dcbad9e1c681bc2bf6cfcf09ae6f"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/review_values.py",
+      "bytes": 597,
+      "lines": 21,
+      "sha256": "f408005565a545f4462e566faa2175f048ddc1558d603c4ee3c05ee42b05dc38"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/seal_policy.py",
+      "bytes": 317,
+      "lines": 9,
+      "sha256": "6ea8a01b8d20e8d64aa50bb6b9e40a47a649185deca9e49f3fc7a8f5fbd46a48"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/stage_instructions.py",
+      "bytes": 2867,
+      "lines": 69,
+      "sha256": "fa5d4dc140d6deaef76b4f2d14ad66925b0d0e86b87ba594abefd61c83b1d9ce"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/storage_layout.py",
+      "bytes": 6823,
+      "lines": 131,
+      "sha256": "cad709f306dca8d09d94ea98038534e726209795a41e326639963413ddcf0d51"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/stream_json.py",
+      "bytes": 16513,
+      "lines": 433,
+      "sha256": "7ae0d9ffd55ad448cb24af18cdbc857c03e1edbb70d1c582e8021134369d8646"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/task_contract.py",
+      "bytes": 11051,
+      "lines": 193,
+      "sha256": "0e2103091552ff12254b9967318cc6635eb5eb46ec4ea60a7607f2ad489625eb"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/task_read.py",
+      "bytes": 989,
+      "lines": 19,
+      "sha256": "6d67bbe03252e8be9235fad0d95a9c1eae31d7f0485bfc744f8e22d0cfb0f81c"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/workflow_definitions.py",
+      "bytes": 10527,
+      "lines": 204,
+      "sha256": "3b2175e4d35c676660e9a42aef7e0949f25e6c08516e9ca0066cb476da7d0a24"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_core/workflow_progress.py",
+      "bytes": 2481,
+      "lines": 56,
+      "sha256": "a7f74a8c2206449b3bf0308ada4291707c67d255798d5d769242afe34b9a5fef"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/_version.py",
+      "bytes": 90,
+      "lines": 3,
+      "sha256": "7d7eda96109d27d3a97a31c9640ba9b6b28435ebda7cffa490c966b9c8011427"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/__init__.py",
+      "bytes": 1365,
+      "lines": 35,
+      "sha256": "585f74cedafe81b7cffc2089353a95fdc5c0d5b40c99a764cc92df33022c6b30"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/api_contract.py",
+      "bytes": 93,
+      "lines": 3,
+      "sha256": "a3648ee55a64eb967535679e6f842afe094899a256b6fd1edd3057e6a0203ebb"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/build.py",
+      "bytes": 590,
+      "lines": 14,
+      "sha256": "a507b2f69ad95657796de31c0234f9994e0d7ecc02553319312494f5a378bf9b"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/bundle.py",
+      "bytes": 9642,
+      "lines": 208,
+      "sha256": "7eeb005c453ef50ca3225bfe58bc2b16235232d9df747c5e38b9aec15127b11c"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/candidates.py",
+      "bytes": 8044,
+      "lines": 131,
+      "sha256": "235322cdd4fa4748cd3cd1e01ef9e71ed84e8633ceee51bfd099623ead54b293"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/capabilities.py",
+      "bytes": 1667,
+      "lines": 20,
+      "sha256": "41c90bfb5ad340bf7f4677580b09400374c82fbb7afdd34b817ca4258e6b9349"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/catalog_views.py",
+      "bytes": 3775,
+      "lines": 73,
+      "sha256": "3f61bde18a2e8540069795ab8df25a78b65de35f2be67c4eb68b279f1a481aa3"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/configuration.py",
+      "bytes": 9942,
+      "lines": 160,
+      "sha256": "c6a0e10e949570a106695f2240cdacb82964c69911fdca5b9142473a7cc23b68"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/context_plan.py",
+      "bytes": 3537,
+      "lines": 66,
+      "sha256": "e5bbed5f61be66ca9114b2f4caf0df83dd52ed4e4d2f6c71cb63803d87a79728"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/diagnostics.py",
+      "bytes": 5041,
+      "lines": 89,
+      "sha256": "cc1bb077cfd6eb9d2ea878e03bfe13557964a3fee8bc8fde22e1421796c512fb"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/freshness.py",
+      "bytes": 7495,
+      "lines": 136,
+      "sha256": "43750d3b7fed10f39819f1853934f71ae1a34b1607a61919fa76f962e23042c0"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/generation.py",
+      "bytes": 10392,
+      "lines": 194,
+      "sha256": "5f868da82f69a7d39bde26ef6508298c431c6e294729ce5f96e39a977ee24e50"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/history.py",
+      "bytes": 2411,
+      "lines": 45,
+      "sha256": "e482a347643164d9d2ed6c313c101487d23d40d018f64d8b21b17d9889f225e0"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/knowledge.py",
+      "bytes": 6737,
+      "lines": 144,
+      "sha256": "5c348bb9f2222ba13ebffea2bff9925545456d9bcc338868fdbdbbd7c87801db"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/knowledge_config.py",
+      "bytes": 1638,
+      "lines": 43,
+      "sha256": "e0c85654691742cff54ee851d81383981cd98ee3241aa5636e329b8d99a150e1"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/knowledge_stream.py",
+      "bytes": 14068,
+      "lines": 256,
+      "sha256": "586bd18ebd50177013067b429dd2ea0560087f605659378dc6bee53dec2f8315"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/knowledge_units.py",
+      "bytes": 6308,
+      "lines": 124,
+      "sha256": "b1351497423c59569285efa00b4cb482205d13975bccf8c758ee63913ca8125e"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/knowledge_work_context.py",
+      "bytes": 7678,
+      "lines": 115,
+      "sha256": "113a17a0b0f5a4ed204a6b5207d5216ddad89261c05c4a215a0582dfc8c6b25b"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/loading.py",
+      "bytes": 1579,
+      "lines": 36,
+      "sha256": "5593f8962fad24b122acec5fe439e4744c180f07213c504229718b3d3321faef"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/management.py",
+      "bytes": 7701,
+      "lines": 154,
+      "sha256": "633d5386a5038f24ffe736d4642d39accb87b42d91f7e0268a4992076e6d9eb6"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/management_metrics.py",
+      "bytes": 34911,
+      "lines": 468,
+      "sha256": "c17e04a4c001199e2a402de53d3e2b649c819ee4c3581b09af29d6a78faf4a66"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/materials.py",
+      "bytes": 7487,
+      "lines": 108,
+      "sha256": "d422b60765921f38a6c78ee9517dc540231beb2323a7c6c12ef723c7e92befb5"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/models.py",
+      "bytes": 8063,
+      "lines": 350,
+      "sha256": "f33509d37c94021c0148c126d6e4975b2cf13fb4d3a6863caf9967da6a665984"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/observation_timeline.py",
+      "bytes": 5570,
+      "lines": 97,
+      "sha256": "f3307d069bf5f948b89658401391600bf496b1f57eec69b7261ac4da3ff6afa0"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/observations.py",
+      "bytes": 5896,
+      "lines": 108,
+      "sha256": "92b5d9be420d18c8261e547b0640bd46b8828524ee1eaafb59f497ba250bddec"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/observer.py",
+      "bytes": 6346,
+      "lines": 119,
+      "sha256": "c0a8d0efeaf85b1aa65b5b79c32049963c4bb4fd8989049249378a8885b5f20c"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/planning.py",
+      "bytes": 3960,
+      "lines": 66,
+      "sha256": "e7acd6b6ff393f7aa125e9365e8bd6f6c0e213a701f5d73b4b99b528a3efe8a0"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/project.py",
+      "bytes": 41191,
+      "lines": 884,
+      "sha256": "8f0274d2be72ffef4a0632823988de1acce78efe90963a2f00363cf695c14f96"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/query.py",
+      "bytes": 5676,
+      "lines": 112,
+      "sha256": "a7b3eaff3673e7e17b76b5acc3bffee7a909ea09c3bef80c98d445a691005d4e"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/review.py",
+      "bytes": 19626,
+      "lines": 357,
+      "sha256": "b13824f1ca244d6de86b1867f14c7dba565505434abf0497f3fcba891a12896a"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/review_boundary.py",
+      "bytes": 3007,
+      "lines": 46,
+      "sha256": "77cc4803ce419c312c0277045443b27e8b20348ac44126a5f2d1371664a1e414"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/source.py",
+      "bytes": 28101,
+      "lines": 554,
+      "sha256": "a0487575d992cd93eab51d4999f2e43658f21a8fcb23d3c6c82b75ed2ad24524"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/storage.py",
+      "bytes": 8232,
+      "lines": 135,
+      "sha256": "356032a8393b2656d63c108b3d197664a5192ddcc2277cbd5cada495c0075802"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/types.py",
+      "bytes": 3740,
+      "lines": 113,
+      "sha256": "cde959822ef2d4fc149cc46891ad1d757a938dd685b8804b4cb4c25f11526e29"
+    },
+    {
+      "path": "skills/diorama/scripts/diorama_sdd/readonly/workflow.py",
+      "bytes": 14897,
+      "lines": 235,
+      "sha256": "da958d8e82aa6303b77f44f9a6c1d3ab523aa8e7b676a4e3aa3115da80c01e90"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/__init__.py",
+      "bytes": 175,
+      "lines": 5,
+      "sha256": "58b7cdf87d10197cbec039831debe4fdecb3f2b4d3e9ff7fe5f741b4a50f1359"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/actions.py",
+      "bytes": 11418,
+      "lines": 225,
+      "sha256": "468e4c4a47ca80819d9f095f9dd57c6a57610ec8b3482264b884d41c6459a19f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist.py",
+      "bytes": 11744,
+      "lines": 261,
+      "sha256": "a7edadcafa5a320dd2266b63e9e39ebd385aaf57f9689c758f9e3f345ed21bad"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist_index_manager.py",
+      "bytes": 10439,
+      "lines": 226,
+      "sha256": "2d2c7428f6bfd295e6f7631e3faaf1ed828f49d513d1df4304eb170b1b1d72ea"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist_index_protocol.py",
+      "bytes": 5312,
+      "lines": 109,
+      "sha256": "2695252e3d62e58dcfaf2013f50016b513b41e1422073ba552a7620529fed84f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist_output.py",
+      "bytes": 3076,
+      "lines": 60,
+      "sha256": "d69d131bd9e26140cf8d2a0248edd9d89abf3c7fe7938264b185afb14697a14c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist_paging.py",
+      "bytes": 9425,
+      "lines": 178,
+      "sha256": "ab5b511d2137e89bcb18b7762c91ab22d51e52bc58f4c006b28e414668a03ecc"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist_process.py",
+      "bytes": 3585,
+      "lines": 84,
+      "sha256": "6de866b8b2fc37a9a6608072a0f58d0272074ef0ab385d6283f0bc0f36398c1f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist_stream.py",
+      "bytes": 10252,
+      "lines": 204,
+      "sha256": "d10304fd04cf070c1c1535d72ac5c182b311fcfc56e1dd2ecfb1d0f61841f0c1"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/anatomist_text.py",
+      "bytes": 5459,
+      "lines": 136,
+      "sha256": "fdc5e4288f7ed6915cd39f4a566e4b1d5ff8f05c023f251c99d5478c2b9d65b7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/cache_commands.py",
+      "bytes": 2188,
+      "lines": 58,
+      "sha256": "b9c5c88e390934f24c2005240d04e870fbc1e06205fd1720996d4473cb499090"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/candidate_contract.py",
+      "bytes": 10300,
+      "lines": 207,
+      "sha256": "d7365bcca90781f009dc197a21098e29a91496be5cde773f25ab1622c4c30f5e"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/cleanup_plan.py",
+      "bytes": 1129,
+      "lines": 28,
+      "sha256": "50299f6005506c0ef1bce0a06f73576c6487f21022449eecabbe2493e7c21269"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/cli.py",
+      "bytes": 16961,
+      "lines": 338,
+      "sha256": "37007c8443edf652f62647db0137911490f8f1b7587105ea32a13b6298260753"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/cli_output.py",
+      "bytes": 3544,
+      "lines": 95,
+      "sha256": "33d72f2fe0ab036ee7b930db7c6c533214892dbfdadf48c67aebe01b8583f840"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/code_surface.py",
+      "bytes": 9494,
+      "lines": 218,
+      "sha256": "425ca807b0b2e2cbcc0539a4d36c33b94adcf150445a3dfc55eed4a3ca24dd37"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/coding_style.py",
+      "bytes": 16815,
+      "lines": 317,
+      "sha256": "5b83736366054a73d3d94886b9a321c4f08c5851d43d99454448b8783b6b71e9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/command_registry.py",
+      "bytes": 8290,
+      "lines": 136,
+      "sha256": "9331a5d8c0d25d222837c931b9a54b81c8dac2835292f7a541ef78968f9f7183"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/command_timing.py",
+      "bytes": 1210,
+      "lines": 40,
+      "sha256": "2cde3050654672cbb07f8f9384a77c6f2c9f6d8b7fb967d27d45e8eaacc69a6f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/configuration.py",
+      "bytes": 5974,
+      "lines": 138,
+      "sha256": "6c8fc32d4d2802430f9751805d0452fe4e7cba95cdeae16770a7fb44d9f0d9c7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/context_hints.py",
+      "bytes": 654,
+      "lines": 14,
+      "sha256": "c3b4fb1dfc77fdf9d0c19952d06dae3d220ba1d3efebb35b13b7d1609a0ff7cf"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/context_pages.py",
+      "bytes": 1239,
+      "lines": 22,
+      "sha256": "0a8f3ef724eb4a0142249ef113c2bc2be74e7768d77d404b81ef421a051a3f31"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/context_plan.py",
+      "bytes": 28709,
+      "lines": 414,
+      "sha256": "23983aaa298c37e55cc6d5861e8299de9c8539417aaddde6b4f306f54464a494"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/context_providers.py",
+      "bytes": 2763,
+      "lines": 34,
+      "sha256": "69078666082f8e4dbc3539b5c7af8cef4d2c6595a2dfd62fc29ffc6de9e2593d"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/control_plane.py",
+      "bytes": 1765,
+      "lines": 48,
+      "sha256": "5306c206cbdb5f05ef6d247d34046c2eae57fdccd83cc1b547f9ce51a6f8f34c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/coverage_calculation.py",
+      "bytes": 10201,
+      "lines": 214,
+      "sha256": "4800561ba0ac47f62aa8aa2d2270dddeb84946c77ee16b22a2a0fb4c59256702"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/coverage_inputs.py",
+      "bytes": 2595,
+      "lines": 62,
+      "sha256": "be6348659d2df00443f71034e7e355f4b34ad47cf2413a86b126a0ce931c42c7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/coverage_values.py",
+      "bytes": 2400,
+      "lines": 90,
+      "sha256": "7633814d62f329fd031de5dd0cc39c0ba93d9a3b1f1d19b999ea0352c2486561"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/decision_cards.py",
+      "bytes": 3938,
+      "lines": 101,
+      "sha256": "0c422ef156fc9f52478a81818e5afa2c0405167500c380a86121fbd2a78303f1"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/design_document.py",
+      "bytes": 20119,
+      "lines": 347,
+      "sha256": "487fea25ecd4224b7fe56191b8bcd6e28587e3cfb6c6776eee1d16cb4e04edd0"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/diagnostic_bundle.py",
+      "bytes": 12210,
+      "lines": 221,
+      "sha256": "58e27632358693ece5598f1d1a5879cca5ed431839e01ab6c16f2c69eb1d00a7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/diagnostics.py",
+      "bytes": 11897,
+      "lines": 213,
+      "sha256": "8a4e4b49d274bc0771a7f78a7de08ab6665785745e3a9de483a2a16a08c8d372"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/doctor.py",
+      "bytes": 28653,
+      "lines": 628,
+      "sha256": "2e8b4466a152ffee50d73d3224c25958b8238c12c4188fbab4e80978eb819b1d"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/entity_commits.py",
+      "bytes": 6969,
+      "lines": 169,
+      "sha256": "7139d9e6a71f5795e2198532dfa3cbc671045af08be0abeec487e3cdf80ec3af"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/execution_actions.py",
+      "bytes": 1719,
+      "lines": 44,
+      "sha256": "7c3f651cb34fdf7a80d9b6f66c7b4da3468a2ebc4356850130095179a69476d4"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/experiences.py",
+      "bytes": 6706,
+      "lines": 148,
+      "sha256": "664a4a130330284c0839e43c33db0895647d7c0a67efb641aab5c24c8888263c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/file_transaction.py",
+      "bytes": 7880,
+      "lines": 234,
+      "sha256": "793cb09fc5528c3c6ad628faacd560497eac99fd582da6246f32f8f240d363a9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/generation.py",
+      "bytes": 25845,
+      "lines": 439,
+      "sha256": "84a7600380d86ea8940e588095d3fce26df2a5a04fd3881891c57e1730e8c334"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/git_seal.py",
+      "bytes": 4218,
+      "lines": 109,
+      "sha256": "3d05e5a8aff2853c9a4fa57bafaff6c869145a7569545a690c8150d1bc49a0a9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/git_snapshot.py",
+      "bytes": 3093,
+      "lines": 90,
+      "sha256": "504b6cd3cfc62f2e43c6344d6ff90e812306fe81fd750e50e596dfe34c509102"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/git_store.py",
+      "bytes": 17660,
+      "lines": 427,
+      "sha256": "80a28e92759ca94f0df5dc6d463e6e6cef1ec1b7502827d23e9e5aa56e2f372d"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/guide.py",
+      "bytes": 9642,
+      "lines": 156,
+      "sha256": "46203adcfa2f236246eff764ca6847f17f139fb1d1ca41ee0db8b76a3a936a5d"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/handoff_context.py",
+      "bytes": 5192,
+      "lines": 87,
+      "sha256": "63437bea2d32434d09d0085817371fca3cc691db2fc2a34789f1055a7b399b24"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/handoff_v1.py",
+      "bytes": 7262,
+      "lines": 146,
+      "sha256": "25784302bce8435544317883eb585cb306312cb96c274872eb757314f4ff0242"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/integrity.py",
+      "bytes": 7036,
+      "lines": 141,
+      "sha256": "66ad765d4f63171cfea6ac68d4611f9f6c77462ee397af745a4cedd340ce3be3"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/java_source.py",
+      "bytes": 9407,
+      "lines": 206,
+      "sha256": "9af172771cb98d47f4841423f2a2b781bf447d1cba7bd7f2265c969fbbd863fb"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/java_target_contract.py",
+      "bytes": 3020,
+      "lines": 57,
+      "sha256": "35009fe5c9e9b319b659a4d4693630c0b4537145a191c4938fd9ca5015ea38c7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/__init__.py",
+      "bytes": 68,
+      "lines": 1,
+      "sha256": "d9ae7c3769bddc0861e494b4a4103fbac4ad76ad9ee9c45f98dd4f343674037a"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/clarification.py",
+      "bytes": 4090,
+      "lines": 59,
+      "sha256": "8e087c3c74f69a3f673c5b3d53bfd34daa4717d51bd874b3c1adb8c176a9b575"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/commands.py",
+      "bytes": 26296,
+      "lines": 470,
+      "sha256": "c30a1dec288a66305343c5f4053d56367b3ada62b7bce3f2e619be5fccac71b1"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/context.py",
+      "bytes": 10480,
+      "lines": 180,
+      "sha256": "19727d97754bdcc404f2ef9b6df86bc04e481ef15f0097cd9fdd4eeed6207469"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/http.py",
+      "bytes": 4962,
+      "lines": 78,
+      "sha256": "b8045c7d46756aedbb18bed9a70d641c1cf6e53b12ade86a072b453559b4fe2f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/investigation.py",
+      "bytes": 4656,
+      "lines": 68,
+      "sha256": "47d521f7228052421f06a8b71d8f9d5f51e63ddef36a7f0121201b54f6ce4673"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/investigation_result.py",
+      "bytes": 6299,
+      "lines": 115,
+      "sha256": "f8bd46f1d797354e8637fb41c9a001f68be08499cd9a4dd9a847f3c640e08687"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/java_evidence.py",
+      "bytes": 10561,
+      "lines": 163,
+      "sha256": "b077684335c759d7c322196b72452de22fb9447536d964449095a882bcb9ac26"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/layout.py",
+      "bytes": 12098,
+      "lines": 192,
+      "sha256": "48874c34018a539360b024683701fcfced614f6ec17d8ba18b2640be61abad3c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/preview.py",
+      "bytes": 7404,
+      "lines": 116,
+      "sha256": "5f5040362b1e4ff449d85ba7a64622cf38e7ad074343e8cac9113561721c27fd"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/publication.py",
+      "bytes": 6730,
+      "lines": 117,
+      "sha256": "0e355404367225640edd71e1109fa7b713d2657cb2f6ad1d70e44d02e9006dad"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/remote_commands.py",
+      "bytes": 3967,
+      "lines": 80,
+      "sha256": "ce2e5270ba7e141a7fec513ef0d1a00e80607e8d0efdd99e5155a312ec5405ee"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/repository.py",
+      "bytes": 35397,
+      "lines": 578,
+      "sha256": "e247941fb856b9417846eca1e785b654dd321d3115a42c0d76426f9236a1bdb7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/site.py",
+      "bytes": 17142,
+      "lines": 263,
+      "sha256": "c4c012b3a5b878ba5d5318017186cdcb344f71337b54bd17e9431a05913d55c8"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/source_store.py",
+      "bytes": 7360,
+      "lines": 130,
+      "sha256": "0ec9434e728bd45549ddd434684be80d66029dc71304eb392492c93d32877105"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/sources.py",
+      "bytes": 3915,
+      "lines": 66,
+      "sha256": "18397afbeb8018803ed6349b0474ce754f47e46a8f3e6c19d52770eaee86a50b"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/sync.py",
+      "bytes": 20877,
+      "lines": 325,
+      "sha256": "47164fdb3af52b18526532024bc74faa3ac4fe99d93b5d5e0175176be4a769d4"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/sync_cleanup.py",
+      "bytes": 5253,
+      "lines": 101,
+      "sha256": "83593e38541993cbccddc3623f403870fe147c04320f9a17a8d357def9b353fb"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/sync_records.py",
+      "bytes": 965,
+      "lines": 20,
+      "sha256": "6bb0a71fe8870797be80c5d8dc01303e48e0f83e9c322ac89dd44696b6f5d6c9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/transfer.py",
+      "bytes": 7221,
+      "lines": 89,
+      "sha256": "b3e8cc05eb70456262eacebb36d2f37ccf5758e2171fc96adcdd5c97766012c1"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/unit_stream.py",
+      "bytes": 3767,
+      "lines": 79,
+      "sha256": "0aa37786f86b7c0b6965192e5f4fe40d7dc4c244993e5c46a0146e9e0ffb9bb4"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/work.py",
+      "bytes": 42435,
+      "lines": 667,
+      "sha256": "e555355617b0b58bd3d386d343c393cc26aa5582e8fb29b54ad456edf0541f6e"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/work_context.py",
+      "bytes": 4240,
+      "lines": 65,
+      "sha256": "8e8fbd3bb9ac8446d94d752e212e6be6ec68ef10caa2851a20769c85db5911d9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/work_navigation.py",
+      "bytes": 5285,
+      "lines": 76,
+      "sha256": "2c4a439d76d1ff9b203fc1b99786e548e651b96460ec1aad2aca8732bca62a1f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/work_state.py",
+      "bytes": 2688,
+      "lines": 53,
+      "sha256": "44862b7cec9fc4384b843e839f74a6952852472f33f7368a6671a4e62bc1398f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/knowledge/work_store.py",
+      "bytes": 10411,
+      "lines": 217,
+      "sha256": "dc1ed088ed44adf1907a2e4c9f611159fb9053ad155abc52b54522af588e5332"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/layout.py",
+      "bytes": 3460,
+      "lines": 105,
+      "sha256": "67499ac9248fac4456c5af78292458fe5b45e11a7e298a0fff98673671fa9628"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/lifecycle.py",
+      "bytes": 10744,
+      "lines": 201,
+      "sha256": "17412be1270352f303562c58a2b8eee28296639bae7fd8c573841163c7e2aa27"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/management_facts.py",
+      "bytes": 9787,
+      "lines": 161,
+      "sha256": "34fec8b0ad079469df0efcf9311ed2bd70900ebcaa29d8423bc5d6e17d3b9f69"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/material_delivery.py",
+      "bytes": 5347,
+      "lines": 111,
+      "sha256": "63c507c7398b0b5597b25bfd82143c640e8fd7cd05f2e35e96469c6f06a8904e"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/mermaid_validation.py",
+      "bytes": 2006,
+      "lines": 47,
+      "sha256": "6fcc6db6db2e8c1bf9cbf0e82e3629cdcac5b8223e6d2d0d1d1450e75a39eb80"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/__init__.py",
+      "bytes": 368,
+      "lines": 17,
+      "sha256": "cf0b23867c5daaed05684f70d3fb5161a89474e0b9d9ef0eed6f8caf86d26474"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/budget.py",
+      "bytes": 9315,
+      "lines": 156,
+      "sha256": "f6f41940de54f7a60abf924cfb44c1d9bc9b2d596247d7f001542b5640c06aaa"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/budget_scope.py",
+      "bytes": 3904,
+      "lines": 89,
+      "sha256": "cba35b9bb0ffb3be48d35e2d9ec64f03d6429d979d1d7ed10908e207b8a6bf5b"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/clarification.py",
+      "bytes": 6442,
+      "lines": 116,
+      "sha256": "e8c0dea68c71cb964a4108a0d2d15d36cc9069dc8ce1137a87de095f414dd463"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/config.py",
+      "bytes": 4881,
+      "lines": 119,
+      "sha256": "ae0b7685b07b635446c68873886cf5f19e51aad23db2ab98ad292dc1bf569809"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/context.py",
+      "bytes": 11183,
+      "lines": 257,
+      "sha256": "afeb8f13c9fb3b8468753bdd9c3da71e8024b9d550e2348a9a961e5e31c77088"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/contracts.py",
+      "bytes": 732,
+      "lines": 21,
+      "sha256": "7584145e1b4fd1fc201eef6bcad54055fab48358671ac491823dc9ff1168b73b"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/diagnosis.py",
+      "bytes": 3575,
+      "lines": 82,
+      "sha256": "3666b54886903a170fbd4267e06f5709d0a79cc3e44adfe1be437599a06ed85a"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/domain.py",
+      "bytes": 15204,
+      "lines": 262,
+      "sha256": "2e30537fa5560b04b9b286e6f9e0767c43c9c0f9db878bb2be8ea7f76e26ae5f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/material_budget.py",
+      "bytes": 1709,
+      "lines": 37,
+      "sha256": "b13de23b2000ad47b1119910dda9c3f378d02389f0525396f1a522107cef5711"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/metrics.py",
+      "bytes": 4845,
+      "lines": 113,
+      "sha256": "df629b151e140d4f4e02d77dbcc9de783740d1940e15b435ac744352ff20d042"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/projector.py",
+      "bytes": 3905,
+      "lines": 100,
+      "sha256": "be96ff7e565fca7a7163977bfd86e78d0a3b46ccbcf5727206a79e3cba85c19f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/read_navigation.py",
+      "bytes": 1131,
+      "lines": 27,
+      "sha256": "d646f5edbec35a10f6e8cad1b34f471c2dfab3ca289de3a5dc4fa27a07817c68"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/redaction.py",
+      "bytes": 5895,
+      "lines": 124,
+      "sha256": "6ec2e7b6bf9052d78d307f4eadff96936c121cacbeb9f8d06bd3d29d632b6a5c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/review.py",
+      "bytes": 374,
+      "lines": 9,
+      "sha256": "f886df7865ae5e7275f8928284febbd6d4934a94a0591a0ca68e378f84f910b3"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/observability/storage.py",
+      "bytes": 12655,
+      "lines": 320,
+      "sha256": "bf2584dd16ee64f6df0e21426c87ad72f9add4e3a0d0fe359acebded3e8902b7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/owner_store.py",
+      "bytes": 1698,
+      "lines": 47,
+      "sha256": "6e5b074cfe474d02efd47ddb41f8afefe2eace5c5dcc738e6085d18cef7864c9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/process_runner.py",
+      "bytes": 3888,
+      "lines": 96,
+      "sha256": "cfa545ddc77790a2ae0093680d0fa9e7e50932fc129ca6d64ba5d71140dcd2f3"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/provider_requests.py",
+      "bytes": 4864,
+      "lines": 96,
+      "sha256": "7954653997dcb4088eda598d4a459400c1b3c71b6bf355ea4d377b976bfb2b80"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/quality_coverage.py",
+      "bytes": 12197,
+      "lines": 291,
+      "sha256": "d8a62cfd3836875e0c67d28bdf29a0155b7bada53c3f5a93d1b76d490c6959e3"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/quick_quality_operation.py",
+      "bytes": 26840,
+      "lines": 608,
+      "sha256": "f8547d8e06d958140a8901f1dc637a992d198aa88aa989edac3f082c205d891b"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/record_manifest.py",
+      "bytes": 3586,
+      "lines": 89,
+      "sha256": "a4829071fd24c19a32b98a2a264a43b5ee5cecaebbc7eb56b4fd778e18d628ef"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/record_store.py",
+      "bytes": 8378,
+      "lines": 228,
+      "sha256": "ec00461f22782a8c2db9e13b740c118b093307cac05ba3b7082173698fb01140"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/recovery.py",
+      "bytes": 27689,
+      "lines": 648,
+      "sha256": "08878c8d4819dce3d44c414af8b3e2a89aa7efeb498c559456a305b5fb3cda50"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/recovery_io.py",
+      "bytes": 6861,
+      "lines": 182,
+      "sha256": "50ed783f05b3a55234c52e22b56ff64e91d1402ffbeb5d4327f8952b8fb0ff46"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/repo_evidence.py",
+      "bytes": 3499,
+      "lines": 108,
+      "sha256": "8998dcac478da446e242a52a82d722c97cea56e426050719a71d604850f06405"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/retained_bytes.py",
+      "bytes": 6883,
+      "lines": 160,
+      "sha256": "717a677697a5a543f62909cf2b6b158a738a2a88d72e85e3f24947d14f964efe"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/retired_hooks.py",
+      "bytes": 1558,
+      "lines": 46,
+      "sha256": "27419e635db596f20c0400c7efb64ce3f082005f54a6dd08d7353e74a9e20285"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_acceptance.py",
+      "bytes": 5791,
+      "lines": 101,
+      "sha256": "00855d80a0602e3b50c6e1dff0949335ef10afe8723ab806a401606157d10147"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_cli.py",
+      "bytes": 29596,
+      "lines": 322,
+      "sha256": "48e148f16e4985f2fe68de2e80d2330dca80255bb8cddfe8f9bb58aca9f96068"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_commit.py",
+      "bytes": 1336,
+      "lines": 34,
+      "sha256": "787d4e0f99ba7634231479b18e49b8d7984fc7068da3d0926163a9985c2e7ea5"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_completion.py",
+      "bytes": 3060,
+      "lines": 52,
+      "sha256": "b9598c71afc0d6592de2455dc636d9e056b97b2a4255d759bf1a0e2dd9eae8cc"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_document_inputs.py",
+      "bytes": 2949,
+      "lines": 56,
+      "sha256": "3dab4c8bd4a17dd66eae3b1988e7c0080e5fce9a1541ea002194b4ee7e57a622"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_handle.py",
+      "bytes": 717,
+      "lines": 24,
+      "sha256": "f10b5493fc97c6a7634eb5c3effa7ab6f3d52eb369348a4466fa31e28bab41c5"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_history.py",
+      "bytes": 5195,
+      "lines": 102,
+      "sha256": "b374d447ccf8c8054c4c062ad3d996f011f2422e8ca5edced5ddad137f956243"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_inputs.py",
+      "bytes": 12995,
+      "lines": 239,
+      "sha256": "2df6c656abf4ec10cb8949476db6fbe3143d31764a1f4e3f4c0897581f078116"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_isolated_shell.py",
+      "bytes": 10915,
+      "lines": 232,
+      "sha256": "023509108ae5d9714876f284da4f8f06e8f0de9f4f707f81c9f961216fedc2ea"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_metadata.py",
+      "bytes": 9155,
+      "lines": 146,
+      "sha256": "2510acfda865e08a6d91f65bb4833fdb949ffe3d2f17d1a4a2b47231b45192f6"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_native.py",
+      "bytes": 5884,
+      "lines": 89,
+      "sha256": "9801c38b805ca869a365dd5b0099fed362275530f735ca1703abf4e418aebfaf"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_navigation.py",
+      "bytes": 1987,
+      "lines": 48,
+      "sha256": "c4898e043fa3e73c8f882c012edbca634b588787a980ed46debd1b57d793fc46"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_policy_maintenance.py",
+      "bytes": 15262,
+      "lines": 249,
+      "sha256": "8959b56bd1b55f4fd6e42f0a04746b53b76848511d91f112b0d5b9b9b24d623e"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_policy_sources.py",
+      "bytes": 25528,
+      "lines": 531,
+      "sha256": "d7739765ceca5c6f3369c1b036ed80546697dcad250ed1333db1fbfd94320e6e"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_progress_store.py",
+      "bytes": 7882,
+      "lines": 147,
+      "sha256": "2c24e62d1e0ff5a4d945cefbc5689f03f566656096ef45b541757e840ede3fa8"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_provider.py",
+      "bytes": 2819,
+      "lines": 42,
+      "sha256": "799e8b300fae0e8949921dc7edd46230312a27177afaec5fd84828220a0b350b"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_publication.py",
+      "bytes": 4301,
+      "lines": 98,
+      "sha256": "3c32006ebd622e4921549e8d465bc0c7cf3d5ef01cc84331a2ea23c3716b78b4"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_query.py",
+      "bytes": 9798,
+      "lines": 199,
+      "sha256": "1ec35f8aa5b06d9121e32bcb09ff7c252adcdb4526b72c4c1303468a6fa489b9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_resource_lifecycle.py",
+      "bytes": 4157,
+      "lines": 82,
+      "sha256": "1b770d826022948f0357565bbbe53eea29111453e13afd3444466800a71a4f01"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_result.py",
+      "bytes": 3600,
+      "lines": 64,
+      "sha256": "c5f1f630d6da42f2540d3374987253f30c950df97d4cc40871234e40b4ce1d6a"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_rulebook.py",
+      "bytes": 37154,
+      "lines": 562,
+      "sha256": "4a7001b735420fb75c025539681831518a9411abfd106b4870e71ab9ee0d4f37"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_selection.py",
+      "bytes": 655,
+      "lines": 17,
+      "sha256": "daeb9da7e66831419abe3c4c8dfe52e04701f1db4d838c7b90a43b213bd5226f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_service.py",
+      "bytes": 34270,
+      "lines": 670,
+      "sha256": "2446342ee8ed456f88a29e4b60ee4e290a8de2f18b28a945945b324d95474ec1"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_snapshots.py",
+      "bytes": 12613,
+      "lines": 208,
+      "sha256": "749e70cee6f3a91a825233bbdc5f56eb1d06d43d9c46e6177d16952a42053c17"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_state.py",
+      "bytes": 3972,
+      "lines": 77,
+      "sha256": "773e33020f27a6b81237114914381105ffbc3c764d88cf8f74f60ba8b0f768e3"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_storage_validation.py",
+      "bytes": 3355,
+      "lines": 52,
+      "sha256": "881d25f17c65c2bc56b9e93e67b189974c1ca790be1b363d8cf6cf1d1a5e39ea"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_tools.py",
+      "bytes": 16730,
+      "lines": 269,
+      "sha256": "7ed5ae674c34ffc7a33e30580b5a35e8b12ca1ade996f36bc8d932f6fd75a74c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/review_workspace.py",
+      "bytes": 8591,
+      "lines": 132,
+      "sha256": "7234fe672269f4dc339fac9c09225c2a6e40840288bc726db7fd895ab55fc84c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/source_set.py",
+      "bytes": 4031,
+      "lines": 138,
+      "sha256": "de1568142f1ea78786923420843f3ac35f2bfcf0b0e06294e6cff5fa3544ebcf"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/storage.py",
+      "bytes": 1299,
+      "lines": 42,
+      "sha256": "34ad38e7d8d75553f78d92fd0d7e29ad45f4078e46eb1b0f60268b08f37f1053"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/storage_lock.py",
+      "bytes": 1916,
+      "lines": 48,
+      "sha256": "98b015f272d06657cd02f72d4785cc7032a70bfa91c7309631a8b84c64561056"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/task_archive.py",
+      "bytes": 1385,
+      "lines": 45,
+      "sha256": "0144a552b303d05a7f1fc367ed0d1783eb8eb01a8cdcd8cb1f3619d8de1f8d27"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/task_commands.py",
+      "bytes": 2740,
+      "lines": 67,
+      "sha256": "d1056388db609b11e07443e949dd25dd6c3db0351fb0994522e015f5491f1cf9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/task_naming.py",
+      "bytes": 2092,
+      "lines": 59,
+      "sha256": "bec61ecc4d447437792e334db8b4f59a509d8ba212a82f4b5d8cfe34857f50b9"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/task_store.py",
+      "bytes": 4353,
+      "lines": 129,
+      "sha256": "3c177867267e4bac32cfeafe179413758550563b8148f5eaa65baa7b4a58d90a"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/task_transaction.py",
+      "bytes": 10879,
+      "lines": 268,
+      "sha256": "2a168306f70cdac3c5297ea52ecc251b2a957ffd1bec5105d64212f544136cec"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/verification_execution.py",
+      "bytes": 4708,
+      "lines": 94,
+      "sha256": "175999872200a109fbbea6a4eabc6243e59eedc48de510b3ae34f492b74f5514"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/work_item_baseline.py",
+      "bytes": 1602,
+      "lines": 44,
+      "sha256": "a5db8e9fe5bb8de4d8f851bf8b0de0127b326d071db2a27c795183656af26ace"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/__init__.py",
+      "bytes": 79,
+      "lines": 1,
+      "sha256": "72fcab3c4c8eb9a63585b3123be7fe938c7a55db2de327c4cd9e86fb2140af9b"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/align_commands.py",
+      "bytes": 2377,
+      "lines": 63,
+      "sha256": "593b506f7c6878444f5da1148c31b88b50005160c108ac57ac106274b48e80b0"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/capabilities.py",
+      "bytes": 3473,
+      "lines": 67,
+      "sha256": "9d32ba7bf52892cab9c44d369511a202b62c24253240bb3a1070a49f59973100"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/commands.py",
+      "bytes": 3448,
+      "lines": 64,
+      "sha256": "04b2f0b0d5292253a97a6a84461c1a34ecb62155e3b3fa7c659bc9d0d2c1e1f7"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/consumption.py",
+      "bytes": 2541,
+      "lines": 55,
+      "sha256": "97b36958b952bdbc6332653759c233e5ba869c96dd981b5293d2eb54c083138f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/consumption_rules.py",
+      "bytes": 835,
+      "lines": 28,
+      "sha256": "8dd13bb34e0ad534b92177c31377ba5bea3e9c789afd5919322efe26054b2ae4"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/decisions.py",
+      "bytes": 5439,
+      "lines": 97,
+      "sha256": "d065c7205569708ab0cf123e0bc0833a1aeb79d4f76eba5a267d48a6fd8a223a"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/delivery_commands.py",
+      "bytes": 7317,
+      "lines": 160,
+      "sha256": "ea907dcc106cd22b1a4da62ddc89083f3e79012438393ca87d60c0ce11619f0a"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/events.py",
+      "bytes": 905,
+      "lines": 27,
+      "sha256": "97e01295becac0f95992530c2e8665360e5e1bdc8aac1f6e7ca428828630722f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/execution.py",
+      "bytes": 855,
+      "lines": 21,
+      "sha256": "e976f72ff2efc012e10e53268fa1718829601efdd5e398e5eca8015f69335b10"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/full_commands.py",
+      "bytes": 22050,
+      "lines": 375,
+      "sha256": "4759fb3e694bbf5ee4a47bf2e5c2315d08bc49646c93390c0997feef81ab58c0"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/full_support.py",
+      "bytes": 1941,
+      "lines": 64,
+      "sha256": "d6377d3624b43fb492048f39637485021ec43012f9b3b0d8a42794fa85d44f15"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/handlers.py",
+      "bytes": 1329,
+      "lines": 34,
+      "sha256": "a1cf651efd180b0c2da0a3372535fb0e9d67ea44d889040a02686b31887b49f2"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/handoff_commands.py",
+      "bytes": 18514,
+      "lines": 347,
+      "sha256": "1d93a03e482a5a5ca8c365b2e2e98ec656593021d64bb88d9234e8d06fd4a706"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/java_authorization.py",
+      "bytes": 1576,
+      "lines": 29,
+      "sha256": "9b833764113217f98f903b0f6c552b7101704e24e1a54cac4ff97dd2f5719392"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/knowledge_adapter.py",
+      "bytes": 7767,
+      "lines": 117,
+      "sha256": "093546eee70296dc62ab9c5bcdee4a3865108f1d187665c4137b9f6631783370"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/phase_commands.py",
+      "bytes": 9188,
+      "lines": 157,
+      "sha256": "143bb077223faf08f428d290e4eaa4559eae8d5d3557668caaf85ea27c1c5dca"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/plan_context.py",
+      "bytes": 13409,
+      "lines": 238,
+      "sha256": "1f68e7e08f1f0e3d1aaa286fe176468c9a259ef909dedc6884d3387e216fa816"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/planning.py",
+      "bytes": 22082,
+      "lines": 373,
+      "sha256": "291932f346dc8f9d4ca9a11f520babae8a9f7d24b8dc295065ea9be99c7c47d4"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/planning_contract.py",
+      "bytes": 11966,
+      "lines": 167,
+      "sha256": "643ab28307e816e77e94efcfa33300a45293ef51d44865cee5de9fbdf5f141ff"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/planning_read.py",
+      "bytes": 9255,
+      "lines": 154,
+      "sha256": "6f4bbfb04390370cb89b7e03cf6479f681623e57ef51204550bc4f7313796308"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/preflight.py",
+      "bytes": 5073,
+      "lines": 83,
+      "sha256": "48b9468edd51a92b6ba3bbc1b38f28b3c51d2bffdc52ea46d051281bb7f6803f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/projection.py",
+      "bytes": 7622,
+      "lines": 145,
+      "sha256": "1384da77509a4a23c39abff0cc04eaacd0e693c5168c791c63be2ddd91489107"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/provider_binding.py",
+      "bytes": 1843,
+      "lines": 37,
+      "sha256": "87119a255935675446aa3a983efbc0cade322a200ddd4d3f2a388df9b4ba5049"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/quick.py",
+      "bytes": 14909,
+      "lines": 346,
+      "sha256": "6738b7ea6e4ed8277c18b2d972d47329d25aeca7168036f7308b0b725aa9baa0"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/quick_decisions.py",
+      "bytes": 12250,
+      "lines": 258,
+      "sha256": "346b48f1fdd2fba6a88ffc5b76671e37c8d18bd5038f9cf354c8c5294621625b"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/quick_handoff.py",
+      "bytes": 14039,
+      "lines": 286,
+      "sha256": "90b74e46b70385c481dd3a651da893c0e33d2a16985d5ac4318654e3c785694f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/quick_projection.py",
+      "bytes": 9693,
+      "lines": 203,
+      "sha256": "0e80f30950dc9bd0c1a8feae60250cecdb7d2e3acf47344519af2e390ac59bf0"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/quick_state.py",
+      "bytes": 4052,
+      "lines": 115,
+      "sha256": "e7efacefa1bef3760c5dac069d6aadaed42e2f9dd1f5a864b7c3eda5a5296244"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/read_package.py",
+      "bytes": 2360,
+      "lines": 41,
+      "sha256": "1498d1982cd2f0ca3ce9deb45c4c3db370aa9bee39de11fe8553854762a3f50c"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/replan.py",
+      "bytes": 27074,
+      "lines": 550,
+      "sha256": "1f72e019048b5d6890d7b24c175bf33ce0f73a1da32877486e6c66dd5fb5037f"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/review_adapter.py",
+      "bytes": 4250,
+      "lines": 92,
+      "sha256": "ddcb1dd8af5f75a1f0d45514b4de68cf69b2007e36f556df72acd103f6e4ffb6"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/review_authorization.py",
+      "bytes": 1027,
+      "lines": 20,
+      "sha256": "ec38a6621b12f0f0fb290ae4580ee2018400f28a44ab464671d39923ca64ace2"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/review_decisions.py",
+      "bytes": 1377,
+      "lines": 29,
+      "sha256": "c782b9017c41ec82a8894b280c7e16199269f0e047b7f7db5cd1a46928423153"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/review_design.py",
+      "bytes": 5709,
+      "lines": 109,
+      "sha256": "1bd6e6aa54a43d5a9563b0df277ede0d5f6381a3f1952616aa76b3a2fd124995"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/review_freshness.py",
+      "bytes": 2993,
+      "lines": 55,
+      "sha256": "29797eb5673fd431509ff6b8d807bd7aae9c1e251a2bfd19cee12c67afce54d3"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/review_handoff.py",
+      "bytes": 12324,
+      "lines": 219,
+      "sha256": "ce16ee2511aed9f01bc8acba7a08b51cc8109adfbddc85b961195e2d88c83171"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/review_refresh.py",
+      "bytes": 7376,
+      "lines": 116,
+      "sha256": "5c07ca074e9bc230eeccc45e60e2f45244c3c24c055286c854b68cf32f6d3361"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/risk_signals.py",
+      "bytes": 6031,
+      "lines": 169,
+      "sha256": "25d345729a2897c34f14d57f293909c3e927951d56b230f4278c901f441d0d86"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/state.py",
+      "bytes": 2034,
+      "lines": 51,
+      "sha256": "147a7c31b264d43a544b4546c84c35db81d6f3bf82a33690a896046850b412f5"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/work_item_change.py",
+      "bytes": 17868,
+      "lines": 258,
+      "sha256": "884dcfdf2d7e86b69b8911cc028475e638e82815ac445db1b798f69c7fd521e2"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow/work_item_commands.py",
+      "bytes": 17083,
+      "lines": 312,
+      "sha256": "e0a0b06d535b392dd70303f3e3fe08972d0ab4664f9ae706f19a09290d56b325"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow_gates.py",
+      "bytes": 6875,
+      "lines": 120,
+      "sha256": "f0f10601e1cead8c80e9946d06c8e1a639f095ad617bffdabc43f2ecf86b37ee"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow_inputs.py",
+      "bytes": 1739,
+      "lines": 43,
+      "sha256": "775cad24e6c2e99ef8cf6ba0f894f8edba7798012dad862bcd8ceb7e7ffbd688"
+    },
+    {
+      "path": "skills/diorama/scripts/runtime/workflow_trailers.py",
+      "bytes": 3686,
+      "lines": 100,
+      "sha256": "9d20881e042edb2d20c305b9a2829830c4adf2cace96a2529516f2840eebd183"
+    },
+    {
+      "path": "tests/conftest.py",
+      "bytes": 4889,
+      "lines": 126,
+      "sha256": "a6e6363fd90bfda4f2ed2bcc3bbf7cf97e7684aa4762696584c4b632074c9f90"
+    },
+    {
+      "path": "tests/helpers.py",
+      "bytes": 29520,
+      "lines": 574,
+      "sha256": "8b607e82133a7f738650db6df594a40927acce14c65c5191e9e1c70ec7c57baa"
+    },
+    {
+      "path": "tests/support/__init__.py",
+      "bytes": 74,
+      "lines": 1,
+      "sha256": "8e790cc5c53b64fea58b5e24ca9ca11db434290c6011175c9832d6c39a4bf874"
+    },
+    {
+      "path": "tests/support/agent_e2e_runner.py",
+      "bytes": 2920,
+      "lines": 98,
+      "sha256": "4c33e3cd03645a473733f92f68566450e22c50204f27b30228b8995815f445a4"
+    },
+    {
+      "path": "tests/support/anatomist_index_manager.py",
+      "bytes": 682,
+      "lines": 25,
+      "sha256": "35c15091e13ca135447006f7ae52e75ec0cfcd4245a913126b2ffc9472ea71bc"
+    },
+    {
+      "path": "tests/support/anatomist_resolver.py",
+      "bytes": 315,
+      "lines": 9,
+      "sha256": "07782289342d8a99b1737370a449dc621547100ec0a8ec9f86d692a227a505ca"
+    },
+    {
+      "path": "tests/support/context_observation_contract.py",
+      "bytes": 384,
+      "lines": 9,
+      "sha256": "23d8d3c4f78b962a83e369041d84c675a2aebf2d3bbe84facc4460c5f382c034"
+    },
+    {
+      "path": "tests/support/e2e_evidence.py",
+      "bytes": 1829,
+      "lines": 38,
+      "sha256": "536f4a9e14b5438d8a0293f2f11d762c3673ff0a509176012c7b1804c2f22bd0"
+    },
+    {
+      "path": "tests/support/knowledge_consumers.py",
+      "bytes": 3044,
+      "lines": 74,
+      "sha256": "0cd849bb782fa76a9baf0927f8be8f508132d8c1a05f6d5b5be9497c4afa25e8"
+    },
+    {
+      "path": "tests/support/knowledge_handoff.py",
+      "bytes": 2332,
+      "lines": 64,
+      "sha256": "b8bbe04292e9a713fa9a09dae74faaa08a84db894b1f49c1c74d39deb885ad28"
+    },
+    {
+      "path": "tests/support/knowledge_repository.py",
+      "bytes": 2231,
+      "lines": 53,
+      "sha256": "c453d5883620dad9745163728c9180c7540818a68a1c1d70e26feed7a8270708"
+    },
+    {
+      "path": "tests/support/knowledge_work.py",
+      "bytes": 1068,
+      "lines": 29,
+      "sha256": "895b208a7c95f7d335865bc3721413fd50dd2a4e59dfa0d2d843169e8586981c"
+    },
+    {
+      "path": "tests/support/observability_integration.py",
+      "bytes": 526,
+      "lines": 22,
+      "sha256": "32ceb2999e32f91898085e06669dca6114ec20234fa59fba561c739ab35858d0"
+    },
+    {
+      "path": "tests/support/quick_planning.py",
+      "bytes": 2038,
+      "lines": 67,
+      "sha256": "1d4b4e5048cd441df08304df51235ef6f2390c82d5f3b55baf056374704b7ecb"
+    },
+    {
+      "path": "tests/support/quick_v9.py",
+      "bytes": 1864,
+      "lines": 56,
+      "sha256": "eb7bcc8dfe0ed1a9d06b549dadbc2688541a2443237775dbc3fc1c44d6cf418e"
+    },
+    {
+      "path": "tests/support/readonly_knowledge.py",
+      "bytes": 5020,
+      "lines": 118,
+      "sha256": "46b10075f1cff9d346aba546219dfa378f2613ff88d22f68820aa53928c0a2ac"
+    },
+    {
+      "path": "tests/support/readonly_sdk_boundaries.py",
+      "bytes": 427,
+      "lines": 14,
+      "sha256": "8356a49f2d8ceb42e6ec49d2fb255c8c8fa79334b5c5affa1f296540a8ac8b18"
+    },
+    {
+      "path": "tests/support/readonly_sdk_integration.py",
+      "bytes": 523,
+      "lines": 20,
+      "sha256": "5d62604c20afedfe99c8ff1e9692054380f3bcc27a473dac3ee75ecf37184734"
+    },
+    {
+      "path": "tests/support/replan_v26.py",
+      "bytes": 5394,
+      "lines": 168,
+      "sha256": "df01dbfe3cc14bc9df51c1ee57597e69d666633699aa8b24bb02efdaf2d797f4"
+    },
+    {
+      "path": "tests/support/review_acceptance.py",
+      "bytes": 1346,
+      "lines": 36,
+      "sha256": "bb4220dd83445ecb31f2eb1b54de0a23074c4f9743fb49f15b6b8d2075d03343"
+    },
+    {
+      "path": "tests/support/review_autonomous_contract.py",
+      "bytes": 1927,
+      "lines": 56,
+      "sha256": "514d5753686f424e06d147821c1536836e9fceb99d3ab29872789df1cc4d31ce"
+    },
+    {
+      "path": "tests/support/review_context.py",
+      "bytes": 1721,
+      "lines": 49,
+      "sha256": "156ea7f5fba7a1a29285222b1257ee5c109c9835c19b3135248e731aca12fa44"
+    },
+    {
+      "path": "tests/support/review_planning_restart.py",
+      "bytes": 876,
+      "lines": 20,
+      "sha256": "bf562d322c4c730158052e8f3550d9d62f80e47b2380d32a7b3995dfa5d8e390"
+    },
+    {
+      "path": "tests/support/review_service.py",
+      "bytes": 2179,
+      "lines": 51,
+      "sha256": "a2e655f1ad45b6a8967bf2bc73782e1c36c863f1a8cab1ca412eb873db6467d5"
+    },
+    {
+      "path": "tests/support/review_standalone.py",
+      "bytes": 2689,
+      "lines": 64,
+      "sha256": "1a1b0e8e420e8ca9dee88b396662d1d7db032303eaffd69bb7b21092e928a494"
+    },
+    {
+      "path": "tests/support/review_transport.py",
+      "bytes": 3076,
+      "lines": 69,
+      "sha256": "76d114a667c4f0b5c20af23174497d4b5b68e8af78ab5eed647e5d73644ba4c0"
+    },
+    {
+      "path": "tests/support/workflow_capabilities.py",
+      "bytes": 588,
+      "lines": 15,
+      "sha256": "ce9db05662fbe0502db8c4c60c35945a7f5d24d8d114d0f953ad2a46cccee613"
+    },
+    {
+      "path": "tests/test_agent_e2e_runner.py",
+      "bytes": 17147,
+      "lines": 327,
+      "sha256": "ce5b5ed396a1c5efdf2181d951c233a68672d8f627de88cc011a398f504041c3"
+    },
+    {
+      "path": "tests/test_agent_observations.py",
+      "bytes": 3172,
+      "lines": 69,
+      "sha256": "8f78a6fcc6d8d92329ed26553a4b0340d588f337723d114766c8f81a90c76d57"
+    },
+    {
+      "path": "tests/test_anatomist_index_manager.py",
+      "bytes": 7184,
+      "lines": 178,
+      "sha256": "63aa89d6f1129fb53beb873d4c94797af56e202a9212fb1cd57b770fa67064a3"
+    },
+    {
+      "path": "tests/test_anatomist_protocol14.py",
+      "bytes": 16113,
+      "lines": 311,
+      "sha256": "df62589273029e9e8a0803cc679ead8c8d31811e3caf48a18e22c8048bdd503e"
+    },
+    {
+      "path": "tests/test_anatomist_resolver.py",
+      "bytes": 2494,
+      "lines": 60,
+      "sha256": "4c2eb2ea60cf3d2737da877385e3e7576566d6e703f99c1db3f0eadba8ae5a7f"
+    },
+    {
+      "path": "tests/test_anatomist_scan.py",
+      "bytes": 4046,
+      "lines": 99,
+      "sha256": "f74ebd9e23cad8d8e60b08c21a1862fee0300fe157f0150cbb877b6aca41f308"
+    },
+    {
+      "path": "tests/test_anatomist_text.py",
+      "bytes": 3509,
+      "lines": 83,
+      "sha256": "1401aea9bfa74de099501f0ccb060936fe716d349e7317fbb2e7271aa66211ce"
+    },
+    {
+      "path": "tests/test_asset_ownership.py",
+      "bytes": 2188,
+      "lines": 61,
+      "sha256": "f03d7fd4f0b8fd8328220d3aacdf4e4f17943ea10b36cfcc21bd54a1385ec71b"
+    },
+    {
+      "path": "tests/test_cache_commands_v19.py",
+      "bytes": 4604,
+      "lines": 103,
+      "sha256": "b4371e0f83e516ed38f21e22ad59ca01fec029a0b137ebcdf6ee58ae651dd5b6"
+    },
+    {
+      "path": "tests/test_cli_result.py",
+      "bytes": 4533,
+      "lines": 83,
+      "sha256": "bd692707f41c7b09896fa0052391bf533dfd00240d3aeb5385d509ead304be66"
+    },
+    {
+      "path": "tests/test_codegen_context.py",
+      "bytes": 14269,
+      "lines": 253,
+      "sha256": "5f6cd7760f41fab0f697525201523154e24b8c1af4574ae0e220e15381aef687"
+    },
+    {
+      "path": "tests/test_coding_style.py",
+      "bytes": 32146,
+      "lines": 553,
+      "sha256": "ba2b2253dcc6936bde18760ef17fe8b8cc3a2c99a0f3fee51115074ee00c0158"
+    },
+    {
+      "path": "tests/test_command_spec.py",
+      "bytes": 17103,
+      "lines": 310,
+      "sha256": "b344cff36ba22aec84a575ba88b11d1e9f0d83851c4335958c9ab94226df51bf"
+    },
+    {
+      "path": "tests/test_context_budget.py",
+      "bytes": 14268,
+      "lines": 302,
+      "sha256": "d63afb8077c55d1919b81e2c32feb124075013d57b8b3c3893d44f458ed428be"
+    },
+    {
+      "path": "tests/test_context_budget_integration.py",
+      "bytes": 6387,
+      "lines": 113,
+      "sha256": "5ea6ff39236e003247ae3a29e201881dcbbb5e414f62d9810c427569fda1f90b"
+    },
+    {
+      "path": "tests/test_context_observation_contract.py",
+      "bytes": 28712,
+      "lines": 505,
+      "sha256": "858d09d65d7357329b0fc232895f1beb741b1d290ee6a7d20b95f6140ca9ff09"
+    },
+    {
+      "path": "tests/test_context_plan_locator.py",
+      "bytes": 2225,
+      "lines": 55,
+      "sha256": "212f8c8190120231b6658c13d24adf67c950e1ef9883b70fb36af016cca290ab"
+    },
+    {
+      "path": "tests/test_context_resources.py",
+      "bytes": 1106,
+      "lines": 27,
+      "sha256": "25822a427d4043194fe9694c1024cb22952ab91b6067353036291398a616248e"
+    },
+    {
+      "path": "tests/test_contract_surface.py",
+      "bytes": 6472,
+      "lines": 144,
+      "sha256": "1ac650f6e0d75fa4498a4bfaa1ebdb6aa90e6137c3377942189ba2cc1bd64c42"
+    },
+    {
+      "path": "tests/test_design_document.py",
+      "bytes": 19382,
+      "lines": 335,
+      "sha256": "680fca62b1b280481aea2b2973dbe49c124f0f59e7e9a1490c41e8358e0a9cb4"
+    },
+    {
+      "path": "tests/test_diagnostic_bundles.py",
+      "bytes": 5094,
+      "lines": 108,
+      "sha256": "ebbd4be0cb935e5d16a3694fde7ae0d075e312497bd3ecd92229fccfad1320d3"
+    },
+    {
+      "path": "tests/test_diorama_jury_adapter.py",
+      "bytes": 26905,
+      "lines": 568,
+      "sha256": "a7fa68604c25d4d2eba77d827a336e4a4f137566add6bae20d57c73572f6632f"
+    },
+    {
+      "path": "tests/test_doctor.py",
+      "bytes": 5182,
+      "lines": 133,
+      "sha256": "3c868c3918c694e4e173e54f8f84264caa5d119d3626c106ef54487d7c24f4da"
+    },
+    {
+      "path": "tests/test_documentation_alignment.py",
+      "bytes": 5243,
+      "lines": 115,
+      "sha256": "faaa1ee73348fb620f32823a6bd375567710a20a79003b4302a59cb15d94cb77"
+    },
+    {
+      "path": "tests/test_domain_helpers.py",
+      "bytes": 355,
+      "lines": 16,
+      "sha256": "064107596ea9b2ebb9a86a82bf585b7f6447f1c182e018a77bf0f56b3267831e"
+    },
+    {
+      "path": "tests/test_e2e_acceptance.py",
+      "bytes": 11930,
+      "lines": 224,
+      "sha256": "d55fdffbbfe0c181aef19412c380247cafd0dd083f659190489c48522de9517c"
+    },
+    {
+      "path": "tests/test_e2e_acceptance_archive.py",
+      "bytes": 8130,
+      "lines": 172,
+      "sha256": "5bee3bf9147c8dfbdf6efa2243db8dbe965616c7fb71cba3945aa4a4af5eaa5a"
+    },
+    {
+      "path": "tests/test_e2e_all.py",
+      "bytes": 5025,
+      "lines": 105,
+      "sha256": "02de90839b210cab74765631a81a6656ea5611be16b67a8f07ea3735af25659b"
+    },
+    {
+      "path": "tests/test_e2e_anatomist_file_queries.py",
+      "bytes": 7560,
+      "lines": 143,
+      "sha256": "8e0257b0e45d6184509f4030d00f43d5f3bca4e5d88987761626359b73be1dde"
+    },
+    {
+      "path": "tests/test_e2e_anatomist_original_queries.py",
+      "bytes": 13482,
+      "lines": 260,
+      "sha256": "e34543ae9c5675f774919daf43499b3fa5a25e9913e299653f805d5130317372"
+    },
+    {
+      "path": "tests/test_e2e_anatomist_saved_calls.py",
+      "bytes": 27135,
+      "lines": 511,
+      "sha256": "9ceed20a95428e5b66f8193b57e86d9414e8cc960c3ccdd127eebbff49a820d5"
+    },
+    {
+      "path": "tests/test_e2e_binary_review_transport.py",
+      "bytes": 5577,
+      "lines": 88,
+      "sha256": "02b3309c648909813282fb2573159c81199c090470acfe5d95088a663333fbea"
+    },
+    {
+      "path": "tests/test_e2e_budget_evidence.py",
+      "bytes": 27125,
+      "lines": 437,
+      "sha256": "137fe33c2855248cb5e60edd34310a6977c02c416c246f5107e0b4ec4313d77a"
+    },
+    {
+      "path": "tests/test_e2e_budget_report.py",
+      "bytes": 9785,
+      "lines": 169,
+      "sha256": "f75bf92207fe1387708484916275448d74ca40908fd22916ac157df8bf777eb6"
+    },
+    {
+      "path": "tests/test_e2e_business_probe.py",
+      "bytes": 7855,
+      "lines": 148,
+      "sha256": "96a6587b694f63f90f86ff92a5ba31d1e523821b53f8ca9d20812021fa3c8840"
+    },
+    {
+      "path": "tests/test_e2e_candidate_metadata_transport.py",
+      "bytes": 19668,
+      "lines": 358,
+      "sha256": "7ef55e9c3489eea87980ad9ce49cdc854aec173f1ec374970940eb3277dd14a7"
+    },
+    {
+      "path": "tests/test_e2e_captured_stdout.py",
+      "bytes": 6219,
+      "lines": 110,
+      "sha256": "29906f6cfcbb8d18722dd6421eb65efffc8e840dc589cc5cc572438c117d8830"
+    },
+    {
+      "path": "tests/test_e2e_catalog.py",
+      "bytes": 27053,
+      "lines": 508,
+      "sha256": "ad01dd91d7c14f2ba804824245b9b5427d2832b58f84b937b8627cc1472f2be0"
+    },
+    {
+      "path": "tests/test_e2e_closed_query_transport.py",
+      "bytes": 6000,
+      "lines": 107,
+      "sha256": "732e0ac8a7f937b6526c7b15e9383a7ea4dad4e7400b41bc4e12a3f8384d0e25"
+    },
+    {
+      "path": "tests/test_e2e_concurrent_stdout.py",
+      "bytes": 3927,
+      "lines": 61,
+      "sha256": "912777f90ccfc40fd0c72bb8f7f8ac8cb88d4edbce1881cdb83a0c9cb0336fa5"
+    },
+    {
+      "path": "tests/test_e2e_evidence.py",
+      "bytes": 432948,
+      "lines": 6802,
+      "sha256": "31324c9c411196f31a3652e1c02209fd8160d3d2b0978b9478e7b62e1ac1fbf0"
+    },
+    {
+      "path": "tests/test_e2e_external_transport.py",
+      "bytes": 5087,
+      "lines": 93,
+      "sha256": "056755b0265546f89d4b04470e9e36259888b8b408a78352314b24b712376e6d"
+    },
+    {
+      "path": "tests/test_e2e_file_query_dataflow.py",
+      "bytes": 11148,
+      "lines": 233,
+      "sha256": "f941956d2da06eb7ccb8e79af5f555459df40a46f5f6ecb96044396f871114ed"
+    },
+    {
+      "path": "tests/test_e2e_fixture_state.py",
+      "bytes": 30605,
+      "lines": 550,
+      "sha256": "097d18ac92d2c6a0fea0951e60c84d642dc61fb8eeb9e7aaaf7967059f29b345"
+    },
+    {
+      "path": "tests/test_e2e_invocation_capture.py",
+      "bytes": 5873,
+      "lines": 105,
+      "sha256": "51fd9249abbd18f69bfdeaa907a6c1c879586c824e42938436e2094af668f60f"
+    },
+    {
+      "path": "tests/test_e2e_jury_lifecycle.py",
+      "bytes": 16946,
+      "lines": 303,
+      "sha256": "ff722994f88ef50575494abc656f9b5e657522799796f0a04a922487d26b35aa"
+    },
+    {
+      "path": "tests/test_e2e_knowledge_locator_evidence.py",
+      "bytes": 7509,
+      "lines": 123,
+      "sha256": "94bf85ee40a1f83f881989d6704f4c2438973a8c729c326f142ef78416196962"
+    },
+    {
+      "path": "tests/test_e2e_knowledge_loop_transport.py",
+      "bytes": 20396,
+      "lines": 386,
+      "sha256": "a20537942015490685b1572234660b071e3141d94ef55eca71b7b5a42ad79f36"
+    },
+    {
+      "path": "tests/test_e2e_knowledge_navigation.py",
+      "bytes": 4079,
+      "lines": 72,
+      "sha256": "2318d0ea861423d96025a0a9d25c8ecfc2e5089732e9dbf94445eaa1893f96d2"
+    },
+    {
+      "path": "tests/test_e2e_material_files.py",
+      "bytes": 59054,
+      "lines": 1114,
+      "sha256": "793ed45c86647d2a8ee832e99c44c1c337549288f40963f8557a9d171d8d2104"
+    },
+    {
+      "path": "tests/test_e2e_native_timing.py",
+      "bytes": 1872,
+      "lines": 39,
+      "sha256": "afe3f3b6ae60ca216ff2f75102e9995fcc18a696a5d72bdde5ca62f13847e2c4"
+    },
+    {
+      "path": "tests/test_e2e_numbered_read_frames.py",
+      "bytes": 2334,
+      "lines": 46,
+      "sha256": "4d781a72a76ddcafcbe114afb7864936ea99dfd086e7a62c073de53a4605a3ec"
+    },
+    {
+      "path": "tests/test_e2e_planning_reference_reads.py",
+      "bytes": 5500,
+      "lines": 80,
+      "sha256": "4461a55d5bbe356cdcf7d70b0299b08ce3abb818850315aa6d67ebe183730ef6"
+    },
+    {
+      "path": "tests/test_e2e_prerequisites.py",
+      "bytes": 14431,
+      "lines": 332,
+      "sha256": "a03e669830fde72c1cccb0fe1fadeaeb1e1ffc71d4c380140dbf3b3674e2b485"
+    },
+    {
+      "path": "tests/test_e2e_remote_update.py",
+      "bytes": 4805,
+      "lines": 95,
+      "sha256": "fb4b1c1b8fb9304b7298084421022634d77baa2847b3bab8e57b425adc1be980"
+    },
+    {
+      "path": "tests/test_e2e_repair_boundary.py",
+      "bytes": 7233,
+      "lines": 139,
+      "sha256": "deaa0e6cd6a228773f6df00cbf4bc98265e04c614585e8cac81e33a2ecf12e11"
+    },
+    {
+      "path": "tests/test_e2e_repair_ledger.py",
+      "bytes": 10774,
+      "lines": 193,
+      "sha256": "d3b97c191ead4b2e4540185373e3fec8f5cdc1b29ac7f50454b678361c0eac7e"
+    },
+    {
+      "path": "tests/test_e2e_returned_action_evidence.py",
+      "bytes": 17399,
+      "lines": 293,
+      "sha256": "98772c526662b55c1092b93ce82db773c1151b691ea5b477d6a14af35485a9e7"
+    },
+    {
+      "path": "tests/test_e2e_review_claim_transport.py",
+      "bytes": 6706,
+      "lines": 111,
+      "sha256": "e1c7f4f486cc208fcac1cf75d7235aff914d7122938951a96df516fbf4a25b05"
+    },
+    {
+      "path": "tests/test_e2e_review_file_lineage.py",
+      "bytes": 5426,
+      "lines": 139,
+      "sha256": "dbc3ee0baced93c160943d75196b2ff2efe886549bc6f4466d8ac4552c56302b"
+    },
+    {
+      "path": "tests/test_e2e_review_query_failure.py",
+      "bytes": 11106,
+      "lines": 201,
+      "sha256": "024e291cdce4918e0765605b03a14b45c41200d6d4d78f60c293a3b01bbc701e"
+    },
+    {
+      "path": "tests/test_e2e_saved_binary_reads.py",
+      "bytes": 11061,
+      "lines": 193,
+      "sha256": "652b04e9972d98693aac2db12ef2b5715b03acd8a53cf79d4434f3de2c2d36f3"
+    },
+    {
+      "path": "tests/test_e2e_saved_bulk_reads.py",
+      "bytes": 17639,
+      "lines": 294,
+      "sha256": "d2b6d7c5fa2e006989db1118590d59a001716e49b2b92c171962b81902647283"
+    },
+    {
+      "path": "tests/test_e2e_saved_read_transport.py",
+      "bytes": 38406,
+      "lines": 617,
+      "sha256": "d4fd2b05d6d79ed7dcf25f67ee606dd941a7dc7a5fc707d84e37c45fd352a1e8"
+    },
+    {
+      "path": "tests/test_e2e_stdout_frame_transport.py",
+      "bytes": 4117,
+      "lines": 73,
+      "sha256": "e9905358a95f78606061d7b97cec2fc4edcf59acf12e48b488abaabe7cd1260d"
+    },
+    {
+      "path": "tests/test_e2e_support.py",
+      "bytes": 17441,
+      "lines": 419,
+      "sha256": "7069214e5929f477f160b6c8e0c7440409b633c23079f870e99f05e7b1f61537"
+    },
+    {
+      "path": "tests/test_e2e_term_evidence.py",
+      "bytes": 7292,
+      "lines": 125,
+      "sha256": "a6dd8d693372e227725583be826031386b1de6027dc0ae2047046d63240765d8"
+    },
+    {
+      "path": "tests/test_e2e_token_usage.py",
+      "bytes": 3618,
+      "lines": 73,
+      "sha256": "f9f6d307e74250db16389f8e6fceafedc735e5d16efb0848308f9f883aa8993c"
+    },
+    {
+      "path": "tests/test_e2e_work_package_transport.py",
+      "bytes": 30832,
+      "lines": 500,
+      "sha256": "5aff83f302199bbf9df0d8625c092c57a98fecfbad1af9430ecd65e2d12f5e20"
+    },
+    {
+      "path": "tests/test_edge_cases.py",
+      "bytes": 25345,
+      "lines": 485,
+      "sha256": "0f4582fec62c7e851c1c2615000b4090e4d904e4975f8a726ee8ad11260b6a13"
+    },
+    {
+      "path": "tests/test_exception_contract.py",
+      "bytes": 1498,
+      "lines": 48,
+      "sha256": "1cccda5259b0179cd184ce5b5385231304335b27a5bb65150fa2862b0f2ea39c"
+    },
+    {
+      "path": "tests/test_experiences.py",
+      "bytes": 1405,
+      "lines": 36,
+      "sha256": "2e5886b025142048b724da524f85c10ef8c72503245f411cd55b1d1a59089462"
+    },
+    {
+      "path": "tests/test_failure_matrix.py",
+      "bytes": 2392,
+      "lines": 55,
+      "sha256": "1367c7c6d9f88f98a4650ab699885359080030a72674ba05367aabaa2731cac7"
+    },
+    {
+      "path": "tests/test_full_phase_gates.py",
+      "bytes": 25591,
+      "lines": 447,
+      "sha256": "a816ca7bf0000a1ebfc4e1a08c1fd68ad3cb029c84d4c731b441e3044efff0d9"
+    },
+    {
+      "path": "tests/test_full_review_repair.py",
+      "bytes": 7491,
+      "lines": 144,
+      "sha256": "5dc882ab6385524c20b561fa503331544044de12861cdda33a074b2edf651b3e"
+    },
+    {
+      "path": "tests/test_generation_reports.py",
+      "bytes": 38793,
+      "lines": 614,
+      "sha256": "2bacfe1328e52e646bfa70ba2b553692ce0d44588ab65b4496c617c2a2e27ba3"
+    },
+    {
+      "path": "tests/test_git_index_retry.py",
+      "bytes": 3250,
+      "lines": 77,
+      "sha256": "52cdde53a6d7580389e32ee3a86d3221d658e975ccf019625baa74e2506b2e6a"
+    },
+    {
+      "path": "tests/test_guidance_resources.py",
+      "bytes": 13637,
+      "lines": 272,
+      "sha256": "0c93e9738440c18bc32bb0e3aedceb6777b0bda24ccee3ed6426b5a4ff584ca4"
+    },
+    {
+      "path": "tests/test_human_decision_probe.py",
+      "bytes": 2012,
+      "lines": 43,
+      "sha256": "0af8a4f26ea7771662a4f4f7b1b2c166e1f63a39d69737853fa01ca6e037bc92"
+    },
+    {
+      "path": "tests/test_java_fixture_contracts.py",
+      "bytes": 2143,
+      "lines": 63,
+      "sha256": "290298f53c74d57ce52df09d150899b56eda54201433c175ecb5d3daf249b2fd"
+    },
+    {
+      "path": "tests/test_journey_e2e_runner.py",
+      "bytes": 1611,
+      "lines": 45,
+      "sha256": "cabe42666b2a8774ea16b3715b0f5f23e26ac0e426cdcfe0ecb455d2e24f0c41"
+    },
+    {
+      "path": "tests/test_knowledge_browser.py",
+      "bytes": 8468,
+      "lines": 132,
+      "sha256": "a5d9a640c82a140e0ba42c351a50a03d235783856ef52b36d8529be9f150ecc7"
+    },
+    {
+      "path": "tests/test_knowledge_business_e2e.py",
+      "bytes": 31716,
+      "lines": 660,
+      "sha256": "eb634ad5241873b4a39685256b488d17643d38926644db0af6e672c8f4fefcbf"
+    },
+    {
+      "path": "tests/test_knowledge_clarification.py",
+      "bytes": 4133,
+      "lines": 62,
+      "sha256": "4f548bba818ec9ef022b1476303aa4b45d1dcfe7f139c727830477a00a367799"
+    },
+    {
+      "path": "tests/test_knowledge_code_e2e.py",
+      "bytes": 7483,
+      "lines": 131,
+      "sha256": "d47b7c41dfaefb8266c9c0578d6b664dcbf1f50cd3d7826a67919a8e324d5c49"
+    },
+    {
+      "path": "tests/test_knowledge_consumers.py",
+      "bytes": 4058,
+      "lines": 78,
+      "sha256": "650fd072df664a79d12f4a20b480914593f28b69535d00cd77a8b634f54635e9"
+    },
+    {
+      "path": "tests/test_knowledge_diagnostic_bundle.py",
+      "bytes": 5579,
+      "lines": 94,
+      "sha256": "81bca7eb8890c05fa13cca0679fd97e3c2e8f755d7988fb9979349d52d2d827e"
+    },
+    {
+      "path": "tests/test_knowledge_document.py",
+      "bytes": 2303,
+      "lines": 52,
+      "sha256": "a5916f2bbb59e2cf5784770c5e9155525709c785a162a108b9892df394ac62e7"
+    },
+    {
+      "path": "tests/test_knowledge_handoff.py",
+      "bytes": 18947,
+      "lines": 325,
+      "sha256": "9cd7bb5347c997774a4cb02672229afbde417db6c4de0d09cfa3d3026cc650b8"
+    },
+    {
+      "path": "tests/test_knowledge_layout.py",
+      "bytes": 12686,
+      "lines": 217,
+      "sha256": "90373969142a74158abeb1a9ef9be38f5c410ce3ba74e67351366d90c65b9152"
+    },
+    {
+      "path": "tests/test_knowledge_map.py",
+      "bytes": 5540,
+      "lines": 92,
+      "sha256": "77f5561436a9928db766ec7a80c9052c3da92d459213f23ebc8473ffd8c31df5"
+    },
+    {
+      "path": "tests/test_knowledge_navigation_e2e_postchecks.py",
+      "bytes": 9398,
+      "lines": 155,
+      "sha256": "e210ede9a6575b6f3902a7f867e8f0a471257efb09b023ee6590740146381c8c"
+    },
+    {
+      "path": "tests/test_knowledge_preview.py",
+      "bytes": 19293,
+      "lines": 302,
+      "sha256": "a06547eda4957510d47434803c4af4548b559b739d413b402e3b3bed15de58fe"
+    },
+    {
+      "path": "tests/test_knowledge_remote.py",
+      "bytes": 34858,
+      "lines": 594,
+      "sha256": "a49f20c27ebbf5ee3e2b5114aeaea0624a474ac94dfca4e4d81d606a6f71a1bc"
+    },
+    {
+      "path": "tests/test_knowledge_remote_contract.py",
+      "bytes": 6762,
+      "lines": 128,
+      "sha256": "0d66ae43b95f5c23b55d03d8cb4e6148a52c5268f26fb7ff0da103b196174cd0"
+    },
+    {
+      "path": "tests/test_knowledge_repository.py",
+      "bytes": 19410,
+      "lines": 359,
+      "sha256": "80cf897b403244f58dd737ecccbbc9d08e8e32644ed4693f5ceb74e074ef2387"
+    },
+    {
+      "path": "tests/test_knowledge_retrieval.py",
+      "bytes": 19760,
+      "lines": 349,
+      "sha256": "50091761883f96b5d3cf8a0cca87dd7855602ecc1baba3f29e605db05cafb0b1"
+    },
+    {
+      "path": "tests/test_knowledge_retrieval_benchmark.py",
+      "bytes": 655,
+      "lines": 20,
+      "sha256": "f4b8d629ca7e651487f04902752b1582d9c6446505d6c4f31c17df03d8f09e46"
+    },
+    {
+      "path": "tests/test_knowledge_site.py",
+      "bytes": 5387,
+      "lines": 79,
+      "sha256": "4f3d4c2324dfa7057f99a193911ad64f318e577a81645b6c0ed160d76e2e7c52"
+    },
+    {
+      "path": "tests/test_knowledge_style_e2e_postchecks.py",
+      "bytes": 22953,
+      "lines": 327,
+      "sha256": "a0b945b3b1835377e6535d5a3f9c0ef9a57d12bc43332f6878b842e4afcfb77c"
+    },
+    {
+      "path": "tests/test_knowledge_term_e2e_postchecks.py",
+      "bytes": 35925,
+      "lines": 490,
+      "sha256": "a3ce16dff8076e3b372242eb3518d620b49c033b5ab6a64064adb4c4ecadb81c"
+    },
+    {
+      "path": "tests/test_knowledge_transfer.py",
+      "bytes": 5567,
+      "lines": 113,
+      "sha256": "938f9d7c03fb828abe78736177e018646d1e37bad454b94a74ce3101979eb971"
+    },
+    {
+      "path": "tests/test_knowledge_units.py",
+      "bytes": 3202,
+      "lines": 64,
+      "sha256": "84772decea5cfdf221e96fe5acf8269f22c59a11a6ce2d441b37a261a41d649c"
+    },
+    {
+      "path": "tests/test_knowledge_work.py",
+      "bytes": 48379,
+      "lines": 802,
+      "sha256": "76ddcfed7a869cb1055e8425ffceac931296418544843bedcbb95e4fde884244"
+    },
+    {
+      "path": "tests/test_knowledge_work_context.py",
+      "bytes": 19255,
+      "lines": 322,
+      "sha256": "137f0f231794993baa24438f0bebb357957e9acced32e7cf6ee37d55b4aaea46"
+    },
+    {
+      "path": "tests/test_local_convention_oracle.py",
+      "bytes": 8258,
+      "lines": 149,
+      "sha256": "89a6af391e8c515fa5f99919b0e0729066f1b9cd5f90fc13df61c0513b05a962"
+    },
+    {
+      "path": "tests/test_maintainability_contract.py",
+      "bytes": 14065,
+      "lines": 339,
+      "sha256": "f214b83cf62f7832704c3f10475a135b2510144166ef11c0aaccb61f3ca6da5d"
+    },
+    {
+      "path": "tests/test_managed_upgrade.py",
+      "bytes": 7942,
+      "lines": 153,
+      "sha256": "3c802cc64bf3cc6cfd44f4bd89590ede0f73acc5303b47154f205b07244c9b6a"
+    },
+    {
+      "path": "tests/test_management_metrics.py",
+      "bytes": 11079,
+      "lines": 191,
+      "sha256": "432fe667c53c0bb06c17ab114fe01b4033e70e4ef25ddffe1aaf3866acd7ed35"
+    },
+    {
+      "path": "tests/test_material_budget_observation.py",
+      "bytes": 3372,
+      "lines": 64,
+      "sha256": "572d9d8611e61c4d633ac2dab95d0663f162f0f23c0a9f918416097e03ba015c"
+    },
+    {
+      "path": "tests/test_material_delivery.py",
+      "bytes": 1942,
+      "lines": 46,
+      "sha256": "dd50e2425b7c61fae4dc05354392af83b8d0218d208be86383f530241b57b972"
+    },
+    {
+      "path": "tests/test_mermaid_external.py",
+      "bytes": 1204,
+      "lines": 30,
+      "sha256": "851cb60e3eaffbdf7764191813a26113c4a2e86955b8a6c0afd21d1a45b940b9"
+    },
+    {
+      "path": "tests/test_observability.py",
+      "bytes": 36218,
+      "lines": 666,
+      "sha256": "f015293887a2c4c5f175c2789521597014cb83061f2064c41271e018dee8bc43"
+    },
+    {
+      "path": "tests/test_observability_integration.py",
+      "bytes": 10305,
+      "lines": 226,
+      "sha256": "9547c8a52f6009f4c945cb9a5ccf1621250884870b97e0535ab4ab5226a85a62"
+    },
+    {
+      "path": "tests/test_package_release.py",
+      "bytes": 7441,
+      "lines": 161,
+      "sha256": "14becf033b912e5bbe710aabfd02a5c51bd0434fe364e4171b1826fdcb9ef739"
+    },
+    {
+      "path": "tests/test_plan_context_records.py",
+      "bytes": 23804,
+      "lines": 403,
+      "sha256": "7fb99d08e574550c95a38a96437c265d36ca2ca58ba0eb976400dea61fa5a7f1"
+    },
+    {
+      "path": "tests/test_protocol_consistency.py",
+      "bytes": 17926,
+      "lines": 335,
+      "sha256": "6bd03cc67eff4901809120b5498d4d2dd44b797d2655c682b222c058349f430e"
+    },
+    {
+      "path": "tests/test_provider_consumption.py",
+      "bytes": 5769,
+      "lines": 112,
+      "sha256": "4443d85451e466cdcdaa4f5e823c96d926d1ed2d45db842aa29c66df74d333a3"
+    },
+    {
+      "path": "tests/test_provider_requests.py",
+      "bytes": 16446,
+      "lines": 314,
+      "sha256": "23fd5d585511d240808493ffbcc716e3ab508386f1f64230986d64e831e5ac1c"
+    },
+    {
+      "path": "tests/test_quality_coverage.py",
+      "bytes": 6270,
+      "lines": 147,
+      "sha256": "b9d6153e615765d1274c7522c98c6f70c4659e3d4767fa903537283450dfc881"
+    },
+    {
+      "path": "tests/test_quality_coverage_anatomist.py",
+      "bytes": 2073,
+      "lines": 49,
+      "sha256": "e4f1cbae4a4704566ce6bea82014ec6626a1a8a6dc3bc1f15d78ffc4927874bd"
+    },
+    {
+      "path": "tests/test_quick_choices.py",
+      "bytes": 10356,
+      "lines": 175,
+      "sha256": "df452abe33f95cf5f681819946991428fbc26d547418de278fa38508adb4c0d0"
+    },
+    {
+      "path": "tests/test_quick_planning.py",
+      "bytes": 33683,
+      "lines": 630,
+      "sha256": "8f3b6fe64ce831d7ad3059c7bb2f09897ec6f06f4b810391f7903c0c2b77a831"
+    },
+    {
+      "path": "tests/test_quick_recovery.py",
+      "bytes": 9961,
+      "lines": 185,
+      "sha256": "b329db36b5ccdc685de1cf87879f3858bbfb84d4d8cd25cf81f7d1353f634165"
+    },
+    {
+      "path": "tests/test_quick_risk_signals.py",
+      "bytes": 2376,
+      "lines": 64,
+      "sha256": "ef1610fc25e6a35da09a09bc75d20265952325621a6dc10ee62fc2a797e06baf"
+    },
+    {
+      "path": "tests/test_quick_v9.py",
+      "bytes": 39280,
+      "lines": 731,
+      "sha256": "72ddc0ee6a2ad7b3e508fa8b26a0313e0c33f5ba04ea3cda93f2d2ac670f341a"
+    },
+    {
+      "path": "tests/test_readonly_knowledge.py",
+      "bytes": 10285,
+      "lines": 227,
+      "sha256": "2a545918d572c11c91716cc7c5af07ac9eb4dba910fafa9b4ec48658243d24c5"
+    },
+    {
+      "path": "tests/test_readonly_knowledge_units.py",
+      "bytes": 21638,
+      "lines": 393,
+      "sha256": "da10bcebf003009a74b86716c22fd48ee8332a7a6f9a83887c3cd707038f315a"
+    },
+    {
+      "path": "tests/test_readonly_observer.py",
+      "bytes": 13488,
+      "lines": 254,
+      "sha256": "502da3390d7058854f0f5b6ff392ede8ec12c9d9d76de7520ec92b627a1e0b0a"
+    },
+    {
+      "path": "tests/test_readonly_sdk_boundaries.py",
+      "bytes": 13647,
+      "lines": 260,
+      "sha256": "762b034db9a8917010669d04c667eb798d8b999cdfa12966fe24e90341d6e9f2"
+    },
+    {
+      "path": "tests/test_readonly_sdk_contract.py",
+      "bytes": 2558,
+      "lines": 45,
+      "sha256": "f2021e1558fec10c229656c16dbb77e2b1fc8fc83c1158df8650642dc9eba461"
+    },
+    {
+      "path": "tests/test_readonly_sdk_domains.py",
+      "bytes": 14419,
+      "lines": 277,
+      "sha256": "a29f18b4393de2f02b67200f8d08514e2012ab6d43c986aae108f10406910a1b"
+    },
+    {
+      "path": "tests/test_readonly_sdk_integration.py",
+      "bytes": 8238,
+      "lines": 204,
+      "sha256": "d418e02c60e63dbd0e23fe40a9206cb256a5a2cbdda66e487853c72ad85394d4"
+    },
+    {
+      "path": "tests/test_readonly_sdk_package.py",
+      "bytes": 4371,
+      "lines": 79,
+      "sha256": "bf71cd46b5187f8ab8bcd1fcfe76eb9d3c8dddf2871b6758cd170b2c03aa2040"
+    },
+    {
+      "path": "tests/test_readonly_sdk_presentation.py",
+      "bytes": 9304,
+      "lines": 155,
+      "sha256": "384622144b6df6df1830581a44e56656ca27f4b0832964dba5450b51221b52a5"
+    },
+    {
+      "path": "tests/test_readonly_sdk_unit.py",
+      "bytes": 1792,
+      "lines": 39,
+      "sha256": "f0bda6a6cbafe9e4b49866ed84a72eb29b0f1434575e9dc8794b3a748f4822a8"
+    },
+    {
+      "path": "tests/test_recovery_transactions.py",
+      "bytes": 8479,
+      "lines": 213,
+      "sha256": "4f0ea5a6ed56c9884553858f85a20cfc2544c7d90c44d7a89180b6368a9d1771"
+    },
+    {
+      "path": "tests/test_replan_contract.py",
+      "bytes": 1944,
+      "lines": 38,
+      "sha256": "5970c142c95a4376e88e5955c8a4c448f8fd799b15fc5e307c4c512a63c49cdb"
+    },
+    {
+      "path": "tests/test_replan_e2e_postchecks.py",
+      "bytes": 23466,
+      "lines": 423,
+      "sha256": "bdec66ce9869b951259107c3f8d6f0cd92551d07ef6dda639a172a5fa773137e"
+    },
+    {
+      "path": "tests/test_replan_v26.py",
+      "bytes": 9939,
+      "lines": 204,
+      "sha256": "53d9a9f2ebd198fbdc301a444444f34e7c18b558e858b2f692ae44b0143330c9"
+    },
+    {
+      "path": "tests/test_retired_docs.py",
+      "bytes": 2607,
+      "lines": 61,
+      "sha256": "16f6aec0265a68b0c9e70e83fefffc7858fa6b6c2b4240871f2da1949df5d7ca"
+    },
+    {
+      "path": "tests/test_review_acceptance.py",
+      "bytes": 8630,
+      "lines": 172,
+      "sha256": "83c0f3deb58bdbc3636d4328037906570196252c96c54a00e88f19e79804fba3"
+    },
+    {
+      "path": "tests/test_review_autonomous_contract.py",
+      "bytes": 14921,
+      "lines": 286,
+      "sha256": "28106803145913f4c9634267ec4e95720b73271fb6b973b5722d80870ebfa249"
+    },
+    {
+      "path": "tests/test_review_cli.py",
+      "bytes": 17842,
+      "lines": 311,
+      "sha256": "22eae10261a84b530637242048db78f1bdd9bc3e3aeba960c3afaa910c30c6e4"
+    },
+    {
+      "path": "tests/test_review_context.py",
+      "bytes": 4878,
+      "lines": 98,
+      "sha256": "d8d7706a622882c5b35aeaed847381b4f6c4cf1d7ed0fa1d890858f54cb5529d"
+    },
+    {
+      "path": "tests/test_review_context_real.py",
+      "bytes": 13091,
+      "lines": 243,
+      "sha256": "802479ca2cce64349cb00171043cf6c5eca7dd3d373c830b07e8675a8cdba883"
+    },
+    {
+      "path": "tests/test_review_coverage_e2e_postchecks.py",
+      "bytes": 3413,
+      "lines": 65,
+      "sha256": "6269921cb73d96a380d3ee6dab3180e93fe0d922d18559b4069c406d77e46205"
+    },
+    {
+      "path": "tests/test_review_dependencies.py",
+      "bytes": 3117,
+      "lines": 70,
+      "sha256": "d228f7fa3be147b9e1b5ae10ffae2b8df1e0435922efd23b4458ca3f7bf70384"
+    },
+    {
+      "path": "tests/test_review_design.py",
+      "bytes": 9483,
+      "lines": 177,
+      "sha256": "e717f8e65338a6c08c8d275ce1061643dca1ffbac27463cc4f219ef94c36d877"
+    },
+    {
+      "path": "tests/test_review_document_inputs.py",
+      "bytes": 1707,
+      "lines": 37,
+      "sha256": "20c77965cbb798ac50ecc15f1ddb47798dbf70beb224df431c47a8044c694bfc"
+    },
+    {
+      "path": "tests/test_review_evidence.py",
+      "bytes": 2477,
+      "lines": 52,
+      "sha256": "f51f8dec42b10186c1ee6ff7bfbdba89d143f6904ddcafce687bd51a5ac45568"
+    },
+    {
+      "path": "tests/test_review_execution.py",
+      "bytes": 6935,
+      "lines": 149,
+      "sha256": "52c80faff65541f27e6c6dfa839dbb56139805daad92931fd6cacadd8ff55ac5"
+    },
+    {
+      "path": "tests/test_review_fixtures.py",
+      "bytes": 1916,
+      "lines": 56,
+      "sha256": "59a1b0b40e2a0ec3e86d7384b7175c3059682432e50f5b68598708f4a7a19f4b"
+    },
+    {
+      "path": "tests/test_review_followups.py",
+      "bytes": 23062,
+      "lines": 410,
+      "sha256": "bf0ba76df34b15cb959674db9803bcce485e84e4d0344dd81583576b2a9f6d63"
+    },
+    {
+      "path": "tests/test_review_handoff.py",
+      "bytes": 4704,
+      "lines": 92,
+      "sha256": "429cc0c6f082f54f2ba1802f5d34d852c51a0f621611e3c4dee73e8650750a6d"
+    },
+    {
+      "path": "tests/test_review_history.py",
+      "bytes": 3705,
+      "lines": 79,
+      "sha256": "136f967d574d159a878f220a758df6e2dee172efd17503ca2d15dd929683f597"
+    },
+    {
+      "path": "tests/test_review_host.py",
+      "bytes": 3182,
+      "lines": 73,
+      "sha256": "d9f5c959e8e17bf225b38523a3f8f89c242b55437529f340d31ce5d305d48e48"
+    },
+    {
+      "path": "tests/test_review_improvements.py",
+      "bytes": 3779,
+      "lines": 76,
+      "sha256": "1d15071015c39f61e4ad715c5c13b44e5a747a579f6e87da0c838b51e5b5f9be"
+    },
+    {
+      "path": "tests/test_review_inputs.py",
+      "bytes": 10511,
+      "lines": 192,
+      "sha256": "46e9160521dc4d97263b914d9018f834506668a699ecfc8d63b37be04498eb2e"
+    },
+    {
+      "path": "tests/test_review_knowledge.py",
+      "bytes": 17634,
+      "lines": 244,
+      "sha256": "cf2da033ca316c278dfc8030eb30e159dff241069e587d7ee6b01d462ca27b29"
+    },
+    {
+      "path": "tests/test_review_material_selection.py",
+      "bytes": 2479,
+      "lines": 42,
+      "sha256": "b9b556819fce2ea2df3127fdf560135ebe9cbe3549037da354dda7dc08de8a9e"
+    },
+    {
+      "path": "tests/test_review_observation_mapping.py",
+      "bytes": 6291,
+      "lines": 110,
+      "sha256": "5ba722b90637f2db0fbc6d694874a4da5bc2f06d69999c1c6369f4ab33386bb3"
+    },
+    {
+      "path": "tests/test_review_output.py",
+      "bytes": 4273,
+      "lines": 82,
+      "sha256": "cce1c54cde8876f795aec4ae469c232881e1a3347168475029f2de93e25eb9be"
+    },
+    {
+      "path": "tests/test_review_plan_repair.py",
+      "bytes": 9473,
+      "lines": 168,
+      "sha256": "52dd1428936e29e1b982b286806f91f662f2fef4f3830b858e096648e68bd523"
+    },
+    {
+      "path": "tests/test_review_planning_restart.py",
+      "bytes": 4137,
+      "lines": 79,
+      "sha256": "2339e80fbf18aa636f41fbaac03d2fab33148810da46021211557efca4fd0526"
+    },
+    {
+      "path": "tests/test_review_policy_sources.py",
+      "bytes": 36555,
+      "lines": 720,
+      "sha256": "4e9e096420872f7bc755f5572bfb30938c1af80cabfe653fedeb653a42e08120"
+    },
+    {
+      "path": "tests/test_review_progress.py",
+      "bytes": 15965,
+      "lines": 273,
+      "sha256": "e55cb243ed0687222d6e23d8ead9b7cf9e504aba10aca856a730a2f7ef086bd3"
+    },
+    {
+      "path": "tests/test_review_progress_store.py",
+      "bytes": 4435,
+      "lines": 95,
+      "sha256": "5404fe75bb85ecbe56dad7f442ba45e04a8d9d0f49eeba99087b48a4f23bf34b"
+    },
+    {
+      "path": "tests/test_review_provider.py",
+      "bytes": 4456,
+      "lines": 89,
+      "sha256": "07b02c1991fa4d57877a09995a6f1a843a15a7b2b72b09a70162fb0f986cec92"
+    },
+    {
+      "path": "tests/test_review_publication.py",
+      "bytes": 4805,
+      "lines": 98,
+      "sha256": "54b5cfe4ea22d1301b232f867e0e08b356fbea1ee302615f13c74d3ad70bd6b7"
+    },
+    {
+      "path": "tests/test_review_refresh.py",
+      "bytes": 3893,
+      "lines": 66,
+      "sha256": "b83a6af81ed679dfbea81ef4b451946e4789da595d5ec4ee7a5c6b3ce3d3c9c0"
+    },
+    {
+      "path": "tests/test_review_resources.py",
+      "bytes": 3980,
+      "lines": 81,
+      "sha256": "9f00d3fb855185d1115e4bbb7fd0edd98aa572fbd3558ad1b26b416a1306d904"
+    },
+    {
+      "path": "tests/test_review_service.py",
+      "bytes": 27162,
+      "lines": 438,
+      "sha256": "f5a649b43f6244bb813d0ff3c502168677b8c0cfddb78eda91e816c17a4e4240"
+    },
+    {
+      "path": "tests/test_review_slices.py",
+      "bytes": 4417,
+      "lines": 85,
+      "sha256": "642c3ad802b648430f71bd127f384833f772138a20000dbe781cba7d73616d74"
+    },
+    {
+      "path": "tests/test_review_standalone.py",
+      "bytes": 11690,
+      "lines": 233,
+      "sha256": "574826d93cd189449b4c531fc72c83a8d7b6768d817cc21b44e862fd0fc01bb3"
+    },
+    {
+      "path": "tests/test_review_tools.py",
+      "bytes": 10363,
+      "lines": 190,
+      "sha256": "a28ecc02184450de60cf2146a7f5e7735af96b119f36078686453323e577567b"
+    },
+    {
+      "path": "tests/test_review_transport.py",
+      "bytes": 27444,
+      "lines": 504,
+      "sha256": "054d8b659eac6ec435965b13c183d92c4fafb6ffe7c34e9fa4e626e1680143b8"
+    },
+    {
+      "path": "tests/test_runtime_v25.py",
+      "bytes": 40454,
+      "lines": 761,
+      "sha256": "5565c3cd393a0679115e0c5e22acd8dc9eaa8d504b378d4ebf2b2eed7e4af451"
+    },
+    {
+      "path": "tests/test_scenario_matrix.py",
+      "bytes": 2976,
+      "lines": 60,
+      "sha256": "4c89801b63a16109ab4271d45f685e341b2d6e8b1b402df39e3dcf2d2aae57d2"
+    },
+    {
+      "path": "tests/test_source_contracts.py",
+      "bytes": 8445,
+      "lines": 178,
+      "sha256": "2904fe144e722032f983a6ec5c510751a53baf1e5dc594713a365546dfb57200"
+    },
+    {
+      "path": "tests/test_stage_instructions.py",
+      "bytes": 4545,
+      "lines": 87,
+      "sha256": "6fa775826717df33e9b8b8595535979fc9f43f1d7aec097bcb4d2a2d9655c337"
+    },
+    {
+      "path": "tests/test_state_store.py",
+      "bytes": 2113,
+      "lines": 71,
+      "sha256": "b831d650ca78a94afb1e468d49a8e5194cea29130848dbf60a82c477665dcf3c"
+    },
+    {
+      "path": "tests/test_storage_domain_layout.py",
+      "bytes": 8964,
+      "lines": 174,
+      "sha256": "b0b4ca6eb51e965fe9738f458a4ef1ece6618c684e20ff39502b85e93ca07d46"
+    },
+    {
+      "path": "tests/test_storage_lifecycle.py",
+      "bytes": 6063,
+      "lines": 107,
+      "sha256": "2e3367551643f79c58e10469d8cf9e2618fabd13854673010f1f9ddf095009b8"
+    },
+    {
+      "path": "tests/test_storage_lock.py",
+      "bytes": 1463,
+      "lines": 33,
+      "sha256": "cb5b9172887061ebc105a8b3952c49d571c8aa68089203a009e40a816e202de7"
+    },
+    {
+      "path": "tests/test_stream_json.py",
+      "bytes": 7418,
+      "lines": 166,
+      "sha256": "29f426f7fb15e94fea0f7e506e05305591cbb46809bd3f34c98e1f5320ab1202"
+    },
+    {
+      "path": "tests/test_task_naming.py",
+      "bytes": 2955,
+      "lines": 72,
+      "sha256": "7cb062784e91d953589a9870b81ddfc6c58c04d6b4ad3e1d91477cb874830f42"
+    },
+    {
+      "path": "tests/test_verification_execution.py",
+      "bytes": 5221,
+      "lines": 89,
+      "sha256": "986703d214e47c5d4c49a7067d87729940b02b35b999d5818403dfe1be0f21c3"
+    },
+    {
+      "path": "tests/test_work_item_change.py",
+      "bytes": 14282,
+      "lines": 257,
+      "sha256": "29b8e378f26172995cbb1822909037b010033bb2adc45d4a2d749de264888e90"
+    },
+    {
+      "path": "tests/test_workflow_capabilities.py",
+      "bytes": 14843,
+      "lines": 260,
+      "sha256": "ed3292cfd70881039232111a7354dd63eae10797ddae70569ce973b96fa01ae6"
+    },
+    {
+      "path": "tests/test_workflow_preflight.py",
+      "bytes": 12992,
+      "lines": 244,
+      "sha256": "8a436db3184c4450d866dc41a7570964fc181832bd61e735c98bc3d58e7778b4"
+    }
+  ],
+  "file_count": 629,
+  "lines": 123114
+}

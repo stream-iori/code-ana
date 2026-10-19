@@ -1,0 +1,26 @@
+{
+  "product-py312-repair/report.json.gz": {
+    "original_sha256": "f16c771715dfaea57eebda1f6106075b920cb2769b035180293310f38454ca5e",
+    "original_bytes": 717309
+  },
+  "product-py312-repair/events.json.gz": {
+    "original_sha256": "a27b550286a79536141f3c07b8c0a92b6ce4eea7298aa83df31e35bb553b5da2",
+    "original_bytes": 6037285
+  },
+  "product-py312-repair/semantic-diagnostics.json.gz": {
+    "original_sha256": "ed892221206fc5accd614fa02c52f0b047559bd54ee7d6cb67539e09d159339f",
+    "original_bytes": 309752
+  },
+  "product-py312-repair-final/report.json.gz": {
+    "original_sha256": "71307a934d97087a3c6d3cc35030607991c70c6e71fbf618fa91425332046168",
+    "original_bytes": 717308
+  },
+  "product-py312-repair-final/events.json.gz": {
+    "original_sha256": "9e5bf08946c9a2d3af0515aaa5596881fbe648d2e1123a3415112480a2025bff",
+    "original_bytes": 6037257
+  },
+  "product-py312-repair-final/semantic-diagnostics.json.gz": {
+    "original_sha256": "ed892221206fc5accd614fa02c52f0b047559bd54ee7d6cb67539e09d159339f",
+    "original_bytes": 309752
+  }
+}

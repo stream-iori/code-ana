@@ -1,0 +1,8 @@
+   Compiling tikv-jemalloc-sys v0.7.1+5.3.1-0-g81034ce1f1373e37dc865038e1bc8eeecf559ce8
+   Compiling codeana-model v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/model)
+   Compiling codeana-contracts v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/contracts)
+   Compiling tikv-jemallocator v0.7.0
+   Compiling pyrefly v1.4.0 (https://github.com/facebook/pyrefly?rev=feeee254e65844f23f973a0a29cae02d09931068#feeee254)
+   Compiling codeana-python-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor)
+   Compiling codeana-python-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor/worker)
+    Finished `release` profile [optimized] target(s) in 1m 43s

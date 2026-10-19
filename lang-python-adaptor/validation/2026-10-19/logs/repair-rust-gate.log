@@ -1,0 +1,112 @@
+python3 scripts/generate-compact-schema.py --check
+cargo fmt --all -- --check
+cargo test --workspace --locked
+   Compiling codeana-model v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/model)
+   Compiling codeana-contracts v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/contracts)
+   Compiling codeana-config v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/config)
+   Compiling codeana-query v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/query)
+   Compiling codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+   Compiling codeana-rust-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-rust-adaptor)
+   Compiling codeana-mock-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/mock-worker)
+   Compiling codeana-application v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/application)
+   Compiling codeana-java-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/java-worker)
+   Compiling codeana-rust-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/rust-worker)
+   Compiling codeana-daemon v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/daemon)
+   Compiling codeana-cli v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 22.61s
+     Running unittests src/lib.rs (target/debug/deps/codeana_application-c07f49a1a7f24dbc)
+
+running 30 tests
+test java::tests::explicit_pool_size_must_fit_worker_process_tree_budget ... ok
+test history::tests::legacy_frozen_pages_keep_original_order_without_a_sort_policy ... ok
+test java::tests::xml_only_main_and_test_worlds_require_enabled_extensions_and_exact_module ... ok
+test maven_inputs::tests::dependency_failure_text_is_bounded_and_sanitized ... ok
+test maven_inputs::tests::modified_utf8_handles_nul_and_supplementary_paths ... ok
+test java::tests::task_disk_listing_cache_accounts_candidate_growth_with_shared_clones ... ok
+test java::tests::task_disk_budget_counts_captures_results_and_candidate_without_double_counting_input ... ok
+test maven_inputs::tests::prerequisites_follow_only_resolved_scope_graphs ... ok
+test java::tests::task_disk_listing_cache_keeps_live_sizes_and_nested_changes ... ok
+test maven_inputs::tests::response_rejects_drift_identity_and_entities ... ok
+test output::tests::record_truncation_is_explicit_and_does_not_replace_existing_failure_codes ... ok
+test output::tests::small_complete_output_keeps_exact_protocol_and_strict_success ... ok
+test maven_inputs::tests::dependency_receipt_requires_current_model_scope_and_round ... ok
+test java::tests::host_toolchain_identity_follows_bytes_and_survives_relocation ... ok
+test ports::tests::injected_candidates_drop_on_cancel_and_conflict_and_publish_once ... ok
+test reader_tests::cancellation_wrapper_preserves_sql_aggregate_and_filtered_search ... ok
+test output::tests::strict_does_not_reject_a_provisional_sample_when_complete_terminal_fits ... ok
+test worker::tests::java_ack_rejects_wrong_attempt_revision_and_unexpected_message ... ok
+test worker::tests::memory_samples_keep_peak_and_last_complete_phase ... ok
+test worker::tests::stalled_java_ack_still_has_a_deadline ... ok
+test output::tests::strict_detail_omission_rejects_without_revoking_publication_or_losing_reasons ... ok
+test maven_inputs::tests::dependency_terminal_remains_visible_after_process_exit ... ok
+test output::tests::large_published_evidence_fits_text_and_retains_complete_task_details ... ok
+test maven_inputs::tests::terminal_markers_reject_duplicates_conflicts_and_out_of_order_rounds ... ok
+test history::tests::frozen_pages_store_only_metadata_and_allow_different_page_sizes ... ok
+test maven_inputs::tests::timeout_after_metadata_never_becomes_source_only ... ok
+test maven_inputs::tests::timeout_and_cancellation_reap_owned_process_and_log_readers ... ok
+test worker::tests::delayed_java_ack_preserves_identity_and_exceeds_old_deadline ... ok
+test maven_inputs::tests::inherited_log_pipe_does_not_block_export_cleanup ... ok
+test java::tests::task_disk_listing_cache_is_bounded_and_fallback_still_counts ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.40s
+
+     Running unittests src/main.rs (target/debug/deps/codeana_cli-7b2be4a88b96516e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/codeana_config-d4a0399d21127cad)
+
+running 33 tests
+test java_inputs::tests::disabled_suggestions_keep_missing_input_evidence ... ok
+test java_inputs::tests::historical_report_inputs_remain_readable_but_live_inputs_require_explicit_mode ... ok
+test java_inputs::tests::prerequisite_receipt_is_backward_compatible_and_bounded ... ok
+test java_inputs::tests::rejects_changed_external_maven_settings ... ok
+test java_inputs::tests::source_only_state_rejects_partial_jars_and_requires_failure_receipt ... ok
+test java_inputs::tests::rejects_stale_controls_cycles_and_unproved_generated_inputs ... ok
+test java_inputs::tests::compact_classpath_order_rejects_duplicate_missing_and_reordered_slots ... ok
+test query_limit_tests::user_query_capacity_is_bounded_and_defaults_independently_of_workers ... ok
+test rust_inputs::tests::filters_are_shared_and_budgets_do_not_change_input_policy ... ok
+test rust_inputs::tests::old_schema_and_transitive_source_graph_are_rejected ... ok
+test tests::config_examples_parse ... ok
+test rust_inputs::tests::stale_controls_unsafe_roots_and_cycles_are_rejected ... ok
+test tests::dependency_spool_rejects_oversize_before_copy ... ok
+test rust_inputs::tests::project_memory_range_is_validated_without_loading_inputs ... ok
+test tests::cli_overrides_are_frozen_and_invalid_project_values_are_rejected ... ok
+test tests::explicit_false_and_semantic_digest_ignore_comments ... ok
+test tests::external_exclusions_inherit_and_explicit_empty_overrides ... ok
+test tests::java_model_budget_is_explicit_and_bounded ... ok
+test tests::model_archive_and_context_timeout_are_explicit_and_bounded ... ok
+test tests::source_labels_keep_physical_worlds_and_reject_ambiguous_roots ... ok
+test lombok::tests::configuration_file_budget_and_exclusion_are_hard_failures ... ok
+test tests::unknown_and_false ... ok
+test tests::user_worker_limit_boundaries ... ok
+test python_inputs::tests::nested_symlink_is_rejected ... ok
+test tests::test_only_capture_retains_main_as_explicit_auxiliary_input ... ok
+test python_inputs::tests::worlds_are_distinct_and_root_order_changes_world ... ok
+test lombok::tests::disabled_model_does_not_discover_ancestor_controls ... ok
+test python_inputs::tests::optional_controls_are_frozen_and_stale_metadata_is_rejected ... FAILED
+test python_inputs::tests::captured_bytes_survive_live_changes_and_stale_inventory_is_rejected ... ok
+test lombok::tests::ancestors_and_source_controls_are_sealed_independently_of_scan_include ... ok
+test tests::dependency_capture_exceeds_frame_budget_and_pins_immutable_spool ... ok
+test tests::invalid_semantic_encoding_preserves_captured_bytes_and_publication_role ... ok
+test tests::maven_capture_preserves_labels_through_metadata_recapture ... ok
+
+failures:
+
+---- python_inputs::tests::optional_controls_are_frozen_and_stale_metadata_is_rejected stdout ----
+
+thread 'python_inputs::tests::optional_controls_are_frozen_and_stale_metadata_is_rejected' (45044124) panicked at crates/config/src/python_inputs.rs:258:9:
+assertion failed: captured.manifest.files.iter().any(|f|
+        f.path == "pyproject.toml" && f.scope == "CONTROL")
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    python_inputs::tests::optional_controls_are_frozen_and_stale_metadata_is_rejected
+
+test result: FAILED. 32 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.05s
+
+error: test failed, to rerun pass `-p codeana-config --lib`
+error: Recipe `test-rust` failed on line 31 with exit code 101

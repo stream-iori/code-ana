@@ -1,0 +1,390 @@
+python3 scripts/generate-compact-schema.py --check
+cargo fmt --all -- --check
+cargo test --workspace --locked
+   Compiling codeana-config v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/config)
+   Compiling codeana-application v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/application)
+   Compiling codeana-rust-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/rust-worker)
+   Compiling codeana-cli v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/cli)
+   Compiling codeana-daemon v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/daemon)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.53s
+     Running unittests src/lib.rs (target/debug/deps/codeana_application-c07f49a1a7f24dbc)
+
+running 30 tests
+test java::tests::explicit_pool_size_must_fit_worker_process_tree_budget ... ok
+test history::tests::legacy_frozen_pages_keep_original_order_without_a_sort_policy ... ok
+test java::tests::task_disk_listing_cache_accounts_candidate_growth_with_shared_clones ... ok
+test java::tests::task_disk_budget_counts_captures_results_and_candidate_without_double_counting_input ... ok
+test maven_inputs::tests::modified_utf8_handles_nul_and_supplementary_paths ... ok
+test maven_inputs::tests::prerequisites_follow_only_resolved_scope_graphs ... ok
+test maven_inputs::tests::response_rejects_drift_identity_and_entities ... ok
+test java::tests::xml_only_main_and_test_worlds_require_enabled_extensions_and_exact_module ... ok
+test maven_inputs::tests::dependency_failure_text_is_bounded_and_sanitized ... ok
+test java::tests::task_disk_listing_cache_keeps_live_sizes_and_nested_changes ... ok
+test output::tests::record_truncation_is_explicit_and_does_not_replace_existing_failure_codes ... ok
+test output::tests::small_complete_output_keeps_exact_protocol_and_strict_success ... ok
+test maven_inputs::tests::dependency_receipt_requires_current_model_scope_and_round ... ok
+test output::tests::strict_does_not_reject_a_provisional_sample_when_complete_terminal_fits ... ok
+test ports::tests::injected_candidates_drop_on_cancel_and_conflict_and_publish_once ... ok
+test reader_tests::cancellation_wrapper_preserves_sql_aggregate_and_filtered_search ... ok
+test java::tests::host_toolchain_identity_follows_bytes_and_survives_relocation ... ok
+test worker::tests::java_ack_rejects_wrong_attempt_revision_and_unexpected_message ... ok
+test worker::tests::memory_samples_keep_peak_and_last_complete_phase ... ok
+test output::tests::strict_detail_omission_rejects_without_revoking_publication_or_losing_reasons ... ok
+test worker::tests::stalled_java_ack_still_has_a_deadline ... ok
+test output::tests::large_published_evidence_fits_text_and_retains_complete_task_details ... ok
+test maven_inputs::tests::dependency_terminal_remains_visible_after_process_exit ... ok
+test maven_inputs::tests::terminal_markers_reject_duplicates_conflicts_and_out_of_order_rounds ... ok
+test history::tests::frozen_pages_store_only_metadata_and_allow_different_page_sizes ... ok
+test maven_inputs::tests::timeout_after_metadata_never_becomes_source_only ... ok
+test maven_inputs::tests::timeout_and_cancellation_reap_owned_process_and_log_readers ... ok
+test worker::tests::delayed_java_ack_preserves_identity_and_exceeds_old_deadline ... ok
+test maven_inputs::tests::inherited_log_pipe_does_not_block_export_cleanup ... ok
+test java::tests::task_disk_listing_cache_is_bounded_and_fallback_still_counts ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.41s
+
+     Running unittests src/main.rs (target/debug/deps/codeana_cli-7b2be4a88b96516e)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/codeana_config-d4a0399d21127cad)
+
+running 33 tests
+test java_inputs::tests::disabled_suggestions_keep_missing_input_evidence ... ok
+test java_inputs::tests::historical_report_inputs_remain_readable_but_live_inputs_require_explicit_mode ... ok
+test java_inputs::tests::rejects_changed_external_maven_settings ... ok
+test java_inputs::tests::prerequisite_receipt_is_backward_compatible_and_bounded ... ok
+test java_inputs::tests::rejects_stale_controls_cycles_and_unproved_generated_inputs ... ok
+test java_inputs::tests::compact_classpath_order_rejects_duplicate_missing_and_reordered_slots ... ok
+test java_inputs::tests::source_only_state_rejects_partial_jars_and_requires_failure_receipt ... ok
+test rust_inputs::tests::filters_are_shared_and_budgets_do_not_change_input_policy ... ok
+test query_limit_tests::user_query_capacity_is_bounded_and_defaults_independently_of_workers ... ok
+test rust_inputs::tests::old_schema_and_transitive_source_graph_are_rejected ... ok
+test tests::config_examples_parse ... ok
+test rust_inputs::tests::stale_controls_unsafe_roots_and_cycles_are_rejected ... ok
+test rust_inputs::tests::project_memory_range_is_validated_without_loading_inputs ... ok
+test tests::dependency_spool_rejects_oversize_before_copy ... ok
+test tests::cli_overrides_are_frozen_and_invalid_project_values_are_rejected ... ok
+test tests::explicit_false_and_semantic_digest_ignore_comments ... ok
+test tests::external_exclusions_inherit_and_explicit_empty_overrides ... ok
+test tests::java_model_budget_is_explicit_and_bounded ... ok
+test tests::model_archive_and_context_timeout_are_explicit_and_bounded ... ok
+test tests::source_labels_keep_physical_worlds_and_reject_ambiguous_roots ... ok
+test python_inputs::tests::worlds_are_distinct_and_root_order_changes_world ... ok
+test lombok::tests::disabled_model_does_not_discover_ancestor_controls ... ok
+test tests::unknown_and_false ... ok
+test lombok::tests::configuration_file_budget_and_exclusion_are_hard_failures ... ok
+test python_inputs::tests::nested_symlink_is_rejected ... ok
+test tests::user_worker_limit_boundaries ... ok
+test tests::test_only_capture_retains_main_as_explicit_auxiliary_input ... ok
+test python_inputs::tests::captured_bytes_survive_live_changes_and_stale_inventory_is_rejected ... ok
+test tests::invalid_semantic_encoding_preserves_captured_bytes_and_publication_role ... ok
+test tests::maven_capture_preserves_labels_through_metadata_recapture ... ok
+test python_inputs::tests::optional_controls_are_frozen_and_stale_metadata_is_rejected ... ok
+test lombok::tests::ancestors_and_source_controls_are_sealed_independently_of_scan_include ... ok
+test tests::dependency_capture_exceeds_frame_budget_and_pins_immutable_spool ... ok
+
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.43s
+
+     Running unittests src/lib.rs (target/debug/deps/codeana_contracts-65fc90f1daf285a0)
+
+running 22 tests
+test mapping::tests::invalid_wire_choices_are_rejected_before_dispatch ... ok
+test mapping::tests::context_wrapping_preserves_cancellation_identity ... ok
+test java::tests::tables_preserve_order_identity_and_publication_roles ... ok
+test graph_archive::tests::null_empty_and_unicode_are_distinct_and_truncation_is_rejected ... ok
+test java::tests::model_decode_budget_is_validated_at_worker_boundary ... ok
+test java::tests::auxiliary_sources_roundtrip_and_cannot_be_published ... ok
+test java::tests::resource_labels_survive_compaction_without_becoming_compiler_sources ... ok
+test graph_rows::tests::named_node_matches_the_frozen_wire_columns_and_preserves_raw_metadata ... ok
+test java_protocol_tests::bounded_java_discovery_and_baseline_frames ... ok
+test query_option_tests::hierarchy_options_survive_task_and_stage_protobuf_transport ... ok
+test query_option_tests::meta_annotation_options_survive_task_and_stage_protobuf_transport ... ok
+test java_protocol_tests::packed_java_indices_are_bounded_before_prost_allocation ... ok
+test tests::oversized_frame_rejected_before_allocation ... ok
+test tests::request_presence_roundtrip ... ok
+test tests::repeated_fact_allocation_and_duplicate_body_rejected ... ok
+test tests::excessive_advice_fields_rejected_before_decode ... ok
+test performance::tests::nested_sync_scope_restores_after_failure_and_disabled_scope_is_empty ... ok
+test performance::tests::counters_follow_task_across_await_without_leaking_to_child ... ok
+test stream::tests::premature_close_never_certifies_completion ... ok
+test tests::persistent_reader_resumes_prefix_and_body_after_cancelled_waits ... ok
+test stream::tests::oversized_batch_is_exclusive_and_closed_receiver_unblocks_sender ... ok
+test java::tests::reactor_references_fit_frame_without_raising_frame_limit ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running unittests src/main.rs (target/debug/deps/codeana_daemon-03a30328e749d034)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/main.rs (target/debug/deps/codeana_java_worker-ca19e515d5a317e5)
+
+running 8 tests
+test native::bootstrap_tests::real_g1_recreation_returns_error_after_teardown ... ignored, requires an explicitly built G1 shared library
+test native::bootstrap_tests::isolate_params_matches_64_bit_graal_v5_header ... ok
+test native::bootstrap_tests::serial_can_repeat_but_cannot_switch_to_g1_in_process ... ok
+test native::bootstrap_tests::g1_claim_is_process_lifetime_and_serial_cannot_follow_it ... ok
+test actor::tests::non_send_state_stays_on_owner_and_blocking_call_does_not_block_control ... ok
+test result::tests::late_sha_failure_does_not_delete_or_certify_provisional_rows ... ok
+test diagnostics::tests::replay_rebases_aliases_and_keeps_external_inputs ... ok
+test result::tests::valid_consumption_releases_only_owned_archive_and_old_format_is_rejected ... ok
+
+test result: ok. 7 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running unittests src/main.rs (target/debug/deps/codeana_mock_worker-a5938aa7116464b3)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/codeana_model-6b0ecc6132719dd5)
+
+running 17 tests
+test tests::evidence_cannot_erase_upstream ... ok
+test tests::evidence_bounded_empty_result_keeps_every_limit_and_disallows_absence ... ok
+test tests::evidence_bounded_positive_and_diagnostic_results_keep_their_meaning ... ok
+test choices::tests::closed_choices_fail_without_panicking_and_producer_states_round_trip ... ok
+test records::tests::query_order_uses_identity_and_keeps_equal_records ... ok
+test tests::framed_keys_do_not_collide ... ok
+test attributes::tests::typed_semantics_preserve_extensions_nulls_and_missing_fields ... ok
+test java_type_graph::tests::traverse_cycles_without_expansion_and_keep_literal_markers ... ok
+test tests::path_rejects_escape ... ok
+test records::tests::endpoints_are_typed_and_display_records_cannot_enter_a_pipeline ... ok
+test java_type_graph::tests::corrupt_references_shapes_completeness_and_versions_are_rejected ... ok
+test tests::graph_facets_are_checked_by_both_publication_paths ... ok
+test tests::shared_binding_evidence_requires_its_call_site ... ok
+test tests::java_model_four_facets_reject_unknown_versions_and_namespaces ... ok
+test tests::syntax_partitions_validate_source_hash_offsets_and_tail ... ok
+test java_xml_configuration::tests::rejects_corrupt_graph_identity_geometry_and_source_evidence ... ok
+test java_type_graph::tests::ten_thousand_deep_types_fit_standard_json_and_bounded_node_navigation ... ok
+
+test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.09s
+
+     Running unittests src/lib.rs (target/debug/deps/codeana_query-f57b6556e1ec92f9)
+
+running 27 tests
+test tests::overview_rejects_unknown_relation_before_reading ... ok
+test tests::incoming_sites_preserve_callers_outside_anchor_module ... ok
+test tests::configuration_names_and_structure_exclude_helper_facets ... ok
+test tests::dispatch_distinguishes_exact_and_open_world_targets ... ok
+test tests::overview_relation_groups_follow_the_copied_graph_mapping ... ok
+test tests::outgoing_references_filter_relations_and_preserve_occurrences ... ok
+test tests::invalid_pipeline_fails_before_read ... ok
+test tests::meta_annotations_preserve_paths_occurrences_and_stop_cycles ... ok
+test tests::auxiliary_source_navigation_uses_captured_declaration_without_rebinding ... ok
+test tests::dispatch_respects_receiver_types_and_skips_abstract_override_candidates ... ok
+test tests::meta_annotation_depth_and_duplicate_producer_pairs_are_explicit ... ok
+test tests::possible_candidates_are_explained_and_excluded_from_confirmed_calls ... ok
+test tests::resolve_unique_is_checked_inside_selected_module ... ok
+test tests::trace_returns_a_bounded_start_to_target_path ... ok
+test tests::typed_pipeline_can_resolve_call_endpoint_then_read_source ... ok
+test tests::runtime_instantiability_filters_and_incoming_coverage_are_explicit ... ok
+test tests::unresolved_call_is_not_a_confirmed_candidate ... ok
+test tests::transitive_hierarchy_preserves_direct_default_cycles_and_depth_limits ... ok
+test tests::runtime_candidates_traverse_abstract_types_preserve_proofs_and_exclude_seed ... ok
+test text::tests::upstream_invalid_regex_is_checked_without_files_and_missing_literal_is_empty ... ok
+test text::tests::upstream_closed_output_and_expired_check_stop_without_scanning_remaining_lines ... ok
+test text::tests::upstream_literal_unicode_crlf_and_repeated_matches_preserve_context ... ok
+test tests::upstream_search_selection_owns_paths_and_rejects_invalid_patterns ... ok
+test tests::upstream_search_selection_matches_multiple_globs_with_literal_separators ... ok
+test tests::symbol_search_does_not_treat_the_first_ten_thousand_as_complete ... ok
+test tests::wide_dispatch_uses_batched_adjacency_and_method_reads ... ok
+test text::tests::long_search_uses_bounded_batches_and_complete_context ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.94s
+
+     Running unittests src/lib.rs (target/debug/deps/codeana_rust_adaptor-111ac5dece19e598)
+
+running 4 tests
+test records::tests::indexed_positions_preserve_utf16_crlf_and_clamping ... ok
+test incremental::tests::removal_and_shared_source_instances_remain_in_replacement_set ... ok
+test incremental::tests::body_edit_is_local_and_new_name_invalidates_failed_lookup ... ok
+test facade::tests::resolves_a_real_cross_crate_call_without_cargo_or_lsp ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/semantic.rs (target/debug/deps/semantic-cf2918932c17a186)
+
+running 7 tests
+test cancellation_and_frozen_input_drift_fail_before_publication ... ok
+test changed_reexport_invalidates_downstream_without_a_declaration_edit ... ok
+test body_only_edit_rebinds_one_owner_and_keeps_unchanged_dependency_summaries ... ok
+test nested_impl_and_inline_module_body_edits_preserve_interfaces_but_constants_do_not ... ok
+test changed_interface_and_removed_file_are_persistent_invalidations ... ok
+test cross_crate_reexports_traits_macros_cfg_and_partial_evidence ... ok
+test mixed_archive_preserves_java_on_rust_delta_and_rejects_partial_publication ... ok
+
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.44s
+
+     Running unittests src/main.rs (target/debug/deps/codeana_rust_worker-cf8d6d54940b3c61)
+
+running 1 test
+test tests::partial_control_frame_cancels_with_unconsumed_output ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.76s
+
+     Running unittests src/lib.rs (target/debug/deps/codeana_storage-1485f5807bcc1621)
+
+running 36 tests
+test graph_compact::tests::digest_collision_retains_distinct_original_values ... ok
+test graph_compact::tests::external_identity_keeps_null_distinct_from_empty ... ok
+test graph_compact::tests::integer_references_preserve_provenance_and_upsert_pk ... ok
+test graph_query::projection_tests::physical_primary_keys_never_become_public_attributes ... ok
+test graph_compact::tests::opaque_metadata_shares_duplicates_and_releases_last_reference ... ok
+
+running 1 test
+test graph_compact::tests::shared_annotation_owners_keep_first_location_and_refresh_status ... ok
+test graph_store::tests::rust_metadata_is_normalized_and_old_schema_requires_full_rebuild ... ok
+test graph_store::tests::upstream_layout_and_utf16_hash_are_preserved ... ok
+
+running 1 test
+test derived_cache::tests::root_payload_and_lock_symlinks_never_read_or_modify_external_files ... ok
+test derived_cache::tests::concurrent_processes_publish_complete_entries_and_recover_interrupted_stage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out; finished in 0.07s
+
+test blobs::tests::shared_hash_remains_pinned_until_last_owner_and_gc_can_run_during_io ... ok
+test blobs::tests::same_hash_file_batches_are_safe_under_concurrent_gc ... ok
+test derived_cache::tests::unknown_siblings_invalidate_entries_and_lower_quota_evicts_before_pinning ... ok
+test derived_cache::tests::concurrent_processes_publish_complete_entries_and_recover_interrupted_stage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out; finished in 0.17s
+
+test derived_cache::tests::pin_quota_namespace_identity_and_checksum_limit_reuse ... ok
+test derived_cache::tests::concurrent_processes_publish_complete_entries_and_recover_interrupted_stage ... ok
+test tests::concurrent_event_batches_are_contiguous_and_never_interleave ... ok
+test tests::blob_file_batches_retry_partial_failure_and_verify_reused_files ... ok
+test derived_cache::tests::eviction_and_corruption_do_not_change_task_pins_and_drop_does_not_publish ... ok
+test tests::event_batches_preserve_resume_sequence_and_rollback_failed_serialization ... ok
+test tests::future_schema_is_not_downgraded ... ok
+test tests::migrates_legacy_annotations_without_guessing_an_anchor ... ok
+test staged::graph_candidate::tests::cancellation_removes_private_candidate_and_keeps_baseline ... ok
+test tests::recovery_retries_recorded_cleanup ... ok
+test tests::hostile_selector_is_bound_as_data ... ok
+test tests::aggregate_replacement_is_rejected_without_changing_head ... ok
+test tests::removed_binding_capability_is_explicitly_rejected_by_graph_reader ... ok
+test tests::published_file_dependencies_page_by_world_and_keep_the_old_revision ... ok
+test text_search::tests::literal_candidates_are_verified_reused_and_keep_invalid_encoding ... ok
+test tests::expired_pages_release_revision_refs ... ok
+test staged::graph_candidate::tests::context_only_coverage_prevents_semantic_completeness ... ok
+test tests::catalog_failure_leaves_head_and_recovers_orphan ... ok
+test tests::page_spool_survives_recovery_pins_revision_and_cleans_up_on_expiry ... ok
+test tests::publish_cas_reader_and_gc ... ok
+test tests::concurrent_gc_cannot_delete_an_active_reader ... ok
+test tests::reverse_dependencies_keep_cycles_scopes_occurrences_and_atomic_source_replacement ... ok
+test tests::retention_policy_never_breaks_pins_or_project_isolation ... ok
+test staged::graph_candidate::tests::malformed_or_unsealed_rows_never_change_head ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.51s
+
+   Doc-tests codeana_application
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests codeana_config
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests codeana_contracts
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests codeana_model
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests codeana_query
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests codeana_rust_adaptor
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests codeana_storage
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+cargo build --workspace --locked
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.35s
+python3 tests/rust_graph_e2e.py
+....................
+----------------------------------------------------------------------
+Ran 20 tests in 62.483s
+
+OK
+python3 tests/rust_language_e2e.py
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 10.698s
+
+OK
+python3 tests/rust_dogfood_tests.py
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.005s
+
+OK
+python3 tests/java_bundle_manifest_tests.py
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.197s
+
+OK
+python3 tests/java_compact_single_tests.py
+........
+----------------------------------------------------------------------
+Ran 8 tests in 0.033s
+
+OK
+python3 tests/rust_upstream_text_search.py
+test_upstream_closed_text_output_does_not_hang_or_stop_daemon (__main__.TextSearchProduct.test_upstream_closed_text_output_does_not_hang_or_stop_daemon) ... ok
+test_upstream_text_limit_retains_cursor_and_invalid_regex_without_files (__main__.TextSearchProduct.test_upstream_text_limit_retains_cursor_and_invalid_regex_without_files) ... ok
+
+----------------------------------------------------------------------
+Ran 2 tests in 3.147s
+
+OK
+python3 tests/rust_upstream_annotations.py
+test_upstream_annotation_distinct_sources_coexist (__main__.AnnotationProduct.test_upstream_annotation_distinct_sources_coexist) ... ok
+test_upstream_annotation_explicit_update_preserves_one_identity (__main__.AnnotationProduct.test_upstream_annotation_explicit_update_preserves_one_identity) ... ok
+test_upstream_annotation_inserts_new_row (__main__.AnnotationProduct.test_upstream_annotation_inserts_new_row) ... ok
+test_upstream_annotation_update_and_new_write_retain_both_outcomes (__main__.AnnotationProduct.test_upstream_annotation_update_and_new_write_retain_both_outcomes) ... ok
+
+----------------------------------------------------------------------
+Ran 4 tests in 5.357s
+
+OK
+cargo clippy --workspace --all-targets --locked -- -D warnings
+    Checking codeana-model v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/model)
+    Checking codeana-contracts v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/contracts)
+    Checking codeana-config v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/config)
+    Checking codeana-query v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/query)
+    Checking codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+    Checking codeana-rust-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-rust-adaptor)
+    Checking codeana-mock-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/mock-worker)
+    Checking codeana-application v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/application)
+    Checking codeana-java-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/java-worker)
+    Checking codeana-rust-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/rust-worker)
+    Checking codeana-cli v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/cli)
+    Checking codeana-daemon v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/daemon)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 14.51s

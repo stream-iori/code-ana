@@ -1,0 +1,3 @@
+codeana-text-v1
+record {"ack_warning":null,"facts":469789,"manifest":"b54ffab88656111057ea36405568b8e4ce6105cfcb055a42fa8158cc459b4c5b","mode":"full","producer":"python-core","profile":"a173615cdf12c937121ca7f35420a1b64cb71602eafea30b709bfd2cd418f20d","revision":"rev_b69bde6dc5c04e1e98475daad1765ca7","statistics":{"analyzed_indexes":55,"elapsed_ms":202,"warnings":[]}}
+terminal {"execution":"completed","assessment":"partial","gate":"passed","publication":"published","report":"task_97a27d3bcc5042ec92a9de21696f068a","revision":"rev_b69bde6dc5c04e1e98475daad1765ca7","producer":"python-core","code":"OK","message":"","exit_code":0,"evidence":{"enumeration":true,"semantic":false,"limits":[],"reasons":["coverage:partial_files:615"]},"cursor":""}

@@ -1,0 +1,58 @@
+python3 scripts/generate-compact-schema.py --check
+cargo fmt --all -- --check
+cargo test --workspace --locked
+   Compiling codeana-application v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/application)
+   Compiling codeana-daemon v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/daemon)
+   Compiling codeana-cli v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/cli)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.01s
+     Running unittests src/lib.rs (target/debug/deps/codeana_application-c07f49a1a7f24dbc)
+
+running 31 tests
+test java::tests::explicit_pool_size_must_fit_worker_process_tree_budget ... ok
+test history::tests::legacy_frozen_pages_keep_original_order_without_a_sort_policy ... ok
+test java::tests::xml_only_main_and_test_worlds_require_enabled_extensions_and_exact_module ... ok
+test maven_inputs::tests::dependency_failure_text_is_bounded_and_sanitized ... ok
+test maven_inputs::tests::modified_utf8_handles_nul_and_supplementary_paths ... ok
+test java::tests::task_disk_listing_cache_accounts_candidate_growth_with_shared_clones ... ok
+test maven_inputs::tests::prerequisites_follow_only_resolved_scope_graphs ... ok
+test java::tests::task_disk_budget_counts_captures_results_and_candidate_without_double_counting_input ... ok
+test maven_inputs::tests::response_rejects_drift_identity_and_entities ... ok
+test java::tests::task_disk_listing_cache_keeps_live_sizes_and_nested_changes ... ok
+test output::tests::record_truncation_is_explicit_and_does_not_replace_existing_failure_codes ... ok
+test output::tests::small_complete_output_keeps_exact_protocol_and_strict_success ... ok
+test maven_inputs::tests::dependency_receipt_requires_current_model_scope_and_round ... ok
+test java::tests::host_toolchain_identity_follows_bytes_and_survives_relocation ... ok
+test ports::tests::injected_candidates_drop_on_cancel_and_conflict_and_publish_once ... ok
+test output::tests::strict_does_not_reject_a_provisional_sample_when_complete_terminal_fits ... ok
+test reader_tests::cancellation_wrapper_preserves_sql_aggregate_and_filtered_search ... ok
+test worker::tests::java_ack_rejects_wrong_attempt_revision_and_unexpected_message ... ok
+test worker::tests::memory_samples_keep_peak_and_last_complete_phase ... ok
+test worker::tests::python_worker_requires_current_adapter_and_pinned_backend ... ok
+test output::tests::strict_detail_omission_rejects_without_revoking_publication_or_losing_reasons ... ok
+test worker::tests::stalled_java_ack_still_has_a_deadline ... ok
+test output::tests::large_published_evidence_fits_text_and_retains_complete_task_details ... ok
+test maven_inputs::tests::timeout_after_metadata_never_becomes_source_only ... FAILED
+test history::tests::frozen_pages_store_only_metadata_and_allow_different_page_sizes ... ok
+test maven_inputs::tests::timeout_and_cancellation_reap_owned_process_and_log_readers ... ok
+test maven_inputs::tests::dependency_terminal_remains_visible_after_process_exit ... ok
+test worker::tests::delayed_java_ack_preserves_identity_and_exceeds_old_deadline ... ok
+test java::tests::task_disk_listing_cache_is_bounded_and_fallback_still_counts ... ok
+test maven_inputs::tests::terminal_markers_reject_duplicates_conflicts_and_out_of_order_rounds ... ok
+test maven_inputs::tests::inherited_log_pipe_does_not_block_export_cleanup ... ok
+
+failures:
+
+---- maven_inputs::tests::timeout_after_metadata_never_becomes_source_only stdout ----
+
+thread 'maven_inputs::tests::timeout_after_metadata_never_becomes_source_only' (45123782) panicked at crates/application/src/maven_inputs.rs:1580:32:
+called `Result::unwrap()` on an `Err` value: MAVEN_INPUTS_TIMEOUT
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    maven_inputs::tests::timeout_after_metadata_never_becomes_source_only
+
+test result: FAILED. 30 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 4.54s
+
+error: test failed, to rerun pass `-p codeana-application --lib`
+error: Recipe `test-rust` failed on line 31 with exit code 101

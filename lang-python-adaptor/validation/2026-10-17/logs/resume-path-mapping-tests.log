@@ -1,0 +1,16 @@
+   Compiling codeana-query v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/query)
+   Compiling codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+   Compiling codeana-python-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.87s
+     Running tests/frozen.rs (lang-python-adaptor/target/debug/deps/frozen-625dfaab07e0608a)
+
+running 6 tests
+test unchanged_context_roots_have_distinct_worlds_and_cancel_before_io ... ok
+test tampered_capture_and_scratch_budget_are_rejected ... ok
+test overlapping_roots_publish_one_primary_module_and_excluded_files_stay_auxiliary ... ok
+test sealed_tree_preserves_relative_and_namespace_imports_without_temporary_ids ... ok
+test encoding_declarations_are_checked_without_losing_byte_offsets ... ok
+test stub_precedence_reexports_and_missing_dependencies_are_explicit ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.99s
+

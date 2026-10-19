@@ -1,0 +1,4 @@
+   Compiling codeana-application v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/application)
+   Compiling codeana-cli v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/cli)
+   Compiling codeana-daemon v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/daemon)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.89s

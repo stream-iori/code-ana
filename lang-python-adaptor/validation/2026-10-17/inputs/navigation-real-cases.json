@@ -1,0 +1,275 @@
+[
+  {
+    "id": "scripts:loads",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/check_anatomist_alignment.py",
+    "line": 61,
+    "character": 11,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/anatomist_text.py",
+        "line": 29
+      }
+    ],
+    "source_line": "return loads(out.decode(\"utf-8\"))"
+  },
+  {
+    "id": "scripts:build_handoff_observation",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/diorama_jury_adapter.py",
+    "line": 494,
+    "character": 22,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/host_state.py",
+        "line": 23
+      }
+    ],
+    "source_line": "observation = build_handoff_observation(agent_cwd)"
+  },
+  {
+    "id": "scripts:index_path",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/anatomist_original_queries.py",
+    "line": 84,
+    "character": 15,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/anatomist_query_data.py",
+        "line": 6
+      }
+    ],
+    "source_line": "if index_path(destination, 0) is None or source_path is None:"
+  },
+  {
+    "id": "scripts:_fail",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/business_queries.py",
+    "line": 7,
+    "character": 8,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/oracle_contracts.py",
+        "line": 51
+      }
+    ],
+    "source_line": "_fail(message, expected=True, actual=actual, refs=[], code=\"business.outcome.knowledge_business\")"
+  },
+  {
+    "id": "scripts:_path_expression",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/candidate_capture.py",
+    "line": 65,
+    "character": 11,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/native_ast.py",
+        "line": 24
+      }
+    ],
+    "source_line": "path = _path_expression(destination, definitions)"
+  },
+  {
+    "id": "sdk:safe_relative_path",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/knowledge_code_query.py",
+    "line": 16,
+    "character": 8,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/knowledge_identity.py",
+        "line": 17
+      }
+    ],
+    "source_line": "safe_relative_path(path)"
+  },
+  {
+    "id": "sdk:require_id",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/knowledge_document.py",
+    "line": 69,
+    "character": 4,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/knowledge_identity.py",
+        "line": 11
+      }
+    ],
+    "source_line": "require_id(value[\"id\"])"
+  },
+  {
+    "id": "sdk:classify",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/record_manifest.py",
+    "line": 15,
+    "character": 49,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/storage_layout.py",
+        "line": 110
+      }
+    ],
+    "source_line": "if not isinstance(relative_path, str) or classify(relative_path) != \"record\":"
+  },
+  {
+    "id": "sdk:load_json",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/review_contract.py",
+    "line": 15,
+    "character": 19,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/resource_catalog.py",
+        "line": 14
+      }
+    ],
+    "source_line": "_POLICY_DEFAULTS = load_json('defaults', 'project-config-template.json')['review']"
+  },
+  {
+    "id": "sdk:require",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/review_followups.py",
+    "line": 13,
+    "character": 8,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/review_values.py",
+        "line": 7
+      }
+    ],
+    "source_line": "require(isinstance(item, dict) and short_id(item.get(\"id\")) and item[\"id\"] not in items,"
+  },
+  {
+    "id": "runtime:copy_projection",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/actions.py",
+    "line": 216,
+    "character": 12,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/stream_json.py",
+        "line": 21
+      }
+    ],
+    "source_line": "value = copy_projection(dict(result))"
+  },
+  {
+    "id": "runtime:config_get",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/anatomist.py",
+    "line": 38,
+    "character": 60,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/configuration.py",
+        "line": 50
+      }
+    ],
+    "source_line": "timeout=timeout if timeout is not None else config_get(cwd, \"commands.anatomist_query_timeout_seconds\", ANATOMIST_COMMAND_TIMEOUT_SECONDS),"
+  },
+  {
+    "id": "runtime:root",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/anatomist_index_manager.py",
+    "line": 31,
+    "character": 24,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/layout.py",
+        "line": 27
+      }
+    ],
+    "source_line": "return os.path.join(root(os.path.realpath(repo), \"cache\"), \"anatomist\", \"index-handle.json\")"
+  },
+  {
+    "id": "runtime:documents",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/anatomist_index_protocol.py",
+    "line": 16,
+    "character": 17,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/anatomist_text.py",
+        "line": 12
+      }
+    ],
+    "source_line": "frames = documents(str(stderr or \"\"))"
+  },
+  {
+    "id": "runtime:_file_observation",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/anatomist_process.py",
+    "line": 72,
+    "character": 48,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/process_runner.py",
+        "line": 29
+      }
+    ],
+    "source_line": "sizes[name], digests[name], _tail = _file_observation(stream)"
+  },
+  {
+    "id": "tests:anatomist_text",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/support/anatomist_resolver.py",
+    "line": 8,
+    "character": 11,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/helpers.py",
+        "line": 408
+      }
+    ],
+    "source_line": "return anatomist_text(anatomist_semantic(**kwargs))"
+  },
+  {
+    "id": "tests:make_event",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/support/context_observation_contract.py",
+    "line": 6,
+    "character": 11,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/observation_contracts.py",
+        "line": 65
+      }
+    ],
+    "source_line": "return make_event("
+  },
+  {
+    "id": "tests:cli_fixture_json",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/support/e2e_evidence.py",
+    "line": 14,
+    "character": 22,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/helpers.py",
+        "line": 464
+      }
+    ],
+    "source_line": "\"raw_output\": cli_fixture_json(value),"
+  },
+  {
+    "id": "tests:knowledge_operation",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/support/knowledge_consumers.py",
+    "line": 50,
+    "character": 12,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/helpers.py",
+        "line": 492
+      }
+    ],
+    "source_line": "knowledge_operation("
+  },
+  {
+    "id": "tests:create_git_seal",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/support/knowledge_handoff.py",
+    "line": 30,
+    "character": 11,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/runtime/git_seal.py",
+        "line": 28
+      }
+    ],
+    "source_line": "seal = create_git_seal(repo, git_store.head(repo))"
+  },
+  {
+    "id": "typed-instance-method",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/result.py",
+    "line": 25,
+    "character": 51,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/skills/diorama/scripts/diorama_sdd/_core/result.py",
+        "line": 12
+      }
+    ],
+    "source_line": "return WorkflowError(code, message, **details).as_result()"
+  }
+]

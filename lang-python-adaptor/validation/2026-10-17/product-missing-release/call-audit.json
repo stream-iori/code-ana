@@ -1,0 +1,471 @@
+[
+  {
+    "id": "scripts:loads",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/runtime/anatomist_text.py",
+        29
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/runtime/anatomist_text.py",
+        29
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:592920b0cdd808f6808082c0d35b2884f13197af83bb5def9f6736c7a4ae839d"
+  },
+  {
+    "id": "scripts:build_handoff_observation",
+    "passed": true,
+    "actual": [
+      [
+        "scripts/e2e/host_state.py",
+        23
+      ]
+    ],
+    "expected": [
+      [
+        "scripts/e2e/host_state.py",
+        23
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:9b2c865b7694344a79afcb384a2c124cc66349dcc22cf7d4839ee85d68971b65"
+  },
+  {
+    "id": "scripts:index_path",
+    "passed": true,
+    "actual": [
+      [
+        "scripts/e2e/anatomist_query_data.py",
+        6
+      ]
+    ],
+    "expected": [
+      [
+        "scripts/e2e/anatomist_query_data.py",
+        6
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:9ecfcd1a0cf516cef8ccd72cfb682dc20a85c2b734230a683b0d39331a017ce2"
+  },
+  {
+    "id": "scripts:_fail",
+    "passed": true,
+    "actual": [
+      [
+        "scripts/e2e/oracle_contracts.py",
+        51
+      ]
+    ],
+    "expected": [
+      [
+        "scripts/e2e/oracle_contracts.py",
+        51
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:d1a51fa02f0bbd145c5c2e661752370275b3e8a47c12b63cb0ad319ba242a55f"
+  },
+  {
+    "id": "scripts:_path_expression",
+    "passed": true,
+    "actual": [
+      [
+        "scripts/e2e/native_ast.py",
+        24
+      ]
+    ],
+    "expected": [
+      [
+        "scripts/e2e/native_ast.py",
+        24
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:6b75effb962d50f37e5810ec02dcaeda13c807c475fec82ede1dfeb7b82b66f0"
+  },
+  {
+    "id": "sdk:safe_relative_path",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/knowledge_identity.py",
+        17
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/knowledge_identity.py",
+        17
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:a86be588d4242d0907d0884a0e80fdd1121e3d8b64b674fc97137824cb0767ae"
+  },
+  {
+    "id": "sdk:require_id",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/knowledge_identity.py",
+        11
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/knowledge_identity.py",
+        11
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:b7afa727f681c2816cbd7264a88040b6ea2ce3aa2da76b627e5ba1943abe4baa"
+  },
+  {
+    "id": "sdk:classify",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/storage_layout.py",
+        110
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/storage_layout.py",
+        110
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:476f2b13bc31b10d1d8d58d6a23734be04595964cd2da36e4ca6b18f8be0b016"
+  },
+  {
+    "id": "sdk:load_json",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/resource_catalog.py",
+        14
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/resource_catalog.py",
+        14
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:57344d95ccbf98c11a96d88e61f7b438034af936708a5c09d31c64cda8cdc72a"
+  },
+  {
+    "id": "sdk:require",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/review_values.py",
+        7
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/review_values.py",
+        7
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:55cb2005563f588d86a949af50de46310c6cd4d32b7b177d9da04da9a0e73ef5"
+  },
+  {
+    "id": "runtime:copy_projection",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/stream_json.py",
+        21
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/stream_json.py",
+        21
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:74f1d226610c6590494ffdb06c6b0fc313c8bbe96e6ba627878e759ce7047f03"
+  },
+  {
+    "id": "runtime:config_get",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/runtime/configuration.py",
+        50
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/runtime/configuration.py",
+        50
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:fc4eeb13ef649d89422ab75826c75436c2b782111aca6e2917de19379e1ab05e"
+  },
+  {
+    "id": "runtime:root",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/runtime/layout.py",
+        27
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/runtime/layout.py",
+        27
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:f5d824bdfadfcac787914467f3f2adc0760cd65a3845511529c4cc57f07448b6"
+  },
+  {
+    "id": "runtime:documents",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/runtime/anatomist_text.py",
+        12
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/runtime/anatomist_text.py",
+        12
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:e5ed463a3354c1adba690a9b485df3e3ca7c6abb891da73db403c7e2274eb70a"
+  },
+  {
+    "id": "runtime:_file_observation",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/runtime/process_runner.py",
+        29
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/runtime/process_runner.py",
+        29
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:87ded8be92c6bb5ef8eb1ad64f661cbe644103fae9123d9087b443d6dbd4cb0e"
+  },
+  {
+    "id": "tests:anatomist_text",
+    "passed": true,
+    "actual": [
+      [
+        "tests/helpers.py",
+        408
+      ]
+    ],
+    "expected": [
+      [
+        "tests/helpers.py",
+        408
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:1741fe3a0e68cb40b1eb37ed341c410a19936d3614bad6268bad4002a5306b22"
+  },
+  {
+    "id": "tests:make_event",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/observation_contracts.py",
+        65
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/observation_contracts.py",
+        65
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:1ddf32ef2c571e86ce676e6315c2f24bd0389ca6383db130637bba9ac3e4e856"
+  },
+  {
+    "id": "tests:cli_fixture_json",
+    "passed": true,
+    "actual": [
+      [
+        "tests/helpers.py",
+        464
+      ]
+    ],
+    "expected": [
+      [
+        "tests/helpers.py",
+        464
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:599894c19ef161a231560ee1b19a5c9c27dfb8e6dca641e47cfa96aeed149e7c"
+  },
+  {
+    "id": "tests:knowledge_operation",
+    "passed": true,
+    "actual": [
+      [
+        "tests/helpers.py",
+        492
+      ]
+    ],
+    "expected": [
+      [
+        "tests/helpers.py",
+        492
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:a4c682a4bf532d30f570605e26eeb8c608cbc5b4f7af962eb8f57470467198a4"
+  },
+  {
+    "id": "tests:create_git_seal",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/runtime/git_seal.py",
+        28
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/runtime/git_seal.py",
+        28
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:06aa135a4f688be6e00339a42bba7d49dcbe87ffe2844f26e37785f4860543b2"
+  },
+  {
+    "id": "typed-instance-method",
+    "passed": true,
+    "actual": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/result.py",
+        12
+      ]
+    ],
+    "expected": [
+      [
+        "skills/diorama/scripts/diorama_sdd/_core/result.py",
+        12
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:a0de2b2247cb572b54a04f21b61e173d78f6392943fbf7db2c363da26ea83def"
+  },
+  {
+    "id": "prepare_workspace",
+    "passed": true,
+    "actual": [
+      [
+        "scripts/diorama_jury_adapter.py",
+        373
+      ]
+    ],
+    "expected": [
+      [
+        "scripts/diorama_jury_adapter.py",
+        373
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:37f1e2f80ea6ec99e17877db79d2ca99aadff602e0503ce3f3a3ee3e2b235fa5"
+  },
+  {
+    "id": "postcheck",
+    "passed": true,
+    "actual": [
+      [
+        "scripts/diorama_jury_adapter.py",
+        472
+      ]
+    ],
+    "expected": [
+      [
+        "scripts/diorama_jury_adapter.py",
+        472
+      ]
+    ],
+    "unknown_reasons": [],
+    "external_targets": [],
+    "call_site": "call-site:b49fb7b20ebd05724820edc9c8e8b70a8844ad98832e243ec394740ebcf7d581"
+  },
+  {
+    "id": "reads",
+    "passed": false,
+    "actual": [],
+    "expected": [
+      [
+        "scripts/e2e/knowledge_loop_transport.py",
+        14
+      ]
+    ],
+    "unknown_reasons": [
+      "synthesized_callable"
+    ],
+    "external_targets": [],
+    "call_site": "call-site:477ce9f118b0f3891711328ab16ceec68cd09551262009bbe67393c30d699e5e"
+  },
+  {
+    "id": "searches",
+    "passed": false,
+    "actual": [],
+    "expected": [
+      [
+        "scripts/e2e/knowledge_loop_transport.py",
+        13
+      ]
+    ],
+    "unknown_reasons": [
+      "synthesized_callable"
+    ],
+    "external_targets": [],
+    "call_site": "call-site:477ce9f118b0f3891711328ab16ceec68cd09551262009bbe67393c30d699e5e"
+  }
+]

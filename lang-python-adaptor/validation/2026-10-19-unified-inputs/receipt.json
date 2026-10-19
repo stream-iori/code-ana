@@ -1,0 +1,116 @@
+{
+  "status": "passed_scoped_implementation",
+  "date": "2026-10-19",
+  "baseline": "4630a8b790e4bb1152fc4831e99f04617b2e0b94",
+  "python_adapter": "pyrefly-1.4.0-codeana-v3",
+  "backend": "feeee254e65844f23f973a0a29cae02d09931068",
+  "versions": {
+    "worker": 21,
+    "daemon": 3,
+    "graph_model": 3,
+    "physical_schema": 10,
+    "logical_schema": 33,
+    "java_analysis": 10,
+    "c_abi": 4,
+    "python_inputs": 3,
+    "accepted_python_inputs": [
+      1,
+      2,
+      3
+    ]
+  },
+  "implementation": {
+    "entrypoint": "index --prepare; no new inputs command",
+    "doctor": "static read-only readiness; no build tools",
+    "configuration": "explicit multi-language entries; native workspace expansion",
+    "python": "optional automatic static pyproject; explicit roots override; isolated contexts, explicit dependencies, shared environments with ownership",
+    "degradation": "trusted model partial, missing graph files/text only, strict preserves head, recovery replaces stale facts",
+    "fatal_failures": "timeout, cancellation, signal/crash, corrupt manifests and conflicting configuration fail without silent fallback",
+    "reports": "global JSON/Markdown summary, no JSONL, no embedded config or per-file diagnostics"
+  },
+  "validation": {
+    "rust_gate": "RUST_TEST_THREADS=1 just test-rust passed before final report-only changes; final storage/application tests and workspace clippy passed",
+    "final_storage_tests": 36,
+    "final_application_tests": 33,
+    "final_config_tests": 36,
+    "java_fixture_tests": 641,
+    "java_failures": 0,
+    "python_core": 20,
+    "python_exporter_tests": 5,
+    "legacy_cli": "15 cases passed in development; package 14 initial passes plus targeted Native case passed with separately installed SDK",
+    "prepared_package_final": {
+      "passed": 6,
+      "skipped_native": 1
+    },
+    "prepared_package_native": "separate opt-in independent Maven reactors and three languages; source_only and files_only downgrades passed",
+    "single_unit_stream": "custom module roots without pyproject passed",
+    "report_regression": "diagnostic groups match SQLite; markdown exposes missing-import and coverage reason",
+    "package_sha256_check": "921 files passed",
+    "binary_paths_unchanged": true,
+    "external_java_sdk": "target/lib/java attached temporarily for package mixed tests; removed after tests; SDK not bundled",
+    "prepared_package_native_final": "final Release bytes passed independent reactors, three languages, source_only/files_only downgrade and recovery; 1 case in 20.782s (functional only)"
+  },
+  "real_project": {
+    "commit": "31259b761a5ea77672d0e90bc9e2776e4dfe397e",
+    "status": "passed",
+    "source_files": 615,
+    "navigation_passed": 25,
+    "navigation_total": 25,
+    "coverage": {
+      "complete": 30,
+      "partial": 585
+    },
+    "source_missing_imports": [
+      "jury.checks.engine",
+      "jury.domain.models.oracle",
+      "openai_codex",
+      "openai_codex.client",
+      "openai_codex.generated.v2_all"
+    ],
+    "database_integrity": "ok",
+    "foreign_key_violations": 0,
+    "counts": {
+      "nodes": 57375,
+      "edges": 264013,
+      "call_sites": 66775,
+      "call_site_targets": 50504,
+      "analysis_coverage": 615,
+      "index_diagnostics": 4019
+    },
+    "measured": false,
+    "evidence": "real-project-final/receipt.json"
+  },
+  "report_audit": {
+    "status": "passed",
+    "diagnostic_groups": 40,
+    "reported_groups": 20,
+    "omitted_groups": 20,
+    "json_bytes": 4689,
+    "markdown_bytes": 1391
+  },
+  "package_binaries": {
+    "codeana-cli": "c3096fb709b5535e551c6ec297612c451776ab3254e0094090779559a82558a3",
+    "codeana-daemon": "f0bc467c441dce200adc61d4f86ae3ba8c3335613b8c202fd5248510af3fabc0",
+    "codeana-export-python-inputs": "d7e03342d1783ce6709a5bcf1b85cfd495b9d1992a50a73b87acf6a0b0134100",
+    "codeana-export-rust-inputs": "c85efd3bcd6131e37cc92c447c0dc84ee223834eb54f4e4e40dcd920483f0a57",
+    "codeana-java-worker": "7c145a94ea4aa4c41b844553162d67f45229d7707a1c14e8f49caae99db9ea6f",
+    "codeana-python-worker": "92f05e8d299441f5b06d49d88304a48bf52a71e6b04d9f6ec7a0a5c1e023428e",
+    "codeana-rust-worker": "f3852bd49fd18e212fac09c1070c82dfaee0f8fe1b84e59a553b22fb08c7be71"
+  },
+  "package_checksums_sha256": "4683209fe1f4c025cae501b96670fc0636c5dd9fc35de5cf15cc2985c255e17e",
+  "source_manifest_sha256": "7e2a19b0bd93171a13ab50eaddd63d868ba4a32b68b77d9c139b657e5ee74547",
+  "failure_preservation": [
+    "SIGKILL originals and same-path retries retained; no workaround paths or executable renames",
+    "concurrent core test timing failures retained; new cancellation fixture now waits for child readiness; serial gate passed",
+    "missing package Java SDK and subsequent java-worker SIGKILL logs retained; targeted tests passed with existing SDK",
+    "report group SQL compile error retained before corrected i64 conversion"
+  ],
+  "limitations": [
+    "Python target remains 3.12/darwin; Linux not certified",
+    "585 files remain partial; 25 navigation probes do not certify full-project accuracy",
+    "No automatic target compilation, dependency installation or dynamic metadata evaluation",
+    "No new formal performance measurement or Native formal release approval"
+  ],
+  "performance_accepted": false,
+  "implementation_commit": "0c769f6680a915a57d0f4cff82245697536d7cfa"
+}

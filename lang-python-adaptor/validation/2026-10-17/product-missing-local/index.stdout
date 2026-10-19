@@ -1,0 +1,2 @@
+codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"FAILED","message":"GRAPH_TARGET_SHAPE: Error code 1811: constraint failed","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}

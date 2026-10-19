@@ -1,0 +1,4 @@
+task_5730944eb212450182c37d634fff1732: queued
+task_5730944eb212450182c37d634fff1732: running
+task_5730944eb212450182c37d634fff1732: python_analyze_full: input_or_environment_changed
+FAILED: GRAPH_TARGET_SHAPE: Error code 1811: constraint failed

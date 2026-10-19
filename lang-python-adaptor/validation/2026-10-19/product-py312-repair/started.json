@@ -1,0 +1,19 @@
+{
+  "status": "running",
+  "commit": "31259b761a5ea77672d0e90bc9e2776e4dfe397e",
+  "source_files": 615,
+  "measured": false,
+  "input_sha256": "7df34e4b6ad364b16c8c8163bd184ba2a59d1a60982725b35742ef0dfb722b4e",
+  "config_sha256": "720c02319c1e43902f51948abeadc86141aff69de639464a5c3934ddea53c426",
+  "binaries": {
+    "codeana-cli": "8bffb79e4eaf7029fdb9ed53efc1c19f35f570f48f683b96329bfee492323c82",
+    "codeana-daemon": "ac1d6a08aab219a253e6954ee6bdfa5f199da1d2edfbeccb611f3f109871c943",
+    "codeana-python-worker": "b74d638fafb7758b5d4417b084269c03fe81ded9756d61b49f21263a4bd0939e"
+  },
+  "os_cache": "uncontrolled",
+  "monitor_interval_seconds": 0.2,
+  "memory_budget_bytes": 4294967296,
+  "result_budget_bytes": 536870912,
+  "fact_limit": 2000000,
+  "scratch_budget_bytes": 2147483648
+}

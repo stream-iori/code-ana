@@ -1,0 +1,21 @@
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_cancelled_task_can_close_and_next_task_can_succeed ... ok
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_completion_notification_success_error_and_unstarted_close ... ok
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_independent_isolates ... ok
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_input_output_and_start_state_boundaries_reject_invalid_requests ... ok
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_same_isolate_reuses_tasks_and_releases_archives_after_close ... ok
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_session_capacity_and_closed_handle_are_explicit ... ok
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_thread_attach_detach ... ok
+runTest (__main__.ProcessLifecycle.runTest)
+__main__.NativeLifecycle.test_version_failure_remains_readable_and_isolate_can_run_again ... ok
+
+----------------------------------------------------------------------
+Ran 8 tests in 5.452s
+
+OK

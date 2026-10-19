@@ -1,0 +1,5 @@
+input preparation: prepared; units=1; report=.code-ana/inputs/generation_6fa596e7bfa044b7a04fd314ee910a3b/report.json
+task_7742bd647a3747caa7c90766d76a02c5: queued
+task_7742bd647a3747caa7c90766d76a02c5: running
+task_7742bd647a3747caa7c90766d76a02c5: input_unit python Semantic
+task_7742bd647a3747caa7c90766d76a02c5: python_stream {"peak_bytes":1059966,"send_wait_ns":2557838899,"receive_wait_ns":17432341138}

@@ -1,0 +1,207 @@
+{
+  "python.extraction_samples.python-world-7e66384e4d789c39adf8eda54482a5fb409c8f29f4884d9f52e3347fe9b8d5bb": {
+    "callable_target_unknown": [
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/observation_metrics.py",
+        "byte_start": 5165,
+        "byte_end": 5174,
+        "syntax": "factory",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/review_report.py",
+        "byte_start": 2914,
+        "byte_end": 2923,
+        "syntax": "row",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/readonly/query.py",
+        "byte_start": 865,
+        "byte_end": 886,
+        "syntax": "self.source_factory",
+        "backend_targets": [],
+        "backend_target_count": 0
+      }
+    ],
+    "callable_type_not_extracted": [
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/stream_json.py",
+        "byte_start": 9675,
+        "byte_end": 9708,
+        "syntax": "codecs.getreader(\"utf-8\")",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/readonly/knowledge_stream.py",
+        "byte_start": 3280,
+        "byte_end": 3319,
+        "syntax": "codecs.getincrementaldecoder(\"utf-8\")",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/readonly/knowledge_stream.py",
+        "byte_start": 3482,
+        "byte_end": 3521,
+        "syntax": "codecs.getincrementaldecoder(\"utf-8\")",
+        "backend_targets": [],
+        "backend_target_count": 0
+      }
+    ],
+    "dynamic_any": [
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/bootstrap.py",
+        "byte_start": 832,
+        "byte_end": 882,
+        "syntax": "('## Diorama\\n\\n' + value['body'] + '\\n').encode",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/boundary_validation.py",
+        "byte_start": 2867,
+        "byte_end": 2884,
+        "syntax": "card[key].strip",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/boundary_validation.py",
+        "byte_start": 4218,
+        "byte_end": 4237,
+        "syntax": "option[key].strip",
+        "backend_targets": [],
+        "backend_target_count": 0
+      }
+    ],
+    "reference_target_not_extracted": [
+      {
+        "source": "skills/diorama/scripts/diorama_core.py",
+        "byte_start": 750,
+        "byte_end": 753,
+        "syntax": null,
+        "backend_targets": [
+          {
+            "name": "exc",
+            "path": "skills/diorama/scripts/diorama_core.py",
+            "start": 701,
+            "end": 704
+          }
+        ],
+        "backend_target_count": 1
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/configuration.py",
+        "byte_start": 2645,
+        "byte_end": 2648,
+        "syntax": null,
+        "backend_targets": [
+          {
+            "name": "exc",
+            "path": "skills/diorama/scripts/diorama_sdd/_core/configuration.py",
+            "start": 2539,
+            "end": 2542
+          }
+        ],
+        "backend_target_count": 1
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/configuration.py",
+        "byte_start": 5490,
+        "byte_end": 5493,
+        "syntax": null,
+        "backend_targets": [
+          {
+            "name": "exc",
+            "path": "skills/diorama/scripts/diorama_sdd/_core/configuration.py",
+            "start": 5353,
+            "end": 5356
+          }
+        ],
+        "backend_target_count": 1
+      }
+    ],
+    "reference_target_unknown": [
+      {
+        "source": "skills/diorama/scripts/diorama_runtime.py",
+        "byte_start": 160,
+        "byte_end": 168,
+        "syntax": null,
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/bootstrap.py",
+        "byte_start": 832,
+        "byte_end": 880,
+        "syntax": null,
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/boundary_types.py",
+        "byte_start": 559,
+        "byte_end": 571,
+        "syntax": null,
+        "backend_targets": [],
+        "backend_target_count": 0
+      }
+    ],
+    "synthesized_callable": [
+      {
+        "source": "skills/diorama/scripts/diorama_core.py",
+        "byte_start": 1653,
+        "byte_end": 1662,
+        "syntax": "len",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/bootstrap.py",
+        "byte_start": 1269,
+        "byte_end": 1281,
+        "syntax": "len",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/boundary_validation.py",
+        "byte_start": 277,
+        "byte_end": 300,
+        "syntax": "isinstance",
+        "backend_targets": [],
+        "backend_target_count": 0
+      }
+    ],
+    "type_trace_missing": [
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/boundary_types.py",
+        "byte_start": 772,
+        "byte_end": 1040,
+        "syntax": "TypedDict",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/_core/boundary_types.py",
+        "byte_start": 1058,
+        "byte_end": 1687,
+        "syntax": "TypedDict",
+        "backend_targets": [],
+        "backend_target_count": 0
+      },
+      {
+        "source": "skills/diorama/scripts/diorama_sdd/readonly/project.py",
+        "byte_start": 1227,
+        "byte_end": 1239,
+        "syntax": "TypeVar",
+        "backend_targets": [],
+        "backend_target_count": 0
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "product-missing-release/events.json.gz": {
+    "original_bytes": 5732134,
+    "original_sha256": "a86b18efb9c26115208fadcc8eb47b449334cc9eb7bc05651cbd2857ad026087"
+  },
+  "product-missing-release/report.json.gz": {
+    "original_bytes": 669612,
+    "original_sha256": "400c23914584e1b33b2c3fe125f0758c6e5d4da6ffcdaadcdbb0558396b93e2a"
+  },
+  "product-py312-functional/events.json.gz": {
+    "original_bytes": 5737782,
+    "original_sha256": "f86b5c43a50f21c9ac732ad4f592e4431558c39555d2816d6f392ae93fa4705f"
+  },
+  "product-py312-functional/report.json.gz": {
+    "original_bytes": 670394,
+    "original_sha256": "0db1a670136a2bd070994c37a0258c5ccf8c5a298574ceba063b2b3a0be28403"
+  },
+  "product-py312-functional-final/events.json.gz": {
+    "original_bytes": 5346027,
+    "original_sha256": "941eebcbc7ae8e1b7afb0c4906a2e05ef55cc53aab039d7a61dd10120175843a"
+  },
+  "product-py312-functional-final/report.json.gz": {
+    "original_bytes": 670395,
+    "original_sha256": "b8fe71b83fc52fc53b8ae325fca9e6e477c21272a9bcf4832db02b6947a1ad5f"
+  },
+  "product-py312-measured/events.json.gz": {
+    "original_bytes": 5737595,
+    "original_sha256": "b16aac87cc3bfe738ea78adbfcd74aa96f4dbfe449184c36ec768aa1b3fe26ea"
+  },
+  "product-py312-measured/report.json.gz": {
+    "original_bytes": 670394,
+    "original_sha256": "921b3a0c3013e292d0264fcb52d5d3d801a7b4de962a4e2b2a33decd53999d52"
+  },
+  "product-missing-release/python-inputs.json.gz": {
+    "original_bytes": 567563,
+    "original_sha256": "a6adffe4b4bb5012890e505880844cf9c598e1aab4e34a678a202d676f9aac6b"
+  }
+}

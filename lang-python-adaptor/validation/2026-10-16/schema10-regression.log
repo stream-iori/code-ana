@@ -1,0 +1,64 @@
+   Compiling codeana-contracts v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/contracts)
+   Compiling codeana-model v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/model)
+   Compiling codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.75s
+     Running unittests src/lib.rs (target/debug/deps/codeana_storage-afba651368940d77)
+
+running 36 tests
+test graph_compact::tests::digest_collision_retains_distinct_original_values ... ok
+
+running 1 test
+test graph_compact::tests::integer_references_preserve_provenance_and_upsert_pk ... ok
+test graph_compact::tests::external_identity_keeps_null_distinct_from_empty ... ok
+test graph_query::projection_tests::physical_primary_keys_never_become_public_attributes ... ok
+test graph_compact::tests::opaque_metadata_shares_duplicates_and_releases_last_reference ... ok
+test graph_compact::tests::shared_annotation_owners_keep_first_location_and_refresh_status ... ok
+
+running 1 test
+test graph_store::tests::rust_metadata_is_normalized_and_old_schema_requires_full_rebuild ... ok
+test graph_store::tests::upstream_layout_and_utf16_hash_are_preserved ... ok
+test derived_cache::tests::root_payload_and_lock_symlinks_never_read_or_modify_external_files ... ok
+test derived_cache::tests::concurrent_processes_publish_complete_entries_and_recover_interrupted_stage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out; finished in 0.12s
+
+test blobs::tests::shared_hash_remains_pinned_until_last_owner_and_gc_can_run_during_io ... ok
+test blobs::tests::same_hash_file_batches_are_safe_under_concurrent_gc ... ok
+test derived_cache::tests::unknown_siblings_invalidate_entries_and_lower_quota_evicts_before_pinning ... ok
+test derived_cache::tests::concurrent_processes_publish_complete_entries_and_recover_interrupted_stage ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 35 filtered out; finished in 0.18s
+
+test derived_cache::tests::pin_quota_namespace_identity_and_checksum_limit_reuse ... ok
+test derived_cache::tests::concurrent_processes_publish_complete_entries_and_recover_interrupted_stage ... ok
+test tests::blob_file_batches_retry_partial_failure_and_verify_reused_files ... ok
+test tests::concurrent_event_batches_are_contiguous_and_never_interleave ... ok
+test tests::event_batches_preserve_resume_sequence_and_rollback_failed_serialization ... ok
+test tests::future_schema_is_not_downgraded ... ok
+test derived_cache::tests::eviction_and_corruption_do_not_change_task_pins_and_drop_does_not_publish ... ok
+test tests::migrates_legacy_annotations_without_guessing_an_anchor ... ok
+test staged::graph_candidate::tests::cancellation_removes_private_candidate_and_keeps_baseline ... ok
+test tests::recovery_retries_recorded_cleanup ... ok
+test tests::hostile_selector_is_bound_as_data ... ok
+test tests::aggregate_replacement_is_rejected_without_changing_head ... ok
+test tests::removed_binding_capability_is_explicitly_rejected_by_graph_reader ... ok
+test staged::graph_candidate::tests::context_only_coverage_prevents_semantic_completeness ... ok
+test tests::published_file_dependencies_page_by_world_and_keep_the_old_revision ... ok
+test tests::catalog_failure_leaves_head_and_recovers_orphan ... ok
+test text_search::tests::literal_candidates_are_verified_reused_and_keep_invalid_encoding ... ok
+test tests::expired_pages_release_revision_refs ... ok
+test tests::concurrent_gc_cannot_delete_an_active_reader ... ok
+test tests::page_spool_survives_recovery_pins_revision_and_cleans_up_on_expiry ... ok
+test tests::publish_cas_reader_and_gc ... ok
+test tests::reverse_dependencies_keep_cycles_scopes_occurrences_and_atomic_source_replacement ... ok
+test tests::retention_policy_never_breaks_pins_or_project_isolation ... ok
+test staged::graph_candidate::tests::malformed_or_unsealed_rows_never_change_head ... ok
+
+test result: ok. 36 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.55s
+
+   Doc-tests codeana_storage
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

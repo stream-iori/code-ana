@@ -1,0 +1,172 @@
+{
+  "context": {
+    "capabilities": [
+      "prepared-inputs-v1",
+      "semantic-inputs-available"
+    ],
+    "classpath": [],
+    "language": "multi",
+    "modules": [
+      "python"
+    ],
+    "producer": "codeana-prepared-inputs",
+    "source_version": ""
+  },
+  "created": 1792392882,
+  "diagnostics": [],
+  "effective": {
+    "config_digest": "564c7fda4acdb6ad13c989713aacf6475a48d4a1e4f7449d619e350142954d5d",
+    "origins": {}
+  },
+  "global": {
+    "analysis_instances": 615,
+    "auxiliary_instances": 2007,
+    "known_modules": 1,
+    "language_instances": {
+      "python": 615
+    },
+    "measurements_available": true,
+    "mode_counts": {
+      "python:Semantic": 1
+    },
+    "next_steps": [
+      "doctor: inspect configuration and input readiness",
+      "inspect task events and referenced preparation logs; after repairing inputs, run index --prepare"
+    ],
+    "physical_files": 2622,
+    "semantic_files": 615,
+    "units": [
+      {
+        "entries": [
+          "python"
+        ],
+        "id": "python",
+        "language": "python",
+        "log": ".code-ana/inputs/generation_64c26fc06c5b4dfca3399de3ae495d04/python/prepare.log",
+        "mode": "semantic",
+        "reason_code": null
+      }
+    ],
+    "units_omitted": 0,
+    "units_total": 1
+  },
+  "id": "task_809fdfea636044759da36f6ecf8051fc",
+  "level": "full",
+  "result": {
+    "assessment": "partial",
+    "code": "OK",
+    "execution": "completed",
+    "exit_code": 0,
+    "gate": "passed",
+    "message": "",
+    "output": {
+      "cursor": "",
+      "evidence": {
+        "enumeration": true,
+        "limits": [],
+        "reasons": [
+          "coverage:partial_files:585"
+        ],
+        "semantic": false
+      },
+      "producer": "codeana-prepared-inputs",
+      "records": [
+        {
+          "record": {
+            "ack_warning": null,
+            "facts": 438667,
+            "manifest": "f129d3b01efc89e4f73fde692556ce6d6b6d9166955b331e7ab715864c282ee7",
+            "mode": "full",
+            "producer": "codeana-prepared-inputs",
+            "profile": "9f398b55a7fc88408d8467447b7e2bd5ff83ef0b6db18c93c91094218fa6246c",
+            "revision": "rev_4a3399913dae49abafcea4a28c2445c3",
+            "statistics": {
+              "analyzed_indexes": 55,
+              "elapsed_ms": 196,
+              "warnings": []
+            }
+          },
+          "record_type": "Display"
+        }
+      ],
+      "revision": "rev_4a3399913dae49abafcea4a28c2445c3"
+    },
+    "producer": "codeana-prepared-inputs",
+    "publication": "published",
+    "report": "task_809fdfea636044759da36f6ecf8051fc",
+    "revision": "rev_4a3399913dae49abafcea4a28c2445c3"
+  },
+  "revision": "rev_4a3399913dae49abafcea4a28c2445c3",
+  "schema_version": 2,
+  "summary": {
+    "capture_digest": "2e5b4971d503f1e3ae8b09ff8cf9bc1d5595bd62383495ea23ea324c4b9c7528",
+    "counts": {
+      "annotation_meta_owned": 0,
+      "annotations": 0,
+      "call_site_targets": 50504,
+      "call_sites": 66775,
+      "edges": 264013,
+      "nodes": 57375
+    },
+    "diagnostics": {
+      "groups": {
+        "bad-argument-type": 338,
+        "bad-assignment": 298,
+        "bad-function-definition": 1211,
+        "bad-index": 323,
+        "bad-override": 22,
+        "bad-override-param-name": 19,
+        "bad-return": 35,
+        "bad-typed-dict-key": 24,
+        "deprecated": 13,
+        "missing-attribute": 738,
+        "missing-import": 47,
+        "no-matching-overload": 47,
+        "not-iterable": 64,
+        "redundant-condition": 9,
+        "unbound-name": 47,
+        "unexpected-keyword": 82,
+        "unknown-name": 14,
+        "unnecessary-type-conversion": 29,
+        "unreachable-except-clause": 27,
+        "unsupported-operation": 572
+      },
+      "groups_omitted": 20,
+      "omitted": 4019,
+      "omitted_rows": 4019,
+      "rows": 4019,
+      "sampled": 0,
+      "sampled_occurrences": 0,
+      "total": 4019
+    },
+    "evidence": {
+      "enumeration": true,
+      "limits": [],
+      "reasons": [
+        "coverage:partial_files:585"
+      ],
+      "semantic": false
+    },
+    "facts": 438667,
+    "files": 2628,
+    "profile": "9f398b55a7fc88408d8467447b7e2bd5ff83ef0b6db18c93c91094218fa6246c",
+    "statistics": {
+      "analyzed_indexes": 55,
+      "elapsed_ms": 196,
+      "warnings": []
+    },
+    "timing": {
+      "analyze_ms": 27658,
+      "index_elapsed_ms": 39762,
+      "publish_ms": 12074,
+      "storage_phase_ms": {
+        "candidate_setup_backup": 65,
+        "graph_integrity_summary": 1462,
+        "promotion_calls_wiring": 9074,
+        "record_validate_ingest": 10896,
+        "stage_resolve_identities": 5904,
+        "statistics_finalize": 224
+      }
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "original_status": "failed_semantic_audit",
+  "revision": "rev_2a753c188f344f4c8aa7b65905e385e2",
+  "database_sha256": "05867975ca9361e298b4b819fe2e1d9bbf9006dc3dbfa6a90408d3e48a904e08",
+  "audit_passed": 25,
+  "audit_total": 25,
+  "explanation": "21 call probes + 2 additional call probes + 2 attribute reference probes; corrected audit mode, same published database, no reindex",
+  "queries_passed": false,
+  "measured": false
+}

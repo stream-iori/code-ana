@@ -1,0 +1,125 @@
+FFFFF.
+======================================================================
+FAIL: test_cancel_crash_and_recovery_preserve_head (__main__.PythonLanguage.test_cancel_crash_and_recovery_preserve_head)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 173, in test_cancel_crash_and_recovery_preserve_head
+    good = self.cli('index', timeout=90)[1]['revision']
+           ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"CANDIDATE_STREAM_CLOSED","message":"CANDIDATE_STREAM_CLOSED","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_77664a1fa9bc4e548b59a8743ee37053: queued
+task_77664a1fa9bc4e548b59a8743ee37053: running
+task_77664a1fa9bc4e548b59a8743ee37053: python_analyze_full: input_or_environment_changed
+CANDIDATE_STREAM_CLOSED: CANDIDATE_STREAM_CLOSED
+
+codeana daemon ready: http://127.0.0.1:60215 mode=production-v1
+
+
+======================================================================
+FAIL: test_deleted_empty_and_missing_import_recovery (__main__.PythonLanguage.test_deleted_empty_and_missing_import_recovery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 154, in test_deleted_empty_and_missing_import_recovery
+    first = self.cli('index', timeout=90)[1]
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"CANDIDATE_STREAM_CLOSED","message":"CANDIDATE_STREAM_CLOSED","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_f47bd5d9f4d94424b1d390af411a35da: queued
+task_f47bd5d9f4d94424b1d390af411a35da: running
+task_f47bd5d9f4d94424b1d390af411a35da: python_analyze_full: input_or_environment_changed
+CANDIDATE_STREAM_CLOSED: CANDIDATE_STREAM_CLOSED
+
+codeana daemon ready: http://127.0.0.1:60269 mode=production-v1
+
+
+======================================================================
+FAIL: test_inference_queries_reuse_strict_and_stale_inputs (__main__.PythonLanguage.test_inference_queries_reuse_strict_and_stale_inputs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 94, in test_inference_queries_reuse_strict_and_stale_inputs
+    _, terminal = self.cli('index', timeout=90)
+                  ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"CANDIDATE_STREAM_CLOSED","message":"CANDIDATE_STREAM_CLOSED","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_253bdf7605794ccf8ae0bdf72b94998f: queued
+task_253bdf7605794ccf8ae0bdf72b94998f: running
+task_253bdf7605794ccf8ae0bdf72b94998f: python_analyze_full: input_or_environment_changed
+CANDIDATE_STREAM_CLOSED: CANDIDATE_STREAM_CLOSED
+
+codeana daemon ready: http://127.0.0.1:60359 mode=production-v1
+
+
+======================================================================
+FAIL: test_nine_frozen_probes_and_python_dispatch (__main__.PythonLanguage.test_nine_frozen_probes_and_python_dispatch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 120, in test_nine_frozen_probes_and_python_dispatch
+    first = self.cli('index', timeout=90)[1]['revision']
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"CANDIDATE_STREAM_CLOSED","message":"CANDIDATE_STREAM_CLOSED","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_4be6c7a5d46849e5af308253b03b0333: queued
+task_4be6c7a5d46849e5af308253b03b0333: running
+task_4be6c7a5d46849e5af308253b03b0333: python_analyze_full: input_or_environment_changed
+CANDIDATE_STREAM_CLOSED: CANDIDATE_STREAM_CLOSED
+
+codeana daemon ready: http://127.0.0.1:60411 mode=production-v1
+
+
+======================================================================
+FAIL: test_output_budget_failure_retains_head (__main__.PythonLanguage.test_output_budget_failure_retains_head)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 132, in test_output_budget_failure_retains_head
+    first = self.cli('index', timeout=90)[1]['revision']
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"CANDIDATE_STREAM_CLOSED","message":"CANDIDATE_STREAM_CLOSED","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_978697b81325445db072e67e40a6b32c: queued
+task_978697b81325445db072e67e40a6b32c: running
+task_978697b81325445db072e67e40a6b32c: python_analyze_full: input_or_environment_changed
+CANDIDATE_STREAM_CLOSED: CANDIDATE_STREAM_CLOSED
+
+codeana daemon ready: http://127.0.0.1:60470 mode=production-v1
+
+
+----------------------------------------------------------------------
+Ran 6 tests in 23.985s
+
+FAILED (failures=5)

@@ -1,0 +1,14 @@
+.F....
+======================================================================
+FAIL: test_deleted_empty_and_missing_import_recovery (__main__.PythonLanguage.test_deleted_empty_and_missing_import_recovery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 167, in test_deleted_empty_and_missing_import_recovery
+    self.assertEqual(db.execute('SELECT count(*) FROM call_sites').fetchone()[0], 0)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 21 != 0
+
+----------------------------------------------------------------------
+Ran 6 tests in 36.833s
+
+FAILED (failures=1)

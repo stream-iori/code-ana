@@ -1,0 +1,20 @@
+....E..
+======================================================================
+ERROR: test_optional_pyproject_controls_and_legacy_inventory (__main__.PythonLanguage.test_optional_pyproject_controls_and_legacy_inventory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 140, in test_optional_pyproject_controls_and_legacy_inventory
+    pyproject.write_bytes((FIX/'python/metadata/pyproject.toml').read_bytes())
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 777, in read_bytes
+    with self.open(mode='rb', buffering=0) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/fixtures/python/metadata/pyproject.toml'
+
+----------------------------------------------------------------------
+Ran 7 tests in 61.677s
+
+FAILED (errors=1)

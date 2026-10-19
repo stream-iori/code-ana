@@ -1,0 +1,1034 @@
+[
+  {
+    "path": "Cargo.lock",
+    "sha256": "d31726903f175f3af561d0a00bef75b228211dc8b0043469eaa172498b0f095f"
+  },
+  {
+    "path": "Cargo.toml",
+    "sha256": "6c9aaccb5859c2ee5929305b5d15c87fab23d9ae96097d725407ff308059044d"
+  },
+  {
+    "path": "benchmarks/java_index_paired.py",
+    "sha256": "5a2412bc3d49dd2170c4fd4895e89c4346d6f7059479d067ce4f0b8aebfcd387"
+  },
+  {
+    "path": "crates/application/Cargo.toml",
+    "sha256": "a69f5428d581a63a7f4a708a31ba8eea9de71552200bdf278fcd45cf524837e8"
+  },
+  {
+    "path": "crates/application/examples/java_engine_smoke.rs",
+    "sha256": "90327bdc7a42b546357b260cf9a5007d60609be5be62330b83f02a4b282e0fe7"
+  },
+  {
+    "path": "crates/application/src/annotations.rs",
+    "sha256": "b61c87cb4bb2adab51677d5baca4d6bbdbe3875ae174a50ca8a3b4325a16f101"
+  },
+  {
+    "path": "crates/application/src/doctor.rs",
+    "sha256": "a14e6e5b50d5c8a1162e0aaad13115222cfbffaafad07fe46cc55bc6f22a881b"
+  },
+  {
+    "path": "crates/application/src/history.rs",
+    "sha256": "238956d28d6706979271087c90c9e93d39aebaa60843112d27be5ecd2703e3ef"
+  },
+  {
+    "path": "crates/application/src/indexing.rs",
+    "sha256": "a535472b7f2da4a7d1b7d4c4ee7d258da4bf21ea2f532525f13f62b36c5025e5"
+  },
+  {
+    "path": "crates/application/src/java.rs",
+    "sha256": "309491b0ded44c5d45c74223d94379341ea3a5a411023be212b46991e26c5911"
+  },
+  {
+    "path": "crates/application/src/lib.rs",
+    "sha256": "e85232ad12d524e1dab71a41e75fdd92dde7546d5fbb309600069eae92bb3eb5"
+  },
+  {
+    "path": "crates/application/src/maven_inputs.rs",
+    "sha256": "aec64a3cd205d1e0ea929477ab3e62dc278c5b748de5ea35d8d210cbc08b7215"
+  },
+  {
+    "path": "crates/application/src/output.rs",
+    "sha256": "3c825b01e76cbd7e537b31df996db62c8228170e04a2a3448db34b1bbd53c489"
+  },
+  {
+    "path": "crates/application/src/ports.rs",
+    "sha256": "15d70048397b934e35b2d77477e91e1310c0604a4d9da10dab5faac9052a6ce5"
+  },
+  {
+    "path": "crates/application/src/publication.rs",
+    "sha256": "fc6938721d5cb29e8c6cb9cc6933eafd33be5bf0925aba5e9552952cffbd54d9"
+  },
+  {
+    "path": "crates/application/src/python_indexing.rs",
+    "sha256": "25f3e8af20c15518ef72e9cef2293f5be99c361785e85717322a1aa51d3e535a"
+  },
+  {
+    "path": "crates/application/src/reports.rs",
+    "sha256": "777addf4c8823b1c270e71fa3284d600598a73d0a47d3952835020cc7390f106"
+  },
+  {
+    "path": "crates/application/src/rust_indexing.rs",
+    "sha256": "1f07b0fedb345c8f3d0e8e2abbcdd344908f5a6a887ab865e9122884ba43ad5f"
+  },
+  {
+    "path": "crates/application/src/scheduler.rs",
+    "sha256": "24a8f23eec452c40927d43ffb619bbc9542a18b17184bc6094bb010852348f13"
+  },
+  {
+    "path": "crates/application/src/task_runner.rs",
+    "sha256": "0b5f616fc4b4251fb2ca1b41d1410c11b51f434c308609ca43e4dc60b793b9b4"
+  },
+  {
+    "path": "crates/application/src/timings.rs",
+    "sha256": "d421634c81405f86420a34dba17a5b21e4790ab2b4f22170cca408d52968e31c"
+  },
+  {
+    "path": "crates/application/src/worker.rs",
+    "sha256": "0f8e130f12c6023d9c250dd21f3e48e01fd281afb0cd1831135dc44051c2173e"
+  },
+  {
+    "path": "crates/cli/Cargo.toml",
+    "sha256": "7f3e1e2929450117410a480157ea9a84371cc73998bca1e002d033096eff9cba"
+  },
+  {
+    "path": "crates/cli/src/main.rs",
+    "sha256": "5fc17b8f4424d2f71f50d72b4c246ade0f658660e92603481196c75da9e04204"
+  },
+  {
+    "path": "crates/config/Cargo.toml",
+    "sha256": "16fd92dab3660f83efb248565d60506e51ae4cebafa255a91c00014e0bdad9d9"
+  },
+  {
+    "path": "crates/config/examples/capture_java_inputs.rs",
+    "sha256": "006f13572ecbfdb7c2ad49948ffc879f79ed0a4eda8145b9859b4a15ee3ee753"
+  },
+  {
+    "path": "crates/config/src/java_inputs.rs",
+    "sha256": "27eb3a9b5409c2b2a020ef3fc1765f7edbfcf4d3c6d783e782f0e89e4534d5ec"
+  },
+  {
+    "path": "crates/config/src/lib.rs",
+    "sha256": "a838fe509443271869a37dc4e77f666a59333f6b2c77032f8f099506a5231e19"
+  },
+  {
+    "path": "crates/config/src/lombok.rs",
+    "sha256": "53bfae471181448cd85f8ca9cd0546bcb00dfd54b68dcafd699c7878914790e8"
+  },
+  {
+    "path": "crates/config/src/python_inputs.rs",
+    "sha256": "2736b8e3a3ecb9b7d5bc0532ca7e5229f423ed1dd96e46ca7e49536018cd6143"
+  },
+  {
+    "path": "crates/config/src/rust_inputs.rs",
+    "sha256": "553b77ed40d11bb33c37d0608dd193409b27817c664e930509694d1f8935b247"
+  },
+  {
+    "path": "crates/config/src/schema.rs",
+    "sha256": "958dc6984779a0314354128b4cd15d458c3251960a13b707c3ab672b347a4d7a"
+  },
+  {
+    "path": "crates/contracts/Cargo.toml",
+    "sha256": "7750b49cc9ef25dc8f8fbab7d093286f5362a280a2026ab34e78b089082c8bf4"
+  },
+  {
+    "path": "crates/contracts/build.rs",
+    "sha256": "71b88577a03fd553ab852bff0c8b5837eb57754f88d7aa5cd6505f98149de3dc"
+  },
+  {
+    "path": "crates/contracts/src/bundle.rs",
+    "sha256": "09fda19f4a07b89e550183505a49b72b6569a5aa50fa0a50ab729893727bc176"
+  },
+  {
+    "path": "crates/contracts/src/engine_request.rs",
+    "sha256": "1f018673012f53f5e3369016a077e18e24285c9c6552e614d35dda1ec95fb6f3"
+  },
+  {
+    "path": "crates/contracts/src/fixture_graph.rs",
+    "sha256": "6f1db1dc9e322842924b0121f382f73e5dc30aabe97ebede5a6c1eb261f40cad"
+  },
+  {
+    "path": "crates/contracts/src/graph_archive.rs",
+    "sha256": "1dc213fb354c17df446365bbc82f2205deff4f253adcde42ce43fffcfc2d0be6"
+  },
+  {
+    "path": "crates/contracts/src/graph_rows.rs",
+    "sha256": "adca9fd2d3e497bb1239b06a1a2ccb86f19c9351ecaae8db2fef8e07c01483b8"
+  },
+  {
+    "path": "crates/contracts/src/java.rs",
+    "sha256": "0a6f593cd41f9f89ce29c6c2f513ae2d42c88e4be0f0a0a15f59ae632f91944c"
+  },
+  {
+    "path": "crates/contracts/src/lib.rs",
+    "sha256": "ccdc1e4d87b0601514a698bd30c36a463ad495c7e3c3e9d17733389a92bdf2a3"
+  },
+  {
+    "path": "crates/contracts/src/mapping.rs",
+    "sha256": "d38beaff2bd8560492f9324d1bf04ce72d0b02990860ba6d8e1dab7358624877"
+  },
+  {
+    "path": "crates/contracts/src/performance.rs",
+    "sha256": "89c212479ae484f52761bc8481094873397619697ef153546018c8531366a753"
+  },
+  {
+    "path": "crates/contracts/src/stream.rs",
+    "sha256": "6615b60705aebc402220b24a4f8bc707c2d0222229ac6cd97d6c61a2565cb3df"
+  },
+  {
+    "path": "crates/contracts/src/worker_rows.rs",
+    "sha256": "fc107841a35a6edc992a01f3867de3e551b03408698663fe7e7798b3a411b168"
+  },
+  {
+    "path": "crates/daemon/Cargo.toml",
+    "sha256": "45b9de3d95d17017681b3f36cf68e652485583bfdfa30cffbd1e1414a9496a0e"
+  },
+  {
+    "path": "crates/daemon/src/main.rs",
+    "sha256": "79a4f7415f4b1ccb1b581b5800b084a096b4c179d0c0fae0b231169d72d1664e"
+  },
+  {
+    "path": "crates/java-worker/Cargo.toml",
+    "sha256": "f21b0d4388267ef634ce00bc6f258d78d88389a4b218472e0aa720b4b788e6fe"
+  },
+  {
+    "path": "crates/java-worker/src/actor.rs",
+    "sha256": "9bb1cabbb36ec10b080bc4031678c398952698f1900cbefcfa6fdeeebae954ac"
+  },
+  {
+    "path": "crates/java-worker/src/backend.rs",
+    "sha256": "15996d25c0ab6ed12438073c64a42cbf318f7d2e63d8d919cc3592ad07de9c6c"
+  },
+  {
+    "path": "crates/java-worker/src/delivery.rs",
+    "sha256": "e3fd76805a088f59da11617c477157f44a30c2563a5559d2e882cb20e453d2f6"
+  },
+  {
+    "path": "crates/java-worker/src/diagnostics.rs",
+    "sha256": "0c0acbe916ba2401537e27f338a157152de63934e5f27c6b40a265c960a99357"
+  },
+  {
+    "path": "crates/java-worker/src/jvm.rs",
+    "sha256": "a45ca74cd8f7014e62441fb7ea4485f6f3e3fe3e4be7ee76c3704cac6e94b51b"
+  },
+  {
+    "path": "crates/java-worker/src/main.rs",
+    "sha256": "97da680a32c7a51e37a379cfb6b940548e4c81440a9c269588bd8eb818b9ee81"
+  },
+  {
+    "path": "crates/java-worker/src/native.rs",
+    "sha256": "32f8fd74d37803e10b5abbfc4d4b0f22d01de43d9a328de47c47f8a485bbae74"
+  },
+  {
+    "path": "crates/java-worker/src/product.rs",
+    "sha256": "31788b70241cce46c772f58e727e2c7ba09d1ed7907481b4200822b37f51fdfe"
+  },
+  {
+    "path": "crates/java-worker/src/result.rs",
+    "sha256": "3781b548fd25b796b0df01922a263e211c097e64c871cefa76734282add0ec3c"
+  },
+  {
+    "path": "crates/java-worker/src/state.rs",
+    "sha256": "4a4f1e412522125a7662244a2bb88c50f9338ab4780f3af8832ff23a24b1f5a3"
+  },
+  {
+    "path": "crates/java-worker/src/timings.rs",
+    "sha256": "38ec12dfc7da80e9d8dee220468f3c4783eaffcccb1fc902c9e14b2ce12e1c4c"
+  },
+  {
+    "path": "crates/mock-worker/Cargo.toml",
+    "sha256": "c6543181f8771505a378747d9d760e04c9b8b2ca619107cd52ea15415ebb4335"
+  },
+  {
+    "path": "crates/mock-worker/src/main.rs",
+    "sha256": "49d1deeb217d88b9819a5e48a258129cf4cea0549587677e774d46c6de17cf64"
+  },
+  {
+    "path": "crates/model/Cargo.toml",
+    "sha256": "d0096b04aef3279d45e9ba068f3d64932c22c062d6e0e2b56025a1042dddd420"
+  },
+  {
+    "path": "crates/model/examples/validate_java_graph_facts.rs",
+    "sha256": "a183b836dea2308dfce74668d94827ac32f39f72bbaa7c033a6c28f23dc28e8a"
+  },
+  {
+    "path": "crates/model/src/attributes.rs",
+    "sha256": "2bd4989fc697003c1e879eef6d1675c048d8216654aeb1460caa629a313d9b5e"
+  },
+  {
+    "path": "crates/model/src/baseline.rs",
+    "sha256": "e2d7284c89fce72f6a36928f1c5643ecc56fd9aaee058c74468d2853ff7121a5"
+  },
+  {
+    "path": "crates/model/src/choices.rs",
+    "sha256": "e297849f8164546f3c51bf176f6c59766ff765701a066f258eb3bbb71c1c7895"
+  },
+  {
+    "path": "crates/model/src/commands.rs",
+    "sha256": "1246240bcd8aea86898eaa706bdee0cb5471c27a5c8c3af4e850c28dd775fdce"
+  },
+  {
+    "path": "crates/model/src/error.rs",
+    "sha256": "578e31f40512687b0a95afb49c35a0d982038641b8f0224400415d1656f00334"
+  },
+  {
+    "path": "crates/model/src/identity.rs",
+    "sha256": "36ef75b9e3cdfeb8d71cf2e8fdb73bddc0c4584e5615052d86d4604fc4d4876b"
+  },
+  {
+    "path": "crates/model/src/java_type_graph.rs",
+    "sha256": "9669583fca1134d7d90568ed13677dbb88e86fe6e8f14cb01d35e10dfd910944"
+  },
+  {
+    "path": "crates/model/src/java_xml_configuration.rs",
+    "sha256": "d31f49da5eb0adcb3775a39025969decb05682848d53941b5400a36b7895ba19"
+  },
+  {
+    "path": "crates/model/src/lib.rs",
+    "sha256": "6dea2cdfde64c5ce70f39afcb0907036fd3be6e53416deb7eff3ed14b74503a8"
+  },
+  {
+    "path": "crates/model/src/operations.rs",
+    "sha256": "4de06cf4bd87e6303dbb82047b553727a67c543c9bdd7a5dd58c3598b252c37c"
+  },
+  {
+    "path": "crates/model/src/publication.rs",
+    "sha256": "33f293b50eae8229732e28d6f6812bf55ed9a618c8db1c081b37a58b683bb4b2"
+  },
+  {
+    "path": "crates/model/src/python.rs",
+    "sha256": "ca89b5635e15392aeac3beee8e0ad8c89ed6c89e30ba6e172068f9032af70910"
+  },
+  {
+    "path": "crates/model/src/reader.rs",
+    "sha256": "ad98e45a5fc4e02f036cdea9a9951822973088f0e1d858644071ea46de8f6e80"
+  },
+  {
+    "path": "crates/model/src/records.rs",
+    "sha256": "9e51f44e06a27ac47872ddba1fa68a0555b2fa0768486305af6d7d67754bbbcc"
+  },
+  {
+    "path": "crates/model/src/rust.rs",
+    "sha256": "e0d268a2218a942a842e633509df5c76700f63b943bcb837dc8dc88b60e9e7a8"
+  },
+  {
+    "path": "crates/query/Cargo.toml",
+    "sha256": "5cef4046ee1473107069bfc2866285ffd38fa4ee20b26be45ed79bb65825cd3d"
+  },
+  {
+    "path": "crates/query/src/annotations.rs",
+    "sha256": "c74bc8f21de726cc210833c7c4a0b18aac941c87bc00b88fde6e67ee18e34a8d"
+  },
+  {
+    "path": "crates/query/src/calls.rs",
+    "sha256": "1578e579842586d653682d69082d751108f4eda3c2d7d5258f9b5ce4dd182686"
+  },
+  {
+    "path": "crates/query/src/dispatch.rs",
+    "sha256": "18276db95780a9fb10654c25c7b060f235bccf1a7ca02ad82537a10398e635ef"
+  },
+  {
+    "path": "crates/query/src/hierarchy.rs",
+    "sha256": "d210ec91fb19bfaf7c5a49937bab8fdee5f6d8b05b68ed32638e9272b50710bd"
+  },
+  {
+    "path": "crates/query/src/lib.rs",
+    "sha256": "8c6ee34b53694fee7062bc6c884b0a6fc7474be29b4bfb87eaa318894ce7a502"
+  },
+  {
+    "path": "crates/query/src/navigation.rs",
+    "sha256": "4709ca80676284e3e1f791fb672f732ebf147341694854160581fefcd2f2aecb"
+  },
+  {
+    "path": "crates/query/src/overview.rs",
+    "sha256": "bbe8487d9e53b89a813ddf64a53f8f0220d81fa60cdf7862104efa66a407bc60"
+  },
+  {
+    "path": "crates/query/src/pipeline.rs",
+    "sha256": "c9912c1b713c68415a871527e4a9980a5e823eb46227eab9aaea7f288e98c52e"
+  },
+  {
+    "path": "crates/query/src/source.rs",
+    "sha256": "e29e2b654402bcbf3d85bf7d7d4f9edeef3cb53d21157b9c10b853005ebe063b"
+  },
+  {
+    "path": "crates/query/src/text.rs",
+    "sha256": "acbe8751fa03e021412cdf87ddc35023276f9d29218c5e48629431ca8ac29ae3"
+  },
+  {
+    "path": "crates/rust-worker/Cargo.toml",
+    "sha256": "a3a924c2ecee28d7a8c8dc83848767da944cd08b40c9d28197b1424dfa43a60f"
+  },
+  {
+    "path": "crates/rust-worker/src/main.rs",
+    "sha256": "9451c9fc66c68ab4305f4d972cb1cbef8b184fc655c36a235ef6ed78294c34fb"
+  },
+  {
+    "path": "crates/storage/Cargo.toml",
+    "sha256": "aea062e832b3deed63f198a1806517e9a176910667887d9d3abeffa45342737f"
+  },
+  {
+    "path": "crates/storage/src/anatomist-dependencies.sql",
+    "sha256": "b24f875b1b00965f15cbf02406cc84141bbdaf8bf591ecea8050bb6a267f4685"
+  },
+  {
+    "path": "crates/storage/src/anatomist-hashes.rs",
+    "sha256": "3e86709ffa6439adbf9b1dbcbf691916441efda4dc437aa68649392ce609507b"
+  },
+  {
+    "path": "crates/storage/src/anatomist-inserts.rs",
+    "sha256": "2ce70f8055a861d08490c91f6eb1f03a63e34801989ba22b917647441130c952"
+  },
+  {
+    "path": "crates/storage/src/anatomist-promote.sql",
+    "sha256": "ec36a1f7aa16609a77c167a85a16b6812ac58bae0cdbe70edf024b0721e7c45c"
+  },
+  {
+    "path": "crates/storage/src/anatomist-schema.sql",
+    "sha256": "4aa0c3b41a8248514e6d4c8a6a53f58220c9e071792d5c7ea94265b1e4a96112"
+  },
+  {
+    "path": "crates/storage/src/anatomist-stage.sql",
+    "sha256": "a671d6a25f72a3120ca1aa29bce3d37a169c7025eeb3e4af2c5e8eb50f57faeb"
+  },
+  {
+    "path": "crates/storage/src/anatomist-symbol-dependencies.sql",
+    "sha256": "de8300367dfe7ba70e53812bc23b09aa883d1816e4adca935e09ab27cc91685c"
+  },
+  {
+    "path": "crates/storage/src/annotations.rs",
+    "sha256": "64a1e483bc979f88dd21fefb7da0297ec9d9c9745095988aa1d2a486cefd8cb6"
+  },
+  {
+    "path": "crates/storage/src/blobs.rs",
+    "sha256": "d5371538adc904210dd3c73e1d3b6b95ae214aa6c3546279d4a8e266f26b11eb"
+  },
+  {
+    "path": "crates/storage/src/compact-meta.sql",
+    "sha256": "5dbe15b9d140ad3b9d3d761909367dba85fa6549d375f87af84aa3e6ddca6f14"
+  },
+  {
+    "path": "crates/storage/src/compact-schema.sql",
+    "sha256": "e40454ccfc8941a0cd524798160b5c15df7617fc00c757aa0007c64ec4c7dcef"
+  },
+  {
+    "path": "crates/storage/src/derived_cache.rs",
+    "sha256": "ea707d40c8954dfe55ff3dd017289ce97ffa3e6ccfc63a5f3bb1a440774e5ca4"
+  },
+  {
+    "path": "crates/storage/src/graph_calls.rs",
+    "sha256": "9891698962094051f516f0c798808aa36b9d70868ed747d9c1788da14e167d8e"
+  },
+  {
+    "path": "crates/storage/src/graph_candidate.rs",
+    "sha256": "d9f207c580d2bfee18400b2840778d14b7879b91bdfdc1927004a2ea6dbba22b"
+  },
+  {
+    "path": "crates/storage/src/graph_compact.rs",
+    "sha256": "2013ce569a1a69be49dcfe9642987905257ff67aed8d03541fabc662d5ee7b7a"
+  },
+  {
+    "path": "crates/storage/src/graph_query.rs",
+    "sha256": "ceec275dff0953a03c123361c72acec832263f15a3cd76aa4906cec58bf9f5c7"
+  },
+  {
+    "path": "crates/storage/src/graph_store.rs",
+    "sha256": "733ff52313ca23cb131b9f90ff2fe633239eb1570d82d026186770c51f8eb098"
+  },
+  {
+    "path": "crates/storage/src/lib.rs",
+    "sha256": "ee48ab68e5b03207fa2e1802057b36297ac4b6b706f7ae97f92c1f3a9639ba0c"
+  },
+  {
+    "path": "crates/storage/src/maintenance.rs",
+    "sha256": "9063a9b33b1f237b08e32a7f5c043102419a3a9cc0e8ed6106a2055e5d87f998"
+  },
+  {
+    "path": "crates/storage/src/objects.rs",
+    "sha256": "62416aba913ac58c9bf757d9d43cd5875615e69eb981631406071813bce81376"
+  },
+  {
+    "path": "crates/storage/src/pages.rs",
+    "sha256": "7fe196cf52e43ccc43f7e6ed86adcebc0ff761b0dab060d862338dd2258f3ef6"
+  },
+  {
+    "path": "crates/storage/src/staged.rs",
+    "sha256": "e8f07f64cacbdd7e38e5040af7c00482db1457a51b58d60741c3332fa415720a"
+  },
+  {
+    "path": "crates/storage/src/tasks.rs",
+    "sha256": "88a6cf0e607ab191e019cf1ea8351baaa7f1912d70fc0a6003f8f42624a5a8e5"
+  },
+  {
+    "path": "crates/storage/src/text_search.rs",
+    "sha256": "3d5811564b29be23a92decf2ec864ab346aef9de64515f86966f0edf385b1c7e"
+  },
+  {
+    "path": "docs/config.toml",
+    "sha256": "74f5b4acd3968addeac7f6cdb941ba743f9a28bb834c708686663e2acf75995a"
+  },
+  {
+    "path": "docs/examples/java-fixture-config.toml",
+    "sha256": "474f329a00dd45b19bcc8c1a90cc5399329a5a81b3ab6c69ab274a3073e6f37e"
+  },
+  {
+    "path": "docs/examples/user-config.toml",
+    "sha256": "ee14b64a1504a0f9019e895581da80d4923dfaa03b503d41b9c66e79b6568ed6"
+  },
+  {
+    "path": "fixtures/python/dynamic/main.py",
+    "sha256": "5b3db04bcbab5906e9b9f2d27d1fc943a21d6566d1fbe7186bbbeb389430ec97"
+  },
+  {
+    "path": "fixtures/python/dynamic/pyproject.toml",
+    "sha256": "7a2b01c1fc3d743532aafec140860acebc99873c04fd17a084b3653854b22066"
+  },
+  {
+    "path": "fixtures/python/identity-source/main.py",
+    "sha256": "4566247b9de4af779c4dd939e9fbb2d28848dc7c91945e15f595035d582d1f46"
+  },
+  {
+    "path": "fixtures/python/identity-source/pyproject.toml",
+    "sha256": "9d6b97a7b0915c35927946bb395d29f6bd184dc0052628ec0062b3a8b357beba"
+  },
+  {
+    "path": "fixtures/python/imports/a.py",
+    "sha256": "96e722ead7a15601ae28def0cb308067ff446ca93aad3906349e44c02957c5fe"
+  },
+  {
+    "path": "fixtures/python/imports/b.py",
+    "sha256": "f47ba2e4be318f5bf85f02858cadb56a5773e42d3736cc6810faa3927070d540"
+  },
+  {
+    "path": "fixtures/python/imports/pyproject.toml",
+    "sha256": "d22af5f8e65406e5227f2ae10ef83961a8840d2895de9ff45fbc6f518707277d"
+  },
+  {
+    "path": "fixtures/python/inference/main.py",
+    "sha256": "b60ccf84e5ab9a7b733e96242ca5723e189d6d0893bebcda9c378728e86e5eb4"
+  },
+  {
+    "path": "fixtures/python/inference/pyproject.toml",
+    "sha256": "a74732576f4e7d46a69f340b0a82d4333cc09107f1cb9d4571ef03e418f80d0c"
+  },
+  {
+    "path": "fixtures/python/mini-service/pyproject.toml",
+    "sha256": "1acad0ff45213937cb5e16f240253b44e417bbac21c79a9a94c6806a03c2d0bb"
+  },
+  {
+    "path": "fixtures/python/mini-service/service.py",
+    "sha256": "65f3cdfab4593564838aef354f231a2fae3cadb78c0a990f23367db31393a9f5"
+  },
+  {
+    "path": "fixtures/python/semantic-core/base.py",
+    "sha256": "73b57ea1542094983c8f807d8f53c0dace43f4ccc5783aa287ed2209a55cb815"
+  },
+  {
+    "path": "fixtures/python/semantic-core/main.py",
+    "sha256": "3435c73050136cba84977ca17d9a4796f1336275ecd350335b6089a09b08f7cf"
+  },
+  {
+    "path": "fixtures/python/semantic-core/pyproject.toml",
+    "sha256": "c11546a8b258493ab41e1e162102965095236bd0cf70271257cca89bcd966468"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/Cargo.toml",
+    "sha256": "1a9a5bbc119c189479ed626fa53de8a1713cb9c41fc6f05b085be1794fe307f6"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/app/Cargo.toml",
+    "sha256": "adbe3b73c2580d2f8e0de489f294bfcc34581ea9e8c79cd5003f77a692fe56e9"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/app/src/hidden/unused.rs",
+    "sha256": "a754fb744c72e2c6b9fa9deeb9953c59a107f390fff7313a982b301e2e776c42"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/app/src/main.rs",
+    "sha256": "7b3303e24c00aaf2fbf7256e309afd904a43bf1d739d3137dac65cdfe9c43a2d"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/a/Cargo.toml",
+    "sha256": "508af82da69e4d417aa151996fe2e0796ff4bf066e1fefe4e85af3c7b452a574"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/a/src/ignored/unused.rs",
+    "sha256": "e5db1464919cb13b9ba1cc6a8dd8f2737e2dcd38836f4dcb2b7809a641cb1d42"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/a/src/lib.rs",
+    "sha256": "c2ce4dcf2f18566236f72892832176b839cd4b783db97e2d6207edc8aa0b816c"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/a/tests/unused.rs",
+    "sha256": "6de8f6e69a0746492e11ac377131729448ab7016a330ae5991be393b7e50d116"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/b/Cargo.toml",
+    "sha256": "7440d24cf2d2a4ea96b87b4a8737be9d14a3c1d03794ca125f9693d5685313e6"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/b/src/lib.rs",
+    "sha256": "14f3019bfb8021d73af929fad54047539d7335c84a04c33928986928c1cb0c04"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/c/Cargo.toml",
+    "sha256": "b3b43acb155a3e1ed92676b9f78565111fb526812c21f23143a2e84317cc102e"
+  },
+  {
+    "path": "fixtures/rust/dependency-depth/deps/c/src/lib.rs",
+    "sha256": "060cf60c7f4edaa9907b60666071abcac16a2f0ada6497c3996b381de0240c3b"
+  },
+  {
+    "path": "fixtures/rust/workspace/Cargo.toml",
+    "sha256": "b322078540727f05027ba529028931038149dc99543493a5b258288c7acc1838"
+  },
+  {
+    "path": "fixtures/rust/workspace/app/Cargo.toml",
+    "sha256": "ab04e8b79e818e20fad9b09b1cf51736e65c1a606a064bd0d3a753b8d740e852"
+  },
+  {
+    "path": "fixtures/rust/workspace/app/src/main.rs",
+    "sha256": "57300fdbc1ba6a30016d9f356eaac8c110b70d8c9035ee9444a422b497c42270"
+  },
+  {
+    "path": "fixtures/rust/workspace/core/Cargo.toml",
+    "sha256": "54f1d4f4250be1e035cf2e51165bb1a7dc58afb007157fec11693962e6b2d4dd"
+  },
+  {
+    "path": "fixtures/rust/workspace/core/src/api.rs",
+    "sha256": "e838abd5e283fdb296581b716860c183855583b2fa74224af3da81da244bb307"
+  },
+  {
+    "path": "fixtures/rust/workspace/core/src/lib.rs",
+    "sha256": "bad58b8e401c9f68c03d14a3043bfce43b14daaddeb034e213f94be7c19a3bc2"
+  },
+  {
+    "path": "lang-java-adaptor/e2e/fixtures/complex-mini-spring-shop/.anatomist/config.toml",
+    "sha256": "6d8f6c957e8d650092ab512cfa31b3fd97df318519959bbaed7c6d7276285dd4"
+  },
+  {
+    "path": "lang-java-adaptor/e2e/fixtures/lombok-evidence-project/.anatomist/config.toml",
+    "sha256": "1900bce39d26ea8f09f48ab41f5d968f149155f38baa1d4510663a4256e431ed"
+  },
+  {
+    "path": "lang-java-adaptor/e2e/fixtures/runtime-boundary-project/.anatomist/config.toml",
+    "sha256": "03952b044e7fe4d6e44f28bc3120317081983dc7596f518660f5916a925c14b1"
+  },
+  {
+    "path": "lang-java-adaptor/e2e/fixtures/stale-index-project/.anatomist/config.toml",
+    "sha256": "03952b044e7fe4d6e44f28bc3120317081983dc7596f518660f5916a925c14b1"
+  },
+  {
+    "path": "lang-java-adaptor/fixtures/extension-lifecycle/.anatomist/config.toml",
+    "sha256": "40682161ed6d7d941b88b4cc7f30d9a390849846661e2ed6e8e344ab1b1171d2"
+  },
+  {
+    "path": "lang-python-adaptor/Cargo.lock",
+    "sha256": "1a8d6a828cdd89d535a4f65c2710e890decb038d575a8ccb43947be2b90bf4cd"
+  },
+  {
+    "path": "lang-python-adaptor/Cargo.toml",
+    "sha256": "241ea2249383bcc13999f6ee044cd2705d0d149edc3325e9ff65cbcc1f4bd559"
+  },
+  {
+    "path": "lang-python-adaptor/src/facade.rs",
+    "sha256": "50c7a17a2ad6cfd582637296341c9d5314e7ce62a613422cf0cd6ef57e1dad32"
+  },
+  {
+    "path": "lang-python-adaptor/src/frozen.rs",
+    "sha256": "513b1cd4a2c6ce09d64b89b9128176bf8636be5098bc1d9b37cf52945210509a"
+  },
+  {
+    "path": "lang-python-adaptor/src/lib.rs",
+    "sha256": "20e717fe4dd853219dd55eda05259c81ab3445cb9ebf7a43d753d43f7c148e73"
+  },
+  {
+    "path": "lang-python-adaptor/src/records.rs",
+    "sha256": "11ef2607408016440552e5ba5eb2c1c446e129c28b278cb4d341ea17a668509b"
+  },
+  {
+    "path": "lang-python-adaptor/tests/core.rs",
+    "sha256": "953841eff0a8894531ae23a6535e45f5c3b175236226644c541102e8190f36d1"
+  },
+  {
+    "path": "lang-python-adaptor/tests/frozen.rs",
+    "sha256": "b8560a4fa1aa525b9ce1bc604f8c2bfdddd6d934c703c6c320093120487aff14"
+  },
+  {
+    "path": "lang-python-adaptor/tests/graph.rs",
+    "sha256": "a4be82bd91a9f9658ba484254898555dd735f6e8540c5a55c3dd820513bb3e1f"
+  },
+  {
+    "path": "lang-python-adaptor/worker/Cargo.toml",
+    "sha256": "543a95977d8e66363f76e0273dfc6223c684dfba6d0a198ad9bf7ffb387e5348"
+  },
+  {
+    "path": "lang-python-adaptor/worker/src/main.rs",
+    "sha256": "0915a7d7e037552942bd070283d9997e6f2f331f6402d348e613628bf8b8871a"
+  },
+  {
+    "path": "lang-rust-adaptor/Cargo.toml",
+    "sha256": "bea3030d928d577a361cec311599dab27a4985c7ef65d013829551379c35013d"
+  },
+  {
+    "path": "lang-rust-adaptor/src/extract.rs",
+    "sha256": "3111a2cd5b34bd0d6e3b35ba9530f447d042a10fb4bd74a519e14aae1ac78079"
+  },
+  {
+    "path": "lang-rust-adaptor/src/facade.rs",
+    "sha256": "156ae08fe8693d32b8f937585f91058287144b8e2acee515593d69746c304024"
+  },
+  {
+    "path": "lang-rust-adaptor/src/incremental.rs",
+    "sha256": "259d2d107e65fbd0960127ce134cb636a1f59586eae00c7cdc283f49550d2404"
+  },
+  {
+    "path": "lang-rust-adaptor/src/lib.rs",
+    "sha256": "726fb46946de34e0052e5a086ae66bed9c8feae5b321e67b01f46160da2c517d"
+  },
+  {
+    "path": "lang-rust-adaptor/src/records.rs",
+    "sha256": "2d4b7ba630e35b3d3f1b4a0cbe8e294257f70f9e3f7f81ba97c296519f9c8f90"
+  },
+  {
+    "path": "lang-rust-adaptor/tests/semantic.rs",
+    "sha256": "2ce5c45fe9fcfd0ab81c00cd611abaf709cbf46774339aae7d4ef27f6778f416"
+  },
+  {
+    "path": "proto/codeana/v1/graph.proto",
+    "sha256": "7ef6873502a4550022d5b6959f83cf747ebb622938e8aa2341190fc39866b12a"
+  },
+  {
+    "path": "proto/codeana/v1/hello.proto",
+    "sha256": "6b1570f9ce007cc52b5e7c04d986a436229251a566f8ad144c273f0cc2ef13fb"
+  },
+  {
+    "path": "proto/codeana/v1/task.proto",
+    "sha256": "a1ddc28c03fda8fc3e7dd66812cbb514756f8d410a97f926df76cccea125c5df"
+  },
+  {
+    "path": "proto/codeana/v1/worker.proto",
+    "sha256": "6eba416fcec5bcba15a270d45bdd4db4c4310fa70b87956e1e7972422560e11e"
+  },
+  {
+    "path": "scripts/build-java-completion.sh",
+    "sha256": "8cf1ef62a0db1e6f89fdd414acac84ce820b2bd6a41137f654a17b64f2108ad7"
+  },
+  {
+    "path": "scripts/build-java-jvm.sh",
+    "sha256": "e392494a80a75d8ec3b7656f85d873062909dafef864e00b09d2ca6019d8c099"
+  },
+  {
+    "path": "scripts/build-java-maven.sh",
+    "sha256": "232fab55133ba0a0f7fc8103fd4d243c694c05c7ab9313629fdcdf9a62780b95"
+  },
+  {
+    "path": "scripts/build-java-native.sh",
+    "sha256": "063a9aaedda160db086fd3aee688575e5339c1f390ae8391ce6420932230dc16"
+  },
+  {
+    "path": "scripts/build-java-reference.py",
+    "sha256": "588122d7bd84d9126c6c53aef79f377fb8508bd74c7491c1b1a54d8b4de22013"
+  },
+  {
+    "path": "scripts/build-lang-java-adaptor.sh",
+    "sha256": "703ce789afc9bd857556f401d61a697e5bafbd1e5eebc1c548c22a7fd20b96b4"
+  },
+  {
+    "path": "scripts/build-python.sh",
+    "sha256": "3d6bb84009e6347ec119ae035762f88da2b95652152f63454e3bc7ab0385dcbc"
+  },
+  {
+    "path": "scripts/check-java-jvm-acceptance.py",
+    "sha256": "86bb85b1dcd3a57b79e36a3c91d2b4da6d2362424bc88c5072f1d168a2ddb781"
+  },
+  {
+    "path": "scripts/check-java-migration.py",
+    "sha256": "950259acb14bc9e9796314c93c450e9ca38f9692a4f0995c9052bfbab2e054cd"
+  },
+  {
+    "path": "scripts/demo-rust.sh",
+    "sha256": "9c70bc0da65222bbbb008f8e38e71527d5b0e76ea6a4d948c4f244a85de97e14"
+  },
+  {
+    "path": "scripts/export-java-inputs.py",
+    "sha256": "cee3a4fdac368c5e5e0ddd76670e62248cbfec4f9583c9e9bcee5129d9daf34f"
+  },
+  {
+    "path": "scripts/export-python-inputs.py",
+    "sha256": "88692078fade9fac34bc325c70baed438d60b595e382e9e729f844ae61beea29"
+  },
+  {
+    "path": "scripts/export-rust-inputs.py",
+    "sha256": "b3a2d5af2674ff6985dada7178289daa4039b40b721bee62c2ed5334807a47a4"
+  },
+  {
+    "path": "scripts/generate-compact-schema.py",
+    "sha256": "ec3a7331436323058af1e3f4ae83c5ae79937a799a1cf2c495683f4c2f16cb69"
+  },
+  {
+    "path": "scripts/install-java-native.py",
+    "sha256": "005d9ea5f88ecbfd1ba71a69dd974037d9281c0e8f05ae87e3549a230569f1e5"
+  },
+  {
+    "path": "scripts/java-adaptor-manifest.py",
+    "sha256": "cfc6121b7ea9e4dd9bbb10700cb0e4599ae7e7913ea24aba6ef2ebf85aca29d3"
+  },
+  {
+    "path": "scripts/java-compact-storage-single.py",
+    "sha256": "ee2ecf29bbf43cc7c20a1c67cd129f5bdeb2725b90224a7749a08823e9a5f7e4"
+  },
+  {
+    "path": "scripts/java-coverage-acceptance-gate.py",
+    "sha256": "495e9531109c1eff6942e148bde483798c8a7d79aff84af270b79e6a70942e46"
+  },
+  {
+    "path": "scripts/java-coverage-inventory.py",
+    "sha256": "efdc5035b0dd025982ff8be8b849c2b4f6e2a56316d798ac8c64ee6549597aaa"
+  },
+  {
+    "path": "scripts/java-graph-storage-acceptance.py",
+    "sha256": "6d2d64a0e2521b20161b88001a5bbd1e9a7b085c026d2ca6a78849cc318a139f"
+  },
+  {
+    "path": "scripts/java-jvm-manifest.py",
+    "sha256": "cef969eb62a47a6a4204f663418b9aeddb843f24f9e39def206c69c1f9f58285"
+  },
+  {
+    "path": "scripts/java-native-abi-layout.py",
+    "sha256": "beb55775f48681f7aa4cdcb141b24950bb0d8a88d7edc129f034f1796af56730"
+  },
+  {
+    "path": "scripts/java-native-crash-receipt.py",
+    "sha256": "e8d36e8cdbf9f8f3b6f73bca00d3181fbd3da8be15d3d221fedda3177e7306d6"
+  },
+  {
+    "path": "scripts/java-native-performance-profile.py",
+    "sha256": "ff2d35b6c20f113ce8f06e6b7bfbdd2448fc72ebe634087857b38070d98c3c52"
+  },
+  {
+    "path": "scripts/java-performance-monitor-single-v2.py",
+    "sha256": "2d3c801e3d370ce237f868ce275c4593dea71828d6b5b0fb4e358e43491b2152"
+  },
+  {
+    "path": "scripts/java-performance-phase-single-v2.py",
+    "sha256": "0f945154abefce72feeb8a9fea5539aec50a43b00c08e1658e63004247516323"
+  },
+  {
+    "path": "scripts/java-performance-stable-runtime.py",
+    "sha256": "ace165f99392feed827dada8f706ebc14efb6ee1b507b16ed518840168352d4c"
+  },
+  {
+    "path": "scripts/java-performance-upgrade-runtime.py",
+    "sha256": "6f7ed77f41259438cd7503a21b23d14293fb815cf21cd2dc818b48785d802587"
+  },
+  {
+    "path": "scripts/package-java.sh",
+    "sha256": "2520641a6223fad00a5e6e9c615dcc5d2c5a74863b04bc31dc9290d94e02408f"
+  },
+  {
+    "path": "scripts/package-python.py",
+    "sha256": "bae72defcffb5ad28faaec443fab4be774f62be0c09a11c82c6bd5a125a6c65d"
+  },
+  {
+    "path": "scripts/package-rust.sh",
+    "sha256": "359b7f4d175758479b040ca275c82ede51c4629772fa43b4341541fa110f9780"
+  },
+  {
+    "path": "scripts/rust-source-dogfood.py",
+    "sha256": "dfcd74f1051597e9198d5580a22c914852e4dbbdd202325bd00f9eb6db365e2a"
+  },
+  {
+    "path": "scripts/smoke.sh",
+    "sha256": "190b2ce5e2c9d06b4fe8d2e4b656bcb8284013071bdc6645713643b21fea3ccd"
+  },
+  {
+    "path": "scripts/test-java.sh",
+    "sha256": "dad246a8a621be190e74deb96bf8f5df6736c84984fcc22d9e4bdaaba4b9fa80"
+  },
+  {
+    "path": "tests/acceptance_support.py",
+    "sha256": "647b6754190d4617da068ac013bf43f39d2fa8edc1927ef70c669ccce7c6efad"
+  },
+  {
+    "path": "tests/acceptance_support_tests.py",
+    "sha256": "08ac23c1eb33188f2e64e491aac29bbe47233fcf408b7d2677d1b9f00601e41c"
+  },
+  {
+    "path": "tests/fixtures/build_mock.py",
+    "sha256": "d4a589a6b7e6a5dbffe3c572cba9bad9bf39a4e54703dac4fcad3698ba1e4117"
+  },
+  {
+    "path": "tests/fixtures/java-native/base/.code-ana/config.toml",
+    "sha256": "99677b7bf480cc43eb33fda5ea26f9542c4bd74bb58ffa14787b26e86e487fcd"
+  },
+  {
+    "path": "tests/fixtures/java/advice/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/bad-checksum/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/base/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/crash/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/edited/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/hang/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/missing-end/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/oversize/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/partial/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/replan/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/fixtures/java/wrong-sequence/.code-ana/config.toml",
+    "sha256": "36c40af383f298849da60a76d1453a31738b2edc01249811c7fcb3969affd71c"
+  },
+  {
+    "path": "tests/java_bundle_manifest_tests.py",
+    "sha256": "ad1e3a7b7260fe49ebd42b3ec108349bc742763b5de3d52c70e8997bc3797d7b"
+  },
+  {
+    "path": "tests/java_compact_single_tests.py",
+    "sha256": "06b693c0a6067dc5b97b4b14a06681be2d4b71b8f43da9dd76b6195169798175"
+  },
+  {
+    "path": "tests/java_coverage_acceptance_gate_tests.py",
+    "sha256": "bfeac7f69c4ba4697b28c1b9c98a48794be4c9d4154bdc8f78cbebb3196c9949"
+  },
+  {
+    "path": "tests/java_coverage_scope.py",
+    "sha256": "01d909017abeead71eb77b6539286acaaeb689756e14d9935ccb9803e57d7301"
+  },
+  {
+    "path": "tests/java_graph_storage.py",
+    "sha256": "d5bbacb1f6357cdac4690dc3aeffdd0fc78b37c3f681135e1680583c0a77bf1b"
+  },
+  {
+    "path": "tests/java_jvm_bootstrap_tests.py",
+    "sha256": "655649ab477ab93df6f9f990c998f8934455b6e47195b221628a54b078a78e41"
+  },
+  {
+    "path": "tests/java_jvm_gate.py",
+    "sha256": "3c25f4ba67040f9413ae235f1ea47d3468e3301c40b294f188bfc152f1382966"
+  },
+  {
+    "path": "tests/java_jvm_product_gate.py",
+    "sha256": "78c6905eaa1ee2d72b04e30e21d70471f4f95fe27df210e824d71a8e469f385f"
+  },
+  {
+    "path": "tests/java_maven_alignment.py",
+    "sha256": "b3271ada1bf449798522c3089cee4e6457310485b8c6218e71ce7b8e7c31bb5b"
+  },
+  {
+    "path": "tests/java_maven_export.py",
+    "sha256": "d71f4227aa5ca88cf1d727957690f5d11219431c94e04fdf3661daf4753606d3"
+  },
+  {
+    "path": "tests/java_native_build_gate_tests.py",
+    "sha256": "b17727a97fc2ac3e71f763d9f2c291197b18c6ac5874bb7b5f5b318337403352"
+  },
+  {
+    "path": "tests/java_native_crash_e2e.py",
+    "sha256": "c50974610d89e0b443f8af1960e3b96b60cb4097119e6a2b1e32dc6205c2892f"
+  },
+  {
+    "path": "tests/java_native_environment.py",
+    "sha256": "3d95b81eb3a81fd72c376c88bffe5f83301309832996918f65edb9e9ba15829a"
+  },
+  {
+    "path": "tests/java_native_install_tests.py",
+    "sha256": "207a934daf32906d7bf8773d3640a06067ca4f0f39aace1e7abf3fc41729874e"
+  },
+  {
+    "path": "tests/java_native_lifecycle.py",
+    "sha256": "5834e88460caf2d347b6967e5320cef26b9ea23f5c6b173eab5654e8782170bc"
+  },
+  {
+    "path": "tests/java_native_manifest_tests.py",
+    "sha256": "9cb89bfeefb476be07f55ab61bb563660491f7c3c91f863868635e382161d766"
+  },
+  {
+    "path": "tests/java_performance_monitor_v2_tests.py",
+    "sha256": "22eb350628edca02b1e8e29d82ec41c53362e01e673d3aa25e08f11c6df9bc89"
+  },
+  {
+    "path": "tests/java_performance_stable_runtime_tests.py",
+    "sha256": "b3ef0a9f264a142d969c831ee048cf7edc491cba00f8a2c45bfee437f554d0ca"
+  },
+  {
+    "path": "tests/java_performance_upgrade_runtime_tests.py",
+    "sha256": "5130b98bc1da3b909580239daebbf30900d80c15165e9897fc5eb87ca0d02258"
+  },
+  {
+    "path": "tests/java_product_runtime.py",
+    "sha256": "366febb25ec35459af3fc7899c5aa04e3d7b9b32d693e623b056c0498fe5243c"
+  },
+  {
+    "path": "tests/java_release.py",
+    "sha256": "3bc15193b6e9f7e64bf36cc46443f5f927f7a719a97e629e4eb0a31ff8a49bb7"
+  },
+  {
+    "path": "tests/java_source_cases.py",
+    "sha256": "43eec80322084afc9cdf70db06cb45bfe75f99293eb4c88b4695a05cdaceba92"
+  },
+  {
+    "path": "tests/java_source_cases_tests.py",
+    "sha256": "a265a2260dc9450ec53db3cc8ef3373dc332a216788813387894f43893ce3fa8"
+  },
+  {
+    "path": "tests/product_support.py",
+    "sha256": "025bdfced94ccaec8e56ce9a8c1b122e7c649b46e981c24c74b0f86ba40e858f"
+  },
+  {
+    "path": "tests/python_language_e2e.py",
+    "sha256": "67efcd9ca379937df0c160518c5a07e4eb80113f66cf25a6c21e564dbc614028"
+  },
+  {
+    "path": "tests/rust_dogfood_tests.py",
+    "sha256": "8214783e59226769f9655294593cb02db31d4f968f7bcc06f59c32a5501d53ae"
+  },
+  {
+    "path": "tests/rust_graph_e2e.py",
+    "sha256": "af694ba2a78f95b644586b15fa52b799ca40e3598568f21e0e716fcaa1571734"
+  },
+  {
+    "path": "tests/rust_language_e2e.py",
+    "sha256": "ae0898b0d57e810573e73d2ec81d61cbe5e300c0f562970354c12248b2def514"
+  },
+  {
+    "path": "tests/rust_product_gate.py",
+    "sha256": "0d39378f3a06eef1b59aa5727efca41b2df3bfd97df2ad5b9173f465cda631f1"
+  },
+  {
+    "path": "tests/rust_upstream_annotations.py",
+    "sha256": "9ad9ef1908f7479fd753b36a60ef0f1495b8d1ad6a7f2f427c89bfa9056e2dd0"
+  },
+  {
+    "path": "tests/rust_upstream_text_search.py",
+    "sha256": "85427964e10c8e9a84630c35bb0a5e8bb44d5e6ffdea641bd5ed63c459968d05"
+  }
+]

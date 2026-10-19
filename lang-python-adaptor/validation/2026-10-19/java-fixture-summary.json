@@ -1,0 +1,1262 @@
+[
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.asmsolver.ClassFileSourceTest",
+    "tests": 12,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f707a135d9939b8e3d9dea6f94934e9615ab01871da16f6e3c5eae5c9d874c12",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.asmsolver.ClassFileSourceTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.asmsolver.JavaBinaryModelIT",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "908f7899613473c57972359c81790b7db8810e1d9c094248a42c67c18038e986",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.asmsolver.JavaBinaryModelIT.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.asmsolver.JavaBinarySessionIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "7f9149fc7f6a449abeeee7d87349034ec2d0920274e43280004268bf20bd01d9",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.asmsolver.JavaBinarySessionIT.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.asmsolver.PackedClasspathIndexTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "712f3b7f6958a42cfda5c101e97fa1061dc50a4280043139cb07b825ecc39016",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.asmsolver.PackedClasspathIndexTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavaContractBudgetTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "07163f827e1cd78f7618b7302f85cb24302be05ffac4ff5f29502abfe823a309",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavaContractBudgetTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavaModelTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "936c9b0ab1ed995ff32927aa37dfcaec30de95f2a5c73343557514375993fc97",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavaModelTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavacAnalysisPlannerTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "a4d9f3d1db6500d083cb7d4b26b564210917cd3fc4b3b8661ee9dded3f5369c3",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavacAnalysisPlannerTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavacDeclarationCacheTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "b60386adc41a314802bdc514fb9a37e440364b94460ac441d795c5eda3226714",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavacDeclarationCacheTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavacDecodeBudgetTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "dbf1bd20d7e50e936038b457fbb74a6ff353cc62551c7ca9d7a4dcb0bb17437d",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavacDecodeBudgetTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavacProtocolTest",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "e3f1b89668ecfd6780fec08f7992bc999bebec5c1370881354a3f38bcf98a825",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavacProtocolTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavacSourceLexemesTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "eabf28a82863a646a8de48c14371e8f2e5b7c8767a53d1fd506216b5b0d6fe0b",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavacSourceLexemesTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.JavacWorkerSessionTest",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "23f75da3baee7c997d4a87b6be1d08bd8b864680f2c52cdb72f7ebd1982e7054",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.JavacWorkerSessionTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.javac.MavenInputsWorkerTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "ca1b2ac934853cfbe3f8e0767e47f73ff4362e69f5c5690961563e9fe7f458c1",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.javac.MavenInputsWorkerTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "com.anatomist.core.nativeimage.TargetJdkBinaryRepositoryTest",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "3b79b932bac972334ab6b377fd8fd6f543b0fa0235948fddbf80c18b8dec276e",
+    "archive": "java-fixtures/analysis-core-TEST-com.anatomist.core.nativeimage.TargetJdkBinaryRepositoryTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "dev.codeana.adapter.JavacDecodeConfigurationTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "cab839d67030c53edaf75f9e7c86cdf19d19cc0fe7e9ae57afa4b0d206093ba4",
+    "archive": "java-fixtures/analysis-core-TEST-dev.codeana.adapter.JavacDecodeConfigurationTest.xml.gz"
+  },
+  {
+    "module": "analysis-core",
+    "suite": "dev.codeana.adapter.JavacEmptyPublicationTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "c9ea22a3f65000c6cf88e716de014e12bad7c3964667c6e99d2bc8706713d477",
+    "archive": "java-fixtures/analysis-core-TEST-dev.codeana.adapter.JavacEmptyPublicationTest.xml.gz"
+  },
+  {
+    "module": "framework-spring",
+    "suite": "com.anatomist.core.ProjectScannerSpringXmlTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "fd3b4317ced099b83d5a789024020d59c5f26fa7d54d7b188c2f511d8873d786",
+    "archive": "java-fixtures/framework-spring-TEST-com.anatomist.core.ProjectScannerSpringXmlTest.xml.gz"
+  },
+  {
+    "module": "framework-spring",
+    "suite": "com.anatomist.core.SpringBeanParserTest",
+    "tests": 12,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "35581f9be255ca6d27320babdfecb5529d2e55cb7bea79b4e34238c43b0a2f9d",
+    "archive": "java-fixtures/framework-spring-TEST-com.anatomist.core.SpringBeanParserTest.xml.gz"
+  },
+  {
+    "module": "framework-spring",
+    "suite": "com.anatomist.extract.XmlBeanExtractorTest",
+    "tests": 10,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "ac6dad7fef61a1019791ad19ccae669e37944c3c7f41b40a8fea2cbe042db192",
+    "archive": "java-fixtures/framework-spring-TEST-com.anatomist.extract.XmlBeanExtractorTest.xml.gz"
+  },
+  {
+    "module": "framework-spring",
+    "suite": "com.anatomist.framework.spring.SpringJavaModelTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "3ddfffbf620ba626cf977e77c40d86b57ecc85939888e494a11c46f82c45db0d",
+    "archive": "java-fixtures/framework-spring-TEST-com.anatomist.framework.spring.SpringJavaModelTest.xml.gz"
+  },
+  {
+    "module": "framework-sofa",
+    "suite": "com.anatomist.framework.SofaXmlAnalyzerTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "63ce2c0393db3f246cc51b1c7ce01d521bedf03219dc7b4c9381ef20985b66a5",
+    "archive": "java-fixtures/framework-sofa-TEST-com.anatomist.framework.SofaXmlAnalyzerTest.xml.gz"
+  },
+  {
+    "module": "framework-sofa",
+    "suite": "com.anatomist.framework.sofa.SofaJavaModelTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "dbce08e7ec2a58259e70409c18f60230700f9afce189d3d9cacf6154e8fe4125",
+    "archive": "java-fixtures/framework-sofa-TEST-com.anatomist.framework.sofa.SofaJavaModelTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.application.FrameworkPluginsTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "a1292e8dc031a0d8c65bf2f2e929285651d6a869321827f45b60e82fab7f3abb",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.application.FrameworkPluginsTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.ContentHashTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "67dbb0c53c84c46590503881addd3869686d325bc4024f7c8246532e22fa383b",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.ContentHashTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.EdgeTargetBinderTest",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "c240968c83046e971c1956b69b154c4188bac712213914d037110675e329744a",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.EdgeTargetBinderTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.GraphIdentityRewriterTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "3d3130919b4a4e2c6053fded4a10a4977b50a553ec770bc235dae0ba1ecf9540",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.GraphIdentityRewriterTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.GraphPostProcessorTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "d2881b589e47e55ead5b3b7b79c3c2da8084aaaf38779e1755cf43a0cdddea27",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.GraphPostProcessorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.IndexTimingsTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "00f189d9e89e8e41a8345f38e2797a24a01ec377c8314947ddc6229592248728",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.IndexTimingsTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.JavaContractFingerprintTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "aff8f63132f5ab7136cfb570334826a460169467003f4f20750cb0b2e380b491",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.JavaContractFingerprintTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.JavacBackendContractTest",
+    "tests": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "05d106220c88045dae108f6cda4be7c7dec002f3c6727bf0ef0a9d2ecb0e558f",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.JavacBackendContractTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.JavacPlatformContractIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "d71e5b887378473309b5c779032616df7074e86f1bfb0e14eec5308e0fdf20c9",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.JavacPlatformContractIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.LexicalValuesTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "bfa94e4c9258f9571a2116d006aa963fa7c5aab1bafc5484962d9459e718abf6",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.LexicalValuesTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.LocalConstraintTest",
+    "tests": 29,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "1c65a7dafe0cf960b140d8617ea05c128f20171964a028cdda0cb441785891e9",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.LocalConstraintTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.LocalMethodCatalogTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "0ca9701f3d3330500921681156d5369408336171f12f723977e7d8f936977c70",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.LocalMethodCatalogTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.LocalTypeResolverTest",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "90cbb171d1b9585c1dd921c36481570ec7ee5c78030644e79ba2b32e1d571558",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.LocalTypeResolverTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.NavigationRecoveryTest",
+    "tests": 19,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "2f9fa1db0f849c25a300b60080192632f773168da69107c095d113ab9203745e",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.NavigationRecoveryTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.NodeIdGeneratorTest",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "5084ec82b6a18836bc3f53e14ec4fe0de7ad8dbe8e27d994079b4fda66d63b21",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.NodeIdGeneratorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.ParserCacheBudgetsTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "3bbced890a94cacedd2ea06ba97ca8378bd547e37a800170616eff028407b619",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.ParserCacheBudgetsTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.PathGlobTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "834f62b07ff6f26772f3fd0ff5e91a64fc25a8c0dd73a6b1981e079692045a85",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.PathGlobTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.ResolutionTrackerTest",
+    "tests": 12,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "4ef18d767b2206b99c9889a5b8e3e83098c2b74a01f7d3ec2a0b03686cf89bec",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.ResolutionTrackerTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.StaticImportResolverTest",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "92ee594671c366e9c79a9967227e65aab9e7c464457c28274af7e3568d5ea6e8",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.StaticImportResolverTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.asmsolver.AsmAnnotationsAndNestedTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "1d40446d948d0e48d10d68325cc62e990925b976099f67911cedd74cc36131aa",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.asmsolver.AsmAnnotationsAndNestedTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.asmsolver.AsmClassDeclarationTest",
+    "tests": 15,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "54a3cc6b565360984b77dae5d75c34aeae45033c76cd2b4b306335c8b6e059f0",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.asmsolver.AsmClassDeclarationTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.asmsolver.AsmDescriptorParserTest",
+    "tests": 10,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "38d7c2c95159fb14374000ea7a7060a92b5994cf029e72078ae345d08270a977",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.asmsolver.AsmDescriptorParserTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.asmsolver.AsmMembersTest",
+    "tests": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "9dea0c8f67d0bd1846f2785513d81cbe6d49e418f05d9bb58e261670342625ca",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.asmsolver.AsmMembersTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.asmsolver.AsmSignatureParserTest",
+    "tests": 15,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "4ee10ed3a33599daca48374bb5aad352d13fcd368e94de9531169f6e553c6ce2",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.asmsolver.AsmSignatureParserTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.asmsolver.AsmTypeSolverTest",
+    "tests": 10,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "5be01cd8a23ad9fb5684d152dd5e9f445086f9c20099e34a313106a62a603c3c",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.asmsolver.AsmTypeSolverTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.asmsolver.PackedTypeMetadataCacheTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "87382baf491b5bb83b9dba0b52964454e1df8631e82bc227f0c32dc810646793",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.asmsolver.PackedTypeMetadataCacheTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaAnnotationFactsIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "bbea2061de1986b58f2e6fc15db6cdb1eca467fecab952f89fae6e1996bb845f",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaAnnotationFactsIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaBindingEvidenceIT",
+    "tests": 10,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "7f469375fee466f0a7589d81ba48eb02514962a703c0d32f4a560cb82faaee2b",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaBindingEvidenceIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaCallEvidenceIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "9cd564c3ad687e1ea763b304385837ee9a314d086dbb7edc4fced9fbc3b11c74",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaCallEvidenceIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaCallFactsIT",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "2c0f1dbd7949369a4eab55710cdaec623c69bc44ef7561e8980d05cdc694afcd",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaCallFactsIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaContractIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "ad340c32c24ce1e02f7dda22da98ff52153ea4ee26e90190b4dff5d6a4067910",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaContractIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaFrameworkModelsIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "af20388861d474d578750063cda01617f3453e2f119ed039cc025708daa61971",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaFrameworkModelsIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaModelAnalyzerIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "7ec7d920a7379f2339ed8f8f2a666688434f580d7fa7d3c862439b451d4c1bfa",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaModelAnalyzerIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaModelAnnotationsIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f8c782700474d0d8cf8aa75d3f936e1087f2acb853b62371df05426517279f93",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaModelAnnotationsIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaModelExtensionIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "7be41b801a5060651b8d017a72677f7a3d37c2b1a3ed047feb63cff5f7a7b517",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaModelExtensionIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaModeledOverridesIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "015645c3e72f96b565b7f92ce2b022654b075dabfccf16cad2b77fc7646381d5",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaModeledOverridesIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaReflectionFactsIT",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "8427a94421a94573f4de3b9f4cfdde3a3997b0be30740e87ec181501a8220901",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaReflectionFactsIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaRelationFactsIT",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "1eb557892da1833c712414c5fd68c661f364c70391ced851e0bc5f2e1e10eb0d",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaRelationFactsIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaSignatureArchiveIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f6a17e576b61283586089a3074d4910849d53ec5ee7e782b57141122141325fe",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaSignatureArchiveIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavaSourceModelIT",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "8d882c4edc009eabfc2dc3fb111619238fd13a8b0998bb71dabd64cc1a741dc9",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavaSourceModelIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacBackendIT",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "827e836ace85f066054b8d6377f62c87fd7aa3430fa8a671d1a413e55496d193",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacBackendIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacCatalogueCodecIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "d7583b0111de3520605a506cdc8c3ef539238e13eb1d59b33b764e66824c9295",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacCatalogueCodecIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacCompiledDeclarationsTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "9614ac5c94e73de83b12f5dffa048c5577696e9a344eab9e104548fc8009c39c",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacCompiledDeclarationsTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacContextLifetimeIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "37ddd3f60157ab35f24d477a4b8deeb06948b4aa11d8f6819d111e99e7f7426a",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacContextLifetimeIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacContextsTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f187402c0a9f3324cb18073c2be487917e39e1575f9fe3dfa1c5acef42691f3d",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacContextsTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacDeclarationInventoryIT",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "40924b20b67f578c10e839f0b337aed51ab7b32f48be71407d234fb867db42a1",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacDeclarationInventoryIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacDeclarationViewsIT",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "def545ae62ce125ba25bfd8bf65c662311dca40a9f445c4dabec4667a234ec9a",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacDeclarationViewsIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacDeclarationsTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "2d28e6246c5dc55a3dc265b8a9ee1bee73fe4c1c7174e6d01d19d1efcdaf945e",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacDeclarationsTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacLombokIT",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "a9d907a5cf3346802d313255e81be97db185538d7b91dcc0c01066cd1ae22159",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacLombokIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacLombokModulesIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "0744196a2c9fd7928c9ab23a41d58cf77a499f8e07cac38b5317f41e5151cc8d",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacLombokModulesIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacParallelAnalysisIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "22b295d1c655635ebf145fcae2a38a0ea4131297f4e66844faa25c3528e1e447",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacParallelAnalysisIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacParallelWorkerIT",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "eb6fd1eeeeeecab2f484ced577d9f402794d79d7d001bd84d5195e526712ae03",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacParallelWorkerIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacRecursiveSymbolResolutionIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "0fdf0722ec6e79c1795d6312b096226a90bbb6989a6ca27bba23b1d29f259894",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacRecursiveSymbolResolutionIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacSemanticModelIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "de80fe9e64e3d8565fec9f9eaee6d14e853cd55e3027c8ae61e884925b93467f",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacSemanticModelIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacSignatureCacheIT",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "e04881c5807e1d837d08323b327d570499a4974bc2c7ff3449b2ee0665bc67af",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacSignatureCacheIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacSignaturePlanIT",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "a2129840e9de5038aa5208885f5ff9e0cd8c7f5b9cef18c0da6851192e3ca402",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacSignaturePlanIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.JavacSyntaxIT",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "dde982dd8574a5233e593a511943d362e3e637576bd4596210282454f7cc49f3",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.JavacSyntaxIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.LombokJavaModelIT",
+    "tests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "5c74abe76fb5825198c40c3274c43115dc6e8ec5d362b2f87b8f35c50af7439f",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.LombokJavaModelIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.LombokTypeAnnotationIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "da515d27af18cd6faed702883842307bd00a65deb7b3aae69fd4b21c10dee76b",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.LombokTypeAnnotationIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.javac.LombokUtilityClassIT",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f7c3c14c4621c5b5be58681f21d07f48bd915b3e47ebe059e6d1059409015bde",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.javac.LombokUtilityClassIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.nativeimage.TargetJdkDeclarationTest",
+    "tests": 12,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "d74bc726c02d02649607f174adbca22114c7fb872a56f92228a03338a44810a8",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.nativeimage.TargetJdkDeclarationTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.nativeimage.TargetJdkResolutionIT",
+    "tests": 8,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "9c425c8d2802eef254818a9e32c3b3ff23e4e132fcb5efe67711466deb4cd318",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.nativeimage.TargetJdkResolutionIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.nativeimage.TargetJdkStreamResolutionIT",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "e1be673b251840a72a1c399b60415b3cefc943bd2e7df3ece9ce81325d7ef7a4",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.nativeimage.TargetJdkStreamResolutionIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.core.process.ProcessRunnerTest",
+    "tests": 20,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "a1261cd9c3e1f2095099a89e5b66bb38c77d8043645ad6181f578d39f92faf02",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.core.process.ProcessRunnerTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.AnnotationExtractorTest",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "45eb6b446183896aec59b9e2909b29b441f7289dab7277516cd791d762b95ef1",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.AnnotationExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.AnnotationMetaCacheTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "93386acdab1ec0e624fd2469066c2a92b2ac1fdb93f43fb2a8d8041d900c1ff0",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.AnnotationMetaCacheTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.AstEnclosingTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "6f300af40a22280c44afc4c4db9ca53b2552157d1d4e7f5cb4a43f7b569626b7",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.AstEnclosingTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.AstTypeNamesTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "bb6316a681e4da2f401dd3041b1a82d70056cbe4d357d9a259ceb6f935bfc503",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.AstTypeNamesTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.CallGraphExtractorTest",
+    "tests": 15,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "1d6d03e7150a91510e0bf451a6c176ff01fa405a09a28257bf014cfb32ad3e95",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.CallGraphExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.CallOverloadResolverTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "3fedac904b31082dd2cd9bfa175d053d8304d79672eb8f1fbe369abd260d4766",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.CallOverloadResolverTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.CallableSignatureCacheTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "85be68fdb2b2c05f469b061595fd3baa7d911b9b16e5722fcc2acd5351a4d53e",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.CallableSignatureCacheTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.ControlContextTest",
+    "tests": 10,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "10f1539e4641486561bae084ce64867c6c8c2ec81e9bc57b6b6cfd3436e905cb",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.ControlContextTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.DeclarationMetadataContractIT",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "da0bf9fe55eac3b5f3805bf05bfcb233da4963c4eb9d49ab94fb5ddd43f95796",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.DeclarationMetadataContractIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.ExtractorPipelineTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "fe238a2940d95006051ccf0134c91a9e1521e4b271068bab10bcbe6f3868c7be",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.ExtractorPipelineTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.FieldAccessExtractorTest",
+    "tests": 16,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "bcb9b321b389ef5ddf3c6ecc126be78ebb3985ed6339f07294515d29ed13223f",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.FieldAccessExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.FieldExtractorTest",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "fefdc37d4568afe052aea3f651186ef05e2783d5bb3b4ff00572c716dbe3a141",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.FieldExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.HierarchyExtractorTest",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "6c69e7ced8aed72b6e5f0bfa4532b45e6b5dfa27a6004f9257e8c1c5baf00702",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.HierarchyExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.JavaRecoveryBudgetIT",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "4779131256b15e4ea8ed8038ea3722104f8d8765b66cea13b974f7d78a5612f9",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.JavaRecoveryBudgetIT.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.JavaResolutionQualityGateTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "457a564defc851f3a015b03217b4d34d3fd73347026a5872e2f47258a3cbbb13",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.JavaResolutionQualityGateTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.MethodExtractorTest",
+    "tests": 18,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "84f1d34e01643b51350c0b111a9b23e71db57388e3af9ac4c6faf3a6d4728300",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.MethodExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.ReferenceExtractorTest",
+    "tests": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "001b671d6b3f5b125c3dbc022a6faf2010df2ef1e308cf2e1a7b3cc7dfa0cfb7",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.ReferenceExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.ReflectionExtractorTest",
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "8407a29416727c57cd7cd023e1d04d3e5e2d93812c96ade959329cc451b7f034",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.ReflectionExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.extract.TypeExtractorTest",
+    "tests": 6,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "716a433753349139dcc419d4333a1004d3efe53e5ef3acef8c5c9adc3fd759dd",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.extract.TypeExtractorTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.ExtensionExecutionTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "4daa6c8977279111883adc6f2c7906bca60ccf10a8f70c5b2e6aac450a10acd9",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.ExtensionExecutionTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.ExtensionLifecycleTest",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "99a33cb928cc80f9225cbaa02850cff76efd313b0106ebc5cd28993e0c30a826",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.ExtensionLifecycleTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.ExtensionNodeMetadataTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "fe742e8162ee348cbe893a55a94451075a5da661a441f72c620f444926079015",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.ExtensionNodeMetadataTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.ProjectFactViewTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "42511fa0c6044dc20e406db4cdb0c13fb526f5b621ccdcbd0db3bff197a72628",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.ProjectFactViewTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.lombok.LombokAstModelExtensionTest",
+    "tests": 9,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "2aae1862a52c1d3af19a0e3069dd2fecb5a543332ab73e0214eebe7ced31f8a9",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.lombok.LombokAstModelExtensionTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.lombok.LombokBuilderModelTest",
+    "tests": 5,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "58ed1500d822ad20777e3d81bf3537bc86277323ba8d32812bca67ace1ae58bc",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.lombok.LombokBuilderModelTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.lombok.LombokCapabilitySummaryTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "adfc68f2484ef3df82c1c42ad7c895e20f53b9be2e5810681e6dda0309295ffb",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.lombok.LombokCapabilitySummaryTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.lombok.LombokConfigurationScopeTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "8afc84d919b8eef46a2c21aabd8f005f466a472d6f624baf64879dcccd98f0db",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.lombok.LombokConfigurationScopeTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.framework.lombok.LombokSuperBuilderModelTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "ad2db0a94f5c27dee3639d5e248247ee3ca868a651514ee2ad97cf03951be5f5",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.framework.lombok.LombokSuperBuilderModelTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.json.JsonTest",
+    "tests": 16,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "96a6ad122e72e8d1fedb4555a3f6bf13d3ab42fa28e99859bc5d012e010412d4",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.json.JsonTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.model.EdgeTargetTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f1af26d2f88c8fa2d994f30de41d038e7ec8889d5623b6fc7520ce6f9e692001",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.model.EdgeTargetTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.model.ExtractionResultTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "8603acdeb14419ee6a3084f6c3ee8d5a7b55fd47518fda03275987dc2e485cb1",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.model.ExtractionResultTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "com.anatomist.quality.ResolutionQualityTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "80c91e8524f1557719f889d2d153fca53ce4433c8ece5010f6758b8e62c22dde",
+    "archive": "java-fixtures/java-bridge-TEST-com.anatomist.quality.ResolutionQualityTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.adapter.AnalysisRequestTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "a43dc543ff2ed275fec3b90a5903e3d71cd05540e840049268dd856528e1bf16",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.adapter.AnalysisRequestTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.adapter.AnalysisSessionTest",
+    "tests": 10,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f988279f3e06bf030adda75030778e4b96a8c69ff71988606ca2d3b77abe068f",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.adapter.AnalysisSessionTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.adapter.CapturedProjectTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "093525a275171fc57ac23851acc483288ee39c11e615fec50042e232cf40aab8",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.adapter.CapturedProjectTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.adapter.GraphArchiveTest",
+    "tests": 3,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "5738bf0734e1ca49667ec0120625486d81a77b8e869d59ed52044f3ea319f27d",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.adapter.GraphArchiveTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.adapter.GraphCatalogueTest",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "855569c80a66b416b2f94efac302c7d478b4ebdbc52e6e0fefeeca2ef319b733",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.adapter.GraphCatalogueTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.adapter.ProcessFailureEvidenceTest",
+    "tests": 1,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "8b97f1a3526510f2ff73f2b19628411add90ee1fc64adffbf26e0eaceaf92b5a",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.adapter.ProcessFailureEvidenceTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.common.CanonicalJsonTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "f42d1a0c1011e2ea72aa5ede9b1223ce0fa4e0d3db7f14c35ff58572847cda59",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.common.CanonicalJsonTest.xml.gz"
+  },
+  {
+    "module": "java-bridge",
+    "suite": "dev.codeana.common.PerformanceTraceTest",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "source_sha256": "7b1945a94aa29f1849ab8cb6c5dfaf41338727db6e5cc8da896741c4c7cd6b8e",
+    "archive": "java-fixtures/java-bridge-TEST-dev.codeana.common.PerformanceTraceTest.xml.gz"
+  }
+]

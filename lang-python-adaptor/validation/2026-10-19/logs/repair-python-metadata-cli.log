@@ -1,0 +1,14 @@
+E
+======================================================================
+ERROR: test_optional_pyproject_controls_and_legacy_inventory (__main__.PythonLanguage.test_optional_pyproject_controls_and_legacy_inventory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 152, in test_optional_pyproject_controls_and_legacy_inventory
+    self.assertEqual(doctor['project_metadata']['selected_extras'], ['dev'])
+                     ~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^
+TypeError: 'NoneType' object is not subscriptable
+
+----------------------------------------------------------------------
+Ran 1 test in 6.457s
+
+FAILED (errors=1)

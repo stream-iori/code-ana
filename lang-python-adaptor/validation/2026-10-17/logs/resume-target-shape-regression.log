@@ -1,0 +1,9 @@
+   Compiling codeana-python-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.42s
+     Running tests/graph.rs (lang-python-adaptor/target/debug/deps/graph-e702192af9525010)
+
+running 1 test
+test inferred_graph_survives_storage_and_unknowns_keep_python_identity ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.03s
+

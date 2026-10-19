@@ -1,0 +1,7 @@
+    Checking codeana-model v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/model)
+    Checking codeana-contracts v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/contracts)
+    Checking codeana-query v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/query)
+    Checking codeana-python-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor)
+    Checking codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+    Checking codeana-python-worker v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor/worker)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 8.65s

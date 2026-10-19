@@ -1,0 +1,14 @@
+F
+======================================================================
+FAIL: test_java_python_and_three_language_publication (__main__.PythonJava.test_java_python_and_three_language_publication)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 216, in test_java_python_and_three_language_publication
+    self.assertTrue({'java', 'python'} <= {r[0] for r in db.execute('SELECT DISTINCT language FROM nodes')})
+    ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 1 test in 6.158s
+
+FAILED (failures=1)

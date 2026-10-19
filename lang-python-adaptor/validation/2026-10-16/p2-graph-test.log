@@ -1,0 +1,61 @@
+    Updating crates.io index
+     Locking 9 packages to latest compatible versions
+      Adding codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+      Adding fallible-iterator v0.3.0
+      Adding fallible-streaming-iterator v0.1.9
+      Adding hashlink v0.12.2
+      Adding libsqlite3-sys v0.38.2
+      Adding rsqlite-vfs v0.1.1
+      Adding rusqlite v0.40.2
+      Adding sqlite-wasm-rs v0.5.5
+      Adding vcpkg v0.2.15
+   Compiling vcpkg v0.2.15
+   Compiling hashlink v0.12.2
+   Compiling fallible-iterator v0.3.0
+   Compiling fallible-streaming-iterator v0.1.9
+   Compiling libsqlite3-sys v0.38.2
+   Compiling rusqlite v0.40.2
+   Compiling codeana-storage v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/crates/storage)
+   Compiling codeana-python-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 11.29s
+     Running tests/graph.rs (lang-python-adaptor/target/debug/deps/graph-7f742da129909a3a)
+
+running 1 test
+test inferred_graph_survives_storage_and_unknowns_keep_python_identity ... FAILED
+
+failures:
+
+---- inferred_graph_survives_storage_and_unknowns_keep_python_identity stdout ----
+Error: CHECK constraint failed: (declaration_kind IS NULL
+         AND type_kind IS NULL AND visibility IS NULL
+         AND modifiers IS NULL AND declared_modifiers IS NULL AND implicit_modifiers IS NULL
+         AND declaring_type IS NULL AND declaration_namespace IS NULL AND declaration_source_location IS NULL
+         AND declaration_begin_line IS NULL AND declaration_begin_column IS NULL
+         AND declaration_end_line IS NULL AND declaration_end_column IS NULL
+         AND nesting_depth IS NULL AND direct_member IS NULL
+         AND synthetic IS NULL AND binding_resolved IS NULL)
+        OR
+        ((declaration_kind IN ('type','method','constructor','field','enum_constant','record_component','initializer') OR language='rust' AND declaration_kind IN ('function','struct','enum','trait','union','type_alias','constant','static','module','variant','macro','impl'))
+         AND (type_kind IS NULL OR type_kind IN ('class','interface','enum','record','annotation'))
+         AND (visibility IN ('public','protected','private','package') OR language='rust' AND visibility IN ('crate','restricted'))
+         AND modifiers IS NOT NULL AND declared_modifiers IS NOT NULL AND implicit_modifiers IS NOT NULL
+         AND nesting_depth IS NOT NULL
+         AND direct_member IN (0,1) AND synthetic IN (0,1) AND binding_resolved IN (0,1)
+         AND ((declaration_begin_line IS NULL AND declaration_begin_column IS NULL
+               AND declaration_end_line IS NULL AND declaration_end_column IS NULL)
+              OR (declaration_begin_line > 0 AND declaration_begin_column > 0
+                  AND declaration_end_line > 0 AND declaration_end_column > 0
+                  AND (declaration_end_line > declaration_begin_line
+                       OR (declaration_end_line = declaration_begin_line
+                           AND declaration_end_column >= declaration_begin_column)))))
+
+Caused by:
+    Error code 275: constraint failed
+
+
+failures:
+    inferred_graph_survives_storage_and_unknowns_keep_python_identity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.65s
+
+error: test failed, to rerun pass `--test graph`

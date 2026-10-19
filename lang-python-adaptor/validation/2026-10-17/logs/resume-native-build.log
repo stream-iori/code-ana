@@ -1,0 +1,92 @@
+Building development Native bundle; complete migration acceptance is not certified.
+
+[1;32mUsing java version 25.3.4+1.r25-graal in this shell.[0m
+
+[1;32mUsing java version 25.3.4+1.r25-graal in this shell.[0m
+warning: [options] source value 8 is obsolete and will be removed in a future release
+warning: [options] target value 8 is obsolete and will be removed in a future release
+warning: [options] To suppress warnings about obsolete options, use -Xlint:-options.
+Note: /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-java-adaptor/java-bridge/src/maven-worker/java/dev/codeana/maven/MavenInputsWorker.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+3 warnings
+Warning: The option '-H:TempDirectory=/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-java-adaptor/target/native/.build-bN9VlX' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: The option '-H:IncludeResources=META-INF/anatomist/javac-worker.jar' is experimental and must be enabled via '-H:+UnlockExperimentalVMOptions' in the future.
+Warning: Please re-evaluate whether any experimental option is required, and either remove or unlock it. The build output lists all active experimental options, including where they come from and possible alternatives. If you think an experimental option should be considered as stable, please file an issue.
+========================================================================================================================
+GraalVM Native Image: Generating 'libcodeana_java.dylib' (shared library)...
+========================================================================================================================
+For detailed information and explanations on the build output, visit:
+https://github.com/oracle/graal/blob/master/docs/reference-manual/native-image/BuildOutput.md
+------------------------------------------------------------------------------------------------------------------------
+[1/8] Initializing...                                                                                   (7.8s @ 0.21GiB)
+ Builder configuration:
+ - Java version: 25.0.4.1+1-LTS, vendor version: Oracle GraalVM 25.3.4.1+1.1
+ - Graal compiler: optimization level: 2, target machine: armv8.1-a, PGO: ML-inferred
+ - C compiler: cc (apple, arm64, 21.0.0)
+ - Assertions: disabled, system assertions: disabled
+ Image configuration:
+ - Garbage collector: G1 GC (max heap size: 256.00MiB)
+ - Assertions: disabled (class-specific config may apply), system assertions: disabled
+------------------------------------------------------------------------------------------------------------------------
+ 2 experimental option(s) unlocked:
+ - '-H:TempDirectory' (origin(s): command line)
+ - '-H:IncludeResources': Use a resource-config.json in your META-INF/native-image/<groupID>/<artifactID> directory instead. (origin(s): command line)
+------------------------------------------------------------------------------------------------------------------------
+Build resources:
+ - 20.88GiB of memory (58.0% of system memory, using all available memory)
+ - 11 thread(s) (100.0% of 11 available processor(s), determined at start)
+[2/8] Performing analysis...  [******]                                                                  (9.5s @ 0.88GiB)
+    7,028 types,  10,425 fields, and  35,195 methods found reachable
+      348 types,     123 fields, and     673 methods registered for reflection
+       59 types,      59 fields, and      52 methods registered for JNI access
+       58 resource accesses registered with 250.02KiB total size
+        9 native libraries: -framework Foundation, dl, g1gc-cr, m, pthread, stdc++, z
+[3/8] Building universe...                                                                              (1.4s @ 0.97GiB)
+[4/8] Parsing methods...      [***]                                                                     (5.6s @ 1.13GiB)
+[5/8] Inlining methods...     [***]                                                                     (0.5s @ 1.19GiB)
+[6/8] Compiling methods...    [*****]                                                                  (23.2s @ 2.42GiB)
+[7/8] Laying out methods...   [**]                                                                      (3.4s @ 2.49GiB)
+[8/8] Creating image...       [*]                                                                       (2.0s @ 2.72GiB)
+  18.73MiB (52.25%) for code area:    19,459 compilation units
+  15.94MiB (44.45%) for image heap:  198,970 objects and 7 resources
+   1.18MiB ( 3.30%) for other data
+  35.86MiB in total image size, 35.86MiB in total file size
+------------------------------------------------------------------------------------------------------------------------
+Top 10 origins of code area:                                Top 10 object types in image heap:
+   2.10MiB o.g.n.runtime/com.oracle.svm.core.code              4.42MiB byte[] for code metadata
+   1.16MiB java.base/java.util                                 2.29MiB byte[] for string data
+ 732.80KiB com.anatomist.extract                               2.12MiB heap alignment
+ 683.05KiB com.anatomist.core.javac                            1.35MiB java.base/java.lang.String
+ 627.30KiB java.base/java.lang                               904.81KiB byte[] for general heap data
+ 540.93KiB java.base/com.sun.crypto.provider                 821.27KiB java.base/java.lang.Class
+ 528.90KiB java.base/java.util.concurrent                    768.69KiB o.g.n.runtime/c.o.s.core.hub.DynamicHubCompanion
+ 508.43KiB java.base/sun.security.x509                       320.66KiB java.base/java.util.HashMap$Node
+ 440.61KiB java.base/java.util.stream                        257.00KiB java.base/int[][]
+ 432.89KiB org.objectweb.asm                                 252.98KiB java.base/int[]
+  11.09MiB for 243 more packages                               2.51MiB for 1740 more object types
+                            Use '--emit build-report' to create a report with more details.
+------------------------------------------------------------------------------------------------------------------------
+Security report:
+ - Binary includes Java deserialization.
+ - CycloneDX SBOM with 10 component(s) is embedded in binary (663B).
+ - Advanced obfuscation not enabled; enable with '-H:AdvancedObfuscation=""' (experimental support).
+------------------------------------------------------------------------------------------------------------------------
+Recommendations:
+ PGO:  Use Profile-Guided Optimizations ('--pgo') for improved throughput.
+ FUTR: Use '--future-defaults=all' to prepare for future releases.
+ CPU:  Enable more CPU features with '-march=native' for improved performance.
+ QBM:  Use the quick build mode ('-Ob') to speed up builds during development.
+------------------------------------------------------------------------------------------------------------------------
+                       3.7s (6.8% of total time) in 1032 GCs | Peak RSS: 3.85GiB | CPU load: 7.25
+------------------------------------------------------------------------------------------------------------------------
+Build artifacts:
+ /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-java-adaptor/target/native/.build-bN9VlX/graal_isolate.h (c_header, 6.42KiB)
+ /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-java-adaptor/target/native/.build-bN9VlX/graal_isolate_dynamic.h (c_header, 6.53KiB)
+ /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-java-adaptor/target/native/.build-bN9VlX/libcodeana_java.dylib (shared_library, 35.86MiB)
+ /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-java-adaptor/target/native/.build-bN9VlX/libcodeana_java.h (c_header, 1.07KiB)
+ /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-java-adaptor/target/native/.build-bN9VlX/libcodeana_java_dynamic.h (c_header, 1.28KiB)
+========================================================================================================================
+Finished generating 'libcodeana_java' in 54.2s.
+
+The build process encountered 3 warnings.
+

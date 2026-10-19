@@ -1,0 +1,54 @@
+[
+  {
+    "id": "prepare_workspace",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/test_diorama_jury_adapter.py",
+    "line": 79,
+    "character": 33,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/diorama_jury_adapter.py",
+        "line": 373
+      }
+    ],
+    "source_line": "workspace = create_adapter().prepare_workspace(_Context({"
+  },
+  {
+    "id": "postcheck",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/test_diorama_jury_adapter.py",
+    "line": 104,
+    "character": 30,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/diorama_jury_adapter.py",
+        "line": 472
+      }
+    ],
+    "source_line": "result = create_adapter().postcheck(None, str(tmp_path), str(tmp_path / \"app\"), None, None, 0)"
+  },
+  {
+    "id": "reads",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/test_e2e_knowledge_loop_transport.py",
+    "line": 59,
+    "character": 25,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/knowledge_loop_transport.py",
+        "line": 14
+      }
+    ],
+    "source_line": "assert len(proof.reads if route=='read' else proof.searches)==2"
+  },
+  {
+    "id": "searches",
+    "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/tests/test_e2e_knowledge_loop_transport.py",
+    "line": 59,
+    "character": 59,
+    "expected": [
+      {
+        "file": "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/python-adaptor-eval-20261016/source/scripts/e2e/knowledge_loop_transport.py",
+        "line": 13
+      }
+    ],
+    "source_line": "assert len(proof.reads if route=='read' else proof.searches)==2"
+  }
+]

@@ -1,0 +1,706 @@
+Analysis of sampling codeana-python-worker (pid 67351) every 1 millisecond
+Process:         codeana-python-worker [67351]
+Path:            /Users/USER/*/codeana-python-worker
+Load Address:    0x100440000
+Identifier:      codeana-python-worker
+Version:         0
+Code Type:       ARM64
+Platform:        macOS
+Parent Process:  codeana-daemon [67263]
+Target Type:     live task
+
+Date/Time:       2026-10-17 08:17:10.744 +0800
+Launch Time:     2026-10-17 08:15:50.991 +0800
+OS Version:      macOS 27.0.1 (26A434)
+Report Version:  7
+Analysis Tool:   /usr/bin/sample
+
+Physical footprint:         568.8M
+Physical footprint (peak):  1.7G
+Idle exit:                  untracked
+----
+
+Call graph:
+    469 Thread_25096980   DispatchQueue_1: com.apple.main-thread  (serial)
+    + 469 start  (in dyld) + 6688  [0x181c77e80]
+    +   469 main  (in codeana-python-worker) + 36  [0x1004aa6fc]
+    +     469 std::rt::lang_start::h7335f3b689accec9  (in codeana-python-worker) + 84  [0x100455eec]  rt.rs:205
+    +       469 _RNvNtCsaLOjE9VYtxK_3std2rt19lang_start_internal  (in codeana-python-worker) + 952  [0x101d5da60]
+    +         469 std::rt::lang_start::_$u7b$$u7b$closure$u7d$$u7d$::h9c2c65d6118cfa4b  (in codeana-python-worker) + 28  [0x100455f14]  rt.rs:206
+    +           469 std::sys::backtrace::__rust_begin_short_backtrace::h14dcc5d81043596a  (in codeana-python-worker) + 24  [0x10048452c]  backtrace.rs:166
+    +             469 core::ops::function::FnOnce::call_once::ha8374f7380389553  (in codeana-python-worker) + 20  [0x1004ab500]  function.rs:250
+    +               469 codeana_python_worker::main::h49047d6bdc41e26d  (in codeana-python-worker) + 352  [0x1004aa078]  main.rs:282
+    +                 469 tokio::runtime::runtime::Runtime::block_on::h7874a7d16fe0a0b2  (in codeana-python-worker) + 508  [0x10045675c]  runtime.rs:341
+    +                   469 tokio::runtime::runtime::Runtime::block_on_inner::hc765797f2ef32869  (in codeana-python-worker) + 132  [0x100456330]  runtime.rs:376
+    +                     469 tokio::runtime::scheduler::multi_thread::MultiThread::block_on::h0ea7420e7b0b9f79  (in codeana-python-worker) + 60  [0x100493de8]  mod.rs:91
+    +                       469 tokio::runtime::context::runtime::enter_runtime::h94f07a7b09ea9741  (in codeana-python-worker) + 168  [0x100475e68]  runtime.rs:65
+    +                         469 tokio::runtime::scheduler::multi_thread::MultiThread::block_on::_$u7b$$u7b$closure$u7d$$u7d$::h70336be79d2a4f83  (in codeana-python-worker) + 44  [0x100493efc]  mod.rs:92
+    +                           469 tokio::runtime::context::blocking::BlockingRegionGuard::block_on::hedcb47317058ed79  (in codeana-python-worker) + 84  [0x10048903c]  blocking.rs:66
+    +                             468 tokio::runtime::park::CachedParkThread::block_on::h69863dd4bd0eccce  (in codeana-python-worker) + 688  [0x100463a60]  park.rs:288
+    +                             ! 468 tokio::runtime::park::CachedParkThread::park::h40b74794b445d04c  (in codeana-python-worker) + 24  [0x101b5b2c8]
+    +                             !   468 tokio::runtime::park::CachedParkThread::with_current::h0f726c6fa50b0a56  (in codeana-python-worker) + 28  [0x101b5b1d4]
+    +                             !     468 std::thread::local::LocalKey$LT$T$GT$::try_with::he0f9f8df80a47a59  (in codeana-python-worker) + 160  [0x101ba9bf0]
+    +                             !       468 tokio::runtime::park::CachedParkThread::with_current::_$u7b$$u7b$closure$u7d$$u7d$::h0ce5230369dac0df  (in codeana-python-worker) + 24  [0x101b5b250]
+    +                             !         468 tokio::runtime::park::CachedParkThread::park::_$u7b$$u7b$closure$u7d$$u7d$::hcef08f880b0e57af  (in codeana-python-worker) + 28  [0x101b5b344]
+    +                             !           468 tokio::runtime::park::Inner::park::h262ac0fb6f435028  (in codeana-python-worker) + 296  [0x101b5bd14]
+    +                             !             468 tokio::loom::std::parking_lot::Condvar::wait::h3131515b5c6867e0  (in codeana-python-worker) + 36  [0x101bb06ac]
+    +                             !               468 parking_lot::condvar::Condvar::wait::ha923d76757a787a0  (in codeana-python-worker) + 68  [0x101bad7a0]
+    +                             !                 468 parking_lot::condvar::Condvar::wait_until_internal::h45182932bb638e9e  (in codeana-python-worker) + 160  [0x101bcca34]
+    +                             !                   468 parking_lot_core::parking_lot::park::hffe9ef71f20f7dc2  (in codeana-python-worker) + 296  [0x101bc72bc]
+    +                             !                     468 parking_lot_core::parking_lot::park::_$u7b$$u7b$closure$u7d$$u7d$::hf4767c5454fe3a70  (in codeana-python-worker) + 676  [0x101bc93a0]
+    +                             !                       468 _$LT$parking_lot_core..thread_parker..imp..ThreadParker$u20$as$u20$parking_lot_core..thread_parker..ThreadParkerT$GT$::park::h5ce76e96cd5fa8b7  (in codeana-python-worker) + 224  [0x101bceef8]
+    +                             !                         468 _pthread_cond_wait  (in libsystem_pthread.dylib) + 980  [0x18204e1d0]
+    +                             !                           468 __psynch_cvwait  (in libsystem_kernel.dylib) + 8  [0x18200c50c]
+    +                             1 tokio::runtime::park::CachedParkThread::block_on::h69863dd4bd0eccce  (in codeana-python-worker) + 548  [0x1004639d4]  park.rs:284
+    +                               1 tokio::runtime::park::CachedParkThread::block_on::_$u7b$$u7b$closure$u7d$$u7d$::hc9046d704bd5cbb1  (in codeana-python-worker) + 56  [0x100464240]  park.rs:284
+    +                                 1 _$LT$core..pin..Pin$LT$P$GT$$u20$as$u20$core..future..future..Future$GT$::poll::hfa050e5d3f0735c1  (in codeana-python-worker) + 56  [0x1004953e8]  future.rs:133
+    +                                   1 codeana_python_worker::run::_$u7b$$u7b$closure$u7d$$u7d$::hb31e8f5624c9ed26  (in codeana-python-worker) + 924  [0x1004a37a0]  main.rs:291
+    +                                     1 codeana_python_worker::session::_$u7b$$u7b$closure$u7d$$u7d$::ha7d935a4a80486d8  (in codeana-python-worker) + 756  [0x1004a54b0]  main.rs:226
+    +                                       1 _$LT$core..future..poll_fn..PollFn$LT$F$GT$$u20$as$u20$core..future..future..Future$GT$::poll::h8f26ba71e50abe7d  (in codeana-python-worker) + 40  [0x10049f460]  poll_fn.rs:151
+    +                                         1 codeana_python_worker::session::_$u7b$$u7b$closure$u7d$$u7d$::_$u7b$$u7b$closure$u7d$$u7d$::h7e78880273de0e0f  (in codeana-python-worker) + 804  [0x1004a932c]  select.rs:710
+    +                                           1 codeana_python_worker::analyze::_$u7b$$u7b$closure$u7d$$u7d$::hd2961c1578429524  (in codeana-python-worker) + 2380  [0x1004a4180]  main.rs:100
+    +                                             1 codeana_contracts::write_frame::_$u7b$$u7b$closure$u7d$$u7d$::h7df9936d984ad150  (in codeana-python-worker) + 156  [0x100494a2c]  lib.rs:57
+    +                                               1 _$LT$codeana_contracts..protobuf..worker..v1..Envelope$u20$as$u20$prost..message..Message$GT$::encoded_len::hdb463afd8d72c316  (in codeana-python-worker) + 112  [0x10048bb90]  codeana.worker.v1.rs:335
+    +                                                 1 core::option::Option$LT$T$GT$::map_or::h5212a39793b6c9a0  (in codeana-python-worker) + 64  [0x10045d254]  option.rs:1230
+    +                                                   1 core::ops::function::FnOnce::call_once::h623cbad3528f9e5f  (in codeana-python-worker) + 24  [0x1004ab384]  function.rs:250
+    +                                                     1 codeana_contracts::protobuf::worker::v1::envelope::Body::encoded_len::h63a0c396618198ed  (in codeana-python-worker) + 264  [0x100481054]  codeana.worker.v1.rs:348
+    +                                                       1 prost::encoding::message::encoded_len::h5da3de66d9e3dbf5  (in codeana-python-worker) + 40  [0x10049de3c]  encoding.rs:850
+    +                                                         1 _$LT$codeana_contracts..protobuf..worker..v1..Chunk$u20$as$u20$prost..message..Message$GT$::encoded_len::h3765cbdcdafa5479  (in codeana-python-worker) + 120  [0x10048b3d8]  codeana.worker.v1.rs:288
+    +                                                           1 prost::encoding::message::encoded_len_repeated::h2fa233538b243c1f  (in codeana-python-worker) + 84  [0x10049e724]  encoding.rs:864
+    +                                                             1 core::iter::traits::iterator::Iterator::sum::h7bb4beb1c49b8839  (in codeana-python-worker) + 32  [0x10045ea3c]  iterator.rs:3676
+    +                                                               1 _$LT$usize$u20$as$u20$core..iter..traits..accum..Sum$GT$::sum::hf4143fd3a50c4c43  (in codeana-python-worker) + 36  [0x100487320]  accum.rs:52
+    +                                                                 1 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h360189f7cb0cb4af  (in codeana-python-worker) + 36  [0x10045e1a8]  map.rs:128
+    +                                                                   1 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::hf07ccc8e3682f331  (in codeana-python-worker) + 36  [0x10045e464]  map.rs:128
+    +                                                                     1 _$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::ha114c1b3c9766a59  (in codeana-python-worker) + 328  [0x1004662f4]  macros.rs:279
+    +                                                                       1 core::iter::adapters::map::map_fold::_$u7b$$u7b$closure$u7d$$u7d$::h6cf32c67118b6950  (in codeana-python-worker) + 60  [0x10045f43c]  map.rs:88
+    +                                                                         1 core::ops::function::FnMut::call_mut::h4db136bc1b471e7b  (in codeana-python-worker) + 28  [0x1004ab05c]  function.rs:166
+    +                                                                           1 _$LT$codeana_contracts..protobuf..graph..v1..Row$u20$as$u20$prost..message..Message$GT$::encoded_len::hee23f290fa2d6c1d  (in codeana-python-worker) + 136  [0x1004951e4]  codeana.graph.v1.rs:26
+    +                                                                             1 prost::encoding::message::encoded_len_repeated::h3762bd2187178985  (in codeana-python-worker) + 84  [0x101b05930]
+    +                                                                               1 core::iter::traits::iterator::Iterator::sum::h33ecf43677f5396b  (in codeana-python-worker) + 32  [0x101af3a24]
+    +                                                                                 1 _$LT$usize$u20$as$u20$core..iter..traits..accum..Sum$GT$::sum::h83b84281d1ce6bb2  (in codeana-python-worker) + 36  [0x101b323a8]
+    +                                                                                   1 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h73937f7638815932  (in codeana-python-worker) + 36  [0x101af395c]
+    +                                                                                     1 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h26090c8b7818c632  (in codeana-python-worker) + 36  [0x101af38b8]
+    +                                                                                       1 _$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h76d9e27335416081  (in codeana-python-worker) + 320  [0x101af47b4]
+    +                                                                                         1 core::iter::adapters::map::map_fold::_$u7b$$u7b$closure$u7d$$u7d$::h63326338b7240cfc  (in codeana-python-worker) + 116  [0x101af3c74]
+    +                                                                                           1 core::iter::adapters::map::map_fold::_$u7b$$u7b$closure$u7d$$u7d$::ha5946050a3a1e8fe  (in codeana-python-worker) + 56  [0x101af3cd0]
+    +                                                                                             1 prost::encoding::message::encoded_len_repeated::_$u7b$$u7b$closure$u7d$$u7d$::ha539384b2ddea7dc  (in codeana-python-worker) + 64  [0x101b059b0]
+    469 Thread_25097088: tokio-rt-worker
+    + 469 thread_start  (in libsystem_pthread.dylib) + 8  [0x182048cec]
+    +   469 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x18204dd00]
+    +     469 _RNvNvMs0_NtNtNtCsaLOjE9VYtxK_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in codeana-python-worker) + 408  [0x101d658e4]
+    +       469 core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h3937e7a44bd43c0c  (in codeana-python-worker) + 24  [0x101b76e5c]
+    +         469 std::thread::lifecycle::spawn_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::he16f85af8c51736a  (in codeana-python-worker) + 260  [0x101bae344]
+    +           469 __rust_try  (in codeana-python-worker) + 32  [0x101bb2fcc]
+    +             469 std::panicking::catch_unwind::do_call::h84b0c4e3e10281c7  (in codeana-python-worker) + 52  [0x101b874c8]
+    +               469 _$LT$core..panic..unwind_safe..AssertUnwindSafe$LT$F$GT$$u20$as$u20$core..ops..function..FnOnce$LT$$LP$$RP$$GT$$GT$::call_once::hbbbcd897a55e3e3f  (in codeana-python-worker) + 44  [0x101b6bfb8]
+    +                 469 std::thread::lifecycle::spawn_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::_$u7b$$u7b$closure$u7d$$u7d$::h4695482d7b914caf  (in codeana-python-worker) + 116  [0x101bae4cc]
+    +                   469 std::sys::backtrace::__rust_begin_short_backtrace::h48a671655655c812  (in codeana-python-worker) + 16  [0x101b9cbc8]
+    +                     469 tokio::runtime::blocking::pool::Spawner::spawn_thread::_$u7b$$u7b$closure$u7d$$u7d$::h50bde13274282630  (in codeana-python-worker) + 144  [0x101b9b4b8]
+    +                       469 tokio::runtime::blocking::pool::Inner::run::h1d123f967a87ef27  (in codeana-python-worker) + 412  [0x101b9a5ac]
+    +                         469 tokio::runtime::blocking::pool::Task::run::h737ea0e6a9dff12c  (in codeana-python-worker) + 28  [0x101b9a404]
+    +                           469 tokio::runtime::task::UnownedTask$LT$S$GT$::run::h2e0a48d6ceeb7176  (in codeana-python-worker) + 64  [0x101b98d48]
+    +                             469 tokio::runtime::task::raw::RawTask::poll::he84f041c0b6cc3d4  (in codeana-python-worker) + 52  [0x101b5c724]
+    +                               469 tokio::runtime::task::raw::poll::h008bcc6e26ace198  (in codeana-python-worker) + 36  [0x101b5c2ac]
+    +                                 469 tokio::runtime::task::harness::Harness$LT$T$C$S$GT$::poll::h34bbc121914dc4f3  (in codeana-python-worker) + 28  [0x101b53ea8]
+    +                                   469 tokio::runtime::task::harness::Harness$LT$T$C$S$GT$::poll_inner::hd1d2de8e3e5523e0  (in codeana-python-worker) + 172  [0x101b537b0]
+    +                                     469 tokio::runtime::task::harness::poll_future::hbd8a85fda24d06c1  (in codeana-python-worker) + 96  [0x101b53044]
+    +                                       469 std::panic::catch_unwind::h1cd677662ba566aa  (in codeana-python-worker) + 116  [0x101b56b40]
+    +                                         469 __rust_try  (in codeana-python-worker) + 32  [0x101b572ac]
+    +                                           469 std::panicking::catch_unwind::do_call::h8f895484c2172e44  (in codeana-python-worker) + 64  [0x101b87514]
+    +                                             469 _$LT$core..panic..unwind_safe..AssertUnwindSafe$LT$F$GT$$u20$as$u20$core..ops..function..FnOnce$LT$$LP$$RP$$GT$$GT$::call_once::h294d94fffffb46f5  (in codeana-python-worker) + 44  [0x101b6beb4]
+    +                                               469 tokio::runtime::task::harness::poll_future::_$u7b$$u7b$closure$u7d$$u7d$::hec9d659a4ac4ea59  (in codeana-python-worker) + 64  [0x101b53260]
+    +                                                 469 tokio::runtime::task::core::Core$LT$T$C$S$GT$::poll::h4685d98d00fc5960  (in codeana-python-worker) + 72  [0x101b556a0]
+    +                                                   469 tokio::runtime::task::core::Core$LT$T$C$S$GT$::poll::_$u7b$$u7b$closure$u7d$$u7d$::hd6d39669a3e5bfa7  (in codeana-python-worker) + 192  [0x101b558e8]
+    +                                                     469 _$LT$tokio..runtime..blocking..task..BlockingTask$LT$T$GT$$u20$as$u20$core..future..future..Future$GT$::poll::h5a5bf0490966aacf  (in codeana-python-worker) + 136  [0x101b86c58]
+    +                                                       469 tokio::runtime::scheduler::multi_thread::worker::Launch::launch::_$u7b$$u7b$closure$u7d$$u7d$::he48de214391822ca  (in codeana-python-worker) + 24  [0x101b702b0]
+    +                                                         469 tokio::runtime::scheduler::multi_thread::worker::run::h0ada12618a8aab94  (in codeana-python-worker) + 600  [0x101b6f0fc]
+    +                                                           469 tokio::runtime::context::runtime::enter_runtime::hcbd46d5ddcea525b  (in codeana-python-worker) + 176  [0x101b936e4]
+    +                                                             469 tokio::runtime::scheduler::multi_thread::worker::run::_$u7b$$u7b$closure$u7d$$u7d$::hf66d09b47857af11  (in codeana-python-worker) + 248  [0x101b6f254]
+    +                                                               469 tokio::runtime::context::set_scheduler::hfcb41516ac9731a9  (in codeana-python-worker) + 68  [0x101babeb0]
+    +                                                                 469 std::thread::local::LocalKey$LT$T$GT$::with::h0190a3d292ec6acc  (in codeana-python-worker) + 24  [0x101ba86e0]
+    +                                                                   469 std::thread::local::LocalKey$LT$T$GT$::try_with::hfe0c9b792d3102d9  (in codeana-python-worker) + 196  [0x101ba9dc4]
+    +                                                                     469 tokio::runtime::context::set_scheduler::_$u7b$$u7b$closure$u7d$$u7d$::ha9af73e13114e992  (in codeana-python-worker) + 40  [0x101babee4]
+    +                                                                       469 tokio::runtime::context::scoped::Scoped$LT$T$GT$::set::h722d14b5d4307ad9  (in codeana-python-worker) + 148  [0x101b5cd94]
+    +                                                                         469 tokio::runtime::scheduler::multi_thread::worker::run::_$u7b$$u7b$closure$u7d$$u7d$::_$u7b$$u7b$closure$u7d$$u7d$::h5fbc6938be3c0d4f  (in codeana-python-worker) + 104  [0x101b6f330]
+    +                                                                           469 tokio::runtime::scheduler::multi_thread::worker::Context::run::h20d6154e055f57a9  (in codeana-python-worker) + 1664  [0x101b720ac]
+    +                                                                             469 tokio::runtime::scheduler::multi_thread::worker::Context::park::h572b26f5e7029e26  (in codeana-python-worker) + 908  [0x101b72570]
+    +                                                                               469 tokio::runtime::scheduler::multi_thread::worker::Context::park_internal::hee3020435adf6e71  (in codeana-python-worker) + 884  [0x101b715ac]
+    +                                                                                 469 tokio::runtime::scheduler::multi_thread::park::Parker::park::h4b2b6bd4ac1d5a29  (in codeana-python-worker) + 40  [0x101bb16d4]
+    +                                                                                   469 tokio::runtime::scheduler::multi_thread::park::Inner::park::h18f234d7fd9f9da3  (in codeana-python-worker) + 248  [0x101bb1288]
+    +                                                                                     469 tokio::runtime::scheduler::multi_thread::park::Inner::park_driver::h30848a625322c90d  (in codeana-python-worker) + 268  [0x101bb0850]
+    +                                                                                       469 tokio::runtime::driver::Driver::park::h4b6b4eaf78a372cd  (in codeana-python-worker) + 32  [0x101ba68a4]
+    +                                                                                         469 tokio::runtime::driver::TimeDriver::park::h10a9a38de04445ab  (in codeana-python-worker) + 92  [0x101ba5d74]
+    +                                                                                           469 tokio::runtime::time::Driver::park::h1804e023178a7cec  (in codeana-python-worker) + 40  [0x101b850e4]
+    +                                                                                             469 tokio::runtime::time::Driver::park_internal::h07a3272151cad4a2  (in codeana-python-worker) + 424  [0x101b84bac]
+    +                                                                                               469 tokio::runtime::driver::IoStack::park::h207f6eddea7057a7  (in codeana-python-worker) + 104  [0x101ba6b28]
+    +                                                                                                 469 tokio::runtime::process::Driver::park::h6ab7d56f58f4e582  (in codeana-python-worker) + 32  [0x101b6eaa4]
+    +                                                                                                   469 tokio::runtime::signal::Driver::park::h1c817d56167e7753  (in codeana-python-worker) + 36  [0x101b89518]
+    +                                                                                                     469 tokio::runtime::io::driver::Driver::park::h6c9ad8f5abadd956  (in codeana-python-worker) + 80  [0x101b62178]
+    +                                                                                                       469 tokio::runtime::io::driver::Driver::turn::hed9c32c03918a31b  (in codeana-python-worker) + 200  [0x101b6224c]
+    +                                                                                                         469 mio::poll::Poll::poll::h8d363cd89defd622  (in codeana-python-worker) + 80  [0x101bbe96c]
+    +                                                                                                           469 mio::sys::unix::selector::Selector::select::hc22ed2017ff8f2f2  (in codeana-python-worker) + 200  [0x101bc2248]
+    +                                                                                                             469 kevent  (in libsystem_kernel.dylib) + 8  [0x18200efcc]
+    469 Thread_25097091: tokio-rt-worker
+      469 thread_start  (in libsystem_pthread.dylib) + 8  [0x182048cec]
+        469 _pthread_start  (in libsystem_pthread.dylib) + 136  [0x18204dd00]
+          469 _RNvNvMs0_NtNtNtCsaLOjE9VYtxK_3std3sys6thread4unixNtB7_6Thread3new12thread_start  (in codeana-python-worker) + 408  [0x101d658e4]
+            469 core::ops::function::FnOnce::call_once$u7b$$u7b$vtable.shim$u7d$$u7d$::h3937e7a44bd43c0c  (in codeana-python-worker) + 24  [0x101b76e5c]
+              469 std::thread::lifecycle::spawn_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::he16f85af8c51736a  (in codeana-python-worker) + 260  [0x101bae344]
+                469 __rust_try  (in codeana-python-worker) + 32  [0x101bb2fcc]
+                  469 std::panicking::catch_unwind::do_call::h84b0c4e3e10281c7  (in codeana-python-worker) + 52  [0x101b874c8]
+                    469 _$LT$core..panic..unwind_safe..AssertUnwindSafe$LT$F$GT$$u20$as$u20$core..ops..function..FnOnce$LT$$LP$$RP$$GT$$GT$::call_once::hbbbcd897a55e3e3f  (in codeana-python-worker) + 44  [0x101b6bfb8]
+                      469 std::thread::lifecycle::spawn_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::_$u7b$$u7b$closure$u7d$$u7d$::h4695482d7b914caf  (in codeana-python-worker) + 116  [0x101bae4cc]
+                        469 std::sys::backtrace::__rust_begin_short_backtrace::h48a671655655c812  (in codeana-python-worker) + 16  [0x101b9cbc8]
+                          469 tokio::runtime::blocking::pool::Spawner::spawn_thread::_$u7b$$u7b$closure$u7d$$u7d$::h50bde13274282630  (in codeana-python-worker) + 144  [0x101b9b4b8]
+                            469 tokio::runtime::blocking::pool::Inner::run::h1d123f967a87ef27  (in codeana-python-worker) + 412  [0x101b9a5ac]
+                              469 tokio::runtime::blocking::pool::Task::run::h737ea0e6a9dff12c  (in codeana-python-worker) + 28  [0x101b9a404]
+                                469 tokio::runtime::task::UnownedTask$LT$S$GT$::run::h2e0a48d6ceeb7176  (in codeana-python-worker) + 64  [0x101b98d48]
+                                  469 tokio::runtime::task::raw::RawTask::poll::he84f041c0b6cc3d4  (in codeana-python-worker) + 52  [0x101b5c724]
+                                    469 tokio::runtime::task::raw::poll::h8f1cacfd1259201b  (in codeana-python-worker) + 36  [0x100486864]  raw.rs:337
+                                      469 tokio::runtime::task::harness::Harness$LT$T$C$S$GT$::poll::h3bc4598b641394f9  (in codeana-python-worker) + 28  [0x10048fb90]  harness.rs:155
+                                        469 tokio::runtime::task::harness::Harness$LT$T$C$S$GT$::poll_inner::hd656f9e8ec8998d6  (in codeana-python-worker) + 172  [0x10048f1f8]  harness.rs:210
+                                          469 tokio::runtime::task::harness::poll_future::hdf80698c7b68675f  (in codeana-python-worker) + 108  [0x10048e670]  harness.rs:523
+                                            469 std::panic::catch_unwind::heea8704925947db1  (in codeana-python-worker) + 120  [0x100470db0]  panic.rs:359
+                                              469 __rust_try  (in codeana-python-worker) + 32  [0x100471184]
+                                                469 std::panicking::catch_unwind::do_call::hef51bf3381d3ca19  (in codeana-python-worker) + 68  [0x1004816a4]  panicking.rs:581
+                                                  469 _$LT$core..panic..unwind_safe..AssertUnwindSafe$LT$F$GT$$u20$as$u20$core..ops..function..FnOnce$LT$$LP$$RP$$GT$$GT$::call_once::hf785723538f2c090  (in codeana-python-worker) + 52  [0x10049645c]  unwind_safe.rs:275
+                                                    469 tokio::runtime::task::harness::poll_future::_$u7b$$u7b$closure$u7d$$u7d$::h38062cc4b1c3b5b0  (in codeana-python-worker) + 72  [0x10048e964]  harness.rs:535
+                                                      469 tokio::runtime::task::core::Core$LT$T$C$S$GT$::poll::h3e2e46d407086b9d  (in codeana-python-worker) + 80  [0x1004451b4]  core.rs:369
+                                                        469 tokio::runtime::task::core::Core$LT$T$C$S$GT$::poll::_$u7b$$u7b$closure$u7d$$u7d$::h1b150d14e5fb7f5a  (in codeana-python-worker) + 200  [0x100445534]  core.rs:380
+                                                          469 _$LT$tokio..runtime..blocking..task..BlockingTask$LT$T$GT$$u20$as$u20$core..future..future..Future$GT$::poll::h210fb00a4f083e17  (in codeana-python-worker) + 192  [0x100442c08]  task.rs:42
+                                                            469 codeana_python_worker::analyze::_$u7b$$u7b$closure$u7d$$u7d$::_$u7b$$u7b$closure$u7d$$u7d$::hdba3eef7836ead32  (in codeana-python-worker) + 376  [0x1004a5094]  main.rs:82
+                                                              469 codeana_contracts::worker_rows::produce::hfb405eca8f803697  (in codeana-python-worker) + 324  [0x10049f88c]  worker_rows.rs:25
+                                                                469 codeana_python_worker::analyze::_$u7b$$u7b$closure$u7d$$u7d$::_$u7b$$u7b$closure$u7d$$u7d$::_$u7b$$u7b$closure$u7d$$u7d$::h0603900d58bde950  (in codeana-python-worker) + 104  [0x1004a513c]  main.rs:88
+                                                                  465 codeana_python_adaptor::records::emit::h1558f4ef1854e1c2  (in codeana-python-worker) + 11872  [0x100499340]  records.rs:271
+                                                                  ! 465 core::iter::traits::iterator::Iterator::min_by_key::h0d4658049e6724c8  (in codeana-python-worker) + 32  [0x1004919bc]  iterator.rs:3389
+                                                                  !   462 core::iter::traits::iterator::Iterator::reduce::h904c46f70562a870  (in codeana-python-worker) + 208  [0x10045eb9c]  iterator.rs:2709
+                                                                  !   : 462 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h8ce8a94c507f5210  (in codeana-python-worker) + 76  [0x10045e390]  map.rs:128
+                                                                  !   :   462 _$LT$core..iter..adapters..filter..Filter$LT$I$C$P$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::he18da1eed96b4998  (in codeana-python-worker) + 88  [0x100491620]  filter.rs:165
+                                                                  !   :     462 _$LT$core..iter..adapters..filter..Filter$LT$I$C$P$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::hce5e5e3d88d2ae34  (in codeana-python-worker) + 100  [0x1004915bc]  filter.rs:165
+                                                                  !   :       300 core::iter::traits::iterator::Iterator::fold::h0b9fda7e7da126af  (in codeana-python-worker) + 64  [0x100441264]  iterator.rs:2672
+                                                                  !   :       | 285 _$LT$alloc..collections..btree..map..Values$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h6d8b7e332ba1b817  (in codeana-python-worker) + 24  [0x1004ef5d4]
+                                                                  !   :       | + 246 _$LT$alloc..collections..btree..map..Iter$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h633cb8d204ea5b79  (in codeana-python-worker) + 152  [0x1004ef540]
+                                                                  !   :       | + ! 213 alloc::collections::btree::mem::replace::h27affb79f8d2ced8  (in codeana-python-worker) + 76  [0x1004cc618]
+                                                                  !   :       | + ! : 66 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::h9a944fccbe375083  (in codeana-python-worker) + 148  [0x1004c9b88]
+                                                                  !   :       | + ! : | 65 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..LeafOrInternal$GT$$C$alloc..collections..btree..node..marker..KV$GT$$GT$::next_leaf_edge::h3b3f00b86b386efe  (in codeana-python-worker) + 64,44,...  [0x1004eca80,0x1004eca6c,...]
+                                                                  !   :       | + ! : | 1 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..LeafOrInternal$GT$$C$alloc..collections..btree..node..marker..KV$GT$$GT$::next_leaf_edge::h3b3f00b86b386efe  (in codeana-python-worker) + 384  [0x1004ecbc0]
+                                                                  !   :       | + ! : |   1 _$LT$usize$u20$as$u20$core..slice..index..SliceIndex$LT$$u5b$T$u5d$$GT$$GT$::get_unchecked::precondition_check::h5ffe78e17049bbe8  (in codeana-python-worker) + 20  [0x1004e2760]
+                                                                  !   :       | + ! : 57 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::h9a944fccbe375083  (in codeana-python-worker) + 24  [0x1004c9b0c]
+                                                                  !   :       | + ! : | 56 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_kv::h158e0073e4acec82  (in codeana-python-worker) + 88,76,...  [0x1004ec69c,0x1004ec690,...]
+                                                                  !   :       | + ! : | 1 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_kv::h158e0073e4acec82  (in codeana-python-worker) + 152  [0x1004ec6dc]
+                                                                  !   :       | + ! : |   1 alloc::collections::btree::node::NodeRef$LT$BorrowType$C$K$C$V$C$Type$GT$::ascend::h667b4f4331e1274c  (in codeana-python-worker) + 332  [0x1004e9c14]
+                                                                  !   :       | + ! : 45 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::h9a944fccbe375083  (in codeana-python-worker) + 156  [0x1004c9b90]
+                                                                  !   :       | + ! : | 23 alloc::collections::btree::node::Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$NodeType$GT$$C$alloc..collections..btree..node..marker..KV$GT$::into_kv::hb5b96f8442cc9df3  (in codeana-python-worker) + 204,68,...  [0x1004e7b10,0x1004e7a88,...]
+                                                                  !   :       | + ! : | 11 alloc::collections::btree::node::Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$NodeType$GT$$C$alloc..collections..btree..node..marker..KV$GT$::into_kv::hb5b96f8442cc9df3  (in codeana-python-worker) + 92  [0x1004e7aa0]
+                                                                  !   :       | + ! : | + 11 _$LT$usize$u20$as$u20$core..slice..index..SliceIndex$LT$$u5b$T$u5d$$GT$$GT$::get_unchecked::precondition_check::h5ffe78e17049bbe8  (in codeana-python-worker) + 20,84,...  [0x1004e2760,0x1004e27a0,...]
+                                                                  !   :       | + ! : | 11 alloc::collections::btree::node::Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$NodeType$GT$$C$alloc..collections..btree..node..marker..KV$GT$::into_kv::hb5b96f8442cc9df3  (in codeana-python-worker) + 176  [0x1004e7af4]
+                                                                  !   :       | + ! : |   11 _$LT$usize$u20$as$u20$core..slice..index..SliceIndex$LT$$u5b$T$u5d$$GT$$GT$::get_unchecked::precondition_check::h5ffe78e17049bbe8  (in codeana-python-worker) + 20,12,...  [0x1004e2760,0x1004e2758,...]
+                                                                  !   :       | + ! : 23 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::h9a944fccbe375083  (in codeana-python-worker) + 184,24,...  [0x1004c9bac,0x1004c9b0c,...]
+                                                                  !   :       | + ! : 10 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_kv::h158e0073e4acec82  (in codeana-python-worker) + 352  [0x1004ec7a4]
+                                                                  !   :       | + ! : 8 alloc::collections::btree::node::Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$NodeType$GT$$C$alloc..collections..btree..node..marker..KV$GT$::into_kv::hb5b96f8442cc9df3  (in codeana-python-worker) + 208  [0x1004e7b14]
+                                                                  !   :       | + ! : 4 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..LeafOrInternal$GT$$C$alloc..collections..btree..node..marker..KV$GT$$GT$::next_leaf_edge::h3b3f00b86b386efe  (in codeana-python-worker) + 352  [0x1004ecba0]
+                                                                  !   :       | + ! 33 alloc::collections::btree::mem::replace::h27affb79f8d2ced8  (in codeana-python-worker) + 160,168,...  [0x1004cc66c,0x1004cc674,...]
+                                                                  !   :       | + 18 _$LT$alloc..collections..btree..map..Iter$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h633cb8d204ea5b79  (in codeana-python-worker) + 96  [0x1004ef508]
+                                                                  !   :       | + ! 18 alloc::collections::btree::navigate::LazyLeafRange$LT$BorrowType$C$K$C$V$GT$::init_front::ha0937641371bcf8e  (in codeana-python-worker) + 40,408,...  [0x1004c9dd4,0x1004c9f44,...]
+                                                                  !   :       | + 17 _$LT$alloc..collections..btree..map..Iter$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h633cb8d204ea5b79  (in codeana-python-worker) + 24,128,...  [0x1004ef4c0,0x1004ef528,...]
+                                                                  !   :       | + 4 alloc::collections::btree::navigate::LazyLeafRange$LT$BorrowType$C$K$C$V$GT$::init_front::ha0937641371bcf8e  (in codeana-python-worker) + 444  [0x1004c9f68]
+                                                                  !   :       | 15 _$LT$alloc..collections..btree..map..Values$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h6d8b7e332ba1b817  (in codeana-python-worker) + 32,40,...  [0x1004ef5dc,0x1004ef5e4,...]
+                                                                  !   :       147 core::iter::traits::iterator::Iterator::fold::h0b9fda7e7da126af  (in codeana-python-worker) + 180  [0x1004412d8]  iterator.rs:2673
+                                                                  !   :       | 125 core::iter::adapters::filter::filter_fold::_$u7b$$u7b$closure$u7d$$u7d$::h565e06593ddf41ba  (in codeana-python-worker) + 64  [0x100491d84]  filter.rs:79
+                                                                  !   :       | + 41 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 164  [0x10049ca78]  records.rs:265
+                                                                  !   :       | + ! 18 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 64,76,...  [0x10049553c,0x100495548,...]  traits.rs:30
+                                                                  !   :       | + ! 11 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 120  [0x100495574]  traits.rs:30
+                                                                  !   :       | + ! : 8 _platform_memcmp  (in libsystem_platform.dylib) + 164,240,...  [0x182055214,0x182055260,...]
+                                                                  !   :       | + ! : 3 DYLD-STUB$$memcmp  (in codeana-python-worker) + 4  [0x101f65b7c]
+                                                                  !   :       | + ! 8 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 32,20,...  [0x10049551c,0x100495510,...]  traits.rs:29
+                                                                  !   :       | + ! 4 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 152  [0x100495594]  traits.rs:31
+                                                                  !   :       | + 39 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 64  [0x10049ca14]  records.rs:264
+                                                                  !   :       | + ! 27 _$LT$alloc..string..String$u20$as$u20$core..cmp..PartialEq$LT$$RF$str$GT$$GT$::eq::heb6ef528c8d4892f  (in codeana-python-worker) + 48,112,...  [0x100447ba0,0x100447be0,...]  string.rs:2667
+                                                                  !   :       | + ! 6 _$LT$alloc..string..String$u20$as$u20$core..cmp..PartialEq$LT$$RF$str$GT$$GT$::eq::heb6ef528c8d4892f  (in codeana-python-worker) + 136  [0x100447bf8]  string.rs:2667
+                                                                  !   :       | + ! : 4 _platform_memcmp  (in libsystem_platform.dylib) + 0,180,...  [0x182055170,0x182055224,...]
+                                                                  !   :       | + ! : 2 DYLD-STUB$$memcmp  (in codeana-python-worker) + 0,4  [0x101f65b78,0x101f65b7c]
+                                                                  !   :       | + ! 3 _$LT$alloc..string..String$u20$as$u20$core..cmp..PartialEq$LT$$RF$str$GT$$GT$::eq::heb6ef528c8d4892f  (in codeana-python-worker) + 4,0  [0x100447b74,0x100447b70]  string.rs:2666
+                                                                  !   :       | + ! 3 _$LT$alloc..string..String$u20$as$u20$core..cmp..PartialEq$LT$$RF$str$GT$$GT$::eq::heb6ef528c8d4892f  (in codeana-python-worker) + 168,160  [0x100447c18,0x100447c10]  string.rs:2668
+                                                                  !   :       | + 16 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 4,40,...  [0x10049c9d8,0x10049c9fc,...]  records.rs:263
+                                                                  !   :       | + 13 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 116  [0x10049ca48]  records.rs:265
+                                                                  !   :       | + ! 6 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 64,72  [0x10049553c,0x100495544]  traits.rs:30
+                                                                  !   :       | + ! 4 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 152  [0x100495594]  traits.rs:31
+                                                                  !   :       | + ! 3 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 32,40  [0x10049551c,0x100495524]  traits.rs:29
+                                                                  !   :       | + 6 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 192,164,...  [0x10049ca94,0x10049ca78,...]  records.rs:265
+                                                                  !   :       | + 5 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 88  [0x10049ca2c]  records.rs:265
+                                                                  !   :       | + ! 4 alloc::string::String::as_str::haac9d9609aa2eb40  (in codeana-python-worker) + 20  [0x100447a28]  string.rs:1055
+                                                                  !   :       | + ! 1 alloc::string::String::as_str::haac9d9609aa2eb40  (in codeana-python-worker) + 0  [0x100447a14]  string.rs:1052
+                                                                  !   :       | + 3 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 332  [0x10049cb20]  records.rs:269
+                                                                  !   :       | + 1 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 244  [0x10049cac8]  records.rs:266
+                                                                  !   :       | + 1 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 280  [0x10049caec]  records.rs:267
+                                                                  !   :       | 16 core::iter::adapters::filter::filter_fold::_$u7b$$u7b$closure$u7d$$u7d$::h565e06593ddf41ba  (in codeana-python-worker) + 32,212,...  [0x100491d64,0x100491e18,...]  filter.rs:79
+                                                                  !   :       | 6 core::iter::adapters::filter::filter_fold::_$u7b$$u7b$closure$u7d$$u7d$::h565e06593ddf41ba  (in codeana-python-worker) + 100,136  [0x100491da8,0x100491dcc]  filter.rs:0
+                                                                  !   :       7 core::iter::traits::iterator::Iterator::fold::h0b9fda7e7da126af  (in codeana-python-worker) + 108,64  [0x100441290,0x100441264]  iterator.rs:2672
+                                                                  !   :       5 core::iter::traits::iterator::Iterator::fold::h0b9fda7e7da126af  (in codeana-python-worker) + 156,232  [0x1004412c0,0x10044130c]  iterator.rs:2673
+                                                                  !   :       3 core::iter::traits::iterator::Iterator::fold::h0b9fda7e7da126af  (in codeana-python-worker) + 56,212  [0x10044125c,0x1004412f8]  iterator.rs:0
+                                                                  !   3 core::iter::traits::iterator::Iterator::reduce::h904c46f70562a870  (in codeana-python-worker) + 36  [0x10045eaf0]  iterator.rs:2708
+                                                                  !     3 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h51211a09ceaaba68  (in codeana-python-worker) + 24  [0x10045e5e8]  map.rs:107
+                                                                  !       3 _$LT$core..iter..adapters..filter..Filter$LT$I$C$P$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::hc3c6cd545ec9ad03  (in codeana-python-worker) + 32  [0x100491780]  filter.rs:98
+                                                                  !         3 core::iter::traits::iterator::Iterator::find::hdd13d1c0c27eb176  (in codeana-python-worker) + 32  [0x100491b10]  iterator.rs:2973
+                                                                  !           3 _$LT$core..iter..adapters..filter..Filter$LT$I$C$P$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::try_fold::h8e7ebbb02c3499e7  (in codeana-python-worker) + 48  [0x100491860]  filter.rs:157
+                                                                  !             2 core::iter::traits::iterator::Iterator::try_fold::h0c9ac78bbbd1c372  (in codeana-python-worker) + 48  [0x1004413e8]  iterator.rs:2495
+                                                                  !             | 2 _$LT$alloc..collections..btree..map..Values$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h6d8b7e332ba1b817  (in codeana-python-worker) + 24  [0x1004ef5d4]
+                                                                  !             |   2 _$LT$alloc..collections..btree..map..Iter$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h633cb8d204ea5b79  (in codeana-python-worker) + 152  [0x1004ef540]
+                                                                  !             |     2 alloc::collections::btree::mem::replace::h27affb79f8d2ced8  (in codeana-python-worker) + 76  [0x1004cc618]
+                                                                  !             |       1 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::h9a944fccbe375083  (in codeana-python-worker) + 24  [0x1004c9b0c]
+                                                                  !             |       + 1 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_kv::h158e0073e4acec82  (in codeana-python-worker) + 68  [0x1004ec688]
+                                                                  !             |       1 alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::h9a944fccbe375083  (in codeana-python-worker) + 184  [0x1004c9bac]
+                                                                  !             1 core::iter::traits::iterator::Iterator::try_fold::h0c9ac78bbbd1c372  (in codeana-python-worker) + 132  [0x10044143c]  iterator.rs:2496
+                                                                  !               1 core::iter::adapters::filter::filter_try_fold::_$u7b$$u7b$closure$u7d$$u7d$::h9e2848ea33c03026  (in codeana-python-worker) + 56  [0x100491f58]  filter.rs:86
+                                                                  !                 1 codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker) + 116  [0x10049ca48]  records.rs:265
+                                                                  !                   1 core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker) + 40  [0x100495524]  traits.rs:29
+                                                                  3 codeana_python_adaptor::records::emit::h1558f4ef1854e1c2  (in codeana-python-worker) + 13768  [0x100499aa8]  records.rs:273
+                                                                  ! 3 core::ops::function::impls::_$LT$impl$u20$core..ops..function..FnMut$LT$A$GT$$u20$for$u20$$RF$mut$u20$F$GT$::call_mut::h1a8b5e0f2340a624  (in codeana-python-worker) + 68  [0x100491100]  function.rs:298
+                                                                  !   2 codeana_contracts::worker_rows::produce::_$u7b$$u7b$closure$u7d$$u7d$::hab364397d3a6e335  (in codeana-python-worker) + 1048  [0x1004a0120]  worker_rows.rs:44
+                                                                  !   : 2 codeana_contracts::graph_archive::update_digest::hdbbf23be65546261  (in codeana-python-worker) + 96  [0x101b31470]
+                                                                  !   :   2 _$LT$D$u20$as$u20$digest..digest..Digest$GT$::update::h811c20d7fb796901  (in codeana-python-worker) + 92  [0x101bec89c]
+                                                                  !   :     2 _$LT$digest..core_api..wrapper..CoreWrapper$LT$T$GT$$u20$as$u20$digest..Update$GT$::update::hb55819c9c1cd7600  (in codeana-python-worker) + 52  [0x101bec9d8]
+                                                                  !   :       2 block_buffer::BlockBuffer$LT$BlockSize$C$Kind$GT$::digest_blocks::h80b6f19d7fe8d4dd  (in codeana-python-worker) + 976  [0x101be916c]
+                                                                  !   :         2 _$LT$digest..core_api..wrapper..CoreWrapper$LT$T$GT$$u20$as$u20$digest..Update$GT$::update::_$u7b$$u7b$closure$u7d$$u7d$::hbd9f1fe37875fee1  (in codeana-python-worker) + 44  [0x101beca10]
+                                                                  !   :           2 _$LT$digest..core_api..ct_variable..CtVariableCoreWrapper$LT$T$C$OutSize$C$O$GT$$u20$as$u20$digest..core_api..UpdateCore$GT$::update_blocks::h75e2331b80c42dab  (in codeana-python-worker) + 36  [0x101be6fe8]
+                                                                  !   :             2 _$LT$sha2..core_api..Sha256VarCore$u20$as$u20$digest..core_api..UpdateCore$GT$::update_blocks::h32646321c47a505c  (in codeana-python-worker) + 88  [0x101c0b8f0]
+                                                                  !   :               2 sha2::sha256::compress256::h93ff3b3d4101e928  (in codeana-python-worker) + 112  [0x101c0fb38]
+                                                                  !   :                 2 sha2::sha256::soft::compress::h51e72714ae15d72a  (in codeana-python-worker) + 636  [0x101c11e7c]
+                                                                  !   :                   2 sha2::sha256::soft::sha256_digest_block_u32::hfe0431d9f6c7ed42  (in codeana-python-worker) + 2356  [0x101c10e34]
+                                                                  !   :                     1 sha2::sha256::soft::schedule::hd5937308fc70e72b  (in codeana-python-worker) + 60  [0x101c11ebc]
+                                                                  !   :                     | 1 sha2::sha256::soft::sha256msg1::hea96dfa749509959  (in codeana-python-worker) + 32  [0x101c0fb8c]
+                                                                  !   :                     1 sha2::sha256::soft::schedule::hd5937308fc70e72b  (in codeana-python-worker) + 4  [0x101c11e84]
+                                                                  !   1 codeana_contracts::worker_rows::produce::_$u7b$$u7b$closure$u7d$$u7d$::hab364397d3a6e335  (in codeana-python-worker) + 184  [0x10049fdc0]  worker_rows.rs:27
+                                                                  !     1 prost::message::Message::encode_to_vec::h3140f71276786465  (in codeana-python-worker) + 32  [0x101b09fec]
+                                                                  !       1 _$LT$codeana_contracts..protobuf..graph..v1..Row$u20$as$u20$prost..message..Message$GT$::encoded_len::h640836ec36977cf9  (in codeana-python-worker) + 136  [0x101b28258]
+                                                                  !         1 prost::encoding::message::encoded_len_repeated::h3762bd2187178985  (in codeana-python-worker) + 84  [0x101b05930]
+                                                                  !           1 core::iter::traits::iterator::Iterator::sum::h33ecf43677f5396b  (in codeana-python-worker) + 32  [0x101af3a24]
+                                                                  !             1 _$LT$usize$u20$as$u20$core..iter..traits..accum..Sum$GT$::sum::h83b84281d1ce6bb2  (in codeana-python-worker) + 36  [0x101b323a8]
+                                                                  !               1 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h73937f7638815932  (in codeana-python-worker) + 36  [0x101af395c]
+                                                                  !                 1 _$LT$core..iter..adapters..map..Map$LT$I$C$F$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h26090c8b7818c632  (in codeana-python-worker) + 36  [0x101af38b8]
+                                                                  !                   1 _$LT$core..slice..iter..Iter$LT$T$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::fold::h76d9e27335416081  (in codeana-python-worker) + 320  [0x101af47b4]
+                                                                  !                     1 core::iter::adapters::map::map_fold::_$u7b$$u7b$closure$u7d$$u7d$::h63326338b7240cfc  (in codeana-python-worker) + 60  [0x101af3c3c]
+                                                                  !                       1 core::ops::function::FnMut::call_mut::h9e64b19849eada0d  (in codeana-python-worker) + 28  [0x101b0a91c]
+                                                                  !                         1 _$LT$codeana_contracts..protobuf..graph..v1..Cell$u20$as$u20$prost..message..Message$GT$::encoded_len::h3fa1e61845f7d1e4  (in codeana-python-worker) + 24  [0x101b28314]
+                                                                  !                           1 core::option::Option$LT$T$GT$::as_ref::h1d8d48f2be672678  (in codeana-python-worker) + 32  [0x101b116c0]
+                                                                  1 codeana_python_adaptor::records::emit::h1558f4ef1854e1c2  (in codeana-python-worker) + 12816  [0x1004996f0]  records.rs:289
+                                                                    1 _$LT$T$u20$as$u20$core..convert..Into$LT$U$GT$$GT$::into::ha4574bb1063a4990  (in codeana-python-worker) + 28  [0x1010a8860]
+                                                                      1 _$LT$alloc..string..String$u20$as$u20$core..convert..From$LT$$RF$str$GT$$GT$::from::hbc46c596c3c27097  (in codeana-python-worker) + 48  [0x1010a4518]
+                                                                        1 _$LT$T$u20$as$u20$alloc..slice..$LT$impl$u20$$u5b$T$u5d$$GT$..to_vec_in..ConvertVec$GT$::to_vec::hee52c2a37a91c692  (in codeana-python-worker) + 176  [0x1010a5048]
+                                                                          1 core::ptr::copy_nonoverlapping::precondition_check::h7e17959869bcb952  (in codeana-python-worker) + 124  [0x1010a4368]
+                                                                            1 core::ptr::const_ptr::_$LT$impl$u20$$BP$const$u20$T$GT$::is_aligned_to::h2ff7664e7c95959e  (in codeana-python-worker) + 44  [0x101d1fd8c]
+
+Total number in stack (recursive counted multiple, when >=5):
+
+Sort by top of stack, same collapsed (when >= 5):
+        kevent  (in libsystem_kernel.dylib)        469
+        __psynch_cvwait  (in libsystem_kernel.dylib)        468
+        alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..LeafOrInternal$GT$$C$alloc..collections..btree..node..marker..KV$GT$$GT$::next_leaf_edge::h3b3f00b86b386efe  (in codeana-python-worker)        69
+        alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$BorrowType$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_kv::h158e0073e4acec82  (in codeana-python-worker)        67
+        core::str::traits::_$LT$impl$u20$core..cmp..PartialEq$u20$for$u20$str$GT$::eq::h7561991a6b9c4dbd  (in codeana-python-worker)        44
+        _$LT$alloc..string..String$u20$as$u20$core..cmp..PartialEq$LT$$RF$str$GT$$GT$::eq::heb6ef528c8d4892f  (in codeana-python-worker)        33
+        alloc::collections::btree::mem::replace::h27affb79f8d2ced8  (in codeana-python-worker)        33
+        alloc::collections::btree::node::Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$NodeType$GT$$C$alloc..collections..btree..node..marker..KV$GT$::into_kv::hb5b96f8442cc9df3  (in codeana-python-worker)        31
+        codeana_python_adaptor::records::emit::_$u7b$$u7b$closure$u7d$$u7d$::h6cc35a8bef4ce0c4  (in codeana-python-worker)        27
+        alloc::collections::btree::navigate::_$LT$impl$u20$alloc..collections..btree..node..Handle$LT$alloc..collections..btree..node..NodeRef$LT$alloc..collections..btree..node..marker..Immut$C$K$C$V$C$alloc..collections..btree..node..marker..Leaf$GT$$C$alloc..collections..btree..node..marker..Edge$GT$$GT$::next_unchecked::_$u7b$$u7b$closure$u7d$$u7d$::h9a944fccbe375083  (in codeana-python-worker)        24
+        _$LT$usize$u20$as$u20$core..slice..index..SliceIndex$LT$$u5b$T$u5d$$GT$$GT$::get_unchecked::precondition_check::h5ffe78e17049bbe8  (in codeana-python-worker)        23
+        alloc::collections::btree::navigate::LazyLeafRange$LT$BorrowType$C$K$C$V$GT$::init_front::ha0937641371bcf8e  (in codeana-python-worker)        22
+        core::iter::adapters::filter::filter_fold::_$u7b$$u7b$closure$u7d$$u7d$::h565e06593ddf41ba  (in codeana-python-worker)        22
+        _$LT$alloc..collections..btree..map..Iter$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h633cb8d204ea5b79  (in codeana-python-worker)        17
+        _$LT$alloc..collections..btree..map..Values$LT$K$C$V$GT$$u20$as$u20$core..iter..traits..iterator..Iterator$GT$::next::h6d8b7e332ba1b817  (in codeana-python-worker)        15
+        core::iter::traits::iterator::Iterator::fold::h0b9fda7e7da126af  (in codeana-python-worker)        15
+        _platform_memcmp  (in libsystem_platform.dylib)        12
+        DYLD-STUB$$memcmp  (in codeana-python-worker)        5
+        alloc::string::String::as_str::haac9d9609aa2eb40  (in codeana-python-worker)        5
+
+Binary Images:
+       0x100440000 -        0x102bb8f9f +codeana-python-worker (0) <6BE886C6-C3DF-3C71-8833-EE8F07AB74F7> /Users/*/codeana-python-worker
+       0x181bc4000 -        0x181c135f7  libobjc.A.dylib (973.1) <C0680DF6-9900-3C29-A071-95A031686EF8> /usr/lib/libobjc.A.dylib
+       0x181c14000 -        0x181c1e23f  libsharedcache.dylib (0) <BBF95357-BEBF-3D89-8900-2BBB14A667C5> /usr/lib/libsharedcache.dylib
+       0x181c1f000 -        0x181c45d3b  libdyld.dylib (27062) <62863BCA-DD60-3D32-A9DB-89099BA6F3D7> /usr/lib/system/libdyld.dylib
+       0x181c46000 -        0x181d056e3  dyld (1.0.0 - 27062) <D341DDCB-7969-3A9C-8E03-0CF4751398A9> /usr/lib/dyld
+       0x181d06000 -        0x181d0901f  libsystem_blocks.dylib (98.1) <6F304731-D95D-3501-B4AD-F2934F7F2446> /usr/lib/system/libsystem_blocks.dylib
+       0x181d0a000 -        0x181d5f0df  libxpc.dylib (3298.1.1) <0791121F-B5FC-3F84-BF04-115E86D2D882> /usr/lib/system/libxpc.dylib
+       0x181d60000 -        0x181d7fc13  libsystem_trace.dylib (1966.1.1) <B48A8E3E-A12A-3342-8321-428B555E965E> /usr/lib/system/libsystem_trace.dylib
+       0x181d80000 -        0x181e34f27  libcorecrypto.dylib (2109.0.22) <807AA6C9-5D8A-3CA5-B4CE-FACE5296EF6A> /usr/lib/system/libcorecrypto.dylib
+       0x181e35000 -        0x181e8ac5f  libsystem_malloc.dylib (886.0.8) <2339CB57-FE5A-3154-A206-A76059C749EB> /usr/lib/system/libsystem_malloc.dylib
+       0x181e8b000 -        0x181ed119f  libdispatch.dylib (1605.0.2) <022BF08F-0B3A-3225-9E65-16D1553CE90D> /usr/lib/system/libdispatch.dylib
+       0x181ed2000 -        0x181ed4d2b  libsystem_featureflags.dylib (108) <20C1CAB2-1F13-3426-8146-9CAE9FF2A33D> /usr/lib/system/libsystem_featureflags.dylib
+       0x181ed5000 -        0x181f57ca3  libsystem_c.dylib (1786.0.3) <FBA7B23E-AA60-3A90-9AA4-A7A2E0AD63EE> /usr/lib/system/libsystem_c.dylib
+       0x181f58000 -        0x181fed033  libc++.1.dylib (2200.27) <1E9BA4AA-B5DA-3CF3-80AC-4B880049573F> /usr/lib/libc++.1.dylib
+       0x181fee000 -        0x182007eff  libc++abi.dylib (2200.27) <A21743EE-6E1C-3E74-97EA-7AF793DE4BDF> /usr/lib/libc++abi.dylib
+       0x182008000 -        0x1820469ab  libsystem_kernel.dylib (13432.1.9) <F63BF418-8F75-34A4-AAF1-8CAF2B9B6A05> /usr/lib/system/libsystem_kernel.dylib
+       0x182047000 -        0x18205391b  libsystem_pthread.dylib (553.0.1) <5A1828C3-CBC2-3B85-BD07-C8ED10021A41> /usr/lib/system/libsystem_pthread.dylib
+       0x182054000 -        0x18205d4f3  libsystem_platform.dylib (402.0.1.0.1) <080E4444-A0FB-3913-9756-4E470015F32F> /usr/lib/system/libsystem_platform.dylib
+       0x18205e000 -        0x18208c903  libsystem_info.dylib (603) <BC387AEB-1CEF-3513-92D7-D7F913596711> /usr/lib/system/libsystem_info.dylib
+       0x18208d000 -        0x18251de9f  com.apple.CoreFoundation (6.9 - 5027.0.69) <727E905E-F344-3823-8E13-E7A096388321> /System/Library/Frameworks/CoreFoundation.framework/Versions/A/CoreFoundation
+       0x18251e000 -        0x18281dae7  com.apple.LaunchServices (1141.1 - 1141.1) <00ED6A89-5E67-37AA-9342-51EB93F68EE5> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/LaunchServices
+       0x18281e000 -        0x1829cc4f3  com.apple.gpusw.MetalTools (1.0 - 1) <8317EBC9-11A1-3C21-B224-FF97B6275A67> /System/Library/PrivateFrameworks/MetalTools.framework/Versions/A/MetalTools
+       0x1829cd000 -        0x1831a07df  libBLAS.dylib (1617.1.1) <31104D4F-4A7E-3FA7-9E18-55937B2011F2> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib
+       0x1831a1000 -        0x1832b23db  com.apple.Lexicon-framework (1.0 - 216) <15A671C9-C620-33E0-9813-D5746EC5ECEF> /System/Library/PrivateFrameworks/Lexicon.framework/Versions/A/Lexicon
+       0x1832b3000 -        0x18341f107  libSparse.dylib (196.0.1) <5375A133-2487-3429-B891-9917A51A23B9> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libSparse.dylib
+       0x183420000 -        0x1834b1193  com.apple.SystemConfiguration (1.21 - 1.21) <10869E21-4B5A-3D06-9A03-F0BA544A6DC8> /System/Library/Frameworks/SystemConfiguration.framework/Versions/A/SystemConfiguration
+       0x1834b2000 -        0x1834e652f  libCRFSuite.dylib (55) <2D2C2F35-AB83-332B-88F0-F3BC4A3D8463> /usr/lib/libCRFSuite.dylib
+       0x1837b7000 -        0x184a74287  com.apple.Foundation (6.9 - 5027.0.69) <4317F7C6-73D2-3BE9-B010-F318F1198A1B> /System/Library/Frameworks/Foundation.framework/Versions/C/Foundation
+       0x184c23000 -        0x184d3aafb  com.apple.CoreDisplay (291.4 - 291.4) <D83242DE-F9D7-35F7-BDB1-2D0741AAB3B4> /System/Library/Frameworks/CoreDisplay.framework/Versions/A/CoreDisplay
+       0x184d3b000 -        0x1851006e3  com.apple.audio.AudioToolboxCore (1.0 - 1638.104.3) <49229A03-C7B7-38DE-99D1-C8A923169FAB> /System/Library/PrivateFrameworks/AudioToolboxCore.framework/Versions/A/AudioToolboxCore
+       0x185101000 -        0x1853245ff  com.apple.CoreText (904 - 904) <D53BFD8D-65E8-389D-B9A5-1223E1EE9ACC> /System/Library/Frameworks/CoreText.framework/Versions/A/CoreText
+       0x185325000 -        0x185ac2633  com.apple.audio.CoreAudio (5.0 - 5.0) <3AB8F076-7437-38AA-9F5B-B083CF020ADA> /System/Library/Frameworks/CoreAudio.framework/Versions/A/CoreAudio
+       0x185ac3000 -        0x185ed25cf  com.apple.security (7.0 - 62460.1.3) <7B094BB2-DD4D-3A81-8C29-5879451255F5> /System/Library/Frameworks/Security.framework/Versions/A/Security
+       0x185ed3000 -        0x1861b57e5  libicucore.A.dylib (78132) <7C675D41-84B1-395F-80CA-4FF1837F0DA0> /usr/lib/libicucore.A.dylib
+       0x1861b6000 -        0x1861bfb13  libsystem_darwin.dylib (1786.0.3) <4E66C888-993C-3E6A-A8DA-A949C01C5B67> /usr/lib/system/libsystem_darwin.dylib
+       0x1861c0000 -        0x1864b0f23  com.apple.CoreServices.CarbonCore (1333 - 1333) <A2180BAC-D51D-3E70-ACCE-E33F35587CB7> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/CarbonCore.framework/Versions/A/CarbonCore
+       0x1864b1000 -        0x1864ef3a3  com.apple.CoreServicesInternal (505 - 505) <6F8147E6-5C1E-3606-94D8-E74383900808> /System/Library/PrivateFrameworks/CoreServicesInternal.framework/Versions/A/CoreServicesInternal
+       0x1864f0000 -        0x186529507  com.apple.CSStore (1141.1 - 1141.1) <AAC9E652-2F49-3855-BD1B-5973CCA58C5D> /System/Library/PrivateFrameworks/CoreServicesStore.framework/Versions/A/CoreServicesStore
+       0x18652a000 -        0x18660f707  com.apple.framework.IOKit (2.0.2 - 100288.0.9) <0E4CF3E4-B0C2-312A-B147-0BD4978EF0B7> /System/Library/Frameworks/IOKit.framework/Versions/A/IOKit
+       0x186610000 -        0x186621b8b  libsystem_notify.dylib (368) <58FD36D8-37A7-311C-80F2-8E64DD8710CF> /usr/lib/system/libsystem_notify.dylib
+       0x187e44000 -        0x187e571df  com.apple.UniformTypeIdentifiers (709 - 709) <7EEC2F07-8F37-3EAB-94C9-9625F7AF5532> /System/Library/Frameworks/UniformTypeIdentifiers.framework/Versions/A/UniformTypeIdentifiers
+       0x18831b000 -        0x1883f0cff  libboringssl.dylib (583) <A958707F-4E4B-3E4E-BACE-DCD225F57C58> /usr/lib/libboringssl.dylib
+       0x1883f1000 -        0x18876c0f7  com.apple.CFNetwork (1.0 - 3896.100.1.1.1) <F78B7942-C45B-3520-92C8-DD66E11C46FE> /System/Library/Frameworks/CFNetwork.framework/Versions/A/CFNetwork
+       0x18876d000 -        0x188787d93  libsystem_networkextension.dylib (2340.1.2) <22E1D190-486F-324F-ABA4-F36AB841BFE9> /usr/lib/system/libsystem_networkextension.dylib
+       0x188788000 -        0x188788ee7  libenergytrace.dylib (23) <09E921A2-6FB1-33A4-8DB0-2BB45A8DBBE2> /usr/lib/libenergytrace.dylib
+       0x188789000 -        0x188814277  libMobileGestalt.dylib (1622.0.5) <EA99C094-01F2-3A79-8AFE-368392B35226> /usr/lib/libMobileGestalt.dylib
+       0x188815000 -        0x18882c247  libsystem_asl.dylib (409) <B4D449B7-A821-3A9A-8019-E917B291F10A> /usr/lib/system/libsystem_asl.dylib
+       0x18882d000 -        0x188852f0f  com.apple.TCC (1.0 - 1) <6EB227C1-E59C-35DD-B07F-888EABAFD85F> /System/Library/PrivateFrameworks/TCC.framework/Versions/A/TCC
+       0x188853000 -        0x188e8e77f  com.apple.SkyLight (1.600.0 - 953.5.5) <8A3B348E-4637-3685-92D0-6CBC2F36A234> /System/Library/PrivateFrameworks/SkyLight.framework/Versions/A/SkyLight
+       0x188e8f000 -        0x189643357  com.apple.CoreGraphics (2.0 - 2050) <B0FB9AC2-E3CC-31C2-A90E-0D38A776BAE2> /System/Library/Frameworks/CoreGraphics.framework/Versions/A/CoreGraphics
+       0x189762000 -        0x18977857f  com.apple.ProtocolBuffer (1 - 325.20.6.4.1) <02B6311A-FAEA-3D68-BCEA-466709877974> /System/Library/PrivateFrameworks/ProtocolBuffer.framework/Versions/A/ProtocolBuffer
+       0x189779000 -        0x18978a877  libdns_services.dylib (3111.0.5.0.1) <FA5EA1EF-D140-32BB-86DE-8ABECF70EB95> /usr/lib/libdns_services.dylib
+       0x1897c0000 -        0x1897c0f2f  libobjcMsgSend.dylib (973.1) <41179EDE-DC97-3BBE-8848-6400D12C1436> /usr/lib/objc/libobjcMsgSend.dylib
+       0x189bc4000 -        0x189d7775f  com.apple.ColorSync (4.13.0 - 3929) <2EAFBBEE-E9E2-33FA-BDF4-1A4F3C60334E> /System/Library/Frameworks/ColorSync.framework/Versions/A/ColorSync
+       0x18a092000 -        0x18a4d0c7f  com.apple.CoreData (120 - 1629.1) <0D53CA68-008E-3228-8AE7-8738FA67143C> /System/Library/Frameworks/CoreData.framework/Versions/A/CoreData
+       0x18a4d1000 -        0x18a6cb057  libsqlite3.dylib (406) <73D616F2-7B6C-3046-8DE6-656F74793D5F> /usr/lib/libsqlite3.dylib
+       0x18a76b000 -        0x18a83fd13  com.apple.BaseBoard (827 - 827) <56EC64E5-6042-3349-B16D-BD9331FE2EE2> /System/Library/PrivateFrameworks/BaseBoard.framework/Versions/A/BaseBoard
+       0x18a840000 -        0x18a898d83  com.apple.RunningBoardServices (1.0 - 1080) <EACC9165-43B0-302D-B4BA-44BDE05DEBE4> /System/Library/PrivateFrameworks/RunningBoardServices.framework/Versions/A/RunningBoardServices
+       0x18a899000 -        0x18a90b1d7  com.apple.AE (944 - 944) <75E434BB-9CD3-39A5-9BB9-87BBD3A2BC3B> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/AE.framework/Versions/A/AE
+       0x18a90c000 -        0x18a913edf  libsystem_symptoms.dylib (2394.0.4) <60EE7884-9F4E-3184-A6AC-FA40A7A0297D> /usr/lib/system/libsystem_symptoms.dylib
+       0x18a914000 -        0x18c200187  com.apple.Network (1.0 - 6681.1.1) <174B455B-2DE6-3364-BFF6-3802CFA599CE> /System/Library/Frameworks/Network.framework/Versions/A/Network
+       0x18c201000 -        0x18c237a1f  com.apple.analyticsd (1.0 - 1) <BD3F050B-5131-3206-A468-4B4F18965F11> /System/Library/PrivateFrameworks/CoreAnalytics.framework/Versions/A/CoreAnalytics
+       0x18c238000 -        0x18c239643  libDiagnosticMessagesClient.dylib (113) <B97372C5-7A87-378A-9EE0-77B6DD4825D0> /usr/lib/libDiagnosticMessagesClient.dylib
+       0x18c23a000 -        0x18c2c0c73  com.apple.spotlight.metadata.utilities (1.0 - 2459.405) <86E8A8A2-12CC-3F59-8EFD-074A26A19E5A> /System/Library/PrivateFrameworks/MetadataUtilities.framework/Versions/A/MetadataUtilities
+       0x18c2c1000 -        0x18c341427  com.apple.Metadata (27.0 - 2459.405) <DB51BB9F-F63F-30C7-88B8-0F23756F2571> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/Metadata.framework/Versions/A/Metadata
+       0x18c342000 -        0x18c34b513  com.apple.DiskArbitration (2.7 - 2.7) <BCE1A22D-CE13-3F92-B7D5-C21E22BD8B19> /System/Library/Frameworks/DiskArbitration.framework/Versions/A/DiskArbitration
+       0x18c34c000 -        0x18c79038b  com.apple.vImage (8.1 - 650.0.1) <54CF15B0-6AB6-360D-A4BE-F3130D8EEEDB> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vImage.framework/Versions/A/vImage
+       0x18c791000 -        0x18cc01b47  com.apple.QuartzCore (1223.2.3 - 1223.2.3) <216F70F6-AEF9-3D60-942B-F64C636DEF69> /System/Library/Frameworks/QuartzCore.framework/Versions/A/QuartzCore
+       0x18cc02000 -        0x18cc52683  libFontRegistry.dylib (424) <6744349A-6836-3ED2-A2A2-9BCD309D768F> /System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/ATS.framework/Versions/A/Resources/libFontRegistry.dylib
+       0x18ced1000 -        0x18ceda70b  com.apple.OpenDirectory (27.0 - 737) <ED898655-1F26-371A-B87A-E00B455DA537> /System/Library/Frameworks/OpenDirectory.framework/Versions/A/OpenDirectory
+       0x18cedb000 -        0x18cf3f357  com.apple.CFOpenDirectory (27.0 - 737) <537D9D7D-9092-3692-BE4D-447AFB0465F7> /System/Library/Frameworks/OpenDirectory.framework/Versions/A/Frameworks/CFOpenDirectory.framework/Versions/A/CFOpenDirectory
+       0x18cf40000 -        0x18cf4bbdb  com.apple.CoreServices.FSEvents (1433 - 1433) <43D6AFA4-5794-3DC0-AC1F-6EB406B5E1DE> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/FSEvents.framework/Versions/A/FSEvents
+       0x18cf4c000 -        0x18cf6d3c3  com.apple.coreservices.SharedFileList (225 - 225) <81C1A25D-B0A6-39F3-9872-8472670F05FD> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/SharedFileList.framework/Versions/A/SharedFileList
+       0x18cf6e000 -        0x18cf70e47  libapp_launch_measurement.dylib (17) <7815B21D-226C-3E90-83AE-77E0623B1737> /usr/lib/libapp_launch_measurement.dylib
+       0x18cf71000 -        0x18cfaf4e7  com.apple.CoreAutoLayout (1.0 - 35) <759521BC-E562-3BE6-8AA2-3248573B8E1E> /System/Library/PrivateFrameworks/CoreAutoLayout.framework/Versions/A/CoreAutoLayout
+       0x18cfb0000 -        0x18d0965bb  libxml2.2.dylib (40.1) <BB183DA3-EF8E-3F22-8150-E158BF761C0B> /usr/lib/libxml2.2.dylib
+       0x18d097000 -        0x18d13bbc3  com.apple.CoreVideo (1.8 - 758.27) <2DD9BDAC-2339-34E3-B1D4-3C6680F85485> /System/Library/Frameworks/CoreVideo.framework/Versions/A/CoreVideo
+       0x18d13c000 -        0x18d13eba3  com.apple.loginsupport (3.0 - 273) <AD64998C-2323-3410-AD8E-E2871B210CA4> /System/Library/PrivateFrameworks/login.framework/Versions/A/Frameworks/loginsupport.framework/Versions/A/loginsupport
+       0x18d174000 -        0x18d19ae9f  com.apple.UserManagement (1.0 - 1) <ED7940B6-BF1D-3B80-9DF4-0DB10F9BFF52> /System/Library/PrivateFrameworks/UserManagement.framework/Versions/A/UserManagement
+       0x18eca4000 -        0x18ecdeaeb  libsystem_containermanager.dylib (833.0.8.0.1) <08A57205-555D-3792-8931-9D5B585AF326> /usr/lib/system/libsystem_containermanager.dylib
+       0x18ecdf000 -        0x18ecf76af  com.apple.IOSurface (402.5 - 402.5) <B7A5EC30-BFB0-3E94-8055-507FD98DB913> /System/Library/Frameworks/IOSurface.framework/Versions/A/IOSurface
+       0x18ecf8000 -        0x18ed015c3  com.apple.IOAccelerator (491 - 491) <A1E30BDD-E8D3-3159-A93E-F601837B956B> /System/Library/PrivateFrameworks/IOAccelerator.framework/Versions/A/IOAccelerator
+       0x18ed02000 -        0x18ef87d77  com.apple.Metal (382.5.3 - 382.5.3) <B0BC74FE-7080-347D-92EE-38195058CCCE> /System/Library/Frameworks/Metal.framework/Versions/A/Metal
+       0x18ef88000 -        0x18efb2053  com.apple.audio.caulk (1.0 - 247) <C7BA2B3E-B175-30E9-ABF6-4D568D9DAA51> /System/Library/PrivateFrameworks/caulk.framework/Versions/A/caulk
+       0x18efb3000 -        0x18f1e46d7  com.apple.CoreMedia (1.0 - 3350.77.5.6) <976829D2-C1F5-35E4-9FDE-3CCCAF19ED9C> /System/Library/Frameworks/CoreMedia.framework/Versions/A/CoreMedia
+       0x18f1e5000 -        0x18f484e87  libFontParser.dylib (459) <6B07DF95-1102-3971-A1B0-F92CD10792EF> /System/Library/PrivateFrameworks/FontServices.framework/libFontParser.dylib
+       0x18f7be000 -        0x18fc85b8b  com.apple.ImageIO (3.3.0 - 2851) <9F466BFF-CD36-33EB-9240-A9DC03202193> /System/Library/Frameworks/ImageIO.framework/Versions/A/ImageIO
+       0x18fc86000 -        0x190244027  com.apple.CoreImage (27.0.0 - 1667.21.2) <374BB926-BF7C-3439-843C-D6E5F0D518F6> /System/Library/Frameworks/CoreImage.framework/Versions/A/CoreImage
+       0x190245000 -        0x1902f62c7  com.apple.MetalPerformanceShaders.MPSCore (1.0 - 130.0.19) <95E809A5-CD68-36B9-8C22-5B11055368D4> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSCore.framework/Versions/A/MPSCore
+       0x1902f7000 -        0x1902fb317  libsystem_configuration.dylib (1446) <F3EB66A7-7A24-3AE5-B6E8-9A37BB00F119> /usr/lib/system/libsystem_configuration.dylib
+       0x1902fc000 -        0x190302e03  libsystem_sandbox.dylib (3051.0.52) <1E892B56-092E-3832-BDE3-DCE356D7A4FA> /usr/lib/system/libsystem_sandbox.dylib
+       0x190303000 -        0x190304043  com.apple.AggregateDictionary (1.0 - 1) <CDCFA5A2-D392-384C-A334-2D3873F61CF8> /System/Library/PrivateFrameworks/AggregateDictionary.framework/Versions/A/AggregateDictionary
+       0x190305000 -        0x190308f8b  com.apple.AppleSystemInfo (3.1.5 - 3.1.5) <0C53A195-E323-368E-9A0A-88AABFB4AF66> /System/Library/PrivateFrameworks/AppleSystemInfo.framework/Versions/A/AppleSystemInfo
+       0x190309000 -        0x19030a35b  liblangid.dylib (140) <AE74F74F-21E6-3FA5-AA06-6BBD2D3E3626> /usr/lib/liblangid.dylib
+       0x19030b000 -        0x1904265c3  com.apple.CoreNLP (1.0 - 313) <A8A964E1-9979-3E3C-AC50-DD9C02DE142F> /System/Library/PrivateFrameworks/CoreNLP.framework/Versions/A/CoreNLP
+       0x190427000 -        0x19042cd6b  com.apple.LinguisticData (1.0 - 483.10) <35CC48A6-0E31-368D-944C-2248C8B34CB7> /System/Library/PrivateFrameworks/LinguisticData.framework/Versions/A/LinguisticData
+       0x19042d000 -        0x1916628f7  libBNNS.dylib (2212.1.1) <21ACE428-0EFB-3080-AFE4-A86EF66D84C6> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBNNS.dylib
+       0x191696000 -        0x1916ddc13  com.apple.IOMobileFramebuffer (343.0.0 - 343.0.0) <B1C5BB2D-DB25-332B-AD82-CF1EC6170E8B> /System/Library/PrivateFrameworks/IOMobileFramebuffer.framework/Versions/A/IOMobileFramebuffer
+       0x19174a000 -        0x19175f09f  com.apple.MobileKeyBag (2.0 - 1.0) <3E21D7E4-5C92-3781-940A-F1D90D3E7501> /System/Library/PrivateFrameworks/MobileKeyBag.framework/Versions/A/MobileKeyBag
+       0x191760000 -        0x19176a35b  com.apple.AssertionServices (1.0 - 1080) <C57E2645-3386-395F-88D1-82C3944647DD> /System/Library/PrivateFrameworks/AssertionServices.framework/Versions/A/AssertionServices
+       0x19176b000 -        0x1917925cb  com.apple.coreservices.BackgroundTaskManagement (1.0 - 104) <1A1A491B-B068-3842-B7E6-2DF944B668FA> /System/Library/PrivateFrameworks/BackgroundTaskManagement.framework/Versions/A/BackgroundTaskManagement
+       0x1917c0000 -        0x1917c0f2f  libobjcMsgSend1.dylib (973.1) <B40D9B2A-E1EE-37ED-8004-711A1F263DE1> /usr/lib/objc/libobjcMsgSend1.dylib
+       0x191bc4000 -        0x191d004eb  libvDSP.dylib (1155) <0826F134-170A-3E0B-A99F-B2CF01A56680> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libvDSP.dylib
+       0x191e57000 -        0x191ed6307  com.apple.securityfoundation (6.0 - 55294.0.2) <B4C1FCB9-3A20-316C-A7BB-160A0C9099AF> /System/Library/Frameworks/SecurityFoundation.framework/Versions/A/SecurityFoundation
+       0x191ee0000 -        0x191ee2f93  libquarantine.dylib (217.0.4) <7FD4AE22-86EF-382B-83F5-ADF9336C1160> /usr/lib/system/libquarantine.dylib
+       0x191ee3000 -        0x191eef0a7  libCheckFix.dylib (33) <DAB53395-F433-3E13-A6CC-A028029F379C> /usr/lib/libCheckFix.dylib
+       0x191ef0000 -        0x191f0716b  libcoretls.dylib (189) <431C2F12-0081-3638-8B2F-D1F650B40942> /usr/lib/libcoretls.dylib
+       0x191f08000 -        0x191f18fb3  libbsm.0.dylib (91.0.1) <E1D17FEE-E5F2-307D-A0A4-A7DA07424E2E> /usr/lib/libbsm.0.dylib
+       0x191f19000 -        0x191f792ff  libmecab.dylib (1159) <DCFF867C-64AB-34E3-A2D1-B1BF117C5700> /usr/lib/libmecab.dylib
+       0x191f7a000 -        0x191f7c2fb  libgermantok.dylib (31) <66456142-BA99-3D22-9E97-0EAD77D8FE5F> /usr/lib/libgermantok.dylib
+       0x191f7d000 -        0x191f90a6b  libLinearAlgebra.dylib (1617.1.1) <34C0511A-9A4D-3302-9E1D-0DD4ABD6E9D1> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libLinearAlgebra.dylib
+       0x191f91000 -        0x1921addbf  com.apple.MetalPerformanceShaders.MPSNeuralNetwork (1.0 - 130.0.19) <532F2FFA-8383-3586-973A-910FF82F7F40> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNeuralNetwork.framework/Versions/A/MPSNeuralNetwork
+       0x1921ae000 -        0x19220153f  com.apple.MetalPerformanceShaders.MPSRayIntersector (1.0 - 130.0.19) <C91F6D93-6F2C-37FD-9CDF-90063BEFCC3C> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSRayIntersector.framework/Versions/A/MPSRayIntersector
+       0x192349000 -        0x192377167  com.apple.MetalPerformanceShaders.MPSMatrix (1.0 - 130.0.19) <D0C6726A-1AF1-3C81-9050-C3ED0E7EBC5E> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSMatrix.framework/Versions/A/MPSMatrix
+       0x192378000 -        0x19254a757  com.apple.MetalPerformanceShaders.MPSNDArray (1.0 - 130.0.19) <556369D5-2B69-3CD5-8383-54A36A42ED24> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSNDArray.framework/Versions/A/MPSNDArray
+       0x19254b000 -        0x1925d94df  com.apple.MetalPerformanceShaders.MPSImage (1.0 - 130.0.19) <D09927CC-5C30-3542-AC58-DAC8507B7E10> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSImage.framework/Versions/A/MPSImage
+       0x1925da000 -        0x1925e4d63  com.apple.AppleFSCompression (182 - 1.0) <3B5065D1-5D8A-3443-B4B8-293DA9FE47C3> /System/Library/PrivateFrameworks/AppleFSCompression.framework/Versions/A/AppleFSCompression
+       0x1925e5000 -        0x1925f148b  libbz2.1.0.dylib (49) <C53E464D-6E83-37EE-8454-ACC2C20EF446> /usr/lib/libbz2.1.0.dylib
+       0x1925f2000 -        0x1925f81e7  libsystem_coreservices.dylib (203) <57248E07-11A5-3857-918E-4A3A63B69FE8> /usr/lib/system/libsystem_coreservices.dylib
+       0x1925f9000 -        0x192629db7  com.apple.CoreServices.OSServices (1141.1 - 1141.1) <EFDD75A9-C053-36E5-AC5A-E61CE1312712> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/OSServices.framework/Versions/A/OSServices
+       0x192bab000 -        0x192bb9b87  libz.1.dylib (105) <09881E57-159D-3E5F-B9EB-B708249AC31E> /usr/lib/libz.1.dylib
+       0x192bba000 -        0x192bf7b27  libsystem_m.dylib (3326.0.1) <A3FB340F-3ED5-30F4-8B64-9D5860F64D35> /usr/lib/system/libsystem_m.dylib
+       0x192bf8000 -        0x192bf8b47  libcharset.1.dylib (121) <3C9B584E-740A-3664-A1B0-52E561EA4B0B> /usr/lib/libcharset.1.dylib
+       0x192bf9000 -        0x192bfc4f7  libmacho.dylib (27062) <50DEADEC-3E99-3519-AFC3-4A3FEB3F14C3> /usr/lib/system/libmacho.dylib
+       0x192bfd000 -        0x192c15c4f  libkxld.dylib (13432.1.9) <E83FDCCE-F143-360F-A06A-9BC9993989B0> /usr/lib/system/libkxld.dylib
+       0x192c16000 -        0x192c22707  libcommonCrypto.dylib (600041) <41C99F45-C5E6-39DB-B1F2-A1BEA9D242A4> /usr/lib/system/libcommonCrypto.dylib
+       0x192c23000 -        0x192c2cc87  libunwind.dylib (2200.5) <3070AB81-B082-39E8-8A00-EF88DDE9AC47> /usr/lib/system/libunwind.dylib
+       0x192c2d000 -        0x192c33fe5  liboah.dylib (385) <E359944B-D230-33F9-A04E-0C3B17C3326E> /usr/lib/liboah.dylib
+       0x192c34000 -        0x192c3e7eb  libcopyfile.dylib (260.0.3) <72D95AF9-BF5E-3A84-81A6-BCC5BDB99857> /usr/lib/system/libcopyfile.dylib
+       0x192c3f000 -        0x192c428bf  libcompiler_rt.dylib (103.4) <DFB5CE7F-A36E-36AA-BECE-1392D3D43607> /usr/lib/system/libcompiler_rt.dylib
+       0x192c43000 -        0x192c48077  libsystem_collections.dylib (1786.0.3) <1E8022D4-5A37-3A7A-8936-603E6FA88358> /usr/lib/system/libsystem_collections.dylib
+       0x192c49000 -        0x192c4bf1f  libsystem_secinit.dylib (182) <DE037464-4C5D-3E96-A33F-2A4557CC6A20> /usr/lib/system/libsystem_secinit.dylib
+       0x192c4c000 -        0x192c4e97f  libremovefile.dylib (96) <E6E6DFCF-6B2C-3F30-A59D-816CAB1190CE> /usr/lib/system/libremovefile.dylib
+       0x192c4f000 -        0x192c4fe27  libkeymgr.dylib (31) <5EC997EF-3ADA-360B-9FCD-5F940C83FA4E> /usr/lib/system/libkeymgr.dylib
+       0x192c50000 -        0x192c58af7  libsystem_dnssd.dylib (3111.0.5.0.1) <DE22096F-1E5B-3D6E-8164-771582DD6391> /usr/lib/system/libsystem_dnssd.dylib
+       0x192c59000 -        0x192c5df1b  libcache.dylib (95) <80BAE197-E285-3F6E-A1EE-B77FE37D7E5D> /usr/lib/system/libcache.dylib
+       0x192c5e000 -        0x192c5f8f3  libSystem.B.dylib (1359) <4FDC9AA6-B344-37FE-B8C6-A4C94A038F57> /usr/lib/libSystem.B.dylib
+       0x192c60000 -        0x192c61df7  libfakelink.dylib (5) <76412133-41DC-3EE8-9AC1-12441AB8EE4E> /usr/lib/libfakelink.dylib
+       0x192c62000 -        0x192c62963  com.apple.SoftLinking (1.0 - 72) <467A5BB5-639E-31D1-8582-D5B0AB28D1F5> /System/Library/PrivateFrameworks/SoftLinking.framework/Versions/A/SoftLinking
+       0x192c98000 -        0x192c9f0a3  libiconv.2.dylib (121) <C343D6F7-6932-30E8-8E8F-F756946D8413> /usr/lib/libiconv.2.dylib
+       0x192cb3000 -        0x192daa8c7  libarchive.2.dylib (182.0.1) <2869F71C-09C9-3037-B209-F5EE4ED7B73E> /usr/lib/libarchive.2.dylib
+       0x192dab000 -        0x192e0fca7  com.apple.SearchKit (1.4.2 - 1.4.2) <E10E4CC4-CD23-36BC-B33C-BD33A3793509> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/SearchKit.framework/Versions/A/SearchKit
+       0x192e10000 -        0x192e17ed7  libThaiTokenizer.dylib (28) <DDAFA8FA-194E-315B-8B0C-D1A801F6BCF9> /usr/lib/libThaiTokenizer.dylib
+       0x192e18000 -        0x192e3b52f  com.apple.applesauce (1.0 - 17.7) <FD3F8924-2D39-325A-A2A2-E15CB08C42F2> /System/Library/PrivateFrameworks/AppleSauce.framework/Versions/A/AppleSauce
+       0x192e3c000 -        0x192e54803  libapple_nghttp2.dylib (42) <6486CF8F-DC50-35BF-A36C-080D6E27965D> /usr/lib/libapple_nghttp2.dylib
+       0x192e55000 -        0x192efe0b7  libSparseBLAS.dylib (196.0.1) <C182284A-6122-3E5D-B910-5AAB4C981B00> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libSparseBLAS.dylib
+       0x192eff000 -        0x192f003d3  com.apple.MetalPerformanceShaders.MetalPerformanceShaders (1.0 - 130.0.19) <CAC089E6-4489-3D36-B155-1BB2AF360A22> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/MetalPerformanceShaders
+       0x192f01000 -        0x192f06d0f  libpam.2.dylib (35) <B9C75402-03F2-3D7A-ACDE-A67D9859B499> /usr/lib/libpam.2.dylib
+       0x192f07000 -        0x192fe485f  libcompression.dylib (212.0.1) <C25CA2C2-8DE6-3DBB-A03F-B81A9A0DAF50> /usr/lib/libcompression.dylib
+       0x192fe5000 -        0x192fe9437  libQuadrature.dylib (10) <6BA9713A-AEBB-3AFF-84F9-7E1F25BA9563> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libQuadrature.dylib
+       0x192fea000 -        0x1942ab76f  libLAPACK.dylib (1617.1.1) <8A02E4DB-01CA-32D3-9384-DC2AF9FAE7C0> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libLAPACK.dylib
+       0x1942ac000 -        0x19430185f  com.apple.DictionaryServices (1.2 - 383.7) <769713A5-4C54-3A47-A3A2-042FE798DD5D> /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/DictionaryServices.framework/Versions/A/DictionaryServices
+       0x194302000 -        0x194320617  liblzma.5.dylib (21) <2B34F3EF-C505-3D29-9656-E7CEE143585C> /usr/lib/liblzma.5.dylib
+       0x194321000 -        0x19432253f  libcoretls_cfhelpers.dylib (189) <290FBB06-5D27-3C11-96B7-21D9770E7D8A> /usr/lib/libcoretls_cfhelpers.dylib
+       0x194323000 -        0x194393c4f  com.apple.APFS (3288.1.3 - 3288.1.3) <207380E2-6E65-3463-89A3-52B3A82FFD24> /System/Library/PrivateFrameworks/APFS.framework/Versions/A/APFS
+       0x194394000 -        0x1943a20eb  libxar.1.dylib (514.0.1) <E5A8C033-10F5-305C-883B-3433D8EC6871> /usr/lib/libxar.1.dylib
+       0x1943a3000 -        0x1943a62bb  libutil.dylib (76) <38245F99-D78C-38F1-94EE-22DF75E72ADE> /usr/lib/libutil.dylib
+       0x1943a7000 -        0x1943d10b7  libxslt.1.dylib (22) <993E7F4A-90F1-35C1-BD90-84203244D58A> /usr/lib/libxslt.1.dylib
+       0x1943d9000 -        0x194452d07  libvMisc.dylib (1155) <8E6D9B3D-641B-3BB7-ABA2-1A5F55E21535> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libvMisc.dylib
+       0x194453000 -        0x1944e33a7  libate.dylib (3.0.11) <693A742F-B963-3654-B3E7-F7BAA5B9582F> /usr/lib/libate.dylib
+       0x1944ed000 -        0x1944fe0a7  com.apple.CrashReporterSupport (10.13 - 15146) <94F81559-B4AD-3BDD-A37B-75E023A5C9B9> /System/Library/PrivateFrameworks/CrashReporterSupport.framework/Versions/A/CrashReporterSupport
+       0x194625000 -        0x194657193  com.apple.pluginkit.framework (1.0 - 1) <AF2A6019-5213-368B-A1E3-03269B5E8993> /System/Library/PrivateFrameworks/PlugInKit.framework/Versions/A/PlugInKit
+       0x1946ce000 -        0x1947170cf  com.apple.AppleVAFramework (6.2.10 - 6.2.10) <77418C1A-1CB1-3C54-A10D-B2B87798ACA7> /System/Library/PrivateFrameworks/AppleVA.framework/Versions/A/AppleVA
+       0x194718000 -        0x194732eb7  libexpat.1.dylib (47) <1A30E0DE-A426-3209-A3B4-2675027F2CF9> /usr/lib/libexpat.1.dylib
+       0x194733000 -        0x19473cbb3  libheimdal-asn1.dylib (725.0.12) <3AB630AA-8755-33C3-B955-A3CECEBBFA4B> /usr/lib/libheimdal-asn1.dylib
+       0x194832000 -        0x1948f2b4f  com.apple.MediaExperience (1.0 - 1) <DFF7F55D-6EF0-39C4-886C-2A7DD31A81F5> /System/Library/PrivateFrameworks/MediaExperience.framework/Versions/A/MediaExperience
+       0x194915000 -        0x19492bc87  com.apple.GraphVisualizer (1.0 - 310) <3ED4C650-0272-38D7-9EAC-BEFE69696E71> /System/Library/PrivateFrameworks/GraphVisualizer.framework/Versions/A/GraphVisualizer
+       0x19492c000 -        0x194964e73  com.apple.OTSVG (1.0 - 904) <4E0C0BF7-EA1C-3CBA-B7B1-7E0AC107A174> /System/Library/PrivateFrameworks/OTSVG.framework/Versions/A/OTSVG
+       0x194965000 -        0x19497005f  com.apple.xpc.AppServerSupport (1.0 - 3298.1.1) <0EA6AF48-F033-31DB-AE1B-4729F37CF2E5> /System/Library/PrivateFrameworks/AppServerSupport.framework/Versions/A/AppServerSupport
+       0x194971000 -        0x19497748b  libspindump.dylib (448) <B59289A5-B57F-3D61-8C87-7D74456047A9> /usr/lib/libspindump.dylib
+       0x194978000 -        0x194a37343  com.apple.Heimdal (4.0 - 2.0) <61DDDEF4-D205-362E-B7C2-63DC75F3AFF5> /System/Library/PrivateFrameworks/Heimdal.framework/Versions/A/Heimdal
+       0x194d29000 -        0x194d6e04f  com.apple.AppleJPEG (1.0 - 1) <453D6AE3-2DBA-3BD6-9CD7-82B023C2556E> /System/Library/PrivateFrameworks/AppleJPEG.framework/Versions/A/AppleJPEG
+       0x194d6f000 -        0x194e75347  libJP2.dylib (2851) <8C641091-4DF4-3BE2-BCE5-E38F88B81FC7> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libJP2.dylib
+       0x194e76000 -        0x194e77c67  com.apple.WatchdogClient.framework (1.0 - 334.0.4) <02171A1C-6E1D-3348-B7DB-CA81F61BD3AB> /System/Library/PrivateFrameworks/WatchdogClient.framework/Versions/A/WatchdogClient
+       0x194e78000 -        0x194ebb6b7  com.apple.MultitouchSupport.framework (10400.44 - 10400.44) <DA05747A-43DB-39DD-82DA-C9D6C2EDE68E> /System/Library/PrivateFrameworks/MultitouchSupport.framework/Versions/A/MultitouchSupport
+       0x194ebc000 -        0x19544576f  com.apple.VideoToolbox (1.0 - 3350.77.5.6) <6EDC2F05-B68B-3810-9103-16B2DCE770B4> /System/Library/Frameworks/VideoToolbox.framework/Versions/A/VideoToolbox
+       0x195446000 -        0x19547009f  libPng.dylib (2851) <2D9734E3-0991-3823-875A-A7A1ABDC63B4> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libPng.dylib
+       0x195471000 -        0x1954d234f  libTIFF.dylib (2851) <2FF49954-B5F5-3CD4-A4C7-39948EB833A7> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libTIFF.dylib
+       0x1954d3000 -        0x1954f156f  com.apple.IOPresentment (67 - 67) <E2F60270-A88B-34B2-A6AB-6BE37B001B75> /System/Library/PrivateFrameworks/IOPresentment.framework/Versions/A/IOPresentment
+       0x1954f2000 -        0x1954f63a7  com.apple.GPUWrangler (8.1.12 - 8.1.12) <DD1A8136-0B38-32C0-A23D-794B162AF26A> /System/Library/PrivateFrameworks/GPUWrangler.framework/Versions/A/GPUWrangler
+       0x1954f7000 -        0x1954f92bf  libRadiance.dylib (2851) <447C6D93-DA95-3A0A-975B-F9BE9095CC28> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libRadiance.dylib
+       0x1954fa000 -        0x1954feb13  com.apple.DSExternalDisplay (3.1 - 380) <A566E2B1-A7CC-3AE3-96A4-4E2994F8C1D0> /System/Library/PrivateFrameworks/DSExternalDisplay.framework/Versions/A/DSExternalDisplay
+       0x1954ff000 -        0x195529f47  libJPEG.dylib (2851) <D27A6E08-328D-3560-A211-A182B505DAB8> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libJPEG.dylib
+       0x195557000 -        0x19555cc27  libGIF.dylib (2851) <6830CD73-C87E-3B59-AD95-FEE4ECC0B759> /System/Library/Frameworks/ImageIO.framework/Versions/A/Resources/libGIF.dylib
+       0x19555d000 -        0x19556ecd3  com.apple.CMCaptureCore (1.0 - 764.21.3) <E5B093A6-E1AF-3ABD-8A1D-E1DCA943156C> /System/Library/PrivateFrameworks/CMCaptureCore.framework/Versions/A/CMCaptureCore
+       0x19654a000 -        0x1965b70d7  libusrtcp.dylib (6681.1.1) <DD6DE768-C695-31DA-A1B8-B089AD8721FC> /usr/lib/libusrtcp.dylib
+       0x1965b8000 -        0x196b50e2f  libswiftCore.dylib (6.4.0 - 6.4.0.31.5) <C9B36DA7-BB34-35AF-BC5D-91ECBCAA9ED0> /usr/lib/swift/libswiftCore.dylib
+       0x196be1000 -        0x196c339eb  libSessionUtility.dylib (449.108) <2D305F72-8E2A-3B72-8617-4278A3D605A4> /System/Library/PrivateFrameworks/AudioSession.framework/libSessionUtility.dylib
+       0x196c34000 -        0x196e0dfb3  com.apple.audio.toolbox.AudioToolbox (1.14 - 1.14) <C5FDDD2A-A45C-39E0-AF9C-64755A6BD394> /System/Library/Frameworks/AudioToolbox.framework/Versions/A/AudioToolbox
+       0x196e0e000 -        0x196e78fe3  com.apple.audio.AudioSession (1.0 - 449.108) <51EBB45A-C823-3BCA-8A5B-5321EA1D636A> /System/Library/PrivateFrameworks/AudioSession.framework/Versions/A/AudioSession
+       0x196e79000 -        0x196e7b23b  libAudioStatistics.dylib (300) <E5F218A4-4EC6-3334-9EE3-F63E737AB26C> /usr/lib/libAudioStatistics.dylib
+       0x196ea7000 -        0x196ec2c23  libresolv.9.dylib (96) <7D890D7A-3C34-3E74-BBB6-83FA14A6BE0A> /usr/lib/libresolv.9.dylib
+       0x196ec3000 -        0x196ed557f  libsasl2.2.dylib (219) <ED27922C-C85D-3FE9-B7B6-41B5B7B4084E> /usr/lib/libsasl2.2.dylib
+       0x19708b000 -        0x19716aeaf  libSMC.dylib (40) <EAF84B62-8A69-395A-9E31-DAE0F74E6A14> /usr/lib/libSMC.dylib
+       0x1971c9000 -        0x1971d5db7  com.apple.NetAuth (6.2 - 6.2) <6C13E8AF-2D7F-33FF-9BCB-D23227F8ADD8> /System/Library/PrivateFrameworks/NetAuth.framework/Versions/A/NetAuth
+       0x1971e4000 -        0x1971ee6f3  com.apple.perfdata (1.0 - 135.0.1) <5F510E06-26BE-33D3-8072-B516312A9FE4> /System/Library/PrivateFrameworks/perfdata.framework/Versions/A/perfdata
+       0x1971ef000 -        0x1971fb977  libperfcheck.dylib (46) <BE4BD34C-951A-3CB4-A9E8-C46E38E62E02> /usr/lib/libperfcheck.dylib
+       0x1971fc000 -        0x19720c3f7  com.apple.Kerberos (3.0 - 1) <B9E15097-7F2A-33AA-B86A-8942EB8F69BD> /System/Library/Frameworks/Kerberos.framework/Versions/A/Kerberos
+       0x19720d000 -        0x19725cb6f  com.apple.GSS (4.0 - 2.0) <E935474F-DCEA-30FF-92C2-C3722F95E8ED> /System/Library/Frameworks/GSS.framework/Versions/A/GSS
+       0x19725d000 -        0x19726da1f  com.apple.CommonAuth (4.0 - 2.0) <08F95713-D604-382B-B59F-0BD5D92E72E6> /System/Library/PrivateFrameworks/CommonAuth.framework/Versions/A/CommonAuth
+       0x19726e000 -        0x197330aa7  com.apple.MobileAssets (1.0 - 2215.0.20) <242D2797-AA04-34DF-9308-70C298E0778A> /System/Library/PrivateFrameworks/MobileAsset.framework/Versions/A/MobileAsset
+       0x1973b0000 -        0x1973beef7  com.apple.CorePhoneNumbers (1.0 - 1) <696A225A-F3BC-383E-A1DB-F8B793B1AA9A> /System/Library/PrivateFrameworks/CorePhoneNumbers.framework/Versions/A/CorePhoneNumbers
+       0x198de4000 -        0x198ed0367  com.apple.combine (1.0 - 3023) <1D189755-83EB-3FC1-A86A-23A60CDAB34A> /System/Library/Frameworks/Combine.framework/Versions/A/Combine
+       0x199289000 -        0x19928986f  com.apple.Accelerate.vecLib (3.11 - vecLib 3.11) <A85314AD-5F04-353C-B6FD-9CBDB885CF75> /System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/vecLib
+       0x1992a6000 -        0x1992a698f  com.apple.CoreServices (1226 - 1226) <92E25F67-1006-322C-B4B8-9F3840F8D9B3> /System/Library/Frameworks/CoreServices.framework/Versions/A/CoreServices
+       0x1994b3000 -        0x1994b3417  com.apple.Accelerate (1.11 - Accelerate 1.11) <A697E7B9-8FF4-356C-A507-64B38AF1CCAA> /System/Library/Frameworks/Accelerate.framework/Versions/A/Accelerate
+       0x1997c0000 -        0x1997c0f2f  libobjcMsgSend2.dylib (973.1) <BD27A84B-C9AE-3282-BBEA-3B6119837B5A> /usr/lib/objc/libobjcMsgSend2.dylib
+       0x19da4d000 -        0x19da59afb  com.apple.SymptomDiagnosticReporter (1.0 - 469) <049798AF-EDA0-3108-9CF8-373B605AB558> /System/Library/PrivateFrameworks/SymptomDiagnosticReporter.framework/Versions/A/SymptomDiagnosticReporter
+       0x19da5a000 -        0x19da7f443  com.apple.PowerLog (1.0 - 1) <5AE600A4-1463-3080-A50C-33517AA61B91> /System/Library/PrivateFrameworks/PowerLog.framework/Versions/A/PowerLog
+       0x19da8b000 -        0x19db348b3  com.apple.DiscRecording (9.0.3 - 9030.4.5) <B1B79268-6DC3-3611-9323-C0A14FDF44B3> /System/Library/Frameworks/DiscRecording.framework/Versions/A/DiscRecording
+       0x19db35000 -        0x19db65687  com.apple.MediaKit (16 - 944) <B378DAE0-A2AF-3F1C-8AB3-E1EAB5B26E7A> /System/Library/PrivateFrameworks/MediaKit.framework/Versions/A/MediaKit
+       0x19e556000 -        0x19e56c21f  libswiftDispatch.dylib (1605.0.2) <C01F5E48-7D6C-3663-A336-0F66AC49B65D> /usr/lib/swift/libswiftDispatch.dylib
+       0x19e843000 -        0x19e8eb64f  com.apple.BoardServices (1.0 - 827) <C248C55D-D69D-3D61-A345-443BA92B3F36> /System/Library/PrivateFrameworks/BoardServices.framework/Versions/A/BoardServices
+       0x19e91b000 -        0x19e927c0f  com.apple.GraphicsServices (1.0 - 1.0) <B54AC2CC-7FBD-3302-91EA-6048A79CBA5B> /System/Library/PrivateFrameworks/GraphicsServices.framework/Versions/A/GraphicsServices
+       0x19ebc8000 -        0x19ebe86a7  com.apple.DebugSymbols (219 - 219) <AE8A54B1-9840-3582-8480-45B38C2F4C30> /System/Library/PrivateFrameworks/DebugSymbols.framework/Versions/A/DebugSymbols
+       0x19ebe9000 -        0x19ed50e0b  com.apple.CoreSymbolication (16.0 - 64578.82.2) <D4672F79-1DDE-3AAE-95AC-C199B84B9355> /System/Library/PrivateFrameworks/CoreSymbolication.framework/Versions/A/CoreSymbolication
+       0x19ed51000 -        0x19ed5aa73  com.apple.CoreTime (340.0.14 - 340.0.14) <090BF232-5377-30C2-A128-C72DC9152EBB> /System/Library/PrivateFrameworks/CoreTime.framework/Versions/A/CoreTime
+       0x1a05fe000 -        0x1a067076f  com.apple.BackBoardServices (1.0 - 1.0) <A4C4201B-02FD-3B1B-B58A-A60BB4023B8C> /System/Library/PrivateFrameworks/BackBoardServices.framework/Versions/A/BackBoardServices
+       0x1a0671000 -        0x1a06aba4f  com.apple.LDAPFramework (2.4.28 - 194.5) <DF9EF86F-9E46-3DC5-8C25-31697C7AC19E> /System/Library/Frameworks/LDAP.framework/Versions/A/LDAP
+       0x1a06ac000 -        0x1a06ad637  com.apple.TrustEvaluationAgent (2.0 - 38) <8CB2434F-FFBE-3D9F-ABB0-24FA33527AB6> /System/Library/PrivateFrameworks/TrustEvaluationAgent.framework/Versions/A/TrustEvaluationAgent
+       0x1a07da000 -        0x1a088ff87  com.apple.DiskImagesFramework (704 - 704) <6FC7DD54-CE06-30B3-9231-123022BF8CF8> /System/Library/PrivateFrameworks/DiskImages.framework/Versions/A/DiskImages
+       0x1a08cd000 -        0x1a08e2093  com.apple.RemoteServiceDiscovery (1.0 - 245.0.7) <BCC760CB-6667-3798-8E4C-EEFC5F9130CD> /System/Library/PrivateFrameworks/RemoteServiceDiscovery.framework/Versions/A/RemoteServiceDiscovery
+       0x1a08e3000 -        0x1a08f6807  com.apple.xpc.RemoteXPC (1.0 - 3298.1.1) <1C3FDABA-4DCB-3557-8126-5B437D640F24> /System/Library/PrivateFrameworks/RemoteXPC.framework/Versions/A/RemoteXPC
+       0x1a097b000 -        0x1a09fa96b  libcurl.4.dylib (168.0.2) <C067B2C6-DD0E-3BEA-BCC0-F048B2A17545> /usr/lib/libcurl.4.dylib
+       0x1a0a01000 -        0x1a0a3b1f3  com.apple.AppSupport (1.0.0 - 29) <10780E13-654E-39C1-879A-B994F5B2990F> /System/Library/PrivateFrameworks/AppSupport.framework/Versions/A/AppSupport
+       0x1a0cad000 -        0x1a0caf943  com.apple.InternationalTextSearch (1.0 - 1) <5B798ABD-BB61-3D16-BB42-0167B3C55A0A> /System/Library/PrivateFrameworks/InternationalTextSearch.framework/Versions/A/InternationalTextSearch
+       0x1a12f9000 -        0x1a12f93f7  libHeimdalProxy.dylib (88) <6341E9AF-9CD5-3A7A-ACD4-829EE3E79A6D> /System/Library/Frameworks/Kerberos.framework/Versions/A/Libraries/libHeimdalProxy.dylib
+       0x1a131c000 -        0x1a1338973  com.apple.StreamingZip (1.0 - 1) <5651DFE8-5C8C-3921-8CC7-A62F564577C9> /System/Library/PrivateFrameworks/StreamingZip.framework/Versions/A/StreamingZip
+       0x1a1388000 -        0x1a138b397  libswiftObjectiveC.dylib (973.1) <3143A5EB-68CA-37E3-B414-98792711FF44> /usr/lib/swift/libswiftObjectiveC.dylib
+       0x1a138c000 -        0x1a13a8257  libswiftos.dylib (1090) <010A7F00-D6F4-3E94-918D-39EF4E33EF95> /usr/lib/swift/libswiftos.dylib
+       0x1a1491000 -        0x1a1507f2f  com.apple.proactive.support.ProactiveSupport (1.0 - 423.0.1) <620CAB1D-5B4C-3449-AF3B-5D18989B8D76> /System/Library/PrivateFrameworks/ProactiveSupport.framework/Versions/A/ProactiveSupport
+       0x1a15d3000 -        0x1a15fae6f  com.apple.ASEProcessing (1.59.0 - 1.59.0) <6A028F2D-5B7E-324E-BE22-B589F34B1925> /System/Library/PrivateFrameworks/ASEProcessing.framework/Versions/A/ASEProcessing
+       0x1a17c0000 -        0x1a17c0f2f  libobjcMsgSend3.dylib (973.1) <C0860D68-DDFC-3BD7-8B06-DB0645CBBED4> /usr/lib/objc/libobjcMsgSend3.dylib
+       0x1a39e2000 -        0x1a3aa8353  com.apple.audio.midi.CoreMIDI (2.0 - 88) <DA3E2CF1-D70C-3055-BF59-0F604DA694A9> /System/Library/Frameworks/CoreMIDI.framework/Versions/A/CoreMIDI
+       0x1a465c000 -        0x1a466059f  com.apple.IOSurfaceAccelerator (1.0.0 - 1.0.0) <0499772A-AB15-393F-B655-6DB5E6D24755> /System/Library/PrivateFrameworks/IOSurfaceAccelerator.framework/Versions/A/IOSurfaceAccelerator
+       0x1a970d000 -        0x1a97271ef  com.apple.HID (1.0 - 1) <EDB0E5D5-3547-3681-8291-DC8129EF0E41> /System/Library/PrivateFrameworks/HID.framework/Versions/A/HID
+       0x1a97c0000 -        0x1a97c0f2f  libobjcMsgSend4.dylib (973.1) <A6153BF5-622B-3B01-81B6-F64A365EF613> /usr/lib/objc/libobjcMsgSend4.dylib
+       0x1aee87000 -        0x1aee94d1b  com.apple.NetFS (6.0 - 4.0) <E3E650E1-6780-3A10-980D-3A7FACCB7288> /System/Library/Frameworks/NetFS.framework/Versions/A/NetFS
+       0x1af347000 -        0x1af349807  libswiftDarwin.dylib (428.0.10) <B4F37828-524C-32F7-94FD-63CB8177AEEC> /usr/lib/swift/libswiftDarwin.dylib
+       0x1b1609000 -        0x1b16f69e3  libquic.dylib (6681.1.1) <E55B3940-F54E-35A0-9C42-345155D8E76F> /usr/lib/libquic.dylib
+       0x1b1700000 -        0x1b171f953  com.apple.private.SystemPolicy (1.0 - 1) <DF086382-D2C6-3905-B921-2196A77E9180> /System/Library/PrivateFrameworks/SystemPolicy.framework/Versions/A/SystemPolicy
+       0x1b17c0000 -        0x1b17c0f2f  libobjcMsgSend5.dylib (973.1) <3913A71C-B29A-3AEA-820B-BEC40AC1861A> /usr/lib/objc/libobjcMsgSend5.dylib
+       0x1b2aca000 -        0x1b2b4339b  com.apple.LoggingSupport (1.0 - 1966.1.1) <1F7476AA-2F22-3C20-8FCA-C8B0E47ABB21> /System/Library/PrivateFrameworks/LoggingSupport.framework/Versions/A/LoggingSupport
+       0x1b2b44000 -        0x1b2b50437  com.apple.MallocStackLogging (1.0 - 65000) <FF92B432-827A-36CD-A3CB-7BAAA6581179> /System/Library/PrivateFrameworks/MallocStackLogging.framework/Versions/A/MallocStackLogging
+       0x1b2b6c000 -        0x1b2bcdea3  libmis.dylib (487.0.2) <4A873AE2-BD1A-38D5-B98E-AAF4039D4133> /usr/lib/libmis.dylib
+       0x1b2bce000 -        0x1b2bd088f  com.apple.gpusw.GPURawCounter (35 - 35) <2383C07B-9F0E-3CAC-9C5A-5272664B255C> /System/Library/PrivateFrameworks/GPURawCounter.framework/Versions/A/GPURawCounter
+       0x1b2bd1000 -        0x1b2befc13  libswiftCoreAudio.dylib (482.102.10) <2F5D4013-D077-34C3-821E-9A376638588D> /usr/lib/swift/libswiftCoreAudio.dylib
+       0x1b2bf0000 -        0x1b2bf5caf  libswiftCoreFoundation.dylib (2412) <45079B74-1B3F-3EE0-8331-5A36B71C3530> /usr/lib/swift/libswiftCoreFoundation.dylib
+       0x1b2bff000 -        0x1b2c48a9f  libswiftXPC.dylib (167.0.2) <A4ABDA3A-3856-3607-AC51-9229FA1D5777> /usr/lib/swift/libswiftXPC.dylib
+       0x1b2c4a000 -        0x1b2c4a8a3  libswiftIOKit.dylib (1) <125C8CC5-3CFC-3F43-9C25-5DD08C2E4BBD> /usr/lib/swift/libswiftIOKit.dylib
+       0x1b49a2000 -        0x1b49e92cf  libbootpolicy.dylib (304) <528B381C-8756-328F-BE20-8B9573A7EC3A> /usr/lib/libbootpolicy.dylib
+       0x1b6364000 -        0x1b637b4a3  libswiftsimd.dylib (25) <BE72A6EC-6A5C-30D2-BBA0-44111D3F604C> /usr/lib/swift/libswiftsimd.dylib
+       0x1b78a4000 -        0x1b78ab9fb  com.apple.IOAccelMemoryInfo (1.0 - 1) <3E60AA32-713B-3346-B95D-E97E10193F0F> /System/Library/PrivateFrameworks/IOAccelMemoryInfo.framework/Versions/A/IOAccelMemoryInfo
+       0x1b90b4000 -        0x1b90bcdc7  libswiftCoreMIDI.dylib (6) <BB0B90A6-1AAF-3A9C-998C-D4822F79B050> /usr/lib/swift/libswiftCoreMIDI.dylib
+       0x1b97c0000 -        0x1b97c0f2f  libobjcMsgSend6.dylib (973.1) <9BC523A3-E167-3F6C-8CAE-0F3EBA671791> /usr/lib/objc/libobjcMsgSend6.dylib
+       0x1b9cbb000 -        0x1b9cc071b  com.apple.MSUDataAccessor (1.0 - 1) <B575CE52-8A1C-35C6-B1EC-281FBF18E16E> /System/Library/PrivateFrameworks/MSUDataAccessor.framework/Versions/A/MSUDataAccessor
+       0x1ba166000 -        0x1ba1b1bcb  com.apple.SoftwareUpdateCoreSupport (1.0 - 1) <ED2DBB36-9A42-3A54-958C-93F2B1D34546> /System/Library/PrivateFrameworks/SoftwareUpdateCoreSupport.framework/Versions/A/SoftwareUpdateCoreSupport
+       0x1bdb5b000 -        0x1bdba2a7b  com.apple.biome.BiomeFoundation (1.0 - 250.0.0.3) <85B9EA77-DAE9-3AAD-BD96-D90DE71BE680> /System/Library/PrivateFrameworks/BiomeFoundation.framework/Versions/A/BiomeFoundation
+       0x1c043f000 -        0x1c0446f5f  libswiftMetal.dylib (382.5.3) <FAE1B768-4D95-3EB2-BEF3-6D845C38988C> /usr/lib/swift/libswiftMetal.dylib
+       0x1c0447000 -        0x1c044d6df  libswiftCompression.dylib (18) <A3677B2C-332E-3E7E-ACFF-F6DD4E6613F8> /usr/lib/swift/libswiftCompression.dylib
+       0x1c1277000 -        0x1c1329bf3  libFDR.dylib (1636.0.17) <921820A7-BFA7-3D97-A82D-4276C08554C0> /usr/lib/libFDR.dylib
+       0x1c132a000 -        0x1c139e8ef  com.apple.TimeSync (1.0 - 1501.7) <04424CE0-D831-3898-81A1-1E7E4FF2FE92> /System/Library/PrivateFrameworks/TimeSync.framework/Versions/A/TimeSync
+       0x1c17c0000 -        0x1c17c0f2f  libobjcMsgSend7.dylib (973.1) <248B7BCE-5B4C-34C7-A340-43D5228628C5> /usr/lib/objc/libobjcMsgSend7.dylib
+       0x1c1bc4000 -        0x1c210fe37  com.apple.biome.BiomeStreams (1.0 - 250.0.0.3) <C751108F-893C-3D25-A648-222D9E14F46A> /System/Library/PrivateFrameworks/BiomeStreams.framework/Versions/A/BiomeStreams
+       0x1c22e0000 -        0x1c22f005b  com.apple.SoftwareUpdateCoreConnect (1.0 - 1) <DF7BE13C-A22A-3EBB-9E5A-85DEB5C3E193> /System/Library/PrivateFrameworks/SoftwareUpdateCoreConnect.framework/Versions/A/SoftwareUpdateCoreConnect
+       0x1c3601000 -        0x1c36082bb  com.apple.audio.IOKitten (300.1 - 300.1) <6B3DA7ED-00EF-31BB-894E-48B53F7C4593> /System/Library/PrivateFrameworks/IOKitten.framework/Versions/A/IOKitten
+       0x1c4e61000 -        0x1c4ebed7f  com.apple.osanalytics.OSAnalytics (1.0 - 1) <FC435AAF-0915-3FEE-A21E-D5F8465C7605> /System/Library/PrivateFrameworks/OSAnalytics.framework/Versions/A/OSAnalytics
+       0x1c6248000 -        0x1c6249deb  libswiftQuartzCore.dylib (5) <303BA471-C8BD-3A89-B8AD-A54C26D39328> /usr/lib/swift/libswiftQuartzCore.dylib
+       0x1c6590000 -        0x1c659566f  com.apple.kperf (1.0 - 1) <D72F399E-388F-3C1E-8270-7208346C0088> /System/Library/PrivateFrameworks/kperf.framework/Versions/A/kperf
+       0x1c66a2000 -        0x1c66a5ebf  com.apple.MobileSystemServices (1.0 - 1) <A415AF41-E605-36EA-AD1B-01200B7E1FCE> /System/Library/PrivateFrameworks/MobileSystemServices.framework/Versions/A/MobileSystemServices
+       0x1c7ba8000 -        0x1c7bcd6bb  libamsupport.dylib (475.0.9) <53C7DA2C-3ACC-36FE-863A-2FC6D5902000> /usr/lib/libamsupport.dylib
+       0x1c7f86000 -        0x1c7fd68c7  com.apple.biome.BiomePubSub (1.0 - 250.0.0.3) <3A1E7EDF-3D89-362E-876E-53D841BCB6BC> /System/Library/PrivateFrameworks/BiomePubSub.framework/Versions/A/BiomePubSub
+       0x1c7fd7000 -        0x1c800cd97  com.apple.biome.BiomeStorage (1.0 - 250.0.0.3) <34109228-69B3-359F-A58D-2930545A9651> /System/Library/PrivateFrameworks/BiomeStorage.framework/Versions/A/BiomeStorage
+       0x1c97c0000 -        0x1c97c0f2f  libobjcMsgSend8.dylib (973.1) <3E041BAD-A8E8-3069-B741-78CD1A45B176> /usr/lib/objc/libobjcMsgSend8.dylib
+       0x1caa30000 -        0x1caa3d4f7  libswiftUniformTypeIdentifiers.dylib (917.0.1.403) <9C27643C-CAC9-3687-A19B-0F3F40F9CAB1> /usr/lib/swift/libswiftUniformTypeIdentifiers.dylib
+       0x1caa3e000 -        0x1caafe0bb  libswiftAccelerate.dylib (82) <A57EBF98-4C09-3A2A-8266-6336537116C1> /usr/lib/swift/libswiftAccelerate.dylib
+       0x1cac3e000 -        0x1cac4cf03  libpartition2_dynamic.dylib (3696.0.12.0.3) <25AEE4A8-7C62-3A7F-A279-A3BB6F14E569> /usr/lib/libpartition2_dynamic.dylib
+       0x1cb0f3000 -        0x1cb0fc94f  com.apple.AFKUser (1) <43A2F367-7736-3AE3-AA92-118D27D4DACF> /System/Library/PrivateFrameworks/AFKUser.framework/Versions/A/AFKUser
+       0x1d07cf000 -        0x1d07d08e7  libswiftOSLog.dylib (10) <2243B3A2-A831-3F96-8D1B-29ACF2FD7FDE> /usr/lib/swift/libswiftOSLog.dylib
+       0x1d1179000 -        0x1d12649bf  com.apple.Symbolication (16.0 - 64578.100.1) <8797C0C4-4EB6-3BA7-BA93-4F41FFAC09F7> /System/Library/PrivateFrameworks/Symbolication.framework/Versions/A/Symbolication
+       0x1d17c0000 -        0x1d17c0f2f  libobjcMsgSend9.dylib (973.1) <34A67969-21A0-39D6-BB81-8FDA5A2409DB> /usr/lib/objc/libobjcMsgSend9.dylib
+       0x1d9551000 -        0x1d955eb8f  com.apple.OSLog (1.0 - 1966.1.1) <21AB9089-83D7-3BAC-8191-B2694336154A> /System/Library/Frameworks/OSLog.framework/Versions/A/OSLog
+       0x1d9621000 -        0x1d972876f  com.apple.InternalSwiftProtobuf (1.0 - 1.26.0) <48D97BB1-9659-3732-94E3-AE6A574300CC> /System/Library/PrivateFrameworks/InternalSwiftProtobuf.framework/Versions/A/InternalSwiftProtobuf
+       0x1d972a000 -        0x1d973315f  com.apple.HIDDisplay (1.0 - 1) <3494AB7C-6C5A-3B1A-AA34-E93D7EF29852> /System/Library/PrivateFrameworks/HIDDisplay.framework/Versions/A/HIDDisplay
+       0x1d97c0000 -        0x1d97c0f2f  libobjcMsgSend10.dylib (973.1) <678186C0-8EAD-3B35-8CBB-00285B41E4A0> /usr/lib/objc/libobjcMsgSend10.dylib
+       0x1e17c0000 -        0x1e17c0f2f  libobjcMsgSend11.dylib (973.1) <E05CB08C-E956-36FA-8967-AE8E346A8D2C> /usr/lib/objc/libobjcMsgSend11.dylib
+       0x2024d1000 -        0x2024d1ae3  com.apple.FeatureFlags (1.0 - 108) <6A89074E-FDB5-3D09-8E6B-349D0EC61D9D> /System/Library/PrivateFrameworks/FeatureFlags.framework/Versions/A/FeatureFlags
+       0x2097c0000 -        0x2097c0f2f  libobjcMsgSend12.dylib (973.1) <10AB03AA-FF1F-3FDC-9DFB-BFC40042C501> /usr/lib/objc/libobjcMsgSend12.dylib
+       0x20bac8000 -        0x20baca067  com.apple.ConfigProfileHelper (18.0 - 1800) <EDEA7AD5-09E2-3FF0-8DAA-6603FA706017> /System/Library/PrivateFrameworks/ConfigProfileHelper.framework/Versions/A/ConfigProfileHelper
+       0x20fdcd000 -        0x20fdd3c43  libCoreFSCache.dylib (404) <DFF19406-D7F3-3D45-937A-042FA0AA5BA8> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCoreFSCache.dylib
+       0x20fdd4000 -        0x20fdd9627  libCoreVMClient.dylib (404) <C262ADF6-0E9A-3D9D-B18D-8525CB90B0DC> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCoreVMClient.dylib
+       0x20fdda000 -        0x20fde9857  com.apple.opengl (24.0.2 - 24.0.2) <1DD82D16-39F7-3822-998C-F8DE41F9BD6A> /System/Library/Frameworks/OpenGL.framework/Versions/A/OpenGL
+       0x20fdea000 -        0x20fdec69f  libCVMSPluginSupport.dylib (24.0.2) <A84E529F-47DE-35EE-8222-64A7EE00A1F3> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libCVMSPluginSupport.dylib
+       0x20fded000 -        0x20fdf517f  libGFXShared.dylib (24.0.2) <B475FA8D-63EF-369E-ADAC-37EEA94CF2BE> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGFXShared.dylib
+       0x20fdf6000 -        0x20fe2978b  libGLImage.dylib (24.0.2) <3D0C3F87-6ECC-390D-B26B-5BB17F8EE6C0> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGLImage.dylib
+       0x20fe2a000 -        0x20fe6326f  libGLU.dylib (24.0.2) <4B9B9DFD-36B5-3E59-A0F7-9711B7FF0961> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGLU.dylib
+       0x20ffb9000 -        0x20ffc2bc7  libGL.dylib (24.0.2) <DC2FA229-1380-385E-AECD-C2881AD085A5> /System/Library/Frameworks/OpenGL.framework/Versions/A/Libraries/libGL.dylib
+       0x2117c0000 -        0x2117c0f2f  libobjcMsgSend13.dylib (973.1) <ABF53427-FA6F-3D0D-8F9D-7AD795CA5C92> /usr/lib/objc/libobjcMsgSend13.dylib
+       0x2197c0000 -        0x2197c0f2f  libobjcMsgSend14.dylib (973.1) <9A844C46-A6DA-34D4-8EBF-2AD775C30684> /usr/lib/objc/libobjcMsgSend14.dylib
+       0x21e222000 -        0x21e3722f7  com.apple.ExtensionFoundation (97 - 97) <231850D6-9680-3AED-890A-484D2BBEFC28> /System/Library/Frameworks/ExtensionFoundation.framework/Versions/A/ExtensionFoundation
+       0x220081000 -        0x2200c1387  com.apple.LightweightCodeRequirements (1.0 - 1) <C90102A4-551F-3EFC-9F72-2CE1D702E358> /System/Library/Frameworks/LightweightCodeRequirements.framework/Versions/A/LightweightCodeRequirements
+       0x220f96000 -        0x220fa7207  com.apple.MPSBenchmarkLoop (1.0 - 130.0.19) <00087510-13F7-342F-B967-49761B4306C8> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSBenchmarkLoop.framework/Versions/A/MPSBenchmarkLoop
+       0x220fa8000 -        0x220fba6bf  com.apple.MPSFunctions (1.0 - 130.0.19) <18D723C8-6584-3F46-AD20-843C1FD0CCB9> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSFunctions.framework/Versions/A/MPSFunctions
+       0x220fbb000 -        0x220fbf813  com.apple.MPSHost (1.0 - 130.0.19) <EEB725E7-28BB-3F1A-A100-203078BB7B88> /System/Library/Frameworks/MetalPerformanceShaders.framework/Versions/A/Frameworks/MPSHost.framework/Versions/A/MPSHost
+       0x2217c0000 -        0x2217c0f2f  libobjcMsgSend15.dylib (973.1) <7C995666-2B2D-3284-AA0A-EBF7C922838E> /usr/lib/objc/libobjcMsgSend15.dylib
+       0x2259fb000 -        0x225ba597b  com.apple.SwiftData (1.0 - 180) <80467BD4-1405-3400-9475-B5BFCE896E12> /System/Library/Frameworks/SwiftData.framework/Versions/A/SwiftData
+       0x2297c0000 -        0x2297c0f2f  libobjcMsgSend16.dylib (973.1) <B6C0E14B-53AE-3E22-9ED5-1729C49F46F2> /usr/lib/objc/libobjcMsgSend16.dylib
+       0x22d4be000 -        0x22d4d08f7  com.apple.AppleDeviceQuerySupport (1.0 - 459.0.15) <5E705AD8-327F-3FE0-9A83-173570CE79AC> /System/Library/PrivateFrameworks/AppleDeviceQuerySupport.framework/Versions/A/AppleDeviceQuerySupport
+       0x22dce6000 -        0x22dd7383f  com.apple.AppleKeyStore (1.0 - 1.0) <7965DCDE-5074-391F-A878-324D84651857> /System/Library/PrivateFrameworks/AppleKeyStore.framework/Versions/A/AppleKeyStore
+       0x22e827000 -        0x22e83bbe3  com.apple.private.AppleMobileFileIntegrity-fmk (1.0 - 1) <76DA48C4-9F86-3D4B-BAE4-82B436938ABD> /System/Library/PrivateFrameworks/AppleMobileFileIntegrity.framework/Versions/A/AppleMobileFileIntegrity
+       0x22e83c000 -        0x22e855633  com.apple.AppleMSG (1.0 - 1) <41BF3334-137D-3619-B482-1FB98C162FDA> /System/Library/PrivateFrameworks/AppleMSG.framework/Versions/A/AppleMSG
+       0x23058e000 -        0x23059fb9f  com.apple.AtomicsInternal (1.1.0 - 5027.0.64) <3B48B13C-EC92-3B98-A685-E7AF32FD42F3> /System/Library/PrivateFrameworks/AtomicsInternal.framework/Versions/A/AtomicsInternal
+       0x230637000 -        0x230654fef  com.apple.imgaudio.AudioAnalytics (1.0 - 1) <B01007F1-B7AF-3FFF-BDE2-8DF9913CCC84> /System/Library/PrivateFrameworks/AudioAnalytics.framework/Versions/A/AudioAnalytics
+       0x230f60000 -        0x230fb07a7  com.apple.BackBoardHIDEventFoundation (1.0 - 1) <E43C4333-66A6-3453-84F6-B2EEFCFFEDD2> /System/Library/PrivateFrameworks/BackBoardHIDEventFoundation.framework/Versions/A/BackBoardHIDEventFoundation
+       0x230fb1000 -        0x230ffc78f  com.apple.BackBoardHIDTouchEventProcessor (1.0 - 1) <CAB22CCA-C972-3E18-B0D5-5923BDDC9A55> /System/Library/PrivateFrameworks/BackBoardHIDTouchEventProcessor.framework/Versions/A/BackBoardHIDTouchEventProcessor
+       0x2310a7000 -        0x2310ba933  com.apple.biome.BiomeDSL (1.0 - 250.0.0.3) <F8DCC3F9-5846-35F6-BEF1-FBDDBFC389B1> /System/Library/PrivateFrameworks/BiomeDSL.framework/Versions/A/BiomeDSL
+       0x2310bb000 -        0x2310c063b  com.apple.biome.BiomeSync (1.0 - 250.0.0.3) <FE07B092-2187-38FC-A475-D904C6A2A45D> /System/Library/PrivateFrameworks/BiomeSync.framework/Versions/A/BiomeSync
+       0x2317c0000 -        0x2317c0f2f  libobjcMsgSend17.dylib (973.1) <07B4CF85-251B-301B-832B-20B315A59E19> /usr/lib/objc/libobjcMsgSend17.dylib
+       0x231bc4000 -        0x23241c62f  com.apple.BiomeLibrary (436.6) <0042911B-273E-30D9-B87D-8F143EF1EBE6> /System/Library/PrivateFrameworks/BiomeLibrary.framework/Versions/A/BiomeLibrary
+       0x2333df000 -        0x2334b8957  com.apple.biome.CascadeSets (1.0 - 250.0.0.3) <A0246CBA-8AEE-3A2A-9932-804EE71D5290> /System/Library/PrivateFrameworks/CascadeSets.framework/Versions/A/CascadeSets
+       0x2354e0000 -        0x2356312c3  com.apple.CollectionsInternal (1.2.0 - 5027.0.64) <42FFA870-2B08-331F-9B93-8D67E4A9AA1E> /System/Library/PrivateFrameworks/CollectionsInternal.framework/Versions/A/CollectionsInternal
+       0x2359c6000 -        0x2359d37a7  com.apple.ConnectedMode (1.0 - 1) <D390876B-3179-3BEC-9CF0-C8F57CCB3B76> /System/Library/PrivateFrameworks/ConnectedMode.framework/Versions/A/ConnectedMode
+       0x2397c0000 -        0x2397c0f2f  libobjcMsgSend18.dylib (973.1) <43E575B7-04DB-3999-A633-1A3B638BA6E3> /usr/lib/objc/libobjcMsgSend18.dylib
+       0x241266000 -        0x24127af4b  com.apple.DeviceRecovery (1.0 - 1) <1A71D6DD-CAEC-393C-A79A-8CB6FB1A7E6E> /System/Library/PrivateFrameworks/DeviceRecovery.framework/Versions/A/DeviceRecovery
+       0x2417c0000 -        0x2417c0f2f  libobjcMsgSend19.dylib (973.1) <736F4D85-76F7-3B28-8D87-C07E8F7A0EF4> /usr/lib/objc/libobjcMsgSend19.dylib
+       0x247a96000 -        0x247ba4a3f  libXTFontStaticRegistryData.dylib (351) <5EB06DF3-EA80-3B1A-9EE4-87170C7D2EC9> /System/Library/PrivateFrameworks/FontServices.framework/libXTFontStaticRegistryData.dylib
+       0x247ba5000 -        0x247ba7baf  com.apple.FontServices (1.0 - 1) <1095A112-9900-3801-AE96-12DDB7CBE5EC> /System/Library/PrivateFrameworks/FontServices.framework/Versions/A/FontServices
+       0x247ba9000 -        0x247be56b7  com.apple.FramePacing (1.0 - 1) <7E7531CC-3812-331E-BC31-4FD430AC45DA> /System/Library/PrivateFrameworks/FramePacing.framework/Versions/A/FramePacing
+       0x2497c0000 -        0x2497c0f2f  libobjcMsgSend20.dylib (973.1) <74E67C8B-6BCA-3184-A18E-A97F370052C6> /usr/lib/objc/libobjcMsgSend20.dylib
+       0x24bca0000 -        0x24c1e27b7  com.apple.Gestures (9127.0.84 - 9127.0.84) <722C0EA0-8210-3433-8D57-B9092BE776E2> /System/Library/PrivateFrameworks/Gestures.framework/Versions/A/Gestures
+       0x24d06a000 -        0x24d06ffb7  libGPUCompilerUtils.dylib (32023.921.5) <FFFE6EBE-FB56-3144-9F59-E6ECCA97D0C2> /System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libGPUCompilerUtils.dylib
+       0x24d070000 -        0x24d0b06ff  libllvm-flatbuffers.dylib (32023.921.5) <613BEB0E-CB65-30BB-AF95-50F06C817D39> /System/Library/PrivateFrameworks/GPUCompiler.framework/Versions/32023/Libraries/libllvm-flatbuffers.dylib
+       0x2517c0000 -        0x2517c0f2f  libobjcMsgSend21.dylib (973.1) <CC0D732F-98E7-3888-9E15-70984DA2FB04> /usr/lib/objc/libobjcMsgSend21.dylib
+       0x2597c0000 -        0x2597c0f2f  libobjcMsgSend22.dylib (973.1) <85A60286-5DE3-32BA-B18C-2A498B065C88> /usr/lib/objc/libobjcMsgSend22.dylib
+       0x25ac4b000 -        0x25ad3e00f  com.apple.InstalledContentLibrary (1.0 - 1.0) <271E80B3-4E8C-3652-9B73-EF9CBEF8D7F7> /System/Library/PrivateFrameworks/InstalledContentLibrary.framework/Versions/A/InstalledContentLibrary
+       0x25faa6000 -        0x2603394bf  com.apple.IntelligencePlatformLibrary (436.6) <9431DC2E-DC4F-3A48-BEE1-4BACF5B13FEE> /System/Library/PrivateFrameworks/IntelligencePlatformLibrary.framework/Versions/A/IntelligencePlatformLibrary
+       0x2617c0000 -        0x2617c0f2f  libobjcMsgSend23.dylib (973.1) <5452A0D2-6B19-39BE-ADDD-80B7BCDE3A98> /usr/lib/objc/libobjcMsgSend23.dylib
+       0x266206000 -        0x266262bb7  com.apple.MessageSecurity (1.0 - 341.0.17) <030ECE37-158D-3E06-89F2-9D3CC3A18D39> /System/Library/PrivateFrameworks/MessageSecurity.framework/Versions/A/MessageSecurity
+       0x266921000 -        0x266fde107  com.apple.MIL (3600.16 - 3600.16.1) <C53AA54F-53DF-30A7-A411-1D4EB634EA5D> /System/Library/PrivateFrameworks/MIL.framework/Versions/A/MIL
+       0x269566000 -        0x26957132b  com.apple.gpusw.MTL3On4 (1.0 - 1) <5738514A-41DE-3AEB-A3FE-767D60C8B457> /System/Library/PrivateFrameworks/MTL3On4.framework/Versions/A/MTL3On4
+       0x2697c0000 -        0x2697c0f2f  libobjcMsgSend24.dylib (973.1) <94BBF2D6-722B-350D-8557-4D25A8E8D53A> /usr/lib/objc/libobjcMsgSend24.dylib
+       0x270395000 -        0x27039ef6b  com.apple.sear.NSPredicateSecurityPolicy (1.0 - 1) <031A156F-8BB6-36B2-96D2-4CCFF1D3174C> /System/Library/PrivateFrameworks/NSPredicateSecurityPolicy.framework/Versions/A/NSPredicateSecurityPolicy
+       0x271746000 -        0x271771067  com.apple.OSEligibility (446.1.3) <B05AB25F-83C0-3574-B5F3-A4E373624E77> /System/Library/PrivateFrameworks/OSEligibility.framework/Versions/A/OSEligibility
+       0x2717c0000 -        0x2717c0f2f  libobjcMsgSend25.dylib (973.1) <35481387-5A8E-3AE4-86A6-94CEB3CC8726> /usr/lib/objc/libobjcMsgSend25.dylib
+       0x282716000 -        0x28276e357  com.apple.ParsingInternal (0.0.1 - 5027.0.64) <408A4BEF-67E6-3328-8017-54F85C8B6C74> /System/Library/PrivateFrameworks/ParsingInternal.framework/Versions/A/ParsingInternal
+       0x28528a000 -        0x28529d3af  com.apple.accessibility.PhotosensitivityProcessing (1.0 - 1) <5378D4F0-1832-3522-8FE3-25D775DF12BA> /System/Library/PrivateFrameworks/PhotosensitivityProcessing.framework/Versions/A/PhotosensitivityProcessing
+       0x286964000 -        0x2869e300f  com.apple.PoirotSchematizer (1.0 - 1) <8F63B1C9-E53A-3D4F-8B12-665FCF11937E> /System/Library/PrivateFrameworks/PoirotSchematizer.framework/Versions/A/PoirotSchematizer
+       0x2869e4000 -        0x286a20abf  com.apple.PoirotSQLite (1.0 - 1) <C14FEE63-4DFB-3C71-BB15-892F2BFEEF7B> /System/Library/PrivateFrameworks/PoirotSQLite.framework/Versions/A/PoirotSQLite
+       0x286a21000 -        0x286a546e7  com.apple.PoirotUDFs (1.0 - 1) <B0AA646F-EDC3-3B2E-B85E-56C9BCFB77D2> /System/Library/PrivateFrameworks/PoirotUDFs.framework/Versions/A/PoirotUDFs
+       0x288403000 -        0x28856129b  com.apple.ProDisplayLibrary (11.0.21 - 11.0.21) <A1059C52-147F-3275-BE00-CA7CA60D4980> /System/Library/PrivateFrameworks/ProDisplayLibrary.framework/Versions/A/ProDisplayLibrary
+       0x2890d1000 -        0x2890d9023  com.apple.ReflectionInternal (1.0.0 - 5027.0.64) <84A8F5C2-03F0-378B-BDA5-7670124DCA98> /System/Library/PrivateFrameworks/ReflectionInternal.framework/Versions/A/ReflectionInternal
+       0x2897c0000 -        0x2897c0f2f  libobjcMsgSend26.dylib (973.1) <9E0C8664-E7F4-39D1-AAFC-BD92B255E4E8> /usr/lib/objc/libobjcMsgSend26.dylib
+       0x28a6ad000 -        0x28a6c03c7  com.apple.RuntimeInternal (1.0.0 - 5027.0.64) <4E29AB5B-73BC-35D0-942E-066A3B19ABC6> /System/Library/PrivateFrameworks/RuntimeInternal.framework/Versions/A/RuntimeInternal
+       0x28db42000 -        0x28dbb621f  com.apple.SILManager (67.13 - 67.13) <42D7A7C9-BB41-3A05-BD71-72D9809D1002> /System/Library/PrivateFrameworks/SILManager.framework/Versions/A/SILManager
+       0x2917c0000 -        0x2917c0f2f  libobjcMsgSend27.dylib (973.1) <FD424935-55A9-3650-955A-EED3441A1D19> /usr/lib/objc/libobjcMsgSend27.dylib
+       0x2997c0000 -        0x2997c0f2f  libobjcMsgSend28.dylib (973.1) <09BA7B97-7DF7-3C7F-932A-B6847662FC49> /usr/lib/objc/libobjcMsgSend28.dylib
+       0x29a822000 -        0x29a851cbf  com.apple.security.SwiftASN1Internal (1.0 - 1) <D96B3E7B-6235-3989-ACCF-1B77C7BD3295> /System/Library/PrivateFrameworks/SwiftASN1Internal.framework/Versions/A/SwiftASN1Internal
+       0x29e0cb000 -        0x29e11b76f  com.apple.tightbeam (1.0 - 631.0.5) <1B7DA405-96F3-3EFA-9653-3DE645E0E097> /System/Library/PrivateFrameworks/Tightbeam.framework/Versions/A/Tightbeam
+       0x2a17c0000 -        0x2a17c0f2f  libobjcMsgSend29.dylib (973.1) <36D5BA3F-2139-30B0-8558-556764BE9813> /usr/lib/objc/libobjcMsgSend29.dylib
+       0x2a4249000 -        0x2a424a0ff  com.apple.VideoToolboxParavirtualizationSupport (71.0.14 - 71.0.14) <310A3A22-A78C-3557-8CCE-A975490C1D02> /System/Library/PrivateFrameworks/VideoToolboxParavirtualizationSupport.framework/Versions/A/VideoToolboxParavirtualizationSupport
+       0x2a97c0000 -        0x2a97c0f2f  libobjcMsgSend30.dylib (973.1) <9F05564A-9D12-372C-98FC-E9F0E6BE4F04> /usr/lib/objc/libobjcMsgSend30.dylib
+       0x2acd21000 -        0x2acdbb033  libAppleArchive.dylib (469) <D62616FF-0C2C-343D-AD67-0FDEEFCF52B9> /usr/lib/libAppleArchive.dylib
+       0x2ad4ab000 -        0x2ad4b500b  libCoreEntitlements.dylib (94) <8F204F37-23D4-3AAB-AD38-57B3D8CB73EC> /usr/lib/libCoreEntitlements.dylib
+       0x2ad60e000 -        0x2ad72026f  libcrypto.46.dylib (111.0.5) <E2D5A8B9-C4E6-38A5-91F5-450D4A4152FD> /usr/lib/libcrypto.46.dylib
+       0x2ad9ba000 -        0x2ad9d4aff  libhvf.dylib (14) <EB152559-8134-3C36-AB2F-446A5A909BD1> /usr/lib/libhvf.dylib
+       0x2ae4d3000 -        0x2ae4d92bb  libReverseProxyDevice.dylib (114) <9227B01D-28CA-380B-B95A-8C1B10AEAC73> /usr/lib/libReverseProxyDevice.dylib
+       0x2ae4da000 -        0x2ae4e0fe5  libRosetta.dylib (385) <E359944B-D230-33F9-A04E-0C3B17C3326E> /usr/lib/libRosetta.dylib
+       0x2ae5c5000 -        0x2ae5fc00f  libssl.48.dylib (111.0.5) <563A2AF9-97E5-3D1E-80B8-954B9DC97E59> /usr/lib/libssl.48.dylib
+       0x2ae636000 -        0x2ae66e007  libswiftPrespecialized.dylib (0) <6B5CC7BC-073A-3B54-B913-1C7857DD14EE> /usr/lib/libswiftPrespecialized.dylib
+       0x2ae6bb000 -        0x2ae6c3ad3  libTLE.dylib (94) <6968082F-CBF6-356D-9B29-82B9FEC2FC2D> /usr/lib/libTLE.dylib
+       0x2ae93c000 -        0x2ae93c669  libswift_Builtin_float.dylib (6.4.0.31.5) <9CB6F7D2-F14F-3C51-9E30-EDCB674B970E> /usr/lib/swift/libswift_Builtin_float.dylib
+       0x2ae93d000 -        0x2ae9c99c7  libswift_Concurrency.dylib (6.4.0 - 6.4.0.31.5) <F2F652DD-14B0-35E2-BC9D-47FE153D579E> /usr/lib/swift/libswift_Concurrency.dylib
+       0x2ae9ca000 -        0x2ae9ccab3  libswift_DarwinFoundation1.dylib (428.0.10) <8C802776-95AE-3ED7-BF1C-D9EB9A7DB358> /usr/lib/swift/libswift_DarwinFoundation1.dylib
+       0x2ae9cd000 -        0x2ae9cdd2b  libswift_DarwinFoundation2.dylib (428.0.10) <A659D9FC-0554-33A6-9F7A-479B268F8993> /usr/lib/swift/libswift_DarwinFoundation2.dylib
+       0x2ae9ce000 -        0x2ae9ce79f  libswift_DarwinFoundation3.dylib (428.0.10) <48A04494-256B-3CE1-88A6-79E4B8E9E7B8> /usr/lib/swift/libswift_DarwinFoundation3.dylib
+       0x2ae9d1000 -        0x2aea698b7  libswift_RegexParser.dylib (6.4.0 - 6.4.0.31.5) <1E7009E2-B2B6-3A40-99BC-4C2D9DF18C76> /usr/lib/swift/libswift_RegexParser.dylib
+       0x2aea6c000 -        0x2aeafa4ef  libswift_StringProcessing.dylib (6.4.0 - 6.4.0.31.5) <DA701840-2499-3238-AF4F-4AD3C96C6C55> /usr/lib/swift/libswift_StringProcessing.dylib
+       0x2aeb5d000 -        0x2aeb6e837  libswiftDistributed.dylib (6.4.0 - 6.4.0.31.5) <E5CE2297-9720-3FC8-BD0E-647F8C4F6AF0> /usr/lib/swift/libswiftDistributed.dylib
+       0x2aeb83000 -        0x2aeb9c12f  libswiftObservation.dylib (6.4.0 - 6.4.0.31.5) <01EDB949-A7D9-361F-812D-4C21E3F6537E> /usr/lib/swift/libswiftObservation.dylib
+       0x2aeba8000 -        0x2aebb2427  libswiftRegexBuilder.dylib (6.4.0 - 6.4.0.31.5) <C15CF9E4-1D44-3567-A47E-07340F9F95A7> /usr/lib/swift/libswiftRegexBuilder.dylib
+       0x2aed2c000 -        0x2aed3ef0f  libswiftSynchronization.dylib (6.4.0 - 6.4.0.31.5) <523DD911-05CA-39CE-A98A-27EAB3BA63A4> /usr/lib/swift/libswiftSynchronization.dylib
+       0x2aed40000 -        0x2aed5dea7  libswiftSystem.dylib (5027.0.67) <8131BBA8-DF06-3EA3-97AE-E7A0646F18BB> /usr/lib/swift/libswiftSystem.dylib
+       0x2aeec9000 -        0x2aeecc75b  libsystem_darwindirectory.dylib (129.0.1) <61264923-2AA5-3658-B8C4-550C71E9D4B3> /usr/lib/system/libsystem_darwindirectory.dylib
+       0x2aeecd000 -        0x2aeed7d9b  libsystem_eligibility.dylib (446.1.3) <EDDE8E9C-A2CF-3931-BBB3-321CB852EB30> /usr/lib/system/libsystem_eligibility.dylib
+       0x2aeed8000 -        0x2aeee142b  libsystem_sanitizers.dylib (32) <7138ED99-7AA0-34EA-B35B-20EF6ADB1EED> /usr/lib/system/libsystem_sanitizers.dylib
+       0x2aeee2000 -        0x2aeee2a13  libsystem_trial.dylib (511) <6AE48824-EC44-3A8C-B501-BE57DBE892E7> /usr/lib/system/libsystem_trial.dylib
+       0x2b17c0000 -        0x2b17c0f2f  libobjcMsgSend31.dylib (973.1) <0985E20F-78C3-3466-A2B2-DBB95F7104A3> /usr/lib/objc/libobjcMsgSend31.dylib
+       0x2b97c0000 -        0x2b97c0f2f  libobjcMsgSend32.dylib (973.1) <0D309D58-D576-3E5D-AD4B-6D55AB491702> /usr/lib/objc/libobjcMsgSend32.dylib
+       0x2c17c0000 -        0x2c17c0f2f  libobjcMsgSend33.dylib (973.1) <346E0484-48FA-369B-8A64-93B5F5341CFE> /usr/lib/objc/libobjcMsgSend33.dylib
+       0x2c97c0000 -        0x2c97c0f2f  libobjcMsgSend34.dylib (973.1) <6A31F809-BCBE-3E01-A367-E91FDACCE324> /usr/lib/objc/libobjcMsgSend34.dylib

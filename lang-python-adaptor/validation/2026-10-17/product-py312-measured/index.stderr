@@ -1,0 +1,5 @@
+task_4fde370afb644110b852df8543d1524f: queued
+task_4fde370afb644110b852df8543d1524f: running
+task_4fde370afb644110b852df8543d1524f: python_analyze_full: input_or_environment_changed
+task_4fde370afb644110b852df8543d1524f: python_stream {"peak_bytes":1061528,"send_wait_ns":1066131521,"receive_wait_ns":7354498433}
+task_4fde370afb644110b852df8543d1524f: python_worker_memory {"limit_bytes":4294967296,"rss_bytes":1869201408,"peak_rss_bytes":1870053376,"stage":"records","process_group":37210,"phase_ms":{"backend_facts_ms":364,"backend_solve_ms":4696},"stream":null}

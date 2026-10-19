@@ -1,0 +1,2 @@
+codeana daemon ready: http://127.0.0.1:57696 mode=production-v1
+codeana-stream {"peak_bytes":1061528,"send_wait_ns":1076155254,"receive_wait_ns":7622462520}

@@ -1,0 +1,1 @@
+./scripts/build-python.sh: line 9: options[@]: unbound variable

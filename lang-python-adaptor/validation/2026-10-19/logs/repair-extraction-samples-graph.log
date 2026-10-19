@@ -1,0 +1,27 @@
+   Compiling codeana-python-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.07s
+     Running tests/graph.rs (lang-python-adaptor/target/debug/deps/graph-e702192af9525010)
+
+running 1 test
+test inferred_graph_survives_storage_and_unknowns_keep_python_identity ... FAILED
+
+failures:
+
+---- inferred_graph_survives_storage_and_unknowns_keep_python_identity stdout ----
+codeana-python-phase=backend_run
+codeana-python-timing backend_solve_ms=1741
+codeana-python-phase=backend_facts
+codeana-python-timing backend_facts_ms=3
+
+thread 'inferred_graph_survives_storage_and_unknowns_keep_python_identity' (45158277) panicked at tests/graph.rs:129:5:
+assertion failed: samples["dynamic_any"].as_array().unwrap().iter().all(|s|
+        s["backend_target_count"] == 0)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    inferred_graph_survives_storage_and_unknowns_keep_python_identity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.00s
+
+error: test failed, to rerun pass `--test graph`

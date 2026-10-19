@@ -1,0 +1,50 @@
+{
+  "status": "blocked_product_acceptance",
+  "date": "2026-10-16",
+  "baseline": "4630a8b790e4bb1152fc4831e99f04617b2e0b94",
+  "backend": "feeee254e65844f23f973a0a29cae02d09931068",
+  "versions": {
+    "worker": 21,
+    "graph_model": 3,
+    "physical_schema": 10,
+    "logical_schema": 33,
+    "daemon": 3,
+    "java_analysis": 10,
+    "c_abi": 4
+  },
+  "validation": {
+    "java_fixture": "passed before protocol upgrade; receipt retains worker 20 bundle metadata",
+    "rust_gate": "passed",
+    "rust_unit_passed": 185,
+    "python_core_gate": "passed",
+    "python_tests": 16,
+    "python_test_count_note": "includes one subprocess helper test",
+    "python_graph_queries": [
+      "resolve",
+      "structure",
+      "calls",
+      "references"
+    ],
+    "schema10_storage_tests": 36,
+    "fmt_clippy": "passed",
+    "scripts": "Python syntax / bash syntax / DDL checked"
+  },
+  "blocked": {
+    "python_cli": "worker SIGKILL before analysis",
+    "system_evidence": "amfi.log: adhoc or unknown certificate chain",
+    "failure": "worker-failure.json",
+    "multilanguage": "implemented, not accepted",
+    "release": "scripts implemented; isolated package not validated",
+    "java_native": "protocol 21 bundle not validated"
+  },
+  "real_project": {
+    "commit": "31259b761a5ea77672d0e90bc9e2776e4dfe397e",
+    "status": "not_run; Python product fixtures must pass first"
+  },
+  "performance": {
+    "status": "not_run",
+    "accepted": false
+  },
+  "accepted": false,
+  "source_manifest": "source-sha256.json"
+}

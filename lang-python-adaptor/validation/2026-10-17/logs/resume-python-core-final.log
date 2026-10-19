@@ -1,0 +1,22 @@
+cargo fmt --manifest-path lang-python-adaptor/Cargo.toml --all -- --check
+Diff in /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor/src/frozen.rs:1:
+ //! Rebuild the captured directory layout privately, preserving Pyrefly's import rules.
+ use crate::{Analysis, FrozenModule, facade};
+[31m-use anyhow::{Context, Result, ensure};
+(B[m use aho_corasick::{AhoCorasickBuilder, MatchKind};
+[32m+use anyhow::{Context, Result, ensure};
+(B[m use codeana_model::{hash, python::AnalysisConfig};
+ use pyrefly_python::module_name::ModuleName;
+ use std::{
+Diff in /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor/src/frozen.rs:80:
+     }
+     let mut output = Vec::new();
+     // Scan each diagnostic once, rather than cloning it for every captured path.
+[31m-    let path_matcher = AhoCorasickBuilder::new().match_kind(MatchKind::LeftmostLongest).build(remap.keys())?;
+(B[m[32m+    let path_matcher = AhoCorasickBuilder::new()
+(B[m[32m+        .match_kind(MatchKind::LeftmostLongest)
+(B[m[32m+        .build(remap.keys())?;
+(B[m     let original_paths = remap.values().map(String::as_str).collect::<Vec<_>>();
+     for context in &config.inputs.contexts {
+         check()?;
+error: Recipe `test-python-core` failed on line 136 with exit code 1

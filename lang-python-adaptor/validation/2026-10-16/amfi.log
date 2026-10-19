@@ -1,0 +1,2 @@
+Timestamp               Ty Process[PID:TID]
+2026-10-16 22:59:30.904 Df amfid[347:1199106] /Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker not valid: Error Domain=AppleMobileFileIntegrityError Code=-423 "The file is adhoc signed or signed by an unknown certificate chain" UserInfo={NSURL=file:///Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker, NSLocalizedDescription=The file is adhoc signed or signed by an unknown certificate chain}

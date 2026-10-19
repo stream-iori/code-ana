@@ -1,0 +1,30 @@
+{
+  "package": "codeana-python",
+  "platform": "Darwin",
+  "architecture": "arm64",
+  "worker_protocol": 21,
+  "daemon_protocol": 3,
+  "graph_model": 3,
+  "physical_schema": 10,
+  "backend": {
+    "repository": "https://github.com/facebook/pyrefly",
+    "version": "1.4.0",
+    "commit": "feeee254e65844f23f973a0a29cae02d09931068",
+    "license": "MIT",
+    "source": "Cargo git dependency; complete checkout verified with git fsck",
+    "patches": [],
+    "default_features": false,
+    "stdlib": "Pinned Pyrefly bundled typeshed; part of the backend artifact",
+    "third_party_stubs": "Disabled; target dependencies must be explicit",
+    "build_isolation": "Separate Cargo workspace: Pyrefly needs unicode-ident >=1.0.25 (Unicode 18), while the existing rust-analyzer adapter pins 1.0.24 (Unicode 17).",
+    "typeshed": {
+      "commit": "a7bcce8b6df32dd85dc31691cef30af61e7b1371",
+      "metadata_source": "Pyrefly crates/pyrefly_bundled/third_party/typeshed_metadata.json",
+      "license_sha256": "295f8538c94ae5c3043301cf7cff1c852dab6a786a8ddee471e061b40d5ecabe"
+    }
+  },
+  "java": "not_bundled",
+  "acceptance": "not_asserted",
+  "python_adapter": "pyrefly-1.4.0-codeana-v2",
+  "python_input_schema": 2
+}

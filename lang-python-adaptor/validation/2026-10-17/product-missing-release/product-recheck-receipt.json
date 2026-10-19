@@ -1,0 +1,12 @@
+{
+  "status": "passed",
+  "revision": "rev_2a753c188f344f4c8aa7b65905e385e2",
+  "database_sha256": "05867975ca9361e298b4b819fe2e1d9bbf9006dc3dbfa6a90408d3e48a904e08",
+  "audit_passed": 25,
+  "audit_total": 25,
+  "calls_exit": 0,
+  "calls_records": 2,
+  "calls_selector": "python-declaration_415b4fa4c7a3e7f5012875628f4c9344f59cf64b3a192c1cea11deff922688db",
+  "measured": false,
+  "explanation": "Same published database and final release bytes; calls selected by stable ID after resolving the exact source declaration; 2 attribute probes checked as references. Original failed harness receipt retained."
+}

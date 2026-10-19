@@ -1,0 +1,81 @@
+FFF
+======================================================================
+FAIL: test_inference_queries_reuse_strict_and_stale_inputs (__main__.PythonLanguage.test_inference_queries_reuse_strict_and_stale_inputs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 52, in test_inference_queries_reuse_strict_and_stale_inputs
+    _, terminal = self.cli('index', timeout=90)
+                  ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"WORKER_PROTOCOL","message":"WORKER_PROTOCOL: unexpected end of file; pid=82380; command=[\"/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker\",\"--fd\",\"3\"]; exit=exit status: 1; stderr=Error: ATTEMPT_MISMATCH\n","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_b100953d5a6348afbd8ee2f8da5dc066: queued
+task_b100953d5a6348afbd8ee2f8da5dc066: running
+task_b100953d5a6348afbd8ee2f8da5dc066: python_analyze_full: input_or_environment_changed
+WORKER_PROTOCOL: WORKER_PROTOCOL: unexpected end of file; pid=82380; command=["/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker","--fd","3"]; exit=exit status: 1; stderr=Error: ATTEMPT_MISMATCH
+
+
+codeana daemon ready: http://127.0.0.1:54085 mode=production-v1
+
+
+======================================================================
+FAIL: test_output_budget_failure_retains_head (__main__.PythonLanguage.test_output_budget_failure_retains_head)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 78, in test_output_budget_failure_retains_head
+    first = self.cli('index', timeout=90)[1]['revision']
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"WORKER_PROTOCOL","message":"WORKER_PROTOCOL: unexpected end of file; pid=82523; command=[\"/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker\",\"--fd\",\"3\"]; exit=exit status: 1; stderr=Error: ATTEMPT_MISMATCH\n","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_61b042cd8ada4c249f33b887e4fe6099: queued
+task_61b042cd8ada4c249f33b887e4fe6099: running
+task_61b042cd8ada4c249f33b887e4fe6099: python_analyze_full: input_or_environment_changed
+WORKER_PROTOCOL: WORKER_PROTOCOL: unexpected end of file; pid=82523; command=["/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker","--fd","3"]; exit=exit status: 1; stderr=Error: ATTEMPT_MISMATCH
+
+
+codeana daemon ready: http://127.0.0.1:54088 mode=production-v1
+
+
+======================================================================
+FAIL: test_rust_python_publish_and_failure_are_atomic (__main__.PythonLanguage.test_rust_python_publish_and_failure_are_atomic)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 92, in test_rust_python_publish_and_failure_are_atomic
+    first = self.cli('index', timeout=90)[1]['revision']
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"WORKER_PROTOCOL","message":"WORKER_PROTOCOL: unexpected end of file; pid=82735; command=[\"/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker\",\"--fd\",\"3\"]; exit=exit status: 1; stderr=Error: ATTEMPT_MISMATCH\n","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_8be700e420304d38a7edc6c997b8b68e: queued
+task_8be700e420304d38a7edc6c997b8b68e: running
+task_8be700e420304d38a7edc6c997b8b68e: rust_input_summary {"crates":2,"published_crates":2,"files":3,"file_instances":3,"source_bytes":781,"source_instance_bytes":781,"selection":{"candidate_crates":4,"retained_crates":2,"filtered_source_instances":0}}
+task_8be700e420304d38a7edc6c997b8b68e: python_analyze_full: input_or_environment_changed
+WORKER_PROTOCOL: WORKER_PROTOCOL: unexpected end of file; pid=82735; command=["/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker","--fd","3"]; exit=exit status: 1; stderr=Error: ATTEMPT_MISMATCH
+
+
+codeana daemon ready: http://127.0.0.1:54093 mode=production-v1
+
+
+----------------------------------------------------------------------
+Ran 3 tests in 7.144s
+
+FAILED (failures=3)

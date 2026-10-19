@@ -1,0 +1,1018 @@
+{
+  "suites": [
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.nativeimage.TargetJdkBinaryRepositoryTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavacProtocolTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavaContractBudgetTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.MavenInputsWorkerTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavacDecodeBudgetTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavaModelTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavacAnalysisPlannerTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavacSourceLexemesTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.asmsolver.JavaBinaryModelIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavacWorkerSessionTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.asmsolver.PackedClasspathIndexTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "dev.codeana.adapter.JavacEmptyPublicationTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.javac.JavacDeclarationCacheTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.asmsolver.ClassFileSourceTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "dev.codeana.adapter.JavacDecodeConfigurationTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "analysis-core",
+      "name": "com.anatomist.core.asmsolver.JavaBinarySessionIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "framework-spring",
+      "name": "com.anatomist.extract.XmlBeanExtractorTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "framework-spring",
+      "name": "com.anatomist.framework.spring.SpringJavaModelTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "framework-spring",
+      "name": "com.anatomist.core.ProjectScannerSpringXmlTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "framework-spring",
+      "name": "com.anatomist.core.SpringBeanParserTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "framework-sofa",
+      "name": "com.anatomist.framework.sofa.SofaJavaModelTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "framework-sofa",
+      "name": "com.anatomist.framework.SofaXmlAnalyzerTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.LombokJavaModelIT",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.LocalTypeResolverTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacSemanticModelIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaSourceModelIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.lombok.LombokCapabilitySummaryTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.ExtractorPipelineTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.asmsolver.AsmAnnotationsAndNestedTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.NavigationRecoveryTest",
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaAnnotationFactsIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacCatalogueCodecIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.process.ProcessRunnerTest",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.lombok.LombokAstModelExtensionTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacDeclarationViewsIT",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.asmsolver.AsmMembersTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacSignaturePlanIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.adapter.AnalysisRequestTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.ExtensionLifecycleTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.LombokTypeAnnotationIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.JavaResolutionQualityGateTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.ResolutionTrackerTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.ParserCacheBudgetsTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.JavacBackendContractTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.TypeExtractorTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.AnnotationMetaCacheTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.StaticImportResolverTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.application.FrameworkPluginsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.JavaContractFingerprintTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.ProjectFactViewTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaCallEvidenceIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.ExtensionExecutionTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaFrameworkModelsIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacRecursiveSymbolResolutionIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacContextsTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.asmsolver.AsmDescriptorParserTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.FieldExtractorTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.GraphPostProcessorTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.GraphIdentityRewriterTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.JavaRecoveryBudgetIT",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.adapter.GraphArchiveTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.AstTypeNamesTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacBackendIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.MethodExtractorTest",
+      "tests": 18,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.adapter.GraphCatalogueTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.lombok.LombokSuperBuilderModelTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.lombok.LombokConfigurationScopeTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.json.JsonTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaModelExtensionIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacDeclarationsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.JavacPlatformContractIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaCallFactsIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.LocalConstraintTest",
+      "tests": 29,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacContextLifetimeIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.LexicalValuesTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.CallableSignatureCacheTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.common.PerformanceTraceTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.model.EdgeTargetTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.ReflectionExtractorTest",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaBindingEvidenceIT",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacCompiledDeclarationsTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.adapter.ProcessFailureEvidenceTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.asmsolver.AsmClassDeclarationTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaReflectionFactsIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.asmsolver.AsmSignatureParserTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaModelAnalyzerIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.ControlContextTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.adapter.AnalysisSessionTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaContractIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.common.CanonicalJsonTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.model.ExtractionResultTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.quality.ResolutionQualityTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.ContentHashTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacParallelWorkerIT",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacParallelAnalysisIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacSyntaxIT",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.EdgeTargetBinderTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaModeledOverridesIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.AstEnclosingTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacLombokModulesIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.nativeimage.TargetJdkStreamResolutionIT",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.HierarchyExtractorTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacLombokIT",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.IndexTimingsTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.asmsolver.AsmTypeSolverTest",
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.CallOverloadResolverTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "dev.codeana.adapter.CapturedProjectTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacDeclarationInventoryIT",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaRelationFactsIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.lombok.LombokBuilderModelTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.LombokUtilityClassIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.ReferenceExtractorTest",
+      "tests": 9,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.CallGraphExtractorTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.nativeimage.TargetJdkResolutionIT",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.nativeimage.TargetJdkDeclarationTest",
+      "tests": 12,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavacSignatureCacheIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.AnnotationExtractorTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.NodeIdGeneratorTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaModelAnnotationsIT",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.javac.JavaSignatureArchiveIT",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.DeclarationMetadataContractIT",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.LocalMethodCatalogTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.asmsolver.PackedTypeMetadataCacheTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.framework.ExtensionNodeMetadataTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.extract.FieldAccessExtractorTest",
+      "tests": 16,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "java-bridge",
+      "name": "com.anatomist.core.PathGlobTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "totals": {
+    "tests": 641,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  }
+}

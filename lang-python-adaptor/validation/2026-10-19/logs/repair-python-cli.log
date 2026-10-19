@@ -1,0 +1,158 @@
+FFFFEFF
+======================================================================
+ERROR: test_optional_pyproject_controls_and_legacy_inventory (__main__.PythonLanguage.test_optional_pyproject_controls_and_legacy_inventory)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 140, in test_optional_pyproject_controls_and_legacy_inventory
+    pyproject.write_bytes((FIX/'python/metadata/pyproject.toml').read_bytes())
+                          ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 777, in read_bytes
+    with self.open(mode='rb', buffering=0) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.3_1/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 771, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/fixtures/python/metadata/pyproject.toml'
+
+======================================================================
+FAIL: test_cancel_crash_and_recovery_preserve_head (__main__.PythonLanguage.test_cancel_crash_and_recovery_preserve_head)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 208, in test_cancel_crash_and_recovery_preserve_head
+    good = self.cli('index', timeout=90)[1]['revision']
+           ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"FAILED","message":"unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_18cde0ad39324e5c8b0a27bec0e66671: queued
+task_18cde0ad39324e5c8b0a27bec0e66671: running
+FAILED: unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12
+
+codeana daemon ready: http://127.0.0.1:50791 mode=production-v1
+
+
+======================================================================
+FAIL: test_deleted_empty_and_missing_import_recovery (__main__.PythonLanguage.test_deleted_empty_and_missing_import_recovery)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 182, in test_deleted_empty_and_missing_import_recovery
+    first = self.cli('index', timeout=90)[1]
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"FAILED","message":"unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_5231d161db874a9796df84f5921bdd0c: queued
+task_5231d161db874a9796df84f5921bdd0c: running
+FAILED: unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12
+
+codeana daemon ready: http://127.0.0.1:50802 mode=production-v1
+
+
+======================================================================
+FAIL: test_inference_queries_reuse_strict_and_stale_inputs (__main__.PythonLanguage.test_inference_queries_reuse_strict_and_stale_inputs)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 94, in test_inference_queries_reuse_strict_and_stale_inputs
+    _, terminal = self.cli('index', timeout=90)
+                  ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"FAILED","message":"unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_39ecdc358e1d4ca4a03361e3c2c8e0ab: queued
+task_39ecdc358e1d4ca4a03361e3c2c8e0ab: running
+FAILED: unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12
+
+codeana daemon ready: http://127.0.0.1:50808 mode=production-v1
+
+
+======================================================================
+FAIL: test_nine_frozen_probes_and_python_dispatch (__main__.PythonLanguage.test_nine_frozen_probes_and_python_dispatch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 120, in test_nine_frozen_probes_and_python_dispatch
+    first = self.cli('index', timeout=90)[1]['revision']
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"FAILED","message":"unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_939b3b7be1c04a8084f16e4c48202c92: queued
+task_939b3b7be1c04a8084f16e4c48202c92: running
+FAILED: unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12
+
+codeana daemon ready: http://127.0.0.1:50812 mode=production-v1
+
+
+======================================================================
+FAIL: test_output_budget_failure_retains_head (__main__.PythonLanguage.test_output_budget_failure_retains_head)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 132, in test_output_budget_failure_retains_head
+    first = self.cli('index', timeout=90)[1]['revision']
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"FAILED","message":"unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_f48b0278c3e7472dbcbbbf0d79772b93: queued
+task_f48b0278c3e7472dbcbbbf0d79772b93: running
+FAILED: unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12
+
+codeana daemon ready: http://127.0.0.1:50825 mode=production-v1
+
+
+======================================================================
+FAIL: test_rust_python_publish_and_failure_are_atomic (__main__.PythonLanguage.test_rust_python_publish_and_failure_are_atomic)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/python_language_e2e.py", line 170, in test_rust_python_publish_and_failure_are_atomic
+    first = self.cli('index', timeout=90)[1]['revision']
+            ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/tests/product_support.py", line 54, in cli
+    self.assertEqual(p.returncode, code,
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^
+                     f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: 1 != 0 : args=('index',)
+stdout=codeana-text-v1
+terminal {"execution":"failed","assessment":"unknown","gate":"not_evaluated","publication":"retained","report":"off","revision":"","producer":"","code":"FAILED","message":"unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12","exit_code":1,"evidence":{"enumeration":false,"semantic":false,"limits":[],"reasons":[]},"cursor":""}
+
+stderr=task_24915e23535744eca20450809325d52d: queued
+task_24915e23535744eca20450809325d52d: running
+FAILED: unknown field `controls`, expected one of `schema_version`, `roots`, `contexts` at line 22 column 12
+
+codeana daemon ready: http://127.0.0.1:50832 mode=production-v1
+
+
+----------------------------------------------------------------------
+Ran 7 tests in 9.416s
+
+FAILED (failures=6, errors=1)

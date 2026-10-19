@@ -1,0 +1,27 @@
+   Compiling codeana-python-adaptor v0.1.0 (/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/lang-python-adaptor)
+error: lifetime may not live long enough
+  --> src/records.rs:62:9
+   |
+61 |       fn owner(&self, path: &str, start: u32, end: u32) -> Option<(&Declaration, &str)> {
+   |                -            - let's call the lifetime of this reference `'1`
+   |                |
+   |                let's call the lifetime of this reference `'2`
+62 | /         self.declarations
+63 | |             .range((path, 0)..=(path, u32::MAX))
+64 | |             .map(|(_, value)| value)
+65 | |             .filter(|(d, _)| {
+...  |
+70 | |             .min_by_key(|(d, _)| d.body_end - d.body_start)
+71 | |             .map(|(d, id)| (*d, id.as_str()))
+   | |_____________________________________________^ method was supposed to return data with lifetime `'2` but it is returning data with lifetime `'1`
+   |
+help: consider introducing a named lifetime parameter and update trait if needed
+   |
+61 |     fn owner<'a>(&self, path: &'a str, start: u32, end: u32) -> Option<(&'a Declaration, &'a str)> {
+   |             ++++               ++                                        ++               ++
+help: consider adding 'move' keyword before the nested closure
+   |
+71 |             .map(move |(d, id)| (*d, id.as_str()))
+   |                  ++++
+
+error: could not compile `codeana-python-adaptor` (lib) due to 1 previous error

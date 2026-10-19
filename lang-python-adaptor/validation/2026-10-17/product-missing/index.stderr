@@ -1,0 +1,8 @@
+task_4e3378ad6955490cb8c326b31a25f78b: queued
+task_4e3378ad6955490cb8c326b31a25f78b: running
+task_4e3378ad6955490cb8c326b31a25f78b: python_analyze_full: input_or_environment_changed
+WORKER_PROTOCOL: WORKER_PROTOCOL: unexpected end of file; pid=33916; command=["/Users/stream/codes/antcodes/labs/diorama-parent/code-ana/target/debug/codeana-python-worker","--fd","3"]; exit=signal: 6 (SIGABRT); stderr=codeana-python-phase=analyze
+
+thread 'tokio-rt-worker' (24996347) has overflowed its stack
+fatal runtime error: stack overflow, aborting
+
