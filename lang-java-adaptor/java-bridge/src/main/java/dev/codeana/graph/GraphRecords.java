@@ -41,10 +41,6 @@ public final class GraphRecords {
      */
     ANNOTATION_META(5),
     /**
-     * <code>SEMANTIC_ANNOTATION = 6;</code>
-     */
-    SEMANTIC_ANNOTATION(6),
-    /**
      * <code>UNRESOLVED_CALL = 7;</code>
      */
     UNRESOLVED_CALL(7),
@@ -76,6 +72,14 @@ public final class GraphRecords {
      * <code>PROJECT_META = 14;</code>
      */
     PROJECT_META(14),
+    /**
+     * <code>SOURCE_STATE = 15;</code>
+     */
+    SOURCE_STATE(15),
+    /**
+     * <code>ANALYSIS_DEPENDENCY = 16;</code>
+     */
+    ANALYSIS_DEPENDENCY(16),
     UNRECOGNIZED(-1),
     ;
 
@@ -103,10 +107,6 @@ public final class GraphRecords {
      * <code>ANNOTATION_META = 5;</code>
      */
     public static final int ANNOTATION_META_VALUE = 5;
-    /**
-     * <code>SEMANTIC_ANNOTATION = 6;</code>
-     */
-    public static final int SEMANTIC_ANNOTATION_VALUE = 6;
     /**
      * <code>UNRESOLVED_CALL = 7;</code>
      */
@@ -139,6 +139,14 @@ public final class GraphRecords {
      * <code>PROJECT_META = 14;</code>
      */
     public static final int PROJECT_META_VALUE = 14;
+    /**
+     * <code>SOURCE_STATE = 15;</code>
+     */
+    public static final int SOURCE_STATE_VALUE = 15;
+    /**
+     * <code>ANALYSIS_DEPENDENCY = 16;</code>
+     */
+    public static final int ANALYSIS_DEPENDENCY_VALUE = 16;
 
 
     @java.lang.Override
@@ -168,7 +176,6 @@ public final class GraphRecords {
         case 3: return DECLARATION;
         case 4: return ANNOTATION;
         case 5: return ANNOTATION_META;
-        case 6: return SEMANTIC_ANNOTATION;
         case 7: return UNRESOLVED_CALL;
         case 8: return FILE_CACHE;
         case 9: return FILE_DEPENDENCY;
@@ -177,6 +184,8 @@ public final class GraphRecords {
         case 12: return COVERAGE;
         case 13: return PROVIDER;
         case 14: return PROJECT_META;
+        case 15: return SOURCE_STATE;
+        case 16: return ANALYSIS_DEPENDENCY;
         default: return null;
       }
     }
@@ -815,8 +824,24 @@ public final class GraphRecords {
      * <code>repeated .codeana.graph.v1.Cell cells = 2;</code>
      */
     int getCellsCount();
+
+    /**
+     * <code>string world = 3;</code>
+     * @return The world.
+     */
+    java.lang.String getWorld();
+    /**
+     * <code>string world = 3;</code>
+     * @return The bytes for world.
+     */
+    com.google.protobuf.ByteString
+        getWorldBytes();
   }
   /**
+   * <pre>
+   * World is explicit for Rust. Empty preserves Java's module/scope-derived identity.
+   * </pre>
+   *
    * Protobuf type {@code codeana.graph.v1.Row}
    */
   public  static final class Row extends
@@ -826,6 +851,7 @@ public final class GraphRecords {
       RowOrBuilder {
     private Row() {
       cells_ = emptyProtobufList();
+      world_ = "";
     }
     public static final int TABLE_FIELD_NUMBER = 1;
     private int table_;
@@ -967,6 +993,54 @@ public final class GraphRecords {
       cells_.remove(index);
     }
 
+    public static final int WORLD_FIELD_NUMBER = 3;
+    private java.lang.String world_;
+    /**
+     * <code>string world = 3;</code>
+     * @return The world.
+     */
+    @java.lang.Override
+    public java.lang.String getWorld() {
+      return world_;
+    }
+    /**
+     * <code>string world = 3;</code>
+     * @return The bytes for world.
+     */
+    @java.lang.Override
+    public com.google.protobuf.ByteString
+        getWorldBytes() {
+      return com.google.protobuf.ByteString.copyFromUtf8(world_);
+    }
+    /**
+     * <code>string world = 3;</code>
+     * @param value The world to set.
+     */
+    @java.lang.SuppressWarnings("ReturnValueIgnored")
+    private void setWorld(
+        java.lang.String value) {
+      value.getClass();  // minimal bytecode null check
+
+      world_ = value;
+    }
+    /**
+     * <code>string world = 3;</code>
+     */
+    private void clearWorld() {
+
+      world_ = getDefaultInstance().getWorld();
+    }
+    /**
+     * <code>string world = 3;</code>
+     * @param value The bytes for world to set.
+     */
+    private void setWorldBytes(
+        com.google.protobuf.ByteString value) {
+      checkByteStringIsUtf8(value);
+      world_ = value.toStringUtf8();
+
+    }
+
     public static dev.codeana.graph.GraphRecords.Row parseFrom(
         java.nio.ByteBuffer data)
         throws com.google.protobuf.InvalidProtocolBufferException {
@@ -1051,6 +1125,10 @@ public final class GraphRecords {
     }
 
     /**
+     * <pre>
+     * World is explicit for Rust. Empty preserves Java's module/scope-derived identity.
+     * </pre>
+     *
      * Protobuf type {@code codeana.graph.v1.Row}
      */
     public static final class Builder extends
@@ -1213,6 +1291,55 @@ public final class GraphRecords {
         return this;
       }
 
+      /**
+       * <code>string world = 3;</code>
+       * @return The world.
+       */
+      @java.lang.Override
+      public java.lang.String getWorld() {
+        return instance.getWorld();
+      }
+      /**
+       * <code>string world = 3;</code>
+       * @return The bytes for world.
+       */
+      @java.lang.Override
+      public com.google.protobuf.ByteString
+          getWorldBytes() {
+        return instance.getWorldBytes();
+      }
+      /**
+       * <code>string world = 3;</code>
+       * @param value The world to set.
+       * @return This builder for chaining.
+       */
+      public Builder setWorld(
+          java.lang.String value) {
+        copyOnWrite();
+        instance.setWorld(value);
+        return this;
+      }
+      /**
+       * <code>string world = 3;</code>
+       * @return This builder for chaining.
+       */
+      public Builder clearWorld() {
+        copyOnWrite();
+        instance.clearWorld();
+        return this;
+      }
+      /**
+       * <code>string world = 3;</code>
+       * @param value The bytes for world to set.
+       * @return This builder for chaining.
+       */
+      public Builder setWorldBytes(
+          com.google.protobuf.ByteString value) {
+        copyOnWrite();
+        instance.setWorldBytes(value);
+        return this;
+      }
+
       // @@protoc_insertion_point(builder_scope:codeana.graph.v1.Row)
     }
     @java.lang.Override
@@ -1232,10 +1359,11 @@ public final class GraphRecords {
               "table_",
               "cells_",
               dev.codeana.graph.GraphRecords.Cell.class,
+              "world_",
             };
             java.lang.String info =
-                "\u0000\u0002\u0000\u0000\u0001\u0002\u0002\u0000\u0001\u0000\u0001\f\u0002\u001b" +
-                "";
+                "\u0000\u0003\u0000\u0000\u0001\u0003\u0003\u0000\u0001\u0000\u0001\f\u0002\u001b" +
+                "\u0003\u0208";
             return newMessageInfo(DEFAULT_INSTANCE, info, objects);
         }
         case GET_DEFAULT_INSTANCE: {

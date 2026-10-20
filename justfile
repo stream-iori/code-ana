@@ -36,7 +36,6 @@ test-rust:
   python3 tests/java_bundle_manifest_tests.py
   python3 tests/java_compact_single_tests.py
   python3 tests/rust_upstream_text_search.py
-  python3 tests/rust_upstream_annotations.py
   cargo clippy --workspace --all-targets --locked -- -D warnings
 
 test-rust-release:

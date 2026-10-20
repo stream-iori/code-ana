@@ -18,6 +18,17 @@ class GraphProduct(product_support.MockProductHarness):
         full=self.cli('index','--full')[1]['revision'];self.assertEqual(changed,self.canonical(full));self.assertEqual(before,self.canonical(first))
         self.cli('snapshot','after','--name','analysis');self.assertTrue(self.cli('diff','--base','before','--target','after')[0])
         self.assertTrue(self.cli('calls','main')[0])
+    def test_business_annotations_are_removed(self):
+        self.assertNotIn('annotate', self.cli('--help', raw=True).split())
+        self.cli('annotate', code=2, raw=True)
+        self.cli('index', '--text', 'obsolete note', code=2, raw=True)
+        revision = self.cli('index')[1]['revision']
+        self.assertFalse((self.home / 'annotations.db').exists())
+        with sqlite3.connect(self.home / 'revisions' / revision / 'facts.db') as db:
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 11)
+            self.assertEqual(db.execute("SELECT name FROM sqlite_schema WHERE name LIKE '%semantic_annotations%'").fetchall(), [])
+        self.assertTrue(self.cli('annotations', 'app')[0])
+
     def test_worker_errors_cancel_and_idempotency(self):
         good = self.cli('index')[1]['revision']
         for state in ['crash', 'wrong-sequence', 'bad-checksum', 'missing-end', 'oversize']:
@@ -309,32 +320,6 @@ class GraphProduct(product_support.MockProductHarness):
         self.assertNotEqual(terminal['revision'], old)
         self.assertEqual(self.cli('overview')[1]['revision'], terminal['revision'])
 
-
-    def test_migration_failure_rolls_back(self):
-        self.require_debug_faults()
-        self.stop()
-        db_path = self.home / 'annotations.db'
-        db_path.unlink()
-        with sqlite3.connect(db_path) as db:
-            db.executescript("CREATE TABLE annotations(id TEXT PRIMARY KEY,project TEXT NOT NULL,"
-                             "symbol TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL);"
-                             "INSERT INTO annotations VALUES('note_1','p','symbol','saved',3);"
-                             "PRAGMA user_version=1;")
-        env = os.environ.copy()
-        env['CODEANA_TEST_FAULT'] = 'error:migration'
-        failed = subprocess.run([str(BIN / 'codeana-daemon'), '--home', str(self.home),
-                                 '--dev-mock-fixtures', str(FIX / 'mock.json')],
-                                env=env, capture_output=True, text=True, timeout=10)
-        self.assertNotEqual(failed.returncode, 0)
-        self.assertIn('TEST_FAULT:migration', failed.stderr)
-        with sqlite3.connect(db_path) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 1)
-            self.assertEqual(db.execute('SELECT body FROM annotations').fetchone()[0], 'saved')
-            self.assertNotIn('anchor', [r[1] for r in db.execute('PRAGMA table_info(annotations)')])
-        self.start()
-        with sqlite3.connect(db_path) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 2)
-            self.assertEqual(db.execute('SELECT body FROM annotations').fetchone()[0], 'saved')
 
 
 def load_tests(loader, tests, pattern):

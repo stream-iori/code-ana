@@ -28,9 +28,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 pub const WORKER_PROTOCOL_VERSION: u32 = 21;
-pub const DAEMON_PROTOCOL_VERSION: u32 = 3;
+pub const DAEMON_PROTOCOL_VERSION: u32 = 4;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
 pub const MAX_FACTS: usize = 100_000;
@@ -673,7 +673,6 @@ pub struct Request {
     pub target: String,
     pub cursor: String,
     pub name: String,
-    pub text: String,
     pub stages: Vec<Stage>,
     pub max_records: u32,
     pub max_output_bytes: u64,

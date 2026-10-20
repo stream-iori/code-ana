@@ -13,8 +13,8 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 10;
-pub const SOURCE_SCHEMA_VERSION: i64 = 33;
+pub const SCHEMA_VERSION: i64 = 11;
+pub const SOURCE_SCHEMA_VERSION: i64 = 34;
 pub const PAGE_SIZE: i64 = 4096;
 
 pub fn initialize(db: &Connection) -> Result<()> {
@@ -40,7 +40,7 @@ pub fn initialize(db: &Connection) -> Result<()> {
 
 /// Match StagedGraphStore's bulk index/FTS suspension. Unique constraints remain active.
 pub fn suspend_bulk(db: &Connection) -> Result<Vec<String>> {
-    let mut query=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND ((type='index' AND tbl_name IN ('graph_nodes','graph_edges','graph_annotations','annotation_meta_relations','graph_semantic_annotations') AND upper(ltrim(sql)) NOT LIKE 'CREATE UNIQUE INDEX%') OR (type='trigger' AND tbl_name='graph_nodes' AND name IN ('nodes_ai','nodes_ad','nodes_au'))) ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END,name")?;
+    let mut query=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND ((type='index' AND tbl_name IN ('graph_nodes','graph_edges','graph_annotations','annotation_meta_relations') AND upper(ltrim(sql)) NOT LIKE 'CREATE UNIQUE INDEX%') OR (type='trigger' AND tbl_name='graph_nodes' AND name IN ('nodes_ai','nodes_ad','nodes_au'))) ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END,name")?;
     let structures = query
         .query_map([], |r| {
             Ok((
@@ -104,7 +104,6 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Table::Declaration => inserts::DECLARATION_INSERT,
         Table::Annotation => inserts::ANNOTATION_INSERT,
         Table::AnnotationMeta => inserts::ANNOTATION_META_INSERT,
-        Table::SemanticAnnotation => inserts::SEMANTIC_INSERT,
         Table::UnresolvedCall => {
             "INSERT INTO stage_call_sites(source_ref,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,call_kind,context,metadata,producer_id,source_module,source_scope,resolved_source,relation,language,provider_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'CALLS','java','java-core')"
         }
@@ -133,7 +132,6 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Table::Edge => &[15, 18, 19, 20, 21, 22, 28, 29],
         Table::Declaration => &[19, 20, 21, 22, 25, 26, 27, 28],
         Table::Annotation => &[12, 13, 14, 15, 18],
-        Table::SemanticAnnotation => &[10],
         Table::UnresolvedCall => &[2, 3, 4, 5, 6],
         Table::FileCache => &[3, 4, 5, 6],
         Table::Diagnostic => &[12],
@@ -276,13 +274,6 @@ pub fn resolve(db: &Connection) -> Result<u64> {
         db.execute_batch(&format!("UPDATE stage_edges SET resolved_target=(SELECT min(n.id) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language),external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND language<>'python' AND {condition} AND (SELECT count(*) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language)=1"))?;
     }
     resolve_reference(db, "stage_annotations", "resolved_node", "node_ref", "1=1")?;
-    resolve_reference(
-        db,
-        "stage_semantic_annotations",
-        "resolved_node",
-        "node_ref",
-        "1=1",
-    )?;
     db.execute_batch("UPDATE stage_edges SET source_file=(SELECT n.source_file FROM stage_nodes n WHERE n.id=stage_edges.resolved_source) WHERE source_file IS NULL AND resolved_source IS NOT NULL;
       UPDATE stage_annotations SET source_file=(SELECT n.source_file FROM stage_nodes n WHERE n.id=stage_annotations.resolved_node) WHERE source_file IS NULL AND resolved_node IS NOT NULL;")?;
     let mut dropped = 0;

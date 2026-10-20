@@ -2,7 +2,7 @@
 """Index frozen captured sources with the existing runtime; compare Anatomist tables."""
 import argparse, hashlib, json, os, pathlib, sqlite3, subprocess, time
 ROOT=pathlib.Path(__file__).resolve().parents[1]
-TABLES=('nodes','edges','annotations','annotation_meta_relations','semantic_annotations',
+TABLES=('nodes','edges','annotations','annotation_meta_relations',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
 def graph(path,ignore_execution_provenance=False,raw_metadata=False):

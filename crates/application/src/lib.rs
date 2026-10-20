@@ -1,5 +1,4 @@
 //! Application orchestration. CLI and Java adapters contain no product policy.
-mod annotations;
 mod doctor;
 mod history;
 mod indexing;
@@ -25,7 +24,7 @@ use anyhow::{Context, Result, bail, ensure};
 use codeana_config::Capture;
 use codeana_contracts::{graph_archive::Builder as GraphArchiveBuilder, terminal, v1 as p};
 use codeana_model::*;
-use codeana_storage::{AnnotationCommand, Store};
+use codeana_storage::Store;
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::{Value, json};
@@ -315,7 +314,6 @@ impl Engine {
             }
             Operation::Diff => self.diff(req, &project)?,
             Operation::Report => self.report(req, &project)?,
-            Operation::Annotate => self.annotate(req, &project, &checkout)?,
             operation if codeana_query::OPERATIONS.contains(&operation.as_str()) => {
                 if !req.cursor.is_empty() {
                     return self.continue_page(req, &project);

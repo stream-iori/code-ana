@@ -364,9 +364,9 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
             && manifest.analysis_request == 10
             && manifest.compiler_protocol == 2
             && manifest.compiler_batch_protocol == 2
-            && manifest.adapter == "anatomist-4a903272-codeana-graph2-maven-fallback1"
+            && manifest.adapter == "anatomist-4a903272-codeana-graph4-maven-fallback1"
             && manifest.java_model == "javac-model-v50"
-            && manifest.graph_schema == 33
+            && manifest.graph_schema == 34
             && manifest.graph_encoding == "GRA1-protobuf-row-v1",
         codeana_model::DomainError::new(codeana_model::ErrorCode::BundleVersionMismatch, "")
     );

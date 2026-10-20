@@ -1,5 +1,4 @@
-//! Stable user-content and maintenance results, independent of SQLite.
-use crate::Span;
+//! Stable maintenance and index results, independent of SQLite.
 use crate::{Evidence, Fact};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,43 +18,6 @@ pub struct RecoveryResult {
     pub orphans: Vec<String>,
     pub pending: Vec<String>,
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnnotationAnchor {
-    pub revision: String,
-    pub fact_id: crate::FactId,
-    pub world: crate::WorldId,
-    pub source: String,
-    pub source_hash: String,
-    pub span: Option<Span>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnnotationEntry {
-    pub id: String,
-    pub symbol: String,
-    pub text: String,
-    pub version: i64,
-    pub annotation_revision: i64,
-    pub anchor: Option<AnnotationAnchor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub binding: Option<crate::AnnotationBinding>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub binding_revision: Option<String>,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnnotationMutation {
-    pub id: String,
-    pub version: i64,
-    pub annotation_revision: i64,
-    pub action: crate::AnnotationAction,
-}
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum AnnotationResult {
-    Entry(Box<AnnotationEntry>),
-    Mutation(AnnotationMutation),
-    List(Vec<AnnotationEntry>),
-}
-
 #[derive(Clone, Default)]
 pub struct IndexSummary {
     pub statistics: CandidateStatistics,

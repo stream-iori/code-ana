@@ -1,15 +1,14 @@
 # 存储与原子发布
 
-对齐 2026-10-16：图库物理 `user_version=10`、Anatomist 逻辑 schema 33；catalog/annotations 各为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
+对齐 2026-10-20：图库物理 `user_version=11`、Anatomist 逻辑 schema 34；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
 
-Rust 存储按 blob、task、object、annotation、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。对象和标注使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
+Rust 存储按 blob、task、object、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。对象使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
 
 ## 1. 布局
 
 ```text
 <user-home>/                     默认 ~/.code-ana
   catalog.db                    project / checkout / target / refs / tasks / objects
-  annotations.db                人工正文、版本和锚点
   revisions/<id>/facts.db        不可变语义图
   candidates/                   私有未发布候选
   blobs/<content-hash>           捕获源码 / 输入内容
@@ -18,7 +17,7 @@ Rust 存储按 blob、task、object、annotation、maintenance、page、graph �
   cache/java-signatures/        可重建的有界 NoCode 缓存
 ```
 
-home 共享 catalog，以身份隔离项目；不是每仓库一套 catalog。manifest、snapshot、diff、报告等对象及引用由 catalog 保存。catalog 和人工标注升级各用事务；旧标注无可靠锚点时保留正文并显示 unbound。
+home 共享 catalog，以身份隔离项目；不是每仓库一套 catalog。manifest、snapshot、diff、报告等对象及引用由 catalog 保存。catalog 使用事务升级。
 
 ## 2. 物理布局与逻辑读取
 
@@ -27,7 +26,7 @@ home 共享 catalog，以身份隔离项目；不是每仓库一套 catalog。ma
 | graph_nodes | nodes | 公开 id 不变；整数 node_pk 支撑关系、注解和 FTS；UPSERT 保留未变节点主键 |
 | graph_edges | edges | 节点引用为整数；保留 fact_hash / fact_ordinal，边 source_file 独立保存 |
 | graph_call_site_owners / graph_call_sites / graph_call_site_targets | call_site_owners / call_sites / call_site_targets | 调用点与目标分离；不额外展开方法 CALLS 边 |
-| graph_annotations / graph_semantic_annotations | annotations / semantic_annotations | 引用节点和路径字典；图语义标注不同于独立人工正文 |
+| graph_annotations | annotations | Java 源码注解；引用节点和路径字典 |
 | annotation_meta_relations / annotation_meta_sources / annotation_meta_owners | annotation_meta_owned | 定义复用、归属独立，owners 为 WITHOUT ROWID |
 | graph_file_cache / graph_file_dependencies / graph_symbol_dependencies | file_cache / file_dependencies / symbol_dependencies | 源文件字典 + 增量契约/依赖 |
 | graph_index_diagnostics / graph_analysis_coverage | index_diagnostics / analysis_coverage | 零事实文件与 partial 缺口仍保留 |
@@ -38,7 +37,7 @@ home 共享 catalog，以身份隔离项目；不是每仓库一套 catalog。ma
 | metadata_values | metadata 逻辑列 | 仅原始 UTF-8 ≥256 bytes 且重复至少两次共享 |
 | node_names | FTS5 | external-content 为 graph_nodes，以 node_pk 连接；4096 字节页 |
 
-逻辑视图负责恢复字符串列，私有候选的写触发器负责翻译整数引用。查询只读逻辑投影，解码稳定属性时不输出 `site_pk`、`owner_pk` 等物理列。`facts(body)`、整条 Fact JSON、Java raw type/binding/syntax 表均不在产品图库中。schema 10 是 code-ana 的物理格式，不承诺与 Anatomist 物理数据库兼容。
+逻辑视图负责恢复字符串列，私有候选的写触发器负责翻译整数引用。查询只读逻辑投影，解码稳定属性时不输出 `site_pk`、`owner_pk` 等物理列。`facts(body)`、整条 Fact JSON、Java raw type/binding/syntax 表均不在产品图库中。schema 11 是 code-ana 的物理格式，不承诺与 Anatomist 物理数据库兼容。
 
 DDL 生成入口：[generate-compact-schema.py](../../scripts/generate-compact-schema.py) 从 [anatomist-schema.sql](../../crates/storage/src/anatomist-schema.sql) 和 [compact-meta.sql](../../crates/storage/src/compact-meta.sql) 生成 [compact-schema.sql](../../crates/storage/src/compact-schema.sql)。修改生成输入并运行生成器，不手改生成文件；`--check` 已纳入 `just test-rust`。
 
@@ -87,7 +86,7 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 | CAS 冲突 | 不覆盖新 head；当前候选不发布 |
 | graph schema 6 或其他不兼容格式 | 查询/delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；index --full 建新 revision 后切 head，旧文件保留 |
 | 旧格式历史 | 文件保留不等于新 reader 支持；显式图读取同样拒绝旧格式 |
-| catalog/annotation migration 失败 | 事务回滚；人工正文不随 graph rebuild 删除 |
+| catalog migration 失败 | 事务回滚 |
 | GC | 受活动入口、snapshot、reader、build、有效结果引用保护；删除失败登记 cleanup_pending，recover 重试 |
 
 当前 GC 字节预算只计 facts.db，不是整个 home 硬配额。backup 和不可变 revision 会占额外磁盘；233.49 MB 是单个最终图库，不能等同分析时峰值或整个 home。单轮结果和边界见 [当前实现](../current-state.md)。

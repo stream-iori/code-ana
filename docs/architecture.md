@@ -1,6 +1,6 @@
 # 总体架构
 
-对齐 2026-10-16。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
+对齐 2026-10-20。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
 CLI
@@ -9,7 +9,7 @@ CLI
 用户级 Rust daemon
  ├─ 配置 / 捕获 / 调度 / 取消 / 报告
  ├─ 查询 / pipeline ──────► 固定 revision 的逻辑视图
- ├─ snapshot / diff / source / GC / 人工标注
+ ├─ snapshot / diff / source / GC
  └─ worker supervisor
        │ 长度前缀 protobuf，Begin / Row chunks / End
        ▼
@@ -59,7 +59,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 | 业务结果 | 稳定实体字段使用 struct / enum；索引、缓存、分组及按名称组织的集合使用 Map |
 | JSON | 限于传输/持久化编解码、公共展示、原始协议验证和不解释的 producer 扩展；核心业务不得通过 `wire_map` / `Record::wire` 按键读取字段 |
 
-`Fact.id`、所属 world、标注锚点和 expected revision 使用各自身份 newtype。封闭选项通过 `TryFrom` / `FromStr` 拒绝非法值；producer 状态使用 `FactStatus::Other(String)` 保留未来扩展。Rust 声明种类、可见性、关系、解析状态和分析模式使用封闭枚举。Rust/fixture 通过具名行结构构造 GRA1，Java 原始 protobuf 行继续按原契约验证和交付。
+`Fact.id`、所属 world和 expected revision 使用各自身份 newtype。封闭选项通过 `TryFrom` / `FromStr` 拒绝非法值；producer 状态使用 `FactStatus::Other(String)` 保留未来扩展。Rust 声明种类、可见性、关系、解析状态和分析模式使用封闭枚举。Rust/fixture 通过具名行结构构造 GRA1，Java 原始 protobuf 行继续按原契约验证和交付。
 
 配置解析与输入捕获、Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。Rust 索引明确区分未变基线复用、单语言记录流与混合语言归档合并，各分支仍共享一次校验和原子发布。
 
@@ -99,9 +99,9 @@ delta: SQLite backup(兼容 baseline) → 替换归属 → 同样封存校验
                      老读者保留旧 revision；新查询固定新 head
 ```
 
-物理 schema 10，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 33。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
+物理 schema 11，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 34。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
 
-graph/catalog/人工标注分别版本化。源码 blobs、分页结果、snapshot/diff/report 等仍由 Rust 生命周期和引用保护管理；人工正文不随图重建删除。
+graph/catalog 分别版本化。源码 blobs、分页结果、snapshot/diff/report 等仍由 Rust 生命周期和引用保护管理。
 
 ## 4. 执行与故障
 

@@ -104,7 +104,6 @@ pub enum TaskCommand {
     Doctor,
     Diff,
     Report,
-    Annotation { action: AnnotationAction },
     SnapshotList,
     SnapshotRemove,
     Gc { execute: bool },
@@ -123,9 +122,6 @@ impl TryFrom<&Request> for TaskCommand {
             Doctor => Self::Doctor,
             Diff => Self::Diff,
             Report => Self::Report,
-            Annotate => Self::Annotation {
-                action: r.name.parse()?,
-            },
             SnapshotList => Self::SnapshotList,
             SnapshotRemove => Self::SnapshotRemove,
             Gc => Self::Gc { execute: r.execute },
@@ -144,7 +140,6 @@ impl TaskCommand {
             self,
             Self::Index(_)
                 | Self::Snapshot { .. }
-                | Self::Annotation { .. }
                 | Self::SnapshotRemove
                 | Self::Recover
                 | Self::Gc { execute: true }

@@ -126,7 +126,7 @@ class RustLanguage(RustHarness):
         first=terminal['revision']
         self.assertFalse(terminal['evidence']['semantic'])
         with self.db(first) as db:
-            self.assertGreater(db.execute("SELECT count(*) FROM nodes WHERE language='rust'").fetchone()[0],10)
+            self.assertGreater(db.execute("SELECT count(*) FROM nodes WHERE language='rust'").fetchone()[0],11)
             self.assertEqual(db.execute("SELECT count(DISTINCT world) FROM nodes WHERE label='answer'").fetchone()[0],2)
             self.assertGreater(db.execute("SELECT count(*) FROM call_sites WHERE resolution_status='unresolved'").fetchone()[0],0)
             self.assertGreater(db.execute("SELECT count(*) FROM rust_analysis_dependencies WHERE kind='lookup' AND target_key='missing'").fetchone()[0],0)
@@ -137,7 +137,7 @@ class RustLanguage(RustHarness):
             self.assertGreater(catalog.execute("SELECT count(*) FROM events WHERE body LIKE '%rust_analyze_unchanged%'").fetchone()[0],0)
         first=unchanged['revision']
         with self.db(first) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],10)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],11)
             self.assertEqual(db.execute("SELECT count(*) FROM rust_source_states WHERE json_type(state,'$.dependencies') IS NOT NULL").fetchone()[0],0)
             self.assertGreater(db.execute('SELECT count(*) FROM graph_rust_analysis_dependencies').fetchone()[0],0)
         with self.db(first) as db:

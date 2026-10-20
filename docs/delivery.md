@@ -8,8 +8,8 @@
 |---|---|
 | Rust CLI/daemon/gRPC、任务与取消、不可变 revision/CAS | 规模化公平性、内核级资源隔离 |
 | Java 8 javac、Java 25 Native/G1、C ABI、NoCode、框架静态图 | 目标 Java 17/25、Gradle、Linux、完整框架覆盖 |
-| GRA1 行交付、物理 schema 9、逻辑 schema 33、FTS | 当前版本完整语义/来源覆盖验收；过期 raw transport 测试已删除 |
-| 查询/pipeline、源码、快照/diff、报告、GC、独立人工标注 | 标注接入 typed pipeline、跨语言语义 |
+| GRA1 行交付、物理 schema 11、逻辑 schema 34、FTS | 当前版本完整语义/来源覆盖验收；过期 raw transport 测试已删除 |
+| 查询/pipeline、源码、快照/diff、报告、GC | 跨语言语义 |
 | 冻结 iopengw 单轮观测，逐轮输入和产物见当前实现 | 独占容量/稳定性能承诺；native_accepted/performance_accepted 仍 false |
 | 独立 mock、真实 Rust fixture、一层依赖与过滤/预算回归 | 完整 Rust sysroot/过程宏/动态派发；Linux、稳定性能 |
 
@@ -20,7 +20,7 @@
 | 顺序 | 命令 | 验证内容 / 前提 |
 |---|---|---|
 | 1 Java fixture | just test-java | SDKMAN Java 8 + 固定 GraalVM 25；桥、模型、组件测试 |
-| 2 Rust 产品 | just test-rust | DDL 生成一致、fmt、workspace、构建、图/文本/标注 E2E、clippy；无 JDK |
+| 2 Rust 产品 | just test-rust | DDL 生成一致、fmt、workspace、构建、图/文本 E2E、clippy；无 JDK |
 | 3 Native/G1 | just test-java-native | 开发构建并安装 SDK、manifest、ABI 生命周期、GRA1 图、真实崩溃 |
 | 4 原路径产品组 | just test-java-native-product EVIDENCE | group=graph；需已构建且兼容 bundle，不签完整迁移验收 |
 | 5 分发 | just test-java-release | 构建 release、SHA/包检查、图/错误 JDK/自带 fixture；原 Cargo 路径临时 release 后恢复 |
@@ -49,7 +49,7 @@ JVM 图产品门禁同样使用原 `target/debug/codeana-*` 路径；新构建�
 | 提交窗口/断连/重复请求 | catalog commit 裁决；发布后故障不伪称未提交，不重复写入 |
 | 普通/历史 source | 普通当前文件 hash 不匹配拒绝；兼容历史图读捕获 blob，无需当前 JDK |
 | 旧 graph schema | 查询/delta 明确要求 index --full；全量成功再切 head，旧文件保留 |
-| GC / 标注 / 报告 | 引用保护；人工正文保全；报告失败与 publication 分开 |
+| GC / 报告 | 引用保护；报告失败与 publication 分开 |
 | 输入准备 | index 不运行目标构建/处理器；缺输入给 BuildAdvice；外部准备后重新捕获 |
 
 fixture 的预期来自源码语义、人工断言或固定参考多重集；必须记录来源 commit/hash。`lang-java-adaptor/e2e/fixtures/*/AGENTS.md` 是参考场景输入，不改写成 code-ana 开发指令。

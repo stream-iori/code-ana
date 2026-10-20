@@ -202,7 +202,6 @@ impl From<&m::Request> for v1::TaskRequest {
             target: value.target.clone(),
             cursor: value.cursor.clone(),
             name: value.name.clone(),
-            text: value.text.clone(),
             stages: value.stages.iter().map(Into::into).collect(),
             max_records: value.max_records,
             max_output_bytes: value.max_output_bytes,
@@ -257,7 +256,6 @@ impl TryFrom<&v1::TaskRequest> for m::Request {
             target: value.target.clone(),
             cursor: value.cursor.clone(),
             name: value.name.clone(),
-            text: value.text.clone(),
             stages: value
                 .stages
                 .iter()

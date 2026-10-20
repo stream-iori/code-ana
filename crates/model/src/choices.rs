@@ -59,7 +59,6 @@ choice!(
     SnapshotRemove = "snapshot-remove",
     Diff = "diff",
     Report = "report",
-    Annotate = "annotate",
     Gc = "gc",
     Recover = "recover"
 );
@@ -179,24 +178,6 @@ impl fmt::Display for ReportState {
         f.write_str(self.as_str())
     }
 }
-
-choice!(
-    AnnotationAction,
-    InvalidAnnotationAction,
-    List = "list",
-    Add = "add",
-    Update = "update",
-    Remove = "remove"
-);
-choice!(
-    AnnotationBinding,
-    InvalidTaskState,
-    Unbound = "unbound",
-    Bound = "bound",
-    Ambiguous = "ambiguous",
-    Orphaned = "orphaned",
-    Unavailable = "unavailable"
-);
 
 choice!(
     StageRecordType,

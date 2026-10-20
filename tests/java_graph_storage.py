@@ -3,7 +3,7 @@
 import contextlib, json, os, sqlite3, unittest, subprocess, zipfile, sys
 from product_support import JavaProductHarness, ROOT, BIN, JDK
 
-TABLES=('nodes','edges','annotations','annotation_meta_owned','semantic_annotations',
+TABLES=('nodes','edges','annotations','annotation_meta_owned',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
 class GraphStorage(JavaProductHarness):
@@ -148,7 +148,9 @@ enabled=false
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(db.execute('PRAGMA page_size').fetchone()[0],4096)
-            self.assertEqual(db.execute("SELECT value FROM project_meta WHERE key='schema_version'").fetchone()[0],'33')
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],11)
+            self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name LIKE '%semantic_annotations%'").fetchall())
+            self.assertEqual(db.execute("SELECT value FROM project_meta WHERE key='schema_version'").fetchone()[0],'34')
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='facts'").fetchall())
             graph={}
             for table in TABLES:

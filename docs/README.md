@@ -1,6 +1,6 @@
 # code-ana 文档导航
 
-先读 [当前实现与验证边界](current-state.md)，再查架构、契约和模块。以下现行指南对齐 2026-10-19 代码；过期方案、旧协议测试和无效入口已删除；本机测量回执按其产物解释。
+先读 [当前实现与验证边界](current-state.md)，再查架构、契约和模块。以下现行指南对齐 2026-10-20 代码；过期方案、旧协议测试和无效入口已删除；本机测量回执按其产物解释。
 
 ```text
 当前实现 → 架构 / 契约 → 配置 / 模块 → 验证与分发
@@ -17,8 +17,8 @@
 | [CLI / daemon](modules/runtime.md) / [索引](modules/indexing.md) | 任务、调度、冻结输入和增量 |
 | [Java worker](modules/java-worker.md) / [Rust worker](modules/rust-worker.md) | Java 与 Rust 分析链路、能力限制 |
 | [Python worker](modules/python-worker.md) | 显式冻结输入、Pyrefly、两个 Cargo workspace、fixture、分发和真实项目验证边界 |
-| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 10、逻辑 schema 33、只读投影和 pipeline |
-| [版本与源码](modules/versioning.md) / [诊断与标注](modules/operations.md) | 冻结历史、diff、引用保护和用户内容 |
+| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 11、逻辑 schema 34、只读投影和 pipeline |
+| [版本与源码](modules/versioning.md) / [诊断与报告](modules/operations.md) | 冻结历史、diff、引用保护和报告 |
 | [决策登记](design-review.md) / [实施与验收](delivery.md) | 已落实决策、剩余门禁与实际测试入口 |
 | [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |
 

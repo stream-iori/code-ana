@@ -108,7 +108,7 @@ public final class AnatomistRows {
                 "java-core",
                 source.path(),
                 source.hash(),
-                33,
+                34,
                 unit.facts().nodes.size(),
                 unit.facts().edges.size(),
                 java.nio.file.Path.of(source.file().toString()).toFile().length(),
@@ -128,7 +128,6 @@ public final class AnatomistRows {
     public void extraction(ExtractionResult result) {
         FactDefaults.normalize(result);
         Map<String, Declaration> ranges = new HashMap<>();
-        Map<String, String> sourceFiles = new HashMap<>();
         for (Declaration d : result.declarations)
             if (d.symbolId != null && d.beginLine != null)
                 ranges.putIfAbsent(d.symbolId + "\n" + d.sourceFile, d);
@@ -142,9 +141,6 @@ public final class AnatomistRows {
                 n.endColumn = d.endColumn;
                 n.sourceOrdinal = 0;
             }
-            if (symbol != null && n.sourceFile != null)
-                sourceFiles.putIfAbsent(symbol, n.sourceFile);
-            if (n.id != null && n.sourceFile != null) sourceFiles.putIfAbsent(n.id, n.sourceFile);
         }
         try {
             for (Node n : result.nodes) bindNode(new Values(GraphRecords.Table.NODE), n, false);
@@ -155,12 +151,6 @@ public final class AnatomistRows {
                 bindAnnotation(new Values(GraphRecords.Table.ANNOTATION), a, false);
             for (AnnotationMetaRelation a : result.annotationMetaRelations)
                 bindAnnotationMeta(new Values(GraphRecords.Table.ANNOTATION_META), a);
-            for (SemanticAnnotation a : result.semanticAnnotations)
-                bindSemantic(
-                        new Values(GraphRecords.Table.SEMANTIC_ANNOTATION),
-                        a,
-                        a.sourceFile == null ? sourceFiles.get(a.nodeId) : a.sourceFile,
-                        false);
             for (UnresolvedCallSite site : result.unresolvedCallSites) {
                 SourceIdentity identity = identity(site.sourceFile());
                 row(
@@ -465,28 +455,6 @@ public final class AnatomistRows {
         statement.setString(i++, relation.sourceFile);
         statement.setString(i++, relation.sourceLocation);
         statement.setString(i, producer(relation.producerId, ProducerIds.JAVA_CORE));
-        statement.addBatch();
-    }
-
-    private void bindSemantic(
-            Values statement, SemanticAnnotation semantic, String sourceFile, boolean normalized)
-            throws IOException {
-        SourceIdentity identity = identity(sourceFile);
-        boolean key = normalized || NodeKeyFactory.isKey(semantic.nodeId);
-        int i = 1;
-        statement.setString(i++, semantic.nodeId);
-        statement.setString(i++, semantic.category);
-        statement.setString(i++, semantic.businessLabel);
-        statement.setString(i++, semantic.businessDescription);
-        statement.setString(i++, semantic.domainContext);
-        statement.setString(i++, semantic.source);
-        statement.setString(i++, semantic.confidence);
-        statement.setString(i++, sourceFile);
-        statement.setString(i++, identity.module());
-        statement.setString(i++, identity.scope().name());
-        statement.setInt(i++, key ? 1 : 0);
-        statement.setString(i++, key ? semantic.nodeId : null);
-        statement.setString(i++, producer(semantic.producerId, ProducerIds.JAVA_SEMANTICS));
         statement.addBatch();
     }
 

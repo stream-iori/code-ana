@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-10-19。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-10-20。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -14,6 +14,25 @@
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
+
+## 业务标注与人工笔记裁剪（2026-10-20）
+
+| 项目 | 当前边界 |
+|---|---|
+| 产品范围 | 删除图内业务语义标注、独立人工笔记及 annotate；保留 Java 源码注解、元注解与文本搜索 |
+| 版本 | daemon 4、graph model 4、物理 schema 11、逻辑 schema 34；worker 21、analysis 10、ABI 4 保持 |
+| 数据 | 不迁移旧图或人工笔记；不再创建和读取 annotations.db；全量建立新 revision 后切 head |
+| 来源 | 选择性借鉴 Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91，整体参考与来源清单各自提交保持 |
+| Java / Rust | Java fixture 641 项、来源审计、Rust 完整门禁通过；JVM 图 7 项、Native 图与生命周期各 8 项通过 |
+| Python / 分发 | 核心、CLI、输入准备、Native 三语言组合及 Rust/Java/Python 分发回归通过；Java release 原路径执行后恢复原二进制 |
+| 冻结项目 | 同一 iopengw 提交；变更前精确包与本轮图的 11 张剩余逻辑表按 JSON 值一致，6 类公开查询一致；integrity=ok、FK 违规 0，仍为 partial |
+| 既有差异 | 与 2026-10-16 历史图相比，变更前后均少 3,737 条框架关系边、290 条文件依赖、3,463 条符号依赖；本轮未修复该既有缺口 |
+| 原始字节 | nodes / edges / index_diagnostics / call_sites 的原始 metadata JSON 键序有差异；按值比较一致，原始图摘要和查询输出均保留 |
+| 放行边界 | 无新增正式性能测量；不签完整语义/来源覆盖、Native 或容量/稳定性能放行；以下历史回执保持各自含义 |
+
+本轮证据：[汇总回执](../target/business-annotations-removal/20261020/validation.json)、[变更前版本来源](../target/business-annotations-removal/20261020/prechange-provenance.json)、[冻结图与查询对照](../target/business-annotations-removal/20261020/iopengw-final/receipt.json)。变更前包的二进制 SHA 对齐已提交回执中的 `0c769f6`，其运行时代码与本轮开始时 HEAD 相同；未把 2026-10-16 旧图当作当前基线。
+
+安全拦截导致的 Rust release SIGKILL、首次 protobuf 生成方式错误、Native 缺少 Row.world_ 反射配置及初次历史基线差异均保留原日志和回执；安全放行后沿原可执行路径重试。补齐反射字段后生命周期 8/8 通过。覆盖清单撤销了 4 组指向已删除测试的旧“已覆盖”映射，恢复为待补；保留映射使用本轮真实执行证据，整体覆盖清单仍未关闭。
 
 ## 统一输入准备（2026-10-19，Python v3）
 
@@ -253,19 +272,19 @@ Native 首次安装因活跃 JVM 触发 `STOP_RUNTIME_BEFORE_NATIVE_INSTALL:9792
 
 | 项目 | 当前值 | 说明 |
 |---|---|---|
-| CLI-daemon handshake | 3 | `DAEMON_PROTOCOL_VERSION` |
+| CLI-daemon handshake | 4 | `DAEMON_PROTOCOL_VERSION` |
 | worker protocol | 21 | `WORKER_PROTOCOL_VERSION` |
-| graph model | 3 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
+| graph model | 4 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
 | analysis request/result | 10 | Java bridge 与 Rust host 必须成套 |
 | C ABI | 4 | 共享库/header/host 必须成套 |
 | javac 模型 / compiler batch | javac-model-v50 / 2 | 与 worker 协议独立 |
-| 图库物理格式 | user_version 10 | 增加 Python 声明约束，Rust 紧凑布局保留 |
-| 上游逻辑格式 | schema 33 / GraphSemantics 26 | `project_meta.schema_version` 与物理格式不是同一个版本 |
-| adapter | anatomist-4a903272-codeana-graph2-maven-fallback1 | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
-| catalog / 人工标注库 | 2 / 2 | 独立事务升级，保留人工正文 |
+| 图库物理格式 | user_version 11 | 删除业务语义标注存储，Rust/Python 紧凑布局保留 |
+| 上游逻辑格式 | schema 34 / GraphSemantics 26 | `project_meta.schema_version` 与物理格式不是同一个版本 |
+| adapter | anatomist-4a903272-codeana-graph4-maven-fallback1 | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
+| catalog | 2 | 事务升级；独立人工笔记库已移除 |
 | Native 构建 JDK | 25.3.4+1.r25-graal | `lang-java-adaptor/.sdkmanrc` 固定 Oracle GraalVM |
 
-图 schema 8 及更旧格式的查询/增量返回 `GRAPH_SCHEMA_REBUILD_REQUIRED`。执行 `index --full` 创建新 revision，成功后切 head；旧文件保留，不原地迁移。历史图查询也要求兼容物理格式。
+图 schema 10 及更旧格式的查询/增量返回 `GRAPH_SCHEMA_REBUILD_REQUIRED`。执行 `index --full` 创建新 revision，成功后切 head；旧文件保留，不原地迁移。历史图查询也要求兼容物理格式。
 
 ## 最新单轮结果
 
@@ -301,7 +320,7 @@ target 是可清理的本机证据位置，上述路径不保证在每个 checko
 |---|---|
 | macOS ARM64、目标 Java 8、G1 正常产品链路、全量/增量与公开图查询 | Linux 和目标 Java 17/25 |
 | Maven 外部 metadata、Lombok 声明模型、Spring/SOFA 已发布静态图 | Gradle、全部框架规则和跨语言语义 |
-| 紧凑存储、历史/源码/分页、人工标注保全、故障保旧版 | 当前版本完整语义/来源覆盖验收；旧 raw transport 门禁已删除 |
+| 紧凑存储、历史/源码/分页、故障保旧版 | 当前版本完整语义/来源覆盖验收；旧 raw transport 门禁已删除 |
 | fixture 和一次冻结真实项目测量 | 独占容量/稳定性能验收；`native_accepted`、`performance_accepted` 仍为 false |
 
 开发 build-only、Hello、fixture、旧版本完整回执均不能代替当前版本正式验收。验证顺序和命令见 [实施与验收](delivery.md)。

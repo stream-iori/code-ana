@@ -1,5 +1,5 @@
 -- Anatomist dff2e395 schema 32; semantic graph layout.
--- Anatomist graph, node-name FTS5 and semantic annotations.
+-- Anatomist graph, node-name FTS5 and Java annotations.
 
 CREATE TABLE nodes (
     id TEXT PRIMARY KEY,
@@ -262,29 +262,6 @@ BEGIN
     INSERT INTO node_names(rowid, qualified_name, label)
     VALUES (new.rowid, new.qualified_name, new.label);
 END;
-
-CREATE TABLE semantic_annotations (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    node_id TEXT REFERENCES nodes(id) ON DELETE SET NULL,
-    category TEXT,
-    business_label TEXT,
-    business_description TEXT,
-    domain_context TEXT,
-    source TEXT NOT NULL,
-    confidence TEXT NOT NULL,
-    source_file TEXT,
-    producer_id TEXT NOT NULL DEFAULT 'manual-annotation',
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    CHECK (source IN ('CONVENTION','DOC','LLM')),
-    CHECK (confidence IN ('HIGH','MEDIUM','LOW'))
-);
-
-CREATE INDEX idx_semantic_annotations_node_id ON semantic_annotations(node_id);
-CREATE INDEX idx_semantic_annotations_category ON semantic_annotations(category);
-CREATE INDEX idx_semantic_annotations_source ON semantic_annotations(source);
-CREATE INDEX idx_semantic_annotations_producer_file ON semantic_annotations(producer_id, source_file);
-CREATE UNIQUE INDEX idx_semantic_annotations_upsert_key
-    ON semantic_annotations(node_id, category, source, producer_id);
 
 CREATE TABLE file_cache (
     provider_id TEXT NOT NULL DEFAULT 'java-core',

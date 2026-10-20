@@ -19,7 +19,7 @@ Python 通过独立 Rust worker 接入固定的 Pyrefly 内核。验收范围及
 | 构建 | `lang-python-adaptor/` 是独立 Cargo workspace，worker 位于其 `worker/`；保留两个锁文件 |
 | 分析线程 | 固定 10 MiB 栈，与上游默认一致；单个 blocking 分析任务，不读取 PYREFLY_STACK_SIZE |
 | 原因 | Pyrefly 要求 unicode-ident ≥1.0.25；现有 Rust 适配器固定 1.0.24，不能合并解析依赖或静默更换 Unicode 版本 |
-| 协议 | worker 21、graph model 3、物理 schema 10 / 逻辑 schema 33；Java ABI 4、analysis 10 保持 |
+| 协议 | worker 21、graph model 4、物理 schema 11 / 逻辑 schema 34；Java ABI 4、analysis 10 保持 |
 | 环境 | 首轮目标 Python 3.12 / darwin；冻结的有序源码根和辅助依赖根，标准库随固定后端封装 |
 | 执行 | 不执行目标模块、解释器探测、构建、安装、editable hook 或 `.pth` |
 | 来源 | UTF-8（含 BOM）及 ASCII；其他编码明确拒绝；声明使用 UTF-8 字节范围，图列坐标为一基 UTF-16 |

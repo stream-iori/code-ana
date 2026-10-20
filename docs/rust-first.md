@@ -8,10 +8,10 @@ clap CLI ── authenticated gRPC ── Rust daemon
                                   ├─ worker 专用 FD，长度前缀 protobuf
                                   │       └─ Rust mock-worker：匹配 fixture 输入 SHA-256
                                   ├─ SQLite candidate → immutable revision → catalog CAS
-                                  └─ 查询 / pipeline / snapshot / diff / report / annotation / GC
+                                  └─ 查询 / pipeline / snapshot / diff / report / GC
 
 生产：Rust java-worker ── C ABI 4 ── Java 25/G1 ── Java 8 javac
-      GRA1/protobuf 行 → 紧凑 SQLite（物理 8 / 逻辑 33）；mock 保留独立回归
+      GRA1/protobuf 行 → 紧凑 SQLite（物理 11 / 逻辑 34）；mock 保留独立回归
 ```
 
 Rust 源码分析使用真实 `codeana-rust-worker`，无需 JDK；配置、输入导出及当前语义边界见 [Rust worker](modules/rust-worker.md)。以下 mock 示例用于公共产品回归。
@@ -68,7 +68,6 @@ cli=./target/debug/codeana-cli
 | snapshot-list / snapshot-remove | 列出/删除命名快照引用 |
 | diff | 旧命令保持：`diff --base before --target after --name files`；另有 declarations / relations / impact，本轮只做回归，不扩展能力 |
 | report | `report <task-id>`；`--base <task-id>` 比较同 profile/捕获策略/级别的指标，旧版无 summary 报告明确拒绝比较；`--export` 只写新路径 |
-| annotate | `annotate app --name add --text reviewed`；list 可用 `--revision` 固定图，返回 annotation revision 与绑定；update/remove 用 `--base <note-id> --expected-revision <version>` |
 | gc / recover | 默认预览；显式 `--execute` 修改；recover 要求无其他活动任务 |
 | task | `task status/cancel/watch <task-id>`；watch 可用 `--after-seq N` |
 | daemon | status / drain / stop / restart；mock 重启需显式 fixtures |
@@ -115,13 +114,13 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | contracts | task/worker protobuf、大小受限的帧、领域映射 |
 | config | 严格 TOML、显式语言、模块/源码范围、输入捕获 |
 | application | 调度、worker 监督、发布编排、历史与运维 |
-| storage | SQLite、blob、catalog、任务事件、人工标注 |
+| storage | SQLite、blob、catalog、任务事件 |
 | query | 面向 FactReader 逻辑投影的查询和 pipeline；SQL 在 storage |
 | cli / daemon | 命令行解析 / gRPC 接入 |
 | mock-worker | 已知输入回放与协议故障注入，不包含 Java parser |
 | java-worker | Java 8 Native/G1、异步完成 FD、GRA1 交付；范围见 Java worker |
 
-当前 home 共享一个 catalog，以 project/checkout/target 隔离；每个 revision 独立 SQLite。catalog schema 2、annotation schema 2 会事务升级旧库；旧标注正文与版本保留，旧记录没有可靠锚点时显示 `unbound`。GC 删除中断留下的 `cleanup_pending` 由 recover 重试。配置、报告、快照和冻结页是 catalog 中的版本化对象。
+当前 home 共享一个 catalog，以 project/checkout/target 隔离；每个 revision 独立 SQLite。catalog schema 2 使用事务升级。GC 删除中断留下的 `cleanup_pending` 由 recover 重试。配置、报告、快照和冻结页是 catalog 中的版本化对象。
 
 ## 有界执行及首版限制
 
@@ -138,7 +137,6 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | Git | 只读解析 commit/tree/blob；不运行 checkout、构建、钩子或 annotation processor |
 | diff | 文件 hash；声明/关系语义多重集；不推断重命名。位置独立 ID 的完整跨版本对应仍需要 Java producer 契约 |
 | GC | 引用可达性回收 revision/blob；按项目 keep/年龄/图文件字节预算回收，失败登记待清理并恢复；命名快照/未过期报告/读者保护引用，预算不足返回 budget_unmet。字节预算当前只计 facts.db，不是整个 home 的硬配额 |
-| 标注 | 精确事实 ID、world、来源 hash 锚定；目标图变化时显示 bound/ambiguous/orphaned/unavailable。标注进入 typed pipeline 尚未实现 |
 | 报告 | off/basic/full；诊断总量、分组、至多 100 条样例与省略数；自动报告上限 4 MiB。显式导出不可覆盖；没有 Java 原始诊断时 mock 不能验证诊断质量 |
 | 平台 | 本轮 macOS 实测；Linux 分发未验收；Rust 源码能力见 [Rust worker](modules/rust-worker.md) |
 
@@ -150,11 +148,11 @@ terminal { "execution":..., "publication":..., "evidence":... }
 |---|---|
 | Rust 单元/文档测试 | `cargo test --workspace --locked` |
 | 格式与静态检查 | `cargo fmt --all -- --check`；`cargo clippy --workspace --all-targets -- -D warnings` |
-| 真实进程闭环 | `python3 tests/rust_graph_e2e.py`、`tests/rust_upstream_text_search.py`、`tests/rust_upstream_annotations.py`；各用例独立 home/daemon，覆盖查询、增量/全量等价、历史、Git、分页、认证、故障、取消、恢复、重订阅和队列上限 |
+| 真实进程闭环 | `python3 tests/rust_graph_e2e.py`、`tests/rust_upstream_text_search.py`；各用例独立 home/daemon，覆盖查询、增量/全量等价、历史、Git、分页、认证、故障、取消、恢复、重订阅和队列上限 |
 | 本地演示 | `scripts/demo-rust.sh`，独立临时目录和进程，退出后清理 |
 | Rust 分发 | `just test-rust-release`，构建 release 包、验证全部 SHA256SUMS，以包内二进制和 fixture 运行无故障注入的端到端测试；manifest 标出 mock-only |
 | Java Hello | `scripts/smoke.sh`，需固定 GraalVM JDK 25 与有效正式构建回执；与 Rust 验收独立 |
 
-fixture 原始输入和人工编写的查询预期见 `tests/fixtures/`；`build_mock.py` 仅生成固定测试数据，不是从任意源码提取语义的解析器。发布、迁移和报告故障点仅在 debug 构建的显式 mock home 下响应 `CODEANA_TEST_FAULT`；release 构建无此路径。
+fixture 原始输入和人工编写的查询预期见 `tests/fixtures/`；`build_mock.py` 仅生成固定测试数据，不是从任意源码提取语义的解析器。发布和报告故障点仅在 debug 构建的显式 mock home 下响应 `CODEANA_TEST_FAULT`；release 构建无此路径。
 
 真实 Rust 语言入口：见 [Rust worker](modules/rust-worker.md)。分发包新增 `codeana-rust-worker` 和 `codeana-export-rust-inputs`（使用 `python3` 执行）。

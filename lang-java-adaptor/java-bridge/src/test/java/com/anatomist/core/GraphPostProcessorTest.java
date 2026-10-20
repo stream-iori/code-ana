@@ -45,8 +45,6 @@ class GraphPostProcessorTest {
         assertEquals("p.B#m()", externalToInternal.targetId);
         assertEquals(1, r.edges.size());
         assertTrue(r.annotations.isEmpty());
-        assertTrue(
-                r.semanticAnnotations.isEmpty(), "source comments do not produce stored semantics");
     }
 
     @Test

@@ -1,5 +1,4 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
-mod annotations;
 mod blobs;
 pub mod derived_cache;
 mod graph_calls;
@@ -38,15 +37,6 @@ pub struct Store {
     pub home: PathBuf,
     coord: Arc<Mutex<Coordination>>,
     blob_io: Arc<blobs::IoLimit>,
-}
-pub struct AnnotationCommand<'a> {
-    pub project: &'a str,
-    pub action: AnnotationAction,
-    pub id: &'a str,
-    pub symbol: &'a str,
-    pub text: &'a str,
-    pub version: &'a str,
-    pub anchor: Option<&'a AnnotationAnchor>,
 }
 pub struct ReadContext {
     connection: Connection,
@@ -158,21 +148,6 @@ impl Store {
  CREATE TABLE IF NOT EXISTS commits(task TEXT PRIMARY KEY,revision TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS cleanup_pending(kind TEXT NOT NULL,id TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(kind,id));
  PRAGMA user_version=2; COMMIT;")?;
-        let a = Connection::open(home.join("annotations.db"))?;
-        let annotation_schema: i64 = a.query_row("PRAGMA user_version", [], |r| r.get(0))?;
-        ensure!(
-            annotation_schema <= 2,
-            codeana_model::DomainError::new(
-                codeana_model::ErrorCode::UnsupportedAnnotationSchema,
-                ""
-            )
-        );
-        a.execute_batch("BEGIN IMMEDIATE; CREATE TABLE IF NOT EXISTS annotations(id TEXT PRIMARY KEY,project TEXT NOT NULL,symbol TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL,anchor TEXT NOT NULL DEFAULT '');")?;
-        if annotation_schema == 1 {
-            a.execute_batch("ALTER TABLE annotations ADD COLUMN anchor TEXT NOT NULL DEFAULT '';")?;
-            test_fault(home, "migration")?;
-        }
-        a.execute_batch("CREATE TABLE IF NOT EXISTS annotation_revisions(project TEXT PRIMARY KEY,revision INTEGER NOT NULL); PRAGMA user_version=2; COMMIT;")?;
         Ok(s)
     }
     fn catalog(&self) -> Result<Connection> {
@@ -758,32 +733,6 @@ mod tests {
             producer: "mock".into(),
             created: 0,
         }
-    }
-    #[test]
-    fn migrates_legacy_annotations_without_guessing_an_anchor() {
-        let dir = tempfile::tempdir().unwrap();
-        let legacy = Connection::open(dir.path().join("annotations.db")).unwrap();
-        legacy.execute_batch("CREATE TABLE annotations(id TEXT PRIMARY KEY,project TEXT NOT NULL,symbol TEXT NOT NULL,body TEXT NOT NULL,version INTEGER NOT NULL); INSERT INTO annotations VALUES('note_1','p','symbol','saved',3); PRAGMA user_version=1;").unwrap();
-        drop(legacy);
-        let store = Store::open(dir.path()).unwrap();
-        let rows = store
-            .annotation(AnnotationCommand {
-                project: "p",
-                action: AnnotationAction::List,
-                id: "",
-                symbol: "",
-                text: "",
-                version: "",
-                anchor: None,
-            })
-            .unwrap();
-        assert_eq!(serde_json::to_value(&rows).unwrap()[0]["text"], "saved");
-        assert!(serde_json::to_value(&rows).unwrap()[0]["anchor"].is_null());
-        assert_eq!(serde_json::to_value(&rows).unwrap()[0]["version"], 3);
-        Store::open(dir.path()).unwrap();
-        let future = Connection::open(dir.path().join("annotations.db")).unwrap();
-        future.execute_batch("PRAGMA user_version=99;").unwrap();
-        assert!(Store::open(dir.path()).is_err());
     }
     #[test]
     fn recovery_retries_recorded_cleanup() {

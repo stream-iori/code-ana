@@ -65,7 +65,6 @@ enum Command {
     SnapshotRemove(QueryArgs),
     Diff(QueryArgs),
     Report(ReportArgs),
-    Annotate(QueryArgs),
     Gc(QueryArgs),
     Recover(QueryArgs),
 }
@@ -182,8 +181,6 @@ struct QueryArgs {
     cursor: String,
     #[arg(long, default_value = "")]
     name: String,
-    #[arg(long, default_value = "")]
-    text: String,
     #[arg(long, default_value_t = 100)]
     max_records: u32,
     #[arg(long, default_value_t = 32768)]
@@ -594,7 +591,6 @@ async fn run() -> Result<i32> {
         Command::SnapshotRemove(a) => ("snapshot-remove", a),
         Command::Diff(a) => ("diff", a),
         Command::Report(a) => ("report", a.query),
-        Command::Annotate(a) => ("annotate", a),
         Command::Gc(a) => ("gc", a),
         Command::Recover(a) => ("recover", a),
     };
@@ -669,7 +665,6 @@ async fn run() -> Result<i32> {
         target: a.target,
         cursor: a.cursor,
         name: a.name,
-        text: a.text,
         stages,
         max_records: a.max_records,
         max_output_bytes: a.max_output_bytes,

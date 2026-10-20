@@ -425,7 +425,10 @@ impl ReadContext {
                 signature = text(row, "symbol_id")?;
                 attrs.insert("element_kind".into(), json!(text(row, "kind")?));
                 attrs.insert("upstream_id".into(), json!(signature));
-                attrs.insert("schema_version".into(), json!(33));
+                attrs.insert(
+                    "schema_version".into(),
+                    json!(graph_store::SOURCE_SCHEMA_VERSION),
+                );
                 for col in ["modifiers", "declared_modifiers", "implicit_modifiers"] {
                     if let Some(JsonValue::String(s)) = attrs.get(col) {
                         attrs.insert(col.into(), serde_json::from_str(s).unwrap_or(json!([])));

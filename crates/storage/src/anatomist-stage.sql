@@ -21,5 +21,3 @@ INSERT OR IGNORE INTO stage_annotation_meta_relations(annotation_fqn,meta_annota
 INSERT OR IGNORE INTO stage_annotation_meta_sources(source_file) VALUES(NEW.source_file);
 INSERT OR IGNORE INTO stage_annotation_meta_owners(relation_id,source_id,resolution_status,source_location)
 SELECT r.id,s.id,NEW.resolution_status,NEW.source_location FROM stage_annotation_meta_relations r,stage_annotation_meta_sources s WHERE r.provider_id=NEW.provider_id AND r.annotation_fqn=NEW.annotation_fqn AND coalesce(r.meta_annotation_fqn,'')=coalesce(NEW.meta_annotation_fqn,'') AND r.raw_name=NEW.raw_name AND r.language=NEW.language AND r.mechanism=NEW.mechanism AND r.producer_id=NEW.producer_id AND coalesce(s.source_file,'')=coalesce(NEW.source_file,''); END;
-CREATE TABLE stage_semantic_annotations(seq INTEGER PRIMARY KEY AUTOINCREMENT,node_ref TEXT,category TEXT,business_label TEXT,business_description TEXT,domain_context TEXT,source TEXT,confidence TEXT,source_file TEXT,source_module TEXT,source_scope TEXT,node_is_key INTEGER,resolved_node TEXT,producer_id TEXT NOT NULL);
-CREATE INDEX stage_semantic_ref ON stage_semantic_annotations(node_ref);

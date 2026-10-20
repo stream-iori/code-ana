@@ -1,6 +1,6 @@
 {
   "commit": "dff2e3954096853352ec91fcbfc6b995fbd4f390",
-  "scope": "Implementation source only; no test case disposition or execution claim",
+  "scope": "Frozen source and per-case dispositions; removed product contracts are archived and never counted as executed coverage.",
   "files": [
     {
       "source": "anatomist-app/src/jmh/java/com/anatomist/query/BenchmarkContractTest.java",
@@ -1755,14 +1755,6 @@
       "original_test_cases": []
     },
     {
-      "source": "anatomist-core/src/main/java/com/anatomist/core/AnalysisCoverage.java",
-      "sha256": "c2a7edf7bd13697adda86011e0b1d5f3d259df2d6b9ab1b26dbfc32e2be400ae",
-      "disposition": "archived",
-      "reason": "Rust persists lossless diagnostic facts and coverage with bounded report samples; Java product health aggregators are archived. Language diagnostics remain in the copied Java model and original health expectations remain separately pending.",
-      "replacement_source": "crates/storage/src/staged.rs",
-      "original_test_cases": []
-    },
-    {
       "source": "anatomist-core/src/main/java/com/anatomist/core/HealthDimension.java",
       "sha256": "44255c2317e4ec3fbd014a573344623496e60e0fdbc4c55b2993598362b86990",
       "disposition": "archived",
@@ -1811,14 +1803,6 @@
       "original_test_cases": []
     },
     {
-      "source": "anatomist-core/src/main/java/com/anatomist/core/IndexDiagnosticRetention.java",
-      "sha256": "e733098f54d085c018dcf15dbee0c4e59863a1259209dac98660817843979084",
-      "disposition": "archived",
-      "reason": "Rust persists lossless diagnostic facts and coverage with bounded report samples; Java product health aggregators are archived. Language diagnostics remain in the copied Java model and original health expectations remain separately pending.",
-      "replacement_source": "crates/storage/src/staged.rs",
-      "original_test_cases": []
-    },
-    {
       "source": "anatomist-core/src/main/java/com/anatomist/core/IndexEnvironmentKeys.java",
       "sha256": "b8900d752a6b62131aa25965a20ede07da7d577346a7d6bc6332fb11d3ba40d2",
       "disposition": "archived",
@@ -1847,7 +1831,7 @@
       "sha256": "80cea3f1c4fd867eb2ce3bb5aa8965f4df50668e43ed921697a14a8710862f46",
       "disposition": "archived",
       "reason": "Rust derives cross-producer wiring from captured bean/injection/type facts through storage ports. Java framework parsers and their original graph tests remain copied; archiving this product wiring coordinator does not waive query/wiring expectations.",
-      "replacement_source": "crates/application/src/derived.rs",
+      "replacement_source": "crates/storage/src/graph_candidate.rs",
       "original_test_cases": []
     },
     {
@@ -2055,7 +2039,7 @@
       "sha256": "b6e3b1bc65dc88a2e1f095732fec0c45bc297d88255debac25d7d30c94e35095",
       "disposition": "archived",
       "reason": "Rust storage owns the new fact/revision schema. Anatomist database/protocol compatibility is not required; original SQL persistence behavior tests still require separate disposition.",
-      "replacement_source": "crates/storage/src/schema.sql",
+      "replacement_source": "crates/storage/src/anatomist-schema.sql",
       "original_test_cases": []
     },
     {
@@ -2133,14 +2117,6 @@
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/IndexResult.java",
       "sha256": "5f9abed45a080cc1257e4663f34192bddff041ff9e3039317cfba68868060879",
-      "disposition": "archived",
-      "reason": "Rust owns worker delivery status, retained diagnostic/coverage facts, strict rejection and bounded report accounting. These original Java product status/summary types and reporters are replaced at that boundary; original diagnostic and health tests remain separately inventoried, without waiver.",
-      "replacement_source": "crates/contracts/src/java.rs",
-      "original_test_cases": []
-    },
-    {
-      "source": "anatomist-core/src/main/java/com/anatomist/core/ResolutionDiagnostics.java",
-      "sha256": "46547e2fb7478f7f6d1844f5325bc12a028c1749fae15c460044b9fa77426e4b",
       "disposition": "archived",
       "reason": "Rust owns worker delivery status, retained diagnostic/coverage facts, strict rejection and bounded report accounting. These original Java product status/summary types and reporters are replaced at that boundary; original diagnostic and health tests remain separately inventoried, without waiver.",
       "replacement_source": "crates/contracts/src/java.rs",
@@ -2660,6 +2636,93 @@
         "com.anatomist.cli.ExternalCliRecipeContractTest#externalCliRecipeAndScriptCoverFacadeHandlerAndDaoChecks": {
           "disposition": "archived_product_contract",
           "reason": "Static old private settlement-project recipe contract only: checks verify-external-cli.sh literal SettleApplyServiceV3/SettleTaskExecuteService/ReconHandler/TrafficSettleEngineDAO, PROJECT= syntax, bash3 mapfile avoidance and old CLI flags. This project freezes iopengw with independently selected query cases instead. Forward trace, reverse references and field access behavior remain required, not archived as capabilities."
+        }
+      }
+    },
+    {
+      "source": "anatomist-core/src/main/java/com/anatomist/model/SemanticAnnotation.java",
+      "sha256": "1059df4f078ca910dc222f64a82ce47a8d2d533d0bd3b8b0e577aafa32689d0e",
+      "disposition": "archived",
+      "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained.",
+      "replacement_source": "docs/modules/operations.md",
+      "original_test_cases": []
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/cli/AnnotateCommandIT.java",
+      "sha256": "c269e1a7f86453e696ea55be723419a45798e92ec73ba01fddcd6cf14e589ade",
+      "disposition": "archived",
+      "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained.",
+      "replacement_source": "docs/modules/operations.md",
+      "original_test_cases": [
+        "com.anatomist.cli.AnnotateCommandIT#annotate_singleWrite_succeeds",
+        "com.anatomist.cli.AnnotateCommandIT#annotate_upsert_updatesInPlace",
+        "com.anatomist.cli.AnnotateCommandIT#annotate_sourceConvention_rejectedExit2",
+        "com.anatomist.cli.AnnotateCommandIT#annotate_sourceJavadoc_rejectedExit2",
+        "com.anatomist.cli.AnnotateCommandIT#annotate_exactStorageKeyStillHonorsModuleSelection",
+        "com.anatomist.cli.AnnotateCommandIT#annotate_fromJson_batch",
+        "com.anatomist.cli.AnnotateCommandIT#annotate_fromJson_rejectsConventionEntry"
+      ],
+      "archived_destination": "migrated-test-expectations/anatomist-app/src/test/java/com/anatomist/cli/AnnotateCommandIT.java",
+      "test_case_dispositions": {
+        "com.anatomist.cli.AnnotateCommandIT#annotate_singleWrite_succeeds": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.cli.AnnotateCommandIT#annotate_upsert_updatesInPlace": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.cli.AnnotateCommandIT#annotate_sourceConvention_rejectedExit2": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.cli.AnnotateCommandIT#annotate_sourceJavadoc_rejectedExit2": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.cli.AnnotateCommandIT#annotate_exactStorageKeyStillHonorsModuleSelection": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.cli.AnnotateCommandIT#annotate_fromJson_batch": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.cli.AnnotateCommandIT#annotate_fromJson_rejectsConventionEntry": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        }
+      }
+    },
+    {
+      "source": "anatomist-app/src/test/java/com/anatomist/store/SqliteStoreUpsertTest.java",
+      "sha256": "93f86689fab2f11a931602e540ab02ac75f4ceb57b834d597bb625c11dcfaa26",
+      "disposition": "archived",
+      "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained.",
+      "replacement_source": "docs/modules/operations.md",
+      "original_test_cases": [
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_insertsNewRow",
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_replacesOnDuplicateKey",
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_distinctSourceCoexists",
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotations_batchUpserts"
+      ],
+      "archived_destination": "migrated-test-expectations/anatomist-app/src/test/java/com/anatomist/store/SqliteStoreUpsertTest.java",
+      "test_case_dispositions": {
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_insertsNewRow": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_replacesOnDuplicateKey": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotation_distinctSourceCoexists": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
+        },
+        "com.anatomist.store.SqliteStoreUpsertTest#upsertSemanticAnnotations_batchUpserts": {
+          "disposition": "archived_product_contract",
+          "reason": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained."
         }
       }
     }

@@ -12,7 +12,6 @@ public class ExtractionResult {
     public final List<Edge> edges = new ArrayList<>();
     public final List<Annotation> annotations = new ArrayList<>();
     public final List<AnnotationMetaRelation> annotationMetaRelations = new ArrayList<>();
-    public final List<SemanticAnnotation> semanticAnnotations = new ArrayList<>();
     public final List<Declaration> declarations = new ArrayList<>();
     public final List<UnresolvedCallSite> unresolvedCallSites = new ArrayList<>();
     public final Map<String, Object> stats = new HashMap<>();
@@ -23,7 +22,6 @@ public class ExtractionResult {
                 + edges.size()
                 + annotations.size()
                 + annotationMetaRelations.size()
-                + semanticAnnotations.size()
                 + declarations.size()
                 + unresolvedCallSites.size();
     }
@@ -35,7 +33,6 @@ public class ExtractionResult {
         edges.addAll(other.edges);
         annotations.addAll(other.annotations);
         annotationMetaRelations.addAll(other.annotationMetaRelations);
-        semanticAnnotations.addAll(other.semanticAnnotations);
         declarations.addAll(other.declarations);
         unresolvedCallSites.addAll(other.unresolvedCallSites);
         other.stats.forEach(
@@ -55,7 +52,6 @@ public class ExtractionResult {
         edges.clear();
         annotations.clear();
         annotationMetaRelations.clear();
-        semanticAnnotations.clear();
         declarations.clear();
         unresolvedCallSites.clear();
     }

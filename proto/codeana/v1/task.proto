@@ -15,7 +15,7 @@ message TaskRequest {
  string request_id = 1; string project = 2; string operation = 3; string selector = 4; string revision = 5;
  string scope = 6; string world = 7; string module = 8; string direction = 9; string relation = 10;
  bool unique = 11; bool full = 12; bool strict = 13; bool execute = 14; bool background = 15;
- string base = 16; string target = 17; string cursor = 18; string name = 19; string text = 20;
+ string base = 16; string target = 17; string cursor = 18; string name = 19; reserved 20; reserved "text";
  repeated Stage stages = 21; uint32 max_records = 22; uint64 max_output_bytes = 23; uint32 depth = 24;
  uint64 deadline_seconds = 25; optional string source_version = 26; optional string toolchain = 27;
  optional bool suggestions = 28; string expected_revision = 29;

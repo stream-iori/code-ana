@@ -26,10 +26,6 @@ pub const ANNOTATION_INSERT: &str = r#"INSERT INTO stage_annotations(node_ref, a
 pub const ANNOTATION_META_INSERT: &str = r#"INSERT INTO stage_annotation_meta(annotation_fqn, meta_annotation_fqn, raw_name, language, provider_id,
             mechanism, resolution_status, source_file, source_location, producer_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#;
-pub const SEMANTIC_INSERT: &str = r#"INSERT INTO stage_semantic_annotations(node_ref, category, business_label, business_description,
-            domain_context, source, confidence, source_file, source_module, source_scope, node_is_key, resolved_node,
-            producer_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#;
 pub const DECLARATION_INSERT: &str = r#"INSERT OR REPLACE INTO stage_declarations(symbol_id, domain, language, provider_id, entity_kind,
             language_kind, qualified_name, label, kind, declaration_kind, type_kind, visibility, modifiers,
             declared_modifiers, implicit_modifiers, declaring_type, namespace, source_file, source_location,

@@ -12,8 +12,7 @@ class ExtractionResultTest {
         result.nodes.add(new Node());
         result.edges.add(new Edge());
         result.annotations.add(new Annotation());
-        result.semanticAnnotations.add(new SemanticAnnotation());
-        assertEquals(4, result.factCount());
+        assertEquals(3, result.factCount());
 
         result.clearFacts();
 

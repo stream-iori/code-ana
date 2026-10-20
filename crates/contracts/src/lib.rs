@@ -571,6 +571,15 @@ mod java_protocol_tests {
 mod query_option_tests {
     use super::*;
     #[test]
+    fn removed_annotation_operation_is_rejected_at_rpc_boundary() {
+        let wire = v1::TaskRequest {
+            operation: "annotate".into(),
+            ..Default::default()
+        };
+        assert!(map::<_, m::Request>(&wire).is_err());
+    }
+
+    #[test]
     fn hierarchy_options_survive_task_and_stage_protobuf_transport() {
         let request = m::Request {
             operation: codeana_model::Operation::RuntimeImplementations,

@@ -10,13 +10,12 @@ public final class FactOrigin {
                 result.edges.size(),
                 result.annotations.size(),
                 result.annotationMetaRelations.size(),
-                result.semanticAnnotations.size(),
                 result.declarations.size(),
                 result.unresolvedCallSites.size());
     }
 
     public static Cursor beginning() {
-        return new Cursor(0, 0, 0, 0, 0, 0, 0);
+        return new Cursor(0, 0, 0, 0, 0, 0);
     }
 
     public static void stamp(
@@ -58,11 +57,6 @@ public final class FactOrigin {
             if (fact.sourceFile == null) fact.sourceFile = sourceFile;
             if (forceProducer || fact.producerId == null) fact.producerId = producerId;
         }
-        for (int i = start.semanticAnnotations(); i < result.semanticAnnotations.size(); i++) {
-            SemanticAnnotation fact = result.semanticAnnotations.get(i);
-            if (fact.sourceFile == null) fact.sourceFile = sourceFile;
-            if (forceProducer || fact.producerId == null) fact.producerId = producerId;
-        }
         for (int i = start.declarations(); i < result.declarations.size(); i++) {
             Declaration fact = result.declarations.get(i);
             if (fact.sourceFile == null) fact.sourceFile = sourceFile;
@@ -79,7 +73,6 @@ public final class FactOrigin {
             int edges,
             int annotations,
             int annotationMetaRelations,
-            int semanticAnnotations,
             int declarations,
             int unresolvedCallSites) {
         public Cursor(
@@ -87,16 +80,8 @@ public final class FactOrigin {
                 int edges,
                 int annotations,
                 int annotationMetaRelations,
-                int semanticAnnotations,
                 int declarations) {
-            this(
-                    nodes,
-                    edges,
-                    annotations,
-                    annotationMetaRelations,
-                    semanticAnnotations,
-                    declarations,
-                    0);
+            this(nodes, edges, annotations, annotationMetaRelations, declarations, 0);
         }
     }
 }

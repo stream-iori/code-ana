@@ -69,7 +69,6 @@ pub fn seal(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
         "graph_edges",
         "graph_call_site_owners",
         "graph_annotations",
-        "graph_semantic_annotations",
         "graph_file_cache",
         "graph_file_dependencies",
         "graph_symbol_dependencies",

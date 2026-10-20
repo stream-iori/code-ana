@@ -72,7 +72,7 @@ def package(output):
         version = lambda name: int(re.search(r'pub const '+name+r': u32 = (\d+)', constants)[1])
         manifest = dict(package='codeana-python', platform=platform.system(), architecture=platform.machine(),
                         worker_protocol=version('WORKER_PROTOCOL_VERSION'), daemon_protocol=version('DAEMON_PROTOCOL_VERSION'),
-                        graph_model=version('VERSION'), physical_schema=10,
+                        graph_model=version('VERSION'), physical_schema=11,
                         backend=json.loads((stage/'upstream-source.json').read_text()), java='sdk_not_bundled', java_host='bundled', acceptance='not_asserted')
         python_model = (ROOT/'crates/model/src/python.rs').read_text()
         manifest['python_adapter'] = re.search(r'pub const ADAPTER_VERSION: &str = "([^"]+)"', python_model)[1]

@@ -9,7 +9,7 @@
 | JDK 选择 | `lang-java-adaptor/.sdkmanrc` 固定 GraalVM JDK 25，Oracle `25.3.4+1.r25-graal`；进入该目录执行 `sdk env`。默认 Native GC 为 G1；显式 Serial 仍支持。 |
 | 配置 | 语义索引须在 `.code-ana/config.toml` 显式启用语言；FILES 和工作区文本搜索可无语言配置。Maven 自动展开模块需外部准备的 `inputs_manifest`；Lombok 配在 `[languages.java.lombok]`。 |
 | 构建 | 产品只给目标项目的构建建议，不自动运行目标项目的编译命令或注解处理器。禁用处理器、无业务字节码生成的 javac parse/analyze 属于索引分析。开发和测试可显式编译本项目与 fixture。 |
-| 存储 | GRA1/protobuf 行交付；Rust 图库物理 schema 10、上游逻辑 schema 33。公开 ID 不变，内部整数主键不输出。旧格式查询/增量要求 `index --full`，成功建新 revision 才切 head。 |
+| 存储 | GRA1/protobuf 行交付；Rust 图库物理 schema 11、上游逻辑 schema 34。公开 ID 不变，内部整数主键不输出。旧格式查询/增量要求 `index --full`，成功建新 revision 才切 head。 |
 | 生命周期 | G1 每个 worker 进程仅创建一次 isolate，健康任务复用；teardown 后也不在同进程重建，取消/致命失败由 supervisor 换进程。 |
 | 验证顺序 | Java fixture 优先；能力对齐不要求 Anatomist 协议兼容；随后验收冻结的 iopengw HEAD 267c7ced4993aa88613f8f17a8099943fec98159，仅已提交内容。Native 不分冷热；性能只做一轮，固定输入、空应用状态、预算和产物，保留原失败回执。 |
 
@@ -24,13 +24,13 @@
 | 依赖倒置原则 | 高层策略和底层实现共同依赖抽象，而非高层直接依赖细节。 |
 | 迪米特法则 | 对象尽量只与直接协作者交互，减少对其他对象内部结构的了解。 |
 
-现行说明先读 [文档导航](docs/README.md)、[当前实现](docs/current-state.md)、[架构](docs/architecture.md) 和 [契约](docs/contracts.md)。协议版本：daemon 3、worker 21、graph model 3、analysis request/result 10、C ABI 4；javac-model-v50 / compiler batch 2。参考 Anatomist 固定 `4a903272c22083585107e982f2899ed03a280aa2`，来源清单保留各自提交，不能把 sibling HEAD 或旧验收回执当作当前依据。
+现行说明先读 [文档导航](docs/README.md)、[当前实现](docs/current-state.md)、[架构](docs/architecture.md) 和 [契约](docs/contracts.md)。协议版本：daemon 4、worker 21、graph model 4、analysis request/result 10、C ABI 4；javac-model-v50 / compiler batch 2。参考 Anatomist 固定 `4a903272c22083585107e982f2899ed03a280aa2`，来源清单保留各自提交，不能把 sibling HEAD 或旧验收回执当作当前依据。
 
 ## 开发与验证
 
 | 场景 | 命令 / 约束 |
 |---|---|
-| Rust 回归，无 JDK | `just test-rust`；含生成 DDL 检查、workspace、图/文本/标注 E2E、clippy |
+| Rust 回归，无 JDK | `just test-rust`；含生成 DDL 检查、workspace、图/文本 E2E、clippy |
 | Java fixture | `just test-java`，优先验证分析与模型 |
 | Python fixture | `just test-python`；先 Java fixture，再 Python 核心与 CLI；独立 workspace 使用 `just build-python` 构建 |
 | Python 分发 | `just package-python /absolute/new/package`、`just test-python-release /absolute/new/package`；Java SDK 单独安装 |

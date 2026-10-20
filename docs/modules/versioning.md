@@ -101,7 +101,6 @@ impact 用双方捕获图分别遍历；展示 scope 不截断中间路径。可
 | 只读快照请求 | 不准备新索引、不触发自动 GC；命令参数由本项目定义 |
 | GC preview | 只报告计划与恢复需求，不执行删除或杀进程 |
 
-图 GC 不删除人工标注正文。重建或历史删除造成标注绑定不可用，交 operations 记录状态。
 
 ## 5. 验收
 
@@ -117,4 +116,4 @@ impact 用双方捕获图分别遍历；展示 scope 不截断中间路径。可
 
 ## 图格式升级边界
 
-历史文件保留与读者兼容是两件事。当前仅打开物理 schema 10 的图；schema 9 及更旧查询/delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED。index --full 创建新图并在成功后切换 head，不原地升级旧 revision。已经打开的同格式 revision 仍受 reader 引用保护；FILES/源码捕获与人工标注生命周期独立。
+历史文件保留与读者兼容是两件事。当前仅打开物理 schema 11 的图；schema 10 及更旧查询/delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED。index --full 创建新图并在成功后切换 head，不原地升级旧 revision。已经打开的同格式 revision 仍受 reader 引用保护；FILES 与源码捕获保留各自的生命周期。

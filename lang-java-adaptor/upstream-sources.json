@@ -443,7 +443,7 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "sha256": "6290581902cb59f869e72e215a5e015b02b4f02e222e7a3a4f49acefb52fc67d",
       "migrated_sha256": "44acf9e0e896fbc3481afe5e2a6db135efe32306f2534d0d7e0400ea40c9b549",
-      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB–2 GiB decode admission does not change semantic rules or fingerprints.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged",
+      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB\u20132 GiB decode admission does not change semantic rules or fingerprints.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -926,13 +926,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/model/ExtractionResult.java",
       "destination": "analysis-core/src/main/java/com/anatomist/model/ExtractionResult.java",
       "sha256": "46c50b178f89eb7ec57dd36e7f43c2f6865443ee367dae98d02f7d62192ea1a3",
-      "migrated_sha256": "46c50b178f89eb7ec57dd36e7f43c2f6865443ee367dae98d02f7d62192ea1a3"
+      "migrated_sha256": "fd79edfeca884dc57537a603fadb99407c0bc95ec9f971a7bb9a82fc901d9558",
+      "adaptation": "Remove business semantic annotations and user notes; preserve Java source annotations (90e405b selective adaptation)."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/model/FactOrigin.java",
       "destination": "analysis-core/src/main/java/com/anatomist/model/FactOrigin.java",
       "sha256": "c705a160da7047a1605814a01c56244c1fe8e2f359f472fb34f46ad096a98bd3",
-      "migrated_sha256": "c705a160da7047a1605814a01c56244c1fe8e2f359f472fb34f46ad096a98bd3"
+      "migrated_sha256": "86694239de14ab0fed5d9edae5cb4e28576c85ae953b71384cbb3826ae11c611",
+      "adaptation": "Remove business semantic annotations and user notes; preserve Java source annotations (90e405b selective adaptation)."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/model/GraphConstants.java",
@@ -950,13 +952,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/model/ProducerIds.java",
       "destination": "analysis-core/src/main/java/com/anatomist/model/ProducerIds.java",
       "sha256": "02790ea07771fb3b1c77ab7724ae24bd9b3c5553b523937cad5ccf325149e6c1",
-      "migrated_sha256": "02790ea07771fb3b1c77ab7724ae24bd9b3c5553b523937cad5ccf325149e6c1"
-    },
-    {
-      "source": "anatomist-core/src/main/java/com/anatomist/model/SemanticAnnotation.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/model/SemanticAnnotation.java",
-      "sha256": "1059df4f078ca910dc222f64a82ce47a8d2d533d0bd3b8b0e577aafa32689d0e",
-      "migrated_sha256": "1059df4f078ca910dc222f64a82ce47a8d2d533d0bd3b8b0e577aafa32689d0e"
+      "migrated_sha256": "9978fefb33552749b53fd7bd736f1a1b8d1d6ab996048c5427cc0b7cc13724d0",
+      "adaptation": "Remove business semantic annotations and user notes; preserve Java source annotations (90e405b selective adaptation)."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/model/SymbolFact.java",
@@ -1342,7 +1339,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/core/GraphPostProcessorTest.java",
       "destination": "java-bridge/src/test/java/com/anatomist/core/GraphPostProcessorTest.java",
       "sha256": "fe418c975f1afc45a7c5d90e2f6b1cbfa623926e3e674dc361fc298ce7e2288e",
-      "migrated_sha256": "fe418c975f1afc45a7c5d90e2f6b1cbfa623926e3e674dc361fc298ce7e2288e"
+      "migrated_sha256": "248cf1053acc21859d0ef0c8b77723f05cc41fe2d45bb252ad6c28529fb5950d",
+      "adaptation": "Remove business semantic annotations and user notes; preserve Java source annotations (90e405b selective adaptation)."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavaBindingEvidenceIT.java",
@@ -3170,7 +3168,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/model/ExtractionResultTest.java",
       "destination": "java-bridge/src/test/java/com/anatomist/model/ExtractionResultTest.java",
       "sha256": "a009c4d100defb1119827e02f2c1d06e830b31f0833df11bed676210dcd5cb62",
-      "migrated_sha256": "a009c4d100defb1119827e02f2c1d06e830b31f0833df11bed676210dcd5cb62"
+      "migrated_sha256": "8b04b5359a47487bf6c62512dd12d74155b15cb2411c13cd977871c3222d2a51",
+      "adaptation": "Remove business semantic annotations and user notes; preserve Java source annotations (90e405b selective adaptation)."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/NodeIdGeneratorTest.java",
@@ -3441,6 +3440,38 @@
         "../crates/application/src/maven_inputs.rs"
       ],
       "adaptation": "Selective behavioral adaptation: dependency-only terminal receipt, verified model reuse, whole-export source-only fallback. Rust owns orchestration and schema 4; prerequisite rounds retained. Upstream CLI, automatic Maven indexing and timeout fallback are not adopted; vendored source baselines remain unchanged."
+    },
+    {
+      "commit": "90e405b2ddc1f9cbd1790302c027293c06af6a91",
+      "files": [
+        {
+          "source": "anatomist-core/src/main/java/com/anatomist/model/ExtractionResult.java",
+          "sha256": "fd79edfeca884dc57537a603fadb99407c0bc95ec9f971a7bb9a82fc901d9558"
+        },
+        {
+          "source": "anatomist-core/src/main/java/com/anatomist/model/FactOrigin.java",
+          "sha256": "86694239de14ab0fed5d9edae5cb4e28576c85ae953b71384cbb3826ae11c611"
+        },
+        {
+          "source": "anatomist-core/src/main/java/com/anatomist/model/ProducerIds.java",
+          "sha256": "9978fefb33552749b53fd7bd736f1a1b8d1d6ab996048c5427cc0b7cc13724d0"
+        },
+        {
+          "source": "anatomist-core/src/main/resources/schema.sql",
+          "sha256": "edef0b60a515a5f5ab9e773923c28d27d794856a3e770d137f307f66bdfcf8b0"
+        },
+        {
+          "source": "anatomist-app/src/test/java/com/anatomist/cli/DocumentRemovalIT.java",
+          "sha256": "70230f33e333fd70b81d027c5c31563ec403325eba3f839e6d0370b0beecd0d6"
+        }
+      ],
+      "implementation": [
+        "analysis-core/src/main/java/com/anatomist/model/ExtractionResult.java",
+        "java-bridge/src/main/java/dev/codeana/adapter/AnatomistRows.java",
+        "../crates/storage/src/anatomist-schema.sql",
+        "java-bridge/src/main/resources/META-INF/native-image/dev.codeana/graph/reflect-config.json"
+      ],
+      "adaptation": "Business semantic annotations and independent user notes are removed from the code analysis product, following Anatomist 90e405b2ddc1f9cbd1790302c027293c06af6a91; no compatibility, migration or annotation coverage claim remains. Java source annotation analysis is retained. Regenerate the complete lite protobuf Row schema and register world_ for Native Image reflection; Java rows retain their empty world."
     }
   ]
 }
