@@ -11,6 +11,12 @@ mod source;
 mod text;
 use codeana_model::QueryRequest as Request;
 use codeana_model::*;
+fn work_limit(r: &dyn SourceContext) -> usize {
+    r.resource_budget().map_or(100_000, |b| {
+        usize::try_from(b.usage().limits.max_work).unwrap_or(usize::MAX)
+    })
+}
+
 #[cfg(test)]
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -370,6 +376,9 @@ pub fn resolve(r: &dyn GraphAccess, selector: &str, unique: bool) -> Result<Vec<
     } else {
         exact
     };
+    if r.resource_exhausted() {
+        return Err(ResourceBudget::error().into());
+    }
     if facts.is_empty() {
         require_available_inputs(r, &Request::default(), selector)?;
     }
@@ -419,19 +428,15 @@ fn selector_filter(r: &dyn GraphAccess, req: &Request) -> Result<FactFilter> {
                     .map(|g| g.compile_matcher())
             })
             .collect::<std::result::Result<Vec<_>, _>>()?;
-        filter.sources = r
-            .manifest()
-            .files
-            .iter()
-            .filter(|source| {
-                patterns
-                    .iter()
-                    .any(|pattern| pattern.is_match(&source.path))
-            })
-            .map(|s| s.path.clone())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
+        let mut sources = BTreeSet::new();
+        for source in &r.manifest().files {
+            r.charge(1, 0)?;
+            if patterns.iter().any(|p| p.is_match(&source.path)) {
+                r.charge(1, source.path.len() as u64)?;
+                sources.insert(source.path.clone());
+            }
+        }
+        filter.sources = sources.into_iter().collect();
         if filter.sources.is_empty() {
             filter.source = Some("\0no-captured-source".into());
         }
@@ -472,6 +477,9 @@ fn resolve_scoped(r: &dyn GraphAccess, req: &Request) -> Result<Vec<Fact>> {
                 .collect();
         }
     }
+    if r.resource_exhausted() {
+        return Err(ResourceBudget::error().into());
+    }
     if facts.is_empty() {
         require_available_inputs(r, req, selector)?;
     }
@@ -499,6 +507,9 @@ fn resolve_scoped(r: &dyn GraphAccess, req: &Request) -> Result<Vec<Fact>> {
 }
 fn selection_evidence(r: &dyn SourceContext, req: &Request) -> Evidence {
     let mut e = Evidence::complete();
+    if r.charge(r.manifest().files.len() as u64, 0).is_err() {
+        return e;
+    }
     if (!req.scope.is_empty()
         && req.scope != "ALL"
         && !r.manifest().files.iter().any(|s| s.scope == req.scope))
@@ -566,6 +577,9 @@ fn allowed(r: &dyn GraphAccess, req: &Request, f: &Fact) -> bool {
     }
     if req.module.is_empty() && (req.scope.is_empty() || req.scope == "ALL") {
         return true;
+    }
+    if r.charge(r.manifest().files.len() as u64, 0).is_err() {
+        return false;
     }
     r.manifest().files.iter().any(|s| {
         s.path == f.source
@@ -784,9 +798,12 @@ fn stream_search_query(
     let filter = selector_filter(r, req)?;
     let mut after = String::new();
     loop {
-        let batch = r
-            .scan_symbols(&req.selector, &filter, &after, 512)
+        let read = r
+            .scan_symbols_bounded(&req.selector, &filter, &after, 500)
             .map_err(anyhow::Error::new)?;
+        let stopped = read.resource_limit.is_some();
+        let complete = read.complete;
+        let batch = read.records;
         ensure!(
             batch.len() <= 512,
             codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidScanBatchResult, "")
@@ -802,9 +819,8 @@ fn stream_search_query(
             after.clear();
             after.push_str(fact.id.as_str());
         }
-        let complete = batch.len() < 512;
         sink(values(batch))?;
-        if complete {
+        if complete || stopped {
             break;
         }
     }
@@ -815,7 +831,35 @@ fn stream_search_query(
         ..Default::default()
     })
 }
+pub fn resource_output(r: &dyn SourceContext, result: Result<Output>) -> Result<Output> {
+    let mut out = match result {
+        Ok(out) => out,
+        Err(e)
+            if e.downcast_ref::<DomainError>()
+                .is_some_and(|e| e.code == ErrorCode::ComputationLimit) =>
+        {
+            Output {
+                revision: r.revision().id.to_string(),
+                producer: r.revision().producer.clone(),
+                evidence: Evidence::complete(),
+                ..Default::default()
+            }
+        }
+        Err(e) => return Err(e),
+    };
+    if let Some(budget) = r.resource_budget() {
+        budget.apply(&mut out.evidence);
+    }
+    Ok(out)
+}
 fn run_query(
+    r: &dyn GraphReader,
+    req: &Request,
+    source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+) -> Result<Output> {
+    resource_output(r, run_query_inner(r, req, source))
+}
+fn run_query_inner(
     r: &dyn GraphReader,
     req: &Request,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
@@ -896,7 +940,7 @@ fn run_query(
     if records.len() > 10000 {
         records.truncate(10000);
         evidence.enumeration = false;
-        evidence.limits.push("work".into());
+        evidence.limits.push("records".into());
     }
     evidence.limits.sort();
     evidence.limits.dedup();
@@ -936,7 +980,10 @@ pub fn stream_search<'a, R>(
 where
     Request: From<&'a R>,
 {
-    stream_search_query(reader, &Request::from(request), sink)
+    resource_output(
+        reader,
+        stream_search_query(reader, &Request::from(request), sink),
+    )
 }
 
 /// FILES snapshots expose captured bytes without implementing a semantic graph port.
@@ -960,12 +1007,18 @@ where
         .iter()
         .find(|s| s.path == request.selector)
         .ok_or_else(|| DomainError::new(ErrorCode::SourceUnavailable, request.selector.clone()))?;
-    let records = source::snippets(&request, vec![(file.clone(), None)], source)?;
+    let records = source::snippets(reader, &request, vec![(file.clone(), None)], source)?;
     Ok(Output {
         revision: reader.revision().id.to_string(),
         producer: reader.revision().producer.clone(),
         records,
-        evidence: selection_evidence(reader, &request),
+        evidence: {
+            let mut e = selection_evidence(reader, &request);
+            if let Some(b) = reader.resource_budget() {
+                b.apply(&mut e);
+            }
+            e
+        },
         cursor: String::new(),
     })
 }
@@ -1836,6 +1889,146 @@ mod tests {
         assert!(!limited.evidence.enumeration);
     }
     use super::*;
+    #[test]
+    fn pipeline_record_limit_retains_only_final_stage_records() {
+        let mut reader = navigation_fixture();
+        let seed = reader.facts[0].clone();
+        reader.facts = (0..10001)
+            .map(|n| {
+                let mut f = seed.clone();
+                f.id = format!("item-{n:05}").into();
+                f.name = "same".into();
+                f
+            })
+            .collect();
+        let request = Request {
+            operation: Operation::Pipeline,
+            stages: vec![Stage {
+                operation: Operation::SearchCode,
+                selector: "same".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let output = run(&reader, &request, &|_| bail!("no source")).unwrap();
+        assert_eq!(output.records.len(), 10000);
+        assert!(!output.evidence.enumeration);
+        assert!(
+            output
+                .evidence
+                .limits
+                .iter()
+                .any(|limit| limit == "records")
+        );
+    }
+    struct Metered<'a> {
+        inner: &'a MemoryReader,
+        budget: ResourceBudget,
+    }
+    impl SourceContext for Metered<'_> {
+        fn manifest(&self) -> &Manifest {
+            self.inner.manifest()
+        }
+        fn revision(&self) -> &Revision {
+            self.inner.revision()
+        }
+        fn resource_budget(&self) -> Option<&ResourceBudget> {
+            Some(&self.budget)
+        }
+    }
+    impl GraphAccess for Metered<'_> {
+        fn select(&self, f: &FactFilter) -> std::result::Result<Vec<Fact>, DomainError> {
+            self.charge(1, 0)?;
+            self.inner.select(f)
+        }
+        fn scan(
+            &self,
+            f: &FactFilter,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<Fact>, DomainError> {
+            self.charge(1, 0)?;
+            self.inner.scan(f, after, limit)
+        }
+        fn scan_symbols(
+            &self,
+            text: &str,
+            f: &FactFilter,
+            after: &str,
+            limit: usize,
+        ) -> std::result::Result<Vec<Fact>, DomainError> {
+            self.charge(1, 0)?;
+            self.inner.scan_symbols(text, f, after, limit)
+        }
+    }
+    impl SourceLocator for Metered<'_> {}
+    impl AnnotationReader for Metered<'_> {}
+    impl OverviewReader for Metered<'_> {}
+    impl DependencyReader for Metered<'_> {}
+
+    #[test]
+    fn pipeline_budget_is_shared_and_cannot_publish_intermediate_entities() {
+        let inner = navigation_fixture();
+        let budget = ResourceBudget::new(ResourceLimits {
+            max_work: 3,
+            max_payload_bytes: 100000,
+        });
+        let reader = Metered {
+            inner: &inner,
+            budget: budget.clone(),
+        };
+        let request = Request {
+            operation: Operation::Pipeline,
+            stages: vec![
+                Stage {
+                    operation: Operation::Resolve,
+                    selector: "caller".into(),
+                    ..Default::default()
+                },
+                Stage {
+                    operation: Operation::Source,
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+        let out = run(&reader, &request, &|_| {
+            panic!("no source read after exhausted upstream")
+        })
+        .unwrap();
+        assert!(out.records.is_empty());
+        assert!(!out.evidence.enumeration);
+        assert_eq!(
+            out.evidence.resource_usage.unwrap().work,
+            budget.usage().work
+        );
+    }
+
+    #[test]
+    fn source_rejects_oversized_read_before_calling_source_port() {
+        let inner = navigation_fixture();
+        let budget = ResourceBudget::new(ResourceLimits {
+            max_work: 100,
+            max_payload_bytes: 1,
+        });
+        let reader = BudgetedSource {
+            inner: &inner,
+            budget: &budget,
+        };
+        let source = inner.manifest().files.first().unwrap();
+        let request = Request {
+            operation: Operation::Source,
+            selector: source.path.clone(),
+            ..Default::default()
+        };
+        let out = run_files(&reader, &request, &|_| {
+            panic!("oversized source must not be read")
+        })
+        .unwrap();
+        assert!(out.records.is_empty());
+        assert!(out.evidence.resource_usage.is_some());
+    }
+
     struct MemoryReader {
         revision: Revision,
         facts: Vec<Fact>,

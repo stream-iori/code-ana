@@ -22,7 +22,7 @@ pub(super) fn adjacent(
                 },
             )?);
             ensure!(
-                output.len() <= 100000,
+                output.len() <= work_limit(reader),
                 codeana_model::DomainError::new(codeana_model::ErrorCode::HierarchyWorkBudget, "")
             );
         }
@@ -125,7 +125,7 @@ pub(super) fn runtime(
             }
             let edges = adjacent(reader, &ids, true, &["extends", "implements"])?;
             work += ids.len() + edges.len();
-            if work > 100000 {
+            if work > work_limit(reader) {
                 limit(evidence, "work");
                 return Ok(output.into_values().collect());
             }
@@ -139,6 +139,15 @@ pub(super) fn runtime(
                     return Ok(output.into_values().collect());
                 }
                 visited.insert(edge.parent.clone());
+                if reader
+                    .charge(
+                        1,
+                        retained_size(&frontier[&edge.target])? + edge.id.len() as u64,
+                    )
+                    .is_err()
+                {
+                    return Ok(output.into_values().collect());
+                }
                 let mut proof = frontier[&edge.target].clone();
                 proof.push(edge.id.to_string());
                 next.insert(edge.parent, proof);
@@ -224,7 +233,7 @@ pub(super) fn relations(
         let ids = frontier.iter().cloned().collect::<Vec<_>>();
         let edges = adjacent(reader, &ids, incoming, &selected)?;
         work += ids.len() + edges.len();
-        if work > 100000 {
+        if work > work_limit(reader) {
             limit(evidence, "work");
             break;
         }

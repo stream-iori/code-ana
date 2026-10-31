@@ -115,7 +115,7 @@ public final class JavaOverrideFacts {
                         metadata.put("generatedFrom", origin.generatedFrom());
                         metadata.put("bodyAvailable", origin.bodyAvailable());
                     }
-                    edge.metadata = Json.writeCompact(metadata);
+                    edge.metadata = Json.writeCompact(metadata, model.analysisContext());
                     result.edges.add(edge);
                 }
             }

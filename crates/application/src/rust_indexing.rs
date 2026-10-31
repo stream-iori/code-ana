@@ -59,7 +59,9 @@ impl Engine {
             DomainError::new(ErrorCode::HeadConflict, "")
         );
         let input = self.prepare_rust_inputs(id, &capture).await?;
-        let workers = self.start_rust_workers(&input, &capture, cancel).await?;
+        let workers = self
+            .start_rust_workers(id, &input, &capture, cancel)
+            .await?;
         let baseline = self
             .resolve_rust_baseline(id, req, &capture, &input, &workers, expected)
             .await?;
@@ -295,6 +297,7 @@ impl Engine {
     }
     async fn start_rust_workers(
         &self,
+        id: &str,
         input: &RustInput,
         capture: &Capture,
         cancel: &CancellationToken,
@@ -309,6 +312,7 @@ impl Engine {
             rust_manifest,
             cancel,
             memory,
+            self.analysis_binding(id, AnalysisLanguage::Rust, ""),
         )
         .await?;
         ensure!(
@@ -351,6 +355,7 @@ impl Engine {
                     &c.manifest,
                     cancel,
                     memory,
+                    self.analysis_binding(id, AnalysisLanguage::Java, ""),
                 )
                 .await?,
             )

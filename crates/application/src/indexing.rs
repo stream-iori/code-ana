@@ -10,7 +10,6 @@ struct IndexSetup {
     expected: RevisionId,
     worker: worker::Worker,
     pool_key: Option<String>,
-    undiscovered_warm: bool,
     profile: String,
     full: bool,
     old: Option<BaselineInput>,
@@ -48,6 +47,24 @@ pub(super) struct PublishedIndex {
     pub(super) index_elapsed_ms: u64,
 }
 impl Engine {
+    pub(super) fn analysis_binding(
+        &self,
+        id: &str,
+        language: AnalysisLanguage,
+        instance: &str,
+    ) -> Option<worker::AnalysisBinding> {
+        self.jobs
+            .lock()
+            .unwrap()
+            .get(&TaskId::from(id))
+            .and_then(|job| job.analysis_coordinator.lock().unwrap().clone())
+            .map(|coordinator| worker::AnalysisBinding {
+                coordinator,
+                language,
+                instance: instance.into(),
+            })
+    }
+
     pub(super) async fn index(
         &self,
         id: &str,
@@ -55,6 +72,99 @@ impl Engine {
         mut c: Capture,
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
+        // Admit the frozen input before selecting any language or reuse path.
+        // This ledger covers input admission only; backend traversal is not yet wired.
+        if self.mock.is_none() {
+            let user = codeana_config::load_user(self.index.home())?;
+            let limits = c
+                .effective
+                .config
+                .resources
+                .index
+                .analysis
+                .resolve(&user.resources.index.analysis)?;
+            let deadline = self
+                .jobs
+                .lock()
+                .unwrap()
+                .get(&TaskId::from(id))
+                .and_then(|job| *job.control.deadline.lock().unwrap());
+            let budget = AnalysisContext::new(limits, deadline)?;
+            if let Some(job) = self.jobs.lock().unwrap().get(&TaskId::from(id)) {
+                *job.analysis_admission.lock().unwrap() = Some((limits, budget.clone()));
+            }
+            let admit = || -> Result<()> {
+                budget.charge(1, 0, 0)?;
+                for file in &c.manifest.files {
+                    ensure!(
+                        !cancel.is_cancelled(),
+                        DomainError::new(ErrorCode::Cancelled, "")
+                    );
+                    budget.charge(1, 1, file.size.saturating_add(file.path.len() as u64))?;
+                }
+                Ok(())
+            };
+            if let Err(error) = admit() {
+                if let Some(failure) = error.downcast_ref::<AnalysisFailure>() {
+                    return Err(DomainError::analysis(failure.clone()).into());
+                }
+                return Err(error);
+            }
+        }
+        if self.mock.is_none() {
+            // Freeze participants before discovery; deleted/empty modules retain their share.
+            let mut participants = std::collections::BTreeSet::new();
+            for language in c.manifest.files.iter().map(|f| f.language.as_str()).chain(
+                c.effective
+                    .config
+                    .modules
+                    .iter()
+                    .map(|m| m.language.as_str()),
+            ) {
+                match language {
+                    "java" => {
+                        participants.insert(AnalysisLanguage::Java);
+                    }
+                    "rust" => {
+                        participants.insert(AnalysisLanguage::Rust);
+                    }
+                    "python" => {
+                        participants.insert(AnalysisLanguage::Python);
+                    }
+                    _ => {}
+                }
+            }
+            if c.effective.rust_inputs.is_some() {
+                participants.insert(AnalysisLanguage::Rust);
+            }
+            if c.effective.python_inputs.is_some() {
+                participants.insert(AnalysisLanguage::Python);
+            }
+            if c.effective.java_inputs.is_some() {
+                participants.insert(AnalysisLanguage::Java);
+            }
+            if !participants.is_empty() {
+                let jobs = self.jobs.lock().unwrap();
+                if let Some(job) = jobs.get(&TaskId::from(id)) {
+                    let admission = job.analysis_admission.lock().unwrap();
+                    if let Some((limits, budget)) = admission.as_ref() {
+                        let coordinator = AnalysisCoordinator::new(
+                            id,
+                            *limits,
+                            budget.usage(),
+                            &participants.into_iter().collect::<Vec<_>>(),
+                            *job.control.deadline.lock().unwrap(),
+                        )
+                        .map_err(|failure| {
+                            budget.fail(failure.clone());
+                            DomainError::analysis(failure)
+                        })?;
+                        *job.analysis_coordinator.lock().unwrap() =
+                            Some(Arc::new(Mutex::new(coordinator)));
+                    }
+                }
+            }
+        }
         if !c.effective.input_units.is_empty() {
             return self.index_prepared(id, req, c, cancel).await;
         }
@@ -79,7 +189,6 @@ impl Engine {
             expected: _,
             mut worker,
             pool_key,
-            undiscovered_warm,
             profile: _,
             full: _,
             old: _,
@@ -143,7 +252,7 @@ impl Engine {
         if let Some(timings) = &mut timings {
             timings.phase("ack_finished");
         }
-        if (!unchanged || undiscovered_warm)
+        if !unchanged
             && ack.is_none()
             && self.mock.is_none()
             && self.user.daemon.java_warm_workers.unwrap_or(true)
@@ -235,13 +344,6 @@ impl Engine {
                 memory,
             ))
         });
-        // A warm worker is still idle after its previous Ack. For identical captures,
-        // leave it idle instead of opening a new analysis context we will never use.
-        let identical_capture = !expected.is_empty()
-            && !req.full
-            && c.effective.config.index.mode != "full"
-            && self.index.read(&expected)?.revision().manifest.id() == c.manifest.id();
-        let mut undiscovered_warm = false;
         let mut reused = None;
         if self.mock.is_none() && self.user.daemon.java_warm_workers.unwrap_or(true) {
             let idle = self.idle_java.lock().unwrap().take();
@@ -250,18 +352,19 @@ impl Engine {
                 && idle.key == *key
                 && idle.revision == expected.as_str()
                 && idle.worker.alive().unwrap_or(false)
-                && (identical_capture
-                    || idle
-                        .worker
-                        .rediscover(prepared, &c.manifest, cancel)
-                        .await
-                        .is_ok())
             {
-                undiscovered_warm = identical_capture;
+                idle.worker
+                    .rediscover(
+                        prepared,
+                        &c.manifest,
+                        cancel,
+                        self.analysis_binding(id, AnalysisLanguage::Java, ""),
+                    )
+                    .await?;
                 reused = Some(idle.worker);
             }
         }
-        let mut worker = if let Some(worker) = reused {
+        let worker = if let Some(worker) = reused {
             worker
         } else {
             worker::Worker::start(
@@ -271,6 +374,7 @@ impl Engine {
                 &c.manifest,
                 cancel,
                 memory,
+                self.analysis_binding(id, AnalysisLanguage::Java, ""),
             )
             .await?
         };
@@ -367,43 +471,11 @@ impl Engine {
                 old = baseline;
             }
         }
-        if undiscovered_warm && !unchanged {
-            let previous_context = digest(&worker.context);
-            worker
-                .rediscover(
-                    prepared.as_ref().context(codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::JavaRequired,
-                        "",
-                    ))?,
-                    &c.manifest,
-                    cancel,
-                )
-                .await?;
-            ensure!(
-                digest(&worker.context) == previous_context,
-                codeana_model::DomainError::new(codeana_model::ErrorCode::WarmContextChanged, "")
-            );
-        }
-        if let Some(timings) = timings {
-            timings.phase("baseline_exported");
-        }
-        self.tasks.event(
-            &TaskId::from(id),
-            &Event::Progress(
-                if full {
-                    "analyze_full"
-                } else {
-                    "analyze_delta"
-                }
-                .into(),
-            ),
-        )?;
         Ok(IndexSetup {
             prepared,
             expected,
             worker,
             pool_key,
-            undiscovered_warm,
             profile,
             full,
             old,
@@ -424,7 +496,6 @@ impl Engine {
         let full = setup.full;
         let old = &setup.old;
         let unchanged = setup.unchanged;
-        let undiscovered_warm = setup.undiscovered_warm;
         let analyzing = Instant::now();
         let streaming = prepared.is_some() && !unchanged;
         let analyze_ms;
@@ -516,9 +587,7 @@ impl Engine {
                 // The captured manifest and semantic profile include adapter/toolchain identity.
                 // Keep baseline export validation/budgets and normal candidate validation/publication,
                 // but avoid sending unchanged facts through Java just to discover zero dirty owners.
-                if !undiscovered_warm {
-                    worker.retire_unused().await?;
-                }
+                worker.retire_unused().await?;
                 let prepared = prepared.as_ref().context(codeana_model::DomainError::new(
                     codeana_model::ErrorCode::JavaRequired,
                     "",
@@ -678,6 +747,7 @@ impl Engine {
                 "full" | "detailed"
             );
             let report = ReportDocument {
+                analysis_resources: self.analysis_admission_report(id),
                 schema_version: 2,
                 global: crate::reports::GlobalReport::from_capture(c, true),
                 id: id.into(),

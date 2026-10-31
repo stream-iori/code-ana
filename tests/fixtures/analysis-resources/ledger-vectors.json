@@ -1,0 +1,6 @@
+[
+  {"name":"atomic_payload_rejection","limits":{"max_work":10,"max_nodes":12,"max_payload_bytes":20,"max_depth":3},"operations":[{"charge":[2,3,4]},{"charge":[1,1,17]}],"expected":{"work":2,"nodes":3,"payload_bytes":4,"max_depth":0,"failure":{"Limit":{"resource":"payload_bytes","limit":20,"used":4,"requested":17}}}},
+  {"name":"depth_does_not_consume_other_dimensions","limits":{"max_work":10,"max_nodes":12,"max_payload_bytes":20,"max_depth":3},"operations":[{"depth":2},{"depth":5}],"expected":{"work":0,"nodes":0,"payload_bytes":0,"max_depth":2,"failure":{"Limit":{"resource":"depth","limit":3,"used":3,"requested":2}}}},
+  {"name":"cumulative_success","limits":{"max_work":10,"max_nodes":12,"max_payload_bytes":20,"max_depth":3},"operations":[{"charge":[2,3,4]},{"depth":3},{"charge":[5,1,7]}],"expected":{"work":7,"nodes":4,"payload_bytes":11,"max_depth":3,"failure":null}},
+  {"name":"signed_boundary_without_overflow","limits":{"max_work":9223372036854775807,"max_nodes":12,"max_payload_bytes":20,"max_depth":3},"operations":[{"charge":[9223372036854775807,0,0]},{"charge":[1,0,0]}],"expected":{"work":9223372036854775807,"nodes":0,"payload_bytes":0,"max_depth":0,"failure":{"Limit":{"resource":"work","limit":9223372036854775807,"used":9223372036854775807,"requested":1}}}}
+]

@@ -19,6 +19,7 @@ import java.util.Map;
 /** Task-owned, bounded protobuf rows. No whole-fact JSON and no project-wide dedup map. */
 public final class GraphArchive implements AutoCloseable {
     private final Path path;
+    private final com.anatomist.core.AnalysisContext analysis;
     private final long maxBytes, maxRows;
     private final MessageDigest digest;
     private final DataOutputStream output;
@@ -26,7 +27,10 @@ public final class GraphArchive implements AutoCloseable {
     private long count, bytes = 4;
     private boolean sealed;
 
-    public GraphArchive(Path path, long maxBytes, long maxRows) throws IOException {
+    public GraphArchive(Path path, long maxBytes, long maxRows) throws IOException { this(path, maxBytes, maxRows, null); }
+    public GraphArchive(Path path, long maxBytes, long maxRows, com.anatomist.core.AnalysisContext analysis) throws IOException {
+        this.analysis = analysis;
+        if (analysis != null) analysis.charge(1, 1, 128L << 10);
         this.path = path;
         this.maxBytes = maxBytes;
         this.maxRows = maxRows;
@@ -42,6 +46,7 @@ public final class GraphArchive implements AutoCloseable {
         int length = row.getSerializedSize();
         if (sealed || length <= 0 || length > 8 << 20) throw new IOException("GRAPH_RECORD_BUDGET");
         if (count >= maxRows || bytes + length + 4 > maxBytes) throw new IOException("GRAPH_ARCHIVE_BUDGET");
+        if (analysis != null) analysis.charge(1, 1, (long)length + 4);
         encoded.writeRawByte(length >>> 24);
         encoded.writeRawByte(length >>> 16);
         encoded.writeRawByte(length >>> 8);
@@ -56,6 +61,7 @@ public final class GraphArchive implements AutoCloseable {
 
     public Map<String, Object> export(Path destination) throws IOException {
         if (sealed) throw new IOException("GRAPH_ARCHIVE_ALREADY_SEALED");
+        if (analysis != null) analysis.check();
         encoded.flush();
         output.close();
         sealed = true;

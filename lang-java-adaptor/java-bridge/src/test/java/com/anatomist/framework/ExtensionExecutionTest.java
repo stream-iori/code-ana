@@ -12,6 +12,18 @@ import java.util.List;
 
 class ExtensionExecutionTest {
     @Test
+    void resourceFailureCannotBeConvertedToFallbackOrPartialFacts() {
+        var destination = new ExtractionResult();
+        var limit = new com.anatomist.core.HardResourceLimit("test limit");
+        assertSame(limit, assertThrows(com.anatomist.core.HardResourceLimit.class, () ->
+                ExtensionExecution.facts(() -> "test", ExtensionExecution.Stage.JAVA,
+                        ExtensionExecution.Source.file("A.java"), null, destination, result -> {
+                            result.edges.add(Edge.call("a", "b", "partial", null));
+                            throw new IllegalStateException(limit);
+                        })));
+        assertTrue(destination.edges.isEmpty());
+    }
+    @Test
     void failedFactsAreDiscardedAndBothAttemptsAreTimed() {
         IndexTimings timings = new IndexTimings();
         ExtensionReport report = new ExtensionReport(timings);
@@ -107,7 +119,7 @@ class ExtensionExecutionTest {
                 new ProjectAnalysisRunner()
                         .run(
                                 extensions,
-                                null,
+                                new JavaFrameworkContext(java.nio.file.Path.of("."),List.of(),new com.anatomist.config.ProjectConfig(),false),
                                 List.of(
                                         new ProjectResource(
                                                 java.nio.file.Path.of("a.xml"), "a.xml", "test")),

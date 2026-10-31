@@ -43,7 +43,7 @@ class NativeLifecycle(unittest.TestCase):
         self.gc = manifest['native_gc']
         self.assertEqual(manifest['backend'], 'native')
         self.assertEqual(manifest['abi'], 4)
-        self.assertEqual(manifest['analysis_request'], 10)
+        self.assertEqual(manifest['analysis_request'], 11)
         for name, expected in manifest['files'].items():
             path = bundle.parent / name
             self.assertTrue(path.resolve().is_relative_to(bundle.parent))
@@ -70,8 +70,9 @@ class NativeLifecycle(unittest.TestCase):
         source.write_text('class A {String value="中文😀"; void run(){target();} void target(){}}')
         unit = dict(path='src/A.java', input=str(source), hash=hashlib.sha256(source.read_bytes()).hexdigest(),
                     module='.', world='main', scope='MAIN', publish=True)
-        self.request = dict(version=10, full=True, facts=True,
-            java_home=str(pathlib.Path.home() / '.sdkman/candidates/java/8.0.492-zulu'),
+        self.request = dict(analysis_grant=dict(id='native-lifecycle/java/worker',language='java',limits=dict(max_work=10000000,max_nodes=1000000,max_payload_bytes=536870912,max_depth=256)),
+            analysis_usage=dict(work=0,nodes=0,payload_bytes=0,max_depth=0,failure=None),deadline_ms=0,version=11, full=True, facts=True,
+            java_home=os.environ.get('CODEANA_JAVA8_HOME', str(pathlib.Path.home() / '.sdkman/candidates/java/8.0.492-zulu')),
             scratch=str(self.root), compiler_timeout_seconds=30,
             contexts=[dict(context='.@MAIN', module='.', world='main', scope='MAIN',
                 digest=unit['hash'], sources=[unit], resources=[], classpath=[], dependency_modules=[], lombok='off')])
@@ -135,7 +136,11 @@ class NativeLifecycle(unittest.TestCase):
             self.assertLess(len(output), 8 << 20)
         self.assertEqual(self.library.codeana_java_read_result_chunk(
             self.thread, task, len(output) + 1, buffer, 41), -2)
-        return state, json.loads(output)
+        value=json.loads(output)
+        self.assertEqual(value['version'],11)
+        self.assertIsInstance(value['usage_known'],bool)
+        self.assertEqual(value['usage_known'],'analysis_usage' in value)
+        return state, value
 
     def facts(self, result):
         descriptor = result['graph_archive']
@@ -180,6 +185,28 @@ class NativeLifecycle(unittest.TestCase):
         writer.close()
         self.close(task)
         self.assertEqual(reader.recv(1), b'')
+
+    def test_xml_limit_is_fatal_and_malformed_xml_keeps_recovery(self):
+        import copy
+        for content, expected in [('<beans><bean', 1),
+                ('<beans><bean id="early" class="A"/>' + '<list>' * 300 + '</list>' * 300 + '</beans>', -1)]:
+            xml = self.root / 'beans.xml'
+            xml.write_text(content)
+            request = copy.deepcopy(self.request)
+            request['contexts'][0]['spring_xml'] = True
+            request['contexts'][0]['resources'] = [dict(input=str(xml), unit=dict(
+                path='beans.xml', hash=hashlib.sha256(xml.read_bytes()).hexdigest(),
+                module='.', world='main', scope='MAIN', publish=True))]
+            task = self.submit(request)
+            state, result = self.result(task)
+            self.assertEqual(state, expected, result)
+            if expected == -1:
+                self.assertIn('HardResourceLimit', result['error'])
+                usage = result['analysis_usage']['usage']
+                self.assertEqual(usage['failure']['Limit']['resource'], 'depth')
+                self.assertLessEqual(usage['failure']['Limit']['limit'], 256)
+                self.assertNotIn('graph_archive', result)
+            self.close(task)
 
     def test_same_isolate_reuses_tasks_and_releases_archives_after_close(self):
         observed = []
@@ -230,8 +257,21 @@ class NativeLifecycle(unittest.TestCase):
         self.assertEqual(self.control('seal_input', task), -2)
         self.assertEqual(self.library.codeana_java_input_chunk(self.thread, task, buffer, 2), -2)
 
+    def test_strict_request_requires_grant_seed_and_deadline(self):
+        for field in ('analysis_grant','analysis_usage','deadline_ms'):
+            request=dict(self.request)
+            del request[field]
+            task=self.submit(request)
+            state,result=self.result(task)
+            self.assertEqual(state,-1)
+            self.assertFalse(result['usage_known'])
+            self.assertIn('ANALYSIS_',result['error'])
+            self.close(task)
+        task=self.submit()
+        self.assertEqual(self.result(task)[0],1)
+
     def test_version_failure_remains_readable_and_isolate_can_run_again(self):
-        task = self.submit(dict(self.request, version=6))
+        task = self.submit(dict(self.request, version=10))
         state, result = self.result(task)
         self.assertEqual(state, -1)
         self.assertIn('ABI_REQUEST_VERSION', result['error'])

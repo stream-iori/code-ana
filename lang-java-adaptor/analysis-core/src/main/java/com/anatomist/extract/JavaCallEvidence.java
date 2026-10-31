@@ -109,7 +109,7 @@ final class JavaCallEvidence {
                                 if (evidence.isEmpty()) return null;
                                 Map<String, Object> values = new LinkedHashMap<>();
                                 if (original != null
-                                        && Json.parseTree(original) instanceof Map<?, ?> existing)
+                                        && Json.parseTree(original,512,unit.project().analysisContext()) instanceof Map<?, ?> existing)
                                     existing.forEach(
                                             (key, value) -> values.put(key.toString(), value));
                                 var found = evidence.get();
@@ -118,7 +118,7 @@ final class JavaCallEvidence {
                                             "duplicate call evidence namespace "
                                                     + found.namespace());
                                 values.put(found.namespace(), found.value());
-                                return new Enrichment(Json.writeCompact(values), found.counter());
+                                return new Enrichment(Json.writeCompact(values,unit.project().analysisContext()), found.counter());
                             },
                             null);
             if (result != null) {

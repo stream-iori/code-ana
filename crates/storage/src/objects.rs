@@ -13,7 +13,12 @@ impl Store {
         let mut c = self.catalog()?;
         let tx = c.transaction()?;
         for r in revisions {
-            self.revision_unlocked(r)?;
+            let exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM revisions WHERE id=?)",
+                [r],
+                |row| row.get(0),
+            )?;
+            ensure!(exists, DomainError::new(ErrorCode::RevisionNotFound, ""));
         }
         tx.execute(
             "INSERT OR REPLACE INTO objects VALUES(?,?,?,?)",
@@ -38,18 +43,36 @@ impl Store {
         Ok(())
     }
     pub fn object<T: DeserializeOwned>(&self, kind: &str, id: &str, project: &str) -> Result<T> {
-        let s: String = self
-            .catalog()?
-            .query_row(
-                "SELECT body FROM objects WHERE kind=? AND id=? AND project=?",
-                params![kind, id, project],
-                |r| r.get(0),
-            )
-            .context(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::ObjectNotFoundOrExpired,
-                "",
-            ))?;
-        Ok(serde_json::from_str(&s)?)
+        self.object_metered(kind, id, project, None)
+    }
+    pub fn object_budgeted<T: DeserializeOwned>(
+        &self,
+        kind: &str,
+        id: &str,
+        project: &str,
+        budget: &ResourceBudget,
+    ) -> Result<T> {
+        self.object_metered(kind, id, project, Some(budget))
+    }
+    fn object_metered<T: DeserializeOwned>(
+        &self,
+        kind: &str,
+        id: &str,
+        project: &str,
+        budget: Option<&ResourceBudget>,
+    ) -> Result<T> {
+        let connection = self.catalog()?;
+        let mut statement =
+            connection.prepare("SELECT body FROM objects WHERE kind=? AND id=? AND project=?")?;
+        let mut rows = statement.query(params![kind, id, project])?;
+        let row = rows
+            .next()?
+            .context(DomainError::new(ErrorCode::ObjectNotFoundOrExpired, ""))?;
+        let body = row.get_ref(0)?.as_str()?;
+        if let Some(b) = budget {
+            b.charge(1, body.len() as u64)?;
+        }
+        Ok(serde_json::from_str(body)?)
     }
     pub fn objects<T: DeserializeOwned>(&self, kind: &str, project: &str) -> Result<Vec<T>> {
         let c = self.catalog()?;

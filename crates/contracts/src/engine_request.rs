@@ -16,6 +16,11 @@ pub enum EngineDependencyMode {
 #[serde(default)]
 pub struct EngineRequest {
     pub version: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analysis_grant: Option<codeana_model::AnalysisGrant>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub analysis_usage: Option<codeana_model::AnalysisUsage>,
+    pub deadline_ms: u64,
     pub compact_inputs: bool,
     pub input_table: Vec<w::JavaSource>,
     pub classpath_table: Vec<String>,
@@ -90,10 +95,18 @@ impl EngineRequest {
         config: &w::JavaConfig,
         analyze: &w::Analyze,
         cache_root: Option<PathBuf>,
+        budget: &codeana_model::AnalysisContext,
     ) -> Result<Self> {
+        anyhow::ensure!(analyze.analysis_grant.is_some(), "ANALYSIS_GRANT_REQUIRED");
         let limits = OutputLimits::from_config(config)?;
         Ok(Self {
-            version: 10,
+            version: codeana_model::JAVA_ANALYSIS_VERSION,
+            analysis_grant: Some(crate::analysis_budget::required_grant(
+                analyze.analysis_grant.as_ref(),
+                codeana_model::AnalysisLanguage::Java,
+            )?),
+            analysis_usage: None,
+            deadline_ms: analyze.deadline_ms.context("ANALYSIS_DEADLINE_REQUIRED")?,
             compact_inputs: config.compact_inputs,
             input_table: config.input_table.clone(),
             classpath_table: config.classpath_table.clone(),
@@ -111,7 +124,7 @@ impl EngineRequest {
             baseline_summary: if analyze.baseline_summary_json.is_empty() {
                 BaselineInput::default()
             } else {
-                serde_json::from_slice(&analyze.baseline_summary_json)?
+                crate::json_budget::decode_with_budget(&analyze.baseline_summary_json, budget)?
             },
             profile: analyze.profile.clone(),
             signature_cache: cache_root.is_some(),
@@ -203,7 +216,7 @@ impl TryFrom<&w::JavaContext> for EngineContext {
             })
             .collect::<Result<_>>()?;
         Ok(Self {
-            version: 10,
+            version: codeana_model::JAVA_ANALYSIS_VERSION,
             type_graph: true,
             context: c.id.clone(),
             module: c.module.clone(),
@@ -250,5 +263,29 @@ impl TryFrom<&w::JavaContext> for EngineContext {
             classpath_indices: c.classpath_indices.clone(),
             resource_indices: c.resource_indices.clone(),
         })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EngineAnalysisReceipt {
+    pub grant_id: String,
+    pub usage: codeana_model::AnalysisUsage,
+    pub phase: String,
+}
+impl EngineAnalysisReceipt {
+    pub fn reconcile(
+        &self,
+        grant: &codeana_model::AnalysisGrant,
+        context: &codeana_model::AnalysisContext,
+    ) -> Result<()> {
+        anyhow::ensure!(
+            self.grant_id == grant.id && codeana_model::valid_analysis_phase(&self.phase),
+            DomainError::analysis(codeana_model::AnalysisFailure::InvalidUsage)
+        );
+        context
+            .reconcile_cumulative(self.usage.clone())
+            .map_err(DomainError::analysis)?;
+        Ok(())
     }
 }

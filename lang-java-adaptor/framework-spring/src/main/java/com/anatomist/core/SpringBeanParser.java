@@ -29,6 +29,10 @@ import javax.xml.parsers.SAXParser;
  * adds no reflection / reachability-metadata burden.
  */
 public final class SpringBeanParser {
+    private final AnalysisContext analysis;
+    public SpringBeanParser() { this(null); }
+    public SpringBeanParser(AnalysisContext analysis) { this.analysis = analysis; }
+
 
     /** Lossless construction facts for one Spring XML {@code <bean>}. */
     public record ParsedBean(
@@ -113,30 +117,33 @@ public final class SpringBeanParser {
         return rootIsBeans(file);
     }
 
-    public List<ParsedBean> parse(Path file) {
-        try (Reader r = Files.newBufferedReader(file)) {
-            return parse(r);
-        } catch (Exception e) {
-            return List.of();
-        }
-    }
+    public record ParsedXml(List<ParsedBean> beans, XmlResourceBudget budget) {}
 
-    public List<ParsedBean> parse(Reader reader) {
-        Handler h = new Handler();
-        try {
-            SAXParser parser = localParser();
-            parser.parse(new InputSource(reader), h);
-        } catch (Exception e) {
-            // Malformed / non-beans XML: return whatever was collected (usually none).
-            if (!h.rootIsBeans) return List.of();
-        }
-        return h.rootIsBeans ? h.withAliases() : List.of();
+    public List<ParsedBean> parse(Path file) { return parseDocument(file).beans(); }
+    public ParsedXml parseDocument(Path file) {
+        XmlResourceBudget budget = new XmlResourceBudget(analysis);
+        try (Reader r = Files.newBufferedReader(file)) { return parseDocument(r, budget); }
+        catch (Exception e) { HardResourceLimit.rethrow(e); return new ParsedXml(List.of(), budget); }
+    }
+    public List<ParsedBean> parse(Reader reader) { return parseDocument(reader, new XmlResourceBudget(analysis)).beans(); }
+    private ParsedXml parseDocument(Reader reader, XmlResourceBudget budget) {
+        Handler h = new Handler(budget);
+        try { localParser().parse(new InputSource(reader), h); budget.check(); if (h.platformFailure != null) throw h.platformFailure; }
+        catch (Exception e) {
+            budget.check();
+            if (h.platformFailure != null) throw h.platformFailure;
+            HardResourceLimit.rethrow(e);
+            String detail = e.getClass().getName() + ": " + e.getMessage();
+            com.anatomist.core.logging.AnatomistLog.warn("XML_PARSE_RECOVERED: " + detail.substring(0, Math.min(detail.length(), 1024)));
+            if (!h.rootIsBeans) return new ParsedXml(List.of(), budget); }
+        return new ParsedXml(h.rootIsBeans ? h.withAliases() : List.of(), budget);
     }
 
     private static boolean rootIsBeans(Path file) {
         try (Reader reader = Files.newBufferedReader(file)) {
             return rootIsBeans(reader);
         } catch (Exception failure) {
+            HardResourceLimit.rethrow(failure);
             return false;
         }
     }
@@ -149,6 +156,7 @@ public final class SpringBeanParser {
         } catch (RootSeen done) {
             return probe.beans;
         } catch (Exception failure) {
+            HardResourceLimit.rethrow(failure);
             return false;
         }
         return false;
@@ -197,6 +205,9 @@ public final class SpringBeanParser {
         private boolean seenRoot = false;
         private org.xml.sax.Locator locator;
         private int depth;
+        private final XmlResourceBudget budget;
+        private HardResourceLimit platformFailure;
+        Handler(XmlResourceBudget budget) { this.budget = budget; }
 
         private final Deque<BeanState> beanStack = new ArrayDeque<>();
         private int beanOrdinal;
@@ -248,7 +259,23 @@ public final class SpringBeanParser {
         }
 
         @Override
+        public void fatalError(org.xml.sax.SAXParseException failure) throws org.xml.sax.SAXException {
+            // Xerces checks its platform limit before invoking startElement for
+            // the rejected child. The current SAX depth is the accepted limit;
+            // record the one rejected descent without raising the platform cap.
+            String message=failure.getMessage();
+            if(message!=null && message.contains("JAXP00010006:") && message.contains("jdk.xml.maxElementDepth"))
+                budget.platformDepthExceeded(depth);
+            try { HardResourceLimit.rethrow(failure); }
+            catch (HardResourceLimit limit) { platformFailure = limit; throw limit; }
+            throw failure;
+        }
+
+        @Override
         public void startElement(String uri, String localName, String qName, Attributes a) {
+            budget.parsedNode(depth + 1);
+            budget.text(qName);
+            for (int i = 0; i < a.getLength(); i++) { budget.text(a.getQName(i)); budget.text(a.getValue(i)); }
             if (!seenRoot) {
                 seenRoot = true;
                 depth = 1;
@@ -367,7 +394,7 @@ public final class SpringBeanParser {
                     && !state.openNodes.isEmpty()
                     && state.openNodes.peek().kind.equals(kindOf(tag))) {
                 XmlConfigNode n = state.openNodes.pop();
-                if ("value".equals(n.kind)) n.finishTextValue();
+                if ("value".equals(n.kind)) { budget.text(n.text); n.finishTextValue(); }
                 n.endLine = locator != null ? locator.getLineNumber() : n.line;
                 n.endColumn = locator != null ? locator.getColumnNumber() : n.column;
             }
@@ -376,6 +403,7 @@ public final class SpringBeanParser {
 
         @Override
         public void characters(char[] ch, int start, int length) {
+            budget.characters(ch, start, length);
             BeanState state = beanStack.peek();
             if (state != null
                     && !state.openNodes.isEmpty()

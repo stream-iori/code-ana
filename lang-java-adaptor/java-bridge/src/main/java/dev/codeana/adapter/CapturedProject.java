@@ -13,6 +13,7 @@ import java.util.*;
 
 /** The compiler can see only immutable inputs explicitly captured by Rust. */
 public final class CapturedProject {
+    public final com.anatomist.core.AnalysisContext analysisContext;
     public record Source(
             String path,
             String hash,
@@ -51,7 +52,9 @@ public final class CapturedProject {
         this(AnalysisRequest.capture(request));
     }
 
-    CapturedProject(AnalysisRequest request) throws IOException {
+    CapturedProject(AnalysisRequest request) throws IOException { this(request, new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults())); }
+    CapturedProject(AnalysisRequest request, com.anatomist.core.AnalysisContext analysisContext) throws IOException {
+        this.analysisContext = Objects.requireNonNull(analysisContext);
         dependencyMode = request.dependencyMode();
         if (!Set.of("resolved", "source_only_requested", "source_only_fallback")
                 .contains(dependencyMode))
@@ -65,6 +68,7 @@ public final class CapturedProject {
         List<Context> contexts = new ArrayList<>();
         Set<String> worlds = new HashSet<>(), ids = new HashSet<>();
         for (var c : request.contexts()) {
+            analysisContext.charge(1, 1, 1024);
             String world = c.world(), id = c.id();
             if (!worlds.add(world) || !ids.add(id))
                 throw new IllegalArgumentException("DUPLICATE_CONTEXT");
@@ -72,6 +76,7 @@ public final class CapturedProject {
             Set<Path> publish = new LinkedHashSet<>();
             for (var row : c.sources()) {
                 Source source = capture(row, false);
+                analysisContext.charge(1, 1, 128);
                 visible.add(source);
                 if (row.publish()) {
                     if (source.auxiliary() || !source.world().equals(world))
@@ -83,6 +88,7 @@ public final class CapturedProject {
                 Source source = capture(row, true);
                 if (source.auxiliary())
                     throw new IllegalArgumentException("RESOURCE_PUBLICATION_IDENTITY");
+                analysisContext.charge(1, 1, 128);
                 resources.add(source);
             }
             if (!dependencyMode.equals("resolved") && !c.classpath().isEmpty())
@@ -153,6 +159,7 @@ public final class CapturedProject {
                 throw new IllegalArgumentException("CAPTURE_IDENTITY");
             return old;
         }
+        analysisContext.charge(1, 1, Math.addExact(Files.size(row.input()), 512L + name.length() * 6L));
         byte[] bytes = Json.read(row.input());
         if (!Json.sha(bytes).equals(hash)) throw new IOException("CAPTURE_HASH_MISMATCH");
         boolean valid = true;

@@ -42,6 +42,8 @@ mode = "auto" # full：明确全量；auto：兼容时增量
 # java_scratch_bytes = 2147483648 # 任务暂存总额，64 KiB–32 GiB；包含捕获副本和候选 SQLite
 
 [resources.query]
+max_work = 100000
+max_payload_bytes = 67108864
 diff_spill_bytes = 8388608 # 当前仅 schema 字段，未接入执行预算
 
 [query]

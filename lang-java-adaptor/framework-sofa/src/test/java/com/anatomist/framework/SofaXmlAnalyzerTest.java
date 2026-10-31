@@ -79,6 +79,15 @@ class SofaXmlAnalyzerTest {
         assertEquals("orders", ((Map<?, ?>) children.getLast()).get("channel"));
     }
 
+    @Test
+    void attributeMetadataRetainsSourceOrderAcrossWorkerRestarts() throws Exception {
+        var keys=List.of("id","interface","z","a","y","b","x","c","w","d","v","e");
+        String attributes=String.join(" ",keys.stream().map(key->key+"='"+(key.equals("interface")?"p.Api":key)+"'").toList());
+        var result=analyze("<beans xmlns:s='http://schema.alipay.com/sofa/schema/service'><s:reference "+attributes+"/></beans>");
+        var metadata=(Map<?,?>)com.anatomist.json.Json.parseTree(result.nodes.getFirst().metadata);
+        assertEquals(keys,List.copyOf(((Map<?,?>)metadata.get("attributes")).keySet()));
+    }
+
     private ExtractionResult analyze(String xml) throws Exception {
         Path file = tmp.resolve("beans.xml");
         Files.writeString(file, xml);

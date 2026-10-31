@@ -178,6 +178,7 @@ mod tests {
                 Record::display(&json!({"files": 2857, "revision": "rev-real"})).unwrap(),
             ],
             evidence: Evidence {
+                resource_usage: None,
                 enumeration: true,
                 semantic: false,
                 limits: vec![],

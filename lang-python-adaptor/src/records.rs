@@ -2,7 +2,7 @@
 use crate::{Declaration, Target, facade::Attribution, frozen::WorldAnalysis};
 use anyhow::{Result, ensure};
 use codeana_contracts::{graph::Row, graph_rows::*};
-use codeana_model::{Manifest, key, python::PRODUCER};
+use codeana_model::{AnalysisContext, Manifest, key, python::PRODUCER};
 use serde::Serialize;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -180,9 +180,99 @@ pub fn emit(
     analyses: &[WorldAnalysis],
     manifest: &Manifest,
     profile: &str,
+    push: impl FnMut(Row) -> Result<()>,
+) -> Result<()> {
+    emit_with_context(
+        analyses,
+        manifest,
+        profile,
+        &AnalysisContext::new(Default::default(), None)?,
+        push,
+    )
+}
+
+pub fn emit_with_context(
+    analyses: &[WorldAnalysis],
+    manifest: &Manifest,
+    profile: &str,
+    budget: &AnalysisContext,
     mut push: impl FnMut(Row) -> Result<()>,
 ) -> Result<()> {
     for input in analyses {
+        budget.charge(1, 1, 512)?;
+        // Reserve lookup tables and line indices before constructing them.
+        for module in &input.modules {
+            budget.charge(
+                1,
+                1,
+                ((module.source.bytes().filter(|b| *b == b'\n').count() + 1) as u64)
+                    .saturating_mul(8)
+                    .saturating_add(module.path.len() as u64)
+                    .saturating_add(256),
+            )?;
+        }
+        budget.charge(
+            manifest.files.len() as u64,
+            manifest.files.len() as u64,
+            (manifest.files.len() as u64).saturating_mul(128),
+        )?;
+        for d in &input.analysis.declarations {
+            budget.charge(
+                1,
+                1,
+                (d.path.len() + d.qualified_name.len() + d.name.len() + 1024) as u64,
+            )?;
+        }
+        // Each relation may project to several graph rows and metadata strings.
+        for c in &input.analysis.calls {
+            budget.charge(1, 1, (c.path.len() + c.syntax.len() + 2048) as u64)?;
+            for t in &c.targets {
+                budget.charge(
+                    1,
+                    1,
+                    ((t.name.len() + t.path.len()) as u64)
+                        .saturating_mul(4)
+                        .saturating_add(2048),
+                )?;
+            }
+        }
+        for r in &input.analysis.references {
+            budget.charge(1, 1, (r.path.len() + 2048) as u64)?;
+            for t in &r.targets {
+                budget.charge(
+                    1,
+                    1,
+                    ((t.name.len() + t.path.len()) as u64)
+                        .saturating_mul(4)
+                        .saturating_add(2048),
+                )?;
+            }
+        }
+        for d in &input.analysis.diagnostics {
+            budget.charge(
+                1,
+                1,
+                ((d.path.len() + d.message.len()) as u64)
+                    .saturating_mul(2)
+                    .saturating_add(1024),
+            )?;
+        }
+        let declarations = input.analysis.declarations.len() as u64;
+        let relations = (input.analysis.calls.len() as u64)
+            .saturating_add(input.analysis.references.len() as u64);
+        let files = input.modules.len() as u64;
+        // Owner lookup and per-source coverage scan these collections repeatedly.
+        // Reserve their worst-case work, including items excluded by filters.
+        budget.charge(
+            declarations
+                .saturating_mul(declarations)
+                .saturating_add(relations.saturating_mul(declarations))
+                .saturating_add(files.saturating_mul(
+                    relations.saturating_add(input.analysis.diagnostics.len() as u64),
+                )),
+            0,
+            0,
+        )?;
         let world = input.world.clone();
         if !input.context.gaps.is_empty() {
             push(coverage(

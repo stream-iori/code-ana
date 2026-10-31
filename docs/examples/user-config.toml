@@ -27,3 +27,7 @@ max_total_worker_memory_bytes = 4294967296
 
 # CLI-daemon 固定采用 HTTP/2 + protobuf gRPC；这里不开放协议切换。
 # endpoint/动态端口由 daemon 生成和登记，不在项目配置中指定。
+
+[resources.query]
+max_work = 100000
+max_payload_bytes = 67108864

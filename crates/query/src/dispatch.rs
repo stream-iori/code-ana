@@ -52,8 +52,11 @@ fn load(
         )? {
             cache.insert(fact.id.to_string(), fact);
         }
+        if reader.resource_exhausted() {
+            return Err(ResourceBudget::error().into());
+        }
         ensure!(
-            cache.len() <= 10000,
+            cache.len() <= 10000 || reader.resource_budget().is_some(),
             codeana_model::DomainError::new(
                 codeana_model::ErrorCode::DispatchDeclarationWorkBudget,
                 ""
@@ -103,10 +106,17 @@ fn adjacent_cached(
             .unwrap()
             .push(edge);
     }
-    Ok(ids
-        .iter()
-        .flat_map(|id| graph[&(traversal.incoming, traversal.callable, id.clone())].clone())
-        .collect())
+    if reader.resource_exhausted() {
+        return Err(ResourceBudget::error().into());
+    }
+    let mut output = Vec::new();
+    for id in ids {
+        for edge in &graph[&(traversal.incoming, traversal.callable, id.clone())] {
+            reader.charge(1, retained_size(edge)?)?;
+            output.push(edge.clone());
+        }
+    }
+    Ok(output)
 }
 
 fn walk(
@@ -131,7 +141,7 @@ fn walk(
         }
         let edges = adjacent_cached(reader, &frontier, traversal, graph)?;
         *work += frontier.len() + edges.len();
-        if *work > 100000 || paths.len() > 10000 {
+        if *work > work_limit(reader) || paths.len() > 10000 {
             evidence.enumeration = false;
             evidence.limits.push("work".into());
             break;
@@ -287,7 +297,7 @@ pub(super) fn candidates(
         let edges = adjacent_cached(reader, &frontier, upward, &mut graph)?;
         work += frontier.len() + edges.len();
         ensure!(
-            work <= 100000,
+            work <= work_limit(reader),
             codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
         );
         let endpoints = edges
@@ -317,15 +327,18 @@ pub(super) fn candidates(
         )?;
         work += methods.len();
         ensure!(
-            work <= 100000,
+            work <= work_limit(reader),
             codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
         );
         for method in methods.into_iter().filter(|fact| kind(fact) == "METHOD") {
             cache.insert(method.id.to_string(), method);
         }
         method_owners.extend(batch.iter().cloned());
+        if reader.resource_exhausted() {
+            return Err(ResourceBudget::error().into());
+        }
         ensure!(
-            cache.len() <= 10000,
+            cache.len() <= 10000 || reader.resource_budget().is_some(),
             codeana_model::DomainError::new(
                 codeana_model::ErrorCode::DispatchDeclarationWorkBudget,
                 ""
@@ -369,7 +382,7 @@ pub(super) fn candidates(
             )?;
             work += methods.len();
             ensure!(
-                work <= 100000,
+                work <= work_limit(reader),
                 codeana_model::DomainError::new(codeana_model::ErrorCode::DispatchWorkBudget, "")
             );
             for method in methods.into_iter().filter(|fact| kind(fact) == "METHOD") {
@@ -377,7 +390,7 @@ pub(super) fn candidates(
             }
             method_owners.extend(batch.iter().cloned());
             ensure!(
-                cache.len() <= 10000,
+                cache.len() <= 10000 || reader.resource_budget().is_some(),
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::DispatchDeclarationWorkBudget,
                     ""

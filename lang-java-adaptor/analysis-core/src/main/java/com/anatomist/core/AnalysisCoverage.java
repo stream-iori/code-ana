@@ -51,10 +51,15 @@ public final class AnalysisCoverage {
     private AnalysisCoverage() {}
 
     public static List<Row> summarize(List<IndexDiagnostic> diagnostics) {
+        return summarize(diagnostics,null);
+    }
+    public static List<Row> summarize(List<IndexDiagnostic> diagnostics,AnalysisContext analysis) {
+        if(analysis!=null)analysis.charge(1,1,256);
         if (diagnostics == null || diagnostics.isEmpty()) return List.of();
         Map<Key, Accumulator> grouped = new TreeMap<>();
         for (IndexDiagnostic diagnostic : diagnostics) {
             if (diagnostic == null) continue;
+            if(analysis!=null)analysis.charge(1,1,2048L+6L*(value(diagnostic.code()).length()+value(diagnostic.symbol()).length()+value(diagnostic.phase()).length()+value(diagnostic.reasonCode()).length()));
             var capabilities = new ArrayList<>(CAPABILITIES);
             if (!DIAGNOSTIC_METADATA.contains(diagnostic.code()))
                 capabilities.add("DIAGNOSTIC_GROUP:" + diagnostic.code());
@@ -70,6 +75,7 @@ public final class AnalysisCoverage {
                                         : diagnostic.reasonCode()));
             for (String capability : capabilities) {
                 if (!relevant(diagnostic, capability)) continue;
+                if(analysis!=null)analysis.charge(1,1,512);
                 Key key =
                         new Key(
                                 value(diagnostic.sourceFile()),
@@ -78,9 +84,10 @@ public final class AnalysisCoverage {
                                 value(diagnostic.language()),
                                 value(diagnostic.providerId()),
                                 capability);
-                grouped.computeIfAbsent(key, ignored -> new Accumulator()).add(diagnostic);
+                grouped.computeIfAbsent(key, ignored -> new Accumulator()).add(diagnostic,analysis);
             }
         }
+        if(analysis!=null)analysis.charge(grouped.size(),grouped.size(),256L*grouped.size());
         List<Row> rows = new ArrayList<>();
         grouped.forEach(
                 (key, value) ->
@@ -95,8 +102,8 @@ public final class AnalysisCoverage {
                                         value.onlyBoundaries ? "complete" : "partial",
                                         value.occurrences,
                                         value.groups,
-                                        Json.writeCompact(value.codes),
-                                        Json.writeCompact(value.codeCounts),
+                                        Json.writeCompact(value.codes,analysis),
+                                        Json.writeCompact(value.codeCounts,analysis),
                                         value.detailsTruncated)));
         return rows;
     }
@@ -195,7 +202,8 @@ public final class AnalysisCoverage {
         private boolean detailsTruncated;
         private boolean onlyBoundaries = true;
 
-        void add(IndexDiagnostic diagnostic) {
+        void add(IndexDiagnostic diagnostic,AnalysisContext analysis) {
+            if(analysis!=null)analysis.charge(1,1,256);
             onlyBoundaries &= ResolutionDiagnostics.isAnalysisBoundary(diagnostic.code());
             long count = Math.max(0L, diagnostic.count());
             occurrences += count;

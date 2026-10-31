@@ -95,6 +95,7 @@ public final class SnapshotProcessReceipts implements AutoCloseable {
                 try {
                     parsed = Json.parseTree(Files.readString(receipt));
                 } catch (RuntimeException invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
                     result.add(new InvalidReceipt(receipt));
                     continue;
                 }

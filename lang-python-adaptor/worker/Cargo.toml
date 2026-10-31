@@ -9,6 +9,7 @@ anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
+prost = "0.14"
 codeana-model = { path = "../../crates/model" }
 codeana-contracts = { path = "../../crates/contracts" }
 codeana-python-adaptor = { path = ".." }

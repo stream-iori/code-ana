@@ -46,7 +46,7 @@ pub(super) fn trace(
                 evidence,
             )?;
             work += batch.len() + edges.len();
-            if work > 100000 {
+            if work > work_limit(r) {
                 evidence.enumeration = false;
                 evidence.limits.push("work".into());
                 break;
@@ -79,6 +79,7 @@ pub(super) fn trace(
                     (
                         previous.clone(),
                         CallRelation {
+                            recursion: CallRelation::recursion_for(&from, &to),
                             from: from.clone(),
                             to: to.clone(),
                             sites,
@@ -91,7 +92,7 @@ pub(super) fn trace(
             }
         }
         frontier = next.into_iter().collect();
-        if work > 100000 {
+        if work > work_limit(r) {
             break;
         }
     }
@@ -147,7 +148,7 @@ pub(super) fn run(
                 evidence,
             )?;
             work += batch.len() + edges.len();
-            if work > 100000 || visited.len() > 10000 || records.len() > 10000 {
+            if work > work_limit(r) || visited.len() > 10000 || records.len() > 10000 {
                 evidence.enumeration = false;
                 evidence.limits.push("work".into());
                 break 'layers;
@@ -162,6 +163,7 @@ pub(super) fn run(
                 }
                 if emitted.insert((from.clone(), to.clone())) {
                     records.push(Record::Call(CallRelation {
+                        recursion: CallRelation::recursion_for(&from, &to),
                         from,
                         to,
                         sites,

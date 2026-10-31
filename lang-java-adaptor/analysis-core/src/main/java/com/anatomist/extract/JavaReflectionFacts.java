@@ -487,7 +487,7 @@ public final class JavaReflectionFacts {
             metadata.put("lookup", declared ? "DECLARED" : "PUBLIC_INHERITED");
         }
         metadata.put("value_source", source);
-        edge.metadata = Json.writeCompact(metadata);
+        edge.metadata = Json.writeCompact(metadata, model.analysisContext());
         result.edges.add(edge);
     }
 

@@ -18,6 +18,8 @@ BIN = pathlib.Path(os.environ.get('CODEANA_TEST_BIN', ROOT / 'target/debug'))
 FIX = pathlib.Path(os.environ.get('CODEANA_TEST_FIXTURES', ROOT / 'tests/fixtures'))
 JDK = pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME',
     pathlib.Path.home() / '.sdkman/candidates/java/8.0.492-zulu')).resolve()
+MAVEN = pathlib.Path(os.environ.get('CODEANA_TEST_MAVEN',
+    shutil.which('mvn') or pathlib.Path.home() / '.sdkman/candidates/maven/current/bin/mvn')).resolve()
 
 
 class ProductHarness(unittest.TestCase):

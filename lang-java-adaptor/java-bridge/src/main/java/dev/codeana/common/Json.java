@@ -7,7 +7,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.*;
 
-/** Small bounded, reflection-free transport codec, compiled for both Java 8 and native Java 25. */
+/** Canonical transport facade over the shared Jackson streaming boundary. */
 public final class Json {
     public static final int MAX_BYTES = 64 * 1024 * 1024;
 
@@ -90,532 +90,78 @@ public final class Json {
     }
 
     public static byte[] read(Path path) throws IOException {
-        if (Files.size(path) > MAX_BYTES) throw new IOException("INPUT_BYTE_BUDGET");
-        try (java.io.InputStream in = Files.newInputStream(path)) {
-            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
-            byte[] b = new byte[8192];
-            int n;
-            while ((n = in.read(b)) != -1) {
-                if (out.size() > MAX_BYTES - n) throw new IOException("INPUT_BYTE_BUDGET");
-                out.write(b, 0, n);
-            }
-            return out.toByteArray();
+        if(Files.size(path)>MAX_BYTES)throw new IOException("INPUT_BYTE_BUDGET");
+        try(var input=Files.newInputStream(path)) {
+            byte[] bytes=input.readNBytes(MAX_BYTES+1);
+            if(bytes.length>MAX_BYTES)throw new IOException("INPUT_BYTE_BUDGET");
+            return bytes;
         }
     }
-
     public static Object parse(byte[] bytes) {
-        return parse(bytes, null);
-    }
-
-    /** Validate the entire JSON record while retaining only fact navigation metadata. */
-    public static Object factProjection(byte[] bytes) {
-        return parse(
-                bytes,
-                object(
-                        "id",
-                        true,
-                        "signature",
-                        true,
-                        "kind",
-                        true,
-                        "source",
-                        true,
-                        "parent",
-                        true,
-                        "target",
-                        true,
-                        "owner",
-                        object("world", true),
-                        "attributes",
-                        object("generated", true, "receiver_type", true)));
-    }
-
-    private static Object parse(byte[] bytes, Map<String, Object> fields) {
-        if (bytes.length > MAX_BYTES) throw new IllegalArgumentException("JSON_BYTE_BUDGET");
+        if(bytes.length>MAX_BYTES)throw new IllegalArgumentException("JSON_BYTE_BUDGET");
         try {
-            String text =
-                    StandardCharsets.UTF_8
-                            .newDecoder()
-                            .decode(java.nio.ByteBuffer.wrap(bytes))
-                            .toString();
-            Parser p = new Parser(text);
-            Object result = p.value(0, true, fields);
-            p.space();
-            if (p.at != text.length()) throw new IllegalArgumentException("JSON_TRAILING_DATA");
-            return result;
-        } catch (java.nio.charset.CharacterCodingException e) {
-            throw new IllegalArgumentException("INVALID_UTF8", e);
-        }
+            String text=StandardCharsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+            return com.anatomist.json.Json.parseTransport(text);
+        }catch(java.nio.charset.CharacterCodingException invalid){throw new IllegalArgumentException("INVALID_UTF8",invalid);}
     }
-
-    /** Fixed canonical fields avoid temporary Map entries and repeated sorting. */
-    public interface Fields {
-        int fieldCount();
-        String fieldName(int index);
-        Object fieldValue(int index);
-        default byte[] encodedFieldName(int index) { return null; }
-    }
-
-    /** A synchronous consumer: the borrowed bytes cannot outlive this call. */
-    public interface EncodedSink { void accept(byte[] bytes, int offset, int length); }
-
-    private static final ThreadLocal<Utf8Output> UTF8 = ThreadLocal.withInitial(Utf8Output::new);
-
-    /** Same UTF-8 replacement policy as String.getBytes, with bounded reusable storage. */
+    /** A synchronous consumer; bytes are owned by this call and safe across re-entry. */
+    public interface EncodedSink {void accept(byte[] bytes,int offset,int length);}
     public static byte[] encode(Object value) {
-        final byte[][] result = {null};
-        encodeTo(value, (bytes, offset, length) -> result[0] = Arrays.copyOfRange(bytes, offset, offset + length));
-        return result[0];
+        var result=new java.io.ByteArrayOutputStream();
+        try(var bounded=bounded(result,MAX_BYTES);var writer=new java.io.BufferedWriter(new java.io.OutputStreamWriter(bounded,StandardCharsets.UTF_8),8192)) {
+            com.anatomist.json.Json.writeTransport(writer,value);
+        }catch(IOException failure){throw new IllegalArgumentException("JSON_BYTE_BUDGET",failure);}
+        return result.toByteArray();
     }
-
-    public static void encodeTo(Object value, EncodedSink sink) {
-        Utf8Output reusable = UTF8.get();
-        Utf8Output out = reusable.inUse ? new Utf8Output() : reusable;
-        out.inUse = true;
-        out.reset();
-        try {
-            append(out, value, 0);
-            out.finishSurrogate();
-            sink.accept(out.bytes.buffer(), 0, out.bytes.size());
-        } catch (IOException impossible) { throw new java.io.UncheckedIOException(impossible); }
-        finally { out.releaseLargeBuffer(); out.inUse = false; }
+    private static java.io.OutputStream bounded(java.io.OutputStream output,long maximum) {
+        return new java.io.FilterOutputStream(output) {
+            long used;
+            private void take(int n)throws IOException {
+                if(Thread.currentThread().isInterrupted())throw new IOException("CANCELLED");
+                if(n>maximum-used)throw new IOException("JSON_BYTE_BUDGET");used+=n;
+            }
+            @Override public void write(int value)throws IOException {take(1);out.write(value);}
+            @Override public void write(byte[] bytes,int offset,int length)throws IOException {take(length);out.write(bytes,offset,length);}
+        };
     }
-
-    private static final class Utf8Output implements Appendable {
-        private BoundedBytes bytes = new BoundedBytes();
-        private char high;
-        private boolean inUse;
-        void reset() { bytes.reset(); high = 0; }
-        void releaseLargeBuffer() { if (bytes.capacity() > 65536) bytes = new BoundedBytes(); }
-        void finishSurrogate() { if (high != 0) { bytes.write('?'); high = 0; } }
-        public Appendable append(char value) {
-            if (high != 0) {
-                if (Character.isLowSurrogate(value)) {
-                    int cp = Character.toCodePoint(high, value); high = 0;
-                    bytes.write(0xf0 | cp >>> 18); bytes.write(0x80 | cp >>> 12 & 63);
-                    bytes.write(0x80 | cp >>> 6 & 63); bytes.write(0x80 | cp & 63);
-                    return this;
-                }
-                finishSurrogate();
-            }
-            if (Character.isHighSurrogate(value)) high = value;
-            else if (Character.isLowSurrogate(value)) bytes.write('?');
-            else if (value < 128) bytes.write(value);
-            else if (value < 2048) {
-                bytes.write(0xc0 | value >>> 6); bytes.write(0x80 | value & 63);
-            } else {
-                bytes.write(0xe0 | value >>> 12); bytes.write(0x80 | value >>> 6 & 63);
-                bytes.write(0x80 | value & 63);
-            }
-            return this;
-        }
-        public Appendable append(CharSequence value) {
-            if (value == null) value = "null";
-            return append(value, 0, value.length());
-        }
-        public Appendable append(CharSequence value, int begin, int end) {
-            if (value == null) value = "null";
-            int i = begin;
-            while (i < end) {
-                if (high != 0 || value.charAt(i) >= 128) { append(value.charAt(i++)); continue; }
-                int start = i;
-                while (i < end && value.charAt(i) < 128) i++;
-                bytes.ascii(value, start, i);
-            }
-            return this;
-        }
-        void raw(byte[] value) { finishSurrogate(); bytes.block(value); }
-    }
-    private static final class BoundedBytes extends java.io.ByteArrayOutputStream {
-        BoundedBytes() { super(4096); }
-        int capacity() { return buf.length; }
-        byte[] buffer() { return buf; }
-        private void reserve(int length) {
-            if (length < 0 || length > MAX_BYTES - count) throw new IllegalArgumentException("JSON_BUDGET");
-            int needed = count + length;
-            if (needed > buf.length) buf = Arrays.copyOf(buf, Math.min(MAX_BYTES, Math.max(needed, buf.length * 2)));
-        }
-        @SuppressWarnings("deprecation")
-        void ascii(CharSequence value, int begin, int end) {
-            reserve(end - begin);
-            if (value instanceof String text) {
-                // The caller has checked every character is ASCII. This legacy
-                // low-byte API copies directly into the destination, allocating
-                // no intermediate byte[]; Latin-1 strings use an array copy.
-                text.getBytes(begin, end, buf, count);
-                count += end - begin;
-            } else {
-                for (int i = begin; i < end; i++) buf[count++] = (byte) value.charAt(i);
-            }
-        }
-        void block(byte[] value) { reserve(value.length); System.arraycopy(value, 0, buf, count, value.length); count += value.length; }
-        @Override public void write(int value) {
-            if (count >= MAX_BYTES) throw new IllegalArgumentException("JSON_BUDGET");
-            if (count == buf.length) buf = Arrays.copyOf(buf, Math.min(MAX_BYTES, buf.length * 2));
-            buf[count++] = (byte) value;
-        }
-    }
-
+    public static void encodeTo(Object value,EncodedSink sink) {byte[] bytes=encode(value);sink.accept(bytes,0,bytes.length);}
     public static String write(Object value) {
-        StringBuilder out = new StringBuilder();
-        try {
-            append(out, value, 0);
-        } catch (java.io.IOException impossible) {
-            throw new IllegalStateException(impossible);
-        }
-        if (out.length() > MAX_BYTES) throw new IllegalArgumentException("JSON_BUDGET");
-        return out.toString();
+        var result=new java.io.StringWriter();
+        java.io.Writer bounded=new java.io.FilterWriter(result) {
+            long used;
+            private void take(int n) {if(n>MAX_BYTES-used)throw new IllegalArgumentException("JSON_BUDGET");used+=n;}
+            @Override public void write(int c)throws IOException {take(1);out.write(c);}
+            @Override public void write(char[] chars,int offset,int length)throws IOException {take(length);out.write(chars,offset,length);}
+            @Override public void write(String text,int offset,int length)throws IOException {take(length);out.write(text,offset,length);}
+        };
+        try {com.anatomist.json.Json.writeTransport(bounded,value);}
+        catch(IOException impossible){throw new java.io.UncheckedIOException(impossible);}
+        return result.toString();
     }
-
-    /** Serialize directly to an owned file, charging encoded bytes before writing them. */
-    public static long writeTo(Path path, Object value, final long maxBytes) throws IOException {
-        if (maxBytes < 0) throw new IllegalArgumentException("JSON_BYTE_BUDGET");
-        final long[] written = {0};
-        try (final java.io.OutputStream file =
-                        Files.newOutputStream(path, java.nio.file.StandardOpenOption.CREATE_NEW);
-                java.io.OutputStream bounded =
-                        new java.io.FilterOutputStream(file) {
-                            private void charge(int bytes) throws IOException {
-                                if (Thread.currentThread().isInterrupted())
-                                    throw new IOException("CANCELLED");
-                                if (bytes > maxBytes - written[0])
-                                    throw new IOException("JSON_BYTE_BUDGET");
-                                written[0] += bytes;
-                            }
-
-                            @Override
-                            public void write(int value) throws IOException {
-                                charge(1);
-                                out.write(value);
-                            }
-
-                            @Override
-                            public void write(byte[] bytes, int offset, int length)
-                                    throws IOException {
-                                charge(length);
-                                out.write(bytes, offset, length);
-                            }
-                        };
-                java.io.Writer writer =
-                        new java.io.BufferedWriter(
-                                new java.io.OutputStreamWriter(bounded, StandardCharsets.UTF_8),
-                                65536)) {
-            append(writer, value, 0);
+    public static void admit(Object value,com.anatomist.core.AnalysisContext budget) {com.anatomist.json.Json.admitTransport(value,budget);}
+    public static long writeTo(Path path,Object value,long maximum) throws IOException {
+        if(maximum<0)throw new IllegalArgumentException("JSON_BYTE_BUDGET");
+        final long cap=Math.min(maximum,MAX_BYTES);
+        final long[] used={0};
+        try(var file=Files.newOutputStream(path,java.nio.file.StandardOpenOption.CREATE_NEW);
+            var bounded=new java.io.FilterOutputStream(file) {
+                private void take(int n)throws IOException {
+                    if(Thread.currentThread().isInterrupted())throw new IOException("CANCELLED");
+                    if(n>cap-used[0])throw new IOException("JSON_BYTE_BUDGET");used[0]+=n;
+                }
+                @Override public void write(int value)throws IOException {take(1);out.write(value);}
+                @Override public void write(byte[] bytes,int offset,int length)throws IOException {take(length);out.write(bytes,offset,length);}
+            };
+            var writer=new java.io.BufferedWriter(new java.io.OutputStreamWriter(bounded,StandardCharsets.UTF_8),8192)) {
+            com.anatomist.json.Json.writeTransport(writer,value);
         }
-        return written[0];
+        return used[0];
     }
-
     public static String sha(Path path) throws IOException {
         try {
-            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
-            try (java.io.InputStream in = Files.newInputStream(path)) {
-                byte[] buffer = new byte[65536];
-                int length;
-                while ((length = in.read(buffer)) != -1) digest.update(buffer, 0, length);
-            }
+            MessageDigest digest=MessageDigest.getInstance("SHA-256");
+            try(var input=Files.newInputStream(path)){byte[] buffer=new byte[65536];int n;while((n=input.read(buffer))!=-1)digest.update(buffer,0,n);}
             return hex(digest.digest());
-        } catch (java.security.NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
-    }
-
-    /** Validate every byte/node, but do not materialize an already encoded archive row. */
-    static void appendRecord(Appendable out, byte[] bytes, int depth) throws IOException {
-        if (bytes.length > MAX_BYTES) throw new IllegalArgumentException("JSON_BYTE_BUDGET");
-        try {
-            String text =
-                    StandardCharsets.UTF_8
-                            .newDecoder()
-                            .decode(java.nio.ByteBuffer.wrap(bytes))
-                            .toString();
-            Parser parser = new Parser(text);
-            parser.value(depth, false, null);
-            parser.space();
-            if (parser.at != text.length())
-                throw new IllegalArgumentException("JSON_TRAILING_DATA");
-            if (out instanceof StringBuilder
-                    && text.length() > MAX_BYTES - ((StringBuilder) out).length())
-                throw new IllegalArgumentException("JSON_BUDGET");
-            if (parser.escapedSurrogate) append(out, parse(bytes), depth);
-            else out.append(text);
-        } catch (java.nio.charset.CharacterCodingException malformed) {
-            throw new IllegalArgumentException("INVALID_UTF8", malformed);
-        }
-    }
-
-    private static void append(Appendable out, Object v, int depth) throws IOException {
-        if (depth > MAX_DEPTH
-                || out instanceof StringBuilder && ((StringBuilder) out).length() > MAX_BYTES)
-            throw new IllegalArgumentException("JSON_BUDGET");
-        if (v instanceof Double && !Double.isFinite((Double) v)
-                || v instanceof Float && !Float.isFinite((Float) v))
-            throw new IllegalArgumentException("JSON_NON_FINITE");
-        if (v == null || v instanceof Boolean || v instanceof Number) out.append(String.valueOf(v));
-        else if (v instanceof String) {
-            out.append('"');
-            String s = (String) v;
-            int chunk = 0;
-            for (int i = 0; i < s.length(); i++) {
-                char c = s.charAt(i);
-                if (c >= 32 && c != '"' && c != '\\') continue;
-                out.append(s, chunk, i);
-                chunk = i + 1;
-                switch (c) {
-                    case '"':
-                        out.append("\\\"");
-                        break;
-                    case '\\':
-                        out.append("\\\\");
-                        break;
-                    case '\n':
-                        out.append("\\n");
-                        break;
-                    case '\r':
-                        out.append("\\r");
-                        break;
-                    case '\t':
-                        out.append("\\t");
-                        break;
-                    case '\b':
-                        out.append("\\b");
-                        break;
-                    case '\f':
-                        out.append("\\f");
-                        break;
-                    default:
-                        if (c < 32) out.append(String.format(Locale.ROOT, "\\u%04x", (int) c));
-                        else out.append(c);
-                }
-            }
-            out.append(s, chunk, s.length());
-            out.append('"');
-        } else if (v instanceof Fields) {
-            Fields fields = (Fields) v;
-            out.append('{');
-            for (int i = 0; i < fields.fieldCount(); i++) {
-                if (i != 0) out.append(',');
-                byte[] name = out instanceof Utf8Output ? fields.encodedFieldName(i) : null;
-                if (name != null) ((Utf8Output) out).raw(name);
-                else { append(out, fields.fieldName(i), depth + 1); out.append(':'); }
-                append(out, fields.fieldValue(i), depth + 1);
-            }
-            out.append('}');
-        } else if (v instanceof Map) {
-            out.append('{');
-            boolean first = true;
-            Map<?, ?> map = (Map<?, ?>) v;
-            boolean sorted = map instanceof SortedMap && ((SortedMap<?, ?>) map).comparator() == null;
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                if (!(entry.getKey() instanceof String)) throw new IllegalArgumentException("JSON_OBJECT_KEY");
-            }
-            Iterable<? extends Map.Entry<?, ?>> ordered;
-            if (sorted) ordered = map.entrySet();
-            else {
-                Map.Entry<?, ?>[] entries = map.entrySet().toArray(new Map.Entry<?, ?>[0]);
-                Arrays.sort(entries, (left, right) -> ((String) left.getKey()).compareTo((String) right.getKey()));
-                ordered = Arrays.asList(entries);
-            }
-            for (Map.Entry<?, ?> e : ordered) {
-                if (!first) out.append(',');
-                first = false;
-                append(out, e.getKey(), depth + 1);
-                out.append(':');
-                append(out, e.getValue(), depth + 1);
-            }
-            out.append('}');
-        } else if (v instanceof Iterable) {
-            out.append('[');
-            boolean first = true;
-            for (Object e : (Iterable<?>) v) {
-                if (!first) out.append(',');
-                first = false;
-                append(out, e, depth + 1);
-            }
-            out.append(']');
-        } else throw new IllegalArgumentException("JSON_TYPE: " + v.getClass());
-    }
-
-    private static final class Parser {
-        final String text;
-        int at;
-        int nodes;
-        boolean escapedSurrogate;
-
-        Parser(String text) {
-            this.text = text;
-        }
-
-        void space() {
-            while (at < text.length() && " \t\r\n".indexOf(text.charAt(at)) >= 0) at++;
-        }
-
-        char take() {
-            if (at >= text.length()) throw new IllegalArgumentException("JSON_EOF");
-            return text.charAt(at++);
-        }
-
-        Object value(int depth) {
-            return value(depth, true, null);
-        }
-
-        Object value(int depth, boolean keep, Map<String, Object> fields) {
-            if (depth > MAX_DEPTH || ++nodes > 1000000)
-                throw new IllegalArgumentException("JSON_ALLOCATION_BUDGET");
-            space();
-            char c = take();
-            if (c == '"') return string(keep);
-            if (c == '{') {
-                Map<String, Object> out = keep ? new LinkedHashMap<String, Object>() : null;
-                Set<String> seen = !keep || fields != null ? new HashSet<String>() : null;
-                space();
-                if (at < text.length() && text.charAt(at) == '}') {
-                    at++;
-                    return out;
-                }
-                do {
-                    space();
-                    if (take() != '"') throw new IllegalArgumentException("JSON_KEY");
-                    String k = string();
-                    space();
-                    if (take() != ':') throw new IllegalArgumentException("JSON_COLON");
-                    if (seen != null ? !seen.add(k) : out.containsKey(k))
-                        throw new IllegalArgumentException("JSON_DUPLICATE_KEY");
-                    Object selection = fields == null ? null : fields.get(k);
-                    boolean childKeep = fields == null ? keep : selection != null;
-                    Map<String, Object> childFields =
-                            selection instanceof Map ? map(selection) : null;
-                    Object child = value(depth + 1, childKeep, childFields);
-                    if (childKeep) out.put(k, child);
-                    space();
-                    c = take();
-                } while (c == ',');
-                if (c != '}') throw new IllegalArgumentException("JSON_OBJECT_END");
-                return out;
-            }
-            if (c == '[') {
-                List<Object> out = keep ? new ArrayList<Object>() : null;
-                space();
-                if (at < text.length() && text.charAt(at) == ']') {
-                    at++;
-                    return out;
-                }
-                do {
-                    Object child = value(depth + 1, keep, null);
-                    if (keep) out.add(child);
-                    space();
-                    c = take();
-                } while (c == ',');
-                if (c != ']') throw new IllegalArgumentException("JSON_ARRAY_END");
-                return out;
-            }
-            at--;
-            for (String token : Arrays.asList("true", "false", "null"))
-                if (text.startsWith(token, at)) {
-                    at += token.length();
-                    return token.equals("null") ? null : Boolean.valueOf(token);
-                }
-            int start = at;
-            if (at < text.length() && text.charAt(at) == '-') at++;
-            if (at >= text.length() || !digit(text.charAt(at)))
-                throw new IllegalArgumentException("JSON_NUMBER");
-            if (text.charAt(at) == '0') at++;
-            else while (at < text.length() && digit(text.charAt(at))) at++;
-            boolean decimal = false;
-            if (at < text.length() && text.charAt(at) == '.') {
-                decimal = true;
-                at++;
-                int fraction = at;
-                while (at < text.length() && digit(text.charAt(at))) at++;
-                if (at == fraction) throw new IllegalArgumentException("JSON_NUMBER");
-            }
-            if (at < text.length() && (text.charAt(at) == 'e' || text.charAt(at) == 'E')) {
-                decimal = true;
-                at++;
-                if (at < text.length() && (text.charAt(at) == '+' || text.charAt(at) == '-')) at++;
-                int exponent = at;
-                while (at < text.length() && digit(text.charAt(at))) at++;
-                if (at == exponent) throw new IllegalArgumentException("JSON_NUMBER");
-            }
-            String number = text.substring(start, at);
-            if (number.length() > 1024) throw new IllegalArgumentException("JSON_NUMBER_BUDGET");
-            try {
-                if (decimal) return new java.math.BigDecimal(number);
-                try {
-                    return Long.valueOf(number);
-                } catch (NumberFormatException wider) {
-                    return new java.math.BigInteger(number);
-                }
-            } catch (NumberFormatException malformed) {
-                throw new IllegalArgumentException("JSON_NUMBER", malformed);
-            }
-        }
-
-        boolean digit(char value) {
-            return value >= '0' && value <= '9';
-        }
-
-        String string() {
-            return string(true);
-        }
-
-        String string(boolean keep) {
-            int start = at;
-            while (at < text.length()) {
-                char c = text.charAt(at++);
-                if (c == '"') return keep ? text.substring(start, at - 1) : null;
-                if (c < 32) throw new IllegalArgumentException("JSON_CONTROL");
-                if (c == '\\') {
-                    at--;
-                    break;
-                }
-            }
-            StringBuilder out = keep ? new StringBuilder() : null;
-            if (keep) out.append(text, start, at);
-            int chunk = at;
-            for (; ; ) {
-                char c = take();
-                if (c == '"') {
-                    if (keep) out.append(text, chunk, at - 1);
-                    return keep ? out.toString() : null;
-                }
-                if (c < 32) throw new IllegalArgumentException("JSON_CONTROL");
-                if (c == '\\') {
-                    if (keep) out.append(text, chunk, at - 1);
-                    c = take();
-                    switch (c) {
-                        case '"':
-                        case '\\':
-                        case '/':
-                            break;
-                        case 'b':
-                            c = '\b';
-                            break;
-                        case 'f':
-                            c = '\f';
-                            break;
-                        case 'n':
-                            c = '\n';
-                            break;
-                        case 'r':
-                            c = '\r';
-                            break;
-                        case 't':
-                            c = '\t';
-                            break;
-                        case 'u':
-                            if (at + 4 > text.length())
-                                throw new IllegalArgumentException("JSON_ESCAPE");
-                            c = (char) Integer.parseInt(text.substring(at, at + 4), 16);
-                            if (Character.isSurrogate(c)) escapedSurrogate = true;
-                            at += 4;
-                            break;
-                        default:
-                            throw new IllegalArgumentException("JSON_ESCAPE");
-                    }
-                    if (keep) out.append(c);
-                    chunk = at;
-                }
-            }
-        }
+        }catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
     }
 }

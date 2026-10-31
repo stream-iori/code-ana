@@ -101,6 +101,8 @@ pub(super) enum ReportConfig {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct ReportDocument {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub analysis_resources: Option<AnalysisAdmissionReport>,
     #[serde(default = "legacy_schema")]
     pub schema_version: u32,
     pub id: String,
@@ -127,7 +129,48 @@ struct ReportComparison<'a> {
     base_summary: &'a ReportSummary,
     target_summary: &'a ReportSummary,
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(super) struct AnalysisAdmissionReport {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinator: Option<AnalysisCoordinatorSnapshot>,
+    pub coverage: String,
+    pub limits: AnalysisLimits,
+    pub usage: AnalysisUsage,
+}
 impl Engine {
+    pub(super) fn analysis_admission_report(&self, id: &str) -> Option<AnalysisAdmissionReport> {
+        let jobs = self.jobs.lock().unwrap();
+        let job = jobs.get(&TaskId::from(id))?;
+        let ledger = job.analysis_admission.lock().unwrap();
+        ledger.as_ref().map(|(limits, context)| {
+            let coordinator = job
+                .analysis_coordinator
+                .lock()
+                .unwrap()
+                .as_ref()
+                .map(|c| c.lock().unwrap().snapshot());
+            let has_worker_usage = coordinator.as_ref().is_some_and(|c| {
+                c.languages.iter().any(|l| {
+                    l.worker.usage.is_some() || l.workers.iter().any(|w| w.usage.is_some())
+                })
+            });
+            AnalysisAdmissionReport {
+                coverage: if has_worker_usage {
+                    "input_admission_and_worker_usage"
+                } else {
+                    "input_admission_only"
+                }
+                .into(),
+                limits: *limits,
+                usage: coordinator
+                    .as_ref()
+                    .map(|c| c.known_usage.clone())
+                    .unwrap_or_else(|| context.usage()),
+                coordinator,
+            }
+        })
+    }
+
     pub(super) fn save_unpublished_report(
         &self,
         id: &str,
@@ -158,6 +201,7 @@ impl Engine {
         let mut persisted = result.clone();
         persisted.report = id.into();
         let report = ReportDocument {
+            analysis_resources: self.analysis_admission_report(id),
             schema_version: 2,
             id: id.into(),
             created: now(),
@@ -324,6 +368,9 @@ pub fn report_markdown(value: serde_json::Value) -> Result<String> {
             &report.revision
         }
     );
+    if let Some(resources) = &report.analysis_resources {
+        out.push_str(&analysis_resources_markdown(resources));
+    }
     if report.global.measurements_available {
         out.push_str(&format!(
             "Physical files: {}; semantic files: {}; analysis instances: {}; facts: {}.\n\n",
@@ -378,4 +425,113 @@ pub fn report_markdown(value: serde_json::Value) -> Result<String> {
         out.push_str(&format!("- {}\n", clean(step)));
     }
     Ok(out)
+}
+
+fn analysis_resources_markdown(resources: &AnalysisAdmissionReport) -> String {
+    let clean = |text: &str| text.replace(['\n', '\r', '|'], " ");
+    let usage = &resources.usage;
+    let limits = resources.limits;
+    let mut out = format!(
+        "Analysis resources: {}. Counters include verified consumption only.\n\n| Resource | Known used | Task limit |\n|---|---:|---:|\n| Work | {} | {} |\n| Nodes | {} | {} |\n| Payload bytes | {} | {} |\n| Depth | {} | {} |\n\n",
+        clean(&resources.coverage),
+        usage.work,
+        limits.max_work,
+        usage.nodes,
+        limits.max_nodes,
+        usage.payload_bytes,
+        limits.max_payload_bytes,
+        usage.max_depth,
+        limits.max_depth
+    );
+    if let Some(failure) = &usage.failure {
+        out.push_str(&format!(
+            "Analysis failure: {}.\n\n",
+            clean(&serde_json::to_string(failure).unwrap())
+        ));
+    }
+    if let Some(coordinator) = &resources.coordinator {
+        out.push_str(if coordinator.complete {
+            "All issued analysis instances returned complete usage.\n\n"
+        } else {
+            "Usage is incomplete; unreported or unknown consumption is not zero.\n\n"
+        });
+        out.push_str("| Language / account | State | Phase | Work used / grant | Nodes used / grant | Payload used / grant | Depth used / limit |\n|---|---|---|---:|---:|---:|---:|\n");
+        for language in &coordinator.languages {
+            let name = format!("{:?}", language.allocation.language).to_lowercase();
+            let host = &language.host_usage;
+            let quota = language.allocation.host;
+            out.push_str(&format!(
+                "| {name} / host | measured | receiver | {} / {} | {} / {} | {} / {} | {} / {} |\n",
+                host.work,
+                quota.max_work,
+                host.nodes,
+                quota.max_nodes,
+                host.payload_bytes,
+                quota.max_payload_bytes,
+                host.max_depth,
+                quota.max_depth
+            ));
+            // The singular worker field is a compatibility alias. Never render/sum it twice.
+            let workers = if language.workers.is_empty() {
+                std::slice::from_ref(&language.worker)
+            } else {
+                &language.workers
+            };
+            for worker in workers {
+                let state = format!("{:?}", worker.state).to_lowercase();
+                let quota = worker.grant.limits;
+                let phase = worker.phase.as_deref().unwrap_or("unreported");
+                let account = clean(&worker.grant.id);
+                if let Some(usage) = &worker.usage {
+                    out.push_str(&format!("| {name} / {account} | {state} | {phase} | {} / {} | {} / {} | {} / {} | {} / {} |\n", usage.work, quota.max_work, usage.nodes, quota.max_nodes, usage.payload_bytes, quota.max_payload_bytes, usage.max_depth, quota.max_depth));
+                } else {
+                    out.push_str(&format!("| {name} / {account} | {state} | {phase} | unreported / {} | unreported / {} | unreported / {} | unreported / {} |\n", quota.max_work, quota.max_nodes, quota.max_payload_bytes, quota.max_depth));
+                }
+            }
+        }
+        out.push('\n');
+    }
+    out
+}
+
+#[cfg(test)]
+mod analysis_presentation_tests {
+    use super::*;
+    #[test]
+    fn unreported_and_unknown_usage_are_not_rendered_as_zero_or_double_counted() {
+        let mut coordinator = AnalysisCoordinator::new(
+            "task",
+            AnalysisLimits::default(),
+            Default::default(),
+            &[AnalysisLanguage::Python],
+            None,
+        )
+        .unwrap();
+        let make_report = |coordinator: &AnalysisCoordinator| AnalysisAdmissionReport {
+            limits: AnalysisLimits::default(),
+            usage: coordinator.snapshot().known_usage,
+            coverage: "input_admission_only".into(),
+            coordinator: Some(coordinator.snapshot()),
+        };
+        let reserved = analysis_resources_markdown(&make_report(&coordinator));
+        assert!(reserved.contains("unreported /"));
+        assert!(reserved.contains("Usage is incomplete"));
+        let grant = coordinator.issue(AnalysisLanguage::Python).unwrap();
+        coordinator
+            .reconcile(
+                &grant,
+                AnalysisUsage {
+                    work: 7,
+                    ..Default::default()
+                },
+                false,
+            )
+            .unwrap();
+        coordinator.lost_grant(&grant).unwrap();
+        let unknown = analysis_resources_markdown(&make_report(&coordinator));
+        assert!(unknown.contains("| unknown |"));
+        assert_eq!(unknown.matches(&format!("/ {} |", grant.id)).count(), 1);
+        assert!(unknown.contains("| 7 /"));
+        assert!(unknown.contains("unreported or unknown consumption is not zero"));
+    }
 }

@@ -17,7 +17,7 @@ class AnalysisSessionTest {
         Files.writeString(input, source);
         Path scratch = Files.createDirectory(temporary.resolve("scratch"));
         Path home =
-                Path.of(System.getProperty("user.home"), ".sdkman/candidates/java/8.0.492-zulu");
+                Path.of(System.getProperty("java8.home", Path.of(System.getProperty("user.home"), ".sdkman/candidates/java/8.0.492-zulu").toString()));
         assertTrue(Files.isExecutable(home.resolve("bin/javac")), "Java 8 fixture SDK required");
         Map<String, Object> unit =
                 Json.object(
@@ -58,8 +58,11 @@ class AnalysisSessionTest {
                         "dependency_modules",
                         List.of());
         return Json.object(
+                "analysis_grant", Json.object("id","fixture/java/worker","language","java","limits",Json.object("max_work",10000000L,"max_nodes",1000000L,"max_payload_bytes",536870912L,"max_depth",256)),
+                "analysis_usage",Json.object("work",0L,"nodes",0L,"payload_bytes",0L,"max_depth",0),
+                "deadline_ms",0L,
                 "version",
-                10,
+                11,
                 "scratch",
                 scratch.toString(),
                 "java_home",
@@ -130,8 +133,8 @@ class AnalysisSessionTest {
         try(var session=new AnalysisSession(req)){assertThrows(java.io.IOException.class,session::analyze);}
     }
     @Test void oldRequestVersionIsExplicitlyRejected() throws Exception {
-        var req=request("class A {}");req.put("version",9);
-        try(var session=new AnalysisSession(req)){assertThrows(IllegalArgumentException.class,session::analyze);}
+        var req=request("class A {}");req.put("version",10);
+        assertThrows(IllegalArgumentException.class,()->new AnalysisSession(req));
     }
     @Test void archiveRetainsFileCacheAndProviderWithoutInventingCoverage() throws Exception {
         var rows=run(request("class A {}"));

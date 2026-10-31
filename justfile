@@ -34,6 +34,8 @@ test-rust:
   python3 tests/rust_language_e2e.py
   python3 tests/rust_dogfood_tests.py
   python3 tests/java_bundle_manifest_tests.py
+  python3 tests/java_package_tests.py
+  python3 tests/java_reference_tests.py
   python3 tests/java_compact_single_tests.py
   python3 tests/rust_upstream_text_search.py
   cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -97,6 +99,7 @@ test-java-native:
   python3 tests/java_native_manifest_tests.py
   python3 tests/java_native_lifecycle.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java_resource_limits.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_native_environment.py
   python3 tests/java_native_crash_e2e.py
 
@@ -114,6 +117,7 @@ test-java-native-lifecycle evidence:
 test-java-e2e:
   cargo build --workspace --locked
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java_resource_limits.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_native_environment.py
   python3 tests/java_native_crash_e2e.py
 
@@ -159,3 +163,23 @@ test-python-release package:
 test-python-mixed:
   python3 tests/python_language_e2e.py PythonJava.test_java_python_and_three_language_publication
   CODEANA_TEST_REAL_JAVA=1 python3 tests/prepared_inputs_e2e.py PreparedInputs.test_independent_maven_reactors_and_three_languages
+
+# Unified-budget acceptance requires a matching installed Native Java SDK.
+# No skip/expected-failure: production wiring gaps fail this gate.
+test-analysis-resources-e2e:
+  cargo build --workspace --locked
+  ./scripts/build-python.sh
+  CODEANA_JAVA_BACKEND=native python3 tests/analysis_resources_e2e.py
+  python3 tests/analysis_resources_history_e2e.py
+
+# Real pairwise and three-language failure/cancellation/deadline publication matrix.
+test-analysis-resources-mixed-e2e:
+  cargo build --workspace --locked
+  ./scripts/build-python.sh
+  CODEANA_JAVA_BACKEND=native python3 tests/analysis_resources_mixed_e2e.py
+
+# Matching Native SDK required; stage and restore all actual release executables.
+test-analysis-resources-release-e2e evidence:
+  cargo build --release --workspace --locked
+  ./scripts/build-python.sh --release
+  python3 tests/analysis_resources_release_gate.py --evidence '{{evidence}}'

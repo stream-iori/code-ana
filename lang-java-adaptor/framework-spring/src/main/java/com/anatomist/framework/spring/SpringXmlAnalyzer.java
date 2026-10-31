@@ -79,13 +79,15 @@ public final class SpringXmlAnalyzer implements ProjectResourceAnalyzer {
             ProjectFactView facts,
             ExtractionResult result) {
         List<XmlSource> parsed = new ArrayList<>();
-        SpringBeanParser beanParser = new SpringBeanParser();
+        SpringBeanParser beanParser = new SpringBeanParser(facts.analysisContext());
+        facts.analysisContext().charge(xmlFiles.size(), xmlFiles.size(), 256L * xmlFiles.size());
         List<Path> sorted = new ArrayList<>(xmlFiles);
         sorted.sort(
                 Comparator.comparing(p -> relativize(projectRoot, p.toAbsolutePath().normalize())));
         for (Path xml : sorted) {
             String rel = relativize(projectRoot, xml.toAbsolutePath().normalize());
-            parsed.add(new XmlSource(rel, beanParser.parse(xml), artifactRange(xml)));
+            var document = beanParser.parseDocument(xml);
+            parsed.add(new XmlSource(rel, document.beans(), artifactRange(xml), document.budget()));
         }
 
         Set<String> allKnownIds = new HashSet<>(knownIds);
@@ -125,7 +127,7 @@ public final class SpringXmlAnalyzer implements ProjectResourceAnalyzer {
                     src.sourceFile(),
                     src.range(),
                     facts,
-                    result);
+                    result, src.budget());
         }
     }
 
@@ -151,19 +153,16 @@ public final class SpringXmlAnalyzer implements ProjectResourceAnalyzer {
     }
 
     private record XmlSource(
-            String sourceFile, List<ParsedBean> beans, XmlBeanGraphExtractor.ArtifactRange range) {}
+            String sourceFile, List<ParsedBean> beans, XmlBeanGraphExtractor.ArtifactRange range,
+            com.anatomist.core.XmlResourceBudget budget) {}
 
     private static XmlBeanGraphExtractor.ArtifactRange artifactRange(Path file) {
-        try {
-            String content = Files.readString(file);
-            int line = 1;
-            int column = 1;
-            for (int i = 0; i < content.length(); i++) {
-                if (content.charAt(i) == '\n') {
-                    line++;
-                    column = 1;
-                } else {
-                    column++;
+        try (var reader = Files.newBufferedReader(file)) {
+            int line = 1, column = 1;
+            char[] buffer = new char[8192];
+            for (int n; (n = reader.read(buffer)) >= 0;) {
+                for (int i = 0; i < n; i++) {
+                    if (buffer[i] == '\n') { line++; column = 1; } else column++;
                 }
             }
             return new XmlBeanGraphExtractor.ArtifactRange(line, column);

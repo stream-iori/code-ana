@@ -45,7 +45,7 @@ def packaged_fixture_smoke(package, evidence, binaries=None):
     with tempfile.TemporaryDirectory(prefix='codeana-release-demo-') as folder:
         workspace=pathlib.Path(folder);project=workspace/'project';home=workspace/'home'
         shutil.copytree(package/'fixtures/base',project);home.mkdir(mode=0o700)
-        jdk=pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'
+        jdk=pathlib.Path(os.environ.get('CODEANA_JAVA8_HOME', pathlib.Path.home()/'.sdkman/candidates/java/8.0.492-zulu'))
         (home/'config.toml').write_text('schema_version=1\nkind="user"\n[limits]\nmax_workers=1\n'
             'max_worker_memory_bytes=536870912\n[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(str(jdk))+'\n')
         command=[str((binaries or package/'bin')/'codeana-cli'),'--home',str(home),'--project',str(project)]
@@ -141,6 +141,7 @@ def main():
         report['package_bytes_verified_at_execution_paths']=bool(args.bin_root)
         environment=dict(os.environ,CODEANA_TEST_BIN=str(binaries))
         for name, script, selector in [('typed_graph', 'java_graph_storage.py', None),
+                                       ('resource_limits', 'java_resource_limits.py', None),
                                        ('wrong_jdk', 'java_native_environment.py', None)]:
             command=[os.sys.executable,'-m','unittest','discover','-s','tests','-p',script,'-v']
             if selector:
@@ -161,7 +162,7 @@ def main():
             if frozen.get(key)!=current_inputs.get(key))
         report['changed_artifacts']=sorted(key for key in artifacts.keys()|current_artifacts.keys()
             if artifacts.get(key)!=current_artifacts.get(key))
-        report['all_ok']=len(report['gates'])==3 and all(g['exit_code']==0 for g in report['gates']) and not any(
+        report['all_ok']=len(report['gates'])==4 and all(g['exit_code']==0 for g in report['gates']) and not any(
             report[key] for key in ('changed_package','changed_inputs','changed_artifacts'))
     except Exception as failure:
         report.update(failure=str(failure),failure_type=type(failure).__name__)

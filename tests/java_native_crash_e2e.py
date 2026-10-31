@@ -25,6 +25,26 @@ def require_stopped_runtime(binary_dir):
             raise RuntimeError('STOP_RUNTIME_BEFORE_NATIVE_FAULT_TEST: ' + fields[0])
 
 
+def start_daemon(case, binary_dir):
+    case.log = open(case.root / 'daemon.log', 'a')
+    case.daemon = subprocess.Popen(
+        [str(binary_dir / 'codeana-daemon'), '--home', str(case.home)],
+        stdout=case.log, stderr=case.log, env=dict(os.environ, CODEANA_JAVA_BACKEND='native'))
+    until = time.monotonic() + 10
+    while time.monotonic() < until:
+        if case.daemon.poll() is not None:
+            raise AssertionError(case.daemon_log())
+        if (case.home / 'endpoint.json').exists():
+            status = subprocess.run(
+                [str(binary_dir / 'codeana-cli'), '--home', str(case.home), 'daemon', 'status'],
+                capture_output=True, timeout=3)
+            if status.returncode == 0:
+                break
+        time.sleep(.03)
+    else:
+        raise AssertionError('daemon restart timeout: ' + case.daemon_log())
+
+
 def main():
     require_stopped_runtime(product_support.BIN)
     case = product_support.JavaProductHarness()
@@ -70,23 +90,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         (native_dir / 'manifest.json').write_text(json.dumps(manifest))
 
         product_support.BIN = binary_dir
-        case.log = open(case.root / 'daemon.log', 'a')
-        case.daemon = subprocess.Popen(
-            [str(binary_dir / 'codeana-daemon'), '--home', str(case.home)],
-            stdout=case.log, stderr=case.log, env=dict(os.environ, CODEANA_JAVA_BACKEND='native'))
-        until = time.monotonic() + 10
-        while time.monotonic() < until:
-            if case.daemon.poll() is not None:
-                raise AssertionError(case.daemon_log())
-            if (case.home / 'endpoint.json').exists():
-                status = subprocess.run(
-                    [str(binary_dir / 'codeana-cli'), '--home', str(case.home), 'daemon', 'status'],
-                    capture_output=True, timeout=3)
-                if status.returncode == 0:
-                    break
-            time.sleep(.03)
-        else:
-            raise AssertionError('daemon restart timeout: ' + case.daemon_log())
+        start_daemon(case, binary_dir)
 
         source = case.project / 'src/p/App.java'
         source.write_text(source.read_text() + '\n// force a new analysis\n')
@@ -99,6 +103,17 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         assert 'signal: 11' in evidence or 'SIGSEGV' in evidence, evidence
         assert case.daemon.poll() is None, case.daemon_log()
         assert case.cli('overview')[1]['revision'] == good
+        terminal = next(json.loads(line[9:]) for line in failed.stdout.splitlines() if line.startswith('terminal '))
+        resources = case.cli('report', terminal['report'])[0][0]['analysis_resources']['coordinator']
+        slot = next(s for s in resources['languages'] if s['allocation']['language'] == 'java')
+        assert slot['worker']['state'] == 'unknown', slot
+        assert slot['worker']['phase'] == 'discover', slot
+        watermark = slot['worker']['usage']
+        assert watermark and watermark['work'] > 0 and watermark['payload_bytes'] > 0, slot
+        assert watermark['failure'] is None, slot
+        markdown = case.cli('report', terminal['report'], '--format', 'markdown', raw=True)
+        assert 'unknown' in markdown and 'incomplete' in markdown, markdown
+        assert not resources['complete']
         until = time.monotonic() + 5
         while time.monotonic() < until:
             rows = subprocess.check_output(['ps', '-axo', 'pid=,ppid=,stat=,comm='], text=True)
@@ -111,7 +126,22 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
                 break
             time.sleep(.05)
         assert not workers, workers
-        print('daemon native SIGSEGV: old head preserved, daemon alive, worker reaped')
+        case.stop()
+        require_stopped_runtime(binary_dir)
+        for name in ('libcodeana_java.dylib','manifest.json'):
+            temporary=native_dir/('.restore-'+name)
+            shutil.copy2(saved_bundle/name,temporary)
+            os.replace(temporary,native_dir/name)
+        saved_bundle=None
+        start_daemon(case,binary_dir)
+        _,recovered=case.cli('index','--full',timeout=150)
+        assert recovered['publication']=='published',recovered
+        assert recovered['revision']!=good,recovered
+        assert case.cli('overview','--revision',good)[1]['revision']==good
+        assert case.cli('resolve','App')[0]
+        resources=case.cli('report',recovered['report'])[0][0]['analysis_resources']['coordinator']
+        assert resources['complete'],resources
+        print('daemon native SIGSEGV: old head preserved, unknown usage explicit, worker reaped, restored SDK indexed successfully')
     except BaseException as failure:
         directory = product_support.ROOT/'target/java-alignment/evidence'/('native-crash-failure-'+time.strftime('%Y%m%d-%H%M%S'))
         directory.mkdir(parents=True, exist_ok=True)

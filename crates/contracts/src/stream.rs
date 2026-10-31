@@ -69,24 +69,24 @@ pub struct GraphStream {
     metrics: StreamMetrics,
 }
 /// Allocation estimate includes decoded row/cell capacities, not only wire bytes.
-pub fn batch_bytes(rows: &Vec<crate::graph::Row>) -> usize {
-    rows.capacity() * std::mem::size_of::<crate::graph::Row>()
-        + rows
+pub fn row_bytes(row: &crate::graph::Row) -> usize {
+    row.world.capacity()
+        + row.cells.capacity() * std::mem::size_of::<crate::graph::Cell>()
+        + row
+            .cells
             .iter()
-            .map(|r| {
-                r.world.capacity()
-                    + r.cells.capacity() * std::mem::size_of::<crate::graph::Cell>()
-                    + r.cells
-                        .iter()
-                        .map(|c| match &c.value {
-                            Some(crate::graph::cell::Value::Text(s)) => s.capacity(),
-                            Some(crate::graph::cell::Value::Blob(b)) => b.capacity(),
-                            _ => 0,
-                        })
-                        .sum::<usize>()
+            .map(|c| match &c.value {
+                Some(crate::graph::cell::Value::Text(s)) => s.capacity(),
+                Some(crate::graph::cell::Value::Blob(b)) => b.capacity(),
+                _ => 0,
             })
             .sum::<usize>()
 }
+pub fn batch_bytes(rows: &Vec<crate::graph::Row>) -> usize {
+    rows.capacity() * std::mem::size_of::<crate::graph::Row>()
+        + rows.iter().map(row_bytes).sum::<usize>()
+}
+
 impl SinkSender {
     pub async fn send(
         &self,

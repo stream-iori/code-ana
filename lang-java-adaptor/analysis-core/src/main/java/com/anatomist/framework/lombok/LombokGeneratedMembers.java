@@ -49,9 +49,10 @@ final class LombokGeneratedMembers {
             SourceSpan span,
             String from,
             List<JavaAnnotation> methodAnnotations) {
+        context.charge(1+parameters.size()+methodAnnotations.size(),1,2048L+256L*(parameters.size()+methodAnnotations.size())+8L*(name.length()+signature.length()+owner.canonicalName().length()));
         var parameterTypes = parameters.stream().map(context::generatedType).toList();
         int executable = context.types.size();
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         JavaType.Kind.EXECUTABLE,
                         "",
@@ -115,8 +116,7 @@ final class LombokGeneratedMembers {
                                 parameterTypes.stream()
                                         .map(
                                                 type ->
-                                                        JavaTypeNames.erased(
-                                                                new JavaTypes(context.types), type))
+                                                        erasedName(type))
                                         .toList())
                         + ")";
         context.generated.put(id, origin(from));
@@ -128,6 +128,7 @@ final class LombokGeneratedMembers {
 
     JavaDeclaration parameter(
             JavaDeclaration owner, String name, int type, List<JavaAnnotation> annotations) {
+        context.charge(1,1,1024L+128L*annotations.size()+4L*name.length());
         return new JavaDeclaration(
                 new JavaSymbol(
                         "PARAMETER",
@@ -205,6 +206,7 @@ final class LombokGeneratedMembers {
     }
 
     List<JavaAnnotation> copiedMethodAnnotations(JavaDeclaration field, boolean getter) {
+        context.charge(1+field.annotations().size(),1,256L+128L*field.annotations().size());
         var copied =
                 new ArrayList<>(
                         field.annotations().stream()
@@ -239,15 +241,18 @@ final class LombokGeneratedMembers {
     }
 
     List<JavaAnnotation> copiedParameterAnnotations(JavaDeclaration field) {
+        context.charge(field.annotations().size(),0,64L*field.annotations().size());
         return field.annotations().stream()
                 .filter(annotation -> annotation.descriptor().equals("Llombok/NonNull;"))
                 .toList();
     }
 
     int writtenType(int reference, Set<String> excluded, int depth) {
+        context.depth(depth+1);context.charge(1,0,0);
         if (depth > 128)
             throw new IllegalArgumentException("Lombok written type exceeds depth budget");
         JavaType type = context.types.get(reference);
+        context.charge(type.annotations().size(),0,64L*type.annotations().size());
         int component = type.component();
         int enclosing = type.enclosing();
         List<JavaAnnotation> annotations = type.annotations();
@@ -266,25 +271,28 @@ final class LombokGeneratedMembers {
                 && enclosing == type.enclosing()
                 && annotations.equals(type.annotations())) return reference;
         int index = context.types.size();
-        context.types.add(
+        final int writtenEnclosing=enclosing,writtenComponent=component;
+        final var writtenAnnotations=annotations;
+        context.addType(() ->
                 new JavaType(
                         type.kind(),
                         type.name(),
                         type.display(),
-                        enclosing,
+                        writtenEnclosing,
                         type.arguments(),
                         type.upperBounds(),
                         type.lowerBound(),
-                        component,
+                        writtenComponent,
                         type.parameters(),
                         type.returns(),
                         type.exceptions(),
-                        annotations,
+                        writtenAnnotations,
                         type.binaryName()));
         return index;
     }
 
     boolean hasBaseAnnotations(int reference, int depth) {
+        context.depth(depth+1);context.charge(1,0,0);
         if (depth > 128)
             throw new IllegalArgumentException("Lombok written type exceeds depth budget");
         JavaType type = context.types.get(reference);
@@ -302,9 +310,11 @@ final class LombokGeneratedMembers {
     }
 
     String descriptor(int reference, int depth) {
+        context.depth(depth+1);context.charge(1,0,0);
         if (depth > 128)
             throw new IllegalArgumentException("modeled signature exceeds depth budget");
         JavaType type = context.types.get(reference);
+        context.charge(1,1,64L+8L*(type.name().length()+type.binaryName().length())+4L*depth);
         return switch (type.kind()) {
             case VOID -> "V";
             case BOOLEAN -> "Z";
@@ -316,7 +326,7 @@ final class LombokGeneratedMembers {
             case FLOAT -> "F";
             case DOUBLE -> "D";
             case ARRAY ->
-                    "[" + context.lombokGeneratedMembers.descriptor(type.component(), depth + 1);
+                    context.join("[",context.lombokGeneratedMembers.descriptor(type.component(),depth+1));
             case DECLARED ->
                     "L"
                             + (type.binaryName().isEmpty() ? type.name() : type.binaryName())
@@ -331,13 +341,15 @@ final class LombokGeneratedMembers {
         };
     }
 
+    private String erasedName(int reference) {
+        return JavaTypeNames.erased(context.types,reference,context.analysis());
+    }
+
     int primitive(JavaType.Kind kind) {
-        for (int i = 0; i < context.types.size(); i++)
-            if (context.types.get(i).kind() == kind && context.types.get(i).annotations().isEmpty())
-                return i;
+        context.charge(1,0,0);Integer found=context.primitiveTypes.get(kind);if(found!=null)return found;
         int index = context.types.size();
         String name = kind.name().toLowerCase(Locale.ROOT);
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         kind, name, name, -1, List.of(), List.of(), -1, -1, List.of(), -1,
                         List.of()));
@@ -345,13 +357,9 @@ final class LombokGeneratedMembers {
     }
 
     int named(String name) {
-        for (int i = 0; i < context.types.size(); i++)
-            if (context.types.get(i).kind() == JavaType.Kind.DECLARED
-                    && context.types.get(i).name().equals(name)
-                    && context.types.get(i).arguments().isEmpty()
-                    && context.types.get(i).annotations().isEmpty()) return i;
+        context.charge(1,0,0);Integer found=context.namedTypes.get(name);if(found!=null)return found;
         int index = context.types.size();
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         JavaType.Kind.DECLARED,
                         name,

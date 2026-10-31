@@ -16,7 +16,7 @@ public final class AnatomistRows {
     private final GraphArchive output;
     private final CapturedProject project;
     private final SourceIdentityResolver identities;
-    private final ExtractionResult batch = new ExtractionResult();
+    private final ExtractionResult batch;
     private int files;
     private final List<IndexDiagnostic> diagnostics = new ArrayList<>();
     private final Map<String, Map<String, Object>> replacements = new LinkedHashMap<>();
@@ -24,6 +24,7 @@ public final class AnatomistRows {
 
     public AnatomistRows(CapturedProject project, GraphArchive output) {
         this.project = project;
+        this.batch = new ExtractionResult(project.analysisContext);
         this.output = output;
         List<SourceRoot> roots = new ArrayList<>(project.roots());
         for (var context : project.contexts)
@@ -53,6 +54,7 @@ public final class AnatomistRows {
         final GraphRecords.Row.Builder row;
 
         Values(GraphRecords.Table table) {
+            project.analysisContext.charge(1, 1, 256);
             row = GraphRecords.Row.newBuilder().setTable(table);
         }
 
@@ -62,6 +64,7 @@ public final class AnatomistRows {
         }
 
         void setString(int i, String value) {
+            project.analysisContext.charge(1, 1, value == null ? 32 : 32L + 3L * value.length());
             put(
                     i,
                     value == null
@@ -202,7 +205,7 @@ public final class AnatomistRows {
 
     public void finish() {
         long unresolved = 0;
-        for (var c : AnalysisCoverage.summarize(diagnostics)) {
+        for (var c : AnalysisCoverage.summarize(diagnostics,project.analysisContext)) {
             row(
                     GraphRecords.Table.COVERAGE,
                     c.sourceFile(),
@@ -219,7 +222,7 @@ public final class AnatomistRows {
                     c.detailsTruncated() ? 1 : 0);
             if (c.capability().equals("AGGREGATE"))
                 for (var count :
-                        Json.map(com.anatomist.json.Json.parseTree(c.codeCounts())).entrySet())
+                        Json.map(com.anatomist.json.Json.parseTree(c.codeCounts(), 512, project.analysisContext)).entrySet())
                     if (ResolutionDiagnostics.isReasonCode(count.getKey()))
                         unresolved += ((Number) count.getValue()).longValue();
         }
@@ -244,11 +247,11 @@ public final class AnatomistRows {
                     .forEach(
                             (key, value) -> limitations.put(key, value.stream().sorted().toList()));
             String operations =
-                    com.anatomist.json.Json.writeCompact(d.operations().stream().sorted().toList());
-            String limits = com.anatomist.json.Json.writeCompact(limitations);
+                    com.anatomist.json.Json.writeCompact(d.operations().stream().sorted().toList(), project.analysisContext);
+            String limits = com.anatomist.json.Json.writeCompact(limitations, project.analysisContext);
             String extensions =
                     com.anatomist.json.Json.writeCompact(
-                            d.fileExtensions().stream().sorted().toList());
+                            d.fileExtensions().stream().sorted().toList(), project.analysisContext);
             String hash =
                     "sha256:"
                             + Json.sha(
@@ -473,11 +476,11 @@ public final class AnatomistRows {
         statement.setString(i++, declaration.declarationKind);
         statement.setString(i++, declaration.typeKind);
         statement.setString(i++, declaration.visibility);
-        statement.setString(i++, com.anatomist.json.Json.writeCompact(declaration.modifiers));
+        statement.setString(i++, com.anatomist.json.Json.writeCompact(declaration.modifiers, project.analysisContext));
         statement.setString(
-                i++, com.anatomist.json.Json.writeCompact(declaration.declaredModifiers));
+                i++, com.anatomist.json.Json.writeCompact(declaration.declaredModifiers, project.analysisContext));
         statement.setString(
-                i++, com.anatomist.json.Json.writeCompact(declaration.implicitModifiers));
+                i++, com.anatomist.json.Json.writeCompact(declaration.implicitModifiers, project.analysisContext));
         statement.setString(i++, declaration.declaringType);
         statement.setString(i++, declaration.namespace);
         statement.setString(i++, declaration.sourceFile);

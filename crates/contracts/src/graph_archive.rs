@@ -31,6 +31,13 @@ pub fn write_row(writer: &mut impl Write, row: &Row, digest: &mut Sha256) -> Res
     Ok(bytes.len() + 4)
 }
 pub fn read_row(reader: &mut impl Read, digest: &mut Sha256) -> Result<Option<Row>> {
+    read_row_with_budget(reader, digest, None)
+}
+pub fn read_row_with_budget(
+    reader: &mut impl Read,
+    digest: &mut Sha256,
+    budget: Option<&codeana_model::AnalysisContext>,
+) -> Result<Option<Row>> {
     let mut length = [0; 4];
     let n = reader.read(&mut length[..1])?;
     if n == 0 {
@@ -47,6 +54,18 @@ pub fn read_row(reader: &mut impl Read, digest: &mut Sha256) -> Result<Option<Ro
         size > 0 && size <= RECORD_LIMIT,
         codeana_model::DomainError::new(codeana_model::ErrorCode::GraphRecordBudget, "")
     );
+    if let Some(budget) = budget {
+        budget
+            .charge(
+                1,
+                1,
+                (size as u64).saturating_mul(2).saturating_add(
+                    (64 * std::mem::size_of::<crate::graph::Cell>() + std::mem::size_of::<Row>())
+                        as u64,
+                ),
+            )
+            .map_err(codeana_model::DomainError::analysis)?;
+    }
     let mut bytes = vec![0; size];
     reader
         .read_exact(&mut bytes)
@@ -195,6 +214,36 @@ impl GraphArchive {
 mod tests {
     use super::*;
     use crate::graph::{Cell, Table, cell::Value};
+    #[test]
+    fn decode_quota_is_reserved_before_reading_or_allocating_the_row() -> Result<()> {
+        let mut encoded = Vec::new();
+        write_row(
+            &mut encoded,
+            &Row {
+                world: String::new(),
+                table: Table::ProjectMeta as i32,
+                cells: vec![Cell {
+                    value: Some(Value::Text("payload".into())),
+                }],
+            },
+            &mut Sha256::new(),
+        )?;
+        let context = codeana_model::AnalysisContext::new(
+            codeana_model::AnalysisLimits {
+                max_payload_bytes: 1,
+                ..Default::default()
+            },
+            None,
+        )?;
+        let mut input = std::io::Cursor::new(encoded);
+        assert!(read_row_with_budget(&mut input, &mut Sha256::new(), Some(&context)).is_err());
+        assert_eq!(input.position(), 4);
+        assert_eq!(context.usage().payload_bytes, 0);
+        assert!(
+            matches!(context.usage().failure,Some(codeana_model::AnalysisFailure::Limit {ref resource,..}) if resource=="payload_bytes")
+        );
+        Ok(())
+    }
     #[test]
     fn null_empty_and_unicode_are_distinct_and_truncation_is_rejected() -> Result<()> {
         let row = Row {

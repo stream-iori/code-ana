@@ -172,4 +172,95 @@ class JsonTest {
         String got = Json.writeCanonical(outer);
         assertEquals("{\n  \"b\" : 1,\n  \"y\" : {\n    \"a\" : 2,\n    \"z\" : 1\n  }\n}", got);
     }
+    @Test
+    void cyclesAndDepthFailButSharedObjectsRemainValid() {
+        Map<String, Object> cycle = new LinkedHashMap<>();
+        cycle.put("self", cycle);
+        for (java.util.function.Function<Object, String> writer : List.<java.util.function.Function<Object, String>>of(
+                Json::writeCompact, Json::writePretty, Json::writeCanonical)) {
+            assertThrows(IllegalArgumentException.class, () -> writer.apply(cycle));
+            List<Object> shared = new ArrayList<>();
+            shared.add("ok");
+            assertEquals(List.of(List.of("ok"), List.of("ok")), Json.parseTree(writer.apply(List.of(shared, shared))));
+            Object nested = "leaf";
+            for (int depth = 0; depth < 256; depth++) nested = List.of(nested);
+            Object boundary = nested;
+            assertDoesNotThrow(() -> writer.apply(boundary));
+            assertThrows(IllegalArgumentException.class, () -> writer.apply(List.of(boundary)));
+        }
+    }
+
+    @Test
+    void rejectsInvalidJsonAndNonFiniteNumbers() {
+        for (String invalid : List.of("01", "[1,]", "{\"a\":1,}", "true false", "\"raw\nnewline\"", "1e999"))
+            assertThrows(IllegalArgumentException.class, () -> Json.parseTree(invalid));
+        assertThrows(IllegalArgumentException.class, () -> Json.writeCompact(Double.NaN));
+        assertEquals("\"\\u001f\"", Json.writeCompact("\u001f"));
+    }
+    @Test
+    void listAndIndirectCyclesAreRejectedInEveryWriter() {
+        List<Object> list = new ArrayList<>(); list.add(list);
+        Map<String, Object> map = new LinkedHashMap<>();
+        List<Object> link = new ArrayList<>(); map.put("child", link); link.add(map);
+        for (java.util.function.Function<Object, String> writer : List.<java.util.function.Function<Object, String>>of(
+                Json::writeCompact, Json::writePretty, Json::writeCanonical)) {
+            assertThrows(IllegalArgumentException.class, () -> writer.apply(list));
+            assertThrows(IllegalArgumentException.class, () -> writer.apply(map));
+        }
+    }
+
+    @Test
+    void codecCyclesAndFreshExpansionAreBounded() {
+        class Echo {}
+        class Fresh {}
+        JsonCodecRegistry.register(Echo.class, new JsonCodec<Echo>() {
+            public Object toTree(Echo value) { return value; }
+            public Echo fromTree(Object tree) { return new Echo(); }
+        });
+        JsonCodecRegistry.register(Fresh.class, new JsonCodec<Fresh>() {
+            public Object toTree(Fresh value) { return new Fresh(); }
+            public Fresh fromTree(Object tree) { return new Fresh(); }
+        });
+        for (java.util.function.Function<Object, String> writer : List.<java.util.function.Function<Object, String>>of(
+                Json::writeCompact, Json::writePretty, Json::writeCanonical)) {
+            assertThrows(IllegalArgumentException.class, () -> writer.apply(new Echo()));
+            assertThrows(IllegalArgumentException.class, () -> writer.apply(new Fresh()));
+        }
+    }
+
+    @Test
+    void sharedCodecAndCanonicalBytesKeepLegacyBehavior() {
+        class Box {}
+        JsonCodecRegistry.register(Box.class, new JsonCodec<Box>() {
+            public Object toTree(Box value) {
+                var map = new LinkedHashMap<String, Object>(); map.put("z", 1); map.put("a", 2); return map;
+            }
+            public Box fromTree(Object tree) { return new Box(); }
+        });
+        Box shared = new Box();
+        assertEquals("[{\"z\":1,\"a\":2},{\"z\":1,\"a\":2}]", Json.writeCompact(List.of(shared, shared)));
+        assertEquals(Json.writePretty(shared), Json.writeCanonical(shared));
+    }
+    @Test void productionCodecRequiresAllocationAwareConversionBeforeCallingLegacyCode() {
+        class Legacy {}
+        var called=new java.util.concurrent.atomic.AtomicBoolean();
+        JsonCodecRegistry.register(Legacy.class,new JsonCodec<Legacy>() {
+            public Object toTree(Legacy value){called.set(true);return java.util.Map.of();}
+            public Legacy fromTree(Object value){return new Legacy();}
+        });
+        var budget=new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults());
+        assertThrows(com.anatomist.core.FatalAnalysisFailure.class,()->Json.writeCompact(new Legacy(),budget));
+        assertFalse(called.get());
+    }
+    @Test void allocationAwareCodecUsesTheOriginalTaskLedger() {
+        class Bounded {}
+        JsonCodecRegistry.register(Bounded.class,new JsonCodec<Bounded>() {
+            public Object toTree(Bounded value){throw new AssertionError("diagnostic codec called");}
+            public Bounded fromTree(Object value){return new Bounded();}
+            public Object toTree(Bounded value,com.anatomist.core.AnalysisContext budget){budget.charge(1,1,256);return java.util.Map.of("a",1);}
+        });
+        var budget=new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults());
+        assertEquals("{\"a\":1}",Json.writeCompact(new Bounded(),budget));
+        assertTrue(((Number)budget.usage().get("payload_bytes")).longValue()>256);
+    }
 }

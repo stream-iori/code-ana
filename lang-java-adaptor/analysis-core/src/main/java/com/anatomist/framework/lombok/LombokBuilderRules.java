@@ -22,6 +22,7 @@ final class LombokBuilderRules {
             List<JavaDeclaration> members,
             LombokCapabilitySummary policy,
             LombokCapabilitySummary aggregate) {
+        context.charge(1,1,2048L+128L*owner.members().size());
         List<JavaDeclaration> targets = new ArrayList<>();
         if (annotations.containsKey("Builder")) targets.add(owner);
         owner.members().stream()
@@ -75,7 +76,7 @@ final class LombokBuilderRules {
                 genericOwner.members().stream()
                         .filter(member -> member.symbol().kind().equals("TYPE_PARAMETER"))
                         .toList();
-        String formalHeader = LombokBuilderRules.formalHeader(genericOwner.signature());
+        String formalHeader = context.lombokBuilderRules.formalHeader(genericOwner.signature());
         int builtType =
                 methodTarget
                         ? context.types.get(target.symbol().declaredType()).returns()
@@ -150,7 +151,7 @@ final class LombokBuilderRules {
                         && (!custom.complete()
                                 || !custom.symbol().kind().equals("CLASS")
                                 || custom.symbol().modifiers().contains("static") == instanceTarget
-                                || !LombokBuilderRules.formalHeader(custom.signature())
+                                || !context.lombokBuilderRules.formalHeader(custom.signature())
                                         .equals(formalHeader)
                                 || !context.annotations(custom).isEmpty())) {
             aggregate.partial("builder");
@@ -278,7 +279,7 @@ final class LombokBuilderRules {
         int builderType = context.types.size();
         String canonical = owner.canonicalName() + "." + builderName;
         String binary = owner.binaryName() + "$" + builderName;
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         JavaType.Kind.DECLARED,
                         canonical,
@@ -327,20 +328,20 @@ final class LombokBuilderRules {
         if (custom == null)
             builderMembers.addAll(
                     formals.stream()
-                            .map(formal -> LombokBuilderRules.modeledFormal(formal, canonical))
+                            .map(formal -> context.lombokBuilderRules.modeledFormal(formal, canonical))
                             .toList());
-        String builderSignature = LombokBuilderRules.genericTypeSignature(binary, formals);
+        String builderSignature = context.lombokBuilderRules.genericTypeSignature(binary, formals);
         var enclosingFormals =
                 owner.members().stream()
                         .filter(member -> member.symbol().kind().equals("TYPE_PARAMETER"))
                         .toList();
         if (instanceTarget && !enclosingFormals.isEmpty()) {
             String enclosingSignature =
-                    LombokBuilderRules.genericTypeSignature(owner.binaryName(), enclosingFormals);
+                    context.lombokBuilderRules.genericTypeSignature(owner.binaryName(), enclosingFormals);
             builderSignature =
                     enclosingSignature.substring(0, enclosingSignature.length() - 1)
                             + "."
-                            + LombokBuilderRules.genericTypeSignature(builderName, formals)
+                            + context.lombokBuilderRules.genericTypeSignature(builderName, formals)
                                     .substring(1);
         }
         if (builderMembers.stream()
@@ -357,6 +358,7 @@ final class LombokBuilderRules {
                     "@Builder");
         String memberAccess = access.equals("PROTECTED") ? "PUBLIC" : access;
         for (var parameter : parameters) {
+            context.charge(1,2,4096L+8L*(parameter.symbol().name().length()+canonical.length()));
             String name = parameter.symbol().name();
             boolean defaulted = defaults.contains(parameter);
             var field =
@@ -452,8 +454,8 @@ final class LombokBuilderRules {
                     builtType,
                     "()"
                             + (methodTarget
-                                    ? LombokBuilderRules.returnSignature(target.signature())
-                                    : LombokBuilderRules.genericTypeSignature(
+                                    ? context.lombokBuilderRules.returnSignature(target.signature())
+                                    : context.lombokBuilderRules.genericTypeSignature(
                                             owner.binaryName(), formals)),
                     modifiers(memberAccess, false),
                     owner.span(),
@@ -469,7 +471,7 @@ final class LombokBuilderRules {
                     List.of("public"),
                     owner.span(),
                     "@Builder");
-        var completedBuilder = copy(builder, builderMembers, builder.incompleteReasons());
+        var completedBuilder = context.copy(builder, builderMembers, builder.incompleteReasons());
         if (custom == null) {
             members.add(completedBuilder);
             context.generated.put(canonical, origin("@Builder"));
@@ -537,6 +539,7 @@ final class LombokBuilderRules {
             List<JavaDeclaration> formals,
             String formalHeader,
             JavaDeclaration field) {
+        context.charge(1,1,2048L+128L*owner.members().size());
         context.lombokGeneratedMembers.method(
                 owner,
                 members,
@@ -677,6 +680,7 @@ final class LombokBuilderRules {
             List<JavaDeclaration> members,
             LombokCapabilitySummary policy,
             LombokCapabilitySummary aggregate) {
+        context.charge(1,1,2048L+128L*owner.members().size());
         if (!annotations.containsKey("SuperBuilder")) return;
         var validation = context.lombokBuilderRules.validateSuperBuilder(owner, new HashSet<>(), 0);
         if (policy.isPartial("super_builder") || validation instanceof SuperBuilderRejected) {
@@ -694,7 +698,7 @@ final class LombokBuilderRules {
                 owner.members().stream()
                         .filter(member -> member.symbol().kind().equals("TYPE_PARAMETER"))
                         .toList();
-        String header = LombokBuilderRules.formalHeader(owner.signature());
+        String header = context.lombokBuilderRules.formalHeader(owner.signature());
         if (!formals.isEmpty() && header.isEmpty()
                 || fields.stream()
                         .anyMatch(
@@ -717,7 +721,7 @@ final class LombokBuilderRules {
         String canonical = owner.canonicalName() + "." + builderName;
         String binary = owner.binaryName() + "$" + builderName;
         int product = context.types.size(), self = product + 1, builderType = product + 2;
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         JavaType.Kind.TYPEVAR,
                         productName,
@@ -730,7 +734,7 @@ final class LombokBuilderRules {
                         List.of(),
                         -1,
                         List.of()));
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         JavaType.Kind.TYPEVAR,
                         selfName,
@@ -752,13 +756,13 @@ final class LombokBuilderRules {
         var builderFormals =
                 new ArrayList<>(
                         formals.stream()
-                                .map(formal -> LombokBuilderRules.modeledFormal(formal, canonical))
+                                .map(formal -> context.lombokBuilderRules.modeledFormal(formal, canonical))
                                 .toList());
         builderFormals.add(context.lombokBuilderRules.typeFormal(canonical, productName, product));
         builderFormals.add(context.lombokBuilderRules.typeFormal(canonical, selfName, self));
         String ownerSignature =
-                LombokBuilderRules.genericTypeSignature(owner.binaryName(), formals);
-        String builderSignature = LombokBuilderRules.genericTypeSignature(binary, builderFormals);
+                context.lombokBuilderRules.genericTypeSignature(owner.binaryName(), formals);
+        String builderSignature = context.lombokBuilderRules.genericTypeSignature(binary, builderFormals);
         int superclass = context.lombokGeneratedMembers.named("java.lang.Object");
         if (parent != null) {
             var parentArguments =
@@ -821,6 +825,7 @@ final class LombokBuilderRules {
                         implicit.incompleteReasons()));
         context.generated.remove(canonical + "#" + builderName + "()");
         for (var field : fields) {
+            context.charge(1,2,4096L+8L*(field.symbol().name().length()+canonical.length()));
             if (field.symbol().modifiers().contains("static")
                     || field.symbol().name().startsWith("$")
                     || field.symbol().modifiers().contains("final")
@@ -925,10 +930,10 @@ final class LombokBuilderRules {
                 List.of("public"),
                 owner.span(),
                 "@SuperBuilder");
-        members.add(copy(builder, builderMembers, List.of()));
+        members.add(context.copy(builder, builderMembers, List.of()));
         context.generated.put(canonical, origin("@SuperBuilder"));
         int wildcard = context.types.size();
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         JavaType.Kind.WILDCARD,
                         "?",
@@ -995,7 +1000,7 @@ final class LombokBuilderRules {
                             formals.stream()
                                     .map(
                                             formal ->
-                                                    LombokBuilderRules.modeledFormal(
+                                                    context.lombokBuilderRules.modeledFormal(
                                                             formal, impl.canonicalName()))
                                     .toList());
             context.lombokGeneratedMembers.method(
@@ -1028,7 +1033,7 @@ final class LombokBuilderRules {
                     List.of("public"),
                     owner.span(),
                     "@SuperBuilder");
-            members.add(copy(impl, implMembers, List.of()));
+            members.add(context.copy(impl, implMembers, List.of()));
             context.generated.put(impl.canonicalName(), origin("@SuperBuilder"));
             context.lombokGeneratedMembers.method(
                     owner,
@@ -1052,8 +1057,9 @@ final class LombokBuilderRules {
     }
 
     int declaredType(String canonical, String binary, List<Integer> arguments) {
+        context.charge(1+arguments.size(),0,64L*arguments.size());
         int reference = context.types.size();
-        context.types.add(
+        context.addType(() ->
                 new JavaType(
                         JavaType.Kind.DECLARED,
                         canonical,
@@ -1078,6 +1084,7 @@ final class LombokBuilderRules {
             String signature,
             int superclass,
             List<String> modifiers) {
+        context.charge(1,1,1024L+4L*(name.length()+signature.length()));
         var declared = context.types.get(type);
         return new JavaDeclaration(
                 new JavaSymbol(
@@ -1104,6 +1111,7 @@ final class LombokBuilderRules {
     }
 
     JavaDeclaration typeFormal(String owner, String name, int type) {
+        context.charge(1,1,1024L+4L*(owner.length()+name.length()));
         return new JavaDeclaration(
                 new JavaSymbol(
                         "TYPE_PARAMETER",
@@ -1129,13 +1137,15 @@ final class LombokBuilderRules {
     }
 
     String typeSignature(int reference, int depth) {
+        context.depth(depth+2);context.charge(1,0,0);
         if (depth >= 128)
             throw new IllegalArgumentException("SuperBuilder signature exceeds budget");
         var type = context.types.get(reference);
+        context.charge(type.arguments().size()+type.upperBounds().size(),1,128L+64L*(type.arguments().size()+type.upperBounds().size())+8L*(type.name().length()+type.binaryName().length()));
         return switch (type.kind()) {
             case TYPEVAR -> "T" + type.name() + ";";
             case ARRAY ->
-                    "[" + context.lombokBuilderRules.typeSignature(type.component(), depth + 1);
+                    context.join("[",context.lombokBuilderRules.typeSignature(type.component(),depth+1));
             case WILDCARD ->
                     type.lowerBound() >= 0
                             ? "-"
@@ -1180,6 +1190,7 @@ final class LombokBuilderRules {
     }
 
     void methodFormals(List<JavaDeclaration> members, List<JavaDeclaration> formals) {
+        context.charge(members.size()+formals.size(),1,1024L+128L*(members.size()+formals.size()));
         if (formals.isEmpty()) return;
         int index = members.size() - 1;
         var method = members.get(index);
@@ -1188,13 +1199,14 @@ final class LombokBuilderRules {
                 formals.stream()
                         .map(
                                 formal ->
-                                        LombokBuilderRules.modeledFormal(
+                                        context.lombokBuilderRules.modeledFormal(
                                                 formal, method.symbol().owner()))
                         .toList());
-        members.set(index, copy(method, children, method.incompleteReasons()));
+        members.set(index, context.copy(method, children, method.incompleteReasons()));
     }
 
-    static JavaDeclaration modeledFormal(JavaDeclaration formal, String owner) {
+    JavaDeclaration modeledFormal(JavaDeclaration formal, String owner) {
+        context.charge(1,1,1024L+128L*(formal.members().size()+formal.annotations().size()));
         var symbol = formal.symbol();
         return new JavaDeclaration(
                 new JavaSymbol(
@@ -1220,7 +1232,9 @@ final class LombokBuilderRules {
                 formal.incompleteReasons());
     }
 
-    static String genericTypeSignature(String binary, List<JavaDeclaration> formals) {
+    String genericTypeSignature(String binary, List<JavaDeclaration> formals) {
+        context.charge(formals.size(),0,256L+8L*binary.length()+128L*formals.size());
+        for(var formal:formals)context.charge(1,0,16L*formal.symbol().name().length());
         return "L"
                 + binary.replace('.', '/')
                 + (formals.isEmpty()
@@ -1235,7 +1249,8 @@ final class LombokBuilderRules {
                 + ";";
     }
 
-    static String returnSignature(String signature) {
+    String returnSignature(String signature) {
+        context.charge(signature.length(),0,128L+4L*signature.length());
         int close = signature.indexOf(')');
         if (close < 0 || close + 1 >= signature.length())
             throw new IllegalArgumentException("Incomplete Lombok method signature");
@@ -1243,12 +1258,13 @@ final class LombokBuilderRules {
         return signature.substring(close + 1, exception < 0 ? signature.length() : exception);
     }
 
-    static String formalHeader(String signature) {
+    String formalHeader(String signature) {
+        if(signature!=null)context.charge(signature.length(),0,128L+4L*signature.length());
         if (signature == null || !signature.startsWith("<")) return "";
         int depth = 0;
         for (int i = 0; i < signature.length(); i++) {
             if (i > 100_000)
-                throw new IllegalArgumentException("Lombok formal signature exceeds budget");
+                throw new com.anatomist.core.HardResourceLimit("Lombok formal signature exceeds budget");
             if (signature.charAt(i) == '<') depth++;
             else if (signature.charAt(i) == '>' && --depth == 0)
                 return signature.substring(0, i + 1);

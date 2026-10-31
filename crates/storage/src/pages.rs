@@ -110,7 +110,12 @@ impl Store {
         let mut catalog = self.catalog()?;
         let transaction = catalog.transaction()?;
         for revision in revisions {
-            self.revision_unlocked(revision)?;
+            let exists: bool = self.catalog()?.query_row(
+                "SELECT EXISTS(SELECT 1 FROM revisions WHERE id=?)",
+                [revision],
+                |row| row.get(0),
+            )?;
+            ensure!(exists, DomainError::new(ErrorCode::RevisionNotFound, ""));
         }
         transaction.execute(
             "INSERT INTO objects VALUES('page',?,?,?)",

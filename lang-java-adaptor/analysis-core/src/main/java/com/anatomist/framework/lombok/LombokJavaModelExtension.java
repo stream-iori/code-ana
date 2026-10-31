@@ -64,9 +64,13 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
     /** Explicit configuration inventory; code-ana does not discover lombok.config. */
     public LombokJavaModelExtension(
             Path project, boolean strict, Map<Path, String> capturedConfigurations) {
+        this(project, strict, capturedConfigurations, null);
+    }
+
+    public LombokJavaModelExtension(Path project, boolean strict, Map<Path,String> capturedConfigurations, com.anatomist.core.AnalysisContext resources) {
         this.project = project.toAbsolutePath().normalize();
         this.strict = strict;
-        configurations = new LombokConfigurationScope(this.project, capturedConfigurations);
+        configurations = new LombokConfigurationScope(this.project, capturedConfigurations, resources);
     }
 
     @Override
@@ -91,19 +95,27 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
 
     @Override
     public JavaAnalysisContext augment(JavaAnalysisContext context, JavaBinaryRepository binaries) {
+        return augment(context,binaries,null);
+    }
+    @Override public JavaAnalysisContext augment(JavaAnalysisContext context,JavaBinaryRepository binaries,
+            com.anatomist.core.AnalysisContext resources) {
+        if(resources!=null)resources.charge(context.units().size(),0,1024L+128L*context.units().size());
         Set<JavaUnit> pending = Collections.newSetFromMap(new IdentityHashMap<>());
         for (var unit : context.units())
             if (!unit.extensions().counters().containsKey("lombok_files_seen")
-                    && (unit.hasProcessorEvidence() || usesLombok(unit.declarationInventory())))
+                    && (unit.hasProcessorEvidence() || usesLombok(unit.declarationInventory(),resources,0)))
                 pending.add(unit);
         if (pending.isEmpty()) return context;
         List<JavaUnit> units = new ArrayList<>();
-        try (var model = new JavaModel(context)) {
+        try (var model = new JavaModel(context,resources)) {
             for (var unit : context.units()) {
                 // Dependency catalogues already carry the overlay; repeated application is
                 // idempotent.
                 if (!pending.contains(unit)) units.add(unit);
-                else units.add(new Overlay(context, model, unit, binaries).apply());
+                else {
+                    if(resources!=null)resources.charge(1,1,4096);
+                    units.add(new Overlay(context, model, unit, binaries).apply());
+                }
             }
         }
         return new JavaAnalysisContext(
@@ -133,10 +145,14 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         }
     }
 
-    static boolean usesLombok(List<JavaDeclaration> declarations) {
-        for (var declaration : declarations)
-            if (!annotations(declaration).isEmpty() || usesLombok(declaration.members()))
-                return true;
+    static boolean usesLombok(List<JavaDeclaration> declarations) {return usesLombok(declarations,null,0);}
+    private static boolean usesLombok(List<JavaDeclaration> declarations,com.anatomist.core.AnalysisContext resources,int depth) {
+        if(resources!=null)resources.depth(depth+1,129);
+        else if(depth>128)throw new com.anatomist.core.HardResourceLimit("Lombok declaration nesting exceeds budget");
+        for(var declaration:declarations) {
+            if(resources!=null)resources.charge(1+declaration.annotations().size(),0,128L+96L*declaration.annotations().size());
+            if(!annotations(declaration).isEmpty()||usesLombok(declaration.members(),resources,depth+1))return true;
+        }
         return false;
     }
 
@@ -162,6 +178,8 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         final Map<JavaDeclaration, Map<String, JavaAnnotation>> effectiveAnnotations =
                 new IdentityHashMap<>();
         final Map<JavaDeclaration, Integer> generatedTypes = new IdentityHashMap<>();
+        final Map<JavaType.Kind,Integer> primitiveTypes=new EnumMap<>(JavaType.Kind.class);
+        final Map<String,Integer> namedTypes=new HashMap<>();
         final Map<String, JavaDeclaration> customBuilders = new HashMap<>();
 
         Overlay(
@@ -169,12 +187,14 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 JavaModel model,
                 JavaUnit unit,
                 JavaBinaryRepository binaries) {
-            this.context = context;
             this.model = model;
+            charge(1,1,2048L+128L*(unit.types().entries().size()+unit.extensions().generated().size()+unit.extensions().declarationMetadata().size()+unit.extensions().diagnostics().size()+unit.extensions().counters().size()));
+            this.context = context;
             this.unit = unit;
-            configuration = configurations.forSource(unit.path());
+            configuration = configurations.forSource(unit.path(), analysis());
             this.binaries = binaries;
             types = new ArrayList<>(unit.types().entries());
+            for(int i=0;i<types.size();i++)indexType(types.get(i),i);
             for (var reference : model.declarations(unit.path()))
                 references.put(model.declaration(reference), reference);
             generated = new LinkedHashMap<>(unit.extensions().generated());
@@ -208,8 +228,14 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         }
 
         JavaDeclaration generatedAnnotations(JavaDeclaration declaration) {
+            return generatedAnnotations(declaration, 0);
+        }
+
+        JavaDeclaration generatedAnnotations(JavaDeclaration declaration, int nesting) {
+            depth(nesting + 1);
+            charge(1,1,1024L+128L*(declaration.members().size()+declaration.annotations().size()));
             List<JavaDeclaration> members =
-                    declaration.members().stream().map(this::generatedAnnotations).toList();
+                    declaration.members().stream().map(member -> generatedAnnotations(member, nesting + 1)).toList();
             List<JavaAnnotation> annotations = declaration.annotations();
             if (declaration.origin() == JavaDeclaration.Origin.MODEL
                     && Set.of("CLASS", "METHOD", "CONSTRUCTOR", "FIELD")
@@ -262,6 +288,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         }
 
         JavaUnit apply() {
+            charge(1,1,1024L+128L*unit.declarationInventory().size());
             var augmented =
                     unit.declarationInventory().stream()
                             .map(this::valueModifiers)
@@ -293,11 +320,11 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     unit.tree(),
                     unit.processing(),
                     unit.bindings(),
-                    new JavaTypes(types),
+                    typeGraph(),
                     unit.declarations(),
                     inventory,
                     unit.sourceHash(),
-                    new JavaExtensionData(generated, metadata, diagnostics, counters));
+                    new JavaExtensionData(generated, metadata, diagnostics, counters,analysis()));
         }
 
         JavaDeclaration valueModifiers(JavaDeclaration owner) {
@@ -328,6 +355,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         }
 
         JavaDeclaration type(JavaDeclaration owner) {
+            charge(1,1,2048L+128L*(owner.members().size()+owner.annotations().size()));
             if (unit.hasProcessorEvidence()) return compiledType(owner);
             var annotations = annotations(owner);
             if (annotations.containsKey("UtilityClass")) return utilityClass(owner, annotations);
@@ -610,22 +638,6 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
             lombokBuilderRules.methodFormals(members, formals);
         }
 
-        static JavaDeclaration modeledFormal(JavaDeclaration formal, String owner) {
-            return LombokBuilderRules.modeledFormal(formal, owner);
-        }
-
-        static String genericTypeSignature(String binary, List<JavaDeclaration> formals) {
-            return LombokBuilderRules.genericTypeSignature(binary, formals);
-        }
-
-        static String returnSignature(String signature) {
-            return LombokBuilderRules.returnSignature(signature);
-        }
-
-        static String formalHeader(String signature) {
-            return LombokBuilderRules.formalHeader(signature);
-        }
-
         boolean identifier(String value, boolean emptyAllowed) {
             return lombokBuilderRules.identifier(value, emptyAllowed);
         }
@@ -811,11 +823,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                 compiledAnnotations =
                         new JavaModelAnnotations(
                                 new JavaUnitAnalysis(
-                                        new JavaFrameworkContext(
-                                                project,
-                                                List.of(),
-                                                new com.anatomist.config.ProjectConfig(),
-                                                false),
+                                        framework(),
                                         model,
                                         binaries,
                                         unit.path(),
@@ -993,6 +1001,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         }
 
         void diagnostic(String code, String symbol, String sample) {
+            charge(1,1,512L+4L*(code.length()+(symbol==null?0:symbol.length())+sample.length()));
             var identity = context.identity(unit.path());
             diagnostics.add(
                     new IndexDiagnostic(
@@ -1009,13 +1018,46 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                             sample));
         }
 
+        String join(String prefix,String value) {charge(1,1,64L+4L*(prefix.length()+value.length()));return prefix+value;}
+        JavaDeclaration copy(JavaDeclaration value,List<JavaDeclaration> members,List<String> reasons) {
+            charge(1,1,1024L+64L*(members.size()+reasons.size()));
+            return LombokJavaModelExtension.copy(value,members,reasons);
+        }
+        int addType(java.util.function.Supplier<JavaType> factory) {
+            charge(1,1,512);var type=factory.get();int index=types.size();
+            types.add(type);indexType(type,index);return index;
+        }
+        private void indexType(JavaType type,int index) {
+            charge(1,0,0);
+            if(!type.annotations().isEmpty())return;
+            if(!primitiveTypes.containsKey(type.kind())) {charge(1,1,128);primitiveTypes.put(type.kind(),index);}
+            if(type.kind()==JavaType.Kind.DECLARED && type.arguments().isEmpty() && !namedTypes.containsKey(type.name())) {
+                charge(1,1,128);namedTypes.put(type.name(),index);
+            }
+        }
+        JavaTypes typeGraph() {
+            charge(types.size(),0,0);long edges=0;
+            for(var type:types) {if(analysis()!=null)analysis().check();edges+=(long)type.arguments().size()+type.upperBounds().size()+type.parameters().size()+type.exceptions().size();}
+            charge(types.size()+edges,0,32L*types.size());return new JavaTypes(types);
+        }
+        JavaFrameworkContext framework() {
+            return analysis() == null
+                    ? new JavaFrameworkContext(project, List.of(unit.path()), new com.anatomist.config.ProjectConfig(), false)
+                    : new JavaFrameworkContext(project, List.of(unit.path()), new com.anatomist.config.ProjectConfig(), false, analysis());
+        }
+
+        com.anatomist.core.AnalysisContext analysis() {return model.analysisContext();}
+        void charge(long work,long nodes,long bytes) {if(analysis()!=null)analysis().charge(work,nodes,bytes);}
+        void depth(int value) {if(analysis()!=null)analysis().depth(value,129);else if(value>129)throw new com.anatomist.core.HardResourceLimit("Lombok nesting exceeds budget");}
         void put(String id, String key, Object value) {
+            charge(1,1,256L+64L*metadata.getOrDefault(id,Map.of()).size());
             var row = new LinkedHashMap<>(metadata.getOrDefault(id, Map.of()));
             row.put(key, value);
             metadata.put(id, row);
         }
 
         void increment(String key, long value) {
+            charge(1,1,128);
             counters.merge(key, value, Long::sum);
         }
     }

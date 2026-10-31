@@ -38,14 +38,34 @@ pub(super) fn run(
         };
         records.clear();
         for selector in selectors {
+            if r.charge(1, selector.len() as u64).is_err() {
+                break;
+            }
             s.selector = selector;
             let out = super::run_query(r, &s, read_source)?;
             evidence.merge(&out.evidence);
-            records.extend(out.records);
-            ensure!(
-                records.len() <= 10000,
-                codeana_model::DomainError::new(codeana_model::ErrorCode::PipelineWorkBudget, "")
-            );
+            let remaining = 10000usize.saturating_sub(records.len());
+            let limited = out.records.len() > remaining;
+            records.extend(out.records.into_iter().take(remaining));
+            if limited {
+                evidence.enumeration = false;
+                evidence.limits.push("records".into());
+                return Ok(if i + 1 == req.stages.len() {
+                    records
+                } else {
+                    Vec::new()
+                });
+            }
+        }
+        if r.resource_exhausted() {
+            if let Some(b) = r.resource_budget() {
+                b.apply(evidence);
+            }
+            return Ok(if i + 1 == req.stages.len() {
+                records
+            } else {
+                Vec::new()
+            });
         }
         input = std::mem::take(&mut records);
     }

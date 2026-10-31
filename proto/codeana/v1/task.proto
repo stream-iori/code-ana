@@ -33,7 +33,10 @@ message TaskId { string task_id = 1; }
 message WatchRequest { string task_id = 1; uint64 after_seq = 2; }
 message Progress { string phase = 1; }
 message OutputChunk { bytes data = 1; }
-message Evidence { bool enumeration = 1; bool semantic = 2; repeated string limits = 3; repeated string reasons = 4; }
+message ResourceLimits { uint64 max_work = 1; uint64 max_payload_bytes = 2; }
+message ResourceLimit { string resource = 1; uint64 limit = 2; uint64 used = 3; uint64 requested = 4; }
+message ResourceUsage { ResourceLimits limits = 1; uint64 work = 2; uint64 payload_bytes = 3; ResourceLimit exhausted = 4; }
+message Evidence { ResourceUsage resource_usage = 5; bool enumeration = 1; bool semantic = 2; repeated string limits = 3; repeated string reasons = 4; }
 message Terminal {
  string execution = 1; string assessment = 2; string gate = 3; string publication = 4; string report = 5;
  string revision = 6; string producer = 7; string code = 8; string message = 9; int32 exit_code = 10;

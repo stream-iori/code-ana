@@ -8,17 +8,24 @@ public final class JavaTypeNames {
     private JavaTypeNames() {}
 
     public static String erased(JavaTypes types, int reference) {
-        return erased(types, reference, new HashSet<>(), 0, false);
+        return erased(types::get, reference, new HashSet<>(), 0, false, null);
     }
 
     public static String binaryErased(JavaTypes types, int reference) {
-        return erased(types, reference, new HashSet<>(), 0, true);
+        return erased(types::get, reference, new HashSet<>(), 0, true, null);
+    }
+
+    /** Read the live overlay table without copying the entire graph per parameter. */
+    public static String erased(java.util.List<JavaType> types,int reference,com.anatomist.core.AnalysisContext resources) {
+        return erased(types::get,reference,new HashSet<>(),0,false,resources);
     }
 
     private static String erased(
-            JavaTypes types, int reference, Set<Integer> active, int depth, boolean binary) {
+            java.util.function.IntFunction<JavaType> types, int reference, Set<Integer> active, int depth, boolean binary,
+            com.anatomist.core.AnalysisContext resources) {
+        if(resources!=null) {resources.depth(depth+1,129);resources.charge(1,1,128);}
         if (reference < 0 || depth > 128 || !active.add(reference)) return "<unresolved>";
-        JavaType type = types.get(reference);
+        JavaType type = types.apply(reference);
         try {
             return switch (type.kind()) {
                 case BOOLEAN, BYTE, SHORT, INT, LONG, CHAR, FLOAT, DOUBLE, VOID ->
@@ -27,7 +34,11 @@ public final class JavaTypeNames {
                         binary && !type.binaryName().isEmpty() || type.name().isEmpty()
                                 ? type.binaryName()
                                 : type.name();
-                case ARRAY -> erased(types, type.component(), active, depth + 1, binary) + "[]";
+                case ARRAY -> {
+                    String component=erased(types,type.component(),active,depth+1,binary,resources);
+                    if(resources!=null)resources.charge(1,0,64L+4L*component.length());
+                    yield component+"[]";
+                }
                 case TYPEVAR, INTERSECTION ->
                         type.upperBounds().isEmpty()
                                 ? "<unresolved>"
@@ -36,7 +47,7 @@ public final class JavaTypeNames {
                                         type.upperBounds().getFirst(),
                                         active,
                                         depth + 1,
-                                        binary);
+                                        binary,resources);
                 case WILDCARD ->
                         type.upperBounds().isEmpty()
                                 ? "java.lang.Object"
@@ -45,7 +56,7 @@ public final class JavaTypeNames {
                                         type.upperBounds().getFirst(),
                                         active,
                                         depth + 1,
-                                        binary);
+                                        binary,resources);
                 default -> "<unresolved>";
             };
         } finally {

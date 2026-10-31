@@ -25,11 +25,20 @@ public final class ContentHash {
     }
 
     public static String sha256(Path file) throws IOException {
+        return sha256(file, null);
+    }
+
+    /** Reserves the streaming buffer before allocation and checks each read against the task. */
+    public static String sha256(Path file, AnalysisContext analysis) throws IOException {
+        if (analysis != null) analysis.charge(1, 1, BUFFER_SIZE + 256);
         MessageDigest digest = digest();
         byte[] buffer = new byte[BUFFER_SIZE];
         try (InputStream input = Files.newInputStream(file)) {
             int read;
-            while ((read = input.read(buffer)) >= 0) {
+            while (true) {
+                if (analysis != null) analysis.charge(1, 0, 0);
+                read = input.read(buffer);
+                if (read < 0) break;
                 if (read > 0) digest.update(buffer, 0, read);
             }
         }

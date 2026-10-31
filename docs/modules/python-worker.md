@@ -1,6 +1,6 @@
 # Python worker
 
-现行 adapter 为 v3：统一 `index --prepare` 默认静态检查各入口 pyproject，支持隔离/共享环境与显式模块依赖，输出 schema 3（兼容 1/2）。原独立导出器仍默认 schema 2、必须显式 --pyproject 才读取元数据。配置与行为见 [统一输入准备](inputs.md)；下文独立导出示例继续有效。
+现行 adapter 为 `pyrefly-1.4.0-codeana-v4-analysis-resources`：统一 `index --prepare` 默认静态检查各入口 pyproject，支持隔离/共享环境与显式模块依赖，输出 schema 3（兼容 1/2）。原独立导出器仍默认 schema 2、必须显式 --pyproject 才读取元数据。配置与行为见 [统一输入准备](inputs.md)；下文独立导出示例继续有效。
 
 
 Python 通过独立 Rust worker 接入固定的 Pyrefly 内核。验收范围及回执见 [当前实现](../current-state.md)；历史失败证据保留在 `lang-python-adaptor/validation/2026-10-16/`。
@@ -19,7 +19,7 @@ Python 通过独立 Rust worker 接入固定的 Pyrefly 内核。验收范围及
 | 构建 | `lang-python-adaptor/` 是独立 Cargo workspace，worker 位于其 `worker/`；保留两个锁文件 |
 | 分析线程 | 固定 10 MiB 栈，与上游默认一致；单个 blocking 分析任务，不读取 PYREFLY_STACK_SIZE |
 | 原因 | Pyrefly 要求 unicode-ident ≥1.0.25；现有 Rust 适配器固定 1.0.24，不能合并解析依赖或静默更换 Unicode 版本 |
-| 协议 | worker 21、graph model 4、物理 schema 11 / 逻辑 schema 34；Java ABI 4、analysis 10 保持 |
+| 协议 | worker 22、graph model 4、物理 schema 11 / 逻辑 schema 34；Java ABI 4、analysis 11；ABI保持4 |
 | 环境 | 首轮目标 Python 3.12 / darwin；冻结的有序源码根和辅助依赖根，标准库随固定后端封装 |
 | 执行 | 不执行目标模块、解释器探测、构建、安装、editable hook 或 `.pth` |
 | 来源 | UTF-8（含 BOM）及 ASCII；其他编码明确拒绝；声明使用 UTF-8 字节范围，图列坐标为一基 UTF-16 |
@@ -102,3 +102,20 @@ just test-python-mixed         # 需先安装匹配的 Native SDK
 包包含 Java host、Rust/Python worker、CLI/daemon、fixture、两个锁文件、上游清单、依赖许可证清单及 SHA256SUMS；Java SDK 不在此包中。doctor 展示清单元数据、CONTROL 与读取错误；不验证控制文件和依赖的当前字节。`binary_present` 仅检查制品存在，`readiness=requires_index_validation` 不表示可启动或已验收。daemon 要求 worker 声明匹配的适配器 v3 和固定后端提交；v1/v2 worker 不能冒充 v3，旧图保持历史含义，profile 变化后全量重算。
 
 验收顺序保持：仓库 Python fixture 全部通过后，才在 diorama-sdd 冻结提交 `31259b761a5ea77672d0e90bc9e2776e4dfe397e` 的独立副本做最终实验；不能直接用 sibling 当前 HEAD。缺依赖样本与完整依赖样本分开记录；功能门禁通过后才做一轮正式性能测量。
+
+## 统一分析预算接入
+
+Python 普通、Python/Rust 组合及 prepared 多实例入口下发静态 grant；输入副本、各 world/context、AST/类型提取、中间结果和行输出共用同一累计账本。AST 使用第三方 source-order visitor 枚举直接子节点，再由显式栈展开；类型 union 使用借用栈，不克隆递归类型树。QName 的嵌套名称也迭代构造。host 接收/重新编码使用独立 host 分片。
+
+重试沿用同一 grant、计数和单调截止时间；Failure / End 携带累计回执，断连用量未知保留 Unknown。预算异常中止整次发布，输入修复后的新任务可恢复。Pyrefly 内部 solver 仍由进程内存与 supervisor 截止时间约束，不能把 adaptor 自有遍历的计数当成其内部每一步的精确计数。
+
+当前严格worker22/Java11，缺失grant和终态回执拒绝；Discover/未变复用共用累计账本。本机fixture混合/分发已通过，正式容量/语义/来源范围另列。
+
+
+Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker22；本机fixture混合/分发已通过，正式边界见当前实现。
+
+业务 IPC 共用 contracts 分配前准入：小型 Hello 初始化账本，随后 Discover/Analyze 在分配/解码前检查额度；有界堆控制通道支持超限后的失败回执，取消保留半帧进度并流式丢弃业务字节。实现与证据见 contracts.md 和当前 frame-admission 回执；语言内部投影/完整分发仍按各自未关闭项验收。
+
+内部JSON DTO复用contracts::json_budget：serde流式预检先累计值节点/深度，预留字符串、容器与解码容量，再由serde构造类型化对象；不分配临时JSON树，不自写JSON语法。Discover配置、Rust基线和重试配置副本都接续同一账本。源码文件使用已准入长度+1的有界读取，变化时拒绝。Python诊断路径自动机固定为稀疏NFA，构造前预留；替换文本按实际匹配计算扩展容量，再创建结果。
+
+本轮统一资源治理八项已完成本机自建fixture验收，状态与历史阶段区分见current-state.md最后一节。三种分发及所有实际release worker的42项资源/混合/历史矩阵已通过；原二进制与SDK恢复记录齐全。此为本机fixture验证，不签完整语义/来源、跨平台或容量/稳定性能放行。

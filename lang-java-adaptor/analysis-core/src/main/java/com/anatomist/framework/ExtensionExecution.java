@@ -48,6 +48,7 @@ public final class ExtensionExecution {
         try {
             return action.get();
         } catch (RuntimeException failure) {
+                com.anatomist.core.HardResourceLimit.rethrow(failure);
             if (report != null)
                 report.diagnostic(
                         new IndexDiagnostic(
@@ -73,15 +74,18 @@ public final class ExtensionExecution {
             Source source,
             ExtensionReport report,
             ExtractionResult destination,
-            Consumer<ExtractionResult> action) {
+            Consumer<ExtractionResult> action) { return facts(extension,stage,source,report,destination,null,action); }
+    public static boolean facts(ExtensionPoint extension, Stage stage, Source source, ExtensionReport report, ExtractionResult destination, com.anatomist.core.AnalysisContext context, Consumer<ExtractionResult> action) {
+        if(context!=null)context.charge(1,1,128);
         return run(
                 extension,
                 stage,
                 source,
                 report,
                 () -> {
-                    ExtractionResult isolated = new ExtractionResult();
+                    ExtractionResult isolated = new ExtractionResult(context);
                     action.accept(isolated);
+                    if(context!=null)context.charge(isolated.factCount(),0,0);
                     FactOrigin.stamp(
                             isolated,
                             FactOrigin.beginning(),

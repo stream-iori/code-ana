@@ -1,4 +1,12 @@
 //! Storage- and transport-independent analysis facts and product contracts.
+mod analysis_grants;
+pub use analysis_grants::*;
+mod analysis_allocation;
+pub use analysis_allocation::*;
+mod analysis_resources;
+pub use analysis_resources::*;
+mod resources;
+pub use resources::*;
 mod publication;
 pub use publication::PublicationFence;
 mod commands;
@@ -29,7 +37,8 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const VERSION: u32 = 4;
-pub const WORKER_PROTOCOL_VERSION: u32 = 21;
+pub const WORKER_PROTOCOL_VERSION: u32 = 22;
+pub const JAVA_ANALYSIS_VERSION: u32 = 11;
 pub const DAEMON_PROTOCOL_VERSION: u32 = 4;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
@@ -606,6 +615,8 @@ impl AnalysisResult {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Evidence {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resource_usage: Option<ResourceUsage>,
     pub enumeration: bool,
     pub semantic: bool,
     pub limits: Vec<String>,
@@ -620,6 +631,9 @@ impl Evidence {
         }
     }
     pub fn merge(&mut self, other: &Self) {
+        if other.resource_usage.is_some() {
+            self.resource_usage = other.resource_usage.clone();
+        }
         self.enumeration &= other.enumeration;
         self.semantic &= other.semantic;
         self.limits.extend(other.limits.clone());
@@ -720,9 +734,14 @@ pub struct TaskResult {
 }
 impl TaskResult {
     pub fn success(output: Output) -> Self {
+        let resource_limited = output
+            .evidence
+            .resource_usage
+            .as_ref()
+            .is_some_and(|u| u.exhausted.is_some());
         Self {
             execution: crate::ExecutionState::Completed,
-            assessment: if output.evidence.semantic {
+            assessment: if output.evidence.semantic && !resource_limited {
                 Assessment::Complete
             } else {
                 Assessment::Partial
@@ -732,7 +751,11 @@ impl TaskResult {
             report: "off".into(),
             revision: output.revision.clone(),
             producer: output.producer.clone(),
-            code: "OK".into(),
+            code: if resource_limited {
+                ErrorCode::ComputationLimit
+            } else {
+                "OK".into()
+            },
             message: String::new(),
             exit_code: 0,
             output,

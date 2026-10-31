@@ -12,6 +12,7 @@ import java.util.Set;
 
 /** Read-only merged view: retained committed facts plus facts staged in the current run. */
 public interface ProjectFactView {
+    default com.anatomist.core.AnalysisContext analysisContext() { return new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults()); }
     Set<String> knownNodeIds();
 
     Map<String, BeanRefTarget> beanTargets();
@@ -71,25 +72,27 @@ public interface ProjectFactView {
                             || java.util.Objects.equals(fact.id(), symbolId))
                     || fact.metadata() == null) continue;
             try {
-                Object tree = com.anatomist.json.Json.parseTree(fact.metadata());
+                Object tree = com.anatomist.json.Json.parseTree(fact.metadata(), 512, analysisContext());
                 if (tree instanceof java.util.Map<?, ?> map && map.get("returnType") != null) {
                     return String.valueOf(map.get("returnType"));
                 }
             } catch (RuntimeException ignored) {
+            com.anatomist.core.HardResourceLimit.rethrow(ignored);
             }
         }
         return null;
     }
 
-    private static boolean staticCompatible(SymbolFact fact, Boolean required) {
+    private boolean staticCompatible(SymbolFact fact, Boolean required) {
         if (required == null || fact.metadata() == null) return true;
         try {
-            Object tree = com.anatomist.json.Json.parseTree(fact.metadata());
+            Object tree = com.anatomist.json.Json.parseTree(fact.metadata(), 512, analysisContext());
             if (tree instanceof java.util.Map<?, ?> map
                     && map.get("isStatic") instanceof Boolean value) {
                 return value.equals(required);
             }
         } catch (RuntimeException ignored) {
+            com.anatomist.core.HardResourceLimit.rethrow(ignored);
         }
         return true;
     }

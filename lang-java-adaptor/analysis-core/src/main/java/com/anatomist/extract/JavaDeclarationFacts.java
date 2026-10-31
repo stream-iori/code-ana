@@ -78,7 +78,7 @@ public final class JavaDeclarationFacts {
                         : model.source(unit.path())
                                 .slice(unit.tree().tree("getPackageName").span());
         coordinates(node, unit.path(), syntax.span());
-        node.metadata = Json.writeCompact(Map.of("bindingResolved", true));
+        node.metadata = Json.writeCompact(Map.of("bindingResolved", true), model.analysisContext());
         result.nodes.add(node);
         var declaration = new Declaration();
         declaration.symbolId = node.id;
@@ -166,7 +166,7 @@ public final class JavaDeclarationFacts {
         JavaGeneratedOrigin generated = unit.extensions().generated().get(id);
         if (generated != null) node.producerId = generated.producerId();
         coordinates(node, unit.path(), value.span());
-        node.metadata = Json.writeCompact(metadata(reference, unit, owner));
+        node.metadata = Json.writeCompact(metadata(reference, unit, owner), model.analysisContext());
         result.nodes.add(node);
         result.declarations.add(declaration(reference, node, owner));
         if (owner != null) {

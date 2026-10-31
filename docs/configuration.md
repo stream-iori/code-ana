@@ -397,3 +397,36 @@ Rust 项目 `resources.index.worker_memory_bytes` 默认 268435456（256 MiB）�
 `[languages.python] enabled=true` 与 `[languages.python.discovery] inputs_manifest=".code-ana/python-inputs.json"` 同时显式配置。清单由 `scripts/export-python-inputs.py` 从外部准备的源码/依赖根导出，目标先固定 3.12/darwin；不会运行目标解释器。资源字段为 `python_result_bytes`、`python_fact_limit`、`python_scratch_bytes`，worker 内存沿用公共上限。完整示例和边界见 [Python worker](modules/python-worker.md)。
 
 导出器可选 `--pyproject PATH` 静态读取标准项目字段、setuptools 布局和 TEST 的 pytest pythonpath；无 pyproject 时继续显式根流程。`--extra` 选择可选依赖，`--scope` 默认 MAIN。显式根覆盖全部推导根；动态元数据不求值。schema 2 冻结被读取配置的哈希，仍接受 schema 1；控制文件变更要求重新导出，不能沿用旧基线。依赖请求和版本范围只作说明，不代表已满足。
+
+## 查询累计预算
+
+项目和用户配置均支持以下执行策略；每字段按项目、用户、内置默认值选择：
+
+```toml
+[resources.query]
+max_work = 100000
+max_payload_bytes = 67108864
+```
+
+两项均要求 `1..=i64::MAX`。根操作开始读取一次，配置修改在下次根查询生效；不进入语义指纹、不要求重建索引。历史查询仍使用当前项目配置，项目目录/配置已消失则使用用户配置或默认值；存在但非法的配置直接报错。续页使用原冻结信息。
+
+查询、FILES、pipeline 所有阶段和 subject、diff 两端和 impact、文本缓存共用一次累计账本。工作区文本查询在捕获前创建账本，目录发现、路径和捕获源码也计费；耗尽后不再读取源码或初始化缓存。revision/snapshot 元数据在反序列化前计费，候选解码前预收读取、过滤、去重、遍历四个工作单位；缓存重用和阶段处理另计工作。载荷在复制前累计，源码按捕获字节计费，结构化副本使用无分配序列化计数作保守上界；行投影为原字段保留两份字节的额度，包含映射副本。释放不返还。这些是逻辑工作/载荷额度，不是 RSS 或 SQLite 内部运算硬限制。
+
+耗尽后停止后续读取和展开，保留已经成立的结果，返回 `COMPUTATION_LIMIT`、`enumeration=false` 和可选 `resource_usage`（额度、已接受用量、首次被拒申请）。非 strict 仍退出 0，strict 退出 3。深度、记录、输出字节、取消和超时保持独立边界。缓存初始化受限不得发布或回退绕过预算。受限冻结页携带原资源信息，翻页不会继续计算或恢复额度。
+
+
+## 索引分析累计预算
+
+```toml
+[resources.index.analysis]
+max_work = 10000000
+max_nodes = 1000000
+max_payload_bytes = 536870912
+max_depth = 256
+```
+
+逐字段按项目、用户、内置默认值继承；前三项为1..=i64::MAX，深度为1..=4096。节点与载荷覆盖分析中的描述、模型、事实及保留副本，不等于最终图节点数或进程RSS。释放不退额度，重试不重新领额度；预算属于执行策略，不改变语义指纹。
+
+扣除冻结输入准入用量后，按实际语言Java/Rust/Python平均静态分片，余数顺序固定；每语言host取向上取整的1/4，其余worker额度再按稳定实例ID拆分，不借用其他语言或实例的余量。索引硬超限返回ANALYSIS_RESOURCE_LIMIT、整次不发布，旧head可读；超时与取消分别保留TIMEOUT/CANCELLED。
+
+三语言主要执行入口已接入累计回执；Java平台限制可比任务限额更严格，回执会记录实际局部拒绝，不能提高平台限额来让任务通过。Discover、未变复用与Java局部作用域已接入；当前严格worker22/Java11，帧分配前准入和剩余codec仍待收口；不能将这里的配置与已通过fixture扩大为所有内部运算和完整分发均已验收。

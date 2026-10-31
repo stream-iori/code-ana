@@ -186,12 +186,24 @@ pub struct RuntimeImplementation {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallRelation {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recursion: Option<Recursion>,
     pub from: String,
     pub to: String,
     pub sites: Vec<String>,
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Recursion {
+    Direct,
+}
+impl CallRelation {
+    pub fn recursion_for(from: &str, to: &str) -> Option<Recursion> {
+        (!from.is_empty() && from == to).then_some(Recursion::Direct)
+    }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TracePath {
@@ -305,6 +317,31 @@ impl<'de> Deserialize<'de> for Record {
 mod tests {
     use super::*;
     #[test]
+    fn direct_recursion_requires_equal_nonempty_ids() {
+        assert_eq!(
+            CallRelation::recursion_for("A#m()", "A#m()"),
+            Some(Recursion::Direct)
+        );
+        for (from, to) in [
+            ("", ""),
+            ("A#m()", "A#m(int)"),
+            ("A#m()", "B#m()"),
+            ("A#m()", "B#n()"),
+        ] {
+            assert_eq!(CallRelation::recursion_for(from, to), None);
+        }
+        let old: CallRelation =
+            serde_json::from_str(r#"{"from":"a","to":"b","sites":[],"kind":"resolved_call"}"#)
+                .unwrap();
+        assert!(old.recursion.is_none());
+        assert!(
+            serde_json::to_value(old)
+                .unwrap()
+                .get("recursion")
+                .is_none()
+        );
+    }
+    #[test]
     fn query_order_uses_identity_and_keeps_equal_records() {
         let fact = |id: &str, name: &str| -> Record {
             serde_json::from_value::<Fact>(serde_json::json!({"id":id,"kind":"declaration","owner":{"world":"w","producer":"p","kind":"source","id":"a"},"name":name})).unwrap().into()
@@ -321,6 +358,7 @@ mod tests {
         assert_eq!(names, vec!["Z", "A", "A"]);
         let mut calls = [
             Record::Call(CallRelation {
+                recursion: None,
                 from: "b".into(),
                 to: "a".into(),
                 kind: "calls".into(),
@@ -328,6 +366,7 @@ mod tests {
                 depth: None,
             }),
             Record::Call(CallRelation {
+                recursion: None,
                 from: "a".into(),
                 to: "b".into(),
                 kind: "calls".into(),
@@ -344,6 +383,7 @@ mod tests {
     #[test]
     fn endpoints_are_typed_and_display_records_cannot_enter_a_pipeline() {
         let record = Record::Call(CallRelation {
+            recursion: None,
             from: "a".into(),
             to: "b".into(),
             sites: vec!["s1".into(), "s2".into()],

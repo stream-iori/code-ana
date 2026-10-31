@@ -86,13 +86,13 @@ public final class FrameworkPlugins {
                             ? new com.anatomist.framework.lombok.LombokJavaModelExtension(
                                     context.projectRoot(), context.config().lombokStrict())
                             : new com.anatomist.framework.lombok.LombokJavaModelExtension(
-                                    context.projectRoot(), context.config().lombokStrict(), capturedConfigs));
+                                    context.projectRoot(), context.config().lombokStrict(), capturedConfigs, context.analysisContext()));
             evidence.add(
                     capturedConfigs == null
                             ? new com.anatomist.framework.lombok.LombokJavaCallEvidence(
                                     context.projectRoot())
                             : new com.anatomist.framework.lombok.LombokJavaCallEvidence(
-                                    context.projectRoot(), capturedConfigs));
+                                    context.projectRoot(), capturedConfigs, context.analysisContext()));
         }
         return new JavaModelAnalyzerRegistry(
                 declarations, analyzers, providers, resources, contracts, evidence);

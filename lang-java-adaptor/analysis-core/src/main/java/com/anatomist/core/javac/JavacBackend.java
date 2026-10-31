@@ -25,6 +25,7 @@ public final class JavacBackend implements JavaSemanticBackend {
     final JavacToolchain toolchain;
     final List<Path> classpath;
     final JavacOptions config;
+    final AnalysisContext analysisContext;
     private ParserResourceLimits resourceLimits = ParserResourceLimits.DEFAULT;
     IndexTimings timings;
     ScanPolicy policy;
@@ -44,7 +45,7 @@ public final class JavacBackend implements JavaSemanticBackend {
             List<SourceRoot> roots,
             JavacOptions options,
             JavacRunConfiguration run) {
-        var backend = new JavacBackend(root, toolchain, List.of(), roots, options);
+        var backend = new JavacBackend(root, toolchain, List.of(), roots, options, run.analysisContext());
         backend.setTimings(run.timings());
         backend.setModelBudgets(run.modelBudgets());
         backend.setDecodeBudgetBytes(run.decodeBudgetBytes());
@@ -284,7 +285,7 @@ public final class JavacBackend implements JavaSemanticBackend {
      * no local compiler errors can still carry processor-created signatures that were absent from
      * the clean fallback task. Keep that evidence separate from successful compilation.
      */
-    static void restorePartialProcessorDeclarations(
+    void restorePartialProcessorDeclarations(
             List<JavaUnit> attempted, JavacProtocol.Result failed, List<JavaUnit> fallback) {
         if (!failed.failure().isEmpty()) return;
         if (failed.diagnostics().stream()
@@ -319,7 +320,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                     Map.of(),
                                     Map.of(),
                                     List.of(),
-                                    Map.of("lombok_processor_partial", 1L))));
+                                    Map.of("lombok_processor_partial", 1L),analysisContext)));
         }
     }
 
@@ -478,6 +479,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                 config.analysisThreads(),
                                 timings);
             } catch (IOException failure) {
+            com.anatomist.core.HardResourceLimit.rethrow(failure);
                 throw new IllegalStateException("failed to prepare javac worker", failure);
             }
         }
@@ -543,7 +545,11 @@ public final class JavacBackend implements JavaSemanticBackend {
             JavacToolchain toolchain,
             List<Path> classpath,
             List<SourceRoot> sourceRoots,
-            JavacOptions config) {
+            JavacOptions config) { this(projectRoot,toolchain,classpath,sourceRoots,config,new AnalysisContext(AnalysisContext.Limits.defaults())); }
+    private JavacBackend(Path projectRoot,JavacToolchain toolchain,List<Path> classpath,List<SourceRoot> sourceRoots,JavacOptions config,AnalysisContext analysis) {
+        this.analysisContext=Objects.requireNonNull(analysis);
+        long entries=(long)sourceRoots.size()+classpath.size();
+        analysis.charge(entries+1,entries+1,1024L+64L*entries);
         this.projectRoot = projectRoot;
         this.sourceRoots = List.copyOf(sourceRoots);
         this.toolchain = toolchain;
@@ -652,6 +658,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                         : "");
                 identity = ContentHash.sha256(material);
             } catch (IOException failure) {
+            com.anatomist.core.HardResourceLimit.rethrow(failure);
                 throw new IllegalStateException("failed to identify javac worker", failure);
             } finally {
                 if (timings != null) timings.stop("parser_environment_fingerprint", started);
@@ -753,6 +760,7 @@ public final class JavacBackend implements JavaSemanticBackend {
             if (input == null) throw new IOException("packaged javac worker is missing");
             return HexFormat.of().formatHex(sha256(input.readAllBytes()));
         } catch (IOException failure) {
+            com.anatomist.core.HardResourceLimit.rethrow(failure);
             throw new IllegalStateException(failure);
         }
     }
@@ -803,7 +811,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                 toolchain.release(),
                                 classpath,
                                 sourceSignatures,
-                                mavenInputs)) {
+                                mavenInputs, JavacSignaturePlan.MAX_CATALOGUE_WEIGHT, analysisContext)) {
             signatures.setTimings(timings);
             if (timings != null) timings.stop("javac_signature_prepare", preparationStarted);
             long planStarted = timings == null ? 0 : timings.start();
@@ -834,6 +842,7 @@ public final class JavacBackend implements JavaSemanticBackend {
             return new ParseInventory(
                     targets.size(), targets.size(), inventory.parsed, inventory.failures);
         } catch (IOException failure) {
+            com.anatomist.core.HardResourceLimit.rethrow(failure);
             throw new IllegalStateException(
                     "JAVAC_SIGNATURE_FAILED: " + failure.getMessage(), failure);
         } finally {
@@ -1001,6 +1010,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                     try {
                         cached = JavacCompilationCache.valid(target);
                     } catch (IOException corrupt) {
+            com.anatomist.core.HardResourceLimit.rethrow(corrupt);
                         cached = false;
                     }
                     if (cached && timings != null) timings.addNanos("lombok_compile_cache_hit", 0);
@@ -1176,6 +1186,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                 return response;
             }
         } catch (IOException failure) {
+            com.anatomist.core.HardResourceLimit.rethrow(failure);
             throw new IllegalStateException(
                     "JAVAC_WORKER_FAILED: task="
                             + taskId

@@ -32,14 +32,27 @@ impl Drop for Stop {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn analyze(
     config: python::AnalysisConfig,
     manifest: Manifest,
     request: w::Analyze,
     attempt: &str,
     writer: &mut tokio::net::unix::OwnedWriteHalf,
+    grant: Option<AnalysisGrant>,
+    budget: AnalysisContext,
+    phase: Arc<std::sync::Mutex<&'static str>>,
 ) -> Result<()> {
     ensure!(request.full, "PYTHON_FULL_ANALYSIS_REQUIRED");
+    budget.charge(
+        manifest.files.len() as u64,
+        manifest.files.len() as u64,
+        manifest
+            .files
+            .iter()
+            .map(|f| (f.path.len() + f.world.len() + 256) as u64)
+            .sum(),
+    )?;
     let replacements = manifest
         .files
         .iter()
@@ -53,7 +66,7 @@ async fn analyze(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    write_frame(
+    codeana_contracts::write_frame_with_budget(
         writer,
         &envelope(
             attempt,
@@ -66,26 +79,41 @@ async fn analyze(
                 replacements,
             }),
         ),
+        Some(&budget),
     )
     .await?;
     let stopped = Arc::new(AtomicBool::new(false));
     let _stop = Stop(stopped.clone());
     let (sender, mut records) = GraphStream::channel();
+    let meter = budget.clone();
     let work = tokio::task::spawn_blocking(move || -> Result<_> {
         let check = || {
-            ensure!(!stopped.load(Ordering::Relaxed), "CANCELLED");
+            if stopped.load(Ordering::Relaxed) {
+                meter.cancel();
+            }
+            meter.checkpoint()?;
             Ok(())
         };
         eprintln!("codeana-python-phase=analyze");
-        let analysis = codeana_python_adaptor::frozen::analyze(&config, &check)?;
+        *phase.lock().unwrap() = "backend";
+        let analysis =
+            codeana_python_adaptor::frozen::analyze_with_context(&config, &check, &meter)?;
         eprintln!("codeana-python-phase=records");
-        codeana_contracts::worker_rows::produce(
+        *phase.lock().unwrap() = "records";
+        codeana_contracts::worker_rows::produce_with_budget(
             &sender,
             config.result_bytes,
             config.fact_limit,
             &check,
+            Some(&meter),
             |push| {
-                codeana_python_adaptor::records::emit(&analysis, &manifest, &request.profile, push)
+                codeana_python_adaptor::records::emit_with_context(
+                    &analysis,
+                    &manifest,
+                    &request.profile,
+                    &meter,
+                    push,
+                )
             },
         )
     });
@@ -93,27 +121,29 @@ async fn analyze(
     while let Some(item) = records.recv().await {
         match item.event {
             GraphStreamEvent::Batch(rows) => {
-                write_frame(
-                    writer,
-                    &envelope(attempt, Body::Chunk(w::Chunk { seq, rows })),
-                )
-                .await?;
+                let frame = envelope(attempt, Body::Chunk(w::Chunk { seq, rows }));
+
+                codeana_contracts::write_frame_with_budget(writer, &frame, Some(&budget)).await?;
                 seq += 1;
             }
             GraphStreamEvent::VerifiedEnd => break,
         }
     }
     let (count, checksum) = work.await??;
-    write_frame(
+    codeana_contracts::write_frame_with_budget(
         writer,
         &envelope(
             attempt,
             Body::End(w::End {
+                analysis_usage: grant.as_ref().map(|g| {
+                    codeana_contracts::analysis_budget::receipt(g, &budget.usage(), "records")
+                }),
                 chunks: seq,
                 count,
                 checksum,
             }),
         ),
+        Some(&budget),
     )
     .await?;
     Ok(())
@@ -123,10 +153,41 @@ async fn session(socket: UnixStream) -> Result<()> {
     let (mut input, mut writer) = socket.into_split();
     let mut frames = FrameReader::default();
     let mut selected: Option<(python::AnalysisConfig, Manifest)> = None;
+    let mut task_meter = AnalysisTaskMeter::default();
     let mut pending_ack = false;
     let mut session_attempt: Option<String> = None;
     loop {
-        let frame = frames.next(&mut input).await?;
+        let read = if let Some((_, budget)) = task_meter.active() {
+            frames.next_with_budget(&mut input, &budget).await
+        } else {
+            frames.next_bootstrap(&mut input).await
+        };
+        let frame = match read {
+            Ok(frame) => frame,
+            Err(error) => {
+                if let Some((grant, budget)) = task_meter.active() {
+                    let failure = codeana_contracts::analysis_budget::failure_receipt(
+                        &error,
+                        &grant,
+                        &budget,
+                        "input_decode",
+                    );
+                    let _ = write_frame(
+                        &mut writer,
+                        &envelope(
+                            frames
+                                .pending_attempt()
+                                .as_deref()
+                                .or(session_attempt.as_deref())
+                                .unwrap_or("invalid"),
+                            Body::Failure(failure),
+                        ),
+                    )
+                    .await;
+                }
+                return Err(error);
+            }
+        };
         let attempt = frame.attempt;
         // Discover and Analyze are separate attempts in the supervisor contract.
         if matches!(frame.body, Some(Body::Analyze(_))) && selected.is_some() && !pending_ack {
@@ -148,6 +209,31 @@ async fn session(socket: UnixStream) -> Result<()> {
                     h.protocol == WORKER_PROTOCOL_VERSION && h.fact_ir == VERSION,
                     "UNSUPPORTED_PROTOCOL"
                 );
+                let initialized = codeana_contracts::analysis_budget::begin_hello(
+                    &mut task_meter,
+                    &h,
+                    AnalysisLanguage::Python,
+                );
+                let (hello_grant, hello_budget) = match initialized {
+                    Ok(v) => v,
+                    Err(error) => {
+                        if let Some((g, b)) = task_meter.active() {
+                            let _ = write_frame(
+                                &mut writer,
+                                &envelope(
+                                    &attempt,
+                                    Body::Failure(
+                                        codeana_contracts::analysis_budget::failure_receipt(
+                                            &error, &g, &b, "discover",
+                                        ),
+                                    ),
+                                ),
+                            )
+                            .await;
+                        }
+                        return Err(error);
+                    }
+                };
                 write_frame(
                     &mut writer,
                     &envelope(
@@ -156,66 +242,148 @@ async fn session(socket: UnixStream) -> Result<()> {
                             protocol: WORKER_PROTOCOL_VERSION,
                             fact_ir: VERSION,
                             producer: python::PRODUCER.into(),
+                            analysis_usage: hello_grant.as_ref().map(|g| {
+                                codeana_contracts::analysis_budget::receipt(
+                                    g,
+                                    &hello_budget.usage(),
+                                    "discover",
+                                )
+                            }),
+                            ..Default::default()
                         }),
                     ),
                 )
                 .await?;
             }
             Some(Body::Discover(d)) => {
-                ensure!(
-                    d.java.is_none() && d.rust.is_none() && !pending_ack && selected.is_none(),
-                    "PYTHON_DISCOVERY_CONFIG"
+                let initialized = codeana_contracts::analysis_budget::begin_discovery(
+                    &mut task_meter,
+                    &d,
+                    AnalysisLanguage::Python,
                 );
-                let descriptor = d.python.context("PYTHON_DISCOVERY_REQUIRED")?;
-                let config =
-                    tokio::task::spawn_blocking(move || -> Result<python::AnalysisConfig> {
-                        ensure!(descriptor.bytes <= 32 << 20, "PYTHON_INPUT_BUDGET");
-                        let mut bytes = Vec::new();
-                        std::fs::File::open(&descriptor.input)?
-                            .take(descriptor.bytes + 1)
-                            .read_to_end(&mut bytes)?;
-                        ensure!(
-                            bytes.len() as u64 == descriptor.bytes
-                                && hash(&bytes) == descriptor.sha256,
-                            "PYTHON_INPUT_CHANGED"
-                        );
-                        let config: python::AnalysisConfig = serde_json::from_slice(&bytes)?;
-                        config.inputs.validate().map_err(anyhow::Error::msg)?;
-                        ensure!(
-                            config.result_bytes == descriptor.result_bytes
-                                && config.fact_limit == descriptor.fact_limit
-                                && config.scratch_bytes == descriptor.scratch_bytes,
-                            "PYTHON_BUDGET_MISMATCH"
-                        );
-                        Ok(config)
-                    })
-                    .await??;
-                let manifest: Manifest = map(&d.manifest.context("MANIFEST_REQUIRED")?)?;
-                let context = BuildContext {
-                    language: "python".into(),
-                    modules: config
-                        .inputs
-                        .contexts
-                        .iter()
-                        .map(|c| c.module.clone())
-                        .collect(),
-                    source_version: "3.12".into(),
-                    classpath: vec![],
-                    producer: python::PRODUCER.into(),
-                    capabilities: vec![
-                        python::ADAPTER_VERSION.into(),
-                        "declarations".into(),
-                        "references".into(),
-                        "calls".into(),
-                        format!("pyrefly-{}", codeana_python_adaptor::BACKEND_COMMIT),
-                    ],
+                let (grant, budget) = match initialized {
+                    Ok(active) => active,
+                    Err(error) => {
+                        if let Some((grant, budget)) = task_meter.active() {
+                            write_frame(
+                                &mut writer,
+                                &envelope(
+                                    &attempt,
+                                    Body::Failure(
+                                        codeana_contracts::analysis_budget::failure_receipt(
+                                            &error, &grant, &budget, "discover",
+                                        ),
+                                    ),
+                                ),
+                            )
+                            .await?;
+                            return Ok(());
+                        }
+                        return Err(error);
+                    }
                 };
-                write_frame(
-                    &mut writer,
-                    &envelope(&attempt, Body::Context(map(&context)?)),
-                )
-                .await?;
-                selected = Some((config, manifest));
+                let discovered: Result<()> = async {
+                    ensure!(
+                        d.java.is_none() && d.rust.is_none() && !pending_ack && selected.is_none(),
+                        "PYTHON_DISCOVERY_CONFIG"
+                    );
+                    let descriptor = d.python.context("PYTHON_DISCOVERY_REQUIRED")?;
+                    budget.charge(
+                        1,
+                        1,
+                        descriptor.bytes.saturating_mul(8).saturating_add(1024),
+                    )?;
+                    let decoding_budget = budget.clone();
+                    let config =
+                        tokio::task::spawn_blocking(move || -> Result<python::AnalysisConfig> {
+                            ensure!(descriptor.bytes <= 32 << 20, "PYTHON_INPUT_BUDGET");
+                            let mut bytes = Vec::new();
+                            std::fs::File::open(&descriptor.input)?
+                                .take(descriptor.bytes + 1)
+                                .read_to_end(&mut bytes)?;
+                            ensure!(
+                                bytes.len() as u64 == descriptor.bytes
+                                    && hash(&bytes) == descriptor.sha256,
+                                "PYTHON_INPUT_CHANGED"
+                            );
+                            let config: python::AnalysisConfig =
+                                codeana_contracts::json_budget::decode_with_budget(
+                                    &bytes,
+                                    &decoding_budget,
+                                )?;
+                            config.inputs.validate().map_err(anyhow::Error::msg)?;
+                            ensure!(
+                                config.result_bytes == descriptor.result_bytes
+                                    && config.fact_limit == descriptor.fact_limit
+                                    && config.scratch_bytes == descriptor.scratch_bytes,
+                                "PYTHON_BUDGET_MISMATCH"
+                            );
+                            Ok(config)
+                        })
+                        .await??;
+                    let manifest: Manifest = map(&d.manifest.context("MANIFEST_REQUIRED")?)?;
+                    budget.charge(
+                        config.inputs.contexts.len() as u64,
+                        config.inputs.contexts.len() as u64,
+                        128 * config.inputs.contexts.len() as u64,
+                    )?;
+                    let context = BuildContext {
+                        language: "python".into(),
+                        modules: config
+                            .inputs
+                            .contexts
+                            .iter()
+                            .map(|c| c.module.clone())
+                            .collect(),
+                        source_version: "3.12".into(),
+                        classpath: vec![],
+                        producer: python::PRODUCER.into(),
+                        capabilities: vec![
+                            "analysis-resources-v1".into(),
+                            python::ADAPTER_VERSION.into(),
+                            "declarations".into(),
+                            "references".into(),
+                            "calls".into(),
+                            format!("pyrefly-{}", codeana_python_adaptor::BACKEND_COMMIT),
+                        ],
+                    };
+                    codeana_contracts::write_frame_with_budget(
+                        &mut writer,
+                        &envelope(
+                            &attempt,
+                            Body::Context({
+                                let mut wire: w::BuildContext = map(&context)?;
+                                wire.analysis_usage = grant.as_ref().map(|g| {
+                                    codeana_contracts::analysis_budget::receipt(
+                                        g,
+                                        &budget.usage(),
+                                        "discover",
+                                    )
+                                });
+                                wire
+                            }),
+                        ),
+                        Some(&budget),
+                    )
+                    .await?;
+                    selected = Some((config, manifest));
+
+                    Ok(())
+                }
+                .await;
+                if let Err(error) = discovered {
+                    write_frame(
+                        &mut writer,
+                        &envelope(
+                            &attempt,
+                            Body::Failure(codeana_contracts::analysis_budget::failure_receipt(
+                                &error, &grant, &budget, "discover",
+                            )),
+                        ),
+                    )
+                    .await?;
+                    return Ok(());
+                }
             }
             Some(Body::Analyze(request)) => {
                 ensure!(!pending_ack, "PUBLISH_ACK_REQUIRED");
@@ -223,14 +391,28 @@ async fn session(socket: UnixStream) -> Result<()> {
                 let manifest: Manifest =
                     map(request.manifest.as_ref().context("MANIFEST_REQUIRED")?)?;
                 ensure!(manifest.id() == captured.id(), "INPUT_DRIFT");
+                let grant = Some(codeana_contracts::analysis_budget::required_grant(
+                    request.analysis_grant.as_ref(),
+                    AnalysisLanguage::Python,
+                )?);
+                let budget = task_meter.resume(
+                    &grant,
+                    request.deadline_ms.ok_or(AnalysisFailure::InvalidUsage)?,
+                )?;
+                let phase = Arc::new(std::sync::Mutex::new("input_decode"));
                 let result = tokio::select! {
                     biased;
-                    incoming = frames.next(&mut input) => {
+                    incoming = frames.next_cancel(&mut input) => {
                         let frame = incoming?;
-                        ensure!(frame.attempt == attempt && matches!(frame.body, Some(Body::Cancel(_))), "UNEXPECTED_WHILE_ANALYZING");
+                        codeana_contracts::analysis_budget::expect_cancel(frame,&attempt)?;
+                        let cancelled_phase=*phase.lock().unwrap();
+                        let _=tokio::time::timeout(std::time::Duration::from_millis(50),write_frame(&mut writer,&envelope(&attempt,Body::Failure(codeana_contracts::analysis_budget::cancelled_receipt(&grant,&budget,cancelled_phase,false))))).await;
                         return Ok(());
                     }
-                    result = analyze(config.clone(), manifest, request, &attempt, &mut writer) => result,
+                    result = async {
+                        let config=codeana_contracts::json_budget::clone_with_budget(config,&budget)?;
+                        analyze(config, manifest, request, &attempt, &mut writer, grant.clone(), budget.clone(), phase.clone()).await
+                    } => result,
                 };
                 if let Err(error) = result {
                     write_frame(
@@ -238,7 +420,18 @@ async fn session(socket: UnixStream) -> Result<()> {
                         &envelope(
                             &attempt,
                             Body::Failure(w::Failure {
-                                code: "PYTHON_ANALYSIS_FAILED".into(),
+                                analysis_usage: grant.as_ref().map(|g| {
+                                    codeana_contracts::analysis_budget::receipt(
+                                        g,
+                                        &budget.usage(),
+                                        *phase.lock().unwrap(),
+                                    )
+                                }),
+                                code: budget
+                                    .usage()
+                                    .failure
+                                    .map(|f| DomainError::analysis(f).code.to_string())
+                                    .unwrap_or_else(|| "PYTHON_ANALYSIS_FAILED".into()),
                                 message: format!("{error:#}"),
                             }),
                         ),
@@ -261,6 +454,28 @@ async fn session(socket: UnixStream) -> Result<()> {
                 )
                 .await?;
                 return Ok(());
+            }
+            Some(Body::Reuse(_)) => {
+                ensure!(selected.is_some() && !pending_ack, "ANALYSIS_REUSE_STATE");
+                let (grant, budget) = task_meter.active().context("DISCOVER_REQUIRED")?;
+                budget.checkpoint()?;
+                write_frame(
+                    &mut writer,
+                    &envelope(
+                        &attempt,
+                        Body::Reused(w::Reused {
+                            analysis_usage: grant.as_ref().map(|g| {
+                                codeana_contracts::analysis_budget::receipt(
+                                    g,
+                                    &budget.usage(),
+                                    "reused",
+                                )
+                            }),
+                        }),
+                    ),
+                )
+                .await?;
+                selected = None;
             }
             Some(Body::Cancel(_)) => return Ok(()),
             _ => bail!("UNEXPECTED_WORKER_MESSAGE"),

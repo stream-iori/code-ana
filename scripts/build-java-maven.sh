@@ -4,7 +4,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 set +u
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 cd "$repo_root/lang-java-adaptor"
-sdk env
+source "$repo_root/scripts/java-build-env.sh"
 set -u
 maven_executable="${CODEANA_MAVEN:-$(command -v mvn)}"
 maven_root="$(python3 - "$maven_executable" <<'PY'

@@ -14,6 +14,9 @@ macro_rules! codes {
     }
 }
 codes! {
+    AnalysisLimitsInvalid = "ANALYSIS_LIMITS_INVALID",
+    AnalysisUsageInvalid = "ANALYSIS_USAGE_INVALID",
+    AnalysisResourceLimit = "ANALYSIS_RESOURCE_LIMIT",
     SemanticInputsUnavailable = "SEMANTIC_INPUTS_UNAVAILABLE",
     InvalidMode = "INVALID_MODE",
     InvalidQueryLimit = "INVALID_QUERY_LIMIT",
@@ -481,6 +484,7 @@ codes! {
     ProjectWorkerMemoryLimit = "PROJECT_WORKER_MEMORY_LIMIT",
     PublishAck = "PUBLISH_ACK",
     PublishAckState = "PUBLISH_ACK_STATE",
+    ComputationLimit = "COMPUTATION_LIMIT",
     QueryWorkBudget = "QUERY_WORK_BUDGET",
     QueueBudget = "QUEUE_BUDGET",
     RecordBudget = "RECORD_BUDGET",
@@ -596,6 +600,16 @@ impl DomainError {
             code,
             context: context.into(),
         }
+    }
+    pub fn analysis(failure: crate::AnalysisFailure) -> Self {
+        let code = match &failure {
+            crate::AnalysisFailure::Limit { .. } => ErrorCode::AnalysisResourceLimit,
+            crate::AnalysisFailure::Deadline => ErrorCode::Timeout,
+            crate::AnalysisFailure::Cancelled => ErrorCode::Cancelled,
+            crate::AnalysisFailure::InvalidUsage => ErrorCode::AnalysisUsageInvalid,
+            crate::AnalysisFailure::InvalidLimits => ErrorCode::AnalysisLimitsInvalid,
+        };
+        Self::new(code, failure.to_string())
     }
     pub fn adapter(code: String, context: String) -> Self {
         Self::new(ErrorCode::Adapter(code), context)

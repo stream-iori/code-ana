@@ -56,6 +56,7 @@ async fn main() -> Result<()> {
                             protocol: WORKER_PROTOCOL_VERSION,
                             fact_ir: VERSION,
                             producer: "mock-fixture-v1".into(),
+                            ..Default::default()
                         }),
                     ),
                 )
@@ -98,6 +99,8 @@ async fn main() -> Result<()> {
                         &envelope(
                             &attempt,
                             Body::Failure(w::Failure {
+                                analysis_usage: None,
+
                                 code: "UNKNOWN_FIXTURE_INPUT".into(),
                                 message: manifest.content_digest(),
                             }),
@@ -140,6 +143,8 @@ async fn main() -> Result<()> {
                         &envelope(
                             &attempt,
                             Body::Replan(w::Replan {
+                                analysis_usage: None,
+
                                 reason: "fixture requires full replacement".into(),
                             }),
                         ),
@@ -226,6 +231,8 @@ async fn main() -> Result<()> {
                     &envelope(
                         &attempt,
                         Body::End(w::End {
+                            analysis_usage: None,
+
                             chunks: graph_rows.len().div_ceil(64) as u64,
                             count: graph_rows.len() as u64,
                             checksum,

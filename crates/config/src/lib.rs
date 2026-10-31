@@ -120,6 +120,8 @@ pub fn load_user(home: &Path) -> Result<UserConfig> {
             ..Default::default()
         }
     };
+    validate_query_resources(&u.resources.query)?;
+    u.resources.index.analysis.validate()?;
     let workers = u.limits.max_workers.get_or_insert(2);
     ensure!(
         (1..=8).contains(workers),
@@ -230,6 +232,7 @@ pub(crate) fn resolve_text(
     // Sources for defaulted scalar fields are materialized for doctor.
 
     default_origins(&serde_json::to_value(&c)?, String::new(), &mut origins);
+    validate_query_resources(&c.resources.query)?;
     let semantic_digest = digest(&(&c.languages, &c.modules));
     let capture_digest = digest(&(&c.scan, &c.versions.capture));
     let config_digest = digest(&c);
@@ -283,6 +286,7 @@ fn resolve_common(c: &mut ProjectConfig, origins: &mut BTreeMap<String, String>)
 }
 
 fn validate_index_resources(limits: &IndexResources) -> Result<()> {
+    limits.analysis.validate()?;
     if let Some(memory) = limits.worker_memory_bytes {
         ensure!(
             (16 * 1024 * 1024..=4 * 1024 * 1024 * 1024).contains(&memory),
@@ -952,6 +956,7 @@ fn add_captured(
 }
 
 struct CaptureSelection<'a> {
+    budget: Option<&'a ResourceBudget>,
     root: &'a Path,
     effective: &'a Effective,
     includes: globset::GlobSet,
@@ -1025,6 +1030,9 @@ fn capture_workspace(
                 )
         })
     {
+        if let Some(b) = policy.budget {
+            b.charge(1, 0)?;
+        }
         *scanned += 1;
         ensure!(
             *scanned <= 100_000,
@@ -1037,6 +1045,9 @@ fn capture_workspace(
         let entry = entry?;
         if entry.depth() == 0 || entry.file_type().is_dir() {
             continue;
+        }
+        if let Some(b) = policy.budget {
+            b.charge(1, entry.path().as_os_str().as_encoded_bytes().len() as u64)?;
         }
         let p = entry
             .path()
@@ -1093,7 +1104,14 @@ fn capture_workspace(
             entry.metadata()?.len() <= MAX_FRAME as u64,
             codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureFileBudget, "")
         );
-        let bytes = bounded_read(entry.path(), MAX_FRAME)?;
+        let size = entry.metadata()?.len();
+        if let Some(b) = policy.budget {
+            b.charge(1, size)?;
+        }
+        let bytes = bounded_read(
+            entry.path(),
+            usize::try_from(size).unwrap_or(usize::MAX).min(MAX_FRAME),
+        )?;
         *total += bytes.len();
         ensure!(
             bytes.len() <= MAX_FRAME && *total <= MAX_CAPTURE_BYTES,
@@ -1426,6 +1444,16 @@ fn capture_java_metadata(
 }
 
 pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
+    capture_metered(root, request, None)
+}
+pub fn capture_query(root: &Path, request: &Request, budget: &ResourceBudget) -> Result<Capture> {
+    capture_metered(root, request, Some(budget))
+}
+fn capture_metered(
+    root: &Path,
+    request: &Request,
+    budget: Option<&ResourceBudget>,
+) -> Result<Capture> {
     let started = std::time::Instant::now();
     let deadline = std::time::Duration::from_secs(if request.deadline_seconds == 0 {
         120
@@ -1455,6 +1483,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
     );
     let total = 0;
     let policy = CaptureSelection {
+        budget,
         root: &root,
         effective: &effective,
         includes,
@@ -1478,6 +1507,7 @@ pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
     for unit in &effective.input_units {
         if let Some(child) = &unit.effective {
             let child_policy = CaptureSelection {
+                budget,
                 effective: child,
                 root: &root,
                 includes: policy.includes.clone(),
@@ -1733,6 +1763,83 @@ pub fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     );
     Ok(bytes)
 }
+/// Resolve once at the root index boundary, before worker discovery.
+pub fn analysis_limits(root: &Path, home: &Path) -> Result<codeana_model::AnalysisLimits> {
+    let user = load_user(home)?;
+    let project = execution_project(root)?;
+    Ok(project
+        .as_ref()
+        .map(|p| &p.resources.index.analysis)
+        .unwrap_or(&AnalysisResources::default())
+        .resolve(&user.resources.index.analysis)?)
+}
+fn execution_project(root: &Path) -> Result<Option<ProjectConfig>> {
+    let path = root.join(".code-ana/config.toml");
+    let project = match std::fs::metadata(&path) {
+        Ok(_) => {
+            ensure!(
+                path.canonicalize()?.starts_with(root.canonicalize()?),
+                DomainError::new(ErrorCode::ConfigPathEscape, "")
+            );
+            Some(toml::from_str::<ProjectConfig>(std::str::from_utf8(
+                &bounded_read(&path, 1024 * 1024)?,
+            )?)?)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+        Err(e) => return Err(e.into()),
+    };
+    if let Some(project) = &project {
+        ensure!(
+            project.schema_version == 1 && project.kind == "project",
+            "INVALID_PROJECT_CONFIG"
+        );
+    }
+    Ok(project)
+}
+/// Execution-only limits, deliberately independent of semantic input resolution.
+pub fn query_limits(root: &Path, home: &Path) -> Result<ResourceLimits> {
+    let user = load_user(home)?;
+    let project = execution_project(root)?;
+    let p = project.as_ref().map(|p| &p.resources.query);
+    let u = &user.resources.query;
+    let defaults = ResourceLimits::default();
+    let limits = ResourceLimits {
+        max_work: p
+            .and_then(|p| p.max_work)
+            .or(u.max_work)
+            .unwrap_or(defaults.max_work),
+        max_payload_bytes: p
+            .and_then(|p| p.max_payload_bytes)
+            .or(u.max_payload_bytes)
+            .unwrap_or(defaults.max_payload_bytes),
+    };
+    ensure!(
+        (1..=i64::MAX as u64).contains(&limits.max_work)
+            && (1..=i64::MAX as u64).contains(&limits.max_payload_bytes),
+        "INVALID_QUERY_RESOURCE_LIMIT"
+    );
+    // Validate shadowed fields too: a project override must not hide invalid user settings.
+    for q in [Some(u), p].into_iter().flatten() {
+        for v in [q.max_work, q.max_payload_bytes].into_iter().flatten() {
+            ensure!(
+                (1..=i64::MAX as u64).contains(&v),
+                "INVALID_QUERY_RESOURCE_LIMIT"
+            );
+        }
+    }
+    Ok(limits)
+}
+
+fn validate_query_resources(q: &QueryResources) -> Result<()> {
+    for v in [q.max_work, q.max_payload_bytes].into_iter().flatten() {
+        ensure!(
+            (1..=i64::MAX as u64).contains(&v),
+            "INVALID_QUERY_RESOURCE_LIMIT"
+        );
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
@@ -2358,6 +2465,64 @@ mod query_limit_tests {
                 super::load_user(home.path()).is_ok(),
                 (1..=8).contains(&value)
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod query_resource_tests {
+    use super::*;
+    #[test]
+    fn inherited_limits_hot_reload_and_missing_project() {
+        let home = tempfile::tempdir().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(home.path().join("config.toml"), "schema_version=1\nkind=\"user\"\n[resources.query]\nmax_work=4294967296\nmax_payload_bytes=12345\n").unwrap();
+        assert_eq!(
+            query_limits(root.path(), home.path()).unwrap().max_work,
+            4294967296
+        );
+        std::fs::create_dir(root.path().join(".code-ana")).unwrap();
+        let path = root.path().join(".code-ana/config.toml");
+        std::fs::write(
+            &path,
+            "schema_version=1\nkind=\"project\"\n[resources.query]\nmax_work=7\n",
+        )
+        .unwrap();
+        let limits = query_limits(root.path(), home.path()).unwrap();
+        assert_eq!(
+            limits,
+            ResourceLimits {
+                max_work: 7,
+                max_payload_bytes: 12345
+            }
+        );
+        std::fs::write(
+            &path,
+            "schema_version=1\nkind=\"project\"\n[resources.query]\nmax_work=8\n",
+        )
+        .unwrap();
+        assert_eq!(query_limits(root.path(), home.path()).unwrap().max_work, 8);
+        assert_eq!(
+            query_limits(&root.path().join("deleted"), home.path())
+                .unwrap()
+                .max_work,
+            4294967296
+        );
+        for value in [
+            "0",
+            "-1",
+            "\"100\"",
+            "9223372036854775808",
+            "18446744073709551616",
+        ] {
+            std::fs::write(
+                &path,
+                format!(
+                    "schema_version=1\nkind=\"project\"\n[resources.query]\nmax_work={value}\n"
+                ),
+            )
+            .unwrap();
+            assert!(query_limits(root.path(), home.path()).is_err(), "{value}");
         }
     }
 }

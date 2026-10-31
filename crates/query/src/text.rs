@@ -33,6 +33,7 @@ pub(crate) fn text_matcher(req: &Request) -> Result<Option<regex::Regex>> {
 }
 
 fn lines(
+    reader: &dyn SourceContext,
     text: &str,
     source: &SourceUnit,
     req: &Request,
@@ -51,7 +52,22 @@ fn lines(
     let mut batch = Vec::new();
     let mut batch_bytes = 0;
     while let Some(&(index, line)) = following.front() {
+        if reader.charge(1, 0).is_err() {
+            break;
+        }
         if matcher.map_or_else(|| line.contains(&req.selector), |m| m.is_match(line)) {
+            let copies = line.len()
+                + source.path.len()
+                + source.hash.len()
+                + previous.iter().map(|(_, t)| t.len()).sum::<usize>()
+                + following
+                    .iter()
+                    .skip(1)
+                    .map(|(_, t)| t.len())
+                    .sum::<usize>();
+            if reader.charge(1, copies as u64).is_err() {
+                break;
+            }
             let record = Record::Text(TextMatch {
                 path: source.path.clone(),
                 line: index + 1,
@@ -147,6 +163,9 @@ fn stream_text_candidates_query(
     let paths = paths.build()?;
     let mut evidence = selection_evidence(reader, req);
     for source in &reader.manifest().files {
+        if reader.charge(1, 0).is_err() {
+            break;
+        }
         if (!req.scope.is_empty() && req.scope != "ALL" && req.scope != source.scope)
             || (!req.module.is_empty() && req.module != source.module)
             || (!req.world.is_empty() && req.world != source.world)
@@ -158,13 +177,16 @@ fn stream_text_candidates_query(
         {
             continue;
         }
+        if reader.charge(1, source.size).is_err() {
+            break;
+        }
         let bytes = read_source(source)?;
         ensure!(
             hash(&bytes) == source.hash,
             codeana_model::DomainError::new(codeana_model::ErrorCode::SourceHashMismatch, "")
         );
         match std::str::from_utf8(&bytes) {
-            Ok(text) => lines(text, source, req, matcher.as_ref(), sink)?,
+            Ok(text) => lines(reader, text, source, req, matcher.as_ref(), sink)?,
             Err(_) => {
                 evidence.enumeration = false;
                 evidence.semantic = false;
@@ -173,6 +195,9 @@ fn stream_text_candidates_query(
                     .push(format!("text_encoding_unsupported:{}", source.path));
             }
         }
+    }
+    if let Some(b) = reader.resource_budget() {
+        b.apply(&mut evidence);
     }
     Ok(Output {
         revision: reader.revision().id.to_string(),
@@ -208,6 +233,15 @@ where
 
 #[cfg(test)]
 mod tests {
+    struct NoBudget;
+    impl SourceContext for NoBudget {
+        fn manifest(&self) -> &Manifest {
+            unreachable!()
+        }
+        fn revision(&self) -> &Revision {
+            unreachable!()
+        }
+    }
     use super::*;
 
     fn upstream_source(text: &str) -> SourceUnit {
@@ -235,6 +269,7 @@ mod tests {
         };
         let mut rows = Vec::new();
         lines(
+            &NoBudget,
             text,
             &source,
             &req,
@@ -259,7 +294,7 @@ mod tests {
         );
         req.text_context = 0;
         rows.clear();
-        lines(text, &source, &req, None, &mut |batch| {
+        lines(&NoBudget, text, &source, &req, None, &mut |batch| {
             rows.extend(batch);
             Ok(())
         })
@@ -287,6 +322,7 @@ mod tests {
         req.text_regex = false;
         let mut count = 0;
         lines(
+            &NoBudget,
             "hit\nhit\nhit\n",
             &upstream_source("hit\nhit\nhit\n"),
             &req,
@@ -310,10 +346,17 @@ mod tests {
         };
         for message in ["closed output", "TEXT_SEARCH_TIMEOUT"] {
             let mut calls = 0;
-            let error = lines(&text, &upstream_source(&text), &req, None, &mut |_| {
-                calls += 1;
-                anyhow::bail!("{message}")
-            })
+            let error = lines(
+                &NoBudget,
+                &text,
+                &upstream_source(&text),
+                &req,
+                None,
+                &mut |_| {
+                    calls += 1;
+                    anyhow::bail!("{message}")
+                },
+            )
             .unwrap_err();
             assert_eq!(error.to_string(), message);
             assert_eq!(calls, 1);
@@ -341,7 +384,7 @@ mod tests {
         };
         let mut count = 0;
         let mut last = Value::Null;
-        lines(&text, &source, &req, None, &mut |batch| {
+        lines(&NoBudget, &text, &source, &req, None, &mut |batch| {
             assert!(batch.len() <= 512);
             count += batch.len();
             if let Some(row) = batch.last() {

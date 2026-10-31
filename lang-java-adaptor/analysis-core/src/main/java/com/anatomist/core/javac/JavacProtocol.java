@@ -85,8 +85,8 @@ final class JavacProtocol {
             JavacBatchProtocol.Result result,
             java.util.function.Consumer<JavaUnit> consumer,
             JavacDeclarationCache.Lease cache,
-            long decodeBudgetBytes)
-            throws IOException {
+            long decodeBudgetBytes) throws IOException { return response(result, consumer, cache, decodeBudgetBytes, null); }
+    static Result response(JavacBatchProtocol.Result result, java.util.function.Consumer<JavaUnit> consumer, JavacDeclarationCache.Lease cache, long decodeBudgetBytes, com.anatomist.core.AnalysisContext analysis) throws IOException {
         List<JavaUnit> units = new ArrayList<>();
         try {
             java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
@@ -97,7 +97,7 @@ final class JavacProtocol {
                                     java.nio.file.Files.newInputStream(result.request().result()),
                                     digest),
                             65536)) {
-                decoded = response(input, units::add, cache, 0, true, decodeBudgetBytes);
+                decoded = response(input, units::add, cache, 0, true, decodeBudgetBytes, analysis);
             }
             if (decoded.bytes() != result.bytes()
                     || !HexFormat.of().formatHex(digest.digest()).equals(result.sha256()))
@@ -147,8 +147,8 @@ final class JavacProtocol {
             JavacDeclarationCache.Lease cache,
             long launchedNanos,
             boolean requireEof,
-            long decodeBudgetBytes)
-            throws IOException {
+            long decodeBudgetBytes) throws IOException { return response(input, consumer, cache, launchedNanos, requireEof, decodeBudgetBytes, null); }
+    static Result response(InputStream input, java.util.function.Consumer<JavaUnit> consumer, JavacDeclarationCache.Lease cache, long launchedNanos, boolean requireEof, long decodeBudgetBytes, com.anatomist.core.AnalysisContext analysis) throws IOException {
         if (decodeBudgetBytes < (64L << 10) || decodeBudgetBytes > (2L << 30))
             throw new IllegalArgumentException("JAVA_MODEL_DECODE_BYTES_RANGE");
         long receiveStarted = System.nanoTime(), consumerNanos = 0;
@@ -157,7 +157,7 @@ final class JavacProtocol {
                         input instanceof BufferedInputStream
                                 ? input
                                 : new BufferedInputStream(input, 65536));
-        var budget = new JavacDecodeBudget(decodeBudgetBytes);
+        var budget = new JavacDecodeBudget(decodeBudgetBytes, analysis);
         DataInputStream in = new JavacDecodeBudget.Input(measured, budget);
         if (in.readInt() != MAGIC)
             throw new IOException("JAVAC_PROTOCOL_INVALID: worker protocol mismatch");
@@ -355,8 +355,9 @@ final class JavacProtocol {
 
     private static Object value(DataInputStream in, List<String> dictionary, int depth)
             throws IOException {
-        JavacDecodeBudget.take(in, 64);
+        JavacDecodeBudget.depth(in, depth + 1, 513);
         if (depth > 512) throw new IOException("protocol nesting exceeds budget");
+        JavacDecodeBudget.take(in, 64);
         return switch (in.readUnsignedByte()) {
             case 0 -> null;
             case 1 -> {
@@ -443,7 +444,7 @@ final class JavacProtocol {
 
     private static int count(DataInputStream in, int maximum) throws IOException {
         int value = length(in, maximum);
-        JavacDecodeBudget.take(in, 64L * value);
+        JavacDecodeBudget.count(in, value);
         return value;
     }
 

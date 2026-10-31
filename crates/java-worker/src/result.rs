@@ -8,7 +8,9 @@ use codeana_contracts::{
     graph_archive::{self, Builder},
     java::OutputLimits,
 };
-use codeana_model::{Manifest, Owner};
+#[cfg(test)]
+use codeana_model::Manifest;
+use codeana_model::Owner;
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
@@ -23,15 +25,15 @@ struct Envelope {
     replacements: Vec<Owner>,
     archive: Descriptor,
 }
-struct EnvelopeSeed(OutputLimits);
-struct OwnersSeed(u64);
-impl<'de> DeserializeSeed<'de> for OwnersSeed {
+struct EnvelopeSeed<'a>(OutputLimits, Option<&'a codeana_model::AnalysisContext>);
+struct OwnersSeed<'a>(u64, Option<&'a codeana_model::AnalysisContext>);
+impl<'de> DeserializeSeed<'de> for OwnersSeed<'_> {
     type Value = Vec<Owner>;
     fn deserialize<D: de::Deserializer<'de>>(self, decoder: D) -> Result<Self::Value, D::Error> {
         decoder.deserialize_seq(self)
     }
 }
-impl<'de> Visitor<'de> for OwnersSeed {
+impl<'de> Visitor<'de> for OwnersSeed<'_> {
     type Value = Vec<Owner>;
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("bounded owner array")
@@ -42,25 +44,29 @@ impl<'de> Visitor<'de> for OwnersSeed {
             if owners.len() as u64 >= self.0 {
                 return Err(de::Error::custom("OWNER_BUDGET"));
             }
+            if let Some(budget) = self.1 {
+                budget.charge(1, 1, 128).map_err(de::Error::custom)?;
+            }
             owners.push(owner);
         }
         Ok(owners)
     }
 }
 
-impl<'de> DeserializeSeed<'de> for EnvelopeSeed {
+impl<'de> DeserializeSeed<'de> for EnvelopeSeed<'_> {
     type Value = Envelope;
     fn deserialize<D: de::Deserializer<'de>>(self, d: D) -> Result<Envelope, D::Error> {
         d.deserialize_map(self)
     }
 }
-impl<'de> Visitor<'de> for EnvelopeSeed {
+impl<'de> Visitor<'de> for EnvelopeSeed<'_> {
     type Value = Envelope;
     fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("native archive descriptor")
     }
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Envelope, A::Error> {
-        let (mut version, mut mode, mut replacements, mut archive) = (None, None, None, None);
+        let (mut version, mut usage_known, mut mode, mut replacements, mut archive) =
+            (None, None, None, None, None);
         let mut seen = BTreeSet::new();
         while let Some(key) = map.next_key::<String>()? {
             if !seen.insert(key.clone()) {
@@ -68,18 +74,25 @@ impl<'de> Visitor<'de> for EnvelopeSeed {
             }
             match key.as_str() {
                 "version" => version = Some(map.next_value::<u32>()?),
+                "usage_known" => usage_known = Some(map.next_value::<bool>()?),
                 "mode" => mode = Some(map.next_value::<String>()?),
                 "replacements" => {
-                    replacements = Some(map.next_value_seed(OwnersSeed(self.0.facts))?)
+                    replacements = Some(map.next_value_seed(OwnersSeed(self.0.facts, self.1))?)
                 }
                 "graph_archive" => archive = Some(map.next_value::<Descriptor>()?),
+                "analysis_usage" => {
+                    map.next_value::<de::IgnoredAny>()?;
+                }
                 _ => {
                     return Err(de::Error::custom("UNKNOWN_RESULT_FIELD"));
                 }
             }
         }
-        if version != Some(10) {
+        if version != Some(codeana_model::JAVA_ANALYSIS_VERSION) {
             return Err(de::Error::custom("JAVA_MODEL_VERSION_MISMATCH"));
+        }
+        if usage_known != Some(true) {
+            return Err(de::Error::custom("ANALYSIS_USAGE_INCOMPLETE"));
         }
         let mode = mode.ok_or_else(|| de::Error::missing_field("mode"))?;
         if !matches!(mode.as_str(), "full" | "delta") {
@@ -93,17 +106,19 @@ impl<'de> Visitor<'de> for EnvelopeSeed {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn load_into(
     input: impl Read,
     limits: OutputLimits,
     root: &Path,
     consume: bool,
+    budget: Option<&codeana_model::AnalysisContext>,
     mut begin: impl FnMut(&str, &[Owner]) -> Result<()>,
     mut emit: impl FnMut(Row) -> Result<()>,
     check: impl Fn() -> Result<()>,
 ) -> Result<(String, Vec<Owner>)> {
     let mut decoder = serde_json::Deserializer::from_reader(input.take(64 << 20));
-    let envelope = EnvelopeSeed(limits).deserialize(&mut decoder)?;
+    let envelope = EnvelopeSeed(limits, budget).deserialize(&mut decoder)?;
     decoder.end()?;
     let d = envelope.archive;
     ensure!(
@@ -137,7 +152,7 @@ fn load_into(
         if position % 256 == 0 {
             check()?;
         }
-        let row = graph_archive::read_row(&mut reader, &mut digest)?.context(
+        let row = graph_archive::read_row_with_budget(&mut reader, &mut digest, budget)?.context(
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveTruncated, ""),
         )?;
         emit(row)?;
@@ -161,16 +176,16 @@ fn load_into(
     }
     Ok((envelope.mode, envelope.replacements))
 }
-pub fn read_owned_stream(
+pub fn read_owned_stream_with_budget(
     input: impl Read,
-    _manifest: &Manifest,
     limits: OutputLimits,
     root: &Path,
+    budget: &codeana_model::AnalysisContext,
     begin: impl FnMut(&str, &[Owner]) -> Result<()>,
     emit: impl FnMut(Row) -> Result<()>,
     check: impl Fn() -> Result<()>,
 ) -> Result<()> {
-    load_into(input, limits, root, true, begin, emit, check)?;
+    load_into(input, limits, root, true, Some(budget), begin, emit, check)?;
     Ok(())
 }
 #[cfg(test)]
@@ -186,6 +201,7 @@ pub fn read_owned(
         limits,
         root,
         true,
+        None,
         |_, _| Ok(()),
         |r| archive.push(&r),
         || Ok(()),
@@ -199,6 +215,7 @@ pub fn probe(bytes: &[u8], root: &Path) -> Result<Vec<u8>> {
         OutputLimits::default(),
         root,
         false,
+        None,
         |_, _| Ok(()),
         |r| {
             rows.push(r);
@@ -207,7 +224,7 @@ pub fn probe(bytes: &[u8], root: &Path) -> Result<Vec<u8>> {
         || Ok(()),
     )?;
     Ok(serde_json::to_vec(
-        &serde_json::json!({"version":10,"mode":mode,"replacements":replacements,"rows":rows}),
+        &serde_json::json!({"version":codeana_model::JAVA_ANALYSIS_VERSION,"usage_known":true,"mode":mode,"replacements":replacements,"rows":rows}),
     )?)
 }
 pub fn probe_archive(
@@ -222,6 +239,7 @@ pub fn probe_archive(
         limits,
         root,
         false,
+        None,
         |_, _| Ok(()),
         |r| archive.push(&r),
         || Ok(()),
@@ -229,13 +247,53 @@ pub fn probe_archive(
     let sealed = archive.seal()?;
     std::fs::copy(sealed.path(), destination)?;
     Ok(serde_json::to_string(
-        &serde_json::json!({"version":10,"mode":mode,"replacements":replacements,"graph_archive":{"format":"GRA1","path":destination,"count":sealed.count,"bytes":sealed.bytes,"sha256":sealed.checksum}}),
+        &serde_json::json!({"version":codeana_model::JAVA_ANALYSIS_VERSION,"usage_known":true,"mode":mode,"replacements":replacements,"graph_archive":{"format":"GRA1","path":destination,"count":sealed.count,"bytes":sealed.bytes,"sha256":sealed.checksum}}),
     )?)
 }
+/// Read only the small receipt; ignored graph descriptors/owners are not retained.
+/// The normal reader still validates the complete descriptor and archive afterward.
+pub fn analysis_receipt(
+    input: impl Read,
+) -> Result<Option<codeana_contracts::engine_request::EngineAnalysisReceipt>> {
+    #[derive(serde::Deserialize)]
+    struct Probe {
+        version: u32,
+        usage_known: bool,
+        analysis_usage: Option<codeana_contracts::engine_request::EngineAnalysisReceipt>,
+    }
+    let probe = serde_json::from_reader::<_, Probe>(input.take(64 << 20))?;
+    ensure!(
+        probe.version == codeana_model::JAVA_ANALYSIS_VERSION,
+        "ABI_RESULT_VERSION"
+    );
+    ensure!(
+        probe.usage_known == probe.analysis_usage.is_some(),
+        "ANALYSIS_USAGE_REQUIRED"
+    );
+    Ok(probe.analysis_usage)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use codeana_contracts::graph::{Cell, Table, cell::Value};
+    #[test]
+    fn strict_receipt_requires_current_version_and_explicit_known_state() {
+        for payload in [
+            r#"{"version":10,"usage_known":false}"#,
+            r#"{"version":11}"#,
+            r#"{"version":11,"usage_known":true}"#,
+        ] {
+            assert!(analysis_receipt(payload.as_bytes()).is_err());
+        }
+        assert!(
+            analysis_receipt(
+                br#"{"version":11,"usage_known":false,"error":"NATIVE_HEAP_EXHAUSTED"}"#.as_slice()
+            )
+            .unwrap()
+            .is_none()
+        );
+    }
     fn archive(root: &Path) -> Result<(GraphArchive, serde_json::Value)> {
         let mut builder = Builder::new(Some(root), 1 << 20, 100)?;
         builder.push(&Row {
@@ -249,8 +307,37 @@ mod tests {
             ],
         })?;
         let archive = builder.seal()?;
-        let value = serde_json::json!({"version":10,"mode":"full","replacements":[],"graph_archive":{"format":"GRA1","path":archive.path(),"count":archive.count,"bytes":archive.bytes,"sha256":archive.checksum}});
+        let value = serde_json::json!({"version":codeana_model::JAVA_ANALYSIS_VERSION,"usage_known":true,"mode":"full","replacements":[],"graph_archive":{"format":"GRA1","path":archive.path(),"count":archive.count,"bytes":archive.bytes,"sha256":archive.checksum}});
         Ok((archive, value))
+    }
+    #[test]
+    fn archive_descriptor_never_certifies_missing_or_unknown_usage() -> Result<()> {
+        let root = tempfile::tempdir()?;
+        let (_archive, mut value) = archive(root.path())?;
+        for known in [None, Some(false)] {
+            if let Some(known) = known {
+                value["usage_known"] = serde_json::json!(known);
+            } else {
+                value.as_object_mut().unwrap().remove("usage_known");
+            }
+            let bytes = serde_json::to_vec(&value)?;
+            let error = load_into(
+                bytes.as_slice(),
+                OutputLimits {
+                    bytes: 1 << 20,
+                    facts: 100,
+                },
+                root.path(),
+                false,
+                None,
+                |_, _| panic!("incomplete usage must fail before Begin"),
+                |_| panic!("no provisional row"),
+                || Ok(()),
+            )
+            .unwrap_err();
+            assert!(error.to_string().contains("ANALYSIS_USAGE_INCOMPLETE"));
+        }
+        Ok(())
     }
     #[test]
     fn late_sha_failure_does_not_delete_or_certify_provisional_rows() -> Result<()> {
@@ -264,6 +351,7 @@ mod tests {
                 OutputLimits::default(),
                 root.path(),
                 true,
+                None,
                 |_, _| Ok(()),
                 |_| {
                     observed += 1;

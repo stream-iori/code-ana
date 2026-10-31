@@ -22,13 +22,15 @@ final class JavacDeclarations {
             if (frame.read() != -1) throw new IOException("trailing declaration inventory data");
             return List.copyOf(declarations);
         } catch (IllegalArgumentException invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
             throw new IOException("invalid declaration inventory", invalid);
         }
     }
 
     private static JavaDeclaration declaration(DataInputStream in, int depth) throws IOException {
-        JavacDecodeBudget.take(in, 128);
+        JavacDecodeBudget.depth(in, depth + 1, 129);
         depth(depth);
+        JavacDecodeBudget.take(in, 128);
         var symbol =
                 new JavaSymbol(
                         string(in),
@@ -94,14 +96,16 @@ final class JavacDeclarations {
         try {
             for (int i = 0; i < count; i++) annotations.add(annotation(in, 0));
         } catch (IllegalArgumentException invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
             throw new IOException("invalid compiler annotation", invalid);
         }
         return List.copyOf(annotations);
     }
 
     private static JavaAnnotation annotation(DataInputStream in, int depth) throws IOException {
-        JavacDecodeBudget.take(in, 128);
+        JavacDecodeBudget.depth(in, depth + 1, 129);
         depth(depth);
+        JavacDecodeBudget.take(in, 128);
         String descriptor = string(in);
         JavaAnnotation.Retention retention = JavaAnnotation.Retention.valueOf(string(in));
         int count = count(in, 100000);
@@ -117,8 +121,9 @@ final class JavacDeclarations {
     }
 
     private static JavaBinaryType.Value value(DataInputStream in, int depth) throws IOException {
-        JavacDecodeBudget.take(in, 128);
+        JavacDecodeBudget.depth(in, depth + 1, 129);
         depth(depth);
+        JavacDecodeBudget.take(in, 128);
         return switch (in.readUnsignedByte()) {
             case 0 -> null;
             case 1 -> new JavaBinaryType.Scalar(in.readBoolean());
@@ -176,7 +181,7 @@ final class JavacDeclarations {
 
     private static int count(DataInputStream in, int maximum) throws IOException {
         int value = length(in, maximum);
-        JavacDecodeBudget.take(in, 64L * value);
+        JavacDecodeBudget.count(in, value);
         return value;
     }
 

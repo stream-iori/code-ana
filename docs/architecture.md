@@ -1,6 +1,6 @@
 # 总体架构
 
-对齐 2026-10-20。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
+对齐 2026-10-31。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
 CLI
@@ -138,3 +138,21 @@ Engine 只装配任务生命周期和业务服务。TaskRunner 管捕获、执�
 Python 通过独立 Rust worker 嵌入固定 Pyrefly，构建位于独立 Cargo workspace，以隔离 Unicode 依赖版本。输入先捕获再在私有目录恢复，禁止目标解释器/主机环境补全。Python 单语言复用有界候选行流；多语言逐个验证输出后合并，只有一次 CAS。Java isolate 生命周期保持。详见 [Python worker](modules/python-worker.md)。
 
 adapter v2 可在导出阶段显式读取 pyproject 静态元数据；没有该文件的项目继续使用显式输入。配置本身进入 CONTROL 冻结。诊断来源和影响在持有 Pyrefly 事务时按实际反向依赖取得，随后仅交付自有类型；文件级缺口与未知上下文影响分开，辅助及后端诊断均保留。
+
+查询执行策略由应用层在根操作开始读取，`ResourceBudget` 随读上下文显式传递，存储在字段复制前计费。预算与语义指纹分离；pipeline、diff、文本派生缓存不另领额度。Jackson Core 负责 JSON 编解码，JDK SAX 负责 XML 解析，业务层只维护显式 codec、XML 语义、预算和硬失败传播。
+
+### 分析计费与截止时间的执行边界
+
+Java/Rust/Python worker 共用 model::AnalysisTaskMeter 管理进程内任务账本，worker 仅适配协议。父任务将一个截止时间贯穿排队、host、worker 和发布准入；worker 重试不能重置账本或续期。Python 的 frozen/context、AST/type/QName 提取和输出预留复用 AnalysisContext；prepared 多实例沿语言池静态拆分，host 分片共享，实例之间不借用。
+
+Java主要入口已接入共享任务上下文、局部作用域和累计FFI回执；三语言在Discover前签发grant，BuildContext回传核实水位，未变复用通过Reuse/Reused结束账户。当前严格worker22/Java11，必填回执及已知/未知水位共用host策略；帧/codec与内部DTO分配前准入、混合/分发门禁已完成本机fixture验证；正式跨平台和容量/性能范围另列。实际验证范围见当前实现文档，不以单语言回执替代全计划验收。
+
+Java 在 Rust worker 的同一账户上顺序执行：请求携带已经消耗的水位，Java显式上下文穿过捕获、javac模型解码、模型/语法索引、扩展事实集合、语义JSON入口、XML及归档，返回累计回执后由Rust继续处理输出。失败前已接受的消耗保留，崩溃或无可信回执时标Unknown。javac内核自身运算仍由进程树内存、原编译器超时和supervisor截止时间约束，不把自有模型遍历计费冒充其内部每一步的精确计数。
+
+### 分析 IPC 准入
+
+公共 contracts 层统一接管三种 worker 与 host 的业务帧分配/解码准入；adaptor 只传任务账本。小型 Hello 初始化显式 grant 与截止时间，健康 Java worker 每个新任务重新握手；后续 Discover/Analyze 接续同一累计账户。独立有界控制通道保证超限后的取消和失败回执可达，缓冲使用堆内存避免放大异步调用栈。取消排空保留半帧进度并直接丢弃业务字节。Java FFI 转交累计 seed 前预留请求与控制通道开销，FFI 期间 Rust 不并发扣同一个根账户。
+
+Java的两个JSON facade共用Jackson流边界，传输与领域各自保留数值/格式契约。Rust通过serde结构访问为Java将解码的JSON值节点预留，Java在封账前为结果编码预留；不先分配中间JSON树，也不在最终回执生成后继续扣账。签名投影/ASM/声明压缩与JSON/SOFA都接续同一个任务账本；第三方内部存储使用保守预留及进程资源约束，不声称精确计量CPU/RSS。
+
+Lombok与扩展不可变元数据复制前沿用同一账户；内部DTO通过contracts的serde结构准入后再复制/解码。根池按语言及稳定实例ID静态拆分，host保留1/4；失败、取消、超时都不能切换head。Java合并JAR先逐类核对reactor产物，避免重复shade引入旧依赖。本机fixture验收及正式边界见当前实现。

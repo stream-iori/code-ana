@@ -16,7 +16,11 @@ public final class LombokJavaCallEvidence implements JavaCallSiteEvidenceProvide
     }
 
     public LombokJavaCallEvidence(Path project, Map<Path, String> capturedConfigurations) {
-        configurations = new LombokConfigurationScope(project, capturedConfigurations);
+        this(project,capturedConfigurations,null);
+    }
+
+    public LombokJavaCallEvidence(Path project,Map<Path,String> capturedConfigurations,com.anatomist.core.AnalysisContext resources) {
+        configurations = new LombokConfigurationScope(project,capturedConfigurations,resources);
     }
 
     @Override
@@ -41,6 +45,7 @@ public final class LombokJavaCallEvidence implements JavaCallSiteEvidenceProvide
 
     @Override
     public Optional<Evidence> observe(JavaUnitAnalysis unit, JavaNode call, FallbackCallSite site) {
+        if(unit.model().analysisContext()!=null)unit.model().analysisContext().charge(1,1,2048);
         if (site.ownerFqn() == null || !call.kind().equals("METHOD_INVOCATION"))
             return Optional.empty();
         var lookup = unit.model().type(site.ownerFqn());
@@ -66,7 +71,7 @@ public final class LombokJavaCallEvidence implements JavaCallSiteEvidenceProvide
         if (builder.isPresent()) return builder;
         if (arity > 1) return Optional.empty();
         List<AccessorMatch> matches = new ArrayList<>();
-        var configuration = configurations.forSource(found.declaration().source());
+        var configuration = configurations.forSource(found.declaration().source(),unit.model().analysisContext());
         for (var member : unit.model().members(found.declaration())) {
             var field = unit.model().declaration(member);
             if (!field.symbol().kind().equals("FIELD")
@@ -120,7 +125,7 @@ public final class LombokJavaCallEvidence implements JavaCallSiteEvidenceProvide
                         value,
                         matches.size() == 1
                                 ? "lombok_usage_accessor_observed"
-                                : "lombok_usage_accessor_ambiguous"));
+                                : "lombok_usage_accessor_ambiguous",unit.model().analysisContext()));
     }
 
     private record AccessorMatch(JavaModel.DeclarationRef field, String operation) {}
@@ -251,7 +256,7 @@ public final class LombokJavaCallEvidence implements JavaCallSiteEvidenceProvide
         value.put("mapping_status", ambiguous ? "ambiguous" : unmapped ? "unmapped" : "mapped");
         value.put("steps", steps);
         return Optional.of(
-                new Evidence("lombok_usage", value, "lombok_usage_builder_chain_observed"));
+                new Evidence("lombok_usage", value, "lombok_usage_builder_chain_observed",unit.model().analysisContext()));
     }
 
     private static boolean typeQualifier(JavaUnitAnalysis unit, JavaNode call) {

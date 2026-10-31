@@ -23,6 +23,7 @@ public record SyntheticOrigin(
                     map.forEach((key, value) -> metadata.put(String.valueOf(key), value));
                 }
             } catch (RuntimeException ignored) {
+            com.anatomist.core.HardResourceLimit.rethrow(ignored);
                 // Existing extractor metadata should be valid; retain provenance even if it is not.
             }
         }

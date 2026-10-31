@@ -143,6 +143,46 @@ impl Engine {
         );
         let memory = memory / count;
         ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
+        let analysis = {
+            let jobs = self.jobs.lock().unwrap();
+            jobs.get(&TaskId::from(id))
+                .and_then(|job| job.analysis_coordinator.lock().unwrap().clone())
+        };
+        if let Some(coordinator) = &analysis {
+            for (name, language) in [
+                ("rust", AnalysisLanguage::Rust),
+                ("python", AnalysisLanguage::Python),
+                ("java", AnalysisLanguage::Java),
+            ] {
+                let mut ids = Vec::new();
+                for unit in capture
+                    .effective
+                    .input_units
+                    .iter()
+                    .filter(|u| u.effective.is_some() && u.prepared.language == name)
+                {
+                    let host = coordinator
+                        .lock()
+                        .unwrap()
+                        .host(language)
+                        .map_err(DomainError::analysis)?;
+                    host.charge(
+                        1,
+                        0,
+                        (unit.prepared.id.len() + 2 * std::mem::size_of::<String>()) as u64,
+                    )
+                    .map_err(DomainError::analysis)?;
+                    ids.push(unit.prepared.id.clone());
+                }
+                if !ids.is_empty() {
+                    coordinator
+                        .lock()
+                        .unwrap()
+                        .configure_instances(language, &ids)
+                        .map_err(DomainError::analysis)?;
+                }
+            }
+        }
         let mut java_inputs = vec![];
         let mut rust_inputs = vec![];
         let mut sessions = vec![];
@@ -207,6 +247,7 @@ impl Engine {
                         &child.manifest,
                         cancel,
                         memory,
+                        self.analysis_binding(id, AnalysisLanguage::Python, &unit.prepared.id),
                     )
                     .await?
                 }
@@ -219,6 +260,7 @@ impl Engine {
                         &child.manifest,
                         cancel,
                         memory,
+                        self.analysis_binding(id, AnalysisLanguage::Rust, &unit.prepared.id),
                     )
                     .await?;
                     rust_inputs.push(input);
@@ -238,6 +280,7 @@ impl Engine {
                         &child.manifest,
                         cancel,
                         memory,
+                        self.analysis_binding(id, AnalysisLanguage::Java, &unit.prepared.id),
                     )
                     .await?;
                     java_inputs.push(prepared);

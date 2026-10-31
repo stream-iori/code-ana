@@ -208,11 +208,27 @@ impl Store {
         result
     }
     pub fn blob(&self, h: &str) -> Result<Vec<u8>> {
+        self.blob_bounded(h, u64::MAX - 1)
+    }
+    pub fn blob_bounded(&self, h: &str, limit: u64) -> Result<Vec<u8>> {
         ensure!(
             h.len() == 64 && h.bytes().all(|b| b.is_ascii_hexdigit()),
             DomainError::new(ErrorCode::InvalidBlobId, "")
         );
-        let b = std::fs::read(self.home.join("blobs").join(h))?;
+        let path = self.home.join("blobs").join(h);
+        ensure!(
+            std::fs::metadata(&path)?.len() <= limit,
+            DomainError::new(ErrorCode::SourceHashMismatch, "blob read limit")
+        );
+        use std::io::Read;
+        let mut b = Vec::new();
+        std::fs::File::open(path)?
+            .take(limit.saturating_add(1))
+            .read_to_end(&mut b)?;
+        ensure!(
+            b.len() as u64 <= limit,
+            DomainError::new(ErrorCode::SourceHashMismatch, "blob read limit")
+        );
         ensure!(hash(&b) == h, DomainError::new(ErrorCode::CorruptBlob, ""));
         Ok(b)
     }

@@ -15,15 +15,19 @@ pub(super) fn run(
             .map(|f| fact_source(r, &f))
             .collect::<Result<Vec<_>>>()?
     };
-    snippets(req, sources, read_source)
+    snippets(r, req, sources, read_source)
 }
 pub(super) fn snippets(
+    r: &dyn SourceContext,
     req: &Request,
     sources: Vec<(SourceUnit, Option<Span>)>,
     read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
 ) -> Result<Vec<Record>> {
     let mut records = Vec::new();
     for (s, span) in sources {
+        if r.charge(1, s.size).is_err() {
+            break;
+        }
         let bytes = read_source(&s)?;
         ensure!(
             hash(&bytes) == s.hash,
@@ -62,6 +66,11 @@ pub(super) fn snippets(
             let mut end = (offset + chunk_limit).min(text.len());
             while !text.is_char_boundary(end) {
                 end -= 1;
+            }
+            if r.charge(1, (end - offset + s.path.len() + s.hash.len()) as u64)
+                .is_err()
+            {
+                return Ok(records);
             }
             records.push(Record::Source(SourceSnippet {
                 path: s.path.clone(),

@@ -1,8 +1,8 @@
 //! Rebuild the captured directory layout privately, preserving Pyrefly's import rules.
 use crate::{Analysis, FrozenModule, facade};
-use aho_corasick::{AhoCorasickBuilder, MatchKind};
+use aho_corasick::{AhoCorasick, AhoCorasickBuilder, AhoCorasickKind, MatchKind};
 use anyhow::{Context, Result, ensure};
-use codeana_model::{hash, python::AnalysisConfig};
+use codeana_model::{AnalysisContext, hash, python::AnalysisConfig};
 use pyrefly_python::module_name::ModuleName;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -31,10 +31,27 @@ pub fn analyze(
     config: &AnalysisConfig,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<Vec<WorldAnalysis>> {
+    analyze_with_context(
+        config,
+        check,
+        &AnalysisContext::new(Default::default(), None)?,
+    )
+}
+
+pub fn analyze_with_context(
+    config: &AnalysisConfig,
+    check: &dyn Fn() -> Result<()>,
+    budget: &AnalysisContext,
+) -> Result<Vec<WorldAnalysis>> {
     config.inputs.validate().map_err(anyhow::Error::msg)?;
     let scratch = tempfile::Builder::new()
         .prefix("python-frozen-")
         .tempdir_in(&config.scratch)?;
+    budget.charge(
+        config.files.len() as u64,
+        config.files.len() as u64,
+        (config.files.len() as u64).saturating_mul(256),
+    )?;
     let descriptors = config
         .files
         .iter()
@@ -66,6 +83,13 @@ pub fn analyze(
                     && codeana_model::safe_path(&input.source),
                 "PYTHON_FROZEN_IDENTITY"
             );
+            budget.charge(
+                1,
+                3,
+                file.bytes.saturating_add(
+                    (file.path.len() + root.id.len() + input.source.len() + 512) as u64,
+                ),
+            )?;
             let mut contents = Vec::new();
             std::fs::File::open(&input.input)?
                 .take(file.bytes + 1)
@@ -89,6 +113,14 @@ pub fn analyze(
         }
     }
     let mut output = Vec::new();
+    budget.charge(
+        remap.len() as u64,
+        remap.len() as u64,
+        remap
+            .iter()
+            .map(|(k, v)| (k.len() + v.len() + 128) as u64)
+            .sum(),
+    )?;
     let mut diagnostic_remap = remap.clone();
     for root in &config.inputs.roots {
         diagnostic_remap.insert(
@@ -101,14 +133,31 @@ pub fn analyze(
         );
     }
     // Scan each diagnostic once, rather than cloning it for every captured path.
-    let path_matcher = AhoCorasickBuilder::new()
-        .match_kind(MatchKind::LeftmostLongest)
-        .build(diagnostic_remap.keys())?;
+    let path_matcher = diagnostic_matcher(&diagnostic_remap, budget)?;
     let original_paths = diagnostic_remap
         .values()
         .map(String::as_str)
         .collect::<Vec<_>>();
     for context in &config.inputs.contexts {
+        let strings = context
+            .roots
+            .iter()
+            .chain(context.publish_roots.iter().flatten())
+            .chain(context.gaps.iter())
+            .map(|s| s.len() as u64 + 64)
+            .sum::<u64>();
+        budget.charge(
+            (config.inputs.roots.len() as u64)
+                .saturating_mul(context.roots.len() as u64)
+                .saturating_add(1),
+            1,
+            2048 + strings
+                + (context.id.len()
+                    + context.module.len()
+                    + context.python_version.len()
+                    + context.platform.len()) as u64,
+        )?;
+        let world = context.world(&config.inputs.roots);
         check()?;
         let mut roots = Vec::new();
         let mut dependencies = Vec::new();
@@ -117,6 +166,7 @@ pub fn analyze(
         let mut owners = BTreeMap::new();
         for id in &context.roots {
             let root = config.inputs.roots.iter().find(|r| &r.id == id).unwrap();
+            budget.charge(1, 1, (id.len() + 256) as u64)?;
             let directory = scratch.path().join(id);
             std::fs::create_dir_all(&directory)?;
             if root.publish {
@@ -127,13 +177,19 @@ pub fn analyze(
             // Explicit source handles are checked; dependencies load only when needed.
             if context.publishes(root) {
                 for file in &root.files {
+                    budget.charge(1, 0, (id.len() + file.path.len() + 128) as u64)?;
                     let Some(text) = sources.get(&(id.clone(), file.path.clone())) else {
                         continue;
                     };
+                    budget.charge(
+                        1,
+                        4,
+                        (text.len() + file.path.len() * 3 + root.id.len() + 1024) as u64,
+                    )?;
                     let path = directory.join(&file.path).to_string_lossy().into_owned();
                     if config
                         .excluded
-                        .contains(&(remap[&path].clone(), context.world(&config.inputs.roots)))
+                        .contains(&(remap[&path].clone(), world.clone()))
                     {
                         continue;
                     }
@@ -167,10 +223,12 @@ pub fn analyze(
                 &roots,
                 &dependencies,
                 check,
+                budget,
             )?
         };
         let translate = |path: &mut String| -> Result<()> {
             if let Some(original) = remap.get(path) {
+                budget.charge(1, 1, original.len() as u64)?;
                 *path = original.clone();
             } else {
                 ensure!(!Path::new(path).is_absolute(), "PYTHON_UNCAPTURED_SOURCE");
@@ -203,11 +261,12 @@ pub fn analyze(
                 affected.insert(path);
             }
             diagnostic.affected_sources = affected;
-            diagnostic.message = path_matcher.replace_all(&diagnostic.message, &original_paths);
+            diagnostic.message =
+                rewrite_diagnostic(&path_matcher, &diagnostic.message, &original_paths, budget)?;
         }
         check()?;
         output.push(WorldAnalysis {
-            world: context.world(&config.inputs.roots),
+            world,
             context: context.clone(),
             modules,
             analysis,
@@ -215,6 +274,43 @@ pub fn analyze(
         });
     }
     Ok(output)
+}
+
+// Select a predictable sparse NFA, then reserve its state/transition capacity
+// before the third-party builder can allocate it. No unbounded default DFA.
+fn diagnostic_matcher(
+    paths: &BTreeMap<String, String>,
+    budget: &AnalysisContext,
+) -> Result<AhoCorasick> {
+    let characters = paths
+        .keys()
+        .fold(1u64, |n, p| n.saturating_add(p.len() as u64));
+    budget.charge(
+        characters,
+        characters,
+        characters.saturating_mul(512).saturating_add(65536),
+    )?;
+    Ok(AhoCorasickBuilder::new()
+        .kind(Some(AhoCorasickKind::NoncontiguousNFA))
+        .match_kind(MatchKind::LeftmostLongest)
+        .build(paths.keys())?)
+}
+fn rewrite_diagnostic(
+    matcher: &AhoCorasick,
+    message: &str,
+    replacements: &[&str],
+    budget: &AnalysisContext,
+) -> Result<String> {
+    budget.charge(message.len() as u64, 0, 128)?;
+    let mut capacity = message.len() as u64;
+    for found in matcher.find_iter(message) {
+        budget.charge(1, 0, 0)?;
+        capacity = capacity
+            .saturating_sub(found.len() as u64)
+            .saturating_add(replacements[found.pattern().as_usize()].len() as u64);
+    }
+    budget.charge(1, 1, capacity.saturating_add(128))?;
+    Ok(matcher.replace_all(message, replacements))
 }
 
 fn decode_source(bytes: Vec<u8>) -> Result<String> {
@@ -250,4 +346,58 @@ fn decode_source(bytes: Vec<u8>) -> Result<String> {
         }
     }
     Ok(text)
+}
+
+#[cfg(test)]
+mod resource_tests {
+    use super::*;
+    #[test]
+    fn diagnostic_growth_is_admitted_before_replacement() {
+        let matcher = AhoCorasick::new(["x"]).unwrap();
+        let budget = AnalysisContext::new(
+            codeana_model::AnalysisLimits {
+                max_payload_bytes: 1000,
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert!(rewrite_diagnostic(&matcher, "xxxxxxxxxx", &[&"a".repeat(1000)], &budget).is_err());
+        assert!(budget.usage().failure.is_some());
+    }
+    #[test]
+    fn diagnostic_rewrite_preserves_leftmost_longest_and_accumulates() {
+        let budget = AnalysisContext::new(Default::default(), None).unwrap();
+        let paths = BTreeMap::from([
+            ("/scratch/a".into(), "A.py".into()),
+            ("/scratch/ab".into(), "B.py".into()),
+        ]);
+        let matcher = diagnostic_matcher(&paths, &budget).unwrap();
+        let values = paths.values().map(String::as_str).collect::<Vec<_>>();
+        let before = budget.usage().payload_bytes;
+        assert_eq!(
+            rewrite_diagnostic(&matcher, "/scratch/ab /scratch/a", &values, &budget).unwrap(),
+            "B.py A.py"
+        );
+        assert!(budget.usage().payload_bytes > before);
+    }
+    #[test]
+    fn diagnostic_automaton_denies_before_building_states() {
+        let budget = AnalysisContext::new(
+            codeana_model::AnalysisLimits {
+                max_nodes: 4,
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert!(
+            diagnostic_matcher(
+                &BTreeMap::from([("long-path".into(), "A.py".into())]),
+                &budget
+            )
+            .is_err()
+        );
+        assert_eq!(budget.usage().nodes, 0);
+    }
 }

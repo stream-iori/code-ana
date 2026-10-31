@@ -92,6 +92,9 @@ def main():
     REFERENCE_FILES += [pathlib.Path(name) for name in runtime.get('installed_files', {})]
     module = importlib.import_module(dict(graph='java_graph_storage', lifecycle='java_native_lifecycle')[args.group])
     suite = unittest.defaultTestLoader.loadTestsFromModule(module)
+    if args.group == 'graph':
+        resources = importlib.import_module('java_resource_limits')
+        suite = unittest.TestSuite([suite, unittest.defaultTestLoader.loadTestsFromModule(resources)])
     all_tests = list(flatten(suite))
     if args.case:
         selected = [test for test in all_tests if any(test.id().endswith('.' + name) for name in args.case)]

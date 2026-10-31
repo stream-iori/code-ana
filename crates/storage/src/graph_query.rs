@@ -219,6 +219,27 @@ pub(crate) fn overview_counts(db: &Connection) -> Result<BTreeMap<String, u64>> 
 }
 
 impl ReadContext {
+    pub fn with_budget(mut self, budget: ResourceBudget) -> Self {
+        self.budget = Some(budget);
+        self
+    }
+    fn charge_row(&self, row: &rusqlite::Row<'_>) -> Result<()> {
+        if self.budget.is_none() {
+            return Ok(());
+        }
+        let mut bytes = 0u64;
+        for index in 0..row.as_ref().column_count() {
+            bytes = bytes.saturating_add(match row.get_ref(index)? {
+                rusqlite::types::ValueRef::Text(v) | rusqlite::types::ValueRef::Blob(v) => {
+                    v.len() as u64
+                }
+                _ => 0,
+            });
+        }
+        self.charge(4, bytes.saturating_mul(2))?;
+        Ok(())
+    }
+
     fn owner_for(&self, source: &str, module: &str, scope: &str) -> Owner {
         let world = self
             .sources
@@ -252,6 +273,7 @@ impl ReadContext {
         ] {
             if let Some(v) = value {
                 sql.push_str(&format!(" AND {column}=?"));
+                self.charge(1, v.len() as u64)?;
                 values.push(v.clone());
             }
         }
@@ -280,12 +302,14 @@ impl ReadContext {
                     " AND {column} IN({})",
                     vec!["?"; ids.len()].join(",")
                 ));
+                self.charge(ids.len() as u64, ids.iter().map(|s| s.len() as u64).sum())?;
                 values.extend(ids.clone());
             }
         }
         if let Some(world) = &f.world {
             sql.push_str(&format!(" AND ({}='' OR {}=?)", p.world, p.world));
             values.push(world.clone());
+            self.charge(self.revision.manifest.files.len() as u64, 0)?;
             let sources: Vec<_> = self
                 .revision
                 .manifest
@@ -593,8 +617,23 @@ impl ReadContext {
             ));
         }
         let mut result = Vec::new();
+        if self.resource_exhausted() {
+            return Ok(result);
+        }
         for p in projections(f) {
-            let (predicate, mut values) = self.predicate(&p, f, after, search)?;
+            if self.resource_exhausted() {
+                break;
+            }
+            let (predicate, mut values) = match self.predicate(&p, f, after, search) {
+                Ok(value) => value,
+                Err(e)
+                    if e.downcast_ref::<DomainError>()
+                        .is_some_and(|e| e.code == ErrorCode::ComputationLimit) =>
+                {
+                    break;
+                }
+                Err(e) => return Err(e),
+            };
             let columns = match p.kind {
                 FactKind::Declaration => "n.*",
                 FactKind::ExternalSymbol => "x.*",
@@ -627,6 +666,14 @@ impl ReadContext {
             let mut statement = self.connection.prepare(&sql)?;
             let mut rows = statement.query(rusqlite::params_from_iter(values))?;
             while let Some(row) = rows.next()? {
+                if let Err(e) = self.charge_row(row) {
+                    if e.downcast_ref::<DomainError>()
+                        .is_some_and(|e| e.code == ErrorCode::ComputationLimit)
+                    {
+                        break;
+                    }
+                    return Err(e);
+                }
                 result.push(self.display(&p, row)?);
             }
         }
@@ -841,6 +888,9 @@ impl ReadContext {
 }
 
 impl SourceContext for ReadContext {
+    fn resource_budget(&self) -> Option<&ResourceBudget> {
+        self.budget.as_ref()
+    }
     fn manifest(&self) -> &Manifest {
         &self.revision.manifest
     }
@@ -850,11 +900,29 @@ impl SourceContext for ReadContext {
 }
 impl GraphAccess for ReadContext {
     fn select(&self, f: &FactFilter) -> std::result::Result<Vec<Fact>, DomainError> {
+        if self.budget.is_some() {
+            let mut output = Vec::new();
+            let mut after = String::new();
+            loop {
+                let rows = self
+                    .graph_scan(f, &after, 500, None)
+                    .map_err(codeana_contracts::read_error)?;
+                let done = rows.len() < 500 || self.resource_exhausted();
+                if let Some(last) = rows.last() {
+                    after = last.id.to_string();
+                }
+                output.extend(rows);
+                if done {
+                    break;
+                }
+            }
+            return Ok(output);
+        }
         self.graph_scan(f, "", MAX_FACTS + 1, None)
             .and_then(|rows| {
                 ensure!(
                     rows.len() <= MAX_FACTS,
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::QueryWorkBudget, "")
+                    DomainError::new(ErrorCode::QueryWorkBudget, "")
                 );
                 Ok(rows)
             })
@@ -919,7 +987,9 @@ impl SourceLocator for ReadContext {
                     codeana_model::ErrorCode::SourceUnavailable,
                     "",
                 ))?;
-            let bytes = std::fs::read(self.home.join("blobs").join(&source.hash))?;
+            let path = self.home.join("blobs").join(&source.hash);
+            self.charge(1, std::fs::metadata(&path)?.len())?;
+            let bytes = read_file_bounded(&path, source.size)?;
             ensure!(
                 hash(&bytes) == source.hash,
                 codeana_model::DomainError::new(codeana_model::ErrorCode::BlobHashMismatch, "")
@@ -1003,6 +1073,7 @@ impl AnnotationReader for ReadContext {
             let mut rows = statement.query(rusqlite::params_from_iter(names))?;
             let mut output = Vec::new();
             while let Some(row) = rows.next()? {
+                self.charge_row(row)?;
                 ensure!(
                     output.len() < 10000,
                     DomainError::new(ErrorCode::QueryWorkBudget, "")
@@ -1037,6 +1108,7 @@ impl OverviewReader for ReadContext {
         f: &FactFilter,
     ) -> std::result::Result<BTreeMap<String, u64>, DomainError> {
         (|| -> Result<_> {
+            self.charge(1, 0)?;
             let cached: Option<String> = self
                 .connection
                 .query_row(
@@ -1076,6 +1148,7 @@ impl OverviewReader for ReadContext {
                     rusqlite::params_from_iter(values),
                     |r| r.get(0),
                 )?;
+                self.charge(1, p.kind.name().len() as u64)?;
                 counts.insert(p.kind.name().into(), n as u64);
             }
             Ok(counts)
@@ -1148,6 +1221,7 @@ impl OverviewReader for ReadContext {
             let mut rows = statement.query(rusqlite::params_from_iter(values))?;
             let mut output = Vec::new();
             while let Some(row) = rows.next()? {
+                self.charge_row(row)?;
                 ensure!(
                     output.len() < 10000,
                     DomainError::new(ErrorCode::OverviewGroupBudget, "")
@@ -1192,7 +1266,7 @@ impl DependencyReader for ReadContext {
             let paths:Vec<_>=targets.iter().map(|t|&t.path).collect();
             let sql=format!("SELECT source_file,depends_on_file FROM file_dependencies WHERE depends_on_file IN({}) ORDER BY source_file,depends_on_file",vec!["?";paths.len()].join(","));
             let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(paths))?;let mut output=BTreeMap::new();
-            while let Some(row)=rows.next()?{
+            while let Some(row)=rows.next()?{ self.charge_row(row)?;
                 let source:String=row.get(0)?;let target:String=row.get(1)?;
                 let source=self.revision.manifest.files.iter().find(|s|s.path==source).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencySourceNotCaptured, ""))?;
                 let target=self.revision.manifest.files.iter().find(|s|s.path==target).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencyTargetNotCaptured, ""))?;
@@ -1218,9 +1292,22 @@ impl DependencyReader for ReadContext {
             values.push(serde_json::to_string(targets)?);values.push(limit.to_string());
             let sql=format!("SELECT c.*,{} AS display_id,{} AS display_parent,{} AS display_target,{} AS display_source,{} AS display_module,{} AS display_scope,{} AS display_name,{} AS display_relation,{} AS display_world,{} AS display_producer FROM {} WHERE {predicate} AND c.resolution_status='unresolved' AND c.syntax_target IN(SELECT value FROM json_each(?)) ORDER BY {} LIMIT ?",p.id,p.parent,p.target,p.source,p.module,p.scope,p.name,p.relation,p.world,p.producer,p.from,p.id);
             let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(values))?;let mut output=Vec::new();
-            while let Some(row)=rows.next()?{output.push(self.display(&p,row)?);}Ok(output)
+            while let Some(row)=rows.next()?{ self.charge_row(row)?;output.push(self.display(&p,row)?);}Ok(output)
         })().map_err(codeana_contracts::read_error)
     }
+}
+
+fn read_file_bounded(path: &std::path::Path, limit: u64) -> Result<Vec<u8>> {
+    use std::io::Read;
+    let mut bytes = Vec::new();
+    std::fs::File::open(path)?
+        .take(limit.saturating_add(1))
+        .read_to_end(&mut bytes)?;
+    ensure!(
+        bytes.len() as u64 <= limit,
+        DomainError::new(ErrorCode::SourceHashMismatch, "source size changed")
+    );
+    Ok(bytes)
 }
 
 #[cfg(test)]

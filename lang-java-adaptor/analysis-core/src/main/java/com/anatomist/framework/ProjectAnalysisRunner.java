@@ -27,6 +27,7 @@ public final class ProjectAnalysisRunner {
             ExtensionReport report) {
         Set<String> producers = new LinkedHashSet<>();
         for (ProjectResourceAnalyzer analyzer : analyzers) {
+            context.analysisContext().charge(inventory.size()+1L,inventory.size(),64L*inventory.size());
             List<ProjectResource> selected =
                     ExtensionExecution.run(
                             analyzer,
@@ -47,6 +48,7 @@ public final class ProjectAnalysisRunner {
                     ExtensionExecution.Source.file(selected.getFirst().sourceFile()),
                     report,
                     result,
+                    context.analysisContext(),
                     isolated -> analyzer.analyze(context, selected, facts, isolated))) {
                 producers.add(analyzer.producerId());
             }

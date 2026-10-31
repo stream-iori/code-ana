@@ -15,12 +15,15 @@ pub mod protobuf {
     }
 }
 pub use protobuf::{graph::v1 as graph, worker::v1 as worker};
+pub mod analysis_budget;
 pub mod bundle;
 pub mod engine_request;
 pub mod fixture_graph;
+pub mod frame_budget;
 pub mod graph_archive;
 pub mod graph_rows;
 pub mod java;
+pub mod json_budget;
 mod mapping;
 pub mod performance;
 pub mod stream;
@@ -28,7 +31,9 @@ pub mod worker_rows;
 use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+#[cfg(test)]
+use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncRead, AsyncWrite};
 /// Only explicitly implemented domain/protobuf conversions are accepted.
 pub fn map<'a, A, B>(value: &'a A) -> Result<B>
 where
@@ -53,42 +58,12 @@ pub fn terminal(r: &m::TaskResult) -> v1::Terminal {
         cursor: r.output.cursor.clone(),
     }
 }
+pub use frame_budget::{FrameReader, read_frame_with_budget, write_frame_with_budget};
 pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, e: &worker::Envelope) -> Result<()> {
-    if e.encoded_len() > m::MAX_FRAME {
-        bail!(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::FrameBudget,
-            ""
-        ));
-    }
-    let b = performance::measure(
-        performance::Metric::FrameEncode,
-        e.encoded_len() as u64,
-        false,
-        || e.encode_to_vec(),
-    );
-    let _timer = performance::Timer::start(
-        performance::Metric::FrameWriteWait,
-        b.len() as u64 + 4,
-        false,
-    );
-    w.write_u32(b.len() as u32).await?;
-    w.write_all(&b).await?;
-    w.flush().await?;
-    Ok(())
+    write_frame_with_budget(w, e, None).await
 }
 pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<worker::Envelope> {
-    let timer = performance::Timer::start(performance::Metric::FrameReadWait, 0, false);
-    let n = r.read_u32().await? as usize;
-    if n == 0 || n > m::MAX_FRAME {
-        bail!(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::InvalidFrameLength,
-            ""
-        ));
-    }
-    let mut b = vec![0; n];
-    r.read_exact(&mut b).await?;
-    drop(timer);
-    decode_frame(&b)
+    read_frame_with_budget(r, None).await
 }
 fn decode_frame(b: &[u8]) -> Result<worker::Envelope> {
     let n = b.len();
@@ -103,55 +78,12 @@ fn decode_frame(b: &[u8]) -> Result<worker::Envelope> {
     )?)
 }
 
-/// Persistent framing progress: dropping a read future never loses a partial control frame.
-#[derive(Default)]
-pub struct FrameReader {
-    prefix: [u8; 4],
-    prefix_read: usize,
-    body: Vec<u8>,
-    body_read: usize,
-}
-impl FrameReader {
-    pub async fn next<R: AsyncRead + Unpin>(&mut self, input: &mut R) -> Result<worker::Envelope> {
-        let timer = performance::Timer::start(performance::Metric::FrameReadWait, 0, false);
-        while self.prefix_read < 4 {
-            let n = input.read(&mut self.prefix[self.prefix_read..]).await?;
-            ensure!(
-                n != 0,
-                codeana_model::DomainError::new(codeana_model::ErrorCode::ControlFrameEof, "")
-            );
-            self.prefix_read += n;
-        }
-        if self.body.is_empty() {
-            let length = u32::from_be_bytes(self.prefix) as usize;
-            ensure!(
-                length > 0 && length <= m::MAX_FRAME,
-                codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidFrameLength, "")
-            );
-            self.body.resize(length, 0);
-        }
-        while self.body_read < self.body.len() {
-            let n = input.read(&mut self.body[self.body_read..]).await?;
-            ensure!(
-                n != 0,
-                codeana_model::DomainError::new(codeana_model::ErrorCode::ControlFrameEof, "")
-            );
-            self.body_read += n;
-        }
-        drop(timer);
-        let result = decode_frame(&self.body);
-        self.prefix_read = 0;
-        self.body_read = 0;
-        self.body.clear();
-        if self.body.capacity() > 65536 {
-            self.body = Vec::new();
-        }
-        result
-    }
-}
 // Count repeated messages before prost allocation; a small frame must not expand
 // into millions of empty Fact/Owner structs or hide multiple oneof deliveries.
-fn wire_fields(mut bytes: &[u8], mut visit: impl FnMut(u64, &[u8]) -> Result<()>) -> Result<()> {
+pub(crate) fn wire_fields(
+    mut bytes: &[u8],
+    mut visit: impl FnMut(u64, &[u8]) -> Result<()>,
+) -> Result<()> {
     fn varint(bytes: &mut &[u8]) -> Result<u64> {
         let mut value = 0;
         for shift in (0..70).step_by(7) {
@@ -219,7 +151,7 @@ fn wire_fields(mut bytes: &[u8], mut visit: impl FnMut(u64, &[u8]) -> Result<()>
     }
     Ok(())
 }
-fn packed_count(bytes: &[u8]) -> Result<usize> {
+pub(crate) fn packed_count(bytes: &[u8]) -> Result<usize> {
     // Empty payload also represents a scalar (unpacked) varint in wire_fields.
     if bytes.is_empty() {
         return Ok(1);
@@ -280,7 +212,11 @@ fn validate_java_config(bytes: &[u8]) -> Result<()> {
                     );
                 }
                 if (14..=17).contains(&field) {
-                    let count = packed_count(value)?;
+                    let count = if value.is_empty() {
+                        1
+                    } else {
+                        packed_count(value)?
+                    };
                     indices += count;
                     context_indices[(field - 14) as usize] += count;
                     ensure!(
@@ -362,13 +298,13 @@ pub(crate) fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
     );
     Ok(())
 }
-fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
+pub(crate) fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
     let mut bodies = 0;
     let mut attempts = 0;
     wire_fields(bytes, |tag, body| {
         if tag == 1 {
             attempts += 1;
-        } else if (2..=13).contains(&tag) || tag == 16 {
+        } else if (2..=13).contains(&tag) || (16..=18).contains(&tag) {
             bodies += 1;
             let mut repeated = 0;
             wire_fields(body, |field, value| {
@@ -529,6 +465,9 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                deadline_ms: Some(0),
+                analysis_grant: None,
+
                 python: None,
                 rust: None,
                 manifest: None,
@@ -554,6 +493,9 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                deadline_ms: Some(0),
+                analysis_grant: None,
+
                 python: None,
                 rust: None,
                 manifest: None,

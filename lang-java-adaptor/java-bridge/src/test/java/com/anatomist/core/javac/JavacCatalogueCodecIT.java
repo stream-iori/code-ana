@@ -15,6 +15,23 @@ import java.util.*;
 
 class JavacCatalogueCodecIT {
     @Test
+    void rejectsBufferReservationBeforeOpeningInputOrReplacingOutput(@TempDir Path directory)
+            throws Exception {
+        var read = new com.anatomist.core.AnalysisContext(
+                new com.anatomist.core.AnalysisContext.Limits(100, 100, 1000, 256));
+        assertThrows(com.anatomist.core.HardResourceLimit.class,
+                () -> JavacCatalogueCodec.read(directory.resolve("missing.bin"), read));
+        assertEquals(128L, read.usage().get("payload_bytes"));
+        Path output = Files.writeString(directory.resolve("existing.bin"), "keep");
+        var write = new com.anatomist.core.AnalysisContext(
+                new com.anatomist.core.AnalysisContext.Limits(100, 100, 1000, 256));
+        assertThrows(com.anatomist.core.HardResourceLimit.class,
+                () -> JavacCatalogueCodec.write(output, List.of(), write));
+        assertEquals("keep", Files.readString(output));
+        assertEquals(128L, write.usage().get("payload_bytes"));
+    }
+
+    @Test
     void persistsExactDeclarationsHeadersAndExtensionEvidenceAcrossJdks(@TempDir Path directory)
             throws Exception {
         for (int release : List.of(8, 17, 25)) {

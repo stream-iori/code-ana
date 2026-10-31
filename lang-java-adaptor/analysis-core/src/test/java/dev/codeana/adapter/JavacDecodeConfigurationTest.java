@@ -11,7 +11,7 @@ import java.util.*;
 
 class JavacDecodeConfigurationTest {
     private static JavacBackend backend(Path root) throws Exception {
-        Path home = Path.of(System.getProperty("user.home"), ".sdkman/candidates/java/8.0.492-zulu");
+        Path home = Path.of(System.getProperty("java8.home", Path.of(System.getProperty("user.home"), ".sdkman/candidates/java/8.0.492-zulu").toString()));
         var options = new JavacOptions(home, true, true, false, false, root.resolve("cache"), 1, 512);
         return new JavacBackend(JavacToolchain.resolve(options, 8, null), List.of(), List.of(root), options);
     }
@@ -23,7 +23,7 @@ class JavacDecodeConfigurationTest {
         Path source = Files.writeString(root.resolve("Example.java"), text.append("}\n").toString());
         var small = backend(root);
         small.setDecodeBudgetBytes(64L << 10);
-        var failure = assertThrows(IllegalStateException.class, () -> small.analyzeFiles(List.of(source), unit -> {}));
+        var failure = assertThrows(com.anatomist.core.HardResourceLimit.class, () -> small.analyzeFiles(List.of(source), unit -> {}));
         assertTrue(failure.getMessage().contains("JAVAC_DECODE_BUDGET_EXCEEDED"));
         var normal = new ArrayList<JavaAnalysisContext>();
         var expanded = new ArrayList<JavaAnalysisContext>();

@@ -8,6 +8,6 @@ import java.util.*;
 record AnalysisResult(String mode, List<Map<String, Object>> replacements, GraphArchive facts) {
     Map<String, Object> wire() {
         return Json.object(
-                "version", 10, "mode", mode, "replacements", replacements, "facts", facts);
+                "version", 11, "usage_known", true, "mode", mode, "replacements", replacements, "facts", facts);
     }
 }

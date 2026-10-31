@@ -13,7 +13,7 @@ class JavacEmptyPublicationTest {
     void emptyPublicationDoesNotCompileCapturedPrerequisites(@TempDir Path root) throws Exception {
         Path dependency = Files.writeString(root.resolve("Dependency.java"), "class Dependency { int value; }");
         Path cache = root.resolve("cache");
-        Path home = Path.of(System.getProperty("user.home"), ".sdkman/candidates/java/8.0.492-zulu");
+        Path home = Path.of(System.getProperty("java8.home", Path.of(System.getProperty("user.home"), ".sdkman/candidates/java/8.0.492-zulu").toString()));
         var options = new JavacOptions(home, true, true, false, false, cache, 1, 512);
         var roots = List.of(new SourceRoot(root, "dependency", SourceScope.MAIN));
         var backend = new JavacBackend(root, JavacToolchain.resolve(options, 8, null), List.of(), roots, options);

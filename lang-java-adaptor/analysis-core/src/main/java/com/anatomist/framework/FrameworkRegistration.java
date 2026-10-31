@@ -19,6 +19,8 @@ public final class FrameworkRegistration {
             String key,
             String label,
             Map<String, Object> metadata) {
+        var analysis=result.analysisContext();
+        if(analysis!=null)analysis.charge(1,1,512L+8L*(file.length()+key.length()));
         var node = new Node();
         node.id = "framework-registration:" + ContentHash.sha256(file + "\n" + key);
         node.kind = "FRAMEWORK_REGISTRATION";
@@ -33,9 +35,10 @@ public final class FrameworkRegistration {
         node.beginColumn = 1;
         node.endColumn = Integer.MAX_VALUE;
         node.scope = "MAIN";
-        node.metadata = Json.writeCompact(metadata);
+        node.metadata = Json.writeCompact(metadata,analysis);
         result.nodes.add(node);
         if (owner != null) {
+            if(analysis!=null)analysis.charge(1,1,256);
             var edge = new Edge();
             edge.sourceId = owner;
             edge.targetId = node.id;

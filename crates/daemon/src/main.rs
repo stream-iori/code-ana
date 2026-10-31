@@ -52,6 +52,8 @@ impl task_service_server::TaskService for Service {
             protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
             capabilities: vec![
                 "task-v2".into(),
+                "query-resources-v1".into(),
+                "call-recursion-v1".into(),
                 "text-search-options-v1".into(),
                 "overview-sections-v1".into(),
                 "reference-options-v1".into(),

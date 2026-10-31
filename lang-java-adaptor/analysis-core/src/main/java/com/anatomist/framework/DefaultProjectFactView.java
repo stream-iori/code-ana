@@ -11,8 +11,11 @@ public record DefaultProjectFactView(
         Set<String> knownNodeIds,
         Map<String, BeanRefTarget> beanTargets,
         java.util.List<SymbolFact> symbolFacts,
-        java.util.List<TypeRelationFact> typeRelations)
+        java.util.List<TypeRelationFact> typeRelations, com.anatomist.core.AnalysisContext analysisContext)
         implements ProjectFactView {
+    public DefaultProjectFactView(Set<String> ids, Map<String,BeanRefTarget> beans, java.util.List<SymbolFact> symbols, java.util.List<TypeRelationFact> relations) {
+        this(ids, beans, symbols, relations, new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults()));
+    }
     public static Map<String, BeanRefTarget> fromBeanClassMap(Map<String, String> beanClassById) {
         Map<String, BeanRefTarget> out = new java.util.LinkedHashMap<>();
         beanClassById.forEach((id, type) -> out.put(id, new BeanRefTarget(id, type)));

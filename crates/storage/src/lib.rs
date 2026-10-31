@@ -39,6 +39,7 @@ pub struct Store {
     blob_io: Arc<blobs::IoLimit>,
 }
 pub struct ReadContext {
+    budget: Option<ResourceBudget>,
     connection: Connection,
     sources: BTreeMap<String, usize>,
     revision: Revision,
@@ -200,18 +201,30 @@ impl Store {
         ))
     }
     fn revision_unlocked(&self, id: &str) -> Result<Revision> {
-        let body: String = self
-            .catalog()?
-            .query_row("SELECT body FROM revisions WHERE id=?", [id], |r| r.get(0))
-            .context(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::RevisionNotFound,
-                "",
-            ))?;
-        Ok(serde_json::from_str(&body)?)
+        self.revision_metered(id, None)
+    }
+    fn revision_metered(&self, id: &str, budget: Option<&ResourceBudget>) -> Result<Revision> {
+        let connection = self.catalog()?;
+        let mut statement = connection.prepare("SELECT body FROM revisions WHERE id=?")?;
+        let mut rows = statement.query([id])?;
+        let row = rows
+            .next()?
+            .context(DomainError::new(ErrorCode::RevisionNotFound, ""))?;
+        let body = row.get_ref(0)?.as_str()?;
+        if let Some(b) = budget {
+            b.charge(1, body.len() as u64)?;
+        }
+        Ok(serde_json::from_str(body)?)
     }
     pub fn read(&self, id: &str) -> Result<ReadContext> {
+        self.read_metered(id, None)
+    }
+    pub fn read_budgeted(&self, id: &str, budget: ResourceBudget) -> Result<ReadContext> {
+        self.read_metered(id, Some(budget))
+    }
+    fn read_metered(&self, id: &str, budget: Option<ResourceBudget>) -> Result<ReadContext> {
         let mut lock = self.coord.lock().unwrap();
-        let r = self.revision_unlocked(id)?;
+        let r = self.revision_metered(id, budget.as_ref())?;
         let c = Connection::open_with_flags(
             self.home.join("revisions").join(&r.id).join("facts.db"),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
@@ -236,15 +249,16 @@ impl Store {
             identity == r.id,
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphIdentityMismatch, "")
         );
+        let mut sources = BTreeMap::new();
+        for (index, source) in r.manifest.files.iter().enumerate() {
+            if let Some(b) = &budget {
+                b.charge(1, source.path.len() as u64)?;
+            }
+            sources.insert(source.path.clone(), index);
+        }
         *lock.readers.entry(id.into()).or_default() += 1;
-        let sources = r
-            .manifest
-            .files
-            .iter()
-            .enumerate()
-            .map(|(index, s)| (s.path.clone(), index))
-            .collect();
         Ok(ReadContext {
+            budget,
             sources,
             connection: c,
             revision: r,
@@ -722,6 +736,58 @@ mod tests {
 
     use super::*;
 
+    #[test]
+    fn query_read_stops_before_decoding_large_payload_and_is_sticky() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let mut facts = result();
+        facts.facts = (0..30)
+            .map(|n| {
+                serde_json::from_value::<Fact>(serde_json::json!({
+                    "id":format!("n{n:03}"), "kind":"declaration", "name":"x".repeat(1000),
+                    "owner":{"world":"w","producer":"mock","kind":"project","id":"p"}
+                }))
+                .unwrap()
+            })
+            .collect();
+        let graph = store
+            .publish(revision(), &facts, "", "resource-query")
+            .unwrap();
+        let budget = ResourceBudget::new(ResourceLimits {
+            max_work: 12,
+            max_payload_bytes: 100000,
+        });
+        let reader = store.read(&graph.id).unwrap().with_budget(budget.clone());
+        let filter = FactFilter {
+            kinds: vec![FactKind::Declaration],
+            ..Default::default()
+        };
+        let read = reader.scan_bounded(&filter, "", 500).unwrap();
+        assert_eq!(read.records.len(), 3);
+        assert!(!read.complete);
+        assert!(read.resource_limit.is_some());
+        assert!(
+            reader
+                .scan_bounded(&filter, "", 500)
+                .unwrap()
+                .records
+                .is_empty()
+        );
+        let payload = ResourceBudget::new(ResourceLimits {
+            max_work: 100,
+            max_payload_bytes: 10,
+        });
+        let reader = store.read(&graph.id).unwrap().with_budget(payload.clone());
+        assert!(
+            reader
+                .scan_bounded(&filter, "", 500)
+                .unwrap()
+                .records
+                .is_empty()
+        );
+        assert_eq!(payload.usage().payload_bytes, 0);
+        assert_eq!(payload.usage().exhausted.unwrap().resource, "payload_bytes");
+    }
     pub(super) fn revision() -> Revision {
         Revision {
             id: String::new(),

@@ -26,6 +26,7 @@ pub struct Encoder {
     chunks: u64,
     bytes: u64,
     limits: codeana_contracts::java::OutputLimits,
+    budget: Option<codeana_model::AnalysisContext>,
 }
 impl Encoder {
     pub fn new(
@@ -43,9 +44,37 @@ impl Encoder {
             chunks: 0,
             bytes: 4,
             limits,
+            budget: None,
         }
     }
+    pub fn with_budget(
+        sender: tokio::sync::mpsc::Sender<Event>,
+        limits: codeana_contracts::java::OutputLimits,
+        budget: codeana_model::AnalysisContext,
+    ) -> Result<Self> {
+        budget
+            .charge(1, 1, (64 * std::mem::size_of::<Row>()) as u64)
+            .map_err(codeana_model::DomainError::analysis)?;
+        let mut encoder = Self::new(sender, limits);
+        encoder.budget = Some(budget);
+        Ok(encoder)
+    }
     pub fn push(&mut self, fact: Row) -> Result<()> {
+        let length = fact.encoded_len();
+        ensure!(
+            length > 0 && length <= MAX_FRAME,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::FactFrameBudget, "")
+        );
+        if let Some(budget) = &self.budget {
+            budget
+                .charge(
+                    1,
+                    1,
+                    (length as u64)
+                        .saturating_add(codeana_contracts::stream::row_bytes(&fact) as u64),
+                )
+                .map_err(codeana_model::DomainError::analysis)?;
+        }
         let bytes = fact.encode_to_vec();
         ensure!(
             bytes.len() <= MAX_FRAME,

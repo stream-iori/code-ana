@@ -1,6 +1,8 @@
 package com.anatomist.framework.sofa;
 
 import com.anatomist.framework.*;
+import com.anatomist.core.XmlResourceBudget;
+import com.anatomist.core.HardResourceLimit;
 import com.anatomist.model.ExtractionResult;
 
 import org.xml.sax.*;
@@ -35,10 +37,17 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
             ProjectFactView facts,
             ExtractionResult result) {
         for (var resource : resources) {
-            var handler = new Handler(resource.sourceFile());
+            var budget=new XmlResourceBudget(context.analysisContext());
+            budget.bytes(2048);
+            var handler = new Handler(resource.sourceFile(),budget);
             try {
-                if (Files.size(resource.path()) > 16 * 1024 * 1024)
-                    throw new IllegalStateException("SOFA_XML_SIZE_LIMIT_EXCEEDED");
+                long size=Files.size(resource.path());
+                if(size>16L*1024*1024) {
+                    var analysis=budget.analysisContext();
+                    if(analysis!=null)analysis.deny("payload_bytes",Math.min(16L*1024*1024,analysis.limits().maxPayloadBytes()),0,size);
+                    throw new HardResourceLimit("SOFA_XML_SIZE_LIMIT_EXCEEDED");
+                }
+                budget.bytes(8192+8L*size);
                 String document = Files.readString(resource.path());
                 if (!document.contains(NAMESPACE)) continue;
                 var parser = com.anatomist.core.OfflineXml.parser();
@@ -47,6 +56,8 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
                 parser.parse(new InputSource(new java.io.StringReader(document)), handler);
                 result.addFacts(handler.result);
             } catch (Exception failure) {
+                if(failure.getMessage()!=null && failure.getMessage().contains("JAXP00010006"))budget.platformDepthExceeded(handler.maximumDepth);
+                HardResourceLimit.rethrow(failure);
                 // Never publish a partially parsed SOFA document as complete evidence.
                 throw new IllegalStateException(
                         "SOFA_XML_PARSE_FAILED: " + resource.sourceFile(), failure);
@@ -55,15 +66,17 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
     }
 
     private static final class Handler extends DefaultHandler {
-        final ExtractionResult result = new ExtractionResult();
+        final ExtractionResult result;
+        final XmlResourceBudget budget;
         final String file;
         Locator locator;
-        int depth, ordinal;
+        int depth, ordinal, maximumDepth;
         final Map<String, Integer> occurrences = new HashMap<>();
         Registration current;
 
-        Handler(String file) {
-            this.file = file;
+        Handler(String file,XmlResourceBudget budget) {
+            this.file = file;this.budget=budget;
+            this.result=new ExtractionResult(budget.analysisContext());
         }
 
         @Override
@@ -74,13 +87,15 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
         @Override
         public void startElement(String uri, String local, String qualified, Attributes attrs) {
             depth++;
+            budget.parsedNode(depth);maximumDepth=Math.max(maximumDepth,depth);
             if (depth > 256
                     || ordinal > 100_000
                     || current != null && current.children.size() > 100_000)
-                throw new IllegalStateException("SOFA_XML_ELEMENT_LIMIT_EXCEEDED");
+                throw new HardResourceLimit("SOFA_XML_ELEMENT_LIMIT_EXCEEDED");
             if (!NAMESPACE.equals(uri)) return;
             if (current == null
                     && Set.of("service", "reference", "publisher", "consumer").contains(local)) {
+                budget.bytes(512);
                 current =
                         new Registration(
                                 local,
@@ -89,6 +104,7 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
                                 depth,
                                 ordinal++);
             } else if (current != null) {
+                budget.bytes(512);
                 current.children.add(
                         new ChildElement(
                                 local,
@@ -115,6 +131,7 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
         }
 
         private void emit(Registration value, int end) {
+            budget.emittedNode(1);budget.bytes(2048);
             boolean message = Set.of("publisher", "consumer").contains(value.element);
             var data = new LinkedHashMap<String, Object>();
             data.put("framework", message ? "msgbroker" : "sofa");
@@ -163,6 +180,7 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
                             "id",
                             value.element + ":" + value.attributes.getOrDefault("ref", contract));
             data.put("registrationName", name);
+            budget.bytes(256L+6L*(value.element.length()+name.length()+contract.length()+unique.length()));
             String identity = value.element + ":" + name + ":" + contract + ":" + unique;
             int occurrence = occurrences.merge(identity, 1, Integer::sum) - 1;
             FrameworkRegistration.add(
@@ -176,11 +194,14 @@ public final class SofaXmlAnalyzer implements ProjectResourceAnalyzer {
                     data);
         }
 
-        private static Map<String, String> attributes(Attributes attrs) {
+        @Override public void characters(char[] chars,int start,int length) {budget.characters(chars,start,length);}
+        private Map<String, String> attributes(Attributes attrs) {
             var result = new LinkedHashMap<String, String>();
-            for (int i = 0; i < attrs.getLength(); i++)
+            for (int i = 0; i < attrs.getLength(); i++) {
+                budget.bytes(128);budget.text(attrs.getLocalName(i));budget.text(attrs.getValue(i));
                 result.put(attrs.getLocalName(i), attrs.getValue(i));
-            return Map.copyOf(result);
+            }
+            return Collections.unmodifiableMap(result);
         }
     }
 

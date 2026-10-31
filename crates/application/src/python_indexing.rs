@@ -153,6 +153,7 @@ impl Engine {
             &python_manifest,
             cancel,
             memory,
+            self.analysis_binding(id, AnalysisLanguage::Python, ""),
         )
         .await?;
         let mut sessions = vec![(worker, python_manifest)];
@@ -164,6 +165,7 @@ impl Engine {
                 &input.manifest,
                 cancel,
                 memory,
+                self.analysis_binding(id, AnalysisLanguage::Rust, ""),
             )
             .await?;
             sessions.push((worker, input.manifest.clone()));
@@ -176,6 +178,7 @@ impl Engine {
                 &c.manifest,
                 cancel,
                 memory,
+                self.analysis_binding(id, AnalysisLanguage::Java, ""),
             )
             .await?;
             sessions.push((worker, c.manifest.clone()));

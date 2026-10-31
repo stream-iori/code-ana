@@ -61,6 +61,18 @@ class JavacDecodeBudgetTest {
         assertThrows(IOException.class, () -> JavacDecodeBudget.take(input, 1));
     }
 
+
+    @Test void local_decode_rejection_does_not_charge_parent_or_partial_count() throws Exception {
+        var root=new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults());
+        var input=new JavacDecodeBudget.Input(InputStream.nullInputStream(),new JavacDecodeBudget(100,root));
+        JavacDecodeBudget.take(input,70);
+        var before=root.usage();
+        assertThrows(com.anatomist.core.HardResourceLimit.class,()->JavacDecodeBudget.count(input,1));
+        for(String dimension:java.util.List.of("work","nodes","payload_bytes"))assertEquals(before.get(dimension),root.usage().get(dimension));
+        var failure=(java.util.Map<?,?>)((java.util.Map<?,?>)root.usage().get("failure")).get("Limit");
+        assertEquals("payload_bytes",failure.get("resource"));assertEquals(100L,failure.get("limit"));
+        assertThrows(com.anatomist.core.HardResourceLimit.class,()->JavacDecodeBudget.take(input,0));
+    }
     private static void string(DataOutputStream out, String value) throws IOException {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         out.writeInt(bytes.length);

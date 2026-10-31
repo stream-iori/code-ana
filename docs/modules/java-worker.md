@@ -61,7 +61,7 @@ Maven `selected=false` 模块只保留输入/依赖身份，不作为独立分�
 
 | 边界 | 当前行为 |
 |---|---|
-| 产物 | GRA1 + typed protobuf Row，analysis request/result 10；不生成完整项目 Fact JSON / CAF1 |
+| 产物 | GRA1 + typed protobuf Row，analysis request/result 11；不生成完整项目 Fact JSON / CAF1 |
 | worker | 流式读取/校验原归档，直接交付有界 rows；不运行 Fact JSON 转换或事实去重数据库 |
 | 发布 | Begin/Chunk provisional；完整长度、EOF、SHA、行预算通过才发 End；daemon 再校验并发布 |
 | 编码 | 固定逻辑列与 NULL/text/int64/bytes，metadata JSON 保留原始文本；减少重复投影/编码与拷贝 |
@@ -97,7 +97,7 @@ isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任�
 
 最新正确性、单轮 iopengw 和未完成验收见 [当前实现](../current-state.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。
 
-Maven 源码模式通过 worker 21 / analysis request 10 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
+Maven 源码模式通过 worker 22 / analysis request 11 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
 
 ## 任务内协作与类型边界（2026-10-16）
 
@@ -106,3 +106,36 @@ Java 桥在 JSON 入口构造 AnalysisRequest、ContextOptions、BaselineDescrip
 JavacRunConfiguration 一次冻结捕获运行配置；旧诊断/fixture setters 保留，但活动分析期间拒绝修改。JavacWorkerPool 拥有编译器 lane 与执行器，JavacModelConsumer 负责解码预算、模型校验及消费。调用恢复按类型运算、候选、推导和选择拆为任务内协作类；Lombok 按 Builder、声明规则、生成成员拆分，共享 Overlay 所有者。预算、缓存、递归保护、规则顺序和模型/行语义保持。
 
 既有类名、源码入口、Rust 执行路径和 SDK 路径保留；新增内部类由 Maven 默认源码收集和 Native reachable closure 打包。来源清单为提取类记录 extracted_from，不改写原始上游 commit/SHA。
+
+## JSON / XML 资源边界
+
+宿主 JSON 使用 Jackson Core 2.21.5 流式解析/生成；保留显式 `JsonCodec`，不使用自动反射对象映射。输出活动路径防环，跨分支共享对象合法；输出展开上限 256，读取默认深度 512，拒绝非有限数字。canonical 在输出当前对象时排序键，避免递归复制完整排序树。
+
+Spring XML 继续使用 JDK SAX；每文件解析与提取共享 `XmlResourceBudget`，深度 256、每阶段节点 100,000、累计载荷 64 MiB。文本按 UTF-8 字节计费，路径在拼接前保留其组成部分与有界后缀额度；平台更严格的限制继续生效。提取使用显式栈，保留原顺序和路径身份。资源异常穿透扩展、JSON 元数据及签名缓存恢复边界，普通坏 XML 仍按原行为恢复。Native 显式注册 Xerces XMLMessages 资源包；缺包属于致命基础设施失败，不得转成部分语义事实。候选发布仍由完整 worker End、校验和 PublicationFence 控制。
+
+开发构建可显式设置 `CODEANA_BUILD_JAVA_HOME` 与 `CODEANA_JAVA8_HOME`；不设置时仍使用 `.sdkmanrc` 和固定 Java 8 路径，没有自动回退。替代工具链、Serial 和 `--build-only` 均不代表固定 G1 工具链正式验收。
+
+## 统一任务预算
+
+| 边界 | 当前行为 |
+|---|---|
+| 身份 | anatomist-4a903272-codeana-graph4-resource2-analysis；worker22、request/result11；旧bundle/请求/结果拒绝 |
+| 传递 | 显式 AnalysisContext，不使用全局或ThreadLocal账本；普通、混合、prepared实例下发静态grant |
+| 同账户 | Rust请求编码后发送累计水位；Java接续计费并回传；Rust拒绝错身份/超额/倒退，再为归档解码、重编码及IPC计费 |
+| 计费入口 | 捕获副本/上下文、模型解码、语法与声明索引、自有事实保留、扩展批次、语义JSON、XML解析/提取和归档输出；签名缓存冷暖读取、哈希缓冲、源码校验及行坐标数组也传递任务上下文 |
+| 局部作用域 | XML每文件/解析/发射、javac解码和catalogue局部额度与根账本一起原子检查；拒绝不先扣任一维度，失败对所有兄弟作用域粘性生效；释放不退款 |
+| 平台深度 | JDK SAX更严格时保留该限制，并把拒绝写入统一失败回执；当前固定工具链为深度100，未提高平台额度 |
+| 丢失回执 | 可发送Failure但FFI用量未知时回传usage_known=false；进程失联保留最后核实水位并标Unknown；不以0或已知水位证明完整消耗 |
+| 当前验收 | codec/签名/ASM/Lombok/元数据与混合/分发已完成本机fixture验收；正式范围见当前实现 |
+
+资源失败维持HardResourceLimit致命异常，不能被扩展恢复边界转成可发布的部分图。健康G1 worker在发布确认后可服务新任务；失败仍由supervisor换进程，不在原进程重建isolate。普通坏XML继续原恢复行为。实际回归范围及原失败见当前实现文档和target/unified-analysis-resources/java-context/receipt.json。
+
+Hello先签发grant并回传首个水位，再准入Discover业务帧，配置校验消费同一任务账本；BuildContext只在wire携带回执，不改变语义profile。未变复用用Reuse/Reused回执结束账户后退出。Native最终回执丢失仍标Unknown，保留已核实Discover水位。
+
+业务 IPC 共用 contracts 分配前准入：小型 Hello 初始化账本，随后 Discover/Analyze 在分配/解码前检查额度；有界堆控制通道支持超限后的失败回执，取消保留半帧进度并流式丢弃业务字节。实现与证据见 contracts.md 和当前 frame-admission 回执；语言内部投影/完整分发仍按各自未关闭项验收。
+
+声明指纹、声明压缩、源签名投影和ASM签名写出已接入累计账本；传输JSON改为共用Jackson，普通canonical字节和精确数字有冻结兼容向量。Rust预留JSON解码节点，Java先预留结果编码再封账回执。SOFA XML读取/SAX/元数据与注册计入原任务；源码切片/位置查找与coverage输出也累计计费。该轮Java fixture为688项，具体产品回执见java-signature-codecs；Lombok overlay/freeze已在后续701项及产品门禁中关闭，见java-extensions回执。
+
+Lombok声明overlay显式接收原任务账本；配置捕获/合并、生成声明/注解、类型索引、调用证据与JavaExtensionData freeze均在副本构造前检查。常量/注解辅助context不再另领默认账本，硬失败穿透扩展恢复。类型名从活动表读取，保留canonical嵌套名及原方法ID。合并JAR在Native Image前核对reactor全部类；重复package强制重建薄JAR，避免旧依赖混入。
+
+本轮统一资源治理八项已完成本机自建fixture验收，状态与历史阶段区分见current-state.md最后一节。三种分发及所有实际release worker的42项资源/混合/历史矩阵已通过；原二进制与SDK恢复记录齐全。此为本机fixture验证，不签完整语义/来源、跨平台或容量/稳定性能放行。

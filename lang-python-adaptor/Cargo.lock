@@ -560,6 +560,7 @@ dependencies = [
  "codeana-contracts",
  "codeana-model",
  "codeana-python-adaptor",
+ "prost",
  "serde_json",
  "tokio",
 ]

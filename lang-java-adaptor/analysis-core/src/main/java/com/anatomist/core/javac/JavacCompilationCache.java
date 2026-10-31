@@ -99,6 +99,7 @@ final class JavacCompilationCache {
         try {
             Files.move(temporary, target, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException failure) {
+            com.anatomist.core.HardResourceLimit.rethrow(failure);
             if (!valid(target)) throw failure;
         }
     }

@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-10-20。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-10-31。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -273,14 +273,14 @@ Native 首次安装因活跃 JVM 触发 `STOP_RUNTIME_BEFORE_NATIVE_INSTALL:9792
 | 项目 | 当前值 | 说明 |
 |---|---|---|
 | CLI-daemon handshake | 4 | `DAEMON_PROTOCOL_VERSION` |
-| worker protocol | 21 | `WORKER_PROTOCOL_VERSION` |
+| worker protocol | 22 | `WORKER_PROTOCOL_VERSION` |
 | graph model | 4 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
-| analysis request/result | 10 | Java bridge 与 Rust host 必须成套 |
+| analysis request/result | 11 | Java bridge 与 Rust host 必须成套 |
 | C ABI | 4 | 共享库/header/host 必须成套 |
 | javac 模型 / compiler batch | javac-model-v50 / 2 | 与 worker 协议独立 |
 | 图库物理格式 | user_version 11 | 删除业务语义标注存储，Rust/Python 紧凑布局保留 |
 | 上游逻辑格式 | schema 34 / GraphSemantics 26 | `project_meta.schema_version` 与物理格式不是同一个版本 |
-| adapter | anatomist-4a903272-codeana-graph4-maven-fallback1 | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
+| adapter | anatomist-4a903272-codeana-graph4-resource2-analysis | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
 | catalog | 2 | 事务升级；独立人工笔记库已移除 |
 | Native 构建 JDK | 25.3.4+1.r25-graal | `lang-java-adaptor/.sdkmanrc` 固定 Oracle GraalVM |
 
@@ -324,3 +324,85 @@ target 是可清理的本机证据位置，上述路径不保证在每个 checko
 | fixture 和一次冻结真实项目测量 | 独占容量/稳定性能验收；`native_accepted`、`performance_accepted` 仍为 false |
 
 开发 build-only、Hello、fixture、旧版本完整回执均不能代替当前版本正式验收。验证顺序和命令见 [实施与验收](delivery.md)。
+
+## 递归与资源边界治理（2026-10-31）
+
+JSON 已改用 Jackson Core 2.21.5，保留显式 codec；活动路径防环、输出展开深度 256、读取默认深度 512，拒绝非有限数字。Spring XML 保留 JDK SAX，解析与图提取共享每文件预算；配置树用显式栈。硬资源及基础设施异常穿透扩展与可选缓存恢复边界。
+
+Native 完整产品回归发现额外根因：缺少 Xerces `XMLMessages` 资源包，使平台深度超限变成 `MissingResourceException`，被当作普通坏 XML 恢复并发布早期 bean。已注册 Native 资源包，并将缺包异常列为不可恢复失败。新 Native C ABI 同时验证普通坏 XML 保留原恢复语义、硬超限不交付归档。全量/增量失败保留旧 head、旧 revision 可读及修复输入后重试的产品回归已通过。
+
+Rust 已接入根操作累计工作与载荷预算，覆盖有界图读取、revision/snapshot 元数据、源码、pipeline、diff 双端/impact、文本派生缓存及冻结页。执行配置逐字段继承且下次根查询生效；不改变语义指纹。受限结果携带 `resource_usage` 和 `COMPUTATION_LIMIT`，续页不恢复计算。调用关系增加可选直接递归投影，不改图库格式或 worker/ABI 协议。adapter 实现身份更新为 `anatomist-4a903272-codeana-graph4-resource1`，原上游基准和逐项来源 SHA 保留。
+
+本轮最终使用固定 SDKMAN `25.3.4+1.r25-graal`（实际 java 25.0.4.1 / Oracle GraalVM 25.3.4.1+1.1）、Java 8u492 和 Rust 1.96.0。完整 Java fixture 653 项，0 失败/错误/跳过；项目进程架构审计 1 项通过。Rust 完整门禁、最终 query 30 项、文本发现定向测试、fmt/clippy，以及 Python 核心/7 项产品和 prepared inputs 三语言补充用例通过。
+
+固定工具链 G1 开发构建/安装、9 项 C ABI 生命周期、9 项 Native 图与资源产品、真实 SIGSEGV 故障保旧 head 与恢复均通过；JVM 产品 8 项通过。Serial 早期开发验证和旧 GraalVM 在 macOS ARM64 的 G1 构建失败日志均保留。最终 release 包四组门禁、执行路径校验和 dev 二进制恢复结果见本轮 `release-package-g1/receipt.json`。
+
+按用户确认只验收自建 fixture，iopengw 排除，不作为待办。本轮额外冻结 120 个 Java 文件，在独立空应用状态仅做一次有效 release/G1 全量观测：索引 2.471 s，1,560 节点 / 3,478 事实，图库 1,982,464 bytes；1 秒采样的整个命令进程树峰值 231,620,608 bytes（包含观测包装进程，不是精确分配峰值，短命子进程可能漏采），完整性/FK 与索引后查询通过。首次观测因 fixture 位于上层仓库忽略的 target 目录，源码未进入 manifest；该失败回执原样保留，修正隔离后另建观测目录，不覆盖原结果。该小型 fixture 不能代表独占容量或稳定性能。
+
+来源清单检查通过（564 文件 / 42 适配项），来源审计可指定冻结仓库路径；本机参考仓库缺少固定 dff2e395 对象，完整上游来源门禁未签署。G1 fixture 也不替代正式完整语义/来源与容量放行。
+
+最终回归、源码/输入/产物 SHA 及原失败记录汇总于 `target/resource-governance-20261031/receipt.json`（本机产物，可清理）；`native_accepted` / `performance_accepted` 保持 false。
+
+## 统一 adaptor 资源治理当前状态（2026-10-31）
+
+| 边界 | 当前实现 / 证据 |
+|---|---|
+| 公共账本 | 四维限制、原子多维计费、父子作用域、活动路径、粘性失败、取消/单调截止时间；配置逐字段继承，预算不作为执行语义身份 |
+| 静态分片 | 根额度扣输入准入，再按Java/Rust/Python稳定顺序分配；host向上取整1/4，其余worker；同语言实例静态分片、不借用、不因attempt续领 |
+| 三个adaptor | Rust/Python/Java主要输入、遍历、投影、输出与host路径计费；JavaFFI接续同一账户，局部作用域与缓存冷暖路径已接入。Pyrefly内部solve仍由进程/RSS/supervisor约束，不宣称每一步精确计费 |
+| Discover | 生产入口启动前绑定实例，在有界Hello中签发grant并核对首个水位，再准入Discover业务帧；worker拒绝缺失/语言错误grant，配置读取/解码预留计费；BuildContext累计回执只用于wire，不改变语义profile |
+| 未变复用 | 普通及prepared多实例通过Reuse/Reused终止账户，phase=reused，记录真实Discover消耗；不会留下Reserved或伪造0 |
+| 失败 / 报告 | 整图失败不切head；JSON/Markdown展示同一核实累计用量。丢失最终回执时Unknown保留最后核实水位，不能证明FFI最终消耗 |
+| Java源码验证 | 当前Java分析协议11全量669项通过，0失败/错误/跳过；生产请求grant/seed/deadline与结果已知状态均强制校验。前阶段scope/cache证据保留原版本 |
+| 本阶段公共验证 | model49、contracts38、application35、Rust worker5通过；Java worker9通过/1个既有忽略项。完整just test-rust通过：workspace256通过/1个既有忽略项，另含图22、Rust语言5及参考/文本脚本门禁；独立Python workspace clippy通过 |
+| 严格边界 | 当前源码worker22、Java request/result11、ABI4；生产grant/seed/deadline必填，终态回执及usage_known必须显式存在；其余codec/签名投影/ASM、完整混合故障矩阵与release仍未关闭 |
+
+当前22/11产品验证与产物摘要汇总在target/unified-analysis-resources/strict-protocol/receipt.json；discover-reuse回执仍代表之前21/10产物。资源E2E已扩展到29项，包含三语言普通复用、prepared Python三实例/Rust两实例复用、Discover超限保旧图及恢复。最终资源29项、JVM资源/复用/Discover/XML9项、Native图与XML9、生命周期10、manifest5、Python原产品7、显式启用真实Java的prepared三语言全套7项均通过且无跳过；真实SIGSEGV保留Discover水位、保旧图、回收及SDK恢复后索引通过。
+
+重复执行index --prepare会创建新的generation目录，当前prepared身份包含这些产物路径；未变复用测试使用同一份已准备输入。原始两项测试输入选择错误、编译缺字段及修复后回执均保留。此前阶段原失败和SHA仍在java-scopes、java-context、python-deadline等回执中，不把旧产物改标为本阶段通过。
+
+iopengw按用户确认排除，只使用自建fixture。本阶段不是严格协议、正式Native、release或容量/性能放行；后续完成情况见本文最终验收记录。
+
+
+### 严格worker22 / Java分析11（本阶段验证通过）
+
+旧worker握手、旧Java请求/结果与混装SDK会拒绝；Java生产请求不能因缺少grant/seed/deadline回到默认账本。回执的usage_known使用protobuf optional bool，缺失拒绝；false只允许失败携带最后核实水位，不能认证End或Replan。所有语言共用host回执核对策略，已知I/O失败不伪造资源超限，重规划仍累计计费。
+
+取消控制核对attempt，host在既有2秒期限内接收终态；输出回压时worker只短暂尝试发送回执，不阻塞退出。Java预分配OOM/Stack/Fatal错误均带version11与usage_known=false，保留原故障。直接Native诊断fixture也显式提供grant/seed/deadline；生产入口没有自动降级。
+
+本阶段保留原始失败：取消回执受输出回压阻塞、4项解析fixture仍用版本10、来源清单同步、归档描述符未识别新usage_known字段。描述符现显式要求已知状态，未知或缺失不能交付Begin；修复后22/11全量门禁结果见target/unified-analysis-resources/strict-protocol/receipt.json。前一节discover-reuse的21/10产物保留原含义，不能作为本阶段22/11放行。
+
+### IPC 业务帧分配前准入（2026-10-31）
+
+三种真实 worker 和 host 统一使用 contracts 准入层。Hello 中显式 grant/deadline 与首个回执先于业务解码；健康 Java worker 的新任务重新握手。大正文、解码记录/容器与编码缓冲在分配前预留。16 KiB 控制缓冲置于堆上，超限后仍可回传失败；FFI 控制通道在 seed 前预留且只接受 1 KiB Cancel。半帧取消保留进度，排空阶段不再解码业务模型；解码前拒绝使用有界控制前缀取得新 attempt，发送侧资源失败保留原错误码。发布确认只接收有界控制消息。
+
+本轮原失败保留：异步大栈缓冲导致产品栈溢出、发送侧错误身份丢失、解码拒绝带旧 attempt，以及旧固定测试额度提前耗尽。证据汇总于 target/unified-analysis-resources/frame-admission/receipt.json。公共帧入口收口不代表语言内部所有投影/codec 已全部审计；后续完成情况见本文最终验收记录。
+
+本轮最终门禁：contracts 48 项（新增帧边界 10 项）、完整 just test-rust、独立 Python 构建与 clippy、三语言 Native 资源29项、Native 图/XML9项、JVM图/XML8项均通过；产品门禁记录的源码/产物漂移均为空。Java源码未变，本轮不冒充重新运行669项Java源码测试，也不重签Native/release/性能放行。汇总为 frame-admission/receipt.json。
+
+### Java 签名、Jackson 传输与 SOFA 边界（2026-10-31）
+
+声明指纹/view、源签名投影与ASM写出显式接续任务账本；类型擦除与ASM signature visitor有深度保护，资源失败穿透签名恢复边界。Native/JVM传输 facade 也已迁到Jackson，已删除自写JSON解析/编码及两份无调用旧投影；固定canonical UTF-8/数字精度兼容向量通过。Rust在FFI前预留JSON解码值节点与16个seed节点，Java结果编码先预留后生成累计回执。源码slice/position、coverage与SOFA SAX/注册/元数据也已接入累计账本。
+
+完整Java fixture688项通过，0失败/错误/跳过（新增19项），固定工具链G1 Native开发构建/安装成功；协议仍worker22/Java11/ABI4。原编译修复与测试输入先触发8MiB捕获上限的回执保留，SOFA产品用例改用低于8MiB的输入触发其64MiB局部预留，未抬高限额。最新产品验证见 target/unified-analysis-resources/java-signature-codecs/receipt.json。Lombok overlay与JavaExtensionData freeze等构造前核对、其他语言内部副本审计、完整混合故障矩阵和三语言分发仍继续，未签正式Native/release/性能放行。
+
+本轮最终实际通过：Native资源29、Native图/XML10、JVM图/XML9、Native生命周期10、manifest5、环境1、真实SIGSEGV/SDK恢复再索引；产品门禁无源码/产物漂移，SDK恢复后的SHA一致。完整Rust门禁通过，contracts51项，独立Python构建/clippy通过。范围汇总java-signature-codecs/receipt.json仍标complete_plan=false；Lombok/元数据freeze的后续完成情况见本文最终验收记录。
+
+### Lombok/元数据与内部副本继续治理（2026-10-31）
+
+Java扩展、Lombok配置/生成声明/类型索引和调用证据、元数据freeze都接续原任务账本；不可变复制前拒绝超限，局部硬失败不恢复为部分图。生成方法保持canonical嵌套名，避免每个参数复制完整类型图。Rust/Python内部JSON和重试DTO通过公共serde准入，读取有界；Python路径自动机及文本扩展提前预留。
+
+本阶段发现重复shade会沿用旧合并JAR中的依赖类：Java源码/fixture通过不证明该Native包包含新代码。现强制重建薄JAR，并在JVM/Native生成前逐类核对reactor结果；旧失败和修复记录保留。最新实际门禁以target/unified-analysis-resources/java-extensions/receipt.json为准；在最终回执封存前，本段不签整个计划或正式容量/性能放行。
+
+### 统一资源治理八项：本机自建 fixture 验收完成（2026-10-31）
+
+| 范围 | 最新通过 |
+|---|---|
+| 源码 | Java701；Rust完整门禁、contracts56；Python25与clippy；Java来源清单571/75 |
+| 产品 | Native资源/混合/历史42、Native图11、JVM图10、生命周期10；prepared三语言7，全部产品门禁无跳过 |
+| 分发 | Rust26、Python34；Java四组release门禁；五个实际release二进制在原路径再跑统一42项，通过后全部开发二进制SHA恢复，SDK不变 |
+| 故障 | 真实Native SIGSEGV保旧图、Unknown/最后水位、回收进程、恢复SDK后再索引均通过 |
+
+Lombok/元数据freeze和内部JSON/DTO副本准入已关闭；重复shade旧依赖和SOFA属性顺序漂移已修复。验收汇总见target/unified-analysis-resources/java-extensions/receipt.json。历史阶段记录保持原含义，不能替代当前源码/产物组合。
+
+本轮只签资源治理和本机fixture分发验证：formal native/release/performance acceptance均为false。Linux、目标Java17/25、完整上游语义/来源和稳定容量/性能仍属于项目未完成范围；不将javac/rust-analyzer/Pyrefly内部CPU或RSS冒充自身逻辑计费。iopengw排除。首次prepared缺Maven、旧shade、超时先触及载荷、测试包导入缓存等原失败均留证。

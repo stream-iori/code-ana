@@ -3,6 +3,7 @@ use super::*;
 #[derive(Default)]
 pub(super) struct TaskControl {
     pub(super) token: CancellationToken,
+    pub(super) deadline: Mutex<Option<Instant>>,
     pub(super) publication: Arc<PublicationFence>,
 }
 impl TaskControl {
@@ -73,12 +74,26 @@ impl TaskRunner {
                 return Err(error);
             }
         };
+        let query_budget = if req.operation == Operation::SearchText
+            && req.revision.is_empty()
+            && req.cursor.is_empty()
+        {
+            Some(ResourceBudget::new(codeana_config::query_limits(
+                &root,
+                &engine.store.home,
+            )?))
+        } else {
+            None
+        };
         let id = new_id("task");
         let (id, new) = engine.tasks.register(&TaskId::from(id), &req)?;
         if !new {
             return Ok(id.into());
         }
         let job = Arc::new(Job {
+            analysis_admission: Mutex::new(None),
+            analysis_coordinator: Mutex::new(None),
+            query_budget,
             _queue_permit: queue_permit,
             control: TaskControl::default(),
             submitting: AtomicBool::new(true),
@@ -104,6 +119,8 @@ impl TaskRunner {
                 Err(error)
             } else if job.control.token.is_cancelled() {
                 Err(DomainError::new(ErrorCode::Cancelled, "").into())
+            } else if let Some(budget) = &job.query_budget {
+                codeana_config::capture_query(&root, &req, budget)
             } else {
                 codeana_config::capture(&root, &req)
             })
@@ -151,6 +168,7 @@ impl TaskRunner {
                         revision: revision.into(),
                         producer: read.revision().producer.clone(),
                         evidence: Evidence {
+                            resource_usage: None,
                             enumeration: false,
                             semantic: false,
                             reasons: vec!["post_publication_interruption".into()],
@@ -214,10 +232,18 @@ impl TaskRunner {
         } else {
             project.clone()
         };
+        let deadline = Instant::now()
+            + Duration::from_secs(if req.deadline_seconds == 0 {
+                120
+            } else {
+                req.deadline_seconds
+            });
+        *job.control.deadline.lock().unwrap() = Some(deadline);
+        job.control.publication.tighten_deadline(deadline);
         let work = async {
             let _permits = engine
                 .scheduler
-                .execute(&command, project, lock_key, &job.control.token)
+                .execute(&command, project.clone(), lock_key, &job.control.token)
                 .await?;
             ensure!(
                 !job.control.token.is_cancelled(),
@@ -227,87 +253,101 @@ impl TaskRunner {
             engine
                 .tasks
                 .event(&TaskId::from(id), &Event::Progress("running".into()))?;
-            let capture = capture.transpose()?;
-            let mut result = match req.operation {
-                Operation::Index => {
-                    engine
-                        .index(
-                            id,
-                            &IndexCommand::from(req),
-                            capture.context(codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::CaptureRequired,
-                                "",
-                            ))?,
-                            &job.control.token,
-                        )
-                        .await?
-                }
-                Operation::Snapshot => {
-                    engine
-                        .snapshot(id, req, capture, &job.control.token)
-                        .await?
-                }
-                Operation::SearchText if req.revision.is_empty() && req.cursor.is_empty() => {
-                    let c = capture.context(codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::CaptureRequired,
-                        "",
-                    ))?;
-                    let request = req.clone();
-                    let engine = engine.clone();
-                    let cancellation = job.control.token.clone();
-                    tokio::task::spawn_blocking(move || {
-                        ensure!(
-                            !cancellation.is_cancelled(),
-                            codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::Cancelled,
-                                ""
+            let mut result = if let Some(budget) = &job.query_budget
+                && budget.exhausted()
+            {
+                engine.resource_page(req, &project, "", budget, vec![])?
+            } else {
+                let capture = capture.transpose()?;
+                match req.operation {
+                    Operation::Index => {
+                        engine
+                            .index(
+                                id,
+                                &IndexCommand::from(req),
+                                capture.context(codeana_model::DomainError::new(
+                                    codeana_model::ErrorCode::CaptureRequired,
+                                    "",
+                                ))?,
+                                &job.control.token,
                             )
-                        );
-                        let profile = digest(&(
-                            c.effective.capture_digest.clone(),
-                            &c.effective.config.search.text.include,
-                        ));
-                        let reader = FilesReader(Revision {
-                            id: key("worktree_text", &[&c.manifest.id(), &profile]),
-                            target: c.target,
-                            project: c.project.clone(),
-                            checkout: c.checkout,
-                            manifest: c.manifest,
-                            profile,
-                            producer: "rust-text-v1".into(),
-                            created: now(),
-                        });
-                        engine.text_page(
-                            &request,
-                            &reader,
-                            &|s| {
-                                ensure!(
-                                    !cancellation.is_cancelled(),
-                                    codeana_model::DomainError::new(
-                                        codeana_model::ErrorCode::Cancelled,
-                                        ""
-                                    )
-                                );
-                                c.blobs
-                                    .get(&s.hash)
-                                    .context(codeana_model::DomainError::new(
-                                        codeana_model::ErrorCode::CaptureBlobMissing,
-                                        "",
-                                    ))?
-                                    .read(MAX_FRAME)
-                            },
-                            vec![],
-                            &cancellation,
-                        )
-                    })
-                    .await??
-                }
-                _ => {
-                    let request = req.clone();
-                    let engine = engine.clone();
-                    let cancellation = job.control.token.clone();
-                    tokio::task::spawn_blocking(move || engine.execute(&request, &cancellation))
+                            .await?
+                    }
+                    Operation::Snapshot => {
+                        engine
+                            .snapshot(id, req, capture, &job.control.token)
+                            .await?
+                    }
+                    Operation::SearchText if req.revision.is_empty() && req.cursor.is_empty() => {
+                        let c = capture.context(codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::CaptureRequired,
+                            "",
+                        ))?;
+                        let request = req.clone();
+                        let engine = engine.clone();
+                        let cancellation = job.control.token.clone();
+                        let budget = job
+                            .query_budget
+                            .clone()
+                            .expect("active text capture owns a root budget");
+                        tokio::task::spawn_blocking(move || {
+                            ensure!(
+                                !cancellation.is_cancelled(),
+                                codeana_model::DomainError::new(
+                                    codeana_model::ErrorCode::Cancelled,
+                                    ""
+                                )
+                            );
+                            let profile = digest(&(
+                                c.effective.capture_digest.clone(),
+                                &c.effective.config.search.text.include,
+                            ));
+                            let reader = FilesReader(Revision {
+                                id: key("worktree_text", &[&c.manifest.id(), &profile]),
+                                target: c.target,
+                                project: c.project.clone(),
+                                checkout: c.checkout,
+                                manifest: c.manifest,
+                                profile,
+                                producer: "rust-text-v1".into(),
+                                created: now(),
+                            });
+                            let reader = BudgetedSource {
+                                inner: &reader,
+                                budget: &budget,
+                            };
+                            engine.text_page(
+                                &request,
+                                &reader,
+                                &|s| {
+                                    ensure!(
+                                        !cancellation.is_cancelled(),
+                                        codeana_model::DomainError::new(
+                                            codeana_model::ErrorCode::Cancelled,
+                                            ""
+                                        )
+                                    );
+                                    c.blobs
+                                        .get(&s.hash)
+                                        .context(codeana_model::DomainError::new(
+                                            codeana_model::ErrorCode::CaptureBlobMissing,
+                                            "",
+                                        ))?
+                                        .read(MAX_FRAME)
+                                },
+                                vec![],
+                                &cancellation,
+                            )
+                        })
                         .await??
+                    }
+                    _ => {
+                        let request = req.clone();
+                        let engine = engine.clone();
+                        let cancellation = job.control.token.clone();
+                        tokio::task::spawn_blocking(move || engine.execute(&request, &cancellation))
+                            .await??
+                    }
                 }
             };
             if req.strict
@@ -321,10 +361,16 @@ impl TaskRunner {
         tokio::pin!(work);
         let reason = tokio::select! {
             result = &mut work => return result,
-            _ = tokio::time::sleep(Duration::from_secs(if req.deadline_seconds == 0 { 120 } else { req.deadline_seconds })) => ErrorCode::Timeout,
+            _ = tokio::time::sleep_until(tokio::time::Instant::from_std(deadline)) => ErrorCode::Timeout,
             _ = job.control.token.cancelled() => ErrorCode::Cancelled,
         };
         job.control.cancel();
+        if let Some((_, budget)) = job.analysis_admission.lock().unwrap().as_ref() {
+            budget.cancel();
+        }
+        if let Some(coordinator) = job.analysis_coordinator.lock().unwrap().as_ref() {
+            coordinator.lock().unwrap().cancel();
+        }
         // Never detach a storage operation. The future retains its permits until all
         // blocking operations and any in-flight catalog commit have actually finished.
         let outcome = work.await;

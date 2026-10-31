@@ -9,12 +9,14 @@ public final class JavaSyntax {
     private final List<JavaNode> order;
     private final Map<Integer, Integer> parents = new HashMap<>();
 
-    public JavaSyntax(JavaNode root) {
+    public JavaSyntax(JavaNode root) { this(root,null); }
+    public JavaSyntax(JavaNode root, com.anatomist.core.AnalysisContext analysis) {
         ArrayDeque<Visit> pending = new ArrayDeque<>();
         pending.push(new Visit(Objects.requireNonNull(root), -1, 0));
         while (!pending.isEmpty()) {
             Visit visit = pending.pop();
             JavaNode node = visit.node();
+            if(analysis!=null) {analysis.depth(visit.depth()+1);analysis.charge(1,1,256);}
             if (visit.depth() > 512 || nodes.size() >= 1_000_000)
                 throw new IllegalArgumentException("syntax catalogue exceeds budget");
             JavaNode previous = nodes.putIfAbsent(node.id(), node);
@@ -33,6 +35,7 @@ public final class JavaSyntax {
                     for (Object item : list)
                         if (item instanceof JavaNode child) children.add(child);
             }
+            if(analysis!=null)analysis.charge(children.size(),children.size(),64L*children.size());
             for (int i = children.size() - 1; i >= 0; i--)
                 pending.push(new Visit(children.get(i), node.id(), visit.depth() + 1));
         }

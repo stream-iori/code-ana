@@ -83,7 +83,7 @@ public final class JavaAnnotationFacts {
                 fact.nodeId = owner;
                 fact.annotationFqn = fqn;
                 fact.rawName = raw;
-                fact.attributes = Json.writeCompact(attributes);
+                fact.attributes = Json.writeCompact(attributes, model.analysisContext());
                 fact.targetKind = target;
                 fact.targetPath = targetPath;
                 fact.resolutionStatus = status;

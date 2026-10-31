@@ -8,7 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 
-/** Explicit JVM development entry: request/result 10, task-owned GRA1 output. */
+/** Explicit JVM development entry: request/result 11, task-owned GRA1 output. */
 public final class JvmRunner {
     public static void main(String[] args) throws Exception {
         if (args.length != 2) throw new IllegalArgumentException("request.json result.json required");
@@ -19,7 +19,8 @@ public final class JvmRunner {
         AnalysisTelemetry telemetry = new AnalysisTelemetry();
         int terminalState = -1;
         String failureDetail = null;
-        try (AnalysisSession session = new AnalysisSession(request, telemetry)) {
+        var resources = com.anatomist.core.AnalysisContext.fromRequest(request);
+        try (AnalysisSession session = new AnalysisSession(request, telemetry, resources)) {
             Thread cancellation = new Thread(() -> {
                 try {
                     while (!Thread.currentThread().isInterrupted()) {
@@ -43,6 +44,8 @@ public final class JvmRunner {
                 telemetry.phase("archive_seal", "", true);
                 result.put("graph_archive", facts.export(resultPath.resolveSibling("graph.rows")));
                 telemetry.phase("archive_seal", "", false);
+                Json.admit(result,resources);
+                    result.put("analysis_usage", resources.receipt());
                 Json.writeTo(resultPath, result, 64L << 20);
                 terminalState = 1;
             } finally {
@@ -53,7 +56,7 @@ public final class JvmRunner {
             var detail = new java.io.StringWriter();
             failure.printStackTrace(new java.io.PrintWriter(detail));
             failureDetail = detail.toString();
-            Json.writeTo(resultPath, Json.object("error", detail.toString()), 64L << 20);
+            Json.writeTo(resultPath, Json.object("version",11,"usage_known",true,"error", detail.toString(), "analysis_usage", resources.receipt()), 64L << 20);
             throw failure;
         } finally {
             telemetry.save(Path.of(Json.string(request, "scratch")).resolve("native-timings.json"), terminalState, failureDetail);

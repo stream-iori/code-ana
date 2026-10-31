@@ -1,17 +1,18 @@
 //! The only layer allowed to hold Pyrefly state and compiler objects.
 use anyhow::{Context, Result, ensure};
+use codeana_model::{AnalysisContext, AnalysisFailure};
 use pyrefly::state::{load::FileContents, lsp::FindPreference, require::Require, state::State};
 use pyrefly_build::{handle::Handle, source_db::map_db::MapDatabase};
 use pyrefly_config::{base::InferReturnTypes, config::ConfigFile, finder::ConfigFinder};
 use pyrefly_python::{module_name::ModuleName, module_path::ModulePath, qname::QName};
 use pyrefly_types::{
     function::FunctionKind,
-    types::{Forallable, Type},
+    types::{BoundMethodType, Forallable, Type},
 };
 use pyrefly_util::{arc_id::ArcId, thread_pool::ThreadCount};
 use ruff_python_ast::{
-    Expr, Stmt,
-    visitor::{self, Visitor},
+    AnyNodeRef, Expr, Stmt,
+    visitor::source_order::{self, SourceOrderVisitor, TraversalSignal},
 };
 use ruff_text_size::Ranged;
 use serde::{Deserialize, Serialize};
@@ -94,42 +95,104 @@ pub enum Attribution {
     Unknown,
 }
 
-fn target(qname: &QName) -> Target {
-    Target {
-        name: qname.module_qualified_name(),
+fn target(qname: &QName, budget: &AnalysisContext) -> Result<Target> {
+    // QName's Display implementation recurses through enclosing scopes. Build
+    // the name iteratively and reserve all retained bytes before allocation.
+    let mut context = Some(qname.parent());
+    let mut names = Vec::new();
+    let mut bytes = qname.module_name().as_str().len() + qname.id().as_str().len() + 1;
+    while let Some(parent) = context {
+        budget.charge(1, 1, 32)?;
+        budget.observe_depth(names.len().saturating_add(1).try_into().unwrap_or(u32::MAX))?;
+        if let Some(id) = parent.identifier() {
+            let name = qname.module().code_at(id.range());
+            bytes = bytes.saturating_add(name.len() + 1);
+            names.push(name);
+        }
+        context = parent.parent();
+    }
+    budget.charge(
+        1,
+        1,
+        (bytes as u64)
+            .saturating_add(qname.module_path().as_path().as_os_str().len() as u64)
+            .saturating_add(128),
+    )?;
+    let mut name = String::with_capacity(bytes);
+    name.push_str(qname.module_name().as_str());
+    for part in names.iter().rev() {
+        name.push('.');
+        name.push_str(part);
+    }
+    name.push('.');
+    name.push_str(qname.id().as_str());
+    Ok(Target {
+        name,
         path: qname.module_path().as_path().to_string_lossy().into_owned(),
         start: qname.range().start().into(),
         end: qname.range().end().into(),
-    }
+    })
 }
 
-fn function(kind: &FunctionKind, targets: &mut Vec<Target>, unknown: &mut Vec<String>) {
+fn function(
+    kind: &FunctionKind,
+    targets: &mut Vec<Target>,
+    unknown: &mut Vec<String>,
+    budget: &AnalysisContext,
+) -> Result<()> {
     match kind {
-        FunctionKind::Def(def) => targets.push(target(&def.qname)),
+        FunctionKind::Def(def) => targets.push(target(&def.qname, budget)?),
         _ => unknown.push("synthesized_callable".into()),
     }
+    Ok(())
 }
 
 // Read inferred types; never resolve a call by matching spelling against names.
-fn call_targets(ty: &Type, targets: &mut Vec<Target>, unknown: &mut Vec<String>) {
-    match ty {
-        Type::Function(f) => function(&f.metadata.kind, targets, unknown),
-        Type::BoundMethod(m) => call_targets(&m.func.clone().as_type(), targets, unknown),
-        Type::Overload(o) => function(&o.metadata.kind, targets, unknown),
-        Type::Forall(f) => match &f.body {
-            Forallable::Function(f) => function(&f.metadata.kind, targets, unknown),
-            _ => unknown.push("generic_callable_not_extracted".into()),
-        },
-        Type::Union(u) => {
-            for member in &u.members {
-                call_targets(member, targets, unknown);
+fn call_targets(
+    ty: &Type,
+    targets: &mut Vec<Target>,
+    unknown: &mut Vec<String>,
+    budget: &AnalysisContext,
+) -> Result<()> {
+    budget.charge(1, 1, std::mem::size_of::<(&Type, u32)>() as u64)?;
+    let mut pending = vec![(ty, 1u32)];
+    while let Some((ty, depth)) = pending.pop() {
+        budget.observe_depth(depth)?;
+        budget.charge(1, 1, 512)?;
+        match ty {
+            Type::Function(f) => function(&f.metadata.kind, targets, unknown, budget)?,
+            Type::BoundMethod(m) => {
+                budget.observe_depth(depth.saturating_add(1))?;
+                match &m.func {
+                    BoundMethodType::Function(f) => {
+                        function(&f.metadata.kind, targets, unknown, budget)?
+                    }
+                    BoundMethodType::Forall(f) => {
+                        function(&f.body.metadata.kind, targets, unknown, budget)?
+                    }
+                    BoundMethodType::Overload(o) => {
+                        function(&o.metadata.kind, targets, unknown, budget)?
+                    }
+                }
             }
+            Type::Overload(o) => function(&o.metadata.kind, targets, unknown, budget)?,
+            Type::Forall(f) => match &f.body {
+                Forallable::Function(f) => function(&f.metadata.kind, targets, unknown, budget)?,
+                _ => unknown.push("generic_callable_not_extracted".into()),
+            },
+            Type::Union(u) => {
+                for member in u.members.iter().rev() {
+                    budget.charge(1, 1, std::mem::size_of::<(&Type, u32)>() as u64)?;
+                    pending.push((member, depth.saturating_add(1)));
+                }
+            }
+            Type::Any(_) => unknown.push("dynamic_any".into()),
+            Type::ClassDef(class) => targets.push(target(class.qname(), budget)?),
+            Type::Callable(_) => unknown.push("callable_target_unknown".into()),
+            _ => unknown.push("callable_type_not_extracted".into()),
         }
-        Type::Any(_) => unknown.push("dynamic_any".into()),
-        Type::ClassDef(class) => targets.push(target(class.qname())),
-        Type::Callable(_) => unknown.push("callable_target_unknown".into()),
-        _ => unknown.push("callable_type_not_extracted".into()),
     }
+    Ok(())
 }
 
 struct AstFacts<'a> {
@@ -138,49 +201,134 @@ struct AstFacts<'a> {
     bindings: Vec<(&'a str, &'a str, ruff_text_size::TextRange)>,
 }
 
-impl<'a> Visitor<'a> for AstFacts<'a> {
-    fn visit_except_handler(&mut self, handler: &'a ruff_python_ast::ExceptHandler) {
-        let ruff_python_ast::ExceptHandler::ExceptHandler(handler) = handler;
-        if let Some(name) = &handler.name {
-            self.bindings
-                .push((name.as_str(), "variable", name.range()));
+// The library walks only one node's immediate children. Every child is queued
+// and returns Skip, so Python nesting never consumes the Rust call stack.
+struct AstQueue<'a, 'b> {
+    pending: Vec<(AnyNodeRef<'a>, u32)>,
+    facts: AstFacts<'a>,
+    budget: &'b AnalysisContext,
+    depth: u32,
+    failure: Option<AnalysisFailure>,
+}
+impl AstQueue<'_, '_> {
+    fn reserve(&mut self, nodes: u64, bytes: u64) -> bool {
+        if self.failure.is_some() {
+            return false;
         }
-        if let Some(type_) = &handler.type_ {
-            self.visit_expr(type_);
+        match self.budget.charge(1, nodes, bytes) {
+            Ok(()) => true,
+            Err(failure) => {
+                self.failure = Some(failure);
+                false
+            }
         }
-        self.visit_body(&handler.body);
     }
-    fn visit_parameter(&mut self, parameter: &'a ruff_python_ast::Parameter) {
-        self.bindings
-            .push((parameter.name.as_str(), "parameter", parameter.name.range()));
-        visitor::walk_parameter(self, parameter);
-    }
-    fn visit_alias(&mut self, alias: &'a ruff_python_ast::Alias) {
-        let name = alias.asname.as_ref().unwrap_or(&alias.name);
-        self.bindings.push((name.as_str(), "import", name.range()));
-        visitor::walk_alias(self, alias);
+}
+impl<'a> SourceOrderVisitor<'a> for AstQueue<'a, '_> {
+    fn enter_node(&mut self, node: AnyNodeRef<'a>) -> TraversalSignal {
+        if self.failure.is_none() {
+            let next = self.depth.saturating_add(1);
+            if let Err(failure) = self.budget.observe_depth(next) {
+                self.failure = Some(failure);
+            } else if self.reserve(1, std::mem::size_of::<(AnyNodeRef<'_>, u32)>() as u64) {
+                self.pending.push((node, next));
+            }
+        }
+        TraversalSignal::Skip
     }
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        self.statements.push(stmt);
-        visitor::walk_stmt(self, stmt);
+        source_order::walk_stmt(self, stmt);
+        if self.reserve(1, std::mem::size_of::<&Stmt>() as u64) {
+            self.facts.statements.push(stmt);
+        }
     }
     fn visit_expr(&mut self, expr: &'a Expr) {
-        self.expressions.push(expr);
+        source_order::walk_expr(self, expr);
+        if self.reserve(1, std::mem::size_of::<&Expr>() as u64) {
+            self.facts.expressions.push(expr);
+        }
         if let Expr::Name(name) = expr
             && name.ctx == ruff_python_ast::ExprContext::Store
+            && self.reserve(1, 64)
         {
-            self.bindings
+            self.facts
+                .bindings
                 .push((name.id.as_str(), "variable", name.range()));
         }
-        visitor::walk_expr(self, expr);
     }
+    fn visit_parameter(&mut self, parameter: &'a ruff_python_ast::Parameter) {
+        source_order::walk_parameter(self, parameter);
+        if self.reserve(1, 64) {
+            self.facts.bindings.push((
+                parameter.name.as_str(),
+                "parameter",
+                parameter.name.range(),
+            ));
+        }
+    }
+    fn visit_alias(&mut self, alias: &'a ruff_python_ast::Alias) {
+        source_order::walk_alias(self, alias);
+        if self.reserve(1, 64) {
+            let name = alias.asname.as_ref().unwrap_or(&alias.name);
+            self.facts
+                .bindings
+                .push((name.as_str(), "import", name.range()));
+        }
+    }
+    fn visit_except_handler(&mut self, handler: &'a ruff_python_ast::ExceptHandler) {
+        source_order::walk_except_handler(self, handler);
+        let ruff_python_ast::ExceptHandler::ExceptHandler(handler) = handler;
+        if let Some(name) = &handler.name
+            && self.reserve(1, 64)
+        {
+            self.facts
+                .bindings
+                .push((name.as_str(), "variable", name.range()));
+        }
+    }
+}
+fn ast_facts<'a>(body: &'a [Stmt], budget: &AnalysisContext) -> Result<AstFacts<'a>> {
+    let mut queue = AstQueue {
+        pending: vec![],
+        facts: AstFacts {
+            statements: vec![],
+            expressions: vec![],
+            bindings: vec![],
+        },
+        budget,
+        depth: 0,
+        failure: None,
+    };
+    queue.visit_body(body);
+    queue.pending.reverse();
+    while let Some((node, depth)) = queue.pending.pop() {
+        budget.checkpoint()?;
+        queue.depth = depth;
+        let start = queue.pending.len();
+        node.visit_source_order(&mut queue);
+        queue.pending[start..].reverse();
+        if let Some(failure) = queue.failure.take() {
+            return Err(failure.into());
+        }
+    }
+    if let Some(failure) = queue.failure {
+        return Err(failure.into());
+    }
+    Ok(queue.facts)
 }
 
 /// P0 core extraction over supplied bytes. No target file/config/interpreter IO.
 /// Module resolution uses the explicit source database plus the pinned bundled
 /// stdlib. This is not yet a project discovery API or a complete graph producer.
 pub fn analyze(modules: &[FrozenModule], version: &str, platform: &str) -> Result<Analysis> {
-    analyze_inner(modules, version, platform, None, &|| Ok(()))
+    analyze_inner(
+        modules,
+        version,
+        platform,
+        None,
+        &|| Ok(()),
+        &AnalysisContext::new(Default::default(), None)?,
+    )
 }
 
 pub(crate) fn analyze_disk(
@@ -190,6 +338,7 @@ pub(crate) fn analyze_disk(
     roots: &[std::path::PathBuf],
     dependencies: &[std::path::PathBuf],
     check: &dyn Fn() -> Result<()>,
+    budget: &AnalysisContext,
 ) -> Result<Analysis> {
     analyze_inner(
         modules,
@@ -197,6 +346,7 @@ pub(crate) fn analyze_disk(
         platform,
         Some((roots, dependencies)),
         check,
+        budget,
     )
 }
 
@@ -206,6 +356,7 @@ fn analyze_inner(
     platform: &str,
     disk: Option<(&[std::path::PathBuf], &[std::path::PathBuf])>,
     check: &dyn Fn() -> Result<()>,
+    budget: &AnalysisContext,
 ) -> Result<Analysis> {
     ensure!(!modules.is_empty(), "PYTHON_NO_INPUTS");
     let mut config = ConfigFile::default();
@@ -229,6 +380,11 @@ fn analyze_inner(
     let mut handles = Vec::new();
     let mut memory = Vec::new();
     for module in modules {
+        budget.charge(
+            1,
+            4,
+            (module.source.len() + module.path.len() * 4 + module.name.len() * 2 + 512) as u64,
+        )?;
         ensure!(
             disk.is_some()
                 || Path::new(&module.path)
@@ -269,6 +425,7 @@ fn analyze_inner(
     transaction
         .as_mut()
         .run(&handles, Require::Everything, None);
+    budget.checkpoint()?;
     state.commit_transaction(transaction, None);
     eprintln!(
         "codeana-python-timing backend_solve_ms={}",
@@ -280,6 +437,11 @@ fn analyze_inner(
     let mut output = Analysis::default();
     let mut by_path: BTreeMap<String, Vec<Handle>> = BTreeMap::new();
     for handle in transaction.handles() {
+        budget.charge(
+            1,
+            1,
+            (handle.path().as_path().as_os_str().len() + 512) as u64,
+        )?;
         by_path
             .entry(handle.path().as_path().to_string_lossy().into_owned())
             .or_default()
@@ -305,6 +467,7 @@ fn analyze_inner(
             }),
     ) {
         check()?;
+        budget.charge(1, 1, 512)?;
         let path = error.path().as_path().to_string_lossy().into_owned();
         if !impacts.contains_key(&path) {
             let mut affected = BTreeSet::new();
@@ -314,6 +477,7 @@ fn analyze_inner(
                 for origin in origins {
                     check()?;
                     for dependent in transaction.get_transitive_rdeps(origin.clone()) {
+                        budget.charge(1, 1, 512)?;
                         let dependent = dependent.path().as_path().to_string_lossy().into_owned();
                         if selected.contains(&dependent) {
                             affected.insert(dependent);
@@ -326,11 +490,19 @@ fn analyze_inner(
             };
             impacts.insert(path.clone(), (attribution, affected));
         }
+        budget.charge(1, 1, (path.len() as u64).saturating_add(512))?;
+        budget.charge(
+            1,
+            impacts[&path].1.len() as u64,
+            impacts[&path].1.iter().map(|s| (s.len() + 64) as u64).sum(),
+        )?;
         let (attribution, affected_sources) = impacts[&path].clone();
+        let message = error.msg();
+        budget.charge(1, 0, message.len() as u64)?;
         output.diagnostics.push(Diagnostic {
             path,
             code: error.error_kind().to_name().into(),
-            message: error.msg(),
+            message,
             start: error.range().start().into(),
             end: error.range().end().into(),
             attribution,
@@ -340,12 +512,12 @@ fn analyze_inner(
     for (module, handle) in modules.iter().zip(&handles) {
         check()?;
         let ast = transaction.get_ast(handle).context("PYTHON_AST_MISSING")?;
-        let mut facts = AstFacts {
-            statements: vec![],
-            expressions: vec![],
-            bindings: vec![],
-        };
-        facts.visit_body(&ast.body);
+        let facts = ast_facts(&ast.body, budget)?;
+        budget.charge(
+            1,
+            1,
+            (module.name.len() * 2 + module.path.len() + 512) as u64,
+        )?;
         let mut declarations = vec![Declaration {
             name: module.name.clone(),
             qualified_name: module.name.clone(),
@@ -362,6 +534,11 @@ fn analyze_inner(
                 Stmt::ClassDef(c) => (c.name.as_str(), "class", c.name.range()),
                 _ => continue,
             };
+            budget.charge(
+                declarations.len() as u64,
+                1,
+                (module.path.len() + name.len() + 512) as u64,
+            )?;
             let parent = declarations
                 .iter()
                 .filter(|d| {
@@ -369,6 +546,7 @@ fn analyze_inner(
                 })
                 .min_by_key(|d| d.body_end - d.body_start)
                 .unwrap();
+            budget.charge(0, 0, parent.qualified_name.len() as u64)?;
             declarations.push(Declaration {
                 name: name.into(),
                 qualified_name: format!("{}.{name}", parent.qualified_name),
@@ -381,6 +559,11 @@ fn analyze_inner(
             });
         }
         for (name, kind, range) in &facts.bindings {
+            budget.charge(
+                declarations.len() as u64,
+                1,
+                (module.path.len() + name.len() + 512) as u64,
+            )?;
             let parent = declarations
                 .iter()
                 .filter(|d| {
@@ -390,6 +573,7 @@ fn analyze_inner(
                 })
                 .min_by_key(|d| d.body_end - d.body_start)
                 .unwrap();
+            budget.charge(0, 0, parent.qualified_name.len() as u64)?;
             declarations.push(Declaration {
                 name: (*name).into(),
                 qualified_name: format!("{}.{name}", parent.qualified_name),
@@ -407,10 +591,11 @@ fn analyze_inner(
                 && let Some(arguments) = &class.arguments
             {
                 for base in &arguments.args {
+                    budget.charge(1, 1, (module.path.len() + 512) as u64)?;
                     let mut targets = vec![];
                     let mut unknown = vec![];
                     if let Some(ty) = transaction.get_type_trace(handle, base.range()) {
-                        call_targets(&ty, &mut targets, &mut unknown);
+                        call_targets(&ty, &mut targets, &mut unknown, budget)?;
                     }
                     output.references.push(Reference {
                         relation: "INHERITS".into(),
@@ -423,11 +608,18 @@ fn analyze_inner(
             }
         }
         for expr in facts.expressions {
+            budget.charge(
+                1,
+                1,
+                (module.path.len() as u64)
+                    .saturating_add(u32::from(expr.end() - expr.start()) as u64)
+                    .saturating_add(512),
+            )?;
             if let Expr::Call(call) = expr {
                 let mut targets = Vec::new();
                 let mut unknown_reasons = Vec::new();
                 if let Some(ty) = transaction.get_type_trace(handle, call.func.range()) {
-                    call_targets(&ty, &mut targets, &mut unknown_reasons);
+                    call_targets(&ty, &mut targets, &mut unknown_reasons, budget)?;
                 } else {
                     unknown_reasons.push("type_trace_missing".into());
                 }
@@ -452,26 +644,32 @@ fn analyze_inner(
                 preference.resolve_call_dunders = false;
                 preference.disable_style_fallback = true;
                 preference.include_interpreter_stdlib = false;
-                let targets = transaction
-                    .find_definition(
-                        handle,
-                        range.end() - ruff_text_size::TextSize::new(1),
-                        preference,
-                    )
-                    .map(|items| {
-                        items
-                            .into_iter()
-                            .map(|d| Target {
-                                name: d
-                                    .display_name
-                                    .unwrap_or_else(|| d.module.code_at(d.definition_range).into()),
-                                path: d.module.path().as_path().to_string_lossy().into_owned(),
-                                start: d.definition_range.start().into(),
-                                end: d.definition_range.end().into(),
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
+                let mut targets = Vec::new();
+                if let Ok(items) = transaction.find_definition(
+                    handle,
+                    range.end() - ruff_text_size::TextSize::new(1),
+                    preference,
+                ) {
+                    for d in items {
+                        budget.charge(
+                            1,
+                            1,
+                            (d.display_name.as_ref().map_or_else(
+                                || d.module.code_at(d.definition_range).len(),
+                                String::len,
+                            ) + d.module.path().as_path().as_os_str().len()
+                                + 128) as u64,
+                        )?;
+                        targets.push(Target {
+                            name: d
+                                .display_name
+                                .unwrap_or_else(|| d.module.code_at(d.definition_range).into()),
+                            path: d.module.path().as_path().to_string_lossy().into_owned(),
+                            start: d.definition_range.start().into(),
+                            end: d.definition_range.end().into(),
+                        });
+                    }
+                }
                 output.references.push(Reference {
                     relation: "REFERENCES".into(),
                     path: module.path.clone(),

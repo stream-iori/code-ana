@@ -22,35 +22,48 @@ final class JavacCatalogueCodec {
     private final DataInputStream input;
     private final DataOutputStream output;
     private int work;
+    private final com.anatomist.core.AnalysisContext analysis;
 
-    private JavacCatalogueCodec(DataInputStream input, DataOutputStream output) {
+    private JavacCatalogueCodec(DataInputStream input, DataOutputStream output, com.anatomist.core.AnalysisContext analysis) {
+        this.analysis=analysis;
         this.input = input;
         this.output = output;
     }
 
-    static void write(Path path, List<JavaUnit> units) throws IOException {
+    static void write(Path path, List<JavaUnit> units) throws IOException { write(path,units,null); }
+    static void write(Path path, List<JavaUnit> units,com.anatomist.core.AnalysisContext context) throws IOException {
+        var analysis=scope(context);
         try (var output =
                 new DataOutputStream(
                         new BufferedOutputStream(
                                 new LimitedOutput(Files.newOutputStream(path), MAX_BYTES)))) {
-            var codec = new JavacCatalogueCodec(null, output);
+            var codec = new JavacCatalogueCodec(null, output,analysis);
             output.writeInt(MAGIC);
             output.writeInt(units.size());
             for (JavaUnit unit : units) codec.unit(unit);
         }
     }
 
-    static List<JavaUnit> read(Path path) throws IOException {
+    static List<JavaUnit> read(Path path) throws IOException { return read(path,null); }
+    private static com.anatomist.core.AnalysisContext scope(com.anatomist.core.AnalysisContext context) {
+        if(context==null)return null;
+        var scope=context.childScope(new com.anatomist.core.AnalysisContext.Limits(Math.min(1000000,context.limits().maxWork()),context.limits().maxNodes(),Math.min(MAX_BYTES,context.limits().maxPayloadBytes()),Math.min(129,context.limits().maxDepth())));
+        scope.charge(1,1,16384);
+        return scope;
+    }
+    static List<JavaUnit> read(Path path,com.anatomist.core.AnalysisContext context) throws IOException {
+        var analysis=scope(context);
         if (Files.size(path) > MAX_BYTES) throw new BudgetExceeded("catalogue exceeds byte budget");
         try (var input = new DataInputStream(new BufferedInputStream(Files.newInputStream(path)))) {
             if (input.readInt() != MAGIC) throw new IOException("catalogue format mismatch");
-            var codec = new JavacCatalogueCodec(input, null);
+            var codec = new JavacCatalogueCodec(input, null,analysis);
             List<JavaUnit> units = new ArrayList<>();
             int count = codec.count();
             for (int i = 0; i < count; i++) units.add(codec.unit());
             if (input.read() != -1) throw new IOException("trailing catalogue bytes");
             return List.copyOf(units);
         } catch (RuntimeException invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
             throw new IOException("invalid catalogue", invalid);
         }
     }
@@ -134,7 +147,7 @@ final class JavacCatalogueCodec {
                 true,
                 declarations,
                 hash,
-                new JavaExtensionData(generated, metadata, diagnostics, counters));
+                new JavaExtensionData(generated, metadata, diagnostics, counters,analysis));
     }
 
     private void type(JavaType value) throws IOException {
@@ -557,6 +570,7 @@ final class JavacCatalogueCodec {
             output.writeInt(-1);
             return;
         }
+        if(analysis!=null)analysis.charge(1,1,3L*value.length());
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         if (bytes.length > JavacProtocol.MAX_BYTES)
             throw new BudgetExceeded("catalogue text exceeds budget");
@@ -570,6 +584,7 @@ final class JavacCatalogueCodec {
         if (size == -1) return null;
         if (size < 0 || size > JavacProtocol.MAX_BYTES)
             throw new BudgetExceeded("catalogue text exceeds budget");
+        if(analysis!=null)analysis.charge(1,1,3L*size);
         byte[] bytes = input.readNBytes(size);
         if (bytes.length != size) throw new EOFException("truncated catalogue text");
         return new String(bytes, StandardCharsets.UTF_8);
@@ -578,10 +593,12 @@ final class JavacCatalogueCodec {
     private int count() throws IOException {
         int count = input.readInt();
         if (count < 0 || count > 100_000) throw new IOException("catalogue count exceeds budget");
+        if(analysis!=null)analysis.charge(count,count,64L*count);
         return count;
     }
 
     private void visit(int depth) throws IOException {
+        if(analysis!=null){analysis.depth(depth+1);analysis.charge(1,1,64);}
         if (depth > 128 || ++work > 1_000_000)
             throw new BudgetExceeded("catalogue work exceeds budget");
     }

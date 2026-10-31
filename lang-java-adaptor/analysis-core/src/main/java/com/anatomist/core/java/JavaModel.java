@@ -29,6 +29,7 @@ public final class JavaModel implements AutoCloseable {
     private final Map<Path, Map<SourceSpan, List<DeclarationRef>>> spans = new HashMap<>();
     private final Map<Path, JavaSource> sources = new HashMap<>();
     private final Map<Path, JavaSyntax> syntax = new HashMap<>();
+    private final com.anatomist.core.AnalysisContext analysis;
     private boolean closed;
     private boolean modeledDeclarations;
 
@@ -37,8 +38,12 @@ public final class JavaModel implements AutoCloseable {
         return modeledDeclarations;
     }
 
-    public JavaModel(JavaAnalysisContext context) {
+    public JavaModel(JavaAnalysisContext context) { this(context,null); }
+    public JavaModel(JavaAnalysisContext context, com.anatomist.core.AnalysisContext analysis) {
+        this.analysis=analysis;
+        if(analysis!=null)analysis.charge(1,8,1024);
         for (JavaUnit unit : context.units()) {
+            if(analysis!=null)analysis.charge(1,1,256);
             if (units.putIfAbsent(unit.path(), unit) != null)
                 throw new IllegalArgumentException("duplicate unit in model");
             List<JavaDeclaration> inventory = new ArrayList<>();
@@ -65,6 +70,8 @@ public final class JavaModel implements AutoCloseable {
         }
     }
 
+    public com.anatomist.core.AnalysisContext analysisContext() { return analysis; }
+
     public JavaUnit unit(Path path) {
         requireOpen();
         JavaUnit unit = units.get(path);
@@ -79,7 +86,7 @@ public final class JavaModel implements AutoCloseable {
                 path,
                 source -> {
                     try {
-                        return JavaSource.read(unit(source));
+                        return JavaSource.read(unit(source), analysis);
                     } catch (IOException failure) {
                         throw new UncheckedIOException(failure);
                     }
@@ -88,11 +95,12 @@ public final class JavaModel implements AutoCloseable {
 
     public JavaSyntax syntax(Path path) {
         requireOpen();
-        return syntax.computeIfAbsent(path, source -> new JavaSyntax(unit(source).tree()));
+        return syntax.computeIfAbsent(path, source -> new JavaSyntax(unit(source).tree(),analysis));
     }
 
     public List<DeclarationRef> declarations(Path path) {
         unit(path);
+        if(analysis!=null)analysis.charge(declarations.get(path).size(), declarations.get(path).size(), 64L * declarations.get(path).size());
         List<DeclarationRef> references = new ArrayList<>();
         for (int ordinal = 0; ordinal < declarations.get(path).size(); ordinal++)
             references.add(new DeclarationRef(path, ordinal));
@@ -162,6 +170,7 @@ public final class JavaModel implements AutoCloseable {
             List<JavaDeclaration> inventory,
             DeclarationRef parent,
             int depth) {
+        if(analysis!=null) {analysis.depth(depth+1);analysis.charge(1,1,512);}
         if (depth > 128 || inventory.size() >= 100_000)
             throw new IllegalArgumentException("declaration catalogue exceeds budget");
         DeclarationRef reference = new DeclarationRef(path, inventory.size());
@@ -188,6 +197,7 @@ public final class JavaModel implements AutoCloseable {
 
     private void requireOpen() {
         if (closed) throw new IllegalStateException("Java model is closed");
+        if(analysis!=null)analysis.charge(1,0,0);
     }
 
     @Override

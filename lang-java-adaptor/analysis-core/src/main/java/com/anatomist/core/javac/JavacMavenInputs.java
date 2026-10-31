@@ -562,6 +562,7 @@ public record JavacMavenInputs(
         } catch (IOException failure) {
             throw failure;
         } catch (Exception invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
             throw new IOException("invalid effective Maven input", invalid);
         }
     }

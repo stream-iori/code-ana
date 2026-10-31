@@ -113,6 +113,13 @@ public final class XmlBeanGraphExtractor {
             ArtifactRange artifactRange,
             ProjectFactView facts,
             ExtractionResult result) {
+        extractWithResolvedBeans(beans, knownIds, existingBeans, sourceFile, artifactRange, facts, result,
+                new com.anatomist.core.XmlResourceBudget());
+    }
+    public void extractWithResolvedBeans(
+            List<ParsedBean> beans, Set<String> knownIds, Map<String, BeanRefTarget> existingBeans,
+            String sourceFile, ArtifactRange artifactRange, ProjectFactView facts, ExtractionResult result,
+            com.anatomist.core.XmlResourceBudget budget) {
         // bean name → its declared class FQN, for resolving refs to classes.
         Map<String, String> beanClass = new HashMap<>();
         for (ParsedBean b : beans) {
@@ -144,6 +151,8 @@ public final class XmlBeanGraphExtractor {
         result.nodes.add(artifact);
 
         for (ParsedBean b : beans) {
+            budget.emittedNode(1);
+            budget.text(b.name()); budget.text(sourceFile);
             String beanId = beanNodeId(b.name(), sourceFile);
             String cls = b.className();
             String productClass = beanClass.get(b.name());
@@ -175,6 +184,7 @@ public final class XmlBeanGraphExtractor {
             if (b.initMethod() != null) beanMetadata.put("initMethod", b.initMethod());
             if (b.destroyMethod() != null) beanMetadata.put("destroyMethod", b.destroyMethod());
             if (b.nestedIn() != null) beanMetadata.put("nestedIn", b.nestedIn());
+            budget.json(beanMetadata);
             n.metadata = metadataJson(beanMetadata);
             result.nodes.add(n);
 
@@ -339,7 +349,7 @@ public final class XmlBeanGraphExtractor {
                     knownIds,
                     refs,
                     productClass,
-                    facts);
+                    facts, budget);
             if (cls != null)
                 emitWires(
                         cls,
@@ -392,10 +402,22 @@ public final class XmlBeanGraphExtractor {
             Set<String> knownIds,
             List<XmlConfigNode> refs,
             String ownerClass,
-            ProjectFactView facts) {
-        for (int i = 0; i < children.size(); i++) {
-            XmlConfigNode child = children.get(i);
-            String id = configNodeId(parentId, child, i);
+            ProjectFactView facts, com.anatomist.core.XmlResourceBudget budget) {
+        record Frame(String parent, List<XmlConfigNode> nodes, int index, int depth) {}
+        java.util.Deque<Frame> stack = new java.util.ArrayDeque<>();
+        stack.push(new Frame(parentId, children, 0, 1));
+        while (!stack.isEmpty()) {
+            Frame frame = stack.pop();
+            if (frame.index() >= frame.nodes().size()) continue;
+            budget.emittedNode(frame.depth());
+            int i = frame.index();
+            XmlConfigNode child = frame.nodes().get(i);
+            String currentParentId = frame.parent();
+            budget.text(currentParentId); budget.text(child.kind);
+            budget.text(child.name); budget.text(child.key); budget.text(child.bean);
+            budget.bytes(64); // bounded numeric suffix and punctuation reservation
+            String id = configNodeId(currentParentId, child, i);
+            stack.push(new Frame(currentParentId, frame.nodes(), i + 1, frame.depth()));
             Node n = new Node();
             n.id = id;
             n.label = labelOf(child);
@@ -410,17 +432,19 @@ public final class XmlBeanGraphExtractor {
             n.sourceOrdinal = child.ordinal;
             n.scope = scope;
             n.producerId = ProducerIds.SPRING_XML;
-            n.metadata = metadataJson(metadataOf(child));
+            var childMetadata = metadataOf(child);
+            budget.json(childMetadata);
+            n.metadata = metadataJson(childMetadata);
             result.nodes.add(n);
 
             Edge contains =
                     baseEdge(
-                            parentId.equals(beanId)
+                            currentParentId.equals(beanId)
                                     ? GraphConstants.Relation.CONFIGURES
                                     : GraphConstants.Relation.XML_CONTAINS,
                             sourceFile,
                             child.line);
-            contains.sourceId = parentId;
+            contains.sourceId = currentParentId;
             contains.targetId = id;
             contains.isExternal = false;
             result.edges.add(contains);
@@ -453,18 +477,7 @@ public final class XmlBeanGraphExtractor {
                 emitCallableBinding(
                         id, beanId, reference, child.line, sourceFile, false, facts, result);
             }
-            emitConfigTree(
-                    beanId,
-                    id,
-                    child.children,
-                    sourceFile,
-                    result,
-                    xmlBeanClass,
-                    existingBeans,
-                    knownIds,
-                    refs,
-                    ownerClass,
-                    facts);
+            stack.push(new Frame(id, child.children, 0, frame.depth() + 1));
         }
     }
 

@@ -47,6 +47,10 @@ enum Command {
     Resolve(QueryArgs),
     SearchCode(QueryArgs),
     Structure(QueryArgs),
+    #[command(
+        about = "Inspect static call relations",
+        long_about = "Inspect static call relations. recursion=direct marks equal, nonempty caller/callee method IDs; it does not prove runtime execution or termination. Inspect source for exit conditions. A missing marker does not exclude indirect recursion."
+    )]
     Calls(QueryArgs),
     CallSites(QueryArgs),
     References(QueryArgs),
@@ -112,6 +116,9 @@ struct ReportArgs {
     format: String,
 }
 #[derive(Args, Default)]
+#[command(
+    after_help = "Execution budgets: set max_work and max_payload_bytes in [resources.query]. Each field inherits project -> user -> default. Limited results retain completed evidence; --strict exits 3."
+)]
 struct QueryArgs {
     #[arg(long, default_value = "", value_parser = ["", "project", "modules", "packages", "dependencies"])]
     section: String,
@@ -675,6 +682,7 @@ async fn run() -> Result<i32> {
         suggestions: a.suggestions,
         expected_revision: a.expected_revision,
     };
+    let budgeted_query = codeana_query_operation(&req.operation);
     let runtime_candidates = req.operation == "runtime-implementations"
         || req
             .stages
@@ -685,7 +693,12 @@ async fn run() -> Result<i32> {
         req.operation == "dispatch" || req.stages.iter().any(|s| s.operation == "dispatch");
     let analysis_world =
         !req.analysis_world.is_empty() || req.stages.iter().any(|s| !s.analysis_world.is_empty());
-    if runtime_candidates || transitive_relations || dispatch_options || analysis_world {
+    if budgeted_query
+        || runtime_candidates
+        || transitive_relations
+        || dispatch_options
+        || analysis_world
+    {
         let hello = client
             .handshake(authenticated(
                 p::HandshakeRequest {
@@ -696,6 +709,14 @@ async fn run() -> Result<i32> {
             .await?
             .into_inner();
         for (required, capability) in [
+            (budgeted_query, "query-resources-v1"),
+            (
+                req.operation == "calls"
+                    || req.operation == "pipeline"
+                    || req.operation == "diff"
+                    || req.operation == "trace",
+                "call-recursion-v1",
+            ),
             (runtime_candidates, "runtime-implementations-v1"),
             (transitive_relations, "relation-transitive-v1"),
             (dispatch_options, "java-dispatch-v1"),
@@ -812,4 +833,27 @@ async fn run() -> Result<i32> {
         markdown,
     )
     .await
+}
+
+fn codeana_query_operation(operation: &str) -> bool {
+    matches!(
+        operation,
+        "resolve"
+            | "search-code"
+            | "structure"
+            | "calls"
+            | "call-sites"
+            | "references"
+            | "source"
+            | "annotations"
+            | "type-relations"
+            | "callable-relations"
+            | "runtime-implementations"
+            | "dispatch"
+            | "trace"
+            | "overview"
+            | "search-text"
+            | "pipeline"
+            | "diff"
+    )
 }

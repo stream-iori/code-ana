@@ -145,3 +145,9 @@ Bean、Spring/SOFA XML、MVC 和 handler 的公开配置节点保留 Facet 类�
 ## Python 查询边界
 
 Python 导航/结构/调用使用已发布声明、包含、引用和直接继承事实。dispatch 保留 Pyrefly 静态目标和未知分支，不使用 Java CHA；显式 `cha` 和运行时实现枚举返回不支持。构造调用绑定类声明，不声称穷尽运行时 `__new__` / 元类行为。
+
+## 累计资源与直接递归
+
+生产查询使用根操作持有的 `ResourceBudget`，子查询、pipeline 与 diff 共用。扫描提供 `BoundedRead`，区分完整读取、已解码记录和资源停止；计费、配置及退出语义见配置文档“查询累计预算”。聚合在读取未完成时不返回中间计数，selector 不能从受限候选断言唯一，diff 不把未读端点视为空集。受限结果可冻结，但每页保留原 `resource_usage`，不重新读取配置或恢复计算。
+
+新生成的调用关系（含 trace/pipeline/impact）在完整非空 caller/callee 方法 ID 相同时携带可选 `recursion: "direct"`。关系身份、排序和导航不变；旧页缺字段仍可读。该字段只表示静态直接自调用，不证明运行时执行或退出条件；字段缺失不能排除间接递归。

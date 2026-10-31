@@ -15,6 +15,24 @@ impl Store {
         read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
         check: &dyn Fn() -> Result<()>,
     ) -> Result<Option<TextCandidates>> {
+        self.text_candidates_budgeted(manifest, pattern, read_source, check, None)
+    }
+    pub fn text_candidates_budgeted(
+        &self,
+        manifest: &Manifest,
+        pattern: &str,
+        read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+        check: &dyn Fn() -> Result<()>,
+        budget: Option<&ResourceBudget>,
+    ) -> Result<Option<TextCandidates>> {
+        for source in &manifest.files {
+            if let Some(b) = budget {
+                b.charge(
+                    1,
+                    (source.path.len() + source.world.len() + source.hash.len()) as u64,
+                )?;
+            }
+        }
         check()?;
         if pattern.chars().count() < 3
             || pattern.contains('\0')
@@ -79,11 +97,16 @@ impl Store {
         );
         let phrase = format!("\"{}\"", pattern.replace('"', "\"\""));
         let mut query = db.prepare("SELECT world,path FROM sources WHERE invalid=1 OR id IN (SELECT rowid FROM text_fts WHERE text_fts MATCH ?) ORDER BY id")?;
-        let rows = query.query_map([phrase], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        let mut rows = query.query([phrase])?;
         let mut candidates = BTreeSet::new();
-        for row in rows {
+        while let Some(row) = rows.next()? {
             check()?;
-            candidates.insert(row?);
+            if let Some(b) = budget {
+                let world = row.get_ref(0)?.as_str()?;
+                let path = row.get_ref(1)?.as_str()?;
+                b.charge(1, (world.len() + path.len()) as u64)?;
+            }
+            candidates.insert((row.get(0)?, row.get(1)?));
         }
         Ok(Some(candidates))
     }

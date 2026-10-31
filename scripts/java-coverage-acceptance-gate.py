@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Close coverage only with an executed disposition for every frozen original test."""
 import argparse
+from java_reference import frozen_reference
 import hashlib
 import json
 from pathlib import Path
@@ -51,12 +52,13 @@ def main():
     for name in ['inventory', 'jvm-gate', 'rust-gate', 'output']:
         parser.add_argument('--' + name, type=Path, required=True)
     parser.add_argument('--extra-java-receipt', action='append', type=Path, default=[])
+    parser.add_argument('--reference-repo', type=Path, default=ROOT.parent / 'anatomist')
     args = parser.parse_args()
     if args.output.exists():
         raise ValueError('NEW_COVERAGE_RECEIPT_REQUIRED')
     inputs = {str(path.resolve()): sha256(path) for path in [args.inventory, args.jvm_gate,
               args.rust_gate, Path(__file__), ROOT / 'scripts/java-coverage-inventory.py',
-              ROOT / 'tests/java_coverage_scope.py', ROOT / 'tests/java_source_cases.py',
+              ROOT / 'scripts/java_reference.py', ROOT / 'tests/java_coverage_scope.py', ROOT / 'tests/java_source_cases.py',
               ROOT / 'lang-java-adaptor/upstream-sources.json', ROOT / 'lang-java-adaptor/upstream-archive.json',
               ROOT / 'lang-java-adaptor/rust-coverage-mappings.json']}
     report = dict(status='failed', coverage_inventory_closed=False, native_accepted=False,
@@ -64,7 +66,7 @@ def main():
                   unsupported_annotations=[], inputs=inputs)
     try:
         inventory = json.loads(args.inventory.read_text())
-        upstream = ROOT.parent / 'anatomist'
+        upstream = frozen_reference(args.reference_repo, inventory['commit'])
         tree = subprocess.check_output(['git', '-C', str(upstream), 'ls-tree', '-r',
                                         inventory['commit']], text=True).splitlines()
         paths = [line.split('\t', 1)[1] for line in tree if line.split()[1] == 'blob']

@@ -1,6 +1,7 @@
 package com.anatomist.framework.lombok;
 
 import com.anatomist.core.ContentHash;
+import com.anatomist.core.AnalysisContext;
 
 import java.io.IOException;
 import java.nio.file.*;
@@ -22,6 +23,15 @@ final class LombokConfigurationScope {
     }
 
     LombokConfigurationScope(Path project, Map<Path, String> capturedContents) {
+        this(project,capturedContents,null);
+    }
+
+    LombokConfigurationScope(Path project, Map<Path,String> capturedContents, AnalysisContext resources) {
+        if(resources!=null) {
+            resources.charge(capturedContents.size(),0,1024L+256L*capturedContents.size());
+            for(var entry:capturedContents.entrySet())
+                resources.charge(1,0,256L+12L*(entry.getKey().toString().length()+entry.getValue().length()));
+        }
         this.project = project.toAbsolutePath().normalize();
         captured = true;
         contents = Map.copyOf(capturedContents);
@@ -38,7 +48,10 @@ final class LombokConfigurationScope {
                     "LOMBOK_CONFIG_CHANGED: configuration changed during analysis");
     }
 
-    LombokConfiguration forSource(Path source) {
+    LombokConfiguration forSource(Path source) {return forSource(source,null);}
+
+    LombokConfiguration forSource(Path source,AnalysisContext resources) {
+        if(resources!=null)resources.charge(1,0,1024L+128L*contents.size());
         Path directory = source.toAbsolutePath().normalize().getParent();
         if (directory == null || !directory.startsWith(project))
             throw new IllegalArgumentException(
@@ -48,10 +61,11 @@ final class LombokConfigurationScope {
         for (int depth = 0; directory != null; directory = directory.getParent()) {
             if (++depth > 256)
                 throw new IllegalArgumentException("Lombok configuration exceeds depth budget");
+            if(resources!=null) {resources.depth(depth,256);resources.charge(1,0,256L+8L*directory.toString().length());}
             String content = contents.get(directory.resolve("lombok.config"));
             if (content != null) {
                 layers.add(content);
-                if (stops(content)) { stopped = true; break; }
+                if (stops(content,resources)) { stopped = true; break; }
             }
             if (captured && directory.equals(project)) break;
         }
@@ -61,14 +75,18 @@ final class LombokConfigurationScope {
             for (var entry : new TreeMap<>(contents).entrySet()) {
                 if (!entry.getKey().startsWith(ancestors)) continue;
                 layers.add(entry.getValue());
-                if (stops(entry.getValue())) break;
+                if (stops(entry.getValue(),resources)) break;
             }
         }
         Collections.reverse(layers);
-        return LombokConfiguration.fromContent(String.join("\n", layers));
+        long characters=layers.size();
+        for(String layer:layers)characters+=layer.length();
+        if(resources!=null)resources.charge(layers.size(),0,128L+4L*characters);
+        return LombokConfiguration.fromContent(String.join("\n", layers),resources);
     }
 
-    private static boolean stops(String content) {
+    private static boolean stops(String content,AnalysisContext resources) {
+        LombokConfiguration.admitContent(content,resources);
         String last = null;
         for (String raw : content.lines().toList()) {
             String line = raw.strip();

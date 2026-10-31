@@ -16,7 +16,7 @@ class BundleVersions(unittest.TestCase):
             root=pathlib.Path(temporary)
             project=root/'lang-java-adaptor'
             sources={
-                root/'crates/model/src/lib.rs':'pub const VERSION: u32 = 37;\npub const WORKER_PROTOCOL_VERSION: u32 = 99;\n',
+                root/'crates/model/src/lib.rs':'pub const VERSION: u32 = 37;\npub const WORKER_PROTOCOL_VERSION: u32 = 99;\npub const JAVA_ANALYSIS_VERSION: u32 = 73;\n',
                 project/'java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java':'IDENTITY = "fixture-adapter";',
                 project/'analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java':'MODEL_VERSION = "fixture-model";',
                 project/'analysis-core/src/main/java/com/anatomist/core/javac/JavacBatchProtocol.java':'VERSION = 2;',
@@ -32,7 +32,7 @@ class BundleVersions(unittest.TestCase):
             for script,argument,manifest in [('java-jvm-manifest.py',project,output/'jvm/manifest.json'),('java-adaptor-manifest.py',output,output/'native/manifest.json')]:
                 subprocess.run([sys.executable,str(ROOT/'scripts'/script),str(argument)],check=True,capture_output=True)
                 body=json.loads(manifest.read_text())
-                self.assertEqual((body['worker_protocol'],body['fact_ir']),(99,37))
+                self.assertEqual((body['worker_protocol'],body['fact_ir'],body['analysis_request']),(99,37,73))
                 for name,digest in body['files'].items():
                     self.assertEqual(digest,hashlib.sha256(((output/'jvm' if body['backend']=='jvm' else output)/name).read_bytes()).hexdigest())
 

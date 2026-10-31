@@ -10,7 +10,7 @@ pub enum Language<'a> {
     Python(&'a w::PythonConfig),
 }
 use codeana_contracts::{
-    envelope, map, read_frame, worker as w, worker::envelope::Body, write_frame,
+    envelope, map, worker as w, worker::envelope::Body, write_frame_with_budget,
 };
 use codeana_model::*;
 use std::{os::fd::AsRawFd, path::Path, time::Duration};
@@ -85,7 +85,8 @@ async fn receive_ack(
     revision: &str,
     timeout: Duration,
 ) -> Result<()> {
-    let frame = tokio::time::timeout(timeout, read_frame(ipc)).await??;
+    let mut reader = codeana_contracts::FrameReader::default();
+    let frame = tokio::time::timeout(timeout, reader.next_control(ipc)).await??;
     ensure!(
         frame.attempt == attempt,
         codeana_model::DomainError::new(codeana_model::ErrorCode::AckAttemptMismatch, "")
@@ -105,11 +106,22 @@ async fn receive_ack(
     }
     Ok(())
 }
+pub struct AnalysisBinding {
+    pub coordinator: std::sync::Arc<std::sync::Mutex<AnalysisCoordinator>>,
+    pub language: AnalysisLanguage,
+    pub instance: String,
+}
+
 pub struct Worker {
+    analysis: Option<(
+        AnalysisGrant,
+        std::sync::Arc<std::sync::Mutex<AnalysisCoordinator>>,
+    )>,
     child: Child,
     process_group: u32,
     command: String,
     ipc: UnixStream,
+    frame_reader: codeana_contracts::FrameReader,
     logs: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     log_task: tokio::task::JoinHandle<()>,
     monitor: tokio::task::JoinHandle<()>,
@@ -123,6 +135,9 @@ pub struct Worker {
 }
 impl Drop for Worker {
     fn drop(&mut self) {
+        if let Some((grant, coordinator)) = &self.analysis {
+            let _ = coordinator.lock().unwrap().lost_grant(grant);
+        }
         self.log_task.abort();
         self.monitor.abort();
         // SAFETY: this group was created exclusively for the owned worker. Reap only after
@@ -134,6 +149,49 @@ impl Drop for Worker {
     }
 }
 impl Worker {
+    fn attach_analysis(&mut self, binding: AnalysisBinding) -> Result<()> {
+        ensure!(self.analysis.is_none(), "ANALYSIS_GRANT_ALREADY_ATTACHED");
+        let grant = binding
+            .coordinator
+            .lock()
+            .unwrap()
+            .issue_instance(binding.language, &binding.instance)?;
+        self.analysis = Some((grant, binding.coordinator));
+        Ok(())
+    }
+    fn analysis_deadline_ms(&self) -> Result<u64> {
+        self.analysis
+            .as_ref()
+            .map(|(grant, coordinator)| {
+                coordinator
+                    .lock()
+                    .unwrap()
+                    .host(grant.language)?
+                    .remaining_millis()
+                    .map(|n| n.unwrap_or(0))
+                    .map_err(DomainError::analysis)
+                    .map_err(Into::into)
+            })
+            .unwrap_or(Ok(0))
+    }
+    fn accept_analysis_receipt(
+        &self,
+        receipt: Option<&w::AnalysisBudgetReceipt>,
+        terminal: bool,
+        failed: bool,
+    ) -> Result<()> {
+        if let Some((grant, coordinator)) = &self.analysis {
+            codeana_contracts::analysis_budget::reconcile_receipt(
+                &mut coordinator.lock().unwrap(),
+                grant,
+                receipt,
+                terminal,
+                failed,
+            )?;
+        }
+        Ok(())
+    }
+
     pub async fn start(
         fixtures: Option<&Path>,
         java: Option<&super::java::PreparedJava>,
@@ -141,6 +199,7 @@ impl Worker {
         manifest: &Manifest,
         cancel: &CancellationToken,
         memory_limit: u64,
+        analysis: Option<AnalysisBinding>,
     ) -> Result<Self> {
         Self::start_language(
             fixtures,
@@ -149,6 +208,7 @@ impl Worker {
             manifest,
             cancel,
             memory_limit,
+            analysis,
         )
         .await
     }
@@ -159,7 +219,12 @@ impl Worker {
         manifest: &Manifest,
         cancel: &CancellationToken,
         memory_limit: u64,
+        analysis: Option<AnalysisBinding>,
     ) -> Result<Self> {
+        ensure!(
+            fixtures.is_some() || analysis.is_some(),
+            "ANALYSIS_GRANT_REQUIRED"
+        );
         let (java, rust, python) = match language {
             Language::Java(java) => (java, None, None),
             Language::Rust(rust) => (None, Some(rust), None),
@@ -304,6 +369,7 @@ impl Worker {
         });
         drop(b);
         let mut worker = Self {
+            analysis: None,
             output_limits: java
                 .map(|j| codeana_contracts::graph_archive::OutputLimits::from_config(&j.config))
                 .transpose()?
@@ -319,6 +385,7 @@ impl Worker {
             logs,
             log_task,
             ipc: UnixStream::from_std(a)?,
+            frame_reader: codeana_contracts::FrameReader::default(),
             attempt: new_id("attempt"),
             context: BuildContext {
                 language: String::new(),
@@ -351,39 +418,58 @@ impl Worker {
                 facts: config.fact_limit,
             };
         }
+        if let Some(binding) = analysis {
+            worker.attach_analysis(binding)?;
+        }
+        let hello_deadline = worker.analysis_deadline_ms()?;
         worker
             .send(Body::Hello(w::Hello {
                 protocol: WORKER_PROTOCOL_VERSION,
                 fact_ir: VERSION,
                 producer: "daemon".into(),
+                analysis_grant: worker
+                    .analysis
+                    .as_ref()
+                    .map(|(g, _)| codeana_contracts::analysis_budget::encode_grant(g)),
+                deadline_ms: Some(hello_deadline),
+                analysis_usage: None,
             }))
             .await?;
         match worker.receive(cancel).await? {
-            Body::Hello(h) => ensure!(
-                h.protocol == WORKER_PROTOCOL_VERSION
-                    && h.fact_ir == VERSION
-                    && h.producer
-                        == if fixtures.is_some() {
-                            "mock-fixture-v1"
-                        } else if rust.is_some() {
-                            "rust-core"
-                        } else if python.is_some() {
-                            "python-core"
-                        } else {
-                            "javac-java8-v1"
-                        },
-                codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::WorkerVersionMismatch,
-                    ""
-                )
-            ),
+            Body::Hello(h) => {
+                worker.accept_analysis_receipt(h.analysis_usage.as_ref(), false, false)?;
+                ensure!(
+                    h.protocol == WORKER_PROTOCOL_VERSION
+                        && h.fact_ir == VERSION
+                        && h.producer
+                            == if fixtures.is_some() {
+                                "mock-fixture-v1"
+                            } else if rust.is_some() {
+                                "rust-core"
+                            } else if python.is_some() {
+                                "python-core"
+                            } else {
+                                "javac-java8-v1"
+                            },
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::WorkerVersionMismatch,
+                        ""
+                    )
+                );
+            }
             _ => bail!(codeana_model::DomainError::new(
                 codeana_model::ErrorCode::ExpectedHello,
                 ""
             )),
         };
+        let deadline_ms = worker.analysis_deadline_ms()?;
         worker
             .send(Body::Discover(w::Discover {
+                deadline_ms: Some(deadline_ms),
+                analysis_grant: worker.analysis.as_ref().map(|(grant, _)| {
+                    Box::new(codeana_contracts::analysis_budget::encode_grant(grant))
+                }),
+
                 python: python.cloned().map(Box::new),
                 rust: rust.cloned().map(Box::new),
                 manifest: Some(map(manifest)?),
@@ -391,7 +477,10 @@ impl Worker {
             }))
             .await?;
         worker.context = match worker.receive(cancel).await? {
-            Body::Context(c) => map(&c)?,
+            Body::Context(c) => {
+                worker.accept_analysis_receipt(c.analysis_usage.as_ref(), false, false)?;
+                map(&c)?
+            }
             Body::Advice(a) => {
                 let mut advice: BuildAdvice = map(&a)?;
                 ensure!(
@@ -443,24 +532,55 @@ impl Worker {
             fixtures.is_none() || worker.context.producer.starts_with("mock-"),
             codeana_model::DomainError::new(codeana_model::ErrorCode::MockProvenanceRequired, "")
         );
+        ensure!(
+            worker.analysis.is_none()
+                || worker
+                    .context
+                    .capabilities
+                    .iter()
+                    .any(|c| c == "analysis-resources-v1"),
+            "ANALYSIS_CAPABILITY_REQUIRED"
+        );
         if python.is_some() {
             validate_python_context(&worker.context)?;
         }
         Ok(worker)
     }
     async fn send(&mut self, body: Body) -> Result<()> {
+        let budget = self
+            .analysis
+            .as_ref()
+            .map(|(g, c)| c.lock().unwrap().host(g.language))
+            .transpose()?;
         tokio::time::timeout(
             Duration::from_secs(5),
-            write_frame(&mut self.ipc, &envelope(&self.attempt, body)),
+            write_frame_with_budget(
+                &mut self.ipc,
+                &envelope(&self.attempt, body),
+                budget.as_ref(),
+            ),
         )
-        .await??;
+        .await?
+        .map_err(|error| {
+            if let Some(failure) = error.downcast_ref::<AnalysisFailure>() {
+                anyhow::Error::from(DomainError::analysis(failure.clone()))
+            } else {
+                error
+            }
+        })?;
         Ok(())
     }
     async fn receive(&mut self, cancel: &CancellationToken) -> Result<Body> {
+        let budget = self
+            .analysis
+            .as_ref()
+            .map(|(g, c)| c.lock().unwrap().host(g.language))
+            .transpose()?;
         let frame = tokio::select! {
-            result=read_frame(&mut self.ipc)=>match result {
+            result=async {if let Some(budget)=budget.as_ref(){self.frame_reader.next_with_budget(&mut self.ipc,budget).await}else{self.frame_reader.next(&mut self.ipc).await}}=>match result {
                 Ok(frame)=>frame,
                 Err(error)=>{
+                    if let Some(failure)=error.downcast_ref::<AnalysisFailure>() {return Err(DomainError::analysis(failure.clone()).into());}
                     let status=tokio::time::timeout(Duration::from_millis(100),self.child.wait()).await;
                     tokio::task::yield_now().await;
                     let logs=String::from_utf8_lossy(&self.logs.lock().unwrap()).into_owned();
@@ -473,6 +593,17 @@ impl Worker {
             _=cancel.cancelled()=>{
                 let deadline=tokio::time::Instant::now()+Duration::from_secs(2);
                 let _=tokio::time::timeout_at(deadline,self.send(Body::Cancel(w::Cancel{}))).await;
+                while let Ok(Ok(frame))=tokio::time::timeout_at(deadline,self.frame_reader.next_terminal(&mut self.ipc)).await {
+                    if frame.body.is_none() {continue;}
+                    if frame.attempt!=self.attempt {break;}
+                    match frame.body {
+                        Some(Body::Failure(failure))=> {let _=self.accept_analysis_receipt(failure.analysis_usage.as_ref(),true,true);break;},
+                        Some(Body::End(end))=> {let _=self.accept_analysis_receipt(end.analysis_usage.as_ref(),true,false);break;},
+                        Some(Body::Replan(replan))=> {let _=self.accept_analysis_receipt(replan.analysis_usage.as_ref(),false,false);},
+                        Some(Body::Begin(_) | Body::Chunk(_))=>{},
+                        _=>break,
+                    }
+                }
                 let _=tokio::time::timeout_at(deadline,self.child.wait()).await;
                 bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""))
             }
@@ -485,7 +616,10 @@ impl Worker {
             codeana_model::ErrorCode::EmptyFrame,
             "",
         ))? {
-            Body::Failure(f) => bail!(DomainError::adapter(f.code, f.message)),
+            Body::Failure(f) => {
+                self.accept_analysis_receipt(f.analysis_usage.as_ref(), true, true)?;
+                bail!(DomainError::adapter(f.code, f.message))
+            }
             b => Ok(b),
         }
     }
@@ -554,7 +688,10 @@ impl Worker {
                 for retry in 0..2 {
                     self.attempt = new_id("attempt");
                     let baseline_summary_json=if full { Vec::new() } else { old.map(serde_json::to_vec).transpose()?.unwrap_or_default() };
+                    let deadline_ms=if let Some((grant,coordinator))=&self.analysis { coordinator.lock().unwrap().host(grant.language)?.remaining_millis().map_err(DomainError::analysis)?.unwrap_or(0) } else { 0 };
                     self.send(Body::Analyze(w::Analyze {
+analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analysis_budget::encode_grant(grant)), deadline_ms:Some(deadline_ms),
+
                         baseline_summary_json,
                         manifest: Some(map(manifest)?),
                         profile: profile.into(),
@@ -564,7 +701,8 @@ impl Worker {
                     .await?;
                     let begin = match self.receive(cancel).await? {
                         Body::Begin(b) => b,
-                        Body::Replan(_) if retry == 0 && !full => {
+                        Body::Replan(replan) if retry == 0 && !full => {
+                            self.accept_analysis_receipt(replan.analysis_usage.as_ref(),false,false)?;
                             full = true;
                             continue;
                         }
@@ -598,7 +736,13 @@ impl Worker {
                                 let mut batch = Vec::new();
                                 for record in chunk.rows {
                                     use prost::Message;
-                                    let encoded=record.encode_to_vec();let size=encoded.len();
+                                    let size=record.encoded_len();
+                                    if let Some((grant,coordinator))=&self.analysis {
+                                        let host=coordinator.lock().unwrap().host(grant.language)?;
+                                        host.charge(1,1,(size as u64).saturating_add(codeana_contracts::stream::row_bytes(&record) as u64).saturating_add((2*std::mem::size_of::<codeana_contracts::graph::Row>()) as u64))
+                                            .map_err(DomainError::analysis)?;
+                                    }
+                                    let encoded=record.encode_to_vec();
                                     ensure!(count<self.output_limits.facts && bytes+size as u64+4<=self.output_limits.bytes, codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveBudget, ""));
                                     codeana_contracts::graph_archive::update_digest(&mut checksum,&encoded);count+=1;bytes+=size as u64+4;
                                     batch.push(record);
@@ -613,6 +757,7 @@ impl Worker {
                             Body::End(end) => {
                                 ensure!(end.chunks == seq && end.count == count, codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
                                 ensure!(end.checksum == format!("{:x}", checksum.finalize()), codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
+                                self.accept_analysis_receipt(end.analysis_usage.as_ref(),true,false)?;
                                 tokio::select! {
                                     biased;
                                     _=cancel.cancelled()=>bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled,"")),
@@ -631,6 +776,26 @@ impl Worker {
     }
     /// Retire a configured Java worker without starting an analysis or publication Ack.
     pub async fn retire_unused(&mut self) -> Result<()> {
+        if self.analysis.is_some() {
+            self.send(Body::Reuse(w::Reuse {})).await?;
+            let frame = tokio::time::timeout(
+                Duration::from_secs(2),
+                self.frame_reader.next_terminal(&mut self.ipc),
+            )
+            .await??;
+            ensure!(frame.attempt == self.attempt, "ANALYSIS_REUSE_ATTEMPT");
+            match frame.body {
+                Some(Body::Reused(reused)) => {
+                    self.accept_analysis_receipt(reused.analysis_usage.as_ref(), true, false)?
+                }
+                Some(Body::Failure(failure)) => {
+                    self.accept_analysis_receipt(failure.analysis_usage.as_ref(), true, true)?;
+                    bail!(DomainError::adapter(failure.code, failure.message));
+                }
+                _ => bail!("ANALYSIS_REUSE_RECEIPT_REQUIRED"),
+            }
+            self.analysis = None;
+        }
         self.send(Body::Cancel(w::Cancel {})).await?;
         let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
         ensure!(
@@ -656,6 +821,7 @@ impl Worker {
             );
         } else {
             receive_ack(&mut self.ipc, &self.attempt, revision, JAVA_ACK_TIMEOUT).await?;
+            self.analysis = None;
         }
         Ok(())
     }
@@ -675,16 +841,49 @@ impl Worker {
         java: &super::java::PreparedJava,
         manifest: &Manifest,
         cancel: &CancellationToken,
+        analysis: Option<AnalysisBinding>,
     ) -> Result<()> {
         ensure!(
             self.alive()?,
             codeana_model::DomainError::new(codeana_model::ErrorCode::WarmWorkerExited, "")
         );
+        ensure!(analysis.is_some(), "ANALYSIS_GRANT_REQUIRED");
         *self.scratch.lock().unwrap() = Some(java.disk_budget.clone());
         self.output_limits =
             codeana_contracts::graph_archive::OutputLimits::from_config(&java.config)?;
         self.attempt = new_id("attempt");
+        if let Some(binding) = analysis {
+            self.attach_analysis(binding)?;
+        }
+        let deadline_ms = self.analysis_deadline_ms()?;
+        self.send(Body::Hello(w::Hello {
+            protocol: WORKER_PROTOCOL_VERSION,
+            fact_ir: VERSION,
+            producer: "daemon".into(),
+            analysis_grant: self
+                .analysis
+                .as_ref()
+                .map(|(g, _)| codeana_contracts::analysis_budget::encode_grant(g)),
+            deadline_ms: Some(deadline_ms),
+            analysis_usage: None,
+        }))
+        .await?;
+        match self.receive(cancel).await? {
+            Body::Hello(h) => {
+                ensure!(
+                    h.protocol == WORKER_PROTOCOL_VERSION && h.fact_ir == VERSION,
+                    "WORKER_VERSION_MISMATCH"
+                );
+                self.accept_analysis_receipt(h.analysis_usage.as_ref(), false, false)?;
+            }
+            _ => bail!("EXPECTED_HELLO"),
+        }
         self.send(Body::Discover(w::Discover {
+            deadline_ms: Some(deadline_ms),
+            analysis_grant: self.analysis.as_ref().map(|(grant, _)| {
+                Box::new(codeana_contracts::analysis_budget::encode_grant(grant))
+            }),
+
             python: None,
             rust: None,
             manifest: Some(map(manifest)?),
@@ -692,7 +891,10 @@ impl Worker {
         }))
         .await?;
         self.context = match self.receive(cancel).await? {
-            Body::Context(context) => map(&context)?,
+            Body::Context(context) => {
+                self.accept_analysis_receipt(context.analysis_usage.as_ref(), false, false)?;
+                map(&context)?
+            }
             _ => bail!(codeana_model::DomainError::new(
                 codeana_model::ErrorCode::ExpectedBuildContext,
                 ""
@@ -726,6 +928,7 @@ fn validate_python_context(context: &BuildContext) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use codeana_contracts::write_frame;
     #[test]
     fn python_worker_requires_current_adapter_and_pinned_backend() {
         let mut context = BuildContext {

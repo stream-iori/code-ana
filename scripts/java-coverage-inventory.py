@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Inventory the complete frozen production/test/fixture surface before claiming parity."""
+import argparse
+from java_reference import frozen_reference
 import hashlib
 import json
 import pathlib
@@ -11,8 +13,13 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 from java_source_cases import other_annotations, test_cases
 from java_coverage_scope import analyzer_test_source
+parser = argparse.ArgumentParser()
+parser.add_argument('--reference-repo', type=pathlib.Path, default=ROOT.parent / 'anatomist')
+args = parser.parse_args()
+upstream = args.reference_repo.resolve()
 PROJECT = ROOT / 'lang-java-adaptor'
 ledger = json.loads((PROJECT / 'upstream-sources.json').read_text())
+upstream = frozen_reference(upstream, ledger['commit'])
 copied = {row['source']: row for row in ledger['files']}
 mapping_file = PROJECT / 'rust-coverage-mappings.json'
 mapping = json.loads(mapping_file.read_text()) if mapping_file.exists() else dict(commit=ledger['commit'], files=[])
@@ -26,14 +33,14 @@ assert len(archived) == len(archive['files']), 'duplicate archived source'
 assert not archived.keys() & (copied.keys() | mapped.keys()), 'archive overlaps retained source'
 assert len(mapped) == len(mapping['files']), 'duplicate coverage mapping'
 assert not copied.keys() & mapped.keys(), 'copied source also marked Rust'
-tree = subprocess.check_output(['git', '-C', str(ROOT.parent / 'anatomist'), 'ls-tree', '-r', ledger['commit']], text=True).splitlines()
+tree = subprocess.check_output(['git', '-C', str(upstream), 'ls-tree', '-r', ledger['commit']], text=True).splitlines()
 paths = [row.split('\t',1)[1] for row in tree if row.split()[1] == 'blob']
 inventory = []
 for path in paths:
     if not (re.match(r'anatomist-(core|app|framework-spring|framework-sofa)/(src/|pom.xml)', path)
             or path.startswith(('fixtures/', 'e2e/fixtures/', 'tests/scenarios/'))):
         continue
-    data = subprocess.check_output(['git', '-C', str(ROOT.parent / 'anatomist'), 'show', ledger['commit'] + ':' + path])
+    data = subprocess.check_output(['git', '-C', str(upstream), 'show', ledger['commit'] + ':' + path])
     row = dict(source=path, sha256=hashlib.sha256(data).hexdigest())
     if path in copied:
         row.update(disposition='boundary-adaptation' if copied[path].get('adaptation') else 'copied', destination=copied[path]['destination'])

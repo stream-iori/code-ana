@@ -18,11 +18,12 @@ fi
 set +u
 source "$HOME/.sdkman/bin/sdkman-init.sh"
 cd "$repo_root/lang-java-adaptor"
-sdk env
+source "$repo_root/scripts/java-build-env.sh"
 set -u
 java8_home="${CODEANA_JAVA8_HOME:-$HOME/.sdkman/candidates/java/8.0.492-zulu}"
 [[ -x "$java8_home/bin/javac" ]] || { echo "Java 8 compiler required" >&2; exit 1; }
 mvn -q -Pnative -Djava8.home="$java8_home" "$@" package
+python3 "$repo_root/scripts/check-java-package.py" native
 "$repo_root/scripts/build-java-maven.sh"
 mkdir -p target/native
 cp analysis-core/target/classes/META-INF/anatomist/javac-worker.jar target/compiler-bridge.jar

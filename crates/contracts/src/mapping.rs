@@ -57,6 +57,7 @@ impl From<&worker::Owner> for m::Owner {
 impl From<&m::BuildContext> for worker::BuildContext {
     fn from(value: &m::BuildContext) -> Self {
         Self {
+            analysis_usage: None,
             language: value.language.clone(),
             modules: value.modules.clone(),
             source_version: value.source_version.clone(),
@@ -120,6 +121,7 @@ impl From<&m::Evidence> for v1::Evidence {
             enumeration: value.enumeration,
             semantic: value.semantic,
             limits: value.limits.clone(),
+            resource_usage: value.resource_usage.as_ref().map(Into::into),
             reasons: value.reasons.clone(),
         }
     }
@@ -131,6 +133,7 @@ impl From<&v1::Evidence> for m::Evidence {
             enumeration: value.enumeration,
             semantic: value.semantic,
             limits: value.limits.clone(),
+            resource_usage: value.resource_usage.as_ref().map(Into::into),
             reasons: value.reasons.clone(),
         }
     }
@@ -298,6 +301,47 @@ impl From<&worker::Manifest> for m::Manifest {
     fn from(value: &worker::Manifest) -> Self {
         Self {
             files: value.files.iter().map(Into::into).collect(),
+        }
+    }
+}
+
+impl From<&m::ResourceUsage> for v1::ResourceUsage {
+    fn from(v: &m::ResourceUsage) -> Self {
+        Self {
+            limits: Some(v1::ResourceLimits {
+                max_work: v.limits.max_work,
+                max_payload_bytes: v.limits.max_payload_bytes,
+            }),
+            work: v.work,
+            payload_bytes: v.payload_bytes,
+            exhausted: v.exhausted.as_ref().map(|e| v1::ResourceLimit {
+                resource: e.resource.clone(),
+                limit: e.limit,
+                used: e.used,
+                requested: e.requested,
+            }),
+        }
+    }
+}
+impl From<&v1::ResourceUsage> for m::ResourceUsage {
+    fn from(v: &v1::ResourceUsage) -> Self {
+        Self {
+            limits: v
+                .limits
+                .as_ref()
+                .map(|l| m::ResourceLimits {
+                    max_work: l.max_work,
+                    max_payload_bytes: l.max_payload_bytes,
+                })
+                .unwrap_or_default(),
+            work: v.work,
+            payload_bytes: v.payload_bytes,
+            exhausted: v.exhausted.as_ref().map(|e| m::ResourceLimit {
+                resource: e.resource.clone(),
+                limit: e.limit,
+                used: e.used,
+                requested: e.requested,
+            }),
         }
     }
 }

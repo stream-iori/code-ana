@@ -37,37 +37,41 @@ final class JavacSignatureCache {
 
         private final Map<Artifact, Snapshot> verified = new LinkedHashMap<>();
         private Path capturedRoot;
+        private final com.anatomist.core.AnalysisContext analysis;
+        Session() { this(null); }
+        Session(com.anatomist.core.AnalysisContext analysis) { this.analysis=analysis; }
 
         void capturedRoot(Path root) { capturedRoot = root; }
 
         void published(Ready ready) throws IOException {
-            if (!Optional.of(ready.proof()).equals(snapshot(ready.artifact())))
+            if (!Optional.of(ready.proof()).equals(snapshot(ready.artifact(), analysis)))
                 throw new IOException("signature cache changed after publication");
             if (verified.size() < 4096) verified.putIfAbsent(ready.artifact(), ready.proof());
         }
 
         Optional<List<JavaUnit>> catalogue(Artifact artifact) throws IOException {
-            var before = snapshot(artifact);
+            var before = snapshot(artifact, analysis);
             if (before.isEmpty()) return Optional.empty();
             var previous = verified.get(artifact);
             if (previous != null && !previous.equals(before.get())) return Optional.empty();
             if (previous == null && verified.size() >= 4096) return Optional.empty();
             Optional<List<JavaUnit>> units;
-            if (previous == null) units = JavacSignatureCache.catalogue(artifact, capturedRoot);
+            if (previous == null) units = JavacSignatureCache.catalogue(artifact, capturedRoot,analysis);
             else {
                 try {
                     units =
                             Optional.of(
                                     restorePaths(JavacCatalogueCodec.read(
-                                            artifact.archive().resolveSibling("declarations.bin")), capturedRoot));
+                                            artifact.archive().resolveSibling("declarations.bin"),analysis), capturedRoot, analysis));
                     for (var unit : units.get())
-                        if (!unit.sourceHash().equals(ContentHash.sha256(unit.path())))
+                        if (!unit.sourceHash().equals(ContentHash.sha256(unit.path(), analysis)))
                             return Optional.empty();
                 } catch (RuntimeException | IOException invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
                     return Optional.empty();
                 }
             }
-            if (units.isEmpty() || !before.equals(snapshot(artifact))) return Optional.empty();
+            if (units.isEmpty() || !before.equals(snapshot(artifact, analysis))) return Optional.empty();
             verified.putIfAbsent(artifact, before.get());
             return units;
         }
@@ -75,7 +79,7 @@ final class JavacSignatureCache {
         boolean valid(Artifact artifact) throws IOException {
             var expected = verified.get(artifact);
             if (expected == null) return catalogue(artifact).isPresent();
-            return Optional.of(expected).equals(snapshot(artifact));
+            return Optional.of(expected).equals(snapshot(artifact, analysis));
         }
 
         /** Retained detached headers are owned memory; only this archive enters the next worker. */
@@ -84,18 +88,18 @@ final class JavacSignatureCache {
             if (expected == null) return valid(artifact);
             return Files.isRegularFile(artifact.archive())
                     && Files.size(artifact.archive()) <= MAX_BYTES
-                    && expected.archive().equals(ContentHash.sha256(artifact.archive()));
+                    && expected.archive().equals(ContentHash.sha256(artifact.archive(), analysis));
         }
 
         void verifyInputs() throws IOException {
             for (var entry : verified.entrySet())
-                if (!Optional.of(entry.getValue()).equals(snapshot(entry.getKey())))
+                if (!Optional.of(entry.getValue()).equals(snapshot(entry.getKey(), analysis)))
                     throw new IllegalArgumentException(
                             "signature cache changed during javac session: "
                                     + entry.getKey().archive());
         }
 
-        private static Optional<Snapshot> snapshot(Artifact artifact) throws IOException {
+        private static Optional<Snapshot> snapshot(Artifact artifact, com.anatomist.core.AnalysisContext analysis) throws IOException {
             Path archive = artifact.archive(),
                     manifest = archive.resolveSibling("manifest.json"),
                     checksum = archive.resolveSibling("manifest.sha256"),
@@ -110,10 +114,10 @@ final class JavacSignatureCache {
                     || Files.size(checksum) != 64) return Optional.empty();
             return Optional.of(
                     new Snapshot(
-                            ContentHash.sha256(manifest),
-                            Files.readString(checksum),
-                            ContentHash.sha256(archive),
-                            ContentHash.sha256(catalogue)));
+                            ContentHash.sha256(manifest, analysis),
+                            readString(checksum, analysis),
+                            ContentHash.sha256(archive, analysis),
+                            ContentHash.sha256(catalogue, analysis)));
         }
 
         @Override
@@ -122,6 +126,13 @@ final class JavacSignatureCache {
         }
     }
 
+    private static String readString(Path path,com.anatomist.core.AnalysisContext analysis) throws IOException {
+        if(analysis!=null)analysis.charge(1,1,3L*Files.size(path));
+        return Files.readString(path);
+    }
+    private static void readSource(JavaUnit unit, com.anatomist.core.AnalysisContext analysis) throws IOException {
+        JavaSource.read(unit, analysis);
+    }
     private JavacSignatureCache() {}
 
     private static Optional<Ready> checkedReady(Artifact artifact, boolean cached)
@@ -129,8 +140,9 @@ final class JavacSignatureCache {
         return checkedReady(artifact, cached, null);
     }
 
-    private static Optional<Ready> checkedReady(Artifact artifact, boolean cached, Path root) throws IOException {
-        return checkedDirectory(artifact.archive().getParent(), artifact.inputFingerprint(), cached, root)
+    private static Optional<Ready> checkedReady(Artifact artifact, boolean cached, Path root) throws IOException { return checkedReady(artifact,cached,root,null); }
+    private static Optional<Ready> checkedReady(Artifact artifact, boolean cached, Path root,com.anatomist.core.AnalysisContext analysis) throws IOException {
+        return checkedDirectory(artifact.archive().getParent(), artifact.inputFingerprint(), cached, root,analysis)
                 .filter(ready -> ready.artifact().equals(artifact));
     }
 
@@ -139,14 +151,15 @@ final class JavacSignatureCache {
         return checkedDirectory(directory, fingerprint, cached, null);
     }
 
-    private static Optional<Ready> checkedDirectory(Path directory, String fingerprint, boolean cached, Path root) throws IOException {
+    private static Optional<Ready> checkedDirectory(Path directory, String fingerprint, boolean cached, Path root) throws IOException { return checkedDirectory(directory,fingerprint,cached,root,null); }
+    private static Optional<Ready> checkedDirectory(Path directory, String fingerprint, boolean cached, Path root,com.anatomist.core.AnalysisContext analysis) throws IOException {
         var artifact = new Artifact(directory.resolve("signatures.jar"), fingerprint, 0, 0);
-        var before = Session.snapshot(artifact);
+        var before = Session.snapshot(artifact, analysis);
         if (before.isEmpty()) return Optional.empty();
-        var validated = loadDirectory(directory, fingerprint);
+        var validated = loadDirectory(directory, fingerprint,analysis);
         if (validated.isEmpty()
-                || readCatalogue(validated.get(), root).isEmpty()
-                || !before.equals(Session.snapshot(artifact))) return Optional.empty();
+                || readCatalogue(validated.get(), root,analysis).isEmpty()
+                || !before.equals(Session.snapshot(artifact, analysis))) return Optional.empty();
         return Optional.of(new Ready(validated.get(), cached, before.get()));
     }
 
@@ -154,14 +167,15 @@ final class JavacSignatureCache {
         return load(cache, fingerprint, null);
     }
 
-    static Optional<Artifact> load(Path cache, String fingerprint, Path root) throws IOException {
+    static Optional<Artifact> load(Path cache, String fingerprint, Path root) throws IOException {return load(cache,fingerprint,root,null);}
+    static Optional<Artifact> load(Path cache, String fingerprint, Path root,com.anatomist.core.AnalysisContext analysis) throws IOException {
         validateFingerprint(fingerprint);
         Path directory = location(cache, fingerprint, root);
-        return loadDirectory(directory, fingerprint);
+        return loadDirectory(directory, fingerprint,analysis);
     }
 
-    private static Optional<Artifact> loadDirectory(Path directory, String fingerprint)
-            throws IOException {
+    private static Optional<Artifact> loadDirectory(Path directory, String fingerprint) throws IOException {return loadDirectory(directory,fingerprint,null);}
+    private static Optional<Artifact> loadDirectory(Path directory, String fingerprint,com.anatomist.core.AnalysisContext analysis) throws IOException {
         Path manifest = directory.resolve("manifest.json"),
                 archive = directory.resolve("signatures.jar"),
                 checksum = directory.resolve("manifest.sha256"),
@@ -175,9 +189,9 @@ final class JavacSignatureCache {
                     || Files.size(archive) > MAX_BYTES
                     || Files.size(catalogue) > JavacCatalogueCodec.MAX_BYTES
                     || Files.size(checksum) != 64
-                    || !ContentHash.sha256(manifest).equals(Files.readString(checksum)))
+                    || !ContentHash.sha256(manifest, analysis).equals(readString(checksum, analysis)))
                 return Optional.empty();
-            Object tree = Json.parseTree(Files.readString(manifest));
+            Object tree = Json.parseTree(readString(manifest,analysis),512,analysis);
             if (!(tree instanceof Map<?, ?> values)
                     || !VERSION.equals(values.get("format"))
                     || !fingerprint.equals(values.get("input"))
@@ -186,8 +200,8 @@ final class JavacSignatureCache {
                     || !Set.of(8L, 17L, 25L).contains(release.longValue())
                     || !(values.get("sources") instanceof List<?> sources)
                     || !validSources(sources)
-                    || !ContentHash.sha256(archive).equals(values.get("archive_sha256"))
-                    || !ContentHash.sha256(catalogue).equals(values.get("catalogue_sha256"))
+                    || !ContentHash.sha256(archive, analysis).equals(values.get("archive_sha256"))
+                    || !ContentHash.sha256(catalogue, analysis).equals(values.get("catalogue_sha256"))
                     || !(values.get("classes") instanceof Map<?, ?> expected)
                     || expected.size() > MAX_TYPES) return Optional.empty();
             Set<String> found = new HashSet<>();
@@ -199,12 +213,15 @@ final class JavacSignatureCache {
                     if (!entry.getName().endsWith(".class")
                             || !found.add(entry.getName())
                             || found.size() > MAX_TYPES) return Optional.empty();
+                    long size = entry.getSize();
+                    if (size < 0 || size > MAX_BYTES - bytes) return Optional.empty();
+                    if (analysis != null) analysis.charge(1, 1, 256L + 3L * (size + 1));
                     byte[] content;
                     try (var input = jar.getInputStream(entry)) {
-                        content = input.readNBytes(Math.toIntExact(MAX_BYTES - bytes + 1));
+                        content = input.readNBytes(Math.toIntExact(size + 1));
                     }
                     bytes += content.length;
-                    if (bytes > MAX_BYTES || !hash(content).equals(expected.get(entry.getName())))
+                    if (content.length != size || !hash(content).equals(expected.get(entry.getName())))
                         return Optional.empty();
                     String name =
                             new org.objectweb.asm.ClassReader(content).getClassName() + ".class";
@@ -216,6 +233,7 @@ final class JavacSignatureCache {
                             new Artifact(archive, fingerprint, found.size(), release.intValue()))
                     : Optional.empty();
         } catch (RuntimeException | IOException invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
             return Optional.empty();
         }
     }
@@ -224,19 +242,21 @@ final class JavacSignatureCache {
         return catalogue(artifact, null);
     }
 
-    private static Optional<List<JavaUnit>> catalogue(Artifact artifact, Path root) throws IOException {
+    private static Optional<List<JavaUnit>> catalogue(Artifact artifact, Path root) throws IOException {return catalogue(artifact,root,null);}
+    private static Optional<List<JavaUnit>> catalogue(Artifact artifact, Path root,com.anatomist.core.AnalysisContext analysis) throws IOException {
         Path directory = artifact.archive().getParent();
-        var verified = loadDirectory(directory, artifact.inputFingerprint());
+        var verified = loadDirectory(directory, artifact.inputFingerprint(),analysis);
         if (verified.isEmpty() || verified.get().release() != artifact.release())
             return Optional.empty();
-        return readCatalogue(artifact, root);
+        return readCatalogue(artifact, root,analysis);
     }
 
-    private static Optional<List<JavaUnit>> readCatalogue(Artifact artifact, Path root) throws IOException {
+    private static Optional<List<JavaUnit>> readCatalogue(Artifact artifact, Path root) throws IOException {return readCatalogue(artifact,root,null);}
+    private static Optional<List<JavaUnit>> readCatalogue(Artifact artifact, Path root,com.anatomist.core.AnalysisContext analysis) throws IOException {
         Path directory = artifact.archive().getParent();
         try {
-            var units = JavacCatalogueCodec.read(directory.resolve("declarations.bin"));
-            Object manifest = Json.parseTree(Files.readString(directory.resolve("manifest.json")));
+            var units = JavacCatalogueCodec.read(directory.resolve("declarations.bin"),analysis);
+            Object manifest = Json.parseTree(readString(directory.resolve("manifest.json"),analysis),512,analysis);
             if (!(manifest instanceof Map<?, ?> values)
                     || !(values.get("sources") instanceof List<?> sources)
                     || sources.size() != units.size()) return Optional.empty();
@@ -248,14 +268,15 @@ final class JavacSignatureCache {
                 var unit = own.get(item.get("path"));
                 if (unit == null
                         || !unit.sourceHash().equals(item.get("sha256"))
-                        || !JavaContract.fingerprint(unit).equals(item.get("contract")))
+                        || !JavaContract.fingerprint(unit,analysis).equals(item.get("contract")))
                     return Optional.empty();
 
             }
-            var restored = restorePaths(units, root);
-            for (var unit : restored) JavaSource.read(unit);
+            var restored = restorePaths(units, root, analysis);
+            for (var unit : restored) readSource(unit, analysis);
             return Optional.of(restored);
         } catch (RuntimeException | IOException invalid) {
+            com.anatomist.core.HardResourceLimit.rethrow(invalid);
             return Optional.empty();
         }
     }
@@ -267,20 +288,24 @@ final class JavacSignatureCache {
                 unit.declarations(), unit.declarationInventory(), unit.sourceHash(), unit.extensions());
     }
 
-    private static List<JavaUnit> storePaths(List<JavaUnit> units, Path root) {
+    private static List<JavaUnit> storePaths(List<JavaUnit> units, Path root, com.anatomist.core.AnalysisContext analysis) {
         if (root == null) return units;
+        if (analysis != null) analysis.charge(units.size(), units.size(), 64L * units.size());
         Path base = root.toAbsolutePath().normalize();
         return units.stream().map(unit -> {
+            if (analysis != null) analysis.charge(1, 1, 256L + 6L * unit.path().toString().length());
             Path path = unit.path().toAbsolutePath().normalize();
             if (!path.startsWith(base)) throw new IllegalArgumentException("signature source outside capture");
             return withPath(unit, CAPTURED.resolve(base.relativize(path)));
         }).toList();
     }
 
-    private static List<JavaUnit> restorePaths(List<JavaUnit> units, Path root) {
+    private static List<JavaUnit> restorePaths(List<JavaUnit> units, Path root, com.anatomist.core.AnalysisContext analysis) {
         if (root == null) return units;
+        if (analysis != null) analysis.charge(units.size(), units.size(), 64L * units.size());
         Path base = root.toAbsolutePath().normalize();
         return units.stream().map(unit -> {
+            if (analysis != null) analysis.charge(1, 1, 256L + 6L * unit.path().toString().length());
             Path path = unit.path();
             if (!path.isAbsolute() || !path.normalize().equals(path) || !path.startsWith(CAPTURED))
                 throw new IllegalArgumentException("signature capture identity");
@@ -318,15 +343,16 @@ final class JavacSignatureCache {
     }
 
     static Outcome publish(Path cache, String fingerprint, List<JavaUnit> units, int release,
-            IndexTimings timings, Path root) throws IOException {
+            IndexTimings timings, Path root) throws IOException {return publish(cache,fingerprint,units,release,timings,root,null);}
+    static Outcome publish(Path cache,String fingerprint,List<JavaUnit> units,int release,IndexTimings timings,Path root,com.anatomist.core.AnalysisContext analysis) throws IOException {
         validateFingerprint(fingerprint);
         long started = System.nanoTime();
-        for (JavaUnit unit : units) JavaSource.read(unit);
-        var cached = checkedDirectory(location(cache, fingerprint, root), fingerprint, true, root);
+        for (JavaUnit unit : units) readSource(unit, analysis);
+        var cached = checkedDirectory(location(cache, fingerprint, root), fingerprint, true, root,analysis);
         if (cached.isPresent() && cached.get().artifact().release() == release) return cached.get();
         if (timings != null) timings.stop("javac_signature_publish_inputs", started);
         started = System.nanoTime();
-        var projection = JavaSignatureTypes.project(units, release);
+        var projection = JavaSignatureTypes.project(units, release, analysis);
         if (projection instanceof JavaSignatureTypes.Incomplete incomplete)
             return new Unavailable(incomplete.reasons());
         var types = ((JavaSignatureTypes.Complete) projection).types();
@@ -343,7 +369,7 @@ final class JavacSignatureCache {
             long bytes = 0;
             try (var output = new JarOutputStream(Files.newOutputStream(archive))) {
                 for (JavaBinaryType type : types) {
-                    byte[] content = JavaBinaryWriter.signature(type);
+                    byte[] content = JavaBinaryWriter.signature(type,analysis);
                     bytes += content.length;
                     if (bytes > MAX_BYTES)
                         return new Unavailable(List.of("signature archive exceeds byte budget"));
@@ -367,10 +393,10 @@ final class JavacSignatureCache {
                 return new Unavailable(List.of("compressed signature archive exceeds byte budget"));
             if (timings != null) timings.stop("javac_signature_write_archive", started);
             started = System.nanoTime();
-            List<JavaUnit> compact = storePaths(units.stream().map(JavaDeclarationView::of).toList(), root);
+            List<JavaUnit> compact = storePaths(units.stream().map(unit -> JavaDeclarationView.of(unit,analysis)).toList(), root, analysis);
             Path catalogue = owned.path().resolve("declarations.bin");
             try {
-                JavacCatalogueCodec.write(catalogue, compact);
+                JavacCatalogueCodec.write(catalogue, compact,analysis);
             } catch (JavacCatalogueCodec.BudgetExceeded tooLarge) {
                 return new Unavailable(List.of(tooLarge.getMessage()));
             }
@@ -381,12 +407,12 @@ final class JavacSignatureCache {
             manifest.put("index_only", true);
             manifest.put("input", fingerprint);
             manifest.put("release", release);
-            manifest.put("archive_sha256", ContentHash.sha256(archive));
-            manifest.put("catalogue_sha256", ContentHash.sha256(catalogue));
+            manifest.put("archive_sha256", ContentHash.sha256(archive, analysis));
+            manifest.put("catalogue_sha256", ContentHash.sha256(catalogue, analysis));
             manifest.put("classes", hashes);
             manifest.put(
                     "sources",
-                    storePaths(units, root).stream()
+                    storePaths(units, root, analysis).stream()
                             .map(
                                     unit ->
                                             Map.of(
@@ -395,21 +421,21 @@ final class JavacSignatureCache {
                                                     "sha256",
                                                     unit.sourceHash(),
                                                     "contract",
-                                                    JavaContract.fingerprint(unit)))
+                                                    JavaContract.fingerprint(unit,analysis)))
                             .toList());
-            Files.writeString(temporary.resolve("manifest.json"), Json.writeCompact(manifest));
+            Files.writeString(temporary.resolve("manifest.json"), Json.writeCompact(manifest,analysis));
             Files.writeString(
                     temporary.resolve("manifest.sha256"),
-                    ContentHash.sha256(temporary.resolve("manifest.json")));
+                    ContentHash.sha256(temporary.resolve("manifest.json"), analysis));
             if (timings != null) timings.stop("javac_signature_write_manifest", started);
             started = System.nanoTime();
             // Reuse the same complete validator before any directory becomes visible.
-            var validated = checkedDirectory(temporary, fingerprint, false, root);
+            var validated = checkedDirectory(temporary, fingerprint, false, root,analysis);
             if (validated.isEmpty()) throw new IOException("signature output validation failed");
             if (timings != null) timings.stop("javac_signature_validate_output", started);
-            var concurrent = load(cache, fingerprint, root);
+            var concurrent = load(cache, fingerprint, root, analysis);
             if (concurrent.isPresent() && concurrent.get().release() == release) {
-                var ready = checkedReady(concurrent.get(), true, root);
+                var ready = checkedReady(concurrent.get(), true, root,analysis);
                 if (ready.isPresent()) return ready.get();
             }
             if (Files.exists(destination))
@@ -421,7 +447,7 @@ final class JavacSignatureCache {
             } catch (FileAlreadyExistsException concurrentPublisher) {
                 var winner = load(cache, fingerprint, root);
                 if (winner.isPresent() && winner.get().release() == release) {
-                    var ready = checkedReady(winner.get(), true, root);
+                    var ready = checkedReady(winner.get(), true, root,analysis);
                     if (ready.isPresent()) return ready.get();
                 }
                 throw concurrentPublisher;

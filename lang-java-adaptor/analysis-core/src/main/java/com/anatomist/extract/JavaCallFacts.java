@@ -95,7 +95,7 @@ public final class JavaCallFacts {
                             gap.receiverStaticType(),
                             gap.dispatchKind(),
                             gap.context(),
-                            Json.writeCompact(Map.of("compiler_reason", gap.reason())),
+                            Json.writeCompact(Map.of("compiler_reason", gap.reason()), model.analysisContext()),
                             ProducerIds.JAVA_CORE));
         }
         return List.copyOf(unresolved);
@@ -147,7 +147,7 @@ public final class JavaCallFacts {
                                     "modeledInput",
                                     true,
                                     "targetEvidence",
-                                    "class-file"));
+                                    "class-file"), model.analysisContext());
             result.edges.add(edge);
             return;
         }
@@ -182,7 +182,7 @@ public final class JavaCallFacts {
                 metadata.put("generatedFrom", origin.generatedFrom());
                 metadata.put("bodyAvailable", origin.bodyAvailable());
             }
-            edge.metadata = Json.writeCompact(metadata);
+            edge.metadata = Json.writeCompact(metadata, model.analysisContext());
             result.edges.add(edge);
             return;
         }
@@ -254,7 +254,7 @@ public final class JavaCallFacts {
                                         "evidenceComplete",
                                         false,
                                         "targetEvidence",
-                                        "source-declaration"));
+                                        "source-declaration"), model.analysisContext());
             }
             if (model.declaration(target).origin() == JavaDeclaration.Origin.PROCESSOR) {
                 var origin =
@@ -274,7 +274,7 @@ public final class JavaCallFacts {
                                             "bindingResolved",
                                             true,
                                             "evidenceComplete",
-                                            binding.evidenceComplete()));
+                                            binding.evidenceComplete()), model.analysisContext());
             }
             if (model.declaration(target).origin() == JavaDeclaration.Origin.MODEL) {
                 edge.confidence = GraphConstants.Confidence.INFERRED;
@@ -296,7 +296,7 @@ public final class JavaCallFacts {
                                             "bindingResolved",
                                             false,
                                             "evidenceComplete",
-                                            false));
+                                            false), model.analysisContext());
             }
         } else if (lookup instanceof JavaModel.AmbiguousType) {
             unresolved.add(unresolved(unit, site, owner, syntax, "ambiguous-owner", binding));
@@ -316,11 +316,11 @@ public final class JavaCallFacts {
                 && edge.confidence.equals(GraphConstants.Confidence.EXTRACTED)) {
             Map<String, Object> metadata = new LinkedHashMap<>();
             if (edge.metadata != null
-                    && Json.parseTree(edge.metadata) instanceof Map<?, ?> existing)
+                    && Json.parseTree(edge.metadata, 512, model.analysisContext()) instanceof Map<?, ?> existing)
                 existing.forEach((key, value) -> metadata.put(key.toString(), value));
             metadata.put("bindingResolved", true);
             metadata.put("evidenceComplete", false);
-            edge.metadata = Json.writeCompact(metadata);
+            edge.metadata = Json.writeCompact(metadata, model.analysisContext());
         }
         var modeledInput = recovery.inputEvidence(site);
         if (modeledInput == JavaModeledCallRecovery.InputEvidence.INCOMPLETE) {
@@ -333,12 +333,12 @@ public final class JavaCallFacts {
             edge.resolution = GraphConstants.Resolution.SOURCE_FALLBACK;
             Map<String, Object> metadata = new LinkedHashMap<>();
             if (edge.metadata != null
-                    && Json.parseTree(edge.metadata) instanceof Map<?, ?> existing)
+                    && Json.parseTree(edge.metadata, 512, model.analysisContext()) instanceof Map<?, ?> existing)
                 existing.forEach((key, value) -> metadata.put(key.toString(), value));
             metadata.put("bindingResolved", false);
             metadata.put("evidenceComplete", false);
             metadata.put("modeledInput", true);
-            edge.metadata = Json.writeCompact(metadata);
+            edge.metadata = Json.writeCompact(metadata, model.analysisContext());
         }
         result.edges.add(edge);
     }
@@ -513,7 +513,7 @@ public final class JavaCallFacts {
                             + ") -> "
                             + (functionalType == null ? "<unresolved>" : functionalType));
         }
-        node.metadata = Json.writeCompact(metadata);
+        node.metadata = Json.writeCompact(metadata, model.analysisContext());
         result.nodes.add(node);
         Edge contains = Edge.reference(owner, node.id, false);
         contains.relation = GraphConstants.Relation.CONTAINS;

@@ -47,20 +47,34 @@ pub fn prepare(
     analysis: &Analysis,
     baseline: Option<&[SourceState]>,
 ) -> Prepared {
-    let states = incremental::states(config, analysis);
-    let replacements = baseline
-        .map(|old| incremental::dirty(old, &states))
-        .unwrap_or_else(|| {
-            states
-                .iter()
-                .map(|s| (s.file.clone(), s.world.clone()))
-                .collect()
-        });
-    Prepared {
+    prepare_with_context(config, analysis, baseline, None)
+        .expect("unmetered record preparation is infallible")
+}
+pub fn prepare_with_context(
+    config: &AnalysisConfig,
+    analysis: &Analysis,
+    baseline: Option<&[SourceState]>,
+    budget: Option<&codeana_model::AnalysisContext>,
+) -> Result<Prepared> {
+    let states = incremental::states_with_context(config, analysis, budget)?;
+    let replacements = if let Some(old) = baseline {
+        incremental::dirty_with_context(old, &states, budget)?
+    } else {
+        let mut replacements = BTreeSet::new();
+        for state in &states {
+            if let Some(budget) = budget {
+                budget.charge(1, 0, (state.file.len() + state.world.len()) as u64 + 128)?;
+            }
+            replacements.insert((state.file.clone(), state.world.clone()));
+        }
+        replacements
+    };
+    Ok(Prepared {
         states,
         replacements,
-    }
+    })
 }
+
 pub struct Records {
     pub archive: GraphArchive,
     pub replacements: BTreeSet<(String, String)>,
@@ -89,8 +103,39 @@ pub fn emit(
     config: &AnalysisConfig,
     analysis: &Analysis,
     prepared: &Prepared,
+    push: impl FnMut(Row) -> Result<()>,
+) -> Result<()> {
+    emit_with_context(config, analysis, prepared, None, push)
+}
+
+pub fn emit_with_context(
+    config: &AnalysisConfig,
+    analysis: &Analysis,
+    prepared: &Prepared,
+    budget: Option<&codeana_model::AnalysisContext>,
     mut push: impl FnMut(Row) -> Result<()>,
 ) -> Result<()> {
+    let charge = |work, bytes| -> Result<()> {
+        if let Some(budget) = budget {
+            budget.charge(work, 0, bytes)?;
+        }
+        Ok(())
+    };
+    // Reserve line-index and lookup storage before collect(), without cloning source text.
+    charge(
+        (analysis.texts.len() + analysis.declarations.len()) as u64,
+        (analysis.declarations.len() as u64).saturating_mul(128),
+    )?;
+    for text in analysis.texts.values() {
+        charge(text.len() as u64, 0)?;
+        let lines = text.bytes().filter(|b| *b == b'\n').count() as u64 + 1;
+        charge(
+            0,
+            lines
+                .saturating_mul((2 * std::mem::size_of::<usize>()) as u64)
+                .saturating_add(128),
+        )?;
+    }
     let states = &prepared.states;
     let wanted =
         |file: &str, world: &str| prepared.replacements.contains(&(file.into(), world.into()));
@@ -105,6 +150,20 @@ pub fn emit(
         .map(|d| (d.id.as_str(), d))
         .collect::<BTreeMap<_, _>>();
     for d in &analysis.declarations {
+        let bytes = [
+            &d.id,
+            &d.name,
+            &d.qualified_name,
+            &d.source,
+            &d.world,
+            &d.module,
+            &d.scope,
+            &d.signature_hash,
+        ]
+        .iter()
+        .fold(0u64, |n, s| n.saturating_add(s.len() as u64));
+        // Multiple schema rows, metadata escaping, IDs, and temporary formatting.
+        charge(1, bytes.saturating_mul(96).saturating_add(4096))?;
         if !wanted(&d.source, &d.world) {
             continue;
         }
@@ -196,6 +255,12 @@ pub fn emit(
         }
     }
     for r in &analysis.relations {
+        let bytes = [&r.source, &r.file, &r.world, &r.syntax]
+            .iter()
+            .fold(0u64, |n, s| n.saturating_add(s.len() as u64))
+            .saturating_add(r.target.as_ref().map_or(0, |s| s.len() as u64))
+            .saturating_add(r.external.as_ref().map_or(0, |s| s.len() as u64));
+        charge(1, bytes.saturating_mul(48).saturating_add(2048))?;
         if !wanted(&r.file, &r.world)
             || (r.kind != "CALLS" && r.target.is_none() && r.external.is_none())
         {
@@ -206,6 +271,15 @@ pub fn emit(
         }
     }
     for ((file, world), gaps) in &analysis.gaps {
+        let bytes = gaps.iter().fold((file.len() + world.len()) as u64, |n, g| {
+            n.saturating_add(g.len() as u64)
+        });
+        charge(
+            gaps.len() as u64 + 1,
+            bytes
+                .saturating_mul(48)
+                .saturating_add((gaps.len() as u64 + 1).saturating_mul(2048)),
+        )?;
         if !wanted(file, world) {
             continue;
         }
@@ -263,6 +337,11 @@ pub fn emit(
         }
     }
     for state in states {
+        let bytes = codeana_model::retained_size(state)?;
+        charge(
+            state.dependencies.len() as u64 + 1,
+            bytes.saturating_mul(24).saturating_add(2048),
+        )?;
         if !wanted(&state.file, &state.world) {
             continue;
         }

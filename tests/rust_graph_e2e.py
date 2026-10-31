@@ -68,6 +68,9 @@ class GraphProduct(product_support.MockProductHarness):
         original_config = config.read_bytes()
         config.write_text('[invalid TOML\n')
         (self.project / 'src/App.java').write_text('active workspace changed\n')
+        for selector in (revision, 'snapshot:before'):
+            self.cli(*args, '--revision', selector, code=1)
+        config.unlink()  # missing current configuration uses user/default execution limits
         for selector, expected_revision in ((revision, revision), ('snapshot:before', snapshot_revision)):
             rows, terminal = self.cli(*args, '--revision', selector)
             self.assertEqual(rows, frozen)
@@ -76,6 +79,34 @@ class GraphProduct(product_support.MockProductHarness):
         config.write_bytes(original_config)
         rows, _ = self.cli('search-text', 'active workspace changed', '--path', 'src/App.java')
         self.assertEqual([row['text'] for row in rows], ['active workspace changed'])
+
+    def test_text_discovery_shares_budget_and_stops_before_source_reads(self):
+        config = self.project / '.code-ana/config.toml'
+        config.write_text(config.read_text() + '\n[resources.query]\nmax_work=1\n')
+        rows, terminal = self.cli('search-text', 'hello')
+        self.assertEqual(rows, [])
+        self.assertEqual(terminal['code'], 'COMPUTATION_LIMIT')
+        self.assertFalse(terminal['evidence']['enumeration'])
+        self.assertEqual(terminal['evidence']['resource_usage']['work'], 1)
+        self.assertEqual(terminal['evidence']['resource_usage']['payload_bytes'], 0)
+        self.cli('search-text', 'hello', '--strict', code=3)
+
+    def test_query_budget_hot_reload_and_strict_results_do_not_reindex(self):
+        revision = self.cli('index')[1]['revision']
+        config = self.project / '.code-ana/config.toml'
+        original = config.read_text()
+        config.write_text(original + '\n[resources.query]\nmax_work=1\n')
+        for strict, code in [(False, 0), (True, 3)]:
+            args = ['search-code', 'Service'] + (['--strict'] if strict else [])
+            _, terminal = self.cli(*args, code=code)
+            self.assertEqual(terminal['code'], 'COMPUTATION_LIMIT')
+            self.assertFalse(terminal['evidence']['enumeration'])
+            self.assertIn('resource_usage', terminal['evidence'])
+            self.assertEqual(terminal['evidence']['resource_usage']['work'], 1)
+        config.write_text(original + '\n[resources.query]\nmax_work=4294967296\n')
+        _, terminal = self.cli('search-code', 'Service')
+        self.assertEqual(terminal['revision'], revision)
+        self.assertNotIn('resource_usage', terminal['evidence'])
 
     def test_old_schema_requires_full_rebuild(self):
         first=self.cli('index')[1]['revision'];path=self.home/'revisions'/first/'facts.db'

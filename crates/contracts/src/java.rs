@@ -517,6 +517,9 @@ mod tests {
         let frame = crate::envelope(
             "a",
             w::envelope::Body::Discover(w::Discover {
+                deadline_ms: Some(0),
+                analysis_grant: None,
+
                 python: None,
                 rust: None,
                 java: Some(config),

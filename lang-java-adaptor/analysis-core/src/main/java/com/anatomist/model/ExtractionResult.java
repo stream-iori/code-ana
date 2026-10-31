@@ -8,13 +8,53 @@ import java.util.Map;
 public class ExtractionResult {
     public static final int FLUSH_THRESHOLD = 50_000;
 
-    public final List<Node> nodes = new ArrayList<>();
-    public final List<Edge> edges = new ArrayList<>();
-    public final List<Annotation> annotations = new ArrayList<>();
-    public final List<AnnotationMetaRelation> annotationMetaRelations = new ArrayList<>();
-    public final List<Declaration> declarations = new ArrayList<>();
-    public final List<UnresolvedCallSite> unresolvedCallSites = new ArrayList<>();
-    public final Map<String, Object> stats = new HashMap<>();
+    public final List<Node> nodes;
+    public final List<Edge> edges;
+    public final List<Annotation> annotations;
+    public final List<AnnotationMetaRelation> annotationMetaRelations;
+    public final List<Declaration> declarations;
+    public final List<UnresolvedCallSite> unresolvedCallSites;
+    public final Map<String,Object> stats = new HashMap<>();
+    private final com.anatomist.core.AnalysisContext analysis;
+    public com.anatomist.core.AnalysisContext analysisContext() {return analysis;}
+    public ExtractionResult() { this(null); }
+    public ExtractionResult(com.anatomist.core.AnalysisContext context) {
+        this.analysis=context;
+        if(context!=null) context.charge(1,7,512);
+        nodes = context==null ? new ArrayList<>() : new FactList<>(context);
+        edges = context==null ? new ArrayList<>() : new FactList<>(context);
+        annotations = context==null ? new ArrayList<>() : new FactList<>(context);
+        annotationMetaRelations = context==null ? new ArrayList<>() : new FactList<>(context);
+        declarations = context==null ? new ArrayList<>() : new FactList<>(context);
+        unresolvedCallSites = context==null ? new ArrayList<>() : new FactList<>(context);
+    }
+    private static final class FactList<T> extends java.util.AbstractList<T> implements java.util.RandomAccess {
+        private final ArrayList<T> values=new ArrayList<>();
+        private final com.anatomist.core.AnalysisContext context;
+        FactList(com.anatomist.core.AnalysisContext context) { this.context=context; }
+        public int size() { return values.size(); }
+        public T get(int index) { return values.get(index); }
+        public void add(int index,T value) { context.charge(1,1,retained(value)); values.add(index,value); modCount++; }
+        public T set(int index,T value) { context.charge(1,1,retained(value)); return values.set(index,value); }
+        public T remove(int index) { T old=values.remove(index);modCount++;return old; }
+        public void clear() { if(!values.isEmpty()) { values.clear();modCount++; } }
+        public boolean addAll(java.util.Collection<? extends T> values) { return addAll(size(),values); }
+        public boolean addAll(int index,java.util.Collection<? extends T> incoming) {
+            long bytes=0;for(T value:incoming)bytes=Math.addExact(bytes,retained(value));
+            context.charge(incoming.size(),incoming.size(),bytes);
+            boolean changed=values.addAll(index,incoming);if(changed)modCount++;return changed;
+        }
+    }
+    private static long text(String... values) { long bytes=256;for(String value:values) if(value!=null)bytes=Math.addExact(bytes,32L+3L*value.length());return bytes; }
+    private static long retained(Object value) {
+        if(value instanceof Node v)return text(v.id, v.symbolId, v.domain, v.language, v.providerId, v.entityKind, v.languageKind, v.label, v.kind, v.qualifiedName, v.pkg, v.namespace, v.sourceFile, v.sourceLocation, v.module, v.scope, v.metadata, v.producerId);
+        if(value instanceof Edge v)return text(v.sourceId, v.targetId, v.externalTargetFqn, v.externalTargetSymbol, v.externalTargetLanguage, v.externalTargetProviderId, v.relation, v.semantic, v.mechanism, v.language, v.providerId, v.callKind, v.confidence, v.resolution, v.context, v.sourceFile, v.sourceLocation, v.syntaxTarget, v.receiverStaticType, v.metadata, v.producerId);
+        if(value instanceof Annotation v)return text(v.nodeId, v.annotationFqn, v.rawName, v.attributes, v.targetKind, v.targetPath, v.language, v.providerId, v.mechanism, v.resolutionStatus, v.sourceLocation, v.sourceFile, v.producerId);
+        if(value instanceof AnnotationMetaRelation v)return text(v.annotationFqn, v.metaAnnotationFqn, v.rawName, v.language, v.providerId, v.mechanism, v.resolutionStatus, v.sourceFile, v.sourceLocation, v.producerId);
+        if(value instanceof Declaration v)return text(v.symbolId, v.domain, v.language, v.providerId, v.entityKind, v.languageKind, v.qualifiedName, v.label, v.kind, v.declarationKind, v.typeKind, v.visibility, v.declaringType, v.namespace, v.sourceFile, v.sourceLocation, v.module, v.scope, v.producerId);
+        if(value instanceof UnresolvedCallSite v)return text(v.callerId(), v.sourceFile(), v.syntaxTarget(), v.receiverStaticType(), v.dispatchKind(), v.context(), v.metadata(), v.producerId());
+        throw new IllegalArgumentException("UNKNOWN_GRAPH_FACT");
+    }
 
     /** Number of graph facts currently retained by this batch. */
     public int factCount() {

@@ -15,6 +15,38 @@ import java.util.*;
 
 class JavacSignatureCacheIT {
     @Test
+    void coldAndHotCacheUseOneTaskAndNeverRecoverResourceFailure(@TempDir Path project)
+            throws Exception {
+        Path source = Files.writeString(project.resolve("Example.java"), "class Example { int value; }");
+        var ready = assertInstanceOf(JavacSignatureCache.Ready.class,
+                JavacSignatureCache.publish(project.resolve("cache"), ContentHash.sha256("metered"),
+                        analyze(project, source), 25));
+        var denied = new com.anatomist.core.AnalysisContext(
+                new com.anatomist.core.AnalysisContext.Limits(100000, 100000, 100, 256));
+        try (var session = new JavacSignatureCache.Session(denied)) {
+            assertThrows(com.anatomist.core.HardResourceLimit.class,
+                    () -> session.catalogue(ready.artifact()));
+            assertEquals(0L, denied.usage().get("payload_bytes"));
+            assertThrows(com.anatomist.core.HardResourceLimit.class,
+                    () -> session.catalogue(ready.artifact()));
+        }
+        var context = new com.anatomist.core.AnalysisContext(
+                com.anatomist.core.AnalysisContext.Limits.defaults());
+        try (var session = new JavacSignatureCache.Session(context)) {
+            assertTrue(session.catalogue(ready.artifact()).isPresent());
+            long cold = ((Number) context.usage().get("payload_bytes")).longValue();
+            assertTrue(cold > 0);
+            assertTrue(session.catalogue(ready.artifact()).isPresent());
+            assertTrue(((Number) context.usage().get("payload_bytes")).longValue() > cold);
+            long work = ((Number) context.usage().get("work")).longValue();
+            context.charge(context.limits().maxWork() - work, 0, 0);
+            assertThrows(com.anatomist.core.HardResourceLimit.class,
+                    () -> session.catalogue(ready.artifact()));
+            assertThrows(com.anatomist.core.HardResourceLimit.class, session::verifyInputs);
+        }
+    }
+
+    @Test
     void sessionProofRejectsContentReplacementEvenWithPreservedTimestampsAndNewChecksums(
             @TempDir Path project) throws Exception {
         Path source =

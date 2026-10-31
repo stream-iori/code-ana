@@ -37,15 +37,18 @@ final class JavacModelConsumer {
         long[] records = {0};
         java.util.function.Consumer<JavaUnit> collect =
                 unit -> {
+                    if(backend.analysisContext!=null)backend.analysisContext.charge(1,1,128L+64L*unit.declarationInventory().size());
                     if (budget != null) {
                         records[0] +=
-                                new JavaSyntax(unit.tree()).nodes().size()
+                                new JavaSyntax(unit.tree(),backend.analysisContext).nodes().size()
                                         + unit.bindings().size()
                                         + unit.types().entries().size();
                         var declarations = new ArrayDeque<>(unit.declarationInventory());
                         while (!declarations.isEmpty()) {
                             records[0]++;
-                            declarations.addAll(declarations.removeFirst().members());
+                            var members=declarations.removeFirst().members();
+                            if(backend.analysisContext!=null)backend.analysisContext.charge(1+members.size(),members.size(),64L*members.size());
+                            declarations.addAll(members);
                         }
                         if (records[0] > budget.records())
                             throw new IllegalArgumentException("JAVA_MODEL_RECORD_LIMIT");
@@ -59,7 +62,7 @@ final class JavacModelConsumer {
                             attempt.received(),
                             collect,
                             attempt.declarations(),
-                            backend.decodeBudgetBytes);
+                            backend.decodeBudgetBytes, backend.analysisContext);
         } else {
             try (InputStream input = Files.newInputStream(attempt.request().result())) {
                 response =
@@ -69,7 +72,7 @@ final class JavacModelConsumer {
                                 attempt.declarations(),
                                 0,
                                 true,
-                                backend.decodeBudgetBytes);
+                                backend.decodeBudgetBytes, backend.analysisContext);
             }
         }
         if (backend.timings != null) response.timingsNanos().forEach(backend.timings::addNanos);

@@ -2,10 +2,58 @@
 use crate::*;
 use std::collections::BTreeMap;
 pub trait SourceContext {
+    fn resource_budget(&self) -> Option<&ResourceBudget> {
+        None
+    }
+    fn charge(&self, work: u64, bytes: u64) -> Result<(), DomainError> {
+        self.resource_budget()
+            .map_or(Ok(()), |b| b.charge(work, bytes))
+    }
+    fn resource_exhausted(&self) -> bool {
+        self.resource_budget()
+            .is_some_and(ResourceBudget::exhausted)
+    }
     fn manifest(&self) -> &Manifest;
     fn revision(&self) -> &Revision;
 }
+#[derive(Debug)]
+pub struct BoundedRead<T> {
+    pub records: Vec<T>,
+    pub complete: bool,
+    pub resource_limit: Option<ResourceLimit>,
+}
 pub trait GraphAccess: SourceContext {
+    fn scan_bounded(
+        &self,
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> Result<BoundedRead<Fact>, DomainError> {
+        let records = self.scan(filter, after, limit)?;
+        let resource_limit = self.resource_budget().and_then(|b| b.usage().exhausted);
+        let complete = records.len() < limit && resource_limit.is_none();
+        Ok(BoundedRead {
+            records,
+            complete,
+            resource_limit,
+        })
+    }
+    fn scan_symbols_bounded(
+        &self,
+        text: &str,
+        filter: &FactFilter,
+        after: &str,
+        limit: usize,
+    ) -> Result<BoundedRead<Fact>, DomainError> {
+        let records = self.scan_symbols(text, filter, after, limit)?;
+        let resource_limit = self.resource_budget().and_then(|b| b.usage().exhausted);
+        let complete = records.len() < limit && resource_limit.is_none();
+        Ok(BoundedRead {
+            records,
+            complete,
+            resource_limit,
+        })
+    }
     fn scan(
         &self,
         filter: &FactFilter,
@@ -192,3 +240,20 @@ pub trait AnnotationQueryReader: GraphAccess + AnnotationReader {}
 impl<T: GraphAccess + AnnotationReader + ?Sized> AnnotationQueryReader for T {}
 pub trait SourceQueryReader: GraphAccess + SourceLocator {}
 impl<T: GraphAccess + SourceLocator + ?Sized> SourceQueryReader for T {}
+
+/// Budget attachment for FILES operations, without granting semantic graph capabilities.
+pub struct BudgetedSource<'a> {
+    pub inner: &'a dyn SourceContext,
+    pub budget: &'a ResourceBudget,
+}
+impl SourceContext for BudgetedSource<'_> {
+    fn manifest(&self) -> &Manifest {
+        self.inner.manifest()
+    }
+    fn revision(&self) -> &Revision {
+        self.inner.revision()
+    }
+    fn resource_budget(&self) -> Option<&ResourceBudget> {
+        Some(self.budget)
+    }
+}

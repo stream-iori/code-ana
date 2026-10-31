@@ -24,11 +24,11 @@ public final class NativeBridge {
     // Reserve terminal responses before analysis. An exhausted heap must not allocate
     // a diagnostic or leave the Rust host polling an already terminated thread.
     private static final byte[] HEAP_FAILURE =
-            "{\"error\":\"NATIVE_HEAP_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
+            "{\"version\":11,\"usage_known\":false,\"error\":\"NATIVE_HEAP_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
     private static final byte[] STACK_FAILURE =
-            "{\"error\":\"NATIVE_STACK_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
+            "{\"version\":11,\"usage_known\":false,\"error\":\"NATIVE_STACK_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
     private static final byte[] FATAL_FAILURE =
-            "{\"error\":\"NATIVE_ANALYSIS_FATAL\"}".getBytes(StandardCharsets.UTF_8);
+            "{\"version\":11,\"usage_known\":false,\"error\":\"NATIVE_ANALYSIS_FATAL\"}".getBytes(StandardCharsets.UTF_8);
 
     static String errorDetails(Throwable failure) {
         StringBuilder text = new StringBuilder();
@@ -72,17 +72,19 @@ public final class NativeBridge {
             AnalysisTelemetry telemetry = null;
             Path telemetryPath = null;
             int terminalState = -1;
+            com.anatomist.core.AnalysisContext resources = null;
             try {
                 telemetry = new AnalysisTelemetry();
                 Map<String, Object> request = Json.map(Json.parse(input.toByteArray()));
                 input.reset();
                 long version = Json.number(request, "version");
-                if (version != 10) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+                if (version != 11) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
                 request.put("defer_fact_dedup", true);
                 AnalysisLimits limits = new AnalysisLimits(request);
+                resources = com.anatomist.core.AnalysisContext.fromRequest(request);
                 telemetryPath =
                         Path.of(Json.string(request, "scratch")).resolve("native-timings.json");
-                try (AnalysisSession session = new AnalysisSession(request, telemetry)) {
+                try (AnalysisSession session = new AnalysisSession(request, telemetry, resources)) {
                     compiler = session;
                     if (cancelled) session.cancel();
                     Map<String, Object> result = session.analyze();
@@ -95,6 +97,8 @@ public final class NativeBridge {
                     archivePath = outputDirectory.resolve("graph.rows");
                     result.put("graph_archive", archive.export(archivePath));
                     telemetry.phase("archive_seal", "", false);
+                    Json.admit(result,resources);
+                    result.put("analysis_usage", resources.receipt());
                     outputLength = Json.writeTo(outputPath, result, limits.bytes);
                     output = FileChannel.open(outputPath, StandardOpenOption.READ);
                 } finally {
@@ -105,7 +109,7 @@ public final class NativeBridge {
                 String error = cancelled ? "CANCELLED" : errorDetails(e);
                 if (error.length() > 8192) error = error.substring(0, 8192);
                 errorOutput =
-                        Json.write(Json.object("error", error)).getBytes(StandardCharsets.UTF_8);
+                        Json.write(resources == null ? Json.object("version",11,"usage_known",false,"error",error) : Json.object("version",11,"usage_known",true,"error", error, "analysis_usage", resources.receipt())).getBytes(StandardCharsets.UTF_8);
                 outputLength = errorOutput.length;
             } catch (Error fatal) {
                 errorOutput =

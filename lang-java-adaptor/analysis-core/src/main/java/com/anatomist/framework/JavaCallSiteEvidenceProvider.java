@@ -14,6 +14,10 @@ public interface JavaCallSiteEvidenceProvider extends ExtensionPoint {
     record FallbackCallSite(String ownerFqn, String callKind, String resolution) {}
 
     record Evidence(String namespace, Map<String, Object> value, String counter) {
+        public Evidence(String namespace,Map<String,Object> value,String counter,com.anatomist.core.AnalysisContext resources) {
+            JavaExtensionData.admitMetadata(value,resources);
+            this(namespace,value,counter);
+        }
         public Evidence {
             if (namespace == null || namespace.isBlank())
                 throw new IllegalArgumentException("evidence namespace must not be blank");

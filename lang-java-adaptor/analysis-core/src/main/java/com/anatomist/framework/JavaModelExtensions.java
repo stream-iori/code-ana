@@ -12,8 +12,11 @@ public final class JavaModelExtensions implements JavaDeclarationOverlay {
     public static final JavaModelExtensions NONE = new JavaModelExtensions(List.of());
     private final List<JavaModelExtension> extensions;
     private final String fingerprint;
+    private final com.anatomist.core.AnalysisContext resources;
 
-    public JavaModelExtensions(List<JavaModelExtension> extensions) {
+    public JavaModelExtensions(List<JavaModelExtension> extensions) { this(extensions,null); }
+    public JavaModelExtensions(List<JavaModelExtension> extensions, com.anatomist.core.AnalysisContext resources) {
+        this.resources=resources;
         this.extensions = List.copyOf(extensions);
         Set<String> ids = new HashSet<>();
         StringBuilder material = new StringBuilder("java-model-extensions-v1\n");
@@ -58,14 +61,20 @@ public final class JavaModelExtensions implements JavaDeclarationOverlay {
             com.anatomist.core.IndexTimings timings) {
         JavaAnalysisContext working = context;
         for (var extension : extensions) {
+            if(resources!=null)resources.charge(1,1,128);
             long started = timings == null ? 0 : timings.start();
             try {
                 JavaAnalysisContext candidate =
-                        Objects.requireNonNull(extension.augment(working, binaries));
+                        Objects.requireNonNull(extension.augment(working, binaries,resources));
+                if(resources!=null) {
+                    resources.charge(candidate.units().size(),candidate.units().size(),128L*candidate.units().size());
+                    for(var unit:candidate.units())resources.charge(unit.types().entries().size()+unit.bindings().size(),unit.types().entries().size()+unit.bindings().size(),64L*(unit.types().entries().size()+unit.bindings().size()));
+                }
                 validate(working, candidate);
                 working = candidate;
             } catch (RuntimeException failure) {
-                working = failed(working, extension, failure);
+                com.anatomist.core.HardResourceLimit.rethrow(failure);
+                working = failed(working, extension, failure,resources);
             } finally {
                 if (timings != null)
                     timings.stop("extension_model_augment." + extension.id(), started);
@@ -119,10 +128,12 @@ public final class JavaModelExtensions implements JavaDeclarationOverlay {
     }
 
     private static JavaAnalysisContext failed(
-            JavaAnalysisContext context, JavaModelExtension extension, RuntimeException failure) {
+            JavaAnalysisContext context, JavaModelExtension extension, RuntimeException failure,com.anatomist.core.AnalysisContext resources) {
+        if(resources!=null)resources.charge(context.units().size(),0,64L*context.units().size());
         List<JavaUnit> units = new ArrayList<>();
         for (var unit : context.units()) {
             var old = unit.extensions();
+            if(resources!=null)resources.charge(1,1,1024L+128L*(old.diagnostics().size()+unit.declarationInventory().size()));
             List<IndexDiagnostic> diagnostics = new ArrayList<>(old.diagnostics());
             var identity = context.identity(unit.path());
             diagnostics.add(
@@ -145,14 +156,14 @@ public final class JavaModelExtensions implements JavaDeclarationOverlay {
                             unit.types(),
                             unit.declarations(),
                             unit.declarationInventory().stream()
-                                    .map(value -> incomplete(value, extension.id()))
+                                    .map(value -> incomplete(value, extension.id(),resources))
                                     .toList(),
                             unit.sourceHash(),
                             new JavaExtensionData(
                                     old.generated(),
                                     old.declarationMetadata(),
                                     diagnostics,
-                                    old.counters())));
+                                    old.counters(),resources)));
         }
         return new JavaAnalysisContext(
                 context.module(),
@@ -168,7 +179,8 @@ public final class JavaModelExtensions implements JavaDeclarationOverlay {
                 context.targetRelease());
     }
 
-    private static JavaDeclaration incomplete(JavaDeclaration value, String extension) {
+    private static JavaDeclaration incomplete(JavaDeclaration value, String extension,com.anatomist.core.AnalysisContext resources) {
+        if(resources!=null)resources.charge(1,1,1024L+64L*value.incompleteReasons().size());
         List<String> reasons = new ArrayList<>(value.incompleteReasons());
         reasons.add("model-extension-failed:" + extension);
         return new JavaDeclaration(

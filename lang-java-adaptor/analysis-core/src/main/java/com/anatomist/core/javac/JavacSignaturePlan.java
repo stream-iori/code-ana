@@ -22,7 +22,7 @@ final class JavacSignaturePlan implements AutoCloseable {
             Set<Path> sources,
             long weight) {}
 
-    private static final long MAX_CATALOGUE_WEIGHT = 256L * 1024 * 1024;
+    static final long MAX_CATALOGUE_WEIGHT = 256L * 1024 * 1024;
     private final long maximumCatalogueWeight;
     private final Path project;
     private final List<SourceRoot> roots;
@@ -52,8 +52,8 @@ final class JavacSignaturePlan implements AutoCloseable {
     private final Map<Path, JavacSignatureInputs.FileInput> sourceInputs = new LinkedHashMap<>();
     private IndexTimings timings;
     private boolean captured;
-    private final JavacSignatureCache.Session verifiedSignatures =
-            new JavacSignatureCache.Session();
+    private final JavacSignatureCache.Session verifiedSignatures;
+    private final com.anatomist.core.AnalysisContext analysis;
 
     void setTimings(IndexTimings value) {
         timings = value;
@@ -100,8 +100,11 @@ final class JavacSignaturePlan implements AutoCloseable {
             List<Path> classpath,
             boolean enabled,
             JavacMavenInputs mavenInputs,
-            long maximumCatalogueWeight)
-            throws IOException {
+            long maximumCatalogueWeight) throws IOException {this(project,roots,cache,environment,release,classpath,enabled,mavenInputs,maximumCatalogueWeight,null);}
+    JavacSignaturePlan(Path project,List<SourceRoot> roots,Path cache,String environment,int release,List<Path> classpath,boolean enabled,JavacMavenInputs mavenInputs,long maximumCatalogueWeight,com.anatomist.core.AnalysisContext analysis) throws IOException {
+        this.analysis=analysis;
+        this.verifiedSignatures=new JavacSignatureCache.Session(analysis);
+        if(analysis!=null)analysis.charge(1,1,1024L+64L*(roots.size()+classpath.size()));
         if (maximumCatalogueWeight <= 0 || maximumCatalogueWeight > MAX_CATALOGUE_WEIGHT)
             throw new IllegalArgumentException("invalid catalogue cache budget");
         this.maximumCatalogueWeight = maximumCatalogueWeight;
@@ -128,8 +131,8 @@ final class JavacSignaturePlan implements AutoCloseable {
                                 .distinct()
                                 .toList()
                         : classpath;
-        classpathIdentity = enabled ? JavacSignatureInputs.files(verifiedClasspath) : List.of();
-        moduleIdentity = enabled ? JavacSignatureInputs.files(modelFiles()) : List.of();
+        classpathIdentity = enabled ? JavacSignatureInputs.files(verifiedClasspath, analysis) : List.of();
+        moduleIdentity = enabled ? JavacSignatureInputs.files(modelFiles(), analysis) : List.of();
     }
 
     private List<Path> modelFiles() throws IOException {
@@ -326,7 +329,7 @@ final class JavacSignaturePlan implements AutoCloseable {
         if (!fingerprint.equals(input.fingerprint()))
             throw new IllegalArgumentException(
                     "signature inputs changed during analysis: " + original.module());
-        var result = JavacSignatureCache.publish(cache, fingerprint, own, release, timings, captured ? project : null);
+        var result = JavacSignatureCache.publish(cache, fingerprint, own, release, timings, captured ? project : null,analysis);
         if (result instanceof JavacSignatureCache.Unavailable unavailable) {
             fallback(original.module(), unavailable.reasons());
             return;
@@ -334,7 +337,7 @@ final class JavacSignaturePlan implements AutoCloseable {
         var ready = (JavacSignatureCache.Ready) result;
         verifiedSignatures.published(ready);
         var artifact = ready.artifact();
-        List<JavaUnit> compact = own.stream().map(JavaDeclarationView::of).toList();
+        List<JavaUnit> compact = own.stream().map(unit -> JavaDeclarationView.of(unit,analysis)).toList();
         retain(original.module(), artifact, compact);
     }
 
@@ -343,7 +346,7 @@ final class JavacSignaturePlan implements AutoCloseable {
                 || context.scope() != SourceScope.MAIN
                 || !context.publish().isEmpty()
                 || !neededModules.contains(context.module())) return false;
-        var artifact = JavacSignatureCache.load(cache, fingerprint(context), captured ? project : null);
+        var artifact = JavacSignatureCache.load(cache, fingerprint(context), captured ? project : null,analysis);
         if (artifact.isEmpty() || artifact.get().release() != release) return false;
         var catalogue = loadCatalogue(artifact.get());
         if (catalogue.isEmpty()) return false;
@@ -566,7 +569,7 @@ final class JavacSignaturePlan implements AutoCloseable {
         verifiedSignatures.verifyInputs();
         if (mavenInputs != null) mavenInputs.verify();
         if (!List.copyOf(sourceInputs.values())
-                .equals(JavacSignatureInputs.files(List.copyOf(sourceInputs.keySet()))))
+                .equals(JavacSignatureInputs.files(List.copyOf(sourceInputs.keySet()), analysis)))
             throw new IllegalArgumentException("source changed during javac session");
         for (var snapshot : snapshots.entrySet())
             if (!sourceInputs.containsKey(snapshot.getKey())
@@ -574,8 +577,8 @@ final class JavacSignaturePlan implements AutoCloseable {
                 throw new IllegalArgumentException(
                         "source changed during javac session: " + snapshot.getKey());
         if (enabled
-                && (!classpathIdentity.equals(JavacSignatureInputs.files(verifiedClasspath))
-                        || !moduleIdentity.equals(JavacSignatureInputs.files(modelFiles()))))
+                && (!classpathIdentity.equals(JavacSignatureInputs.files(verifiedClasspath, analysis))
+                        || !moduleIdentity.equals(JavacSignatureInputs.files(modelFiles(), analysis))))
             throw new IllegalArgumentException(
                     "classpath or module model changed during javac session");
     }
@@ -589,7 +592,7 @@ final class JavacSignaturePlan implements AutoCloseable {
     List<JavacSignatureInputs.FileInput> classpathEvidence(JavacContexts.Context context)
             throws IOException {
         List<JavacSignatureInputs.FileInput> known =
-                enabled ? classpathIdentity : JavacSignatureInputs.files(classpath(context));
+                enabled ? classpathIdentity : JavacSignatureInputs.files(classpath(context), analysis);
         Map<String, JavacSignatureInputs.FileInput> byPath = new HashMap<>();
         known.forEach(item -> byPath.put(item.path(), item));
         return classpath(context).stream()
@@ -644,13 +647,13 @@ final class JavacSignaturePlan implements AutoCloseable {
                 Path path = source.toAbsolutePath().normalize();
                 var known = sourceInputs.get(path);
                 if (known == null) {
-                    known = JavacSignatureInputs.files(List.of(path)).getFirst();
+                    known = JavacSignatureInputs.files(List.of(path), analysis).getFirst();
                     sourceInputs.put(path, known);
                 }
                 sources.add(known);
             }
             return JavacSignatureInputs.fingerprint(
-                    context, environment, release, selected, stableInputs(moduleIdentity), stableInputs(sources));
+                    context, environment, release, selected, stableInputs(moduleIdentity), stableInputs(sources), analysis);
         } finally {
             if (timings != null) timings.stop("javac_signature_fingerprint", started);
         }

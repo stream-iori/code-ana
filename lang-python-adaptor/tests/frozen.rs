@@ -376,3 +376,72 @@ fn dependency_diagnostics_are_published_without_poisoning_unrelated_files() -> a
     );
     Ok(())
 }
+
+#[test]
+fn analysis_depth_failure_is_sticky_and_retry_needs_a_new_task() {
+    use codeana_model::{AnalysisContext, AnalysisFailure, AnalysisLimits};
+    let temp = tempfile::tempdir().unwrap();
+    let config = config(
+        &temp,
+        &[(
+            "main.py",
+            "def outer():\n    def inner():\n        return 1\n    return inner()\n",
+        )],
+    );
+    let meter = AnalysisContext::new(
+        AnalysisLimits {
+            max_depth: 1,
+            ..Default::default()
+        },
+        None,
+    )
+    .unwrap();
+    assert!(frozen::analyze_with_context(&config, &|| Ok(()), &meter).is_err());
+    assert!(
+        matches!(meter.usage().failure, Some(AnalysisFailure::Limit { ref resource, .. }) if resource == "depth")
+    );
+    assert!(meter.charge(0, 0, 0).is_err());
+    let retry = AnalysisContext::new(Default::default(), None).unwrap();
+    let result = frozen::analyze_with_context(&config, &|| Ok(()), &retry).unwrap();
+    assert!(
+        result[0]
+            .analysis
+            .declarations
+            .iter()
+            .any(|d| d.qualified_name == "main.outer.inner")
+    );
+    assert!(retry.usage().max_depth > 1);
+}
+
+#[test]
+fn all_contexts_consume_the_same_task_grant() {
+    use codeana_model::{AnalysisContext, AnalysisFailure, AnalysisLimits};
+    let temp = tempfile::tempdir().unwrap();
+    let mut config = config(&temp, &[("main.py", "def run():\n    return 1\nrun()\n")]);
+    let single = AnalysisContext::new(Default::default(), None).unwrap();
+    frozen::analyze_with_context(&config, &|| Ok(()), &single).unwrap();
+    let mut second = config.inputs.contexts[0].clone();
+    second.id = "test".into();
+    second.scope = "TEST".into();
+    config.inputs.contexts.push(second);
+    let shared = AnalysisContext::new(
+        AnalysisLimits {
+            max_work: single.usage().work,
+            ..Default::default()
+        },
+        None,
+    )
+    .unwrap();
+    assert!(frozen::analyze_with_context(&config, &|| Ok(()), &shared).is_err());
+    assert!(
+        matches!(shared.usage().failure, Some(AnalysisFailure::Limit { ref resource, .. }) if resource == "work")
+    );
+    let retry = AnalysisContext::new(Default::default(), None).unwrap();
+    assert_eq!(
+        frozen::analyze_with_context(&config, &|| Ok(()), &retry)
+            .unwrap()
+            .len(),
+        2
+    );
+    assert!(retry.usage().work > single.usage().work);
+}

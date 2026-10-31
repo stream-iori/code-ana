@@ -285,8 +285,27 @@ impl Engine {
         if !req.cursor.is_empty() {
             return Ok(self.continue_page(req, project)?.output);
         }
-        let base: Snapshot = self.store.object("snapshot", &req.base, project)?;
-        let target: Snapshot = self.store.object("snapshot", &req.target, project)?;
+        let budget = ResourceBudget::new(codeana_config::query_limits(
+            Path::new(&req.project),
+            &self.store.home,
+        )?);
+        let endpoints = (|| -> Result<(Snapshot, Snapshot)> {
+            Ok((
+                self.store
+                    .object_budgeted("snapshot", &req.base, project, &budget)?,
+                self.store
+                    .object_budgeted("snapshot", &req.target, project, &budget)?,
+            ))
+        })();
+        let (base, target) = match endpoints {
+            Ok(pair) => pair,
+            Err(e) if resource_error(&e) => {
+                return Ok(self
+                    .resource_page(req, project, "", &budget, vec![])?
+                    .output);
+            }
+            Err(e) => return Err(e),
+        };
         let section = if req.name.is_empty() {
             "files"
         } else {
@@ -299,152 +318,188 @@ impl Engine {
         let mut evidence = Evidence::complete();
         let mut rows = Vec::<DiffRecord>::new();
         let mut refs = Vec::new();
-        if section == "files" {
-            let a: BTreeMap<_, _> = base
-                .manifest
-                .files
-                .iter()
-                .map(|s| (&s.path, &s.hash))
-                .collect();
-            let b: BTreeMap<_, _> = target
-                .manifest
-                .files
-                .iter()
-                .map(|s| (&s.path, &s.hash))
-                .collect();
-            let paths: BTreeSet<_> = a.keys().chain(b.keys()).copied().collect();
-            for p in paths {
-                if a.get(p) != b.get(p) {
-                    rows.push(DiffRecord::File(FileChange {
-                        path: p.into(),
-                        base: a.get(p).map(|v| (*v).clone()),
-                        target: b.get(p).map(|v| (*v).clone()),
-                        change: if !a.contains_key(p) {
-                            "added"
-                        } else if !b.contains_key(p) {
-                            "deleted"
-                        } else {
-                            "modified"
-                        }
-                        .into(),
-                    }));
+        let compared = (|| -> Result<()> {
+            if section == "files" {
+                for file in base.manifest.files.iter().chain(&target.manifest.files) {
+                    budget.charge(1, retained_size(file)?)?;
                 }
-            }
-        } else {
-            ensure!(
-                !base.revision.is_empty() && !target.revision.is_empty(),
-                codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::AnalysisSnapshotsRequired,
-                    ""
-                )
-            );
-            let a = self.store.read(&base.revision)?;
-            let b = self.store.read(&target.revision)?;
-            refs.extend([base.revision.clone(), target.revision.clone()]);
-            if base.profile != target.profile {
-                evidence.semantic = false;
-                evidence.reasons.push("semantic_profile_changed".into());
-            }
-            let kinds = if section == "declarations" {
-                vec![FactKind::Declaration]
-            } else {
-                vec![
-                    FactKind::CallSite,
-                    FactKind::CallTarget,
-                    FactKind::Relation,
-                    FactKind::Reference,
-                ]
-            };
-            let af = a
-                .select(&FactFilter {
-                    kinds: kinds.clone(),
-                    ..Default::default()
-                })
-                .map_err(anyhow::Error::msg)?;
-            let bf = b
-                .select(&FactFilter {
-                    kinds,
-                    ..Default::default()
-                })
-                .map_err(anyhow::Error::msg)?;
-            // Compare semantic multisets, ignoring occurrence IDs and byte movement but preserving multiplicity and binding evidence.
-            let mut ac = BTreeMap::<String, (SemanticFact, i64)>::new();
-            let mut bc = BTreeMap::<String, (SemanticFact, i64)>::new();
-            for (facts, map) in [(&af, &mut ac), (&bf, &mut bc)] {
-                for f in facts {
-                    let v = SemanticFact::from(f);
-                    map.entry(semantic_hash(&v)).or_insert((v, 0)).1 += 1;
-                }
-            }
-            let mut changed_facts = BTreeSet::new();
-            for key in ac.keys().chain(bc.keys()).collect::<BTreeSet<_>>() {
-                let av = ac.get(key);
-                let bv = bc.get(key);
-                let n = av.map(|x| x.1).unwrap_or(0);
-                let m = bv.map(|x| x.1).unwrap_or(0);
-                if n != m {
-                    changed_facts.insert(key.clone());
-                    rows.push(DiffRecord::Fact(Box::new(FactChange {
-                        fact: av.or(bv).unwrap().0.clone(),
-                        base_count: n,
-                        target_count: m,
-                    })));
-                }
-            }
-            if section == "impact" {
-                let changed: BTreeSet<String> = af
+                let a: BTreeMap<_, _> = base
+                    .manifest
+                    .files
                     .iter()
-                    .chain(bf.iter())
-                    .filter(|f| changed_facts.contains(&semantic_hash(&SemanticFact::from(*f))))
-                    .flat_map(|f| [f.parent.clone(), f.target.clone()])
-                    .filter(|s| !s.is_empty())
+                    .map(|s| (&s.path, &s.hash))
                     .collect();
-                let mut impact = Vec::new();
-                for (side, reader) in [("base", &a), ("target", &b)] {
-                    for symbol in &changed {
-                        let r = Request {
-                            operation: codeana_model::Operation::Calls,
-                            selector: symbol.clone(),
-                            direction: codeana_model::Direction::Incoming,
-                            depth: req.depth.max(1),
-                            ..Default::default()
-                        };
-                        if let Ok(out) =
-                            codeana_query::run(reader, &r, &|s| self.store.blob(&s.hash))
-                        {
-                            evidence.merge(&out.evidence);
-                            for edge in out.records {
-                                if let Record::Call(edge) = edge {
-                                    impact.push(DiffRecord::Impact(ImpactRecord {
-                                        side: side.into(),
-                                        changed: symbol.clone(),
-                                        edge,
-                                        possible: true,
-                                    }));
+                let b: BTreeMap<_, _> = target
+                    .manifest
+                    .files
+                    .iter()
+                    .map(|s| (&s.path, &s.hash))
+                    .collect();
+                let paths: BTreeSet<_> = a.keys().chain(b.keys()).copied().collect();
+                for p in paths {
+                    budget.charge(1, p.len() as u64)?;
+                    if a.get(p) != b.get(p) {
+                        rows.push(DiffRecord::File(FileChange {
+                            path: p.into(),
+                            base: a.get(p).map(|v| (*v).clone()),
+                            target: b.get(p).map(|v| (*v).clone()),
+                            change: if !a.contains_key(p) {
+                                "added"
+                            } else if !b.contains_key(p) {
+                                "deleted"
+                            } else {
+                                "modified"
+                            }
+                            .into(),
+                        }));
+                    }
+                }
+            } else {
+                ensure!(
+                    !base.revision.is_empty() && !target.revision.is_empty(),
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::AnalysisSnapshotsRequired,
+                        ""
+                    )
+                );
+                let a = self.store.read_budgeted(&base.revision, budget.clone())?;
+                let b = self.store.read_budgeted(&target.revision, budget.clone())?;
+                refs.extend([base.revision.clone(), target.revision.clone()]);
+                if base.profile != target.profile {
+                    evidence.semantic = false;
+                    evidence.reasons.push("semantic_profile_changed".into());
+                }
+                let kinds = if section == "declarations" {
+                    vec![FactKind::Declaration]
+                } else {
+                    vec![
+                        FactKind::CallSite,
+                        FactKind::CallTarget,
+                        FactKind::Relation,
+                        FactKind::Reference,
+                    ]
+                };
+                let af = a
+                    .select(&FactFilter {
+                        kinds: kinds.clone(),
+                        ..Default::default()
+                    })
+                    .map_err(anyhow::Error::msg)?;
+                let bf = b
+                    .select(&FactFilter {
+                        kinds,
+                        ..Default::default()
+                    })
+                    .map_err(anyhow::Error::msg)?;
+                if budget.exhausted() {
+                    return Err(ResourceBudget::error().into());
+                }
+                // Compare semantic multisets, ignoring occurrence IDs and byte movement but preserving multiplicity and binding evidence.
+                let mut ac = BTreeMap::<String, (SemanticFact, i64)>::new();
+                let mut bc = BTreeMap::<String, (SemanticFact, i64)>::new();
+                for (facts, map) in [(&af, &mut ac), (&bf, &mut bc)] {
+                    for f in facts {
+                        budget.charge(1, retained_size(f)?)?;
+                        let v = SemanticFact::from(f);
+                        map.entry(semantic_hash(&v)).or_insert((v, 0)).1 += 1;
+                    }
+                }
+                let mut changed_facts = BTreeSet::new();
+                for key in ac.keys().chain(bc.keys()).collect::<BTreeSet<_>>() {
+                    budget.charge(1, key.len() as u64)?;
+                    let av = ac.get(key);
+                    let bv = bc.get(key);
+                    let n = av.map(|x| x.1).unwrap_or(0);
+                    let m = bv.map(|x| x.1).unwrap_or(0);
+                    if n != m {
+                        changed_facts.insert(key.clone());
+                        rows.push(DiffRecord::Fact(Box::new(FactChange {
+                            fact: av.or(bv).unwrap().0.clone(),
+                            base_count: n,
+                            target_count: m,
+                        })));
+                    }
+                }
+                if section == "impact" {
+                    let changed: BTreeSet<String> = af
+                        .iter()
+                        .chain(bf.iter())
+                        .filter(|f| changed_facts.contains(&semantic_hash(&SemanticFact::from(*f))))
+                        .flat_map(|f| [f.parent.clone(), f.target.clone()])
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    let mut impact = Vec::new();
+                    'impact: for (side, reader) in [("base", &a), ("target", &b)] {
+                        for symbol in &changed {
+                            let r = Request {
+                                operation: codeana_model::Operation::Calls,
+                                selector: symbol.clone(),
+                                direction: codeana_model::Direction::Incoming,
+                                depth: req.depth.max(1),
+                                ..Default::default()
+                            };
+                            if budget.charge(1, symbol.len() as u64).is_err() {
+                                break 'impact;
+                            }
+                            let out = codeana_query::run(reader, &r, &|s| {
+                                self.store.blob_bounded(&s.hash, s.size)
+                            })?;
+                            {
+                                evidence.merge(&out.evidence);
+                                for edge in out.records {
+                                    if let Record::Call(edge) = edge {
+                                        impact.push(DiffRecord::Impact(ImpactRecord {
+                                            side: side.into(),
+                                            changed: symbol.clone(),
+                                            edge,
+                                            possible: true,
+                                        }));
+                                    }
                                 }
                             }
                         }
                     }
+                    rows = impact;
+                    evidence.semantic = false;
+                    evidence.reasons.push("static_possible_impact".into());
                 }
-                rows = impact;
-                evidence.semantic = false;
-                evidence.reasons.push("static_possible_impact".into());
-            }
-            for reader in [&a, &b] {
-                for f in reader
-                    .select(&FactFilter {
-                        kinds: vec![FactKind::Coverage],
-                        ..Default::default()
-                    })
-                    .map_err(anyhow::Error::msg)?
-                {
-                    if !f.evidence_complete {
-                        evidence.semantic = false;
-                        evidence.reasons.push("endpoint_coverage_incomplete".into());
+                if budget.exhausted() {
+                    return Ok(());
+                }
+                for reader in [&a, &b] {
+                    for f in reader
+                        .select(&FactFilter {
+                            kinds: vec![FactKind::Coverage],
+                            ..Default::default()
+                        })
+                        .map_err(anyhow::Error::msg)?
+                    {
+                        if !f.evidence_complete {
+                            evidence.semantic = false;
+                            evidence.reasons.push("endpoint_coverage_incomplete".into());
+                        }
                     }
                 }
             }
+            Ok(())
+        })();
+        if let Err(e) = compared
+            && !e
+                .downcast_ref::<DomainError>()
+                .is_some_and(|e| e.code == ErrorCode::ComputationLimit)
+        {
+            return Err(e);
         }
+        if section == "impact"
+            && budget.exhausted()
+            && !evidence
+                .reasons
+                .iter()
+                .any(|r| r == "static_possible_impact")
+        {
+            rows.clear();
+        }
+        budget.apply(&mut evidence);
         let output = Output {
             records: rows.iter().map(Record::display).collect::<Result<_, _>>()?,
             evidence,
@@ -452,6 +507,28 @@ impl Engine {
             ..Default::default()
         };
         Ok(self.page(req, project, output, refs)?.output)
+    }
+    pub(crate) fn resource_page(
+        &self,
+        req: &Request,
+        project: &str,
+        revision: &str,
+        budget: &ResourceBudget,
+        refs: Vec<String>,
+    ) -> Result<TaskResult> {
+        let mut evidence = Evidence::complete();
+        budget.apply(&mut evidence);
+        self.page(
+            req,
+            project,
+            Output {
+                revision: revision.into(),
+                producer: "rust-query-v1".into(),
+                evidence,
+                ..Default::default()
+            },
+            refs,
+        )
     }
     pub(crate) fn page(
         &self,
@@ -498,25 +575,63 @@ impl Engine {
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
         codeana_query::preflight(req)?;
+        let owned_budget;
+        let budget = match reader.resource_budget() {
+            Some(b) => b,
+            None => {
+                owned_budget = ResourceBudget::new(codeana_config::query_limits(
+                    Path::new(&req.project),
+                    &self.store.home,
+                )?);
+                &owned_budget
+            }
+        };
+        let reader = &BudgetedSource {
+            inner: reader,
+            budget,
+        };
         let candidates = if !req.text_regex && !req.text_ignore_case {
-            match self
-                .store
-                .text_candidates(reader.manifest(), &req.selector, source, &|| {
+            match self.store.text_candidates_budgeted(
+                reader.manifest(),
+                &req.selector,
+                &|s| {
+                    budget.charge(1, s.size)?;
+                    source(s)
+                },
+                &|| {
+                    budget.charge(1, 0)?;
                     ensure!(
                         !cancel.is_cancelled(),
                         codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
                     );
                     Ok(())
-                }) {
+                },
+                Some(budget),
+            ) {
                 Ok(candidates) => candidates,
                 Err(error)
                     if error.downcast_ref::<DomainError>().is_some_and(|error| {
                         matches!(
                             error.code,
-                            ErrorCode::Cancelled | ErrorCode::SourceHashMismatch
+                            ErrorCode::Cancelled
+                                | ErrorCode::SourceHashMismatch
+                                | ErrorCode::ComputationLimit
                         )
                     }) =>
                 {
+                    if error
+                        .downcast_ref::<DomainError>()
+                        .is_some_and(|e| e.code == ErrorCode::ComputationLimit)
+                    {
+                        let mut output = Output {
+                            evidence: Evidence::complete(),
+                            revision: reader.revision().id.to_string(),
+                            producer: reader.revision().producer.clone(),
+                            ..Default::default()
+                        };
+                        budget.apply(&mut output.evidence);
+                        return self.page(req, &reader.revision().project, output, refs);
+                    }
                     return Err(error);
                 }
                 // A derived index is optional. Historical/missing/corrupt indexes
@@ -716,6 +831,51 @@ mod tests {
         assert_eq!(page.order_policy, None);
         assert_eq!(page.output.records[0].wire().unwrap()["id"], "z");
         assert_eq!(page.output.records[1].wire().unwrap()["id"], "a");
+    }
+    #[tokio::test]
+    async fn limited_pages_replay_identical_usage_without_refilling() {
+        let dir = tempfile::tempdir().unwrap();
+        let engine = Engine::new(dir.path(), None).unwrap();
+        let budget = ResourceBudget::new(ResourceLimits {
+            max_work: 1,
+            max_payload_bytes: 100,
+        });
+        budget.charge(1, 0).unwrap();
+        assert!(budget.charge(1, 0).is_err());
+        let mut evidence = Evidence::complete();
+        budget.apply(&mut evidence);
+        let usage = evidence.resource_usage.clone();
+        let mut request = Request {
+            operation: Operation::SearchCode,
+            selector: "x".into(),
+            max_records: 1,
+            max_output_bytes: 32768,
+            strict: true,
+            ..Default::default()
+        };
+        let first = engine
+            .page(
+                &request,
+                "p",
+                Output {
+                    records: (0..3)
+                        .map(|n| Record::display(&json!({"id":n})).unwrap())
+                        .collect(),
+                    evidence,
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .unwrap();
+        assert!(!first.output.evidence.enumeration);
+        assert_eq!(first.output.evidence.resource_usage, usage);
+        request.cursor = first.output.cursor;
+        while !request.cursor.is_empty() {
+            let next = engine.continue_page(&request, "p").unwrap();
+            assert_eq!(next.output.evidence.resource_usage, usage);
+            assert!(!next.output.evidence.enumeration);
+            request.cursor = next.output.cursor;
+        }
     }
     #[tokio::test]
     async fn frozen_pages_store_only_metadata_and_allow_different_page_sizes() {

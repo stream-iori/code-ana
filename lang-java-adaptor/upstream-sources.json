@@ -60,7 +60,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/ContentHash.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/ContentHash.java",
       "sha256": "76ab44e5fb287305e59d95de876af2953119f6ab0e27f86f9752c5ae90cf37e8",
-      "migrated_sha256": "76ab44e5fb287305e59d95de876af2953119f6ab0e27f86f9752c5ae90cf37e8"
+      "migrated_sha256": "e04ec127565e89aa15192f5506d9279bc7cf930956b16a7fcb2e5ed46ad14aff",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/ExternalTypePolicy.java",
@@ -241,13 +242,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/asmsolver/JavaBinaryWriter.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/asmsolver/JavaBinaryWriter.java",
       "sha256": "d0868da5d10b1977dad631d0078e6bf9110a789c4c08b3d7d69b3e7f34b64f2f",
-      "migrated_sha256": "d0868da5d10b1977dad631d0078e6bf9110a789c4c08b3d7d69b3e7f34b64f2f"
+      "migrated_sha256": "ab76aa9b51ef171aa43e80c8f8427523a1c67c5ccf68dc8f7b70d110c8450abf",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/asmsolver/JavaSignatureTypes.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/asmsolver/JavaSignatureTypes.java",
       "sha256": "e9cc73df7b5a8620106ce25ca2696e85c735b87ec3f8e016083586d404e6fd8a",
-      "migrated_sha256": "e9cc73df7b5a8620106ce25ca2696e85c735b87ec3f8e016083586d404e6fd8a"
+      "migrated_sha256": "46e8ccd6b39805cf050e39713142a2be6e8da8968cb4d8a7974b7928d39361d5",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit. Shared Jackson transport replaces the hand-written parser/encoder; exact/canonical numeric and UTF-8 compatibility vectors, resource-aware codec conversion, and cumulative result admission before final receipt."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/asmsolver/JdkClassFileSource.java",
@@ -302,7 +305,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaContract.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaContract.java",
       "sha256": "2ad56a306938766c789be195e39a8a25a84950e0a6be89b97fd13476aae7d2a8",
-      "migrated_sha256": "2ad56a306938766c789be195e39a8a25a84950e0a6be89b97fd13476aae7d2a8"
+      "migrated_sha256": "b1525e65ff0980331683ae158bcb76ed94e1e7ce9275fbd4820338100dbd7d64",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaDeclaration.java",
@@ -320,7 +324,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaDeclarationView.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaDeclarationView.java",
       "sha256": "49bf15b0db979ca86209d5ffc9b148ac756a5e253f59ea667d65dd4b9185818a",
-      "migrated_sha256": "49bf15b0db979ca86209d5ffc9b148ac756a5e253f59ea667d65dd4b9185818a"
+      "migrated_sha256": "ed381263967c3736c78eed227fa433acaadc3fb984b06a6a7cb65c394081bc08",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaDiagnostic.java",
@@ -332,7 +337,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaExtensionData.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaExtensionData.java",
       "sha256": "5ee482a0f9fd06728deacac3aa3165feb93522cef8b61599173d6ab43887edc7",
-      "migrated_sha256": "5ee482a0f9fd06728deacac3aa3165feb93522cef8b61599173d6ab43887edc7"
+      "migrated_sha256": "a4b956f1710e26ccc584f5de1bf369bbba8e8c37df58c3292cb3e27587da3ba2",
+      "adaptation": "; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaGeneratedOrigin.java",
@@ -352,7 +358,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaModel.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaModel.java",
       "sha256": "14844030e4945b0d09f6645839752a14f585bcdf6aa6dca203d7cd13d2b6e02e",
-      "migrated_sha256": "14844030e4945b0d09f6645839752a14f585bcdf6aa6dca203d7cd13d2b6e02e"
+      "migrated_sha256": "92123582a52eba2ddcf4b904c651a4f7ec73e0c4ef90a6edf0953070883281fb",
+      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaNode.java",
@@ -376,7 +383,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaSource.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaSource.java",
       "sha256": "79efdb581a90142a0930685870cfd42f2772d07551373f7f8e44895419d9e8ad",
-      "migrated_sha256": "79efdb581a90142a0930685870cfd42f2772d07551373f7f8e44895419d9e8ad"
+      "migrated_sha256": "177d7622cfa37dd73f71ce6ac3f7287ad86d82bffbdf0c4a360880d454c1d294",
+      "adaptation": "\u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaSymbol.java",
@@ -388,7 +396,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaSyntax.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaSyntax.java",
       "sha256": "6e780dc58321364ac02c93b6fc747cd72cf6c05cf2c6143c4fc72f59e249be61",
-      "migrated_sha256": "6e780dc58321364ac02c93b6fc747cd72cf6c05cf2c6143c4fc72f59e249be61"
+      "migrated_sha256": "1bc68fbf5b056698ab71c9098cfd780b5bc1535c0f0af760eb6b2b7ebf67d13e",
+      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaType.java",
@@ -400,7 +409,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaTypeNames.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaTypeNames.java",
       "sha256": "e650e7967709912d48121262c796e0a08db268cff1b4d7eedd763a4b56ad524b",
-      "migrated_sha256": "e650e7967709912d48121262c796e0a08db268cff1b4d7eedd763a4b56ad524b"
+      "migrated_sha256": "4c3999c9f9e9c181d20bd62a7efa9bbb6e7bf6359a0c60e9a1a87bf7b8bdb320",
+      "adaptation": "; preserve canonical erasure while using shared resource admission and live type lookup"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaTypes.java",
@@ -442,8 +452,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "sha256": "6290581902cb59f869e72e215a5e015b02b4f02e222e7a3a4f49acefb52fc67d",
-      "migrated_sha256": "44acf9e0e896fbc3481afe5e2a6db135efe32306f2534d0d7e0400ea40c9b549",
-      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB\u20132 GiB decode admission does not change semantic rules or fingerprints.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged",
+      "migrated_sha256": "97c5457a2e1cdccc2a73610e1fb150923a9fe59f16bff6f15dacd8cd6a8ca2cf",
+      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB\u20132 GiB decode admission does not change semantic rules or fingerprints.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -468,13 +478,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacCatalogueCodec.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacCatalogueCodec.java",
       "sha256": "1b1c2cf7b99f866cdf30c35ed404f7187908d52cda60be541eb02908e8bf45ef",
-      "migrated_sha256": "1b1c2cf7b99f866cdf30c35ed404f7187908d52cda60be541eb02908e8bf45ef"
+      "migrated_sha256": "78d2c31cd357de48d73ddb94342e70a424cbb6aff188d32392439103175a8456",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacCompilationCache.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacCompilationCache.java",
       "sha256": "424ab966cb7aa1c8942c9f0802de7b8599b4f660ba8d0ab7b246818920b5ce99",
-      "migrated_sha256": "424ab966cb7aa1c8942c9f0802de7b8599b4f660ba8d0ab7b246818920b5ce99"
+      "migrated_sha256": "53b4240186973ab16c74e95b5f6fb183f4d3a661ec36412894788bd7344f0a4e",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacCompiledDeclarations.java",
@@ -498,20 +510,22 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacDeclarations.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacDeclarations.java",
       "sha256": "1003b8b005416150acc7dd3052f4f90d69561412daff641eebdd863954c8fd14",
-      "migrated_sha256": "1003b8b005416150acc7dd3052f4f90d69561412daff641eebdd863954c8fd14"
+      "migrated_sha256": "63044de6d3279b65320d91463a4df261dfaa2fa5b532f6826aafffee40f931a8",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacDecodeBudget.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacDecodeBudget.java",
       "sha256": "a102e07539e98a5758b0a058ee184908ebfb648ca5bbd07a33ea6f62b2e65c71",
-      "migrated_sha256": "a102e07539e98a5758b0a058ee184908ebfb648ca5bbd07a33ea6f62b2e65c71"
+      "migrated_sha256": "26a081e0c49216db950f133c9c6c9ddfe8a3f8a1ab038d4db4a294604e228c9f",
+      "adaptation": "; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacMavenInputs.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacMavenInputs.java",
       "sha256": "87acc9d248e7a542092c5b02bb2b34319f0e046a714969cca32b6177b381c450",
-      "migrated_sha256": "28c65cfc1287fe40e45b553d030c4a8b6a4c5447fae6cba7d889e091659d6e6c",
-      "adaptation": "Maven input preparation belongs to the Rust entry; replace unused embedded discovery-worker fingerprint.",
+      "migrated_sha256": "4d0b0ca4a36bec084e6921f0c6dff3446f061a7cb45c0b0f8985baadd61ede4b",
+      "adaptation": "Maven input preparation belongs to the Rust entry; replace unused embedded discovery-worker fingerprint.; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -524,30 +538,30 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacProtocol.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacProtocol.java",
       "sha256": "6213e41a39e1f5420c9f24fd5cf9b1a6896879d04d3d31300e9dad8874a162bb",
-      "migrated_sha256": "85462fcfdb6c315cf753156cc5720c2175373fbb82296fd3ef061965674d6fd4",
-      "adaptation": "; Decode allocation admission is passed explicitly per response; checksum, frame, length and model validation are unchanged."
+      "migrated_sha256": "251b6f6452d51655677900799f0b23d13cc3de1bb4b91cfbeca207c250ff3c52",
+      "adaptation": "; Decode allocation admission is passed explicitly per response; checksum, frame, length and model validation are unchanged.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacSignatureCache.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacSignatureCache.java",
       "sha256": "a3552849cfeb875d7b3717dbd8f170b84b0673192df57f0e77636009445eddf0",
-      "migrated_sha256": "97b982a92d10adaa7dffbb7dd7405bb70b0c9af35a8216cea55b368ad589c1a5",
-      "adaptation": "Capture-relative catalogue paths and task-root relocation; flat complete entries for Rust managed quota/LRU. Original local-cache entry points retained.",
+      "migrated_sha256": "1b942bcd21da32abf0dc5364327afe1774c42d75213f03052dcd1b9cecbdb85a",
+      "adaptation": "Capture-relative catalogue paths and task-root relocation; flat complete entries for Rust managed quota/LRU. Original local-cache entry points retained.; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacSignatureInputs.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacSignatureInputs.java",
       "sha256": "1394f65ab6ed397e0c4574255dc5b5f6363b5d69083839565587631e95f321ff",
-      "migrated_sha256": "a5dd6112cd89815d6d599ac3d2b0b46bc2ecb4b714d7ca37f9a73a341b6fefd8",
-      "adaptation": "Captured cross-process cache boundary: preserve deterministic path/sha256 field order; Map.of iteration order changes between JVM processes. No parsing or signature semantics changed."
+      "migrated_sha256": "8a408b63487edb987d38dc50f2ce870910e7643db2c060d35250bed18a127aa9",
+      "adaptation": "Captured cross-process cache boundary: preserve deterministic path/sha256 field order; Map.of iteration order changes between JVM processes. No parsing or signature semantics changed. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacSignaturePlan.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacSignaturePlan.java",
       "sha256": "424ee87cb9d303bc4461b509d635dd981da63adf9b8ae95cda40d83abf97b1f8",
-      "migrated_sha256": "6e0403f705c0d9f6dcb3f728d842fd2b065e7d29558b78fe3768cf2d5a81e1a0",
-      "adaptation": "Sealed source/dependency contexts and capture-relative cache identity; relocate validated cached units into the current capture.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.",
+      "migrated_sha256": "36a002c8922f1cde2e220f5dbb7fad71a15426dce351dd66294918d42a86d6ae",
+      "adaptation": "Sealed source/dependency contexts and capture-relative cache identity; relocate validated cached units into the current capture.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -611,45 +625,50 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/process/SnapshotProcessReceipts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/process/SnapshotProcessReceipts.java",
       "sha256": "abe51505f5e0933e4885ca36846fb7c4f2d9bcf6c2e6c1b8c1528b5eded2451d",
-      "migrated_sha256": "abe51505f5e0933e4885ca36846fb7c4f2d9bcf6c2e6c1b8c1528b5eded2451d"
+      "migrated_sha256": "80e70e07db9f52c06cf282cd77b04d9b051f8e09c656fe0bbfdbafb725f0d211",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaAnnotationFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaAnnotationFacts.java",
       "sha256": "29b32801022ad7d8e39d66b89a294618a26936cbde86a366a01ef90e5bc28dd5",
-      "migrated_sha256": "b41a0f35caa59994afec7b0eff0b18fc92a4b7e6df402900808f7a09bc8b8e3b",
-      "adaptation": "Retain the frozen javac annotation contract while applying bounded context-local direct-parent metadata caching and per-file emitted-origin deduplication; repeated traversal still permits shallower paths (compact storage upgrade 9b0008e)."
+      "migrated_sha256": "78c8f5960d468ae1881adb440246c5f5befeeed66cde69c6efcecd57757d28f9",
+      "adaptation": "Retain the frozen javac annotation contract while applying bounded context-local direct-parent metadata caching and per-file emitted-origin deduplication; repeated traversal still permits shallower paths (compact storage upgrade 9b0008e). \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaCallEvidence.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaCallEvidence.java",
       "sha256": "daa50fb107582559d8f759d3575544839dfb15d2a3e0a8ce7782ffde2dc0cbab",
-      "migrated_sha256": "daa50fb107582559d8f759d3575544839dfb15d2a3e0a8ce7782ffde2dc0cbab"
+      "migrated_sha256": "83c52fba31f62e0012e303a756cf4225e7ede5e935306e1b8bfa5fb0da4f45c0",
+      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaCallFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaCallFacts.java",
       "sha256": "4b96b2e4fa92c663a86b3dbb21e92cb23329e264e20db0dd56cd0f4745cae5b8",
-      "migrated_sha256": "4b96b2e4fa92c663a86b3dbb21e92cb23329e264e20db0dd56cd0f4745cae5b8"
+      "migrated_sha256": "c8600b4d02483809c76d6fe74f7de7b0e974d4da4cb6ef2c5cb1d1433c27dbf0",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaDeclarationFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaDeclarationFacts.java",
       "sha256": "32ffa0146ec397e68d6d8f128166aed73a61d663952706ccc8e25bc81f26cc44",
-      "migrated_sha256": "32ffa0146ec397e68d6d8f128166aed73a61d663952706ccc8e25bc81f26cc44"
+      "migrated_sha256": "5a762adc66607abbd0bb65f797217380db62ba029c95b8afacebbf64a9101276",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaFieldFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaFieldFacts.java",
       "sha256": "4138c49021b0c8c6633ed53f96918e0fcaa1c50a8810bf70b9ed682bec69aba7",
-      "migrated_sha256": "4138c49021b0c8c6633ed53f96918e0fcaa1c50a8810bf70b9ed682bec69aba7"
+      "migrated_sha256": "50696ab45df76e8984cccdf7845bbeca2ff127a16615b50a55cd99b6caf74330",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaModelExtractor.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaModelExtractor.java",
       "sha256": "8ccba92ad5cb745c10ba613d2ab686e55098d36a7cb82f7def5a6e9cce09cdee",
-      "migrated_sha256": "686c64cea14a7913c054db9d5bf5f708976120c92f1eafd08c5e84988c52142b",
-      "adaptation": "Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured binary provider and unreadable-entry evidence uses the same ordered content identity as the compiler classpath; physical paths remain execution inputs. Standalone provider paths are unchanged."
+      "migrated_sha256": "e7b160b3c041f700f45361d80b6178e371591a9500aecfcbf8d07f3b0cfc7e5a",
+      "adaptation": "Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured binary provider and unreadable-entry evidence uses the same ordered content identity as the compiler classpath; physical paths remain execution inputs. Standalone provider paths are unchanged.; Explicit shared task ledger in model/extension fact retention and semantic lookup. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java",
@@ -662,13 +681,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaOverrideFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaOverrideFacts.java",
       "sha256": "a765b20e80802b13450356140016277866695a82fe01f4f7b6eab1c52e9901c7",
-      "migrated_sha256": "a765b20e80802b13450356140016277866695a82fe01f4f7b6eab1c52e9901c7"
+      "migrated_sha256": "71fd5789f25fbfa72740c15c94518b39cc399f32516c1cd698300ce0992e9e26",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaReflectionFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaReflectionFacts.java",
       "sha256": "47ac5cda6188a9048b6985e54950cc4e8d40b0f558f12af955b43ac1f8d66638",
-      "migrated_sha256": "47ac5cda6188a9048b6985e54950cc4e8d40b0f558f12af955b43ac1f8d66638"
+      "migrated_sha256": "fe5e1182ff94c352d41d027f11e8dbc0038b66b80e67937a5bd501489a6a1e27",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaReflectionLookup.java",
@@ -686,19 +707,22 @@
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaTypeFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaTypeFacts.java",
       "sha256": "10b1d2374547fd3906d05a336e7a15dcac139b61d375e5035d41ceb55534bb3c",
-      "migrated_sha256": "10b1d2374547fd3906d05a336e7a15dcac139b61d375e5035d41ceb55534bb3c"
+      "migrated_sha256": "f00b27dbe02a813564a013673f0ef3e0543e8a1d5f63b378a7b4ce11ef61c7fb",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/DefaultProjectFactView.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/DefaultProjectFactView.java",
       "sha256": "8dbd559fe1ac01a810e207b272f092778cdff2299537f9de388e4523d4538eda",
-      "migrated_sha256": "8dbd559fe1ac01a810e207b272f092778cdff2299537f9de388e4523d4538eda"
+      "migrated_sha256": "e454ecec45554487c4961e5834f5bd03b2728cdeb6e47271561c6eb37d1a7518",
+      "adaptation": "; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/ExtensionExecution.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/ExtensionExecution.java",
       "sha256": "3398745a8f458689cdd8954cace07a5c161185cff88bf776a268cef7925de2ae",
-      "migrated_sha256": "3398745a8f458689cdd8954cace07a5c161185cff88bf776a268cef7925de2ae"
+      "migrated_sha256": "ad584f22af79f6bb102e1c7ee5c9d16fa4f44c573a6edefbf3cfcd740affdd88",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit shared task ledger in model/extension fact retention and semantic lookup."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/ExtensionPoint.java",
@@ -716,19 +740,22 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/FrameworkRegistration.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/FrameworkRegistration.java",
       "sha256": "9ea717d2977c9da2bf1f14d15a74fc376e6130530c6ee4e1f864e1d1b2ca2b7c",
-      "migrated_sha256": "9ea717d2977c9da2bf1f14d15a74fc376e6130530c6ee4e1f864e1d1b2ca2b7c"
+      "migrated_sha256": "26e61fa01af874b2c4e82b78a183d763544aab5dba26b49d786dec4b5ae41cda",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaCallSiteEvidenceProvider.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaCallSiteEvidenceProvider.java",
       "sha256": "ba2955d785b794f1592c957429c7f2c2fdbf5ff5901ab237c3b4d43d7794f929",
-      "migrated_sha256": "ba2955d785b794f1592c957429c7f2c2fdbf5ff5901ab237c3b4d43d7794f929"
+      "migrated_sha256": "4cec55bff02681a08179cce751396dcd925c8b9994bc679dd151cda794bece29",
+      "adaptation": "; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaFrameworkContext.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaFrameworkContext.java",
       "sha256": "219960dd91fc6c8e31932f2681e7bb4028690555eff83f20da020ea5a89197a5",
-      "migrated_sha256": "219960dd91fc6c8e31932f2681e7bb4028690555eff83f20da020ea5a89197a5"
+      "migrated_sha256": "e44cf2e4e24bc491d339757c4c9c056a4b586d74538430f209c9ccb567550ab4",
+      "adaptation": "; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaFrameworkPlugin.java",
@@ -746,7 +773,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelAnalyzerRegistry.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaModelAnalyzerRegistry.java",
       "sha256": "b5da642c83713b290a6f70d1ae626c1f91d7d338ed3797f4e591d48a214d2a0a",
-      "migrated_sha256": "b5da642c83713b290a6f70d1ae626c1f91d7d338ed3797f4e591d48a214d2a0a"
+      "migrated_sha256": "c1a97b86abf46eb8cbb69e2c1ad85aa2d8eecb3e0284e724db309d74047d21d6",
+      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelAnnotations.java",
@@ -758,13 +786,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelExtension.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaModelExtension.java",
       "sha256": "976c8ff55dc8518207003c935fde81c696ece55c86874d193ec95480ad6e6be1",
-      "migrated_sha256": "976c8ff55dc8518207003c935fde81c696ece55c86874d193ec95480ad6e6be1"
+      "migrated_sha256": "480cb3de70518dc424d21999b6792c95f7636a232a60fa1b1ce3933ffd64fa9f",
+      "adaptation": "; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelExtensions.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaModelExtensions.java",
       "sha256": "54ab373401ae23a9f325ff7b6bea6ba2c02f9c88a2556cfb5cf36566968c6160",
-      "migrated_sha256": "54ab373401ae23a9f325ff7b6bea6ba2c02f9c88a2556cfb5cf36566968c6160"
+      "migrated_sha256": "ff9c7e3b67e38f6a89c2a76932f220e1cc470bbb5892f254ef2c2c712d489a2a",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit shared task ledger in model/extension fact retention and semantic lookup.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaUnitAnalysis.java",
@@ -776,13 +806,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/ProjectAnalysisRunner.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/ProjectAnalysisRunner.java",
       "sha256": "31a2627507f2c46969501070eb649c14a6f157a28ad5ad43cc480174490db945",
-      "migrated_sha256": "31a2627507f2c46969501070eb649c14a6f157a28ad5ad43cc480174490db945"
+      "migrated_sha256": "36568e052f8a9cc92c24b2093d3701267cc3dcf0ec2fbf99dc3c70485d844641",
+      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/ProjectFactView.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/ProjectFactView.java",
       "sha256": "3daa292ba30c3abd18623c7c60396cce9588999f2ffc451cbf993c0588eec1e8",
-      "migrated_sha256": "3daa292ba30c3abd18623c7c60396cce9588999f2ffc451cbf993c0588eec1e8"
+      "migrated_sha256": "60c3967a1ad1b1edd15ab64d2c792b85e0f7b9ece90c189efbb77bb9e08172be",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/ProjectResource.java",
@@ -818,7 +850,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/SyntheticOrigin.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/SyntheticOrigin.java",
       "sha256": "8174ea4973b8de8f3c5f66cc155129ff761cc225a2ad27eab938558f0f2eaa06",
-      "migrated_sha256": "8174ea4973b8de8f3c5f66cc155129ff761cc225a2ad27eab938558f0f2eaa06"
+      "migrated_sha256": "a07e207cf3c3cd9f9ef08ff46ba6a93722bab396781ee48ab131edc499fd1aac",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java",
@@ -836,14 +869,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java",
       "sha256": "8ce196904024ffc995efc7f11c1246c2e3ef005d5ab1cabc523c2f93e17b525a",
-      "migrated_sha256": "8ce196904024ffc995efc7f11c1246c2e3ef005d5ab1cabc523c2f93e17b525a"
+      "migrated_sha256": "6e7c755c108ea47d772aec9f0dbe386bd028a9e3dcc71c97aa3edc9d4bd71d30",
+      "adaptation": "; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java",
       "sha256": "c2f28ffd53116e26af3d986e80e6306c5a2bbaf933ad0861cb27eb0544dab326",
-      "migrated_sha256": "930192c0dd183950957e1fcf104d9dce0492ff23b49eef92c6c10229aee8d811",
-      "adaptation": "Use sealed captured configuration resources and capture-relative fingerprints without rediscovering external directories.",
+      "migrated_sha256": "e843af593d1d4b931b8e51a15e5d5d04b5236c95ec6873c35ea992055aeda2f2",
+      "adaptation": "Use sealed captured configuration resources and capture-relative fingerprints without rediscovering external directories.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -856,29 +890,31 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java",
       "sha256": "a2e138b52ad716ed141dd882eb3357026ddb79844672924b47ad01033b5bf2b8",
-      "migrated_sha256": "de401cb1a515edd1b646264650cf2782fd9a625356ebfddf8c417cb386b4484b",
-      "adaptation": "Inject the same captured configuration inventory into call evidence.",
+      "migrated_sha256": "5756c46f8463fd9814ae41434e305f5d875219da0d6c8c8c3c12c2aedcac7be9",
+      "adaptation": "Inject the same captured configuration inventory into call evidence.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "sha256": "d2d506432acc3beb99b7b1bcfb11700bebf3cb184d04e7f6a47973b46df5390f",
-      "migrated_sha256": "5587da21c454414398b5c70160ee0699eff557db71874d1320b419f12d76fd37",
-      "adaptation": "Inject captured Lombok configuration inventory.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged",
+      "migrated_sha256": "0b4553a94c967232b28725f34bf031b30d976a4078ea3871741ba7c30d96075d",
+      "adaptation": "Inject captured Lombok configuration inventory.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/json/Json.java",
       "destination": "analysis-core/src/main/java/com/anatomist/json/Json.java",
       "sha256": "083a049afed0a6537745db4d63f30b5a95af67d9a5943529ed665f971d375480",
-      "migrated_sha256": "083a049afed0a6537745db4d63f30b5a95af67d9a5943529ed665f971d375480"
+      "migrated_sha256": "6532e71524e54491798c54aa296c5d0925f7200d2994dff051963bedd67768b9",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit. Shared Jackson transport replaces the hand-written parser/encoder; exact/canonical numeric and UTF-8 compatibility vectors, resource-aware codec conversion, and cumulative result admission before final receipt."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/json/JsonCodec.java",
       "destination": "analysis-core/src/main/java/com/anatomist/json/JsonCodec.java",
       "sha256": "cbfc3fe70e2a4726cc69e43a0d7f1c313f8c2355844cf5f946060600bc100f66",
-      "migrated_sha256": "cbfc3fe70e2a4726cc69e43a0d7f1c313f8c2355844cf5f946060600bc100f66"
+      "migrated_sha256": "7166b1228766ae53dcbdef775a69d4a648088fb1dccf0e29b6b42f8634d8a45b",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/json/JsonCodecRegistry.java",
@@ -926,8 +962,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/model/ExtractionResult.java",
       "destination": "analysis-core/src/main/java/com/anatomist/model/ExtractionResult.java",
       "sha256": "46c50b178f89eb7ec57dd36e7f43c2f6865443ee367dae98d02f7d62192ea1a3",
-      "migrated_sha256": "fd79edfeca884dc57537a603fadb99407c0bc95ec9f971a7bb9a82fc901d9558",
-      "adaptation": "Remove business semantic annotations and user notes; preserve Java source annotations (90e405b selective adaptation)."
+      "migrated_sha256": "c4787b9613ba16809e2444e38e366ddae57e2903618ce648ab672064d8a3a5ac",
+      "adaptation": "Remove business semantic annotations and user notes; preserve Java source annotations (90e405b selective adaptation).; Explicit shared task ledger in model/extension fact retention and semantic lookup. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/model/FactOrigin.java",
@@ -1025,8 +1061,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacDecodeBudgetTest.java",
       "destination": "analysis-core/src/test/java/com/anatomist/core/javac/JavacDecodeBudgetTest.java",
       "sha256": "d16c867b8fb0740129886f857ecd4aa299516e92f064d004dd48e3a0f229d9e2",
-      "migrated_sha256": "f373a698497d228b4de29ad79066b23bcc47a5d908c4ff3a90cf98b1034bf065",
-      "adaptation": "; Additional resource-boundary regression verifies 2 GiB accounting uses long arithmetic and still rejects exhaustion."
+      "migrated_sha256": "09d267a8630cfeff913b72da578889ffe1ce73bd47cec3054031c0299619e62b",
+      "adaptation": "; Additional resource-boundary regression verifies 2 GiB accounting uses long arithmetic and still rejects exhaustion. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacProtocolTest.java",
@@ -1110,13 +1146,15 @@
       "source": "anatomist-framework-sofa/src/main/java/com/anatomist/framework/sofa/SofaXmlAnalyzer.java",
       "destination": "framework-sofa/src/main/java/com/anatomist/framework/sofa/SofaXmlAnalyzer.java",
       "sha256": "5aceff747768f9a193d92ad6709dc32749da5b475af968390feb4e7e8756cced",
-      "migrated_sha256": "5aceff747768f9a193d92ad6709dc32749da5b475af968390feb4e7e8756cced"
+      "migrated_sha256": "f54bad1924a6941f71bfd5f10591ec9147cf9e5b51e636a6d670ce47a916aa61",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.; preserve SAX attribute order in immutable metadata across worker restarts"
     },
     {
       "source": "anatomist-framework-spring/src/main/java/com/anatomist/core/SpringBeanParser.java",
       "destination": "framework-spring/src/main/java/com/anatomist/core/SpringBeanParser.java",
       "sha256": "d5fa4967aa93ab83138ba4cc3f7d938867c3ce4e3010aa3e30acd1fc37768f66",
-      "migrated_sha256": "d5fa4967aa93ab83138ba4cc3f7d938867c3ce4e3010aa3e30acd1fc37768f66"
+      "migrated_sha256": "2942ac0c831c020377355dff3759cfd9f05ba3f803db70381afef443603f0aac",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding.; Record the stricter Xerces depth rejection in the shared task receipt without raising platform limits."
     },
     {
       "source": "anatomist-framework-spring/src/main/java/com/anatomist/extract/XmlBeanExtractor.java",
@@ -1164,7 +1202,8 @@
       "source": "anatomist-framework-spring/src/main/java/com/anatomist/framework/spring/SpringXmlAnalyzer.java",
       "destination": "framework-spring/src/main/java/com/anatomist/framework/spring/SpringXmlAnalyzer.java",
       "sha256": "23241ae6bec23ddd6ce00613ea29a4bb45fff087a396da1826fb51a371d62a94",
-      "migrated_sha256": "23241ae6bec23ddd6ce00613ea29a4bb45fff087a396da1826fb51a371d62a94"
+      "migrated_sha256": "ca958a54c651d9f553e580cfe00ec71641eda5aaee96fdef994549ceb36e9ec0",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding."
     },
     {
       "source": "anatomist-framework-spring/src/main/java/com/anatomist/framework/spring/SpringXmlResourceProvider.java",
@@ -1176,7 +1215,8 @@
       "source": "anatomist-framework-spring/src/main/java/com/anatomist/framework/spring/XmlBeanGraphExtractor.java",
       "destination": "framework-spring/src/main/java/com/anatomist/framework/spring/XmlBeanGraphExtractor.java",
       "sha256": "b666ab9da18e2c7fa2984bf8ba71b117384d4cc1e1c6237cbe207700ba3123e4",
-      "migrated_sha256": "b666ab9da18e2c7fa2984bf8ba71b117384d4cc1e1c6237cbe207700ba3123e4"
+      "migrated_sha256": "896c2e77065f63c4f32ff455053cf530221ff9c03c396a10fc4ea6cd8af86d12",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/JavaFactsTestSupport.java",
@@ -1278,7 +1318,8 @@
       "source": "anatomist-framework-sofa/src/test/java/com/anatomist/framework/SofaXmlAnalyzerTest.java",
       "destination": "framework-sofa/src/test/java/com/anatomist/framework/SofaXmlAnalyzerTest.java",
       "sha256": "e78ea4504cfe02b6e8103e50c371fa3ad6a96def10fb844591e21c30abe88cb0",
-      "migrated_sha256": "e78ea4504cfe02b6e8103e50c371fa3ad6a96def10fb844591e21c30abe88cb0"
+      "migrated_sha256": "8c03c5461fb6321784567070dfdeeb45e33281db2f15bd5e8eae46012bea3a93",
+      "adaptation": "; preserve SAX attribute order in immutable metadata across worker restarts"
     },
     {
       "source": "anatomist-framework-sofa/src/test/java/com/anatomist/framework/sofa/SofaJavaModelTest.java",
@@ -1314,8 +1355,8 @@
       "source": "anatomist-app/src/main/java/com/anatomist/application/FrameworkPlugins.java",
       "destination": "java-bridge/src/main/java/com/anatomist/application/FrameworkPlugins.java",
       "sha256": "25ee450a129b0cb4a2a9cea36f54e8302f917dc05a76454ecd31021033dc4148",
-      "migrated_sha256": "bb8c8bd57a24404ab4f441f8ac38dea62ff4f207f5262d71819628e682219ca0",
-      "adaptation": "Captured Lombok configuration overload; original plugin validation, dependency order and fingerprint contracts retained."
+      "migrated_sha256": "f30e0a9474a73b12541b62d59fd040b83d9853c42bea179f8830ba33a2044ad8",
+      "adaptation": "Captured Lombok configuration overload; original plugin validation, dependency order and fingerprint contracts retained.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/application/FrameworkPluginsTest.java",
@@ -1388,7 +1429,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacCatalogueCodecIT.java",
       "destination": "java-bridge/src/test/java/com/anatomist/core/javac/JavacCatalogueCodecIT.java",
       "sha256": "a0206a9a907f115e74a1db76758b0d90e46075a3eb71c2fe1dea3cf3296d58ae",
-      "migrated_sha256": "a0206a9a907f115e74a1db76758b0d90e46075a3eb71c2fe1dea3cf3296d58ae"
+      "migrated_sha256": "4438b11f1b202acd5a02d7dc106f60361f64fa04d778b08585b6005612ee654f",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacCompiledDeclarationsTest.java",
@@ -1454,7 +1496,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacSignatureCacheIT.java",
       "destination": "java-bridge/src/test/java/com/anatomist/core/javac/JavacSignatureCacheIT.java",
       "sha256": "080dc714381c606c1a6a99cd1d807af5a6c6b4c84a201e58b2dc077b5b644fff",
-      "migrated_sha256": "080dc714381c606c1a6a99cd1d807af5a6c6b4c84a201e58b2dc077b5b644fff"
+      "migrated_sha256": "0f23f540a1a416d10cbe82b38445360397f44ab3492fca4144c21b28d3d43bb3",
+      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacSyntaxIT.java",
@@ -3042,7 +3085,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/framework/ExtensionExecutionTest.java",
       "destination": "java-bridge/src/test/java/com/anatomist/framework/ExtensionExecutionTest.java",
       "sha256": "b837603128fefb99015ce7604aeb5687f6f462b417b004add9688505170c67ad",
-      "migrated_sha256": "b837603128fefb99015ce7604aeb5687f6f462b417b004add9688505170c67ad"
+      "migrated_sha256": "4816fc2ba95641088fb357b99aa9d2fd7630385190b2c65c58ffd170192791cb",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Resource tests use an explicit valid analysis context."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/framework/ExtensionLifecycleTest.java",
@@ -3156,7 +3200,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/json/JsonTest.java",
       "destination": "java-bridge/src/test/java/com/anatomist/json/JsonTest.java",
       "sha256": "22318f6ddcd41ba4a18c0c27b9f6ed9c75b76307033d54c81a38ae235d20533f",
-      "migrated_sha256": "22318f6ddcd41ba4a18c0c27b9f6ed9c75b76307033d54c81a38ae235d20533f"
+      "migrated_sha256": "ea3fd23184ce3cfb5d02424995406e5c0cfa7de6a701460e71eb24bfdb43474e",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/model/EdgeTargetTest.java",
@@ -3287,7 +3332,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/AnalysisCoverage.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/AnalysisCoverage.java",
       "sha256": "c2a7edf7bd13697adda86011e0b1d5f3d259df2d6b9ab1b26dbfc32e2be400ae",
-      "migrated_sha256": "c2a7edf7bd13697adda86011e0b1d5f3d259df2d6b9ab1b26dbfc32e2be400ae"
+      "migrated_sha256": "7a9df981d83d32bd3c6027429a755d4b117a0f4477123fa99084586a71a9a7f4",
+      "adaptation": "Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/ResolutionDiagnostics.java",
@@ -3320,15 +3366,15 @@
     {
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacModelConsumer.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
-      "migrated_sha256": "bea546b8c7217298099d57e67ccf155aec17fba951324063a9dbb779850ff173",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.",
+      "migrated_sha256": "7e27ce6cbb99cfbe56e5753e24cab90081bc187fa2dee32bf26ae4e5051a9c53",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java"
     },
     {
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacRunConfiguration.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
-      "migrated_sha256": "4fb11dc74ee2dee3985ba5d03231c558002990ff7ddc4d6f8cd75ad693c70f8f",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002",
+      "migrated_sha256": "59f4494c344560baf2ac9449c57a14928a371c345837bc34ee4defb6e4634270",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java"
     },
     {
@@ -3370,34 +3416,34 @@
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokBuilderRules.java",
       "origin": "codeana",
       "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
-      "migrated_sha256": "4497d78e499004b076045e32de79fc337b2c1fea0c365b9421815393a07205b3",
+      "migrated_sha256": "d2e4ec86872b3ab51c2cb714fbfde78e4271db7c93c37b435056c53b236a50ac",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
     },
     {
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokDeclarationRules.java",
       "origin": "codeana",
       "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
-      "migrated_sha256": "2dabb6138dd245fa40ffbea3dbef2c9998ea3ccabff50a52dae9f3f41cf1e3d5",
+      "migrated_sha256": "1adc8b00b482029a22afd2a4a163fe42ba3ab24258dfa362783b033dfc390d60",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
     },
     {
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokGeneratedMembers.java",
       "origin": "codeana",
       "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
-      "migrated_sha256": "47f07a1245f54deba5718ab958eaf313cc51a54834cd2ae1db8bf3c28a134c88",
+      "migrated_sha256": "311b36e4723c62e5accae9d6460ca6f0edf07c3905bfa19ef73df7d36064b894",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisRequest.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
-      "migrated_sha256": "5aab38ab650da5d7e0470dfdf19fa80461da9f590825cb6431e23b9c9f755886"
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
+      "migrated_sha256": "b196584e0e03870be5de117428d95c5929d8087b0a301ef591a3e581ef79516f"
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisResult.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
-      "migrated_sha256": "47a28484cb702b11688fddeba1a7961e5243c44d909f81e4080357b0d4cd9c58"
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
+      "migrated_sha256": "5dcfc3587d0194f48b8e1e1c08b25dcac811fb48a011fa1f67663166eb0ec90e"
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/BaselineDescriptor.java",
@@ -3414,8 +3460,74 @@
     {
       "destination": "java-bridge/src/test/java/dev/codeana/adapter/AnalysisRequestTest.java",
       "origin": "codeana",
-      "reason": "Captured DTO defaults, exact numeric fields, compact input roles and verified baseline ownership.",
-      "migrated_sha256": "6d678ee7a7e598c8eba3e67073f3a1f0d9a33937891e46fe3a4cfc8e44b04fe3"
+      "reason": "Captured DTO defaults, exact numeric fields, compact input roles and verified baseline ownership. \u8bf7\u6c42\u89e3\u6790fixture\u540c\u6b65\u4e3aJava\u5206\u6790\u534f\u8bae11\uff1b\u65e710\u8bf7\u6c42\u4ecd\u660e\u786e\u62d2\u7edd\u3002",
+      "migrated_sha256": "a256f0bbc01adfc520c171eeb4f34393ccd4a08d9a4a5dbd1d3e7d48d0f2fa2e"
+    },
+    {
+      "destination": "java-bridge/src/test/java/com/anatomist/framework/XmlResourceLimitTest.java",
+      "origin": "codeana",
+      "reason": "Resource governance implementation and executable boundary regression. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002",
+      "migrated_sha256": "844f034c74e9570ad8530f3f9ddb5080b3720cecd6ff8a4db3b79a7b142f6505"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/core/HardResourceLimit.java",
+      "origin": "codeana",
+      "reason": "Resource governance implementation and executable boundary regression.",
+      "migrated_sha256": "0e0520fb8257eb0b3e06e809d4f2913cc9d24086c656b6dd0508541c11b20802"
+    },
+    {
+      "destination": "framework-spring/src/main/java/com/anatomist/core/XmlResourceBudget.java",
+      "origin": "codeana",
+      "reason": "Resource governance implementation and executable boundary regression. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002",
+      "migrated_sha256": "848e13393b2a1bfcdb18afc46a65e94ad898396b600dfca64561274f47af7a85"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/core/FatalAnalysisFailure.java",
+      "origin": "codeana",
+      "reason": "Fatal infrastructure failures cannot become partial semantic facts.",
+      "migrated_sha256": "94322b3b46e7b45cefeae6a6a2cf4047549d9faf456e1fc6278644bf60910a6c"
+    },
+    {
+      "origin": "codeana",
+      "destination": "analysis-core/src/main/java/com/anatomist/core/AnalysisContext.java",
+      "reason": "Shared task analysis resource ledger and cross-implementation fixtures; explicit context, no global state. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
+      "migrated_sha256": "727a9c1c0c5ce4c885fb5572121b11c22c4d37448cc507c628f38725dac80948"
+    },
+    {
+      "origin": "codeana",
+      "destination": "analysis-core/src/test/java/com/anatomist/core/AnalysisContextTest.java",
+      "reason": "Shared task analysis resource ledger and cross-implementation fixtures; explicit context, no global state. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
+      "migrated_sha256": "e66ed8c45e8ec44331da504807e144a7535ceebf8a64419326ce8495ecc1330b"
+    },
+    {
+      "origin": "codeana",
+      "destination": "framework-sofa/src/test/java/com/anatomist/framework/SofaResourceBudgetTest.java",
+      "reason": "Typed shared budget regressions for signature/declaration/ASM, source copies/coordinates and SOFA XML; fixture scope only.",
+      "migrated_sha256": "424af827cd5962015cd1d2b007c7b4ee470d64881937faceff8b8186404480b2"
+    },
+    {
+      "origin": "codeana",
+      "destination": "analysis-core/src/test/java/com/anatomist/core/asmsolver/SignatureResourceBudgetTest.java",
+      "reason": "Typed shared budget regressions for signature/declaration/ASM, source copies/coordinates and SOFA XML; fixture scope only.",
+      "migrated_sha256": "1a09d9dbf875a9de6d2ca1a3172fc0f2b50f9987205d5982c3658cfb2cd1b324"
+    },
+    {
+      "origin": "codeana",
+      "destination": "analysis-core/src/test/java/com/anatomist/core/java/JavaSourceResourceBudgetTest.java",
+      "reason": "Typed shared budget regressions for signature/declaration/ASM, source copies/coordinates and SOFA XML; fixture scope only.",
+      "migrated_sha256": "5396b27d521fd71891c31d1c018b2198b14c2e686afa72c52339fb5632837ecd"
+    },
+    {
+      "destination": "java-bridge/src/test/java/com/anatomist/framework/lombok/LombokResourceAdmissionTest.java",
+      "origin": "codeana",
+      "reason": "Shared task resource admission regression for extension metadata and Lombok overlays",
+      "migrated_sha256": "462730a9ab9b042b67c0970860650476067d9c6525ab445296a396151359c819"
+    },
+    {
+      "destination": "analysis-core/src/test/java/com/anatomist/core/JavaExtensionResourcesTest.java",
+      "origin": "codeana",
+      "reason": "Shared task resource admission regression for extension metadata and Lombok overlays",
+      "migrated_sha256": "056da64aff4d2eef5d0b6b5130f8171c26b2bde181c5b1b5179fcb436e530dae"
     }
   ],
   "supplemental_references": [

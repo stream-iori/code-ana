@@ -16,8 +16,14 @@ public record JavacRunConfiguration(
         JavaDeclarationOverlay overlay,
         List<JavacBackend.CapturedContext> contexts,
         JavaSourcePlan sourcePlan,
-        JavacMavenInputs moduleInputs) {
+        JavacMavenInputs moduleInputs,
+        AnalysisContext analysisContext) {
+    public JavacRunConfiguration(Map<String,JavacBackend.ModelBudget> budgets,long decodeBytes,boolean signatures,Duration timeout,IndexTimings timings,JavaDeclarationOverlay overlay,List<JavacBackend.CapturedContext> contexts,JavaSourcePlan sources,JavacMavenInputs modules) {
+        this(budgets,decodeBytes,signatures,timeout,timings,overlay,contexts,sources,modules,new AnalysisContext(AnalysisContext.Limits.defaults()));
+    }
     public JavacRunConfiguration {
+        Objects.requireNonNull(analysisContext);
+        analysisContext.charge(1,1,128L*(modelBudgets.size()+contexts.size()+1L));
         modelBudgets = Map.copyOf(modelBudgets);
         contexts = List.copyOf(contexts);
         Objects.requireNonNull(overlay);

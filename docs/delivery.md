@@ -93,3 +93,7 @@ Maven schema 4 的导出协议与 Resolver fixture 走 `just test-java-maven`；
 测量前后核对 Maven controls、external_controls、按顺序声明的 classpath JAR 以及捕获文件的 SHA。外部导出器须引用已冻结的原字节，不能依赖后续 SDK 安装会覆盖的路径；若仅变更该控制路径，也先重放改造前 JVM，确认逻辑图不变，再封存查询基线。公开查询比较 resolve、structure、source、search-code、search-text、overview 的记录多重集，保留重复和源码位置；仅 overview 顶层 profile 排除 JVM/Native 宿主身份差异。
 
 固定预算：worker 4 GiB，宿主堆 1 GiB，javac 堆 512 MiB、并行 2；模型归档 256 MiB/context、解码 512 MiB/context、记录 100 万/context；结果 1 GiB、事实 500 万、scratch 16 GiB；编译上下文 120 秒、任务 3600 秒。全量索引只有一轮 Native/G1、独立空应用状态，不给稳定性能承诺。
+
+资源治理新增真实产品入口 `tests/java_resource_limits.py`，验证 XML 硬失败的全量/增量保旧版和重试；已纳入 Native just 入口、graph 组回执和 Java release 测试列表。来源工具 `java-coverage-inventory.py`、`java-coverage-acceptance-gate.py` 支持 `--reference-repo`，参考构建使用 `--source`；缺少固定对象直接失败，不使用 HEAD 替代。
+
+2026-10-31 资源治理本轮按用户确认只验收自建 fixture，排除 iopengw，不重测或重标历史单轮结果；另用冻结的 120 文件自建 fixture 做一次有效 release/G1 观测，保留准备错误的原失败。Serial 开发产物、固定工具链 G1 fixture 与正式容量/稳定性能放行分开记账。

@@ -193,7 +193,7 @@ public final class JavaFieldFacts {
                                 "evidenceComplete",
                                 false,
                                 "modeledInput",
-                                true));
+                                true), model.analysisContext());
         return edge;
     }
 
@@ -250,7 +250,7 @@ public final class JavaFieldFacts {
                                                 "bindingResolved",
                                                 false,
                                                 "evidenceComplete",
-                                                false));
+                                                false), model.analysisContext());
                 }
             } else {
                 unresolved.add(
@@ -303,7 +303,7 @@ public final class JavaFieldFacts {
                 && !binding.evidenceComplete()
                 && edge.confidence.equals(GraphConstants.Confidence.EXTRACTED))
             edge.metadata =
-                    Json.writeCompact(Map.of("bindingResolved", true, "evidenceComplete", false));
+                    Json.writeCompact(Map.of("bindingResolved", true, "evidenceComplete", false), model.analysisContext());
         edge.producerId = ProducerIds.JAVA_CORE;
         edge.sourceFile = project.relativize(unit.path()).toString().replace('\\', '/');
         edge.syntaxTarget = model.source(unit.path()).slice(node.span());

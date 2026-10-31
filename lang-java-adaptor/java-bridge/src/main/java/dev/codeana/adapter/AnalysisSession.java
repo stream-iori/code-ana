@@ -18,7 +18,7 @@ import java.util.*;
 
 /** Task lifetime at the native boundary. All semantics belong to the migrated core. */
 public final class AnalysisSession implements AutoCloseable {
-    public static final String IDENTITY = "anatomist-4a903272-codeana-graph4-maven-fallback1";
+    public static final String IDENTITY = "anatomist-4a903272-codeana-graph4-resource2-analysis";
     private final AnalysisRequest request;
     private final AnalysisLimits limits;
     private final Path taskRoot;
@@ -26,6 +26,7 @@ public final class AnalysisSession implements AutoCloseable {
     private volatile Thread executing;
     private volatile boolean cancelled;
     private final AnalysisObserver observer;
+    private final com.anatomist.core.AnalysisContext resources;
 
     public AnalysisSession(Map<String, Object> request) throws IOException {
         this(request, AnalysisObserver.NONE);
@@ -33,6 +34,12 @@ public final class AnalysisSession implements AutoCloseable {
 
     public AnalysisSession(Map<String, Object> request, AnalysisObserver observer)
             throws IOException {
+        this(request, observer, com.anatomist.core.AnalysisContext.fromRequest(request));
+    }
+    public AnalysisSession(Map<String,Object> request, AnalysisObserver observer, com.anatomist.core.AnalysisContext resources) throws IOException {
+        if (Json.number(request,"version") != 11) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        this.resources = Objects.requireNonNull(resources);
+        resources.charge(1, 1, 1024);
         this.observer = Objects.requireNonNull(observer);
         var input = new LinkedHashMap<>(request);
         input.put("diagnostic_scratch", Json.string(request, "scratch"));
@@ -55,11 +62,13 @@ public final class AnalysisSession implements AutoCloseable {
 
     public void cancel() {
         cancelled = true;
+        resources.cancel();
         Thread t = executing;
         if (t != null) t.interrupt();
     }
 
     public void check() {
+        resources.check();
         if (cancelled || Thread.currentThread().isInterrupted())
             throw new java.util.concurrent.CancellationException("CANCELLED");
     }
@@ -72,12 +81,15 @@ public final class AnalysisSession implements AutoCloseable {
 
     private Map<String, Object> analyzeCaptured() throws Exception {
         executing = Thread.currentThread();
+        resources.phase("backend");
         check();
-        if (request.version() != 10) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        if (request.version() != 11) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
         var plan = prepareAnalysis();
         extractJava(plan);
         extractResources(plan);
-        return sealAnalysis(plan).wire();
+        var result = sealAnalysis(plan).wire();
+        result.put("analysis_usage", resources.receipt());
+        return result;
     }
 
     private record Plan(
@@ -92,7 +104,7 @@ public final class AnalysisSession implements AutoCloseable {
 
     private Plan prepareAnalysis() throws Exception {
         observer.phase("capture", "", true);
-        CapturedProject project = new CapturedProject(request);
+        CapturedProject project = new CapturedProject(request, resources);
         observer.phase("capture", "", false);
         boolean full = request.full();
         var summary = request.baseline().read();
@@ -110,7 +122,7 @@ public final class AnalysisSession implements AutoCloseable {
                 new GraphArchive(
                         request.scratch().resolve("anatomist-rows.bin"),
                         limits.bytes,
-                        limits.facts);
+                        limits.facts, resources);
         AnatomistRows projection = new AnatomistRows(project, output);
         projection.row(
                 dev.codeana.graph.GraphRecords.Table.PROJECT_META,
@@ -212,7 +224,7 @@ public final class AnalysisSession implements AutoCloseable {
                             project.root,
                             c.sources().stream().map(CapturedProject.Source::file).toList(),
                             config,
-                            config.springXml());
+                            config.springXml(), resources);
             frameworks.put(key, f);
             registries.put(key, registry(project, c, f));
         }
@@ -228,7 +240,7 @@ public final class AnalysisSession implements AutoCloseable {
                     }
 
                     public void verifyInputs() {
-                        registries.values().forEach(r -> r.overlays().verifyInputs());
+                        registries.values().forEach(r -> r.overlays(resources).verifyInputs());
                     }
 
                     public JavaAnalysisContext augment(
@@ -236,7 +248,7 @@ public final class AnalysisSession implements AutoCloseable {
                             com.anatomist.core.asmsolver.JavaBinaryRepository b) {
                         return registries
                                 .get(c.module() + "@" + c.scope())
-                                .overlays()
+                                .overlays(resources)
                                 .augment(c, b);
                     }
                 };
@@ -250,7 +262,7 @@ public final class AnalysisSession implements AutoCloseable {
                         overlay,
                         project.compilerContexts(dirty),
                         project.sourcePlan(dirty),
-                        project.moduleInputs());
+                        project.moduleInputs(), resources);
         var backend = JavacBackend.captured(project.root, toolchain, project.roots(), options, run);
         return new Plan(
                 project,
@@ -337,7 +349,7 @@ public final class AnalysisSession implements AutoCloseable {
         for (var c : project.contexts) {
             if (!dirty.contains(c.world()) || c.resources().isEmpty()) continue;
             check();
-            var declarations = new ExtractionResult();
+            var declarations = new ExtractionResult(resources);
             new ProjectAnalysisRunner()
                     .run(
                             registries.get(c.module() + "@" + c.scope()),
@@ -375,7 +387,7 @@ public final class AnalysisSession implements AutoCloseable {
                     String key = c.module() + "@" + c.scope();
                     observer.phase("resources", key, true);
                     var report = new ExtensionReport();
-                    var result = new ExtractionResult();
+                    var result = new ExtractionResult(resources);
                     List<ProjectResource> inventory = resourceInventory(c);
                     var resourceView = view.snapshot(c, true);
                     new ProjectAnalysisRunner()
@@ -397,6 +409,7 @@ public final class AnalysisSession implements AutoCloseable {
 
     private AnalysisResult sealAnalysis(Plan plan) throws IOException {
         var projection = plan.projection();
+        resources.phase("records");
         var project = plan.project();
         boolean full = request.full();
         projection.finish();
@@ -420,12 +433,22 @@ public final class AnalysisSession implements AutoCloseable {
     private static JavaModelAnalyzerRegistry registry(
             CapturedProject project, CapturedProject.Context c, JavaFrameworkContext f) {
         Path root = project.root;
+        f.analysisContext().charge(c.resources().size(),0,1024L+128L*c.resources().size());
         Map<Path, String> configurations = new TreeMap<>();
         for (var resource : c.resources())
             if (resource.path().equals("lombok.config")
                     || resource.path().endsWith("/lombok.config")) {
                 try {
-                    configurations.put(resource.file(), Files.readString(resource.file()));
+                    long size=Files.size(resource.file());
+                    f.analysisContext().charge(size+1,1,1024L+8L*size);
+                    byte[] bytes;
+                    try(var input=Files.newInputStream(resource.file())) {
+                        bytes=input.readNBytes(Math.toIntExact(size+1));
+                    }
+                    if(bytes.length!=size)throw new com.anatomist.core.FatalAnalysisFailure("LOMBOK_CONFIG_CHANGED: captured configuration size changed");
+                    String content=java.nio.charset.StandardCharsets.UTF_8.newDecoder()
+                            .decode(java.nio.ByteBuffer.wrap(bytes)).toString();
+                    configurations.put(resource.file(), content);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
@@ -524,18 +547,16 @@ public final class AnalysisSession implements AutoCloseable {
         }
 
         void add(ExtractionResult result) {
+            project.analysisContext.charge(result.factCount(),result.factCount(),128L*result.factCount());
             for (Node n : result.nodes) {
                 String metadata = n.metadata;
                 if ("BEAN".equals(n.kind)) {
                     var fields =
                             new TreeMap<>(
                                     Json.map(
-                                            Json.parse(
-                                                    metadata.getBytes(
-                                                            java.nio.charset.StandardCharsets
-                                                                    .UTF_8))));
+                                            com.anatomist.json.Json.parseTree(metadata,512,project.analysisContext)));
                     fields.put("bean_name", n.label);
-                    metadata = Json.write(fields);
+                    metadata = com.anatomist.json.Json.writeCompact(fields,project.analysisContext);
                 }
                 symbol(
                         new SymbolFact(
@@ -596,10 +617,7 @@ public final class AnalysisSession implements AutoCloseable {
                     continue;
                 Map<String, Object> metadata =
                         Json.map(
-                                Json.parse(
-                                        symbol.metadata()
-                                                .getBytes(
-                                                        java.nio.charset.StandardCharsets.UTF_8)));
+                                com.anatomist.json.Json.parseTree(symbol.metadata(),512,project.analysisContext));
                 String name =
                         Objects.toString(
                                 metadata.get("bean_name"),
@@ -617,7 +635,7 @@ public final class AnalysisSession implements AutoCloseable {
             for (var relation : relations)
                 if (known.contains(relation.sourceType())) hierarchy.add(relation);
             return new DefaultProjectFactView(
-                    known, beans, List.copyOf(catalogue.values()), List.copyOf(hierarchy));
+                    known, beans, List.copyOf(catalogue.values()), List.copyOf(hierarchy), project.analysisContext);
         }
     }
 

@@ -17,11 +17,18 @@ pub(super) fn expand(
             .or_else(|| direct.attributes.raw_name.as_ref().map(String::as_str))
             .unwrap_or("")
             .to_owned();
+        if reader.charge(1, retained_size(&direct)?).is_err() {
+            break;
+        }
         let mut queue = VecDeque::from([(direct.clone(), vec![name], 0_u32)]);
         while let Some((mut fact, path, depth)) = queue.pop_front() {
             if output.len() >= 10000 {
                 evidence.enumeration = false;
                 evidence.limits.push("work".into());
+                return Ok(output);
+            }
+            let path_bytes = path.iter().map(String::len).sum::<usize>() + path.len();
+            if reader.charge(1, path_bytes as u64).is_err() {
                 return Ok(output);
             }
             fact.attributes.direct = (depth == 0).into();
@@ -33,6 +40,9 @@ pub(super) fn expand(
                 let edges = reader
                     .annotation_meta_edges(std::slice::from_ref(annotation))
                     .map_err(anyhow::Error::new)?;
+                if reader.resource_exhausted() {
+                    return Ok(output);
+                }
                 catalogue.insert(annotation.clone(), edges);
             }
             for edge in &catalogue[annotation] {
@@ -50,6 +60,17 @@ pub(super) fn expand(
                     evidence.enumeration = false;
                     evidence.limits.push("work".into());
                     continue;
+                }
+                if reader
+                    .charge(
+                        1,
+                        retained_size(&direct)?
+                            + path.iter().map(|s| s.len() as u64).sum::<u64>()
+                            + meta.len() as u64,
+                    )
+                    .is_err()
+                {
+                    return Ok(output);
                 }
                 let mut next = direct.clone();
                 let mut next_path = path.clone();

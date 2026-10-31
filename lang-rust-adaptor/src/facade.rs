@@ -20,7 +20,21 @@ pub struct AnalyzerFacade {
 }
 
 impl AnalyzerFacade {
+    #[cfg(test)]
     pub fn new(config: &AnalysisConfig) -> Result<Self> {
+        Self::new_with_context(config, None)
+    }
+    pub fn new_with_context(
+        config: &AnalysisConfig,
+        budget: Option<&codeana_model::AnalysisContext>,
+    ) -> Result<Self> {
+        if let Some(budget) = budget {
+            budget.charge(
+                config.inputs.crates.len() as u64,
+                config.inputs.crates.len() as u64,
+                codeana_model::retained_size(&config.inputs)?.saturating_mul(4),
+            )?;
+        }
         config.inputs.validate().map_err(anyhow::Error::msg)?;
         // 0.0.349's LRU setter is a no-op; this is not a memory budget.
         let mut db = RootDatabase::new(None);
@@ -39,11 +53,28 @@ impl AnalyzerFacade {
                 .enumerate()
                 .filter(|(_, f)| f.crates.contains(&input.id))
             {
+                let source_bytes = std::fs::metadata(&file.input)?.len();
+                ensure!(source_bytes <= 8 << 20, "RUST_SOURCE_BUDGET");
+                if let Some(budget) = budget {
+                    // Same physical source can be copied into several crate/world instances.
+                    budget.charge(
+                        1,
+                        1,
+                        source_bytes
+                            .saturating_add(file.path.len() as u64)
+                            .saturating_add(256),
+                    )?;
+                }
+                let mut bytes = Vec::new();
+                use std::io::Read;
+                std::fs::File::open(&file.input)?
+                    .take(source_bytes + 1)
+                    .read_to_end(&mut bytes)?;
                 ensure!(
-                    std::fs::metadata(&file.input)?.len() <= 8 << 20,
-                    "RUST_SOURCE_BUDGET"
+                    bytes.len() as u64 == source_bytes,
+                    "RUST_INPUT_CHANGED: {}",
+                    file.path
                 );
-                let bytes = std::fs::read(&file.input)?;
                 ensure!(
                     codeana_model::hash(&bytes) == file.hash,
                     "RUST_INPUT_CHANGED: {}",

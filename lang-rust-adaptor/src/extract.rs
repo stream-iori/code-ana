@@ -188,28 +188,61 @@ fn interface_text(node: &SyntaxNode) -> String {
     } else {
         None
     };
-    let text = node.text().to_string();
+    let text = node.text();
     let end = boundary
-        .map(|end| u32::from(end - node.text_range().start()) as usize)
+        .map(|end| end - node.text_range().start())
         .unwrap_or(text.len());
-    text[..end].to_owned()
+    text.slice(..end).to_string()
 }
 
 pub fn analyze(config: &AnalysisConfig, cancelled: &dyn Fn() -> Result<()>) -> Result<Analysis> {
+    let budget = codeana_model::AnalysisContext::new(Default::default(), None)?;
+    analyze_with_context(config, cancelled, &budget)
+}
+pub fn analyze_with_context(
+    config: &AnalysisConfig,
+    cancelled: &dyn Fn() -> Result<()>,
+    budget: &codeana_model::AnalysisContext,
+) -> Result<Analysis> {
     cancelled()?;
+    budget.checkpoint()?;
+    for file in &config.files {
+        cancelled()?;
+        budget.charge(1, 0, file.path.len() as u64)?;
+    }
     ensure!(
         matches!(config.mode.as_str(), "syntax" | "semantic"),
         "RUST_ANALYSIS_MODE"
     );
     eprintln!("codeana-rust-phase=database_load");
     let started = std::time::Instant::now();
-    let analyzer = AnalyzerFacade::new(config)?;
+    let analyzer = AnalyzerFacade::new_with_context(config, Some(budget))?;
     eprintln!(
         "codeana-rust-timing database_load_ms={}",
         started.elapsed().as_millis()
     );
+    let check = || -> Result<()> {
+        cancelled()?;
+        budget.charge(1, 0, 0)?;
+        Ok(())
+    };
     ra_ap_hir::attach_db(&analyzer.db, || {
-        analyze_attached(config, cancelled, &analyzer)
+        // Bound source syntax before extraction creates further retained collections.
+        let sema = Semantics::new(&analyzer.db);
+        for file in analyzer.files.keys() {
+            let tree = sema.parse_guess_edition(*file);
+            for node in tree.syntax().descendants() {
+                check()?;
+                budget.charge(0, 1, 64)?;
+                let mut depth = 0;
+                for _ in node.ancestors() {
+                    check()?;
+                    depth += 1;
+                    budget.observe_depth(depth)?;
+                }
+            }
+        }
+        analyze_attached(config, &check, &analyzer, budget)
     })
 }
 
@@ -225,6 +258,7 @@ struct ExtractionState {
     path_cache: std::collections::HashMap<(ModuleDef, String), Option<String>>,
 }
 struct Extraction<'a> {
+    budget: &'a codeana_model::AnalysisContext,
     config: &'a AnalysisConfig,
     cancelled: &'a dyn Fn() -> Result<()>,
     analyzer: &'a AnalyzerFacade,
@@ -235,8 +269,10 @@ fn analyze_attached(
     config: &AnalysisConfig,
     cancelled: &dyn Fn() -> Result<()>,
     analyzer: &AnalyzerFacade,
+    budget: &codeana_model::AnalysisContext,
 ) -> Result<Analysis> {
     let mut extraction = Extraction {
+        budget,
         config,
         cancelled,
         analyzer,
@@ -252,8 +288,16 @@ fn analyze_attached(
         declarations_started.elapsed().as_millis()
     );
     if let Some(before) = &config.baseline {
-        let current = crate::incremental::states(config, &extraction.state.output);
-        extraction.state.output.dirty = Some(crate::incremental::dirty(before, &current));
+        let current = crate::incremental::states_with_context(
+            config,
+            &extraction.state.output,
+            Some(budget),
+        )?;
+        extraction.state.output.dirty = Some(crate::incremental::dirty_with_context(
+            before,
+            &current,
+            Some(budget),
+        )?);
     }
     if config.mode == codeana_model::rust::RustAnalysisMode::Syntax {
         return Ok(extraction.state.output);
@@ -274,6 +318,7 @@ impl Extraction<'_> {
             config,
             cancelled,
             analyzer,
+            budget,
             sema,
             ..
         } = self;
@@ -282,6 +327,13 @@ impl Extraction<'_> {
             cancelled()?;
             let source = &config.files[*file_index];
             let input = &config.inputs.crates[*crate_index];
+            budget.charge(
+                0,
+                0,
+                (source.path.len() as u64 + input.world.len() as u64)
+                    .saturating_mul(16)
+                    .saturating_add(512),
+            )?;
             // Dependency files remain available to HIR, but do not need a second
             // complete AST walk merely to create facts we will never publish.
             if !input.publish
@@ -302,6 +354,15 @@ impl Extraction<'_> {
                     .entry((source.path.clone(), input.world.clone()))
                     .or_default()
                     .insert("RUST_MACRO_EXPANSION_DISABLED".into());
+            }
+            if !output.texts.contains_key(&source.path) {
+                budget.charge(
+                    0,
+                    1,
+                    (u32::from(tree.syntax().text_range().len()) as u64)
+                        .saturating_add(source.path.len() as u64)
+                        .saturating_add(128),
+                )?;
             }
             output
                 .texts
@@ -391,6 +452,7 @@ impl Extraction<'_> {
             config,
             cancelled,
             analyzer,
+            budget,
             sema,
             ..
         } = self;
@@ -406,19 +468,52 @@ impl Extraction<'_> {
         for (file, ci, fi, tree, synthetic) in trees.iter() {
             let input = &config.inputs.crates[*ci];
             let source = &config.files[*fi];
-            let imports = tree
-                .descendants()
-                .filter(|node| {
-                    (ast::Use::can_cast(node.kind()) || ast::ExternCrate::can_cast(node.kind()))
-                        && !node.ancestors().any(|n| ast::Fn::can_cast(n.kind()))
-                })
-                .map(|node| node.text().to_string());
-            output
-                .imports
-                .entry((source.path.clone(), input.world.clone()))
-                .or_default()
-                .extend(imports);
             for node in tree.descendants() {
+                cancelled()?;
+                if (ast::Use::can_cast(node.kind()) || ast::ExternCrate::can_cast(node.kind()))
+                    && !node.ancestors().any(|n| ast::Fn::can_cast(n.kind()))
+                {
+                    budget.charge(
+                        0,
+                        1,
+                        (u32::from(node.text_range().len()) as u64)
+                            .saturating_mul(2)
+                            .saturating_add((source.path.len() + input.world.len()) as u64)
+                            .saturating_add(256),
+                    )?;
+                    output
+                        .imports
+                        .entry((source.path.clone(), input.world.clone()))
+                        .or_default()
+                        .push(node.text().to_string());
+                }
+            }
+            for node in tree.descendants() {
+                cancelled()?;
+                let declaration = ast::Fn::can_cast(node.kind())
+                    || ast::Struct::can_cast(node.kind())
+                    || ast::Enum::can_cast(node.kind())
+                    || ast::Trait::can_cast(node.kind())
+                    || ast::Union::can_cast(node.kind())
+                    || ast::TypeAlias::can_cast(node.kind())
+                    || ast::Const::can_cast(node.kind())
+                    || ast::Static::can_cast(node.kind())
+                    || ast::Module::can_cast(node.kind())
+                    || ast::RecordField::can_cast(node.kind())
+                    || ast::Variant::can_cast(node.kind())
+                    || ast::MacroRules::can_cast(node.kind())
+                    || ast::Impl::can_cast(node.kind());
+                if !declaration {
+                    continue;
+                }
+                budget.charge(
+                    0,
+                    1,
+                    (u32::from(node.text_range().len()) as u64)
+                        .saturating_mul(16)
+                        .saturating_add((source.path.len() + input.world.len()) as u64 * 16)
+                        .saturating_add(4096),
+                )?;
                 let Some((name, kind, visibility)) = item(&node) else {
                     continue;
                 };
@@ -525,6 +620,7 @@ impl Extraction<'_> {
     fn collect_implementations(&mut self) -> Result<()> {
         let Self {
             config,
+            budget,
             analyzer,
             sema,
             ..
@@ -551,6 +647,13 @@ impl Extraction<'_> {
                 continue;
             }
             for implementation in tree.descendants().filter_map(ast::Impl::cast) {
+                budget.charge(
+                    1,
+                    1,
+                    (u32::from(implementation.syntax().text_range().len()) as u64)
+                        .saturating_mul(16)
+                        .saturating_add(4096),
+                )?;
                 let Some(def) = sema.to_def(&implementation) else {
                     continue;
                 };
@@ -595,6 +698,7 @@ impl Extraction<'_> {
             config,
             cancelled,
             analyzer,
+            budget,
             sema,
             ..
         } = self;
@@ -633,6 +737,14 @@ impl Extraction<'_> {
                 {
                     continue;
                 }
+                budget.charge(
+                    0,
+                    1,
+                    (u32::from(node.text_range().len()) as u64)
+                        .saturating_mul(32)
+                        .saturating_add((source.path.len() + input.world.len()) as u64 * 16)
+                        .saturating_add(4096),
+                )?;
                 let caller = node
                     .ancestors()
                     .skip(1)

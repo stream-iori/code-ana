@@ -64,7 +64,19 @@ public record LombokConfiguration(
         }
     }
 
-    static LombokConfiguration fromContent(String content) {
+    static void admitContent(String content,com.anatomist.core.AnalysisContext resources) {
+        if(resources==null)return;
+        long lines=1;
+        // Reserve string/line/container storage before lines() materializes it.
+        resources.charge(content.length(),0,256L+16L*content.length());
+        for(int i=0;i<content.length();i++)if(content.charAt(i)=='\n' || content.charAt(i)=='\r')lines++;
+        resources.charge(lines,lines,256L*lines);
+    }
+
+    static LombokConfiguration fromContent(String content) {return fromContent(content,null);}
+
+    static LombokConfiguration fromContent(String content,com.anatomist.core.AnalysisContext resources) {
+        admitContent(content,resources);
         Map<String, String> values = new LinkedHashMap<>();
         Set<String> uncertain = new TreeSet<>();
         for (String raw : content.lines().toList()) {

@@ -59,6 +59,7 @@ pub struct Resources {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct IndexResources {
+    pub analysis: AnalysisResources,
     pub worker_memory_bytes: Option<u64>,
     pub rust_result_bytes: Option<u64>,
     pub rust_fact_limit: Option<u64>,
@@ -79,6 +80,8 @@ pub struct IndexResources {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct QueryResources {
+    pub max_work: Option<u64>,
+    pub max_payload_bytes: Option<u64>,
     pub diff_spill_bytes: Option<u64>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -230,6 +233,7 @@ pub struct TextSearch {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct UserConfig {
+    pub resources: UserResources,
     pub schema_version: u32,
     pub kind: String,
     pub daemon: DaemonPolicy,
@@ -256,4 +260,119 @@ pub struct Limits {
 pub struct Toolchain {
     pub language: String,
     pub home: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct UserResources {
+    pub index: UserIndexResources,
+    pub query: QueryResources,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct UserIndexResources {
+    pub analysis: AnalysisResources,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AnalysisResources {
+    pub max_work: Option<u64>,
+    pub max_nodes: Option<u64>,
+    pub max_payload_bytes: Option<u64>,
+    pub max_depth: Option<u32>,
+}
+impl AnalysisResources {
+    pub fn resolve(
+        &self,
+        user: &Self,
+    ) -> Result<codeana_model::AnalysisLimits, codeana_model::AnalysisFailure> {
+        self.validate()?;
+        user.validate()?;
+        let d = codeana_model::AnalysisLimits::default();
+        let limits = codeana_model::AnalysisLimits {
+            max_work: self.max_work.or(user.max_work).unwrap_or(d.max_work),
+            max_nodes: self.max_nodes.or(user.max_nodes).unwrap_or(d.max_nodes),
+            max_payload_bytes: self
+                .max_payload_bytes
+                .or(user.max_payload_bytes)
+                .unwrap_or(d.max_payload_bytes),
+            max_depth: self.max_depth.or(user.max_depth).unwrap_or(d.max_depth),
+        };
+        limits.validate()?;
+        Ok(limits)
+    }
+    pub fn validate(&self) -> Result<(), codeana_model::AnalysisFailure> {
+        let d = codeana_model::AnalysisLimits::default();
+        codeana_model::AnalysisLimits {
+            max_work: self.max_work.unwrap_or(d.max_work),
+            max_nodes: self.max_nodes.unwrap_or(d.max_nodes),
+            max_payload_bytes: self.max_payload_bytes.unwrap_or(d.max_payload_bytes),
+            max_depth: self.max_depth.unwrap_or(d.max_depth),
+        }
+        .validate()
+    }
+}
+
+#[cfg(test)]
+mod analysis_resource_tests {
+    use super::*;
+    #[test]
+    fn analysis_fields_inherit_and_validate_independently() {
+        let user = AnalysisResources {
+            max_nodes: Some(500),
+            max_work: Some(4294967296),
+            ..Default::default()
+        };
+        let project = AnalysisResources {
+            max_nodes: Some(7),
+            ..Default::default()
+        };
+        let limits = project.resolve(&user).unwrap();
+        assert_eq!(limits.max_nodes, 7);
+        assert_eq!(limits.max_work, 4294967296);
+        assert_eq!(limits.max_depth, 256);
+        assert!(
+            AnalysisResources {
+                max_depth: Some(4097),
+                ..Default::default()
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            AnalysisResources {
+                max_work: Some(0),
+                ..Default::default()
+            }
+            .resolve(&user)
+            .is_err()
+        );
+    }
+    #[test]
+    fn project_and_user_tables_parse_with_strict_types() {
+        let user: UserConfig = toml::from_str(
+            "schema_version=1\nkind='user'\n[resources.index.analysis]\nmax_nodes=11",
+        )
+        .unwrap();
+        assert_eq!(user.resources.index.analysis.max_nodes, Some(11));
+        let project: ProjectConfig = toml::from_str(
+            "schema_version=1\nkind='project'\n[resources.index.analysis]\nmax_work=12",
+        )
+        .unwrap();
+        assert_eq!(project.resources.index.analysis.max_work, Some(12));
+        for input in [
+            "max_nodes=-1",
+            "max_nodes='1'",
+            "max_depth=4294967296",
+            "unknown=1",
+        ] {
+            assert!(
+                toml::from_str::<ProjectConfig>(&format!(
+                    "schema_version=1\nkind='project'\n[resources.index.analysis]\n{input}"
+                ))
+                .is_err()
+            );
+        }
+    }
 }

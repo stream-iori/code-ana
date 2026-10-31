@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build a fresh, independent JVM oracle from the pinned committed source tree."""
 import argparse
+from java_reference import frozen_reference
 import hashlib
 import io
 import json
@@ -23,6 +24,7 @@ def main():
     parser.add_argument('--source', type=pathlib.Path, default=ROOT.parent / 'anatomist')
     parser.add_argument('--output', type=pathlib.Path, default=ROOT / 'target/frozen-reference')
     args = parser.parse_args()
+    args.source = frozen_reference(args.source, COMMIT)
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
     source = output / 'source'

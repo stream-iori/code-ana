@@ -1,6 +1,7 @@
 package com.anatomist.core.java;
 
 import com.anatomist.core.ContentHash;
+import com.anatomist.core.AnalysisContext;
 import com.anatomist.json.Json;
 
 import java.util.*;
@@ -12,7 +13,11 @@ public final class JavaContract {
     private JavaContract() {}
 
     public static String fingerprint(JavaUnit unit) {
-        Encoder encoder = new Encoder();
+        return fingerprint(unit,null);
+    }
+    public static String fingerprint(JavaUnit unit,AnalysisContext analysis) {
+        Encoder encoder = new Encoder(analysis);
+        encoder.slots(unit.declarationInventory().size(),true);
         List<Object> declarations =
                 unit.declarationInventory().stream()
                         .filter(value -> !value.canonicalName().isEmpty())
@@ -28,13 +33,26 @@ public final class JavaContract {
             if (value != null) header.put(key, encoder.syntax(value, 0));
         }
         contract.put("header", header);
-        return ContentHash.sha256(VERSION + "\n" + Json.writeCompact(contract));
+        String encoded=Json.writeCompact(contract,encoder.analysis);
+        encoder.charge(1,1,256L+8L*encoded.length());
+        return ContentHash.sha256(VERSION + "\n" + encoded);
     }
 
     private static final class Encoder {
         private int work;
-
+        private final AnalysisContext analysis;
+        Encoder(AnalysisContext root) {
+            analysis=root==null?null:root.childScope(new AnalysisContext.Limits(Math.min(100000,root.limits().maxWork()),root.limits().maxNodes(),root.limits().maxPayloadBytes(),root.limits().maxDepth()));
+            charge(1,1,1024);
+        }
+        private void charge(long work,long nodes,long bytes) {if(analysis!=null)analysis.charge(work,nodes,bytes);}
+        private void slots(int n,boolean sorted) {
+            long work=n;
+            if(sorted && n>1)work*=32-Integer.numberOfLeadingZeros(n-1);
+            charge(work,0,64L*n);
+        }
         private void visit(int depth) {
+            if(analysis!=null){analysis.depth(depth+1,129);analysis.charge(1,1,2048);return;}
             if (depth > 128) throw new IllegalArgumentException("contract exceeds depth budget");
             if (++work > 100_000)
                 throw new IllegalArgumentException("contract exceeds work budget");
@@ -48,13 +66,17 @@ public final class JavaContract {
                 node.fields().forEach((key, child) -> result.put(key, syntax(child, depth + 1)));
                 return result;
             }
-            if (value instanceof List<?> list)
+            if (value instanceof List<?> list) {
+                slots(list.size(),false);
                 return list.stream().map(child -> syntax(child, depth + 1)).toList();
+            }
             return value;
         }
 
         private Object declaration(JavaTypes types, JavaDeclaration value, int depth) {
             visit(depth);
+            slots(value.members().size(),true);slots(value.interfaces().size(),false);slots(value.permitted().size(),true);
+            slots(value.symbol().modifiers().size(),true);slots(value.incompleteReasons().size(),true);
             JavaSymbol symbol = value.symbol();
             List<Object> members = new ArrayList<>();
             if (Set.of("METHOD", "CONSTRUCTOR").contains(symbol.kind())) {
@@ -101,7 +123,7 @@ public final class JavaContract {
                     "permitted",
                     value.permitted().stream()
                             .map(reference -> type(types, reference, new ArrayList<>()))
-                            .map(Json::writeCompact)
+                            .map(valueTree -> Json.writeCompact(valueTree,analysis))
                             .sorted()
                             .toList());
             result.put("annotations", annotations(value.annotations()));
@@ -117,11 +139,14 @@ public final class JavaContract {
             if (reference < 0) return null;
             int cycle = path.indexOf(reference);
             if (cycle >= 0) return Map.of("back", cycle);
-            if (path.size() >= 128)
+            if (path.size() >= 128) {
+                if(analysis!=null)analysis.depth(path.size()+1,128);
                 throw new IllegalArgumentException("contract type exceeds depth budget");
+            }
             path.add(reference);
             try {
                 JavaType value = types.get(reference);
+                slots(value.arguments().size()+value.upperBounds().size()+value.parameters().size()+value.exceptions().size(),false);
                 Map<String, Object> result = new LinkedHashMap<>();
                 result.put("kind", value.kind().name());
                 result.put("name", value.name());
@@ -156,7 +181,7 @@ public final class JavaContract {
         }
 
         private List<Object> annotations(List<JavaAnnotation> annotations) {
-            visit(0);
+            visit(0);slots(annotations.size(),false);
             return annotations.stream()
                     .map(
                             annotation -> {
@@ -184,6 +209,7 @@ public final class JavaContract {
         private Object constant(JavaBinaryType.Value value, int depth) {
             visit(depth);
             if (value == null) return null;
+            if(value instanceof JavaBinaryType.ArrayValue array)slots(array.values().size(),false);
             return switch (value) {
                 case JavaBinaryType.Scalar scalar ->
                         List.of(

@@ -1,0 +1,21 @@
+{
+  "case": "rust-workspace-output-nodes",
+  "max_nodes": 2392,
+  "reference": {
+    "admission_nodes": 14,
+    "worker_total_nodes": 1902,
+    "output_rows": 238,
+    "worker_nodes_before_output": 1664,
+    "worker_grant_nodes": 1783,
+    "host_grant_nodes": 595
+  },
+  "reason": "Internal JSON value/depth admission and owned DTO copies now count nodes before allocation. The fresh receipt records 1902 worker nodes including 238 output rows; reserve 1664 analysis nodes plus 119 output nodes. Host share 595 covers its measured 490 nodes. Failure must occur in records.",
+  "fixture_sha256": {
+    "Cargo.toml": "b322078540727f05027ba529028931038149dc99543493a5b258288c7acc1838",
+    "app/Cargo.toml": "ab04e8b79e818e20fad9b09b1cf51736e65c1a606a064bd0d3a753b8d740e852",
+    "app/src/main.rs": "57300fdbc1ba6a30016d9f356eaac8c110b70d8c9035ee9444a422b497c42270",
+    "core/Cargo.toml": "54f1d4f4250be1e035cf2e51165bb1a7dc58afb007157fec11693962e6b2d4dd",
+    "core/src/api.rs": "e838abd5e283fdb296581b716860c183855583b2fa74224af3da81da244bb307",
+    "core/src/lib.rs": "bad58b8e401c9f68c03d14a3043bfce43b14daaddeb034e213f94be7c19a3bc2"
+  }
+}

@@ -389,7 +389,7 @@ public final class JavaTypeFacts {
                                 "evidenceComplete",
                                 false,
                                 "modeledInput",
-                                true));
+                                true), model.analysisContext());
         if (lookup instanceof JavaModel.FoundType found)
             edge.targetId = identities.declaration(found.declaration());
         else {

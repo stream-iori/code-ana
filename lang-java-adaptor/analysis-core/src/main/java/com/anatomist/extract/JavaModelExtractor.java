@@ -65,7 +65,7 @@ public final class JavaModelExtractor {
     public void extract(JavaAnalysisContext context, Consumer<UnitFacts> consumer) {
         if (!context.analysisFailure().isEmpty())
             throw new IllegalStateException("JAVAC_ANALYZE_FAILED: " + context.analysisFailure());
-        try (var model = new JavaModel(context)) {
+        try (var model = new JavaModel(context, framework.analysisContext())) {
             Map<SourceIdentity, CorePasses> corePasses = new HashMap<>();
             var fields = new JavaFieldFacts(model, project, framework.config(), binaries);
             var types = new JavaTypeFacts(model, project, framework.config());
@@ -80,7 +80,7 @@ public final class JavaModelExtractor {
                 long started = timings == null ? 0 : timings.start();
                 JavaUnit unit = model.unit(path);
                 model.source(path);
-                var facts = new ExtractionResult();
+                var facts = new ExtractionResult(framework.analysisContext());
                 var diagnostics = new ArrayList<IndexDiagnostic>();
                 diagnostics.addAll(unit.extensions().diagnostics());
                 unit.extensions().counters().forEach((key, value) -> facts.stats.put(key, value));
@@ -190,6 +190,7 @@ public final class JavaModelExtractor {
                                     sourceFile(path), identity.module(), identity.scope().name()),
                             report,
                             facts,
+                            framework.analysisContext(),
                             isolated -> analyzer.analyze(analysis, isolated, report));
                 diagnostics.addAll(report.diagnostics());
                 report.counters()
@@ -204,7 +205,7 @@ public final class JavaModelExtractor {
                                                                         .longValue()));
                 attachDeclarationCoordinates(facts);
                 var extracted =
-                        new UnitFacts(path, JavaContract.fingerprint(unit), facts, diagnostics);
+                        new UnitFacts(path, JavaContract.fingerprint(unit,model.analysisContext()), facts, diagnostics);
                 if (timings != null) timings.stop("java_model_extract", started);
                 consumer.accept(extracted);
             }
@@ -256,6 +257,12 @@ public final class JavaModelExtractor {
             String symbol,
             String reason,
             String receiver) {
+        if(model.analysisContext()!=null) {
+            long bytes=4096;
+            for(var pathEntry:context.classpath())bytes+=512L+8L*pathEntry.toString().length();
+            for(var entry:context.classpathEntries())bytes+=512L+8L*(entry.identity().length()+entry.sha256().length());
+            model.analysisContext().charge(1+context.classpath().size()+context.classpathEntries().size(),1,bytes);
+        }
         Map<String, Object> details = new LinkedHashMap<>();
         details.put("relation", relation);
         details.put("source_owner_id", owner);
@@ -418,7 +425,7 @@ public final class JavaModelExtractor {
                 "java-core",
                 null,
                 reasonCode,
-                Json.writeCompact(details));
+                Json.writeCompact(details,model.analysisContext()));
     }
 
     private static String classpathIdentity(JavaAnalysisContext context, Path path) {

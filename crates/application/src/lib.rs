@@ -26,6 +26,12 @@ use codeana_contracts::{graph_archive::Builder as GraphArchiveBuilder, terminal,
 use codeana_model::*;
 use codeana_storage::Store;
 use serde::{Deserialize, Serialize};
+
+fn resource_error(e: &anyhow::Error) -> bool {
+    e.downcast_ref::<DomainError>()
+        .is_some_and(|e| e.code == ErrorCode::ComputationLimit)
+}
+
 #[cfg(test)]
 use serde_json::{Value, json};
 use std::{
@@ -94,6 +100,9 @@ impl Event {
     }
 }
 struct Job {
+    analysis_coordinator: Mutex<Option<Arc<Mutex<AnalysisCoordinator>>>>,
+    analysis_admission: Mutex<Option<(AnalysisLimits, AnalysisContext)>>,
+    query_budget: Option<ResourceBudget>,
     _queue_permit: OwnedSemaphorePermit,
     pub control: task_runner::TaskControl,
     pub submitting: AtomicBool,
@@ -318,9 +327,25 @@ impl Engine {
                 if !req.cursor.is_empty() {
                     return self.continue_page(req, &project);
                 }
+                let budget =
+                    ResourceBudget::new(codeana_config::query_limits(root, &self.store.home)?);
                 if let Some(sid) = req.revision.strip_prefix("snapshot:") {
-                    let snapshot: history::Snapshot =
-                        self.store.object("snapshot", sid, &project)?;
+                    let snapshot: history::Snapshot = match self
+                        .store
+                        .object_budgeted("snapshot", sid, &project, &budget)
+                    {
+                        Ok(snapshot) => snapshot,
+                        Err(e) if resource_error(&e) => {
+                            return self.resource_page(
+                                req,
+                                &project,
+                                &req.revision,
+                                &budget,
+                                vec![],
+                            );
+                        }
+                        Err(e) => return Err(e),
+                    };
                     if snapshot.revision.is_empty() {
                         ensure!(
                             matches!(req.operation, Operation::Source | Operation::SearchText),
@@ -329,7 +354,7 @@ impl Engine {
                                 ""
                             )
                         );
-                        let reader = FilesReader(Revision {
+                        let raw_reader = FilesReader(Revision {
                             id: format!("snapshot:{sid}"),
                             target: String::new(),
                             project: project.clone(),
@@ -339,6 +364,10 @@ impl Engine {
                             producer: "files-capture-v1".into(),
                             created: snapshot.created,
                         });
+                        let reader = BudgetedSource {
+                            inner: &raw_reader,
+                            budget: &budget,
+                        };
                         if req.operation == codeana_model::Operation::SearchText {
                             return self.text_page(
                                 req,
@@ -351,7 +380,7 @@ impl Engine {
                                             ""
                                         )
                                     );
-                                    self.store.blob(&s.hash)
+                                    self.store.blob_bounded(&s.hash, s.size)
                                 },
                                 vec![],
                                 cancel,
@@ -365,7 +394,7 @@ impl Engine {
                                     ""
                                 )
                             );
-                            self.store.blob(&s.hash)
+                            self.store.blob_bounded(&s.hash, s.size)
                         })?;
                         ensure!(
                             !cancel.is_cancelled(),
@@ -380,7 +409,22 @@ impl Engine {
                 let id = if req.revision.is_empty() {
                     self.store.latest(&project, &checkout)?
                 } else if let Some(id) = req.revision.strip_prefix("snapshot:") {
-                    let s: history::Snapshot = self.store.object("snapshot", id, &project)?;
+                    let s: history::Snapshot = match self
+                        .store
+                        .object_budgeted("snapshot", id, &project, &budget)
+                    {
+                        Ok(snapshot) => snapshot,
+                        Err(e) if resource_error(&e) => {
+                            return self.resource_page(
+                                req,
+                                &project,
+                                &req.revision,
+                                &budget,
+                                vec![],
+                            );
+                        }
+                        Err(e) => return Err(e),
+                    };
                     ensure!(
                         !s.revision.is_empty(),
                         codeana_model::DomainError::new(
@@ -392,7 +436,13 @@ impl Engine {
                 } else {
                     req.revision.clone()
                 };
-                let reader = self.store.read(&id)?;
+                let reader = match self.store.read_budgeted(&id, budget.clone()) {
+                    Ok(reader) => reader,
+                    Err(e) if resource_error(&e) => {
+                        return self.resource_page(req, &project, &id, &budget, vec![id.clone()]);
+                    }
+                    Err(e) => return Err(e),
+                };
                 ensure!(
                     reader.revision().project == project,
                     codeana_model::DomainError::new(codeana_model::ErrorCode::ProjectMismatch, "")
@@ -419,7 +469,10 @@ impl Engine {
                                 ""
                             )
                         );
-                        let b = codeana_config::bounded_read(&real, MAX_FRAME)?;
+                        let b = codeana_config::bounded_read(
+                            &real,
+                            usize::try_from(s.size).unwrap_or(usize::MAX).min(MAX_FRAME),
+                        )?;
                         ensure!(
                             hash(&b) == s.hash,
                             codeana_model::DomainError::new(
@@ -429,7 +482,7 @@ impl Engine {
                         );
                         Ok(b)
                     } else {
-                        self.store.blob(&s.hash)
+                        self.store.blob_bounded(&s.hash, s.size)
                     }
                 };
                 if req.operation == codeana_model::Operation::SearchText {
@@ -522,6 +575,9 @@ impl CancelableReader<'_> {
     }
 }
 impl SourceContext for CancelableReader<'_> {
+    fn resource_budget(&self) -> Option<&ResourceBudget> {
+        self.inner.resource_budget()
+    }
     fn manifest(&self) -> &Manifest {
         self.inner.manifest()
     }

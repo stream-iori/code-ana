@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Production typed Anatomist graph regressions; uses the existing executable paths."""
 import contextlib, json, os, sqlite3, unittest, subprocess, zipfile, sys
-from product_support import JavaProductHarness, ROOT, BIN, JDK
+from product_support import JavaProductHarness, ROOT, BIN, JDK, MAVEN
 
 TABLES=('nodes','edges','annotations','annotation_meta_owned',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
@@ -49,7 +49,8 @@ enabled=false
 ''')
         def export(selected=False):
             output=self.project/'.code-ana/next-inputs.json'
-            args=[str(BIN/'codeana-cli'),'--project',str(self.project),'java-inputs','export','--output',str(output),'--settings',str(settings),'--offline','--scope','MAIN']
+            self.assertTrue(MAVEN.is_file(), 'Maven fixture tool required; set CODEANA_TEST_MAVEN')
+            args=[str(BIN/'codeana-cli'),'--project',str(self.project),'java-inputs','export','--maven',str(MAVEN),'--output',str(output),'--settings',str(settings),'--offline','--scope','MAIN']
             if bundle:=os.environ.get('CODEANA_TEST_JAVA_BUNDLE'):
                 # JVM's descriptor names its bundle directory; Native's names native/.
                 extension=os.path.join(bundle,'..' if os.environ.get('CODEANA_JAVA_BACKEND')=='native' else '.', 'maven-input-worker.jar')
@@ -243,7 +244,11 @@ enabled=false
         graph=self.canonical(first['revision'])
         config=self.project/'.code-ana/config.toml'
         previous=config.read_text()
-        config.write_text(previous+'\n[resources.index]\njava_native_heap_bytes=8388608\n')
+        # The explicit Serial backend rounds an 8 MiB request up to 16 MiB.
+        # Exercise exhaustion after the heap identity guard, keeping the G1 fixture unchanged.
+        manifest = json.loads((BIN / '../lib/java/native/manifest.json').read_text())
+        heap_bytes = 16777216 if manifest['native_gc'] == 'serial' else 8388608
+        config.write_text(previous+f'\n[resources.index]\njava_native_heap_bytes={heap_bytes}\n')
         source.write_text('package p; class App {' + ''.join(
             'int m%d(){return %d;}'%(i,i) for i in range(5000)) + '}')
         _,failure=self.cli('index','--full',code=1,timeout=180)

@@ -19,6 +19,7 @@ final class LombokDeclarationRules {
     }
 
     JavaDeclaration valueModifiers(JavaDeclaration owner) {
+        context.charge(1,1,1024L+128L*owner.members().size());
         if (context.unit.hasProcessorEvidence()
                 || !context.annotations(owner).containsKey("Value")
                 || !owner.symbol().kind().equals("CLASS")
@@ -74,6 +75,7 @@ final class LombokDeclarationRules {
     }
 
     JavaDeclaration valueConstant(JavaDeclaration original, JavaDeclaration replacement) {
+        context.charge(1,1,1024L+128L*original.members().size());
         JavaNode expression =
                 context.model
                         .syntax(context.references.get(original))
@@ -85,11 +87,7 @@ final class LombokDeclarationRules {
             context.compiledAnnotations =
                     new JavaModelAnnotations(
                             new JavaUnitAnalysis(
-                                    new JavaFrameworkContext(
-                                            context.extension.project,
-                                            List.of(context.unit.path()),
-                                            new com.anatomist.config.ProjectConfig(),
-                                            false),
+                                    context.framework(),
                                     context.model,
                                     context.binaries,
                                     context.unit.path(),
@@ -166,6 +164,7 @@ final class LombokDeclarationRules {
 
     JavaDeclaration withModifiers(
             JavaDeclaration declaration, List<String> modifiers, List<JavaDeclaration> members) {
+        context.charge(1,1,1024L+64L*(modifiers.size()+members.size()));
         var symbol = declaration.symbol();
         var replacement =
                 new JavaDeclaration(
@@ -202,6 +201,7 @@ final class LombokDeclarationRules {
     }
 
     JavaDeclaration utilityClass(JavaDeclaration owner, Map<String, JavaAnnotation> annotations) {
+        context.charge(1,1,1024L+128L*owner.members().size());
         context.seen = true;
         var policy = context.summary(annotations);
         // The first bounded case already has static source members. Rewriting instance
@@ -285,6 +285,7 @@ final class LombokDeclarationRules {
             List<JavaDeclaration> members,
             LombokCapabilitySummary policy,
             LombokCapabilitySummary aggregate) {
+        context.charge(1,1,1024L+128L*owner.members().size());
         boolean explicit =
                 owner.members().stream()
                         .anyMatch(
@@ -416,6 +417,7 @@ final class LombokDeclarationRules {
             List<JavaDeclaration> members,
             LombokCapabilitySummary policy,
             LombokCapabilitySummary aggregate) {
+        context.charge(1,1,1024L+128L*owner.members().size());
         if (policy.isPartial(LombokCapabilitySummary.LOGGER_FIELD)) return;
         for (var log : LOG_TYPES.entrySet())
             if (annotations.containsKey(log.getKey())) {

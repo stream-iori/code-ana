@@ -51,6 +51,9 @@ pub(super) fn structure(
         )?;
         for child in children.into_iter().filter(Fact::is_public_entity) {
             let depth = *depth_by_id.get(&child.parent).unwrap_or(&0);
+            if seen.contains(child.id.as_str()) {
+                continue;
+            }
             if depth >= req.depth.max(1) {
                 evidence.enumeration = false;
                 evidence.limits.push("depth".into());
