@@ -115,7 +115,7 @@ Native 默认 G1。一个 worker 进程仅创建一次 isolate，健康任务复
 
 ## 任务所有权与调度隔离（2026-10-16）
 
-`Engine` 装配 `TaskRunner`、`Scheduler`、`PublicationCoordinator`。TaskRunner 持有任务 future，取消后继续 join 可能写存储的 blocking 操作，再持久化终态、释放许可。Scheduler 将分析、只读和维护写入分成三个有界通道（在途各 8）；并发依次为 max_workers、max_query_tasks（默认 2）和 1。项目分析与写锁可取消地等待。
+`Engine` 装配 TaskService 与操作入口；TaskService 拥有 Scheduler，索引通过 PublicationCoordinator 发布。TaskRunner 持有任务 future，取消后继续 join 可能写存储的 blocking 操作，再持久化终态、释放许可。Scheduler 将分析、只读和维护写入分成三个有界通道（在途各 8）；并发依次为 max_workers、max_query_tasks（默认 2）和 1。项目分析与写锁可取消地等待。
 
 `PublicationFence` 用原子状态在取消和开始提交之间裁决。存储在复制/同步后、catalog 写入前检查屏障；提交开始后的取消不能撤销 revision。提交出错后的 durable commit 检查发生在 join 完成之后。幂等查重先于队列准入；拒绝新请求不会登记 queued 任务。
 

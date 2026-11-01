@@ -66,8 +66,8 @@ A0 基线与验收清单
 | C3 | 完成 | Rust/Python 提取与关联接入已有公共链路 | C2 | 三语言及各组合通过；不新增语言组合专用编排 |
 | C4 | 完成 | Native、分发、混合语言、自建 fixture 综合验收及单轮测量 | C3 | 原注释计划完成条件逐项有实际证据，未通过范围明确保留 |
 | A4 | 完成 | 查询语言策略及存储语义补全归属显式化 | C4 | 未声明能力的语言不进入 Java 默认语义；已有支持范围结果保持 |
-| A5 | 实施中 | 配置/捕获进一步拆分，Engine 按服务划分状态所有权 | A4 | 服务不通过完整 Engine 访问无关状态；主要策略可独立测试 |
-| A6 | 待开发 | Lombok 模块归位，Java 生产扩展预算契约收紧 | C4 | 扩展通过统一装配入口接入，缺预算实现无法进入生产注册 |
+| A5 | 完成 | 配置/捕获进一步拆分，Engine 按服务划分状态所有权 | A4 | 服务不通过完整 Engine 访问无关状态；主要策略可独立测试 |
+| A6 | 实施中 | Lombok 模块归位，Java 生产扩展预算契约收紧 | C4 | 扩展通过统一装配入口接入，缺预算实现无法进入生产注册 |
 | A7 | 待开发 | 架构依赖门禁、完整回归、文档与分发收口 | A5、A6 | 新边界有自动检查；注释功能及既有能力无回归 |
 
 A7 通过 A5 传递依赖 A4。A1/A2 与 C0/A3 可以独立推进；A5 与 A6 在满足前置条件后也可独立推进。这里只描述任务关系，不预设并行人员或代理。
@@ -175,7 +175,8 @@ A1—A3 不改既有公开 ID、图语义或协议版本，不顺带重写 Java 
 | C3 | Rust/Python 词法、文档、范围/声明关联及 COMMENTS 覆盖完成 | Rust 完整门禁 314 单元通过/1 默认忽略；Python 核心 30；Rust 注释 2、Python 注释 3、语言组合 3、prepared 7、Python 产品 7 | 未执行 | 未执行 | target/todo-implementation/comment-c3-final/receipt.json | C4 Native/分发/综合验收及单轮测量 |
 | C4 | Native/三种分发/混合及固定 fixture 验收完成 | Java 719；Rust 317+显式 G1；Python 32；release 资源 42、注释/组合 11 | 三种实际包通过，原执行字节恢复、SDK 未变 | 128 类、3,328 注释、4,224 关联、5 组查询；单轮测量通过 | target/todo-implementation/c4/receipt.json | 默认 100 万节点预检失败保留；功能/测量使用显式 1,000 万节点；不签全局容量/跨平台/完整 Native 迁移 |
 | A4 | 显式查询能力与 Java 批量补全策略完成 | workspace 321；最终 query 34；Native 图 8、Python 7、Java 注释 2、混合注释 3、最终 Rust 派发 1 通过 | 留待 A7 | 不适用 | target/todo-implementation/a4/receipt.json | Rust 旧误入 Java CHA 单列缺陷修正；不重测性能 |
-| A5—A7 | A5 实施中；A6/A7 待开发 | 未执行 | 未执行 | 不适用 | 无 | 保留原任务 |
+| A5 | 独立配置与服务状态所有权完成 | 完整 Rust 323；资源/故障 42；Native 图 8、Python 7、Python 注释 4、prepared 8、Java 注释 2、生命周期 8、删除 2、混合 3、真实崩溃恢复通过 | 留待 A7 | 不适用 | target/todo-implementation/a5/receipt.json | 旧配置/prepared 指纹不变；SDK 恢复一致 |
+| A6—A7 | A6 实施中；A7 待开发 | 未执行 | 未执行 | 不适用 | 无 | 保留原任务 |
 
 以下推进段落按各自执行时点保留；现行状态以任务表与各阶段收口回执为准。
 
@@ -218,3 +219,5 @@ C4 收口：当前实际分发通过；共享资源矩阵 42/42 及包字节绑�
 原失败保留：prepared 根显示配置触发 stale/full 已由绑定原始回执的准备指纹及受 profile 保护的 FILES 根配置例外修正；Python 每函数重复预付整文件 token 的超时失败已改为一次边界/范围索引，原预算下三个超时及全 42 项复验通过；Rust 合法 doc 续行警告不再误判 fatal；Java release 汇总固定组数遗漏已修正并重跑通过。128 类 fixture 的初始 100 万节点预算确实失败（worker 分片 749,806）；原回执保留，最终功能/唯一测量显式使用 1,000 万节点，不能作为默认预算容量通过。C4 完成，进入 A4；后续重构不复用本轮作为新版本性能认证。
 
 A4 收口：`model::LanguagePolicy` 显式注册三语言能力，Java 派发/可实例化规则独立；Rust/Python 保留已发布静态绑定和部分证据，未知/缺失语言明确拒绝 Java 专属操作。存储补全移入独立语言策略模块，保留 Java 批量匹配顺序和唯一性；非 Java 精确 ID 仍直达，不推断注释关联。原 Rust 派发套用 Java CHA 的缺陷单列修正为 `rust-analyzer-static` 与显式 CHA/runtime 拒绝。workspace 321 单元、最终查询 34、Native 图 8、Python 产品 7、Java 注释 2、混合注释 3、最终 Rust 派发 1 通过；clippy/fmt/DDL 通过。原缺语言的 Java 单元样例和新增 scope 测试的歧义预期失败均保留，修正测试输入后通过。证据：target/todo-implementation/a4/receipt.json。A4 完成，继续 A5；A7 仍需最终分发/完整回归，不重跑 C4 性能。
+
+A5 收口：Engine 仅装配任务服务和操作入口；任务表/队列/调度/终态属于 TaskService，索引接收 TaskContext 的本任务预算/取消/发布/事件，不再访问全局 jobs 或原始 Store。WorkerService 拥有健康 Java 池，HistoryService 与 ReportService 拥有各自存储；快照通过显式索引动作衔接，阻塞查询只捕获所需服务。RustBaselineReader 独立于公共基线端口；JavaLanguage/RustLanguage 与 RustAnalysis 分离，私有 wire 兼容层保持原外部格式及配置/prepared 四个固定摘要。Java 捕获主体迁移前后文本一致，公共冻结字节/spool 独立。完整 Rust 323 单元及产品/clippy、Native 资源/故障 42/42（无源码/产物漂移）、九组产品回归通过；真实 C ABI SIGSEGV 保留旧 head、回收 worker，并恢复 SDK 后成功分析。SDK 字节与门禁前一致。证据：target/todo-implementation/a5/receipt.json。A5 完成，进入 A6；最终分发留待 A7，不签新的性能或全局迁移认证。
