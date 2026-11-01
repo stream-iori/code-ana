@@ -311,3 +311,76 @@ mod tests {
         assert_eq!(row.cells[10].value, None);
     }
 }
+
+// Independent comment observations; offsets are UTF-8 half-open and columns UTF-16.
+graph_row!(CommentRow, Comment, {
+    id: Option<String>, source_file: Option<String>, source_hash: Option<String>,
+    module: Option<String>, scope: Option<String>, language: Option<String>,
+    provider_id: Option<String>, producer_id: Option<String>, kind: Option<String>,
+    byte_start: Option<i64>, byte_end: Option<i64>, begin_line: Option<i64>,
+    begin_column: Option<i64>, end_line: Option<i64>, end_column: Option<i64>,
+    body: Option<String>, body_map: Option<String>, rule_version: Option<String>,
+});
+graph_row!(CommentLinkRow, CommentLink, {
+    comment_id: Option<String>, relation: Option<String>, declaration_id: Option<String>,
+    source_file: Option<String>, module: Option<String>, scope: Option<String>,
+    byte_start: Option<i64>, byte_end: Option<i64>, begin_line: Option<i64>,
+    begin_column: Option<i64>, end_line: Option<i64>, end_column: Option<i64>,
+    basis: Option<String>, rule_version: Option<String>,
+});
+
+impl TryFrom<&codeana_model::CommentFact> for CommentRow {
+    type Error = std::num::TryFromIntError;
+    fn try_from(fact: &codeana_model::CommentFact) -> Result<Self, Self::Error> {
+        let r = &fact.range;
+        Ok(Self {
+            id: Some(fact.id.to_string()),
+            source_file: Some(fact.source_file.clone()),
+            source_hash: Some(fact.source_hash.clone()),
+            module: Some(fact.module.clone()),
+            scope: Some(fact.scope.clone()),
+            language: Some(fact.language.clone()),
+            provider_id: Some(fact.provider.clone()),
+            producer_id: Some(fact.producer.clone()),
+            kind: Some(fact.kind.as_str().into()),
+            byte_start: Some(r.byte_start.try_into()?),
+            byte_end: Some(r.byte_end.try_into()?),
+            begin_line: Some(r.begin_line.into()),
+            begin_column: Some(r.begin_column.into()),
+            end_line: Some(r.end_line.into()),
+            end_column: Some(r.end_column.into()),
+            body: Some(fact.body.clone()),
+            body_map: Some(
+                serde_json::to_string(&fact.body_map)
+                    .expect("comment segments contain only integers"),
+            ),
+            rule_version: Some(fact.rule_version.clone()),
+        })
+    }
+}
+impl CommentLinkRow {
+    /// Source ownership comes from the enclosing observation, never a name lookup.
+    pub fn from_fact(
+        fact: &codeana_model::CommentFact,
+        link: &codeana_model::CommentLink,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(fact.id == link.comment, "COMMENT_LINK_ID_MISMATCH");
+        let r = &link.range;
+        Ok(Self {
+            comment_id: Some(link.comment.to_string()),
+            relation: Some(link.relation.as_str().into()),
+            declaration_id: link.declaration.as_ref().map(ToString::to_string),
+            source_file: Some(fact.source_file.clone()),
+            module: Some(fact.module.clone()),
+            scope: Some(fact.scope.clone()),
+            byte_start: Some(r.byte_start.try_into()?),
+            byte_end: Some(r.byte_end.try_into()?),
+            begin_line: Some(r.begin_line.into()),
+            begin_column: Some(r.begin_column.into()),
+            end_line: Some(r.end_line.into()),
+            end_column: Some(r.end_column.into()),
+            basis: Some(link.basis.as_str().into()),
+            rule_version: Some(link.rule_version.clone()),
+        })
+    }
+}

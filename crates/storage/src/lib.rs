@@ -1,7 +1,8 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
 mod blobs;
-pub mod derived_cache;
+mod comment_reader;
 mod graph_calls;
+mod graph_comments;
 mod graph_compact;
 mod graph_query;
 pub mod graph_store;
@@ -38,7 +39,10 @@ pub struct Store {
     coord: Arc<Mutex<Coordination>>,
     blob_io: Arc<blobs::IoLimit>,
 }
+pub type CancellationCheck = dyn Fn() -> bool + Send + Sync;
 pub struct ReadContext {
+    comment_sort_key_bytes: u64,
+    cancellation: Option<Arc<CancellationCheck>>,
     budget: Option<ResourceBudget>,
     connection: Connection,
     sources: BTreeMap<String, usize>,
@@ -250,14 +254,19 @@ impl Store {
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphIdentityMismatch, "")
         );
         let mut sources = BTreeMap::new();
+        let mut comment_sort_key_bytes = 328u64;
         for (index, source) in r.manifest.files.iter().enumerate() {
             if let Some(b) = &budget {
                 b.charge(1, source.path.len() as u64)?;
             }
+            comment_sort_key_bytes =
+                comment_sort_key_bytes.max((source.path.len() + source.world.len()) as u64 + 328);
             sources.insert(source.path.clone(), index);
         }
         *lock.readers.entry(id.into()).or_default() += 1;
         Ok(ReadContext {
+            comment_sort_key_bytes,
+            cancellation: None,
             budget,
             sources,
             connection: c,

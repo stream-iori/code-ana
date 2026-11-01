@@ -155,6 +155,7 @@ class JavacProtocolTest {
             }
             out.writeInt(4); // declaration frame length
             out.writeInt(0); // declaration inventory
+            out.writeInt(0); // comments
             out.writeBoolean(true);
             out.writeInt(0); // failure
             out.writeInt(0); // diagnostics

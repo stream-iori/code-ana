@@ -22,7 +22,7 @@ import javax.lang.model.util.Elements;
 import javax.lang.model.util.Types;
 import javax.tools.*;
 
-/** Standalone Java 8 bytecode. Uses only public javac APIs, with versioned tree discovery. */
+/** Standalone Java 8 bytecode. Compiler internals, including comment tokens, stay in this process. */
 public final class JavacWorker {
     private static final int MAGIC = 0x414A4341;
     private static final int LIMIT = 32 * 1024 * 1024;
@@ -49,6 +49,7 @@ public final class JavacWorker {
     private final Set<String> declarationSources = new HashSet<String>();
     private final Map<String, String> sourceHashes = new HashMap<String, String>();
     private final Map<String, String> sourceTokens = new HashMap<String, String>();
+    private final Map<String, long[]> commentReservations = new HashMap<String, long[]>();
 
     public static void main(String[] args) throws Exception {
         try {
@@ -79,6 +80,9 @@ public final class JavacWorker {
             sources.add(new File(path));
             if (in.readBoolean()) declarationSources.add(path);
             sourceTokens.put(path, read(in));
+            long[] comment = new long[] {in.readLong(), in.readLong(), in.readLong()};
+            for (long limit : comment) if (limit < 0) throw new IOException("negative comment reservation");
+            commentReservations.put(path, comment);
         }
         if (in.read() != -1) throw new IOException("trailing task request data");
         out.writeInt(MAGIC);
@@ -123,15 +127,17 @@ public final class JavacWorker {
                                 "-d",
                                 destination));
             } else options.add("-proc:none");
+            if (!(compiler instanceof com.sun.tools.javac.api.JavacTool))
+                throw new IOException("selected compiler is not javac");
+            WorkerComments.Recorder commentRecorder = new WorkerComments.Recorder(commentReservations, declarationSources, release);
             JavacTask task =
-                    (JavacTask)
-                            compiler.getTask(
+                            ((com.sun.tools.javac.api.JavacTool) compiler).getTask(
                                     new PrintWriter(System.err),
                                     manager,
                                     diagnostics,
                                     options,
                                     null,
-                                    manager.getJavaFileObjectsFromFiles(sources));
+                                    manager.getJavaFileObjectsFromFiles(sources), commentRecorder.context);
             trees = Trees.instance(task);
             List<CompilationUnitTree> units = new ArrayList<CompilationUnitTree>();
             List<Path> syntax = new ArrayList<Path>();
@@ -438,6 +444,23 @@ public final class JavacWorker {
                 for (Binding binding : bindings.values()) binding.write(out, dictionary);
                 out.writeInt(inventory.length);
                 out.write(inventory);
+                List<WorkerComments.Comment> comments = commentRecorder.comments(path, unit, ids);
+                out.writeInt(comments.size());
+                for (WorkerComments.Comment comment : comments) {
+                    out.writeByte(comment.kind.equals("line") ? 0 : comment.kind.equals("block") ? 1 : 2);
+                    out.writeInt(comment.start);
+                    out.writeInt(comment.end);
+                    write(out, comment.body);
+                    out.writeInt(comment.segments.size());
+                    for (WorkerComments.Segment segment : comment.segments) {
+                        out.writeInt(segment.bodyStart);
+                        out.writeInt(segment.bodyEnd);
+                        out.writeInt(segment.sourceStart);
+                        out.writeInt(segment.sourceEnd);
+                    }
+                    out.writeInt(comment.documentOwners.size());
+                    for (Integer owner : comment.documentOwners) out.writeInt(owner.intValue());
+                }
                 emitNanos += System.nanoTime() - emitStarted;
             }
             if (compile && success) {

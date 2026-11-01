@@ -285,7 +285,7 @@ final class JavacSignatureCache {
 
     private static JavaUnit withPath(JavaUnit unit, Path path) {
         return new JavaUnit(path, unit.tree(), unit.processing(), unit.bindings(), unit.types(),
-                unit.declarations(), unit.declarationInventory(), unit.sourceHash(), unit.extensions());
+                unit.declarations(), unit.declarationInventory(), unit.sourceHash(), unit.extensions(), unit.comments());
     }
 
     private static List<JavaUnit> storePaths(List<JavaUnit> units, Path root, com.anatomist.core.AnalysisContext analysis) {

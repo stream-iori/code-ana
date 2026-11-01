@@ -35,7 +35,7 @@ worker=root.parent.parent/'target/release/codeana-java-worker'
 versions=json.loads(subprocess.check_output([str(worker),str(root/'native/libcodeana_java.dylib'),
                                             '--runtime-info'],text=True,timeout=15))
 assert versions==dict(worker_protocol=manifest['worker_protocol'],fact_ir=manifest['fact_ir'],adapter=manifest['adapter'],
-                      analysis_request=11,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
+                      analysis_request=12,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
 VERIFY
 if [[ "$custom_output" == true && -e "$package_dir" ]]; then
   echo "Package output already exists: $package_dir" >&2; exit 2
@@ -68,6 +68,7 @@ text=text.replace('](configuration.md)','](docs/configuration.md)').replace('](c
 (root/'README.md').write_text(text)
 DOCS
 cp -R tests/fixtures/java-native/base "$package_dir/fixtures/"
+cp -R lang-java-adaptor/fixtures/comment-indexing "$package_dir/fixtures/"
 python3 - "$package_dir" <<'PY'
 import hashlib,json,pathlib,sys
 root=pathlib.Path(sys.argv[1])

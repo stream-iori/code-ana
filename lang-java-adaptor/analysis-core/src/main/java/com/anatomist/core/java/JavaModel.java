@@ -29,6 +29,7 @@ public final class JavaModel implements AutoCloseable {
     private final Map<Path, Map<SourceSpan, List<DeclarationRef>>> spans = new HashMap<>();
     private final Map<Path, JavaSource> sources = new HashMap<>();
     private final Map<Path, JavaSyntax> syntax = new HashMap<>();
+    private final Map<Path, JavaCommentRelations> commentRelations = new HashMap<>();
     private final com.anatomist.core.AnalysisContext analysis;
     private boolean closed;
     private boolean modeledDeclarations;
@@ -78,6 +79,15 @@ public final class JavaModel implements AutoCloseable {
         if (unit == null)
             throw new IllegalArgumentException("unit is outside the current context: " + path);
         return unit;
+    }
+
+    public List<JavaComment> comments(Path path) {
+        return unit(path).comments();
+    }
+
+    public List<JavaCommentRelations.Link> commentLinks(Path path, JavaComment comment) {
+        requireOpen();
+        return commentRelations.computeIfAbsent(path, source -> new JavaCommentRelations(this, source)).links(comment);
     }
 
     public JavaSource source(Path path) {
@@ -212,5 +222,6 @@ public final class JavaModel implements AutoCloseable {
         spans.clear();
         sources.clear();
         syntax.clear();
+        commentRelations.clear();
     }
 }

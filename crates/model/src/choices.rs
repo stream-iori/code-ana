@@ -40,6 +40,7 @@ choice!(
     Doctor = "doctor",
     Resolve = "resolve",
     SearchCode = "search-code",
+    SearchComments = "search-comments",
     Structure = "structure",
     Calls = "calls",
     CallSites = "call-sites",
@@ -288,3 +289,11 @@ mod tests {
         }
     }
 }
+
+choice!(
+    SearchIn,
+    CommentSearchIn,
+    Names = "names",
+    Comments = "comments",
+    NamesComments = "names,comments"
+);

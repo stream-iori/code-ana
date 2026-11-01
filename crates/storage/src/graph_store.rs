@@ -13,8 +13,8 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 11;
-pub const SOURCE_SCHEMA_VERSION: i64 = 34;
+pub const SCHEMA_VERSION: i64 = 12;
+pub const SOURCE_SCHEMA_VERSION: i64 = 35;
 pub const PAGE_SIZE: i64 = 4096;
 
 pub fn initialize(db: &Connection) -> Result<()> {
@@ -40,7 +40,7 @@ pub fn initialize(db: &Connection) -> Result<()> {
 
 /// Match StagedGraphStore's bulk index/FTS suspension. Unique constraints remain active.
 pub fn suspend_bulk(db: &Connection) -> Result<Vec<String>> {
-    let mut query=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND ((type='index' AND tbl_name IN ('graph_nodes','graph_edges','graph_annotations','annotation_meta_relations') AND upper(ltrim(sql)) NOT LIKE 'CREATE UNIQUE INDEX%') OR (type='trigger' AND tbl_name='graph_nodes' AND name IN ('nodes_ai','nodes_ad','nodes_au'))) ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END,name")?;
+    let mut query=db.prepare("SELECT type,name,sql FROM sqlite_schema WHERE sql IS NOT NULL AND ((type='index' AND tbl_name IN ('graph_nodes','graph_edges','graph_annotations','annotation_meta_relations','graph_comments','graph_comment_links') AND upper(ltrim(sql)) NOT LIKE 'CREATE UNIQUE INDEX%') OR (type='trigger' AND tbl_name='graph_nodes' AND name IN ('nodes_ai','nodes_ad','nodes_au')) OR (type='trigger' AND tbl_name='graph_comments' AND name IN ('comments_ai','comments_ad','comments_au'))) ORDER BY CASE type WHEN 'index' THEN 0 ELSE 1 END,name")?;
     let structures = query
         .query_map([], |r| {
             Ok((
@@ -71,6 +71,10 @@ pub fn restore_bulk(
 ) -> Result<()> {
     check()?;
     db.execute("INSERT INTO node_names(node_names) VALUES('rebuild')", [])?;
+    db.execute(
+        "INSERT INTO comment_terms(comment_terms) VALUES('rebuild')",
+        [],
+    )?;
     for sql in structures {
         check()?;
         db.execute_batch(sql)?;
@@ -90,6 +94,8 @@ pub fn initialize_stage(db: &Connection) -> Result<()> {
       CREATE TABLE stage_meta(key TEXT PRIMARY KEY,value TEXT);
       CREATE TABLE stage_rust_source_states(source_file TEXT,world TEXT,state TEXT,PRIMARY KEY(source_file,world));
       CREATE TABLE stage_rust_dependencies(source_file TEXT,world TEXT,kind TEXT,target_world TEXT,target_key TEXT);")?;
+    db.execute_batch("CREATE TABLE stage_comments(id TEXT PRIMARY KEY,source_file TEXT NOT NULL,source_hash TEXT NOT NULL,module TEXT NOT NULL,scope TEXT NOT NULL,language TEXT NOT NULL,provider_id TEXT NOT NULL,producer_id TEXT NOT NULL,kind TEXT NOT NULL,byte_start INTEGER NOT NULL,byte_end INTEGER NOT NULL,begin_line INTEGER NOT NULL,begin_column INTEGER NOT NULL,end_line INTEGER NOT NULL,end_column INTEGER NOT NULL,body TEXT NOT NULL,body_map TEXT NOT NULL,rule_version TEXT NOT NULL,world TEXT NOT NULL DEFAULT '',terms TEXT NOT NULL DEFAULT '');
+      CREATE TABLE stage_comment_links(comment_id TEXT NOT NULL,relation TEXT NOT NULL,declaration_id TEXT,source_file TEXT NOT NULL,module TEXT NOT NULL,scope TEXT NOT NULL,byte_start INTEGER NOT NULL,byte_end INTEGER NOT NULL,begin_line INTEGER NOT NULL,begin_column INTEGER NOT NULL,end_line INTEGER NOT NULL,end_column INTEGER NOT NULL,basis TEXT NOT NULL,rule_version TEXT NOT NULL,world TEXT NOT NULL DEFAULT '');")?;
     Ok(())
 }
 
@@ -122,6 +128,12 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         }
         Table::AnalysisDependency => "INSERT INTO stage_rust_dependencies VALUES(?,?,?,?,?)",
         Table::ProjectMeta => "INSERT OR REPLACE INTO stage_meta VALUES(?,?)",
+        Table::Comment => {
+            "INSERT INTO stage_comments(id,source_file,source_hash,module,scope,language,provider_id,producer_id,kind,byte_start,byte_end,begin_line,begin_column,end_line,end_column,body,body_map,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        }
+        Table::CommentLink => {
+            "INSERT INTO stage_comment_links(comment_id,relation,declaration_id,source_file,module,scope,byte_start,byte_end,begin_line,begin_column,end_line,end_column,basis,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+        }
         Table::Unspecified => anyhow::bail!(codeana_model::DomainError::new(
             codeana_model::ErrorCode::GraphTableRequired,
             ""
@@ -136,6 +148,8 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Table::FileCache => &[3, 4, 5, 6],
         Table::Diagnostic => &[12],
         Table::Coverage => &[7, 8, 11],
+        Table::Comment => &[9, 10, 11, 12, 13, 14],
+        Table::CommentLink => &[6, 7, 8, 9, 10, 11],
         _ => &[],
     };
     for (index, c) in row.cells.iter().enumerate() {
@@ -198,6 +212,18 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
             Table::Diagnostic => {
                 db.execute(
                     "UPDATE stage_diagnostics SET world=? WHERE rowid=last_insert_rowid()",
+                    [&row.world],
+                )?;
+            }
+            Table::Comment => {
+                db.execute(
+                    "UPDATE stage_comments SET world=? WHERE rowid=last_insert_rowid()",
+                    [&row.world],
+                )?;
+            }
+            Table::CommentLink => {
+                db.execute(
+                    "UPDATE stage_comment_links SET world=? WHERE rowid=last_insert_rowid()",
                     [&row.world],
                 )?;
             }

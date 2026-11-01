@@ -54,6 +54,13 @@ final class JavacProtocol {
             Path spool,
             JavacDeclarationCache.Lease declarations)
             throws IOException {
+        request(output, toolchain, files, classpath, compile, processor, destination, spool, declarations, null);
+    }
+
+    static void request(OutputStream output, JavacToolchain toolchain, List<Path> files,
+                        List<Path> classpath, boolean compile, Path processor, Path destination,
+                        Path spool, JavacDeclarationCache.Lease declarations,
+                        com.anatomist.core.AnalysisContext analysis) throws IOException {
         DataOutputStream out = new DataOutputStream(output);
         out.writeInt(MAGIC);
         out.writeInt(toolchain.release());
@@ -65,12 +72,60 @@ final class JavacProtocol {
         string(out, destination == null ? "" : destination.toString());
         string(out, spool.toString());
         out.writeInt(files.size());
+        if (analysis != null) analysis.charge(1, 1, 8192);
+        byte[] commentScan = new byte[8192];
         for (Path file : files) {
             string(out, file.toString());
             out.writeBoolean(declarations.declarations(file));
             string(out, compile ? "" : declarations.token(file));
+            long bytes = declarations.declarations(file) ? 0 : java.nio.file.Files.size(file);
+            long possible = bytes == 0 ? 0 : commentPotential(file, bytes, commentScan, analysis);
+            long work = possible == 0 ? 0 : Math.addExact(64, Math.multiplyExact(bytes, 8));
+            long nodes = possible == 0 ? 0 : Math.addExact(64, Math.multiplyExact(bytes, 4));
+            long payload = possible == 0 ? 0 : Math.addExact(16384,
+                    Math.addExact(Math.multiplyExact(bytes, 32), Math.multiplyExact(possible, 512)));
+            // Prepaid temporary lexical scope. It is charged to the current account before
+            // sending the task; the child can only spend this fixed reservation. Detached
+            // result records are separately admitted by the existing response decoder.
+            if (analysis != null && !declarations.declarations(file)) analysis.charge(work, 0, payload);
+            out.writeLong(work);
+            out.writeLong(nodes);
+            out.writeLong(payload);
         }
         out.flush();
+    }
+
+    // A conservative byte upper bound, not a lexer: consider markers even inside literals,
+    // track line/block possibilities independently, and use the whole file for any Unicode
+    // escape. Every real javac comment is covered. Large files with a tiny header do not
+    // reserve a worst-case body map for every line of ordinary code.
+    static long commentPotential(Path file, long size, byte[] buffer,
+                                 com.anatomist.core.AnalysisContext analysis) throws IOException {
+        long offset = 0, possible = 0, opened = -1;
+        boolean block = false, line = false;
+        int previous = -1;
+        try (InputStream input = java.nio.file.Files.newInputStream(file)) {
+            for (int n; (n = input.read(buffer)) != -1;) {
+                if (analysis != null) analysis.charge(n + 1L, 0, 0);
+                if (n > size - offset) throw new IOException("comment source size changed");
+                for (int i = 0; i < n; i++, offset++) {
+                    int value = buffer[i] & 255;
+                    if (previous == '\\' && value == 'u') return size;
+                    if (previous == '/' && value == '*') {
+                        if (!block) opened = offset - 1;
+                        block = true;
+                        possible += 2;
+                    }
+                    if (previous == '/' && value == '/') { line = true; possible += 2; }
+                    if (block || line) possible++;
+                    if (previous == '*' && value == '/' && offset >= opened + 3) block = false;
+                    if (value == '\r' || value == '\n') line = false;
+                    previous = value;
+                }
+            }
+        }
+        if (offset != size) throw new IOException("comment source size changed");
+        return Math.min(possible, size);
     }
 
     static Result response(
@@ -234,7 +289,9 @@ final class JavacProtocol {
                                 types,
                                 declarations,
                                 JavacDeclarations.readFrame(in),
-                                sourceHash);
+                                sourceHash,
+                                JavaExtensionData.EMPTY,
+                                comments(in));
             } catch (IllegalArgumentException invalid) {
                 throw new IOException("invalid unit semantics", invalid);
             }
@@ -283,6 +340,34 @@ final class JavacProtocol {
                 MAX_RESPONSE_BYTES - measured.remaining,
                 Collections.unmodifiableMap(timings),
                 budget.usage());
+    }
+
+    private static List<JavaComment> comments(DataInputStream in) throws IOException {
+        int count = count(in, MAX_COUNT);
+        List<JavaComment> result = new ArrayList<>();
+        long previous = 0;
+        for (int i = 0; i < count; i++) {
+            JavaComment.Kind kind = switch (in.readUnsignedByte()) {
+                case 0 -> JavaComment.Kind.LINE;
+                case 1 -> JavaComment.Kind.BLOCK;
+                case 2 -> JavaComment.Kind.DOC;
+                default -> throw new IOException("invalid comment kind");
+            };
+            int start = in.readInt(), end = in.readInt();
+            if (start < previous || end <= start) throw new IOException("invalid comment order/range");
+            previous = end;
+            String body = string(in);
+            int segments = count(in, MAX_COUNT);
+            List<JavaComment.Segment> map = new ArrayList<>();
+            for (int j = 0; j < segments; j++)
+                map.add(new JavaComment.Segment(in.readInt(), in.readInt(), in.readInt(), in.readInt()));
+            int owners = count(in, MAX_COUNT);
+            JavacDecodeBudget.take(in, 64L * owners);
+            List<Integer> documentOwners = new ArrayList<>();
+            for (int j = 0; j < owners; j++) documentOwners.add(in.readInt());
+            result.add(new JavaComment(kind, new SourceSpan(start, end), body, map, documentOwners));
+        }
+        return List.copyOf(result);
     }
 
     private static JavaNode readFrame(

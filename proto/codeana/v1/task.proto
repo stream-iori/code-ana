@@ -27,6 +27,7 @@ message TaskRequest {
  bool meta = 43;
  string instantiability = 44; bool transitive = 45;
  string algorithm = 46; string analysis_world = 47;
+ string search_in = 48; optional uint32 context_before = 49; optional uint32 context_after = 50;
 }
 message TaskAccepted { string task_id = 1; }
 message TaskId { string task_id = 1; }

@@ -235,6 +235,15 @@ pub fn analyze_with_context(
             }
             Ok(())
         };
+        for comment in &mut analysis.comments {
+            translate(&mut comment.path)?;
+        }
+        let mut comment_gaps = BTreeMap::new();
+        for (mut path, gaps) in std::mem::take(&mut analysis.comment_gaps) {
+            translate(&mut path)?;
+            comment_gaps.insert(path, gaps);
+        }
+        analysis.comment_gaps = comment_gaps;
         for d in &mut analysis.declarations {
             translate(&mut d.path)?;
         }

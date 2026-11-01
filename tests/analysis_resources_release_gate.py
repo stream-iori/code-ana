@@ -6,6 +6,7 @@ The matching Native SDK must already be installed and all runtimes stopped.
 """
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -24,6 +25,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--evidence',type=pathlib.Path,required=True)
     parser.add_argument('--case',action='append',default=[])
+    parser.add_argument('--comment-package',type=pathlib.Path,help='Also verify packaged comment fixtures with all matching release binaries')
     args=parser.parse_args();output=args.evidence.resolve();output.mkdir(parents=True,exist_ok=False)
     binaries=(ROOT/'target/debug').resolve()
     if active(binaries):raise ValueError('STOP_RUNTIME_BEFORE_RELEASE_TEST')
@@ -41,6 +43,11 @@ def main():
     report=dict(kind='all_languages_release_resource_matrix',all_ok=False,original_binaries=original,
                 release_binaries=released,sdk_before=sdk_before,native_accepted=False,
                 performance_accepted=False,complete_plan=False,complete_group_suite=not args.case)
+    if args.comment_package:
+        package=args.comment_package.resolve()
+        report['comment_package']=str(package)
+        report['package_binaries']={name:sha256(package/'bin'/name) for name in NAMES}
+        if report['package_binaries']!=released:raise ValueError('COMMENT_PACKAGE_RELEASE_BINARY_MISMATCH')
     staged=[]
     try:
         for name in NAMES:
@@ -52,6 +59,19 @@ def main():
                                   cwd=ROOT,stdout=log,stderr=subprocess.STDOUT,timeout=1500)
         report['gate_exit_code']=result.returncode
         if result.returncode==0:report['all_ok']=True
+        if args.comment_package and report['all_ok']:
+            environment=dict(os.environ,CODEANA_TEST_BIN=str(binaries),CODEANA_TEST_FIXTURES=str(package/'fixtures'),CODEANA_JAVA_BACKEND='native',CODEANA_TEST_REAL_JAVA='1')
+            commands=[['tests/rust_comment_e2e.py'],['tests/python_comment_e2e.py'],['tests/comment_mixed_e2e.py'],
+                      ['tests/prepared_inputs_e2e.py','PreparedInputs.test_independent_maven_reactors_and_three_languages'],
+                      ['tests/python_language_e2e.py','PythonJava.test_java_python_and_three_language_publication']]
+            report['comment_gates']=[]
+            for number,command in enumerate(commands):
+                log_path=output/f'comments-{number}.log'
+                with log_path.open('w') as log:
+                    check=subprocess.run([sys.executable,*command],cwd=ROOT,env=environment,stdout=log,stderr=subprocess.STDOUT,timeout=900)
+                report['comment_gates'].append(dict(command=command,exit_code=check.returncode,log_sha256=sha256(log_path)))
+                report['all_ok'] &= check.returncode==0
+
     except Exception as failure:
         report.update(failure=str(failure),failure_type=type(failure).__name__)
     finally:

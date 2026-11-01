@@ -4,8 +4,8 @@ use codeana_contracts::performance::{Metric, measure};
 use codeana_contracts::{
     envelope, map, worker as w, worker::envelope::Body, write_frame, write_frame_with_budget,
 };
+use codeana_derived_cache::{DerivedCacheLimits, DerivedCacheSession};
 use codeana_model::*;
-use codeana_storage::derived_cache::{DerivedCacheLimits, DerivedCacheSession};
 
 use std::{
     os::fd::FromRawFd,

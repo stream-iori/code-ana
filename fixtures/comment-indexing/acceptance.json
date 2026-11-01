@@ -1,0 +1,48 @@
+{
+  "format": 1,
+  "java_classes": 128,
+  "methods_per_class": 8,
+  "expected_comments": 3328,
+  "worker_memory_bytes": 1073741824,
+  "analysis": {
+    "max_work": 50000000,
+    "max_nodes": 10000000,
+    "max_payload_bytes": 1073741824,
+    "max_depth": 256
+  },
+  "path": "src/bench/Inventory000.java",
+  "queries": [
+    {
+      "text": "扣减库存",
+      "comments": 8,
+      "declarations": "methods"
+    },
+    {
+      "text": "检查库存",
+      "comments": 8,
+      "declarations": "methods"
+    },
+    {
+      "text": "库存仓库",
+      "comments": 1,
+      "declarations": "class"
+    },
+    {
+      "text": "文件末尾",
+      "comments": 1,
+      "declarations": "none"
+    },
+    {
+      "text": "不是注释",
+      "comments": 0,
+      "declarations": "none"
+    }
+  ],
+  "initial_functional_failure": {
+    "max_nodes": 1000000,
+    "worker_nodes_limit": 749806,
+    "resource": "nodes",
+    "receipt": "target/todo-implementation/c4/fixed-fixture/functional/receipt.json",
+    "default_budget_accepted": false
+  }
+}

@@ -71,6 +71,8 @@ pub struct BinaryClass {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FactAttributes {
     #[serde(default, skip_serializing_if = "Field::is_missing")]
+    pub capability: Field<String>,
+    #[serde(default, skip_serializing_if = "Field::is_missing")]
     pub meta_annotation: Field<String>,
     #[serde(default, skip_serializing_if = "Field::is_missing")]
     pub source_range: Field<SourceRange>,

@@ -14,6 +14,13 @@ import java.util.List;
 
 /** Validated, content-addressed target compiler; never resolves an environment fallback. */
 public record JavacToolchain(Path home, int release, String fingerprint) {
+    public static List<String> compilerAccessOptions(int compilerRelease) {
+        return compilerRelease <= 8 ? List.of() : List.of("--add-modules", "jdk.compiler",
+                "--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED",
+                "--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED",
+                "--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED",
+                "--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED");
+    }
     public static JavacToolchain resolve(JavacOptions config, int release, Path override) {
         if (release != 8 && release != 17 && release != 25)
             throw invalid("JAVAC_VERSION_UNSUPPORTED", "supported versions are 8, 17, 25");

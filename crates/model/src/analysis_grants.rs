@@ -150,6 +150,13 @@ impl AnalysisCoordinator {
             .map(|s| s.host.clone())
             .ok_or(AnalysisFailure::InvalidUsage)
     }
+    /// Existing cumulative host accounts, including their cancellation/deadline state.
+    pub fn hosts(&self) -> BTreeMap<AnalysisLanguage, AnalysisContext> {
+        self.languages
+            .iter()
+            .map(|(language, slot)| (*language, slot.host.clone()))
+            .collect()
+    }
     /// Freeze all concurrent instances before any quota is issued.
     pub fn configure_instances(
         &mut self,

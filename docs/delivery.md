@@ -24,7 +24,7 @@
 | 3 Native/G1 | just test-java-native | 开发构建并安装 SDK、manifest、ABI 生命周期、GRA1 图、真实崩溃 |
 | 4 原路径产品组 | just test-java-native-product EVIDENCE | group=graph；需已构建且兼容 bundle，不签完整迁移验收 |
 | 5 分发 | just test-java-release | 构建 release、SHA/包检查、图/错误 JDK/自带 fixture；原 Cargo 路径临时 release 后恢复 |
-| 6 冻结真实项目 | scripts/java-compact-storage-single.py 的参数以 --help 为准 | HEAD 267c7ced4993aa88613f8f17a8099943fec98159，MAIN+TEST，仅已提交内容 |
+| 6 自建 fixture 综合验收 | 当前功能 fixture、资源与混合分发门禁 | 排除 iopengw；固定自建输入、空应用状态及预算，单轮测量独立记账 |
 | 正式构建前置 | scripts/check-java-jvm-acceptance.py | 仍要求有效完整 JVM 回执和源码 SHA；删除旧门禁不等于当前正式迁移通过 |
 
 `./scripts/build-java-native.sh --build-only` 走完整开发构建，默认 G1；不带参数要求有效 `CODEANA_JVM_ACCEPTANCE_RECEIPT`。安装使用 `python3 scripts/install-java-native.py`，检查原路径无活跃进程、校验 SHA、归档旧 SDK 并原子替换。
@@ -97,3 +97,9 @@ Maven schema 4 的导出协议与 Resolver fixture 走 `just test-java-maven`；
 资源治理新增真实产品入口 `tests/java_resource_limits.py`，验证 XML 硬失败的全量/增量保旧版和重试；已纳入 Native just 入口、graph 组回执和 Java release 测试列表。来源工具 `java-coverage-inventory.py`、`java-coverage-acceptance-gate.py` 支持 `--reference-repo`，参考构建使用 `--source`；缺少固定对象直接失败，不使用 HEAD 替代。
 
 2026-10-31 资源治理本轮按用户确认只验收自建 fixture，排除 iopengw，不重测或重标历史单轮结果；另用冻结的 120 文件自建 fixture 做一次有效 release/G1 观测，保留准备错误的原失败。Serial 开发产物、固定工具链 G1 fixture 与正式容量/稳定性能放行分开记账。
+
+## 注释功能的固定 fixture 验收
+
+三语言实际提取/检索与各组合由 comment_search、rust_comment、python_comment、comment_mixed 的 E2E 验证。Java 分发包含 comment-indexing fixture；Rust/Python 包包含各自语言 fixture。Java release 门禁覆盖注释查询及生命周期；共享 release 资源门禁的 --comment-package 参数核对包内全部五个二进制与执行字节，再串行验证注释/Native 组合，最后核对原二进制恢复和 SDK 未变。
+
+C4 的单轮测量采用 fixtures/comment-indexing/acceptance.json：128 个类、每类 8 个方法，预期 3,328 条注释和五组路径限定查询。先用 comment-fixture-prepare 固定源码、预算、release 二进制、SDK 与 JDK 摘要；comment-fixture-functional 验证注释数量、方法定位和图完整性；同一目录通过后才能 comment-fixture-measure。测量使用独立空 home、同一源码/产物，不分冷热，不控制 OS page cache；现有监视器按同一时刻完整进程树采样，保留全部 stdout/stderr、采样及失败。排他 marker 防止重测。单轮本机 fixture 测量不代表容量、跨平台或完整 Native 迁移认证。

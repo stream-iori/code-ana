@@ -118,37 +118,133 @@ pub struct Worker {
         std::sync::Arc<std::sync::Mutex<AnalysisCoordinator>>,
     )>,
     child: Child,
+    stopped: bool,
     process_group: u32,
     command: String,
     ipc: UnixStream,
     frame_reader: codeana_contracts::FrameReader,
     logs: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     log_task: tokio::task::JoinHandle<()>,
-    monitor: tokio::task::JoinHandle<()>,
+    monitor: Option<tokio::task::JoinHandle<()>>,
+    group_signals: std::sync::Arc<std::sync::Mutex<bool>>,
     memory_exceeded: std::sync::Arc<std::sync::atomic::AtomicBool>,
     memory: std::sync::Arc<std::sync::Mutex<MemoryUsage>>,
     pub attempt: String,
     pub context: BuildContext,
     output_limits: codeana_contracts::graph_archive::OutputLimits,
-    scratch: std::sync::Arc<std::sync::Mutex<Option<super::java::DiskBudget>>>,
+    scratch: std::sync::Arc<std::sync::Mutex<Option<super::resources::DiskBudget>>>,
     scratch_exceeded: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
+async fn terminate_group(
+    child: &mut Child,
+    process_group: u32,
+) -> std::io::Result<std::process::ExitStatus> {
+    // SAFETY: this group is the group assigned to the supervised child at launch.
+    let result = unsafe { libc::kill(-(process_group as i32), libc::SIGKILL) };
+    if result != 0 {
+        let error = std::io::Error::last_os_error();
+        // Darwin may report EPERM when the group consists only of its zombie leader.
+        // Ignore that case only after a non-reaping observation of our owned child's exit;
+        // permission errors for a live leader remain cleanup failures.
+        let exited = error.raw_os_error() == Some(libc::EPERM)
+            && child
+                .id()
+                .is_some_and(|pid| exited_without_reaping(pid).unwrap_or(false));
+        if error.raw_os_error() != Some(libc::ESRCH) && !exited {
+            return Err(error);
+        }
+    }
+    child.wait().await
+}
+
+/// Observe an owned child's exit without releasing the PID before descendant cleanup.
+fn exited_without_reaping(pid: u32) -> std::io::Result<bool> {
+    // SAFETY: waitid initializes siginfo; WNOHANG makes this a nonblocking observation,
+    // WNOWAIT leaves the owned child waitable by Tokio after its group is terminated.
+    let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
+    loop {
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                pid as libc::id_t,
+                &mut info,
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if result == 0 {
+            return Ok(unsafe { info.si_pid() } != 0);
+        }
+        let error = std::io::Error::last_os_error();
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+fn signal_monitored_group(pid: u32, enabled: &std::sync::Mutex<bool>) {
+    // Serialize the final signal with cleanup's decision to retire this numeric group ID.
+    // This also covers synchronous Drop, where joining an async monitor is unavailable.
+    let enabled = enabled.lock().unwrap();
+    if *enabled {
+        unsafe {
+            libc::kill(-(pid as i32), libc::SIGKILL);
+        }
+    }
+}
+
 impl Drop for Worker {
     fn drop(&mut self) {
+        *self.group_signals.lock().unwrap() = false;
         if let Some((grant, coordinator)) = &self.analysis {
             let _ = coordinator.lock().unwrap().lost_grant(grant);
         }
         self.log_task.abort();
-        self.monitor.abort();
+        if let Some(monitor) = &self.monitor {
+            monitor.abort();
+        }
         // SAFETY: this group was created exclusively for the owned worker. Reap only after
         // terminating descendants, including when the leader exited unexpectedly.
-        unsafe {
-            libc::kill(-(self.process_group as i32), libc::SIGKILL);
+        if !self.stopped {
+            unsafe {
+                libc::kill(-(self.process_group as i32), libc::SIGKILL);
+            }
+            let _ = self.child.try_wait();
         }
-        let _ = self.child.try_wait();
     }
 }
 impl Worker {
+    fn observed_exit(&mut self) {
+        // Once reaped, the old PID/PGID can be reused. Never signal or monitor it again.
+        self.stopped = true;
+        *self.group_signals.lock().unwrap() = false;
+        self.log_task.abort();
+        if let Some(monitor) = &self.monitor {
+            monitor.abort();
+        }
+    }
+
+    async fn stop_monitor(&mut self) {
+        *self.group_signals.lock().unwrap() = false;
+        if let Some(monitor) = self.monitor.take() {
+            monitor.abort();
+            // Join the monitor before reaping: an already running sample can still signal
+            // the group until its async task has actually finished on another runtime thread.
+            let _ = monitor.await;
+        }
+    }
+
+    /// Hold task input guards until the owned process has actually been reaped.
+    pub(super) async fn shutdown(&mut self) -> Result<()> {
+        self.stop_monitor().await;
+        if self.stopped {
+            return Ok(());
+        }
+        self.log_task.abort();
+        terminate_group(&mut self.child, self.process_group).await?;
+        self.observed_exit();
+        Ok(())
+    }
+
     fn attach_analysis(&mut self, binding: AnalysisBinding) -> Result<()> {
         ensure!(self.analysis.is_none(), "ANALYSIS_GRANT_ALREADY_ATTACHED");
         let grant = binding
@@ -323,6 +419,8 @@ impl Worker {
         let scratch_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let disk_exceeded = scratch_exceeded.clone();
         let sampled_memory = memory.clone();
+        let group_signals = std::sync::Arc::new(std::sync::Mutex::new(true));
+        let monitor_signals = group_signals.clone();
         let monitor = tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_millis(100));
             interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -333,9 +431,7 @@ impl Worker {
                     let check = tokio::task::spawn_blocking(move || budget.check()).await;
                     if !matches!(check, Ok(Ok(()))) {
                         disk_exceeded.store(true, std::sync::atomic::Ordering::SeqCst);
-                        unsafe {
-                            libc::kill(-(pid as i32), libc::SIGKILL);
-                        }
+                        signal_monitored_group(pid, &monitor_signals);
                         break;
                     }
                 }
@@ -359,9 +455,7 @@ impl Worker {
                         .sum();
                     if sampled_memory.lock().unwrap().sample(rss) {
                         exceeded.store(true, std::sync::atomic::Ordering::SeqCst);
-                        unsafe {
-                            libc::kill(-(pid as i32), libc::SIGKILL);
-                        }
+                        signal_monitored_group(pid, &monitor_signals);
                         break;
                     }
                 }
@@ -376,10 +470,12 @@ impl Worker {
                 .unwrap_or_default(),
             scratch,
             scratch_exceeded,
-            monitor,
+            monitor: Some(monitor),
+            group_signals,
             memory_exceeded,
             memory,
             child,
+            stopped: false,
             process_group: pid,
             command,
             logs,
@@ -396,153 +492,169 @@ impl Worker {
                 capabilities: vec![],
             },
         };
-        if let Some(config) = rust {
-            ensure!(
-                (65536..=1073741824).contains(&config.result_bytes)
-                    && (1..=2000000).contains(&config.fact_limit),
-                "RUST_OUTPUT_LIMIT_RANGE"
-            );
-            worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
-                bytes: config.result_bytes,
-                facts: config.fact_limit,
-            };
-        }
-        if let Some(config) = python {
-            ensure!(
-                (65536..=1073741824).contains(&config.result_bytes)
-                    && (1..=2000000).contains(&config.fact_limit),
-                "PYTHON_OUTPUT_LIMIT_RANGE"
-            );
-            worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
-                bytes: config.result_bytes,
-                facts: config.fact_limit,
-            };
-        }
-        if let Some(binding) = analysis {
-            worker.attach_analysis(binding)?;
-        }
-        let hello_deadline = worker.analysis_deadline_ms()?;
-        worker
-            .send(Body::Hello(w::Hello {
-                protocol: WORKER_PROTOCOL_VERSION,
-                fact_ir: VERSION,
-                producer: "daemon".into(),
-                analysis_grant: worker
-                    .analysis
-                    .as_ref()
-                    .map(|(g, _)| codeana_contracts::analysis_budget::encode_grant(g)),
-                deadline_ms: Some(hello_deadline),
-                analysis_usage: None,
-            }))
-            .await?;
-        match worker.receive(cancel).await? {
-            Body::Hello(h) => {
-                worker.accept_analysis_receipt(h.analysis_usage.as_ref(), false, false)?;
+        let initialized: Result<()> = async {
+            if let Some(config) = rust {
                 ensure!(
-                    h.protocol == WORKER_PROTOCOL_VERSION
-                        && h.fact_ir == VERSION
-                        && h.producer
-                            == if fixtures.is_some() {
-                                "mock-fixture-v1"
-                            } else if rust.is_some() {
-                                "rust-core"
-                            } else if python.is_some() {
-                                "python-core"
-                            } else {
-                                "javac-java8-v1"
-                            },
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::WorkerVersionMismatch,
-                        ""
-                    )
+                    (65536..=1073741824).contains(&config.result_bytes)
+                        && (1..=2000000).contains(&config.fact_limit),
+                    "RUST_OUTPUT_LIMIT_RANGE"
                 );
+                worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
+                    bytes: config.result_bytes,
+                    facts: config.fact_limit,
+                };
             }
-            _ => bail!(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::ExpectedHello,
-                ""
-            )),
-        };
-        let deadline_ms = worker.analysis_deadline_ms()?;
-        worker
-            .send(Body::Discover(w::Discover {
-                deadline_ms: Some(deadline_ms),
-                analysis_grant: worker.analysis.as_ref().map(|(grant, _)| {
-                    Box::new(codeana_contracts::analysis_budget::encode_grant(grant))
-                }),
-
-                python: python.cloned().map(Box::new),
-                rust: rust.cloned().map(Box::new),
-                manifest: Some(map(manifest)?),
-                java: java.map(|j| j.config.clone()),
-            }))
-            .await?;
-        worker.context = match worker.receive(cancel).await? {
-            Body::Context(c) => {
-                worker.accept_analysis_receipt(c.analysis_usage.as_ref(), false, false)?;
-                map(&c)?
-            }
-            Body::Advice(a) => {
-                let mut advice: BuildAdvice = map(&a)?;
+            if let Some(config) = python {
                 ensure!(
-                    !advice.missing.is_empty(),
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::EmptyBuildAdvice, "")
+                    (65536..=1073741824).contains(&config.result_bytes)
+                        && (1..=2000000).contains(&config.fact_limit),
+                    "PYTHON_OUTPUT_LIMIT_RANGE"
                 );
-                advice.capture = manifest.id();
-                advice.cwd = if advice.cwd == "." {
-                    checkout.to_string_lossy().into_owned()
-                } else if Path::new(&advice.cwd).is_absolute() {
-                    advice.cwd
-                } else {
+                worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
+                    bytes: config.result_bytes,
+                    facts: config.fact_limit,
+                };
+            }
+            if let Some(binding) = analysis {
+                worker.attach_analysis(binding)?;
+            }
+            let hello_deadline = worker.analysis_deadline_ms()?;
+            worker
+                .send(Body::Hello(w::Hello {
+                    protocol: WORKER_PROTOCOL_VERSION,
+                    fact_ir: VERSION,
+                    producer: "daemon".into(),
+                    analysis_grant: worker
+                        .analysis
+                        .as_ref()
+                        .map(|(g, _)| codeana_contracts::analysis_budget::encode_grant(g)),
+                    deadline_ms: Some(hello_deadline),
+                    analysis_usage: None,
+                }))
+                .await?;
+            match worker.receive(cancel).await? {
+                Body::Hello(h) => {
+                    worker.accept_analysis_receipt(h.analysis_usage.as_ref(), false, false)?;
                     ensure!(
-                        safe_path(&advice.cwd),
+                        h.protocol == WORKER_PROTOCOL_VERSION
+                            && h.fact_ir == VERSION
+                            && h.producer
+                                == if fixtures.is_some() {
+                                    "mock-fixture-v1"
+                                } else if rust.is_some() {
+                                    "rust-core"
+                                } else if python.is_some() {
+                                    "python-core"
+                                } else {
+                                    "javac-java8-v1"
+                                },
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::WorkerVersionMismatch,
+                            ""
+                        )
+                    );
+                }
+                _ => bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::ExpectedHello,
+                    ""
+                )),
+            };
+            let deadline_ms = worker.analysis_deadline_ms()?;
+            worker
+                .send(Body::Discover(w::Discover {
+                    deadline_ms: Some(deadline_ms),
+                    analysis_grant: worker.analysis.as_ref().map(|(grant, _)| {
+                        Box::new(codeana_contracts::analysis_budget::encode_grant(grant))
+                    }),
+
+                    python: python.cloned().map(Box::new),
+                    rust: rust.cloned().map(Box::new),
+                    manifest: Some(map(manifest)?),
+                    java: java.map(|j| j.config.clone()),
+                }))
+                .await?;
+            worker.context = match worker.receive(cancel).await? {
+                Body::Context(c) => {
+                    worker.accept_analysis_receipt(c.analysis_usage.as_ref(), false, false)?;
+                    map(&c)?
+                }
+                Body::Advice(a) => {
+                    let mut advice: BuildAdvice = map(&a)?;
+                    ensure!(
+                        !advice.missing.is_empty(),
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::EmptyBuildAdvice,
+                            ""
+                        )
+                    );
+                    advice.capture = manifest.id();
+                    advice.cwd = if advice.cwd == "." {
+                        checkout.to_string_lossy().into_owned()
+                    } else if Path::new(&advice.cwd).is_absolute() {
+                        advice.cwd
+                    } else {
+                        ensure!(
+                            safe_path(&advice.cwd),
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::InvalidBuildAdviceCwd,
+                                ""
+                            )
+                        );
+                        checkout.join(&advice.cwd).to_string_lossy().into_owned()
+                    };
+                    let relative = Path::new(&advice.cwd).strip_prefix(checkout).context(
+                        codeana_model::DomainError::new(
+                            codeana_model::ErrorCode::BuildAdviceOutsideCheckout,
+                            "",
+                        ),
+                    )?;
+                    ensure!(
+                        relative.as_os_str().is_empty()
+                            || relative
+                                .components()
+                                .all(|c| matches!(c, std::path::Component::Normal(_))),
                         codeana_model::DomainError::new(
                             codeana_model::ErrorCode::InvalidBuildAdviceCwd,
                             ""
                         )
                     );
-                    checkout.join(&advice.cwd).to_string_lossy().into_owned()
-                };
-                let relative = Path::new(&advice.cwd).strip_prefix(checkout).context(
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::BuildAdviceOutsideCheckout,
-                        "",
-                    ),
-                )?;
-                ensure!(
-                    relative.as_os_str().is_empty()
-                        || relative
-                            .components()
-                            .all(|c| matches!(c, std::path::Component::Normal(_))),
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::InvalidBuildAdviceCwd,
-                        ""
-                    )
-                );
-                bail!(codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::BuildInputRequired,
-                    serde_json::to_string(&advice)?.to_string()
-                ));
+                    bail!(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::BuildInputRequired,
+                        serde_json::to_string(&advice)?.to_string()
+                    ));
+                }
+                _ => bail!(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::ExpectedBuildContext,
+                    ""
+                )),
+            };
+            ensure!(
+                fixtures.is_none() || worker.context.producer.starts_with("mock-"),
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::MockProvenanceRequired,
+                    ""
+                )
+            );
+            ensure!(
+                worker.analysis.is_none()
+                    || worker
+                        .context
+                        .capabilities
+                        .iter()
+                        .any(|c| c == "analysis-resources-v1"),
+                "ANALYSIS_CAPABILITY_REQUIRED"
+            );
+            if python.is_some() {
+                validate_python_context(&worker.context)?;
             }
-            _ => bail!(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::ExpectedBuildContext,
-                ""
-            )),
-        };
-        ensure!(
-            fixtures.is_none() || worker.context.producer.starts_with("mock-"),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::MockProvenanceRequired, "")
-        );
-        ensure!(
-            worker.analysis.is_none()
-                || worker
-                    .context
-                    .capabilities
-                    .iter()
-                    .any(|c| c == "analysis-resources-v1"),
-            "ANALYSIS_CAPABILITY_REQUIRED"
-        );
-        if python.is_some() {
-            validate_python_context(&worker.context)?;
+            Ok(())
+        }
+        .await;
+        if let Err(error) = initialized {
+            if let Err(cleanup) = worker.shutdown().await {
+                eprintln!("worker_start_cleanup_warning: {cleanup:#}");
+            }
+            return Err(error);
         }
         Ok(worker)
     }
@@ -581,9 +693,14 @@ impl Worker {
                 Ok(frame)=>frame,
                 Err(error)=>{
                     if let Some(failure)=error.downcast_ref::<AnalysisFailure>() {return Err(DomainError::analysis(failure.clone()).into());}
-                    let status=tokio::time::timeout(Duration::from_millis(100),self.child.wait()).await;
+                    // Give the crashed process the existing diagnostic grace period, without
+                    // reaping its leader before the descendant group can be terminated.
+                    tokio::time::sleep(Duration::from_millis(100)).await;
                     tokio::task::yield_now().await;
                     let logs=String::from_utf8_lossy(&self.logs.lock().unwrap()).into_owned();
+                    self.stop_monitor().await;
+                    let status=tokio::time::timeout(Duration::from_millis(100),terminate_group(&mut self.child,self.process_group)).await;
+                    if matches!(&status,Ok(Ok(_))) { self.observed_exit(); }
                     if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaScratchBudget, ""));}
                     if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerMemoryBudget, serde_json::to_string(&self.memory_usage())?));}
                     let status=match status {Ok(Ok(s))=>s.to_string(),Ok(Err(e))=>e.to_string(),Err(_)=>"still running".into()};
@@ -604,7 +721,7 @@ impl Worker {
                         _=>break,
                     }
                 }
-                let _=tokio::time::timeout_at(deadline,self.child.wait()).await;
+                let _=tokio::time::timeout_at(deadline,self.shutdown()).await;
                 bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""))
             }
         };
@@ -797,7 +914,9 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
             self.analysis = None;
         }
         self.send(Body::Cancel(w::Cancel {})).await?;
+        self.stop_monitor().await;
         let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
+        self.observed_exit();
         ensure!(
             status.success(),
             codeana_model::DomainError::new(
@@ -814,7 +933,9 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
         }))
         .await?;
         if self.context.producer.starts_with("mock-") {
+            self.stop_monitor().await;
             let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
+            self.observed_exit();
             ensure!(
                 status.success(),
                 codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerExitAfterAck, "")
@@ -827,7 +948,14 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
     }
 
     pub fn alive(&mut self) -> Result<bool> {
-        Ok(self.child.try_wait()?.is_none()
+        if self.stopped {
+            return Ok(false);
+        }
+        let Some(pid) = self.child.id() else {
+            self.observed_exit();
+            return Ok(false);
+        };
+        Ok(!exited_without_reaping(pid)?
             && !self
                 .memory_exceeded
                 .load(std::sync::atomic::Ordering::SeqCst)
@@ -929,6 +1057,109 @@ fn validate_python_context(context: &BuildContext) -> Result<()> {
 mod tests {
     use super::*;
     use codeana_contracts::write_frame;
+    #[tokio::test]
+    async fn liveness_observation_leaves_exit_status_for_group_cleanup() {
+        let mut child = Command::new("/usr/bin/true")
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let pid = child.id().unwrap();
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !exited_without_reaping(pid).unwrap() {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        // A second observation still succeeds: neither probe released the PID or status.
+        assert!(exited_without_reaping(pid).unwrap());
+        assert_eq!(child.id(), Some(pid));
+        assert!(terminate_group(&mut child, pid).await.unwrap().success());
+        assert!(child.id().is_none());
+    }
+    #[tokio::test]
+    async fn group_termination_reaps_the_owned_process_before_returning() {
+        let mut child = Command::new("/bin/sleep")
+            .arg("60")
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let group = child.id().unwrap();
+        tokio::time::timeout(Duration::from_secs(3), terminate_group(&mut child, group))
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(child.id().is_none(), "termination must await reaping");
+        assert!(child.try_wait().unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn reaped_worker_never_signals_a_reused_group_on_shutdown_or_drop() {
+        let mut child = Command::new("/usr/bin/true")
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        child.wait().await.unwrap();
+        // A second owned process stands in for a group that has reused the old numeric ID.
+        let mut sentinel = Command::new("/bin/sleep")
+            .arg("60")
+            .process_group(0)
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let group = sentinel.id().unwrap();
+        let (ipc, _peer) = UnixStream::pair().unwrap();
+        let mut worker = Worker {
+            analysis: None,
+            child,
+            stopped: false,
+            process_group: group,
+            command: "test".into(),
+            ipc,
+            frame_reader: Default::default(),
+            logs: Default::default(),
+            log_task: tokio::spawn(std::future::pending::<()>()),
+            monitor: Some(tokio::spawn(std::future::pending::<()>())),
+            group_signals: std::sync::Arc::new(std::sync::Mutex::new(true)),
+            memory_exceeded: Default::default(),
+            scratch_exceeded: Default::default(),
+            memory: std::sync::Arc::new(std::sync::Mutex::new(MemoryUsage {
+                limit_bytes: 1,
+                rss_bytes: 0,
+                peak_rss_bytes: 0,
+                stage: "test".into(),
+                process_group: group,
+                phase_ms: Default::default(),
+                stream: None,
+            })),
+            attempt: "test".into(),
+            context: BuildContext {
+                language: "test".into(),
+                producer: "test".into(),
+                modules: vec![],
+                source_version: "8".into(),
+                classpath: vec![],
+                capabilities: vec![],
+            },
+            output_limits: Default::default(),
+            scratch: Default::default(),
+        };
+        let monitor_signals = worker.group_signals.clone();
+        assert!(!worker.alive().unwrap());
+        worker.shutdown().await.unwrap();
+        worker.shutdown().await.unwrap();
+        drop(worker);
+        signal_monitored_group(group, &monitor_signals);
+        assert!(
+            sentinel.try_wait().unwrap().is_none(),
+            "a reaped worker must never signal a reused ID"
+        );
+        terminate_group(&mut sentinel, group).await.unwrap();
+    }
+
     #[test]
     fn python_worker_requires_current_adapter_and_pinned_backend() {
         let mut context = BuildContext {

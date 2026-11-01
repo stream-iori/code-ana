@@ -29,5 +29,6 @@ identity!(
     IndexTarget,
     RevisionId,
     FactId,
+    CommentId,
     WorldId
 );

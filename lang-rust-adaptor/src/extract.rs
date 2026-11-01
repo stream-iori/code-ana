@@ -48,6 +48,8 @@ pub struct Relation {
 
 #[derive(Debug, Default)]
 pub struct Analysis {
+    pub comments: Vec<crate::comments::Observation>,
+    pub comment_gaps: BTreeMap<(String, String), BTreeSet<String>>,
     pub dirty: Option<BTreeSet<(String, String)>>,
     pub imports: BTreeMap<(String, String), Vec<String>>,
     pub declarations: Vec<Declaration>,
@@ -63,7 +65,7 @@ fn anchor(file: FileId, range: TextRange) -> Anchor {
     (file, range.start().into(), range.end().into())
 }
 
-fn item(node: &SyntaxNode) -> Option<(String, DeclarationKind, RustVisibility)> {
+pub(crate) fn item(node: &SyntaxNode) -> Option<(String, DeclarationKind, RustVisibility)> {
     macro_rules! named {
         ($ty:ty, $kind:ident) => {
             if let Some(value) = <$ty>::cast(node.clone()) {
@@ -299,6 +301,7 @@ fn analyze_attached(
             Some(budget),
         )?);
     }
+    extraction.collect_comments()?;
     if config.mode == codeana_model::rust::RustAnalysisMode::Syntax {
         return Ok(extraction.state.output);
     }
@@ -313,6 +316,50 @@ fn analyze_attached(
     Ok(extraction.state.output)
 }
 impl Extraction<'_> {
+    fn collect_comments(&mut self) -> Result<()> {
+        for (file, (ci, fi)) in &self.analyzer.files {
+            (self.cancelled)()?;
+            let source = &self.config.files[*fi];
+            let input = &self.config.inputs.crates[*ci];
+            let owner = (source.path.clone(), input.world.clone());
+            if !input.publish
+                || self.config.excluded.contains(&owner)
+                || self
+                    .state
+                    .output
+                    .dirty
+                    .as_ref()
+                    .is_some_and(|dirty| !dirty.contains(&owner))
+            {
+                continue;
+            }
+            let tree = self.sema.parse_guess_edition(*file);
+            let Some(text) = self.state.output.texts.get(&source.path) else {
+                continue;
+            };
+            let collector = crate::comments::Collector {
+                text,
+                source,
+                input,
+                ids: &self.state.syntax_ids,
+                published: &self.state.published,
+                budget: self.budget,
+                check: self.cancelled,
+            };
+            let (comments, mut gaps) = collector.collect(tree.syntax())?;
+            if tree
+                .syntax()
+                .descendants()
+                .any(|n| n.kind() == ra_ap_syntax::SyntaxKind::ERROR)
+            {
+                gaps.insert("RUST_COMMENT_SYNTAX_ERROR".into());
+            }
+            self.state.output.comments.extend(comments);
+            self.state.output.comment_gaps.insert(owner, gaps);
+        }
+        Ok(())
+    }
+
     fn collect_sources(&mut self) -> Result<()> {
         let Self {
             config,

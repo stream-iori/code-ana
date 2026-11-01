@@ -361,3 +361,15 @@ CREATE TABLE symbol_dependencies (
 -- Persistent Rust invalidation inputs; independent of Java's derived dependencies.
 CREATE TABLE rust_source_states(source_file TEXT NOT NULL,world TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(source_file,world));
 CREATE TABLE rust_analysis_dependencies(source_file TEXT NOT NULL,world TEXT NOT NULL,kind TEXT NOT NULL,target_world TEXT NOT NULL,target_key TEXT NOT NULL,PRIMARY KEY(source_file,world,kind,target_world,target_key));
+
+-- Logical schema 35: independent source comments and language-produced associations.
+CREATE TABLE comments(id TEXT PRIMARY KEY,source_file TEXT NOT NULL,source_hash TEXT NOT NULL,
+ module TEXT NOT NULL,scope TEXT NOT NULL,world TEXT NOT NULL,language TEXT NOT NULL,
+ provider_id TEXT NOT NULL,producer_id TEXT NOT NULL,kind TEXT NOT NULL,
+ byte_start INTEGER NOT NULL,byte_end INTEGER NOT NULL,begin_line INTEGER NOT NULL,
+ begin_column INTEGER NOT NULL,end_line INTEGER NOT NULL,end_column INTEGER NOT NULL,
+ body TEXT NOT NULL,body_map TEXT NOT NULL,rule_version TEXT NOT NULL);
+CREATE TABLE comment_links(comment_id TEXT NOT NULL REFERENCES comments(id),relation TEXT NOT NULL,
+ declaration_id TEXT REFERENCES nodes(id),source_file TEXT NOT NULL,module TEXT NOT NULL,scope TEXT NOT NULL,
+ world TEXT NOT NULL,byte_start INTEGER NOT NULL,byte_end INTEGER NOT NULL,begin_line INTEGER NOT NULL,
+ begin_column INTEGER NOT NULL,end_line INTEGER NOT NULL,end_column INTEGER NOT NULL,basis TEXT NOT NULL,rule_version TEXT NOT NULL);

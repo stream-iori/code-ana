@@ -94,7 +94,10 @@ def main():
     suite = unittest.defaultTestLoader.loadTestsFromModule(module)
     if args.group == 'graph':
         resources = importlib.import_module('java_resource_limits')
-        suite = unittest.TestSuite([suite, unittest.defaultTestLoader.loadTestsFromModule(resources)])
+        comments = importlib.import_module('comment_search_e2e')
+        comment_lifecycle = importlib.import_module('comment_lifecycle_e2e')
+        comment_ownership = importlib.import_module('comment_ownership_e2e')
+        suite = unittest.TestSuite([suite, unittest.defaultTestLoader.loadTestsFromModule(resources), unittest.defaultTestLoader.loadTestsFromModule(comments), unittest.defaultTestLoader.loadTestsFromModule(comment_lifecycle), unittest.defaultTestLoader.loadTestsFromModule(comment_ownership)])
     all_tests = list(flatten(suite))
     if args.case:
         selected = [test for test in all_tests if any(test.id().endswith('.' + name) for name in args.case)]

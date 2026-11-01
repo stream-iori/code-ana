@@ -5,6 +5,8 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+codeana-derived-cache = { path = "../derived-cache" }
+codeana-comment-search = { path = "../comment-search" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -17,3 +19,4 @@ codeana-contracts = { path = "../contracts" }
 tempfile.workspace = true
 
 [dev-dependencies]
+codeana-query = { path = "../query" }

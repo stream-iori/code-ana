@@ -25,7 +25,7 @@ class GraphProduct(product_support.MockProductHarness):
         revision = self.cli('index')[1]['revision']
         self.assertFalse((self.home / 'annotations.db').exists())
         with sqlite3.connect(self.home / 'revisions' / revision / 'facts.db') as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 11)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 12)
             self.assertEqual(db.execute("SELECT name FROM sqlite_schema WHERE name LIKE '%semantic_annotations%'").fetchall(), [])
         self.assertTrue(self.cli('annotations', 'app')[0])
 

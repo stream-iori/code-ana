@@ -279,16 +279,20 @@ mod tests {
     use codeana_contracts::graph::{Cell, Table, cell::Value};
     #[test]
     fn strict_receipt_requires_current_version_and_explicit_known_state() {
+        let version = codeana_model::JAVA_ANALYSIS_VERSION;
         for payload in [
-            r#"{"version":10,"usage_known":false}"#,
-            r#"{"version":11}"#,
-            r#"{"version":11,"usage_known":true}"#,
+            serde_json::json!({"version":version-1,"usage_known":false}),
+            serde_json::json!({"version":version}),
+            serde_json::json!({"version":version,"usage_known":true}),
         ] {
-            assert!(analysis_receipt(payload.as_bytes()).is_err());
+            assert!(analysis_receipt(serde_json::to_vec(&payload).unwrap().as_slice()).is_err());
         }
         assert!(
             analysis_receipt(
-                br#"{"version":11,"usage_known":false,"error":"NATIVE_HEAP_EXHAUSTED"}"#.as_slice()
+                serde_json::to_vec(&serde_json::json!({"version":version,
+            "usage_known":false,"error":"NATIVE_HEAP_EXHAUSTED"}))
+                .unwrap()
+                .as_slice()
             )
             .unwrap()
             .is_none()

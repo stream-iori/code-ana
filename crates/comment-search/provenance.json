@@ -1,0 +1,13 @@
+{
+  "engine": "jieba-rs",
+  "version": "0.11.0",
+  "package_sha256": "0a3a7d02ea31e6fc6f2fe10495dc7c5efcf381e1f21d7172f58ba792efa1c2fd",
+  "dictionary": "src/data/dict.txt",
+  "dictionary_sha256": "139519822fe8ab9e10d9d07e68ea0451045380aedaf54ecc51e2a28c6b42a13f",
+  "dictionary_loading": "upstream default-dict, embedded; no runtime replacement",
+  "hmm": true,
+  "index_mode": "search",
+  "query_mode": "default",
+  "license": "MIT",
+  "source": "https://docs.rs/crate/jieba-rs/0.11.0/source/"
+}

@@ -61,7 +61,7 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/ContentHash.java",
       "sha256": "76ab44e5fb287305e59d95de876af2953119f6ab0e27f86f9752c5ae90cf37e8",
       "migrated_sha256": "e04ec127565e89aa15192f5506d9279bc7cf930956b16a7fcb2e5ed46ad14aff",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/ExternalTypePolicy.java",
@@ -358,8 +358,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaModel.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaModel.java",
       "sha256": "14844030e4945b0d09f6645839752a14f585bcdf6aa6dca203d7cd13d2b6e02e",
-      "migrated_sha256": "92123582a52eba2ddcf4b904c651a4f7ec73e0c4ef90a6edf0953070883281fb",
-      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "migrated_sha256": "52272fd810594870999f4268b45be39f38dd7acf16e2c1bb88a2a321852f79d7",
+      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。 C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaNode.java",
@@ -384,7 +384,7 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaSource.java",
       "sha256": "79efdb581a90142a0930685870cfd42f2772d07551373f7f8e44895419d9e8ad",
       "migrated_sha256": "177d7622cfa37dd73f71ce6ac3f7287ad86d82bffbdf0c4a360880d454c1d294",
-      "adaptation": "\u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
+      "adaptation": "统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaSymbol.java",
@@ -422,7 +422,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/JavaUnit.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaUnit.java",
       "sha256": "daa51b25edc190af851d4461bf0cb82fd196b5f871b2f7cca572d11cf50d728e",
-      "migrated_sha256": "daa51b25edc190af851d4461bf0cb82fd196b5f871b2f7cca572d11cf50d728e"
+      "migrated_sha256": "2d535ad489e22078d55708807e9ba763309b25b194553cc2aff8caba6114c37c",
+      "adaptation": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/java/SourceSpan.java",
@@ -452,8 +453,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java",
       "sha256": "6290581902cb59f869e72e215a5e015b02b4f02e222e7a3a4f49acefb52fc67d",
-      "migrated_sha256": "97c5457a2e1cdccc2a73610e1fb150923a9fe59f16bff6f15dacd8cd6a8ca2cf",
-      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB\u20132 GiB decode admission does not change semantic rules or fingerprints.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
+      "migrated_sha256": "a1cec1e63a0466785a5ba44940d4faca2c1b42055ee83ced8053545dcbdd8e05",
+      "adaptation": "Explicit captured inputs and budgets; stable capture-relative support fingerprint; private worker extraction excluded from committed signature entries.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured diagnostics describe the actual ordered compiler classpath, including generated NoCode archive/directory content. Standalone upstream metadata path is unchanged.; Empty consumer publication returns before auxiliary compiler planning; explicit 64 KiB–2 GiB decode admission does not change semantic rules or fingerprints.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -479,7 +480,7 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacCatalogueCodec.java",
       "sha256": "1b1c2cf7b99f866cdf30c35ed404f7187908d52cda60be541eb02908e8bf45ef",
       "migrated_sha256": "78d2c31cd357de48d73ddb94342e70a424cbb6aff188d32392439103175a8456",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacCompilationCache.java",
@@ -511,14 +512,14 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacDeclarations.java",
       "sha256": "1003b8b005416150acc7dd3052f4f90d69561412daff641eebdd863954c8fd14",
       "migrated_sha256": "63044de6d3279b65320d91463a4df261dfaa2fa5b532f6826aafffee40f931a8",
-      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacDecodeBudget.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacDecodeBudget.java",
       "sha256": "a102e07539e98a5758b0a058ee184908ebfb648ca5bbd07a33ea6f62b2e65c71",
       "migrated_sha256": "26a081e0c49216db950f133c9c6c9ddfe8a3f8a1ab038d4db4a294604e228c9f",
-      "adaptation": "; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": "; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacMavenInputs.java",
@@ -538,15 +539,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacProtocol.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacProtocol.java",
       "sha256": "6213e41a39e1f5420c9f24fd5cf9b1a6896879d04d3d31300e9dad8874a162bb",
-      "migrated_sha256": "251b6f6452d51655677900799f0b23d13cc3de1bb4b91cfbeca207c250ff3c52",
-      "adaptation": "; Decode allocation admission is passed explicitly per response; checksum, frame, length and model validation are unchanged.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "migrated_sha256": "fbf5b990d733bfe6574b46846f2d14e5fba5ee13bd7f4e159bd4b82bcf7086ee",
+      "adaptation": "; Decode allocation admission is passed explicitly per response; checksum, frame, length and model validation are unchanged.; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。 C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacSignatureCache.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacSignatureCache.java",
       "sha256": "a3552849cfeb875d7b3717dbd8f170b84b0673192df57f0e77636009445eddf0",
-      "migrated_sha256": "1b942bcd21da32abf0dc5364327afe1774c42d75213f03052dcd1b9cecbdb85a",
-      "adaptation": "Capture-relative catalogue paths and task-root relocation; flat complete entries for Rust managed quota/LRU. Original local-cache entry points retained.; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.",
+      "migrated_sha256": "0de941f3e1f4d626f41e4131210d858662e270c1c8cce18edd6ba4b36ad930af",
+      "adaptation": "Capture-relative catalogue paths and task-root relocation; flat complete entries for Rust managed quota/LRU. Original local-cache entry points retained.; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -554,14 +555,14 @@
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacSignatureInputs.java",
       "sha256": "1394f65ab6ed397e0c4574255dc5b5f6363b5d69083839565587631e95f321ff",
       "migrated_sha256": "8a408b63487edb987d38dc50f2ce870910e7643db2c060d35250bed18a127aa9",
-      "adaptation": "Captured cross-process cache boundary: preserve deterministic path/sha256 field order; Map.of iteration order changes between JVM processes. No parsing or signature semantics changed. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": "Captured cross-process cache boundary: preserve deterministic path/sha256 field order; Map.of iteration order changes between JVM processes. No parsing or signature semantics changed. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacSignaturePlan.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacSignaturePlan.java",
       "sha256": "424ee87cb9d303bc4461b509d635dd981da63adf9b8ae95cda40d83abf97b1f8",
       "migrated_sha256": "36a002c8922f1cde2e220f5dbb7fad71a15426dce351dd66294918d42a86d6ae",
-      "adaptation": "Sealed source/dependency contexts and capture-relative cache identity; relocate validated cached units into the current capture.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.",
+      "adaptation": "Sealed source/dependency contexts and capture-relative cache identity; relocate validated cached units into the current capture.; Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。 Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -574,7 +575,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacToolchain.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacToolchain.java",
       "sha256": "21fc92f082c92d395760abc50988c8a1d2bf5601897fca5ef2edd29916350cc7",
-      "migrated_sha256": "21fc92f082c92d395760abc50988c8a1d2bf5601897fca5ef2edd29916350cc7"
+      "migrated_sha256": "305630f26872f2cb42852049dd8e1076e73dc3e847c3eb30c12e59fa4aa41b86",
+      "adaptation": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/javac/JavacWorkerSession.java",
@@ -633,7 +635,7 @@
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaAnnotationFacts.java",
       "sha256": "29b32801022ad7d8e39d66b89a294618a26936cbde86a366a01ef90e5bc28dd5",
       "migrated_sha256": "78c8f5960d468ae1881adb440246c5f5befeeed66cde69c6efcecd57757d28f9",
-      "adaptation": "Retain the frozen javac annotation contract while applying bounded context-local direct-parent metadata caching and per-file emitted-origin deduplication; repeated traversal still permits shallower paths (compact storage upgrade 9b0008e). \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": "Retain the frozen javac annotation contract while applying bounded context-local direct-parent metadata caching and per-file emitted-origin deduplication; repeated traversal still permits shallower paths (compact storage upgrade 9b0008e). 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaCallEvidence.java",
@@ -647,28 +649,28 @@
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaCallFacts.java",
       "sha256": "4b96b2e4fa92c663a86b3dbb21e92cb23329e264e20db0dd56cd0f4745cae5b8",
       "migrated_sha256": "c8600b4d02483809c76d6fe74f7de7b0e974d4da4cb6ef2c5cb1d1433c27dbf0",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaDeclarationFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaDeclarationFacts.java",
       "sha256": "32ffa0146ec397e68d6d8f128166aed73a61d663952706ccc8e25bc81f26cc44",
       "migrated_sha256": "5a762adc66607abbd0bb65f797217380db62ba029c95b8afacebbf64a9101276",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaFieldFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaFieldFacts.java",
       "sha256": "4138c49021b0c8c6633ed53f96918e0fcaa1c50a8810bf70b9ed682bec69aba7",
       "migrated_sha256": "50696ab45df76e8984cccdf7845bbeca2ff127a16615b50a55cd99b6caf74330",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaModelExtractor.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaModelExtractor.java",
       "sha256": "8ccba92ad5cb745c10ba613d2ab686e55098d36a7cb82f7def5a6e9cce09cdee",
-      "migrated_sha256": "e7b160b3c041f700f45361d80b6178e371591a9500aecfcbf8d07f3b0cfc7e5a",
-      "adaptation": "Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured binary provider and unreadable-entry evidence uses the same ordered content identity as the compiler classpath; physical paths remain execution inputs. Standalone provider paths are unchanged.; Explicit shared task ledger in model/extension fact retention and semantic lookup. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit."
+      "migrated_sha256": "7076fd8807d0840a3497d0d3aaf12b0ad88546a7b5e66c19a4769d702561c864",
+      "adaptation": "Captured classpath provenance separates physical execution paths from ordered content identity; captured NoCode directory digests use relative child paths. Standalone upstream path identity remains unchanged.; Captured binary provider and unreadable-entry evidence uses the same ordered content identity as the compiler classpath; physical paths remain execution inputs. Standalone provider paths are unchanged.; Explicit shared task ledger in model/extension fact retention and semantic lookup. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java",
@@ -682,14 +684,14 @@
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaOverrideFacts.java",
       "sha256": "a765b20e80802b13450356140016277866695a82fe01f4f7b6eab1c52e9901c7",
       "migrated_sha256": "71fd5789f25fbfa72740c15c94518b39cc399f32516c1cd698300ce0992e9e26",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaReflectionFacts.java",
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaReflectionFacts.java",
       "sha256": "47ac5cda6188a9048b6985e54950cc4e8d40b0f558f12af955b43ac1f8d66638",
       "migrated_sha256": "fe5e1182ff94c352d41d027f11e8dbc0038b66b80e67937a5bd501489a6a1e27",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/extract/JavaReflectionLookup.java",
@@ -708,7 +710,7 @@
       "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaTypeFacts.java",
       "sha256": "10b1d2374547fd3906d05a336e7a15dcac139b61d375e5035d41ceb55534bb3c",
       "migrated_sha256": "f00b27dbe02a813564a013673f0ef3e0543e8a1d5f63b378a7b4ce11ef61c7fb",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/DefaultProjectFactView.java",
@@ -793,8 +795,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelExtensions.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaModelExtensions.java",
       "sha256": "54ab373401ae23a9f325ff7b6bea6ba2c02f9c88a2556cfb5cf36566968c6160",
-      "migrated_sha256": "ff9c7e3b67e38f6a89c2a76932f220e1cc470bbb5892f254ef2c2c712d489a2a",
-      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit shared task ledger in model/extension fact retention and semantic lookup.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
+      "migrated_sha256": "7df6e145a8f9cb7a46ce7573434d894cb0a8669a5e05fd85632457b701f24271",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit shared task ledger in model/extension fact retention and semantic lookup.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaUnitAnalysis.java",
@@ -898,8 +900,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "sha256": "d2d506432acc3beb99b7b1bcfb11700bebf3cb184d04e7f6a47973b46df5390f",
-      "migrated_sha256": "0b4553a94c967232b28725f34bf031b30d976a4078ea3871741ba7c30d96075d",
-      "adaptation": "Inject captured Lombok configuration inventory.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
+      "migrated_sha256": "63a42d1e3f608982f357acc1f460b2b755bfbe68cb116452987b63c7628e5cb2",
+      "adaptation": "Inject captured Lombok configuration inventory.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -1062,13 +1064,14 @@
       "destination": "analysis-core/src/test/java/com/anatomist/core/javac/JavacDecodeBudgetTest.java",
       "sha256": "d16c867b8fb0740129886f857ecd4aa299516e92f064d004dd48e3a0f229d9e2",
       "migrated_sha256": "09d267a8630cfeff913b72da578889ffe1ce73bd47cec3054031c0299619e62b",
-      "adaptation": "; Additional resource-boundary regression verifies 2 GiB accounting uses long arithmetic and still rejects exhaustion. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": "; Additional resource-boundary regression verifies 2 GiB accounting uses long arithmetic and still rejects exhaustion. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacProtocolTest.java",
       "destination": "analysis-core/src/test/java/com/anatomist/core/javac/JavacProtocolTest.java",
       "sha256": "4a5f3dd53eb2a851472ad20efafb1e58d74a719805685c63a3b5b2b8460e9542",
-      "migrated_sha256": "4a5f3dd53eb2a851472ad20efafb1e58d74a719805685c63a3b5b2b8460e9542"
+      "migrated_sha256": "1e1d5423ad95089338e4767942a9d02abd88a0b057487f0faf81043426523b71",
+      "adaptation": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacSourceLexemesTest.java",
@@ -1080,7 +1083,8 @@
       "source": "anatomist-core/src/worker/java/com/anatomist/worker/JavacWorker.java",
       "destination": "analysis-core/src/worker/java/com/anatomist/worker/JavacWorker.java",
       "sha256": "d42d7c73080db18252f22e10fdb7320e0d39f31da68f69468ee49d16815685dd",
-      "migrated_sha256": "d42d7c73080db18252f22e10fdb7320e0d39f31da68f69468ee49d16815685dd"
+      "migrated_sha256": "b5dda9b07a532bdcb1552b9b554bf1e58e88657d14330139ee2d2b229c9e500f",
+      "adaptation": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/worker/java/com/anatomist/worker/WorkerAnnotations.java",
@@ -1288,13 +1292,15 @@
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacParallelWorkerIT.java",
       "destination": "java-bridge/src/test/java/com/anatomist/core/javac/JavacParallelWorkerIT.java",
       "sha256": "b8a98af848f13565f1214f51e009277c69c686b50d07c72a3c4e1cb3447cd438",
-      "migrated_sha256": "b8a98af848f13565f1214f51e009277c69c686b50d07c72a3c4e1cb3447cd438"
+      "migrated_sha256": "afbb2ad352d553e222a3d8c748cb83467a8ef53f520bd35258d7d7321e61a9b8",
+      "adaptation": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacWorkerSessionTest.java",
       "destination": "analysis-core/src/test/java/com/anatomist/core/javac/JavacWorkerSessionTest.java",
       "sha256": "f5f015a5bffd9a79460b6f5b9e0adeaebef47a527646fb2f4f71abd41ec20189",
-      "migrated_sha256": "f5f015a5bffd9a79460b6f5b9e0adeaebef47a527646fb2f4f71abd41ec20189"
+      "migrated_sha256": "eb69b752e05a1cfd7133ff9ad14d892d5d547ee42e79bac5ae306e3650637a26",
+      "adaptation": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/MavenInputsWorkerTest.java",
@@ -1430,7 +1436,7 @@
       "destination": "java-bridge/src/test/java/com/anatomist/core/javac/JavacCatalogueCodecIT.java",
       "sha256": "a0206a9a907f115e74a1db76758b0d90e46075a3eb71c2fe1dea3cf3296d58ae",
       "migrated_sha256": "4438b11f1b202acd5a02d7dc106f60361f64fa04d778b08585b6005612ee654f",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacCompiledDeclarationsTest.java",
@@ -1497,7 +1503,7 @@
       "destination": "java-bridge/src/test/java/com/anatomist/core/javac/JavacSignatureCacheIT.java",
       "sha256": "080dc714381c606c1a6a99cd1d807af5a6c6b4c84a201e58b2dc077b5b644fff",
       "migrated_sha256": "0f23f540a1a416d10cbe82b38445360397f44ab3492fca4144c21b28d3d43bb3",
-      "adaptation": " \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002"
+      "adaptation": " 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavacSyntaxIT.java",
@@ -1542,8 +1548,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/GraphSemantics.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/GraphSemantics.java",
       "sha256": "e937ab52314c15dbcf0e7e6b3bfb6578bf286fdc3ef32632142ab37a6ffb5205",
-      "migrated_sha256": "2722c0a3399a430727323ffee20b371b7f2530d63e0c178298575372d688ba7e",
-      "adaptation": "Advance persisted graph semantics to 26 for schema 33 metadata definition/source/ownership observations (compact storage upgrade 9b0008e)."
+      "migrated_sha256": "bdde7f4bbbb7fdcfc0f7c32de2149a0a138afe9425b96a25ab046f23d5b66a73",
+      "adaptation": "Advance persisted graph semantics to 26 for schema 33 metadata definition/source/ownership observations (compact storage upgrade 9b0008e). C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/provider/FactDefaults.java",
@@ -3366,14 +3372,14 @@
     {
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacModelConsumer.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit.",
-      "migrated_sha256": "7e27ce6cbb99cfbe56e5753e24cab90081bc187fa2dee32bf26ae4e5051a9c53",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Task-owned admission before signature/declaration projections, ASM emission and semantic JSON/coverage; SOFA SAX input/metadata uses the shared XML/task ledger; legacy diagnostic overloads remain explicit. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
+      "migrated_sha256": "72c942d90a0f176afec6ba357fa1ad245c2796ea94f67d22ea371e83405b7804",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java"
     },
     {
       "destination": "analysis-core/src/main/java/com/anatomist/core/javac/JavacRunConfiguration.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002",
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。",
       "migrated_sha256": "59f4494c344560baf2ac9449c57a14928a371c345837bc34ee4defb6e4634270",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/core/javac/JavacBackend.java"
     },
@@ -3436,14 +3442,14 @@
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisRequest.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
-      "migrated_sha256": "b196584e0e03870be5de117428d95c5929d8087b0a301ef591a3e581ef79516f"
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Java11生产请求必填grant/seed/deadline，明确用量已知状态，并在旧请求构造阶段拒绝。 C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
+      "migrated_sha256": "394b04727315eebe32c35790b3bcd50e824b60ccaf8033bd134a4eb1cf9d42f7"
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisResult.java",
       "origin": "codeana",
-      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
-      "migrated_sha256": "5dcfc3587d0194f48b8e1e1c08b25dcac811fb48a011fa1f67663166eb0ec90e"
+      "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage. Java11生产请求必填grant/seed/deadline，明确用量已知状态，并在旧请求构造阶段拒绝。 C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
+      "migrated_sha256": "306b8e5d4ed50fa33eb9468d0b04888014eebfac5327580a72327754b19d6535"
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/BaselineDescriptor.java",
@@ -3460,13 +3466,13 @@
     {
       "destination": "java-bridge/src/test/java/dev/codeana/adapter/AnalysisRequestTest.java",
       "origin": "codeana",
-      "reason": "Captured DTO defaults, exact numeric fields, compact input roles and verified baseline ownership. \u8bf7\u6c42\u89e3\u6790fixture\u540c\u6b65\u4e3aJava\u5206\u6790\u534f\u8bae11\uff1b\u65e710\u8bf7\u6c42\u4ecd\u660e\u786e\u62d2\u7edd\u3002",
-      "migrated_sha256": "a256f0bbc01adfc520c171eeb4f34393ccd4a08d9a4a5dbd1d3e7d48d0f2fa2e"
+      "reason": "Captured DTO defaults, exact numeric fields, compact input roles and verified baseline ownership. 请求解析fixture同步为Java分析协议11；旧10请求仍明确拒绝。 C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
+      "migrated_sha256": "e8f3a7ae9b09a433effa0c37eacb719b1f6800003f13cc8d3c19b71c00cb1284"
     },
     {
       "destination": "java-bridge/src/test/java/com/anatomist/framework/XmlResourceLimitTest.java",
       "origin": "codeana",
-      "reason": "Resource governance implementation and executable boundary regression. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002",
+      "reason": "Resource governance implementation and executable boundary regression. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。",
       "migrated_sha256": "844f034c74e9570ad8530f3f9ddb5080b3720cecd6ff8a4db3b79a7b142f6505"
     },
     {
@@ -3478,7 +3484,7 @@
     {
       "destination": "framework-spring/src/main/java/com/anatomist/core/XmlResourceBudget.java",
       "origin": "codeana",
-      "reason": "Resource governance implementation and executable boundary regression. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002",
+      "reason": "Resource governance implementation and executable boundary regression. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。",
       "migrated_sha256": "848e13393b2a1bfcdb18afc46a65e94ad898396b600dfca64561274f47af7a85"
     },
     {
@@ -3490,13 +3496,13 @@
     {
       "origin": "codeana",
       "destination": "analysis-core/src/main/java/com/anatomist/core/AnalysisContext.java",
-      "reason": "Shared task analysis resource ledger and cross-implementation fixtures; explicit context, no global state. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
+      "reason": "Shared task analysis resource ledger and cross-implementation fixtures; explicit context, no global state. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。 Java11生产请求必填grant/seed/deadline，明确用量已知状态，并在旧请求构造阶段拒绝。",
       "migrated_sha256": "727a9c1c0c5ce4c885fb5572121b11c22c4d37448cc507c628f38725dac80948"
     },
     {
       "origin": "codeana",
       "destination": "analysis-core/src/test/java/com/anatomist/core/AnalysisContextTest.java",
-      "reason": "Shared task analysis resource ledger and cross-implementation fixtures; explicit context, no global state. \u7edf\u4e00\u4efb\u52a1\u8d44\u6e90\u8d26\u672c\uff1a\u5c40\u90e8\u4f5c\u7528\u57df\u539f\u5b50\u9884\u7559\u3001\u7f13\u5b58\u51b7\u6696\u8bfb\u53d6\u4e0ecodec\u8ba1\u8d39\u3001\u6e90\u7801\u4fdd\u7559\u590d\u5236\u548c\u8bed\u4e49JSON\u4f20\u9012\u4e0a\u4e0b\u6587\u3002 Java11\u751f\u4ea7\u8bf7\u6c42\u5fc5\u586bgrant/seed/deadline\uff0c\u660e\u786e\u7528\u91cf\u5df2\u77e5\u72b6\u6001\uff0c\u5e76\u5728\u65e7\u8bf7\u6c42\u6784\u9020\u9636\u6bb5\u62d2\u7edd\u3002",
+      "reason": "Shared task analysis resource ledger and cross-implementation fixtures; explicit context, no global state. 统一任务资源账本：局部作用域原子预留、缓存冷暖读取与codec计费、源码保留复制和语义JSON传递上下文。 Java11生产请求必填grant/seed/deadline，明确用量已知状态，并在旧请求构造阶段拒绝。",
       "migrated_sha256": "e66ed8c45e8ec44331da504807e144a7535ceebf8a64419326ce8495ecc1330b"
     },
     {
@@ -3528,6 +3534,90 @@
       "origin": "codeana",
       "reason": "Shared task resource admission regression for extension metadata and Lombok overlays",
       "migrated_sha256": "056da64aff4d2eef5d0b6b5130f8171c26b2bde181c5b1b5179fcb436e530dae"
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaComment.java",
+      "migrated_sha256": "9ad515b615ed217a4f5b1f3c9ddc0004c74ee13c340991677220557fb119090f",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaCommentRelations.java",
+      "migrated_sha256": "f073d074b1b323b118e50f9860bd731bbe52570fdebd5ea85112c2b149f26b0a",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "analysis-core/src/test/java/com/anatomist/core/javac/JavacCommentLexicalTest.java",
+      "migrated_sha256": "b3602abf2f8cdd4e66b577b4ae0c3185f80405cc0e62e0255322251d3b697ac8",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "analysis-core/src/test/worker/com/anatomist/worker/CommentsProbe.java",
+      "migrated_sha256": "fe31ef221f6ad81c7f3927270155fa451096bd56521644299d058ea585881198",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "analysis-core/src/worker/java/com/anatomist/worker/WorkerComments.java",
+      "migrated_sha256": "508bcfc8b3fbbc8a18582ccb552e796b079d11efcd8c51a5b6057664eba484e5",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "java-bridge/src/test/java/com/anatomist/core/javac/JavacCommentModelIT.java",
+      "migrated_sha256": "804fe9ccd9d659e0c57207e5a5355af2eef712a1f875484a684426c93eb78af3",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "analysis-core/src/test/java/com/anatomist/core/javac/JavacCommentBudgetTest.java",
+      "migrated_sha256": "47c837ee664cf8fd6696892c503ffad252438eb861c247cbcf8a42480812c5e5",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "analysis-core/src/main/java/com/anatomist/extract/JavaCommentEvidence.java",
+      "migrated_sha256": "5b94a8377619d9780f7fb812fcb9b4497841ff7a8a9900d74f816ca58ecb732c",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java",
+      "migrated_sha256": "3de3f8714f75b5c3a1d319aaf627a002b79c8e02f0d08823ce25d46563a5c53e",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnatomistRows.java",
+      "migrated_sha256": "356865d0e34bcf9aab6c47affdfc15398a512785c2e92991ec8542836acf3696",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "java-bridge/src/main/java/dev/codeana/graph/GraphRecords.java",
+      "migrated_sha256": "a4d092d7a025eacd2333fda9db598edaaa9d1be5059b5d7e92fee456ac9b6d81",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "java-bridge/src/test/java/dev/codeana/adapter/AnalysisSessionTest.java",
+      "migrated_sha256": "28c328e6156950cf1d75b24c38cb02e97582af0509361036d7591976ae981b8b",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "jvm-runner/src/main/java/dev/codeana/runner/JvmRunner.java",
+      "migrated_sha256": "c1f3f73f609fd10ce8de3bcaacdfba6d957a89250c4455994d1b06310eac7279",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "native-bridge/src/main/java/dev/codeana/bridge/NativeBridge.java",
+      "migrated_sha256": "e0ea5a85be102707559209c9ef1d6e3a5b51d141c16f419822fdc1e272d29674",
+      "origin": "codeana",
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
     }
   ],
   "supplemental_references": [

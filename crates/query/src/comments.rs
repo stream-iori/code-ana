@@ -1,0 +1,322 @@
+//! Comment search uses only the narrow evidence port and the fixed revision source reader.
+use super::*;
+
+pub(super) fn run(
+    graph: &dyn GraphReader,
+    req: &Request,
+    read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+) -> Result<Output> {
+    let selected = selector_filter(graph, req)?;
+    let mut evidence = selection_evidence(graph, req);
+    let mut coverage_filter = scope_filter(req);
+    coverage_filter.kinds = vec![FactKind::Coverage];
+    let coverage = graph.select(&coverage_filter)?;
+    graph.charge(
+        coverage.len() as u64 * (coverage.len().checked_ilog2().unwrap_or(0) as u64 + 1),
+        64 * coverage.len() as u64,
+    )?;
+    let complete = coverage
+        .iter()
+        .filter(|c| {
+            c.attributes
+                .capability
+                .as_ref()
+                .is_some_and(|value| value == "COMMENTS")
+                && c.status == "complete"
+        })
+        .map(|c| (c.source.as_str(), c.owner.world.as_str()))
+        .collect::<BTreeSet<_>>();
+    for source in &graph.manifest().files {
+        graph.charge(
+            1 + complete.len().checked_ilog2().unwrap_or(0) as u64
+                + selected.sources.len().checked_ilog2().unwrap_or(0) as u64,
+            0,
+        )?;
+        if source.auxiliary
+            || source.language.is_empty()
+            || (!req.module.is_empty() && source.module != req.module)
+            || (!req.world.is_empty() && source.world != req.world)
+            || (!req.scope.is_empty() && req.scope != "ALL" && source.scope != req.scope)
+            || selected
+                .source
+                .as_ref()
+                .is_some_and(|path| path != &source.path)
+            || (!selected.sources.is_empty()
+                && selected.sources.binary_search(&source.path).is_err())
+        {
+            continue;
+        }
+        if !complete.contains(&(source.path.as_str(), source.world.as_str())) {
+            graph.charge(1, 256 + (source.world.len() + source.path.len()) as u64 * 2)?;
+            evidence.semantic = false;
+            evidence.reasons.push(format!(
+                "comment_coverage_missing:{}:{}",
+                source.world, source.path
+            ));
+        }
+    }
+    let reader = graph
+        .comment_reader()
+        .ok_or_else(|| DomainError::new(ErrorCode::UnsupportedCapability, "comments"))?;
+    let admit = |work, bytes| reader.charge(work, bytes);
+    let terms = codeana_comment_search::query_terms(&req.selector, &admit)?;
+    let filter = CommentFilter {
+        module: req.module.clone(),
+        scope: if req.scope == "ALL" {
+            String::new()
+        } else {
+            req.scope.clone()
+        },
+        world: req.world.clone().into(),
+        paths: if let Some(path) = selected.source.as_ref() {
+            vec![path.clone()]
+        } else {
+            selected.sources.clone()
+        },
+    };
+    let context = CommentContext {
+        before: req.context_before.unwrap_or(5),
+        after: req.context_after.unwrap_or(5),
+    }
+    .validate()?;
+    let mut records = Vec::new();
+    let mut after = None;
+    loop {
+        let batch = reader.scan_comments(&terms, &filter, after.as_ref(), 100)?;
+        let complete = batch.complete;
+        let stopped = batch.resource_limit.is_some();
+        for comment in batch.records {
+            let key = CommentOrderKey {
+                source_file: comment.source_file.clone(),
+                byte_start: comment.range.byte_start,
+                byte_end: comment.range.byte_end,
+                world: comment.world.clone(),
+                id: comment.id.clone(),
+            };
+            ensure!(
+                after.as_ref().is_none_or(|previous| previous < &key),
+                DomainError::new(ErrorCode::UnorderedScanResult, "comments")
+            );
+            after = Some(key);
+            let matched = match codeana_comment_search::match_body(&comment.body, &terms, &admit) {
+                Ok(Some(hits)) => hits,
+                Ok(None) => continue,
+                Err(error) if error.code == ErrorCode::ComputationLimit => break,
+                Err(error) => return Err(error.into()),
+            };
+            if matched.is_empty() {
+                continue;
+            }
+            let materialized = (|| -> Result<Record> {
+                let source = reader
+                    .manifest()
+                    .files
+                    .iter()
+                    .find(|s| {
+                        s.path == comment.source_file
+                            && s.hash == comment.source_hash
+                            && s.world == comment.world
+                            && s.module == comment.module
+                            && s.scope == comment.scope
+                    })
+                    .ok_or_else(|| {
+                        DomainError::new(ErrorCode::SourceHashMismatch, "comment owner")
+                    })?;
+                reader.charge(source.size.saturating_add(1), source.size.saturating_mul(3))?;
+                let bytes = read_source(source)?;
+                ensure!(
+                    hash(&bytes) == source.hash,
+                    DomainError::new(ErrorCode::SourceHashMismatch, "comment source")
+                );
+                let text = std::str::from_utf8(&bytes)?;
+                let hits = codeana_comment_search::map_hits(
+                    &comment.body,
+                    &comment.body_map,
+                    text,
+                    &matched,
+                    &admit,
+                )?;
+                let links = reader.comment_links(std::slice::from_ref(&comment.id))?;
+                let span = window(text, &comment.range, context, &admit)?;
+                let snippet = &text[span.start as usize..span.end as usize];
+                // Reserve retained text plus worst-case escaped JSON in the frozen output.
+                reader.charge(
+                    1,
+                    (snippet.len() as u64).saturating_mul(8).saturating_add(256),
+                )?;
+                Ok(Record::Comment(Box::new(CommentMatch {
+                    comment,
+                    hits,
+                    links,
+                    source: SourceSnippet {
+                        path: source.path.clone(),
+                        hash: source.hash.clone(),
+                        span,
+                        text: snippet.into(),
+                    },
+                })))
+            })();
+            match materialized {
+                Ok(record) => records.push(record),
+                Err(error)
+                    if error
+                        .downcast_ref::<DomainError>()
+                        .is_some_and(|e| e.code == ErrorCode::ComputationLimit) =>
+                {
+                    break;
+                }
+                Err(error) => return Err(error),
+            }
+            if records.len() >= MAX_FACTS {
+                evidence.enumeration = false;
+                evidence.limits.push("records".into());
+                break;
+            }
+        }
+        if complete || stopped || reader.resource_exhausted() || records.len() >= MAX_FACTS {
+            break;
+        }
+    }
+    Ok(Output {
+        revision: reader.revision().id.to_string(),
+        producer: reader.revision().producer.clone(),
+        records,
+        evidence,
+        cursor: String::new(),
+    })
+}
+
+fn window(
+    text: &str,
+    range: &CommentRange,
+    context: CommentContext,
+    admit: &dyn Fn(u64, u64) -> Result<(), DomainError>,
+) -> Result<Span> {
+    let first = range.begin_line.saturating_sub(context.before).max(1);
+    let last = range.end_line.saturating_add(context.after);
+    let mut line = 1u32;
+    let mut start = 0;
+    let mut end = text.len();
+    let mut chars = text.char_indices().peekable();
+    while let Some((offset, ch)) = chars.next() {
+        admit(1, 0)?;
+        if ch == '\n' || ch == '\r' {
+            let mut next = offset + ch.len_utf8();
+            if ch == '\r' && chars.peek().is_some_and(|(_, c)| *c == '\n') {
+                chars.next();
+                next += 1;
+            }
+            if line < first {
+                start = next;
+            }
+            if line == last {
+                end = next;
+                break;
+            }
+            line = line.checked_add(1).ok_or_else(|| {
+                DomainError::new(ErrorCode::CommentSourceMapInvalid, "line overflow")
+            })?;
+        }
+    }
+    Ok(Span {
+        start: start as u64,
+        end: end as u64,
+    })
+}
+
+pub(super) fn search_code(
+    graph: &dyn GraphReader,
+    req: &Request,
+    read_source: &dyn Fn(&SourceUnit) -> Result<Vec<u8>>,
+) -> Result<Output> {
+    let mut comments = run(graph, req, read_source)?;
+    comments.evidence.merge(&coverage(graph, req)?);
+    let mut records = BTreeMap::<FactId, Record>::new();
+    let filter = selector_filter(graph, req)?;
+    if req.search_in == SearchIn::NamesComments {
+        for fact in graph.search_symbols_filtered(&req.selector, &filter)? {
+            records.insert(fact.id.clone(), fact.into());
+        }
+    }
+    for record in comments.records {
+        let Record::Comment(hit) = record else {
+            unreachable!()
+        };
+        let ids = hit
+            .links
+            .iter()
+            .filter(|l| {
+                matches!(
+                    l.relation,
+                    CommentRelation::Documents | CommentRelation::EnclosingCallable
+                )
+            })
+            .filter_map(|l| l.declaration.as_ref())
+            .cloned()
+            .collect::<BTreeSet<_>>();
+        for id in ids {
+            let mut selected = filter.clone();
+            selected.ids = vec![id.to_string()];
+            for fact in graph.select(&selected)? {
+                if !fact.is_public_entity()
+                    || fact.source != hit.comment.source_file
+                    || fact.owner.world != hit.comment.world
+                {
+                    continue;
+                }
+                let copies = hit.comment.body.len() as u64
+                    + hit.source.text.len() as u64
+                    + hit.comment.body_map.len() as u64 * 64
+                    + hit.hits.len() as u64 * 128
+                    + hit.links.len() as u64 * 256;
+                graph.charge(1, copies.saturating_mul(2).saturating_add(512))?;
+                let row = records
+                    .entry(fact.id.clone())
+                    .or_insert_with(|| fact.into());
+                if let Record::Fact(row) = row {
+                    row.comment_hits.push((*hit).clone());
+                }
+            }
+        }
+    }
+    Ok(Output {
+        records: records.into_values().collect(),
+        ..comments
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn context_windows_keep_explicit_zero_utf8_and_crlf() {
+        let source = "一\r\n//中😀\r\n末\r尾";
+        let range = CommentRange {
+            byte_start: 5,
+            byte_end: 14,
+            begin_line: 2,
+            begin_column: 1,
+            end_line: 2,
+            end_column: 6,
+        };
+        let no = window(
+            source,
+            &range,
+            CommentContext {
+                before: 0,
+                after: 0,
+            },
+            &|_, _| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(&source[no.start as usize..no.end as usize], "//中😀\r\n");
+        let all = window(source, &range, CommentContext::default(), &|_, _| Ok(())).unwrap();
+        assert_eq!(
+            all,
+            Span {
+                start: 0,
+                end: source.len() as u64
+            }
+        );
+    }
+}

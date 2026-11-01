@@ -1,6 +1,8 @@
 //! The only layer allowed to hold Pyrefly state and compiler objects.
+mod comments;
 use anyhow::{Context, Result, ensure};
 use codeana_model::{AnalysisContext, AnalysisFailure};
+pub use comments::Comment;
 use pyrefly::state::{load::FileContents, lsp::FindPreference, require::Require, state::State};
 use pyrefly_build::{handle::Handle, source_db::map_db::MapDatabase};
 use pyrefly_config::{base::InferReturnTypes, config::ConfigFile, finder::ConfigFinder};
@@ -71,6 +73,8 @@ pub struct Reference {
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Analysis {
+    pub comments: Vec<Comment>,
+    pub comment_gaps: BTreeMap<String, BTreeSet<String>>,
     pub declarations: Vec<Declaration>,
     pub calls: Vec<Call>,
     pub references: Vec<Reference>,
@@ -196,6 +200,7 @@ fn call_targets(
 }
 
 struct AstFacts<'a> {
+    bodies: Vec<&'a [Stmt]>,
     statements: Vec<&'a Stmt>,
     expressions: Vec<&'a Expr>,
     bindings: Vec<(&'a str, &'a str, ruff_text_size::TextRange)>,
@@ -225,6 +230,12 @@ impl AstQueue<'_, '_> {
     }
 }
 impl<'a> SourceOrderVisitor<'a> for AstQueue<'a, '_> {
+    fn visit_body(&mut self, body: &'a [Stmt]) {
+        if self.reserve(1, 32) {
+            self.facts.bodies.push(body);
+        }
+        source_order::walk_body(self, body);
+    }
     fn enter_node(&mut self, node: AnyNodeRef<'a>) -> TraversalSignal {
         if self.failure.is_none() {
             let next = self.depth.saturating_add(1);
@@ -291,6 +302,7 @@ fn ast_facts<'a>(body: &'a [Stmt], budget: &AnalysisContext) -> Result<AstFacts<
     let mut queue = AstQueue {
         pending: vec![],
         facts: AstFacts {
+            bodies: vec![],
             statements: vec![],
             expressions: vec![],
             bindings: vec![],
@@ -513,6 +525,9 @@ fn analyze_inner(
         check()?;
         let ast = transaction.get_ast(handle).context("PYTHON_AST_MISSING")?;
         let facts = ast_facts(&ast.body, budget)?;
+        let (comments, gaps) = comments::collect(module, &ast.body, &facts, budget, check)?;
+        output.comments.extend(comments);
+        output.comment_gaps.insert(module.path.clone(), gaps);
         budget.charge(
             1,
             1,

@@ -324,7 +324,7 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
                     unit.declarations(),
                     inventory,
                     unit.sourceHash(),
-                    new JavaExtensionData(generated, metadata, diagnostics, counters,analysis()));
+                    new JavaExtensionData(generated, metadata, diagnostics, counters,analysis()), unit.comments());
         }
 
         JavaDeclaration valueModifiers(JavaDeclaration owner) {

@@ -80,6 +80,14 @@ public final class GraphRecords {
      * <code>ANALYSIS_DEPENDENCY = 16;</code>
      */
     ANALYSIS_DEPENDENCY(16),
+    /**
+     * <code>COMMENT = 17;</code>
+     */
+    COMMENT(17),
+    /**
+     * <code>COMMENT_LINK = 18;</code>
+     */
+    COMMENT_LINK(18),
     UNRECOGNIZED(-1),
     ;
 
@@ -147,6 +155,14 @@ public final class GraphRecords {
      * <code>ANALYSIS_DEPENDENCY = 16;</code>
      */
     public static final int ANALYSIS_DEPENDENCY_VALUE = 16;
+    /**
+     * <code>COMMENT = 17;</code>
+     */
+    public static final int COMMENT_VALUE = 17;
+    /**
+     * <code>COMMENT_LINK = 18;</code>
+     */
+    public static final int COMMENT_LINK_VALUE = 18;
 
 
     @java.lang.Override
@@ -186,6 +202,8 @@ public final class GraphRecords {
         case 14: return PROJECT_META;
         case 15: return SOURCE_STATE;
         case 16: return ANALYSIS_DEPENDENCY;
+        case 17: return COMMENT;
+        case 18: return COMMENT_LINK;
         default: return null;
       }
     }
@@ -839,7 +857,8 @@ public final class GraphRecords {
   }
   /**
    * <pre>
-   * World is explicit for Rust. Empty preserves Java's module/scope-derived identity.
+   * Comment facts/links and Rust/Python facts require captured world.
+   * Java owned nodes carry captured world; legacy unowned rows may remain empty.
    * </pre>
    *
    * Protobuf type {@code codeana.graph.v1.Row}
@@ -1126,7 +1145,8 @@ public final class GraphRecords {
 
     /**
      * <pre>
-     * World is explicit for Rust. Empty preserves Java's module/scope-derived identity.
+     * Comment facts/links and Rust/Python facts require captured world.
+     * Java owned nodes carry captured world; legacy unowned rows may remain empty.
      * </pre>
      *
      * Protobuf type {@code codeana.graph.v1.Row}

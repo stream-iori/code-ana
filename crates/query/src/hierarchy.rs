@@ -170,6 +170,7 @@ pub(super) fn runtime(
                     }
                     let id = fact.id.to_string();
                     let record = Record::Fact(Box::new(FactRecord {
+                        comment_hits: Vec::new(),
                         fact,
                         depth: None,
                         runtime_implementation: Some(RuntimeImplementation {
@@ -269,6 +270,7 @@ pub(super) fn relations(
             }
             let id = edge.id.to_string();
             let record = Record::Fact(Box::new(FactRecord {
+                comment_hits: Vec::new(),
                 fact: edge,
                 depth: req.transitive.then_some(depth),
                 runtime_implementation: None,

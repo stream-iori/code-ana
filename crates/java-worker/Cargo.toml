@@ -15,7 +15,7 @@ prost.workspace = true
 libc.workspace = true
 codeana-model = { path = "../model" }
 codeana-contracts = { path = "../contracts" }
-codeana-storage = { path = "../storage" }
+codeana-derived-cache = { path = "../derived-cache" }
 tokio.workspace = true
 clap.workspace = true
 tempfile.workspace = true

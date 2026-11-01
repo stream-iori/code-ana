@@ -351,7 +351,7 @@ fn dependency_diagnostics_are_published_without_poisoning_unrelated_files() -> a
     let count = |sql: &str| db.query_row(sql, [], |r| r.get::<_, i64>(0));
     assert_eq!(
         count(
-            "SELECT count(*) FROM analysis_coverage WHERE source_file='unrelated.py' AND status='complete'"
+            "SELECT count(*) FROM analysis_coverage WHERE source_file='unrelated.py' AND capability='AGGREGATE' AND status='complete'"
         )?,
         2
     );

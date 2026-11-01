@@ -46,6 +46,7 @@ enum Command {
     Doctor(QueryArgs),
     Resolve(QueryArgs),
     SearchCode(QueryArgs),
+    SearchComments(QueryArgs),
     Structure(QueryArgs),
     #[command(
         about = "Inspect static call relations",
@@ -156,6 +157,12 @@ struct QueryArgs {
     ignore_case: bool,
     #[arg(long, default_value_t = 0)]
     context: u32,
+    #[arg(long = "in", default_value = "names", value_parser = ["names", "comments", "names,comments"])]
+    search_in: String,
+    #[arg(long)]
+    context_before: Option<u32>,
+    #[arg(long)]
+    context_after: Option<u32>,
     #[arg(default_value = "")]
     selector: String,
     #[arg(long, default_value = "")]
@@ -579,6 +586,7 @@ async fn run() -> Result<i32> {
         Command::Doctor(a) => ("doctor", a),
         Command::Resolve(a) => ("resolve", a),
         Command::SearchCode(a) => ("search-code", a),
+        Command::SearchComments(a) => ("search-comments", a),
         Command::Structure(a) => ("structure", a),
         Command::Calls(a) => ("calls", a),
         Command::CallSites(a) => ("call-sites", a),
@@ -628,6 +636,9 @@ async fn run() -> Result<i32> {
         text_regex: a.regex,
         text_ignore_case: a.ignore_case,
         text_context: a.context,
+        search_in: a.search_in.parse()?,
+        context_before: a.context_before,
+        context_after: a.context_after,
         request_id: a.request_id.unwrap_or_else(|| new_id("request")).into(),
         project: codeana_application::project_path(&cli.project)?
             .to_str()
@@ -794,6 +805,32 @@ async fn run() -> Result<i32> {
             )
         );
     }
+    if req.operation == codeana_model::Operation::SearchComments
+        || req.search_in != codeana_model::SearchIn::Names
+        || req.context_before.is_some()
+        || req.context_after.is_some()
+        || req
+            .stages
+            .iter()
+            .any(|s| s.operation == codeana_model::Operation::SearchComments)
+    {
+        let hello = client
+            .handshake(authenticated(
+                p::HandshakeRequest {
+                    protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
+                },
+                &e,
+            )?)
+            .await?
+            .into_inner();
+        ensure!(
+            hello.capabilities.iter().any(|c| c == "comment-search-v1"),
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::UnsupportedCapability,
+                "daemon comment-search-v1"
+            )
+        );
+    }
     if req.text_regex || req.text_ignore_case || req.text_context > 0 {
         let hello = client
             .handshake(authenticated(
@@ -840,6 +877,7 @@ fn codeana_query_operation(operation: &str) -> bool {
         operation,
         "resolve"
             | "search-code"
+            | "search-comments"
             | "structure"
             | "calls"
             | "call-sites"

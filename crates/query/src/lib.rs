@@ -2,6 +2,7 @@
 use anyhow::{Result, bail, ensure};
 mod annotations;
 mod calls;
+mod comments;
 mod dispatch;
 mod hierarchy;
 mod navigation;
@@ -28,6 +29,7 @@ fn select(r: &dyn GraphAccess, f: FactFilter) -> Result<Vec<Fact>> {
 pub const OPERATIONS: &[&str] = &[
     "resolve",
     "search-code",
+    "search-comments",
     "structure",
     "calls",
     "call-sites",
@@ -125,6 +127,17 @@ fn hierarchy_options(
     Ok(())
 }
 fn preflight_query(request: &Request) -> Result<()> {
+    CommentContext {
+        before: request.context_before.unwrap_or(5),
+        after: request.context_after.unwrap_or(5),
+    }
+    .validate()?;
+    ensure!(
+        request.search_in == SearchIn::Names
+            || request.operation == Operation::SearchCode
+            || request.operation == Operation::Pipeline,
+        DomainError::new(ErrorCode::CommentSearchIn, "requires search-code")
+    );
     dispatch::options(request.operation, request.algorithm, request.analysis_world)?;
     hierarchy_options(
         request.operation,
@@ -297,7 +310,7 @@ fn preflight_query(request: &Request) -> Result<()> {
                 ensure!(
                     !matches!(
                         s.operation.as_str(),
-                        "search-code" | "overview" | "search-text"
+                        "search-code" | "search-comments" | "overview" | "search-text"
                     ),
                     codeana_model::DomainError::new(
                         codeana_model::ErrorCode::PipelineStageDoesNotConsumeInput,
@@ -876,6 +889,16 @@ fn run_query_inner(
         })?;
         output.records = records;
         return Ok(output);
+    }
+    if req.operation == Operation::SearchComments
+        || req.operation == Operation::SearchCode && req.search_in != SearchIn::Names
+    {
+        preflight_query(req)?;
+        return if req.operation == Operation::SearchComments {
+            comments::run(r, req, read_source)
+        } else {
+            comments::search_code(r, req, read_source)
+        };
     }
     if req.operation == codeana_model::Operation::SearchCode {
         let mut records = Vec::new();

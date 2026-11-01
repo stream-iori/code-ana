@@ -23,6 +23,9 @@ pub struct BoundedRead<T> {
     pub resource_limit: Option<ResourceLimit>,
 }
 pub trait GraphAccess: SourceContext {
+    fn comment_reader(&self) -> Option<&dyn CommentReader> {
+        None
+    }
     fn scan_bounded(
         &self,
         filter: &FactFilter,
@@ -256,4 +259,17 @@ impl SourceContext for BudgetedSource<'_> {
     fn resource_budget(&self) -> Option<&ResourceBudget> {
         Some(self.budget)
     }
+}
+
+/// Comment algorithms consume a fixed revision through this port, never a Store or Engine.
+/// Implementors must use the SourceContext budget for candidate enumeration and link copies.
+pub trait CommentReader: SourceContext {
+    fn scan_comments(
+        &self,
+        terms: &[String],
+        filter: &CommentFilter,
+        after: Option<&CommentOrderKey>,
+        limit: usize,
+    ) -> Result<BoundedRead<CommentFact>, DomainError>;
+    fn comment_links(&self, ids: &[CommentId]) -> Result<Vec<CommentLink>, DomainError>;
 }

@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "crates/contracts",
+    "crates/derived-cache",
+    "crates/comment-search",
     "crates/cli",
     "crates/daemon",
     "crates/java-worker",
@@ -30,14 +32,14 @@ tonic-prost = "0.14.6"
 prost = "0.14.4"
 
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4", "serde"] }
 thiserror = "2"
 anyhow = "1"
 toml = "0.9"
 clap = { version = "4", features = ["derive"] }
-rusqlite = { version = "0.40", features = ["bundled", "backup"] }
+rusqlite = { version = "0.40", features = ["bundled", "backup", "hooks"] }
 libc = "0.2"
 tokio-stream = { version = "0.1", features = ["net", "sync"] }
 tokio-util = { version = "0.7", features = ["rt"] }

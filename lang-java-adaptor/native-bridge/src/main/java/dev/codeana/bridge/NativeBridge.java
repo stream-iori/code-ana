@@ -24,11 +24,11 @@ public final class NativeBridge {
     // Reserve terminal responses before analysis. An exhausted heap must not allocate
     // a diagnostic or leave the Rust host polling an already terminated thread.
     private static final byte[] HEAP_FAILURE =
-            "{\"version\":11,\"usage_known\":false,\"error\":\"NATIVE_HEAP_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
+            "{\"version\":12,\"usage_known\":false,\"error\":\"NATIVE_HEAP_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
     private static final byte[] STACK_FAILURE =
-            "{\"version\":11,\"usage_known\":false,\"error\":\"NATIVE_STACK_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
+            "{\"version\":12,\"usage_known\":false,\"error\":\"NATIVE_STACK_EXHAUSTED\"}".getBytes(StandardCharsets.UTF_8);
     private static final byte[] FATAL_FAILURE =
-            "{\"version\":11,\"usage_known\":false,\"error\":\"NATIVE_ANALYSIS_FATAL\"}".getBytes(StandardCharsets.UTF_8);
+            "{\"version\":12,\"usage_known\":false,\"error\":\"NATIVE_ANALYSIS_FATAL\"}".getBytes(StandardCharsets.UTF_8);
 
     static String errorDetails(Throwable failure) {
         StringBuilder text = new StringBuilder();
@@ -78,7 +78,7 @@ public final class NativeBridge {
                 Map<String, Object> request = Json.map(Json.parse(input.toByteArray()));
                 input.reset();
                 long version = Json.number(request, "version");
-                if (version != 11) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+                if (version != 12) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
                 request.put("defer_fact_dedup", true);
                 AnalysisLimits limits = new AnalysisLimits(request);
                 resources = com.anatomist.core.AnalysisContext.fromRequest(request);
@@ -109,7 +109,7 @@ public final class NativeBridge {
                 String error = cancelled ? "CANCELLED" : errorDetails(e);
                 if (error.length() > 8192) error = error.substring(0, 8192);
                 errorOutput =
-                        Json.write(resources == null ? Json.object("version",11,"usage_known",false,"error",error) : Json.object("version",11,"usage_known",true,"error", error, "analysis_usage", resources.receipt())).getBytes(StandardCharsets.UTF_8);
+                        Json.write(resources == null ? Json.object("version",12,"usage_known",false,"error",error) : Json.object("version",12,"usage_known",true,"error", error, "analysis_usage", resources.receipt())).getBytes(StandardCharsets.UTF_8);
                 outputLength = errorOutput.length;
             } catch (Error fatal) {
                 errorOutput =

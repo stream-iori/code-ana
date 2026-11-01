@@ -16,7 +16,8 @@ public record JavaUnit(
         boolean declarations,
         List<JavaDeclaration> declarationInventory,
         String sourceHash,
-        JavaExtensionData extensions) {
+        JavaExtensionData extensions,
+        List<JavaComment> comments) {
     public boolean hasProcessorEvidence() {
         return processing == JavaProcessingState.LOMBOK;
     }
@@ -25,6 +26,7 @@ public record JavaUnit(
         java.util.Objects.requireNonNull(sourceHash);
         java.util.Objects.requireNonNull(processing);
         java.util.Objects.requireNonNull(extensions);
+        comments = List.copyOf(comments);
         bindings = Collections.unmodifiableMap(new LinkedHashMap<>(bindings));
         declarationInventory = List.copyOf(declarationInventory);
         declarationInventory.forEach(declaration -> declaration.validate(types));
@@ -36,6 +38,12 @@ public record JavaUnit(
                     types.validateReference(binding.declaredType());
                     types.validateReference(binding.selectedType());
                 });
+    }
+
+    public JavaUnit(Path path, JavaNode tree, JavaProcessingState processing,
+                    Map<Integer, JavaBinding> bindings, JavaTypes types, boolean declarations,
+                    List<JavaDeclaration> declarationInventory, String sourceHash, JavaExtensionData extensions) {
+        this(path, tree, processing, bindings, types, declarations, declarationInventory, sourceHash, extensions, List.of());
     }
 
     public JavaUnit(

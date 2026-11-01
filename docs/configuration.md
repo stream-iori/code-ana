@@ -6,6 +6,8 @@
 
 状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与捕获已实现；Rust 语言分析使用外部输入清单和独立 rust-analyzer worker，Java 8 支持显式 plain 和外部 Maven metadata，现行边界见 [当前实现](current-state.md) 和 [Java worker](modules/java-worker.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；Rust 最小可运行配置与导出命令见 [Rust worker](modules/rust-worker.md)。
 
+配置实现按 resolution（解析/默认/校验）、discovery（语言输入与模块）、capture（冻结源码/控制文件）、execution（执行预算）拆分；现有导出函数和 TOML 形状保持。注释上下文领域类型已定义，`[query.comments]` 尚未加入配置 schema。
+
 ## 1. 配置分层
 
 ```text
@@ -429,4 +431,13 @@ max_depth = 256
 
 扣除冻结输入准入用量后，按实际语言Java/Rust/Python平均静态分片，余数顺序固定；每语言host取向上取整的1/4，其余worker额度再按稳定实例ID拆分，不借用其他语言或实例的余量。索引硬超限返回ANALYSIS_RESOURCE_LIMIT、整次不发布，旧head可读；超时与取消分别保留TIMEOUT/CANCELLED。
 
-三语言主要执行入口已接入累计回执；Java平台限制可比任务限额更严格，回执会记录实际局部拒绝，不能提高平台限额来让任务通过。Discover、未变复用与Java局部作用域已接入；当前严格worker22/Java11，帧分配前准入和剩余codec仍待收口；不能将这里的配置与已通过fixture扩大为所有内部运算和完整分发均已验收。
+三语言主要执行入口已接入累计回执；Java平台限制可比任务限额更严格，回执会记录实际局部拒绝，不能提高平台限额来让任务通过。Discover、未变复用与Java局部作用域已接入；当前严格worker22/Java11；帧分配前准入、codec 与本机 fixture 分发验证已完成对应轮次，证据及正式边界以 current-state 为准，不能扩大为所有内部运算或跨平台正式验收。
+
+
+注释查询源码已接入以下项目配置（C1 产品验收进行中）；每项为 0..=100，省略时为 5，CLI --context-before/--context-after 优先。展示配置不影响语义 profile，冻结页保留首次解析的实际值。
+
+```toml
+[query.comments]
+context_before = 5
+context_after = 5
+```

@@ -78,6 +78,7 @@ pub trait IndexRepository: Clone + Send + Sync + 'static {
     ) -> Result<Revision>;
 }
 pub struct StageRequest<'a> {
+    pub context: Option<&'a GraphStagingContext>,
     pub revision: Revision,
     pub header: &'a AnalysisHeader,
     pub expected: &'a str,
@@ -87,10 +88,18 @@ pub struct StageRequest<'a> {
 #[derive(Clone)]
 pub(super) struct IndexService<R: IndexRepository> {
     repository: R,
+    context: Option<GraphStagingContext>,
 }
 impl<R: IndexRepository> IndexService<R> {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            context: None,
+        }
+    }
+    pub fn with_context(mut self, context: Option<GraphStagingContext>) -> Self {
+        self.context = context;
+        self
     }
     pub fn home(&self) -> &Path {
         self.repository.home()
@@ -118,6 +127,7 @@ impl<R: IndexRepository> IndexService<R> {
     ) -> Result<R::Candidate> {
         self.repository.stage(
             StageRequest {
+                context: self.context.as_ref(),
                 revision,
                 header,
                 expected,
@@ -176,13 +186,14 @@ pub(super) mod storage {
             request: StageRequest<'_>,
             records: impl Iterator<Item = Result<Row>>,
         ) -> Result<StagedCandidate> {
-            self.0.stage_graph_records(
+            self.0.stage_graph_records_with_context(
                 request.revision,
                 request.header,
                 records,
                 request.expected,
                 request.cancellation,
                 request.check_directory,
+                request.context,
             )
         }
         fn persist_and_publish(

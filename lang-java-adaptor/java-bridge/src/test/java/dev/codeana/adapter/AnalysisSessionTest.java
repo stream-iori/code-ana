@@ -62,7 +62,7 @@ class AnalysisSessionTest {
                 "analysis_usage",Json.object("work",0L,"nodes",0L,"payload_bytes",0L,"max_depth",0),
                 "deadline_ms",0L,
                 "version",
-                11,
+                12,
                 "scratch",
                 scratch.toString(),
                 "java_home",
@@ -132,6 +132,51 @@ class AnalysisSessionTest {
         Json.map(Json.list(context.get("sources")).getFirst()).put("hash","wrong");
         try(var session=new AnalysisSession(req)){assertThrows(java.io.IOException.class,session::analyze);}
     }
+    @Test void commentRowsKeepUtf8BodyMapsAndExactPublishedWorldReferences() throws Exception {
+        String source = "/** 库存😀HTTPServer2 */\r\nclass A {\r\n void run() { // 调用库存\r\n  System.out.println(1); // 完成\r\n }\r\n} // 孤立";
+        var rows = run(request(source));
+        var comments = rows.stream().filter(r -> r.getTable() == dev.codeana.graph.GraphRecords.Table.COMMENT).toList();
+        assertEquals(4, comments.size());
+        var links = rows.stream().filter(r -> r.getTable() == dev.codeana.graph.GraphRecords.Table.COMMENT_LINK).toList();
+        var nodes = rows.stream().filter(r -> r.getTable() == dev.codeana.graph.GraphRecords.Table.NODE).toList();
+        var bytes = source.getBytes(StandardCharsets.UTF_8);
+        for (var comment : comments) {
+            assertEquals(18, comment.getCellsCount());
+            assertEquals("main", comment.getWorld());
+            assertEquals("src/A.java", text(comment, 1));
+            assertEquals(Json.sha(bytes), text(comment, 2));
+            int start = Math.toIntExact(comment.getCells(9).getInteger());
+            int end = Math.toIntExact(comment.getCells(10).getInteger());
+            assertTrue(new String(bytes, start, end - start, StandardCharsets.UTF_8).startsWith("/"));
+            String expected = "comment_" + Json.sha(Json.write(List.of(text(comment, 7), "java", ".", "MAIN", "main",
+                    "src/A.java", Json.sha(bytes), Integer.toString(start), Integer.toString(end), text(comment, 8)))
+                    .getBytes(StandardCharsets.UTF_8));
+            assertEquals(expected, text(comment, 0));
+            int previous = 0;
+            var bodyBytes = text(comment, 15).getBytes(StandardCharsets.UTF_8);
+            for (Object raw : Json.list(com.anatomist.json.Json.parseTree(text(comment, 16)))) {
+                var segment = Json.map(raw);
+                assertEquals(previous, Json.number(segment, "body_start"));
+                previous = Math.toIntExact(Json.number(segment, "body_end"));
+                int a = Math.toIntExact(Json.number(segment, "source_start"));
+                int b = Math.toIntExact(Json.number(segment, "source_end"));
+                assertTrue(a >= start && b <= end);
+                assertArrayEquals(Arrays.copyOfRange(bodyBytes, Math.toIntExact(Json.number(segment, "body_start")), previous),
+                        Arrays.copyOfRange(bytes, a, b));
+            }
+            assertEquals(bodyBytes.length, previous);
+        }
+        assertTrue(links.stream().anyMatch(l -> text(l, 1).equals("documents") && text(l, 2).equals("java-core::.::MAIN::A")));
+        assertTrue(links.stream().anyMatch(l -> text(l, 1).equals("enclosing_callable") && text(l, 2).equals("java-core::.::MAIN::A#run()")));
+        for (var link : links) {
+            assertEquals(14, link.getCellsCount());
+            assertEquals("main", link.getWorld());
+            if (link.getCells(2).hasText()) assertTrue(nodes.stream().anyMatch(n -> text(n, 0).equals(text(link, 2)) && n.getWorld().equals(link.getWorld())));
+        }
+        String orphan = text(comments.getLast(), 0);
+        assertTrue(links.stream().noneMatch(l -> text(l, 0).equals(orphan)));
+    }
+
     @Test void oldRequestVersionIsExplicitlyRejected() throws Exception {
         var req=request("class A {}");req.put("version",10);
         assertThrows(IllegalArgumentException.class,()->new AnalysisSession(req));

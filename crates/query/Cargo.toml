@@ -8,6 +8,7 @@ rust-version.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true
+codeana-comment-search = { path = "../comment-search" }
 codeana-model = { path = "../model" }
 globset.workspace = true
 regex.workspace = true

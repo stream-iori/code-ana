@@ -126,12 +126,28 @@ pub struct PreparedUnit {
 pub struct InputCatalog {
     pub schema_version: u32,
     pub config_sha256: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preparation_sha256: Option<String>,
     pub units: Vec<PreparedUnit>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectiveUnit {
     pub prepared: PreparedUnit,
     pub effective: Option<Box<Effective>>,
+}
+
+/// Bind the original config receipt to preparation policy while allowing comment
+/// presentation defaults to change. Legacy catalogs retain their exact-byte check.
+pub fn preparation_fingerprint(config: &ProjectConfig, original_hash: &str) -> String {
+    let mut policy = config.clone();
+    policy.query.comments = Default::default();
+    digest(&("prepared-comments-presentation-v1", original_hash, &policy))
+}
+fn matches_configuration(catalog: &InputCatalog, config: &ProjectConfig, raw_hash: &str) -> bool {
+    match &catalog.preparation_sha256 {
+        Some(expected) => *expected == preparation_fingerprint(config, &catalog.config_sha256),
+        None => catalog.config_sha256 == raw_hash,
+    }
 }
 
 pub fn load(project: &Path) -> Result<ProjectConfig> {
@@ -306,7 +322,7 @@ pub(super) fn resolve(
     let catalog: InputCatalog = serde_json::from_slice(&bounded_read(&path, 32 << 20)?)?;
     ensure!(
         catalog.schema_version == 1
-            && catalog.config_sha256 == effective.input_hash
+            && matches_configuration(&catalog, &config, &effective.input_hash)
             && !catalog.units.is_empty()
             && catalog.units.len() <= 256,
         "INPUT_CATALOG_STALE: run index --prepare"
@@ -448,5 +464,45 @@ mod tests {
         std::os::unix::fs::symlink(root.join(".code-ana"), root.join("alias")).unwrap();
         std::fs::write(root.join(".code-ana/hidden"), b"value").unwrap();
         assert!(checked_path(&root, "alias/hidden").is_err());
+    }
+}
+
+#[cfg(test)]
+mod presentation_tests {
+    use super::*;
+    #[test]
+    fn catalog_presentation_exception_keeps_policy_and_raw_receipt_bound() {
+        let mut config = ProjectConfig::default();
+        let raw = hash(b"original TOML bytes");
+        let mut catalog = InputCatalog {
+            schema_version: 1,
+            config_sha256: raw.clone(),
+            preparation_sha256: Some(preparation_fingerprint(&config, &raw)),
+            units: vec![],
+        };
+        config.query.comments.context_before = 0;
+        config.query.comments.context_after = 100;
+        assert!(matches_configuration(
+            &catalog,
+            &config,
+            &hash(b"changed comment context")
+        ));
+        config.scan.scopes = vec!["TEST".into()];
+        assert!(!matches_configuration(&catalog, &config, &raw));
+        config.scan = Default::default();
+        catalog.config_sha256 = hash(b"tampered receipt");
+        assert!(!matches_configuration(&catalog, &config, &raw));
+        catalog.preparation_sha256 = None;
+        catalog.config_sha256 = raw.clone();
+        assert!(matches_configuration(&catalog, &config, &raw));
+        assert!(!matches_configuration(
+            &catalog,
+            &config,
+            &hash(b"different legacy TOML")
+        ));
+        let legacy = r#"{"schema_version":1,"config_sha256":"old","units":[]}"#;
+        let decoded: InputCatalog = serde_json::from_str(legacy).unwrap();
+        assert!(decoded.preparation_sha256.is_none());
+        assert_eq!(serde_json::to_string(&decoded).unwrap(), legacy);
     }
 }

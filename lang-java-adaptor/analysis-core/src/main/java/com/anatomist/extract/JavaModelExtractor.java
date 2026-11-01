@@ -19,9 +19,13 @@ public final class JavaModelExtractor {
             Path source,
             String contractHash,
             ExtractionResult facts,
-            List<IndexDiagnostic> diagnostics) {
+            List<IndexDiagnostic> diagnostics, List<JavaCommentEvidence> comments) {
         public UnitFacts {
             diagnostics = List.copyOf(diagnostics);
+            comments = List.copyOf(comments);
+        }
+        public UnitFacts(Path source, String contractHash, ExtractionResult facts, List<IndexDiagnostic> diagnostics) {
+            this(source, contractHash, facts, diagnostics, List.of());
         }
     }
 
@@ -205,7 +209,7 @@ public final class JavaModelExtractor {
                                                                         .longValue()));
                 attachDeclarationCoordinates(facts);
                 var extracted =
-                        new UnitFacts(path, JavaContract.fingerprint(unit,model.analysisContext()), facts, diagnostics);
+                        new UnitFacts(path, JavaContract.fingerprint(unit,model.analysisContext()), facts, diagnostics, JavaCommentEvidence.freeze(model, path, facts));
                 if (timings != null) timings.stop("java_model_extract", started);
                 consumer.accept(extracted);
             }

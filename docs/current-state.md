@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-10-31。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-11-01。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -14,6 +14,25 @@
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
+
+## 三语言注释索引（C0—C4 已完成，A4 实施中）
+
+| 边界 | 当前源码 / 验证 |
+|---|---|
+| 版本 | worker 23、graph model 5、analysis 12、物理 schema 12、逻辑 35、GraphSemantics 27、javac-model-v51；daemon/ABI/compiler batch/catalog 保持 4/4/2/2 |
+| Java | 主 javac comment token 与语言关联转为独立 GRA1 注释/关联行，原始 UTF-8 字节范围、正文映射、显式 world 和公开声明 ID |
+| 存储 | 独立 comments / comment_links / FTS，来源校验、稳定顺序、共享分词身份；旧图要求 index --full |
+| 查询 | search-comments、search-code --in、CLI/RPC/pipeline、上下文配置及冻结值；Native/JVM 真实产品各 2 项通过 |
+| 已验证 | Java 719/719；完整 Rust 门禁；Native/JVM 真实查询各 2、Native ABI 10、manifest 5、bootstrap 2；见 target/todo-implementation/comment-c1-final/receipt.json，不代表正式 Native/分发放行 |
+| 当前后续 | A4—A7 架构整改；匹配的 G1 build-only Native SDK 已安装，完整迁移/跨平台/容量仍未签放行 |
+| C4 实际包 | Rust、Java、Python 通过；共用 release 资源 42/42，注释/Native 组合 11 项；原二进制恢复、SDK 未变 |
+| C4 固定输入 | 128 个类、每类 8 个方法；3,328 注释、4,224 关联；五组路径限定查询及定位通过 |
+| C4 单轮测量 | 索引 3.137 s；完整工作负载 5.215 s；1 s 采样峰值 269.30 MiB；图库 5.35 MiB；独立空 home，OS page cache 不受控 |
+| C4 预算边界 | worker 1 GiB，payload 1 GiB，work 5,000 万，nodes 1,000 万；初始 100 万节点失败保留，不签默认预算容量通过 |
+
+本轮回执：`target/todo-implementation/c4/receipt.json`；原始采样和唯一测量 marker：`target/todo-implementation/c4/fixed-fixture-validated/`。该测量仅对应 C4 固定产物，后续 A4—A7 版本不沿用为性能认证。
+
+以下历史记录保持原产物含义；本轮按用户要求排除 iopengw，不作为开发、构建或放行前置。
 
 ## 业务标注与人工笔记裁剪（2026-10-20）
 
@@ -273,18 +292,18 @@ Native 首次安装因活跃 JVM 触发 `STOP_RUNTIME_BEFORE_NATIVE_INSTALL:9792
 | 项目 | 当前值 | 说明 |
 |---|---|---|
 | CLI-daemon handshake | 4 | `DAEMON_PROTOCOL_VERSION` |
-| worker protocol | 22 | `WORKER_PROTOCOL_VERSION` |
-| graph model | 4 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
-| analysis request/result | 11 | Java bridge 与 Rust host 必须成套 |
+| worker protocol | 23 | `WORKER_PROTOCOL_VERSION` |
+| graph model | 5 | `codeana_model::VERSION`；manifest 仍沿用 `fact_ir` 键 |
+| analysis request/result | 12 | Java bridge 与 Rust host 必须成套 |
 | C ABI | 4 | 共享库/header/host 必须成套 |
-| javac 模型 / compiler batch | javac-model-v50 / 2 | 与 worker 协议独立 |
-| 图库物理格式 | user_version 11 | 删除业务语义标注存储，Rust/Python 紧凑布局保留 |
-| 上游逻辑格式 | schema 34 / GraphSemantics 26 | `project_meta.schema_version` 与物理格式不是同一个版本 |
-| adapter | anatomist-4a903272-codeana-graph4-resource2-analysis | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
+| javac 模型 / compiler batch | javac-model-v51 / 2 | 匹配的 G1 开发 Native/JVM SDK 已安装 |
+| 图库物理格式 | user_version 12 | 增加独立注释/关联表及 FTS，保留紧凑布局 |
+| 上游逻辑格式 | schema 35 / GraphSemantics 27 | `project_meta.schema_version` 与物理格式不是同一个版本 |
+| adapter | anatomist-4a903272-codeana-graph5-resource2-analysis | 当前上游参考 `4a903272c22083585107e982f2899ed03a280aa2` |
 | catalog | 2 | 事务升级；独立人工笔记库已移除 |
 | Native 构建 JDK | 25.3.4+1.r25-graal | `lang-java-adaptor/.sdkmanrc` 固定 Oracle GraalVM |
 
-图 schema 10 及更旧格式的查询/增量返回 `GRAPH_SCHEMA_REBUILD_REQUIRED`。执行 `index --full` 创建新 revision，成功后切 head；旧文件保留，不原地迁移。历史图查询也要求兼容物理格式。
+图 schema 11 及更旧格式的查询/增量返回 `GRAPH_SCHEMA_REBUILD_REQUIRED`。执行 `index --full` 创建新 revision，成功后切 head；旧文件保留，不原地迁移。历史图查询也要求兼容物理格式。
 
 ## 最新单轮结果
 
@@ -406,3 +425,35 @@ Java扩展、Lombok配置/生成声明/类型索引和调用证据、元数据fr
 Lombok/元数据freeze和内部JSON/DTO副本准入已关闭；重复shade旧依赖和SOFA属性顺序漂移已修复。验收汇总见target/unified-analysis-resources/java-extensions/receipt.json。历史阶段记录保持原含义，不能替代当前源码/产物组合。
 
 本轮只签资源治理和本机fixture分发验证：formal native/release/performance acceptance均为false。Linux、目标Java17/25、完整上游语义/来源和稳定容量/性能仍属于项目未完成范围；不将javac/rust-analyzer/Pyrefly内部CPU或RSS冒充自身逻辑计费。iopengw排除。首次prepared缺Maven、旧shade、超时先触及载荷、测试包导入缓存等原失败均留证。
+
+
+## todo 基础边界实施（2026-11-01，部分任务完成）
+
+开发基线为 `5d2283f37675244f67de928bdb582e6025fb1e17`，各阶段提交以 Git 历史为准；产物、源码摘要与原失败日志登记在 `target/todo-implementation/receipt.json`。A0—A3 基线采用 daemon 4 / worker 22 / graph 4 / Java analysis 11 / ABI 4 / 图库 11/34；C1 后现行版本以本文版本表为准。
+
+| 任务 | 当前实际范围 |
+|---|---|
+| A0 完成 | 固定提交、版本与产物；原始 HEAD 导出副本的 application/config/storage 110 项通过；Java 基线 701 项通过，无失败/跳过 |
+| A1 完成 | 公共派生缓存移至独立 crate，缓存源文件逐字节保持；Java worker 不依赖图库；scratch 预算归公共模块；普通/prepared Python 共用输入构造，保留原错误身份 |
+| C0 完成 | 三语言注释领域类型、关联/位置/查询契约和目标版本表已冻结；Java 8 预期样例编译与 9 个源码锚点通过，不是提取器验收 |
+| A2 完成 | IndexPlan 与公共执行层负责语言 fan-out、输入所有权、复用/确认/回收及单次发布；Java 健康池、Rust 增量、Python 保守全量和 prepared 降级保持显式策略 |
+| A3 完成 | config 解析/发现/捕获/执行预算拆分，CommentReader 与内部有效参数归一化完成；公开注释参数/配置及冻结页实参在 C1 接入 |
+| C1 完成 | Java 提取、GRA1、注释表/FTS、公开查询及配置已验证；完整 Java 719 项通过；证据 comment-c1-final/receipt.json |
+| C2 完成 | 生命周期 Native 8+2 项、完整 Rust、预算/取消及旧冻结页兼容通过；证据 comment-c2-final/receipt.json |
+| C3/C4 完成；A4 实施中；A5—A7 待办 | 三语言注释、实际分发、资源矩阵及自建 fixture 单轮测量通过；范围见本轮回执 |
+
+最终 Rust 完整门禁通过，默认跳过的真实 G1 teardown/禁止重建测试另行显式执行通过。Python 核心、CLI 7 项、显式 Native prepared 7 项、混合产品 2 项、分析资源 29 项、历史 1 项及混合失败/取消/超时 12 项通过。新增计划 4、Python 输入 3、上下文归一化 2 项断言包含在对应回归中；DDL、fmt、clippy、Java 来源清单和本轮新增/调整的相对链接检查通过。历史回执链接保留原记录，不作本轮验收依据。
+
+保留原失败：默认 Rust 1.95 低于项目要求，改用已安装 1.96；Python 独立锁文件补入共享缓存 crate；原始基线导出首次缺 include_str 使用的 docs；prepared 首次因 PATH 无 mvn 导致 Java 入口降为 files_only。补入 SDKMAN Maven 与固定 JDK 后完整 prepared 和混合验证通过，没有修改产品的降级规则。
+
+本轮未执行分发、冻结 iopengw 或正式性能测量；Native 产品回归使用已有匹配的 build-only SDK。`native_accepted=false`、`release_accepted=false`、`performance_accepted=false`。不能把这些基础改造回归写成整份 todo 或注释功能完成。
+
+后续 A2 普通入口：Python/混合使用公共运行输入集合，参与语言按计划裁决；单 Java setup 按 worker、输入顺序释放。输入装箱预留在 worker 启动前接续 host 账户，避免预留失败时先释放运行中 worker 的输入。
+
+A2/A3 现已收口：47 项应用测试覆盖显式回收、非回收的存活检查、失效 PGID 保护及原有生命周期；最终二进制真实 C ABI SIGSEGV 验证旧 head 保留、unknown 用量披露、回收和恢复成功。证据见 `target/todo-implementation/execution-lifecycle/receipt.json`。分词及源码映射 8 项专项通过，见 `target/todo-implementation/comment-tokenization/receipt.json`。注释生产链路仍待 C1 接入；未执行本功能 Native 构建/分发或正式测量。
+
+早期 C1 Java 模型（v51）验证（以下为当时状态，现由 C1/C2 收口记录补充）：完整 Java 718 项通过，0 失败/错误/跳过；JVM runner、Java 8 compiler bridge 和 Maven worker 的包内容及来源清单校验通过。17 项新增注释测试覆盖原 expected.json 的真实词法/四类关联、Unicode/CRLF/emoji、空文档、多字段文档、绑定失败、ABI 契约不变及预算边界；连同既有并行入口共 18 项专项通过。Rust Java worker 9 项及 clippy/fmt 通过，默认真实 G1 项 1 跳过。证据：`target/todo-implementation/java-comment-model/receipt.json`。已安装 Native SDK 仍为 v50，未构建/安装 v51 Native SDK，未验证当前 C1 Native 产品/分发；此前 v50 Native 回执保持历史含义。GRA1 注释行、图库/FTS、公开查询、其余版本切换和 C2—C4/A4—A7 继续待办。
+
+C2 收口：注释增量、清空、重命名、语言/world 删除、历史与冻结页、预算/取消/真实 worker 崩溃、CAS 和 FTS 清理通过。SQLite 正文先按长度准入，保留注释再次核对捕获 owner/hash，旧游标兼容由原 HEAD 的真实序列化摘要验证。混合 Java/Rust 生命周期使用既有矩阵的 1 GiB 预算；原默认分片 128 MiB 的 Native 启动失败仍保留，不作为容量通过。证据：`target/todo-implementation/comment-c2-final/receipt.json`；正式分发与测量待 C4。
+
+C3 收口：RA 真实注释 token/字面量 doc 属性与 Ruff/Pyrefly docstring/# token 已接入公共链路；不执行宏、包含表达式或目标代码。精确声明锚点、嵌套/匿名作用域、UTF-8 转义映射、独立 COMMENTS 覆盖、预算和冻结路径还原已验证。Rust producer 为 rust-analyzer-0.0.349-codeana-5-comments，Python 为 pyrefly-1.4.0-codeana-v5-comments。完整 Rust 314 单元通过/1 默认忽略、Python 核心 30；真实注释 Rust 2/Python 3、三对组合及三语言 3、prepared 7/Python 产品 7 通过。原 prepared 缺 Maven PATH 的降级失败及查询页大小/扫描范围测试修正日志保留。证据：`target/todo-implementation/comment-c3-final/receipt.json`。本轮未签分发或性能放行。

@@ -35,9 +35,11 @@ CLI
 |---|---|---|
 | crates/model | 公共身份、查询实体、诊断和版本常量 | 不依赖 SQL/进程；查询 Fact 形状不是持久化格式 |
 | crates/contracts、proto/codeana/v1 | gRPC、worker、GRA1 与 Java 控制契约 | .proto、ABI、compiler 协议分别版本化 |
-| crates/config | 严格 TOML、显式语言、捕获范围、有效配置与来源 | worker 不重新读配置 |
+| crates/config | resolution 解析校验、discovery 输入发现、capture 源码捕获、execution 执行预算 | worker 不重新读配置 |
 | crates/application | 调度、监督、索引、版本和运维编排 | 不解析 AST；不自动执行目标构建 |
 | crates/storage | catalog、blob、候选/发布、紧凑图与只读投影 | SQL/整数引用封装在存储层 |
+| crates/derived-cache | 有界派生缓存、校验、锁、配额和任务副本 | storage 与 Java worker 共用，不依赖图库 |
+| crates/comment-search | 注释分词、关键词 AND 复核与正文到源码位置映射 | 固定词典；只依赖 model，不依赖 storage/query；C1 尚未接生产链路 |
 | crates/query | selector、pipeline、有界遍历和 Java 静态派发 | 只消费已发布图，不启动分析器补结果 |
 | crates/cli、crates/daemon | CLI / gRPC 装配 | 本机用户级服务，按项目/checkout/target 隔离 |
 | lang-rust-adaptor / crates/rust-worker | rust-analyzer HIR 与独立 Rust 语言 worker | schema 2 冻结输入；项目与一层直接依赖，过滤后加载；不主动展开宏或执行构建/过程宏 |
@@ -61,7 +63,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 `Fact.id`、所属 world和 expected revision 使用各自身份 newtype。封闭选项通过 `TryFrom` / `FromStr` 拒绝非法值；producer 状态使用 `FactStatus::Other(String)` 保留未来扩展。Rust 声明种类、可见性、关系、解析状态和分析模式使用封闭枚举。Rust/fixture 通过具名行结构构造 GRA1，Java 原始 protobuf 行继续按原契约验证和交付。
 
-配置解析与输入捕获、Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。Rust 索引明确区分未变基线复用、单语言记录流与混合语言归档合并，各分支仍共享一次校验和原子发布。
+配置解析校验、语言输入发现、源码捕获和执行预算分别由 config 内部模块负责，公开 TOML 与入口保持。Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。IndexPlan 从冻结输入选择执行策略、资源参与语言和 prepared 实例；index_execution 负责跨语言调度，语言输入模块不启动其他语言。未变基线复用、单语言记录流与混合语言归档合并保留；各策略通过同一质量门禁、PublicationFence 和发布入口提交。
 
 语言模型原始 wire arena 继续有界验证；类型图通过节点句柄及 `SingleEdge` / `ManyEdge` 遍历，不展开循环。
 
@@ -82,7 +84,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 模型分文件读取、上下文释放。声明/类型和元注解缓存有界，不保留 Tree/Element/TypeMirror。资源分析复用快照与查询索引。无需建立完整 Fact JSON、CAF1 或 worker 去重数据库。
 
-NoCode 签名缓存已经接入：Rust 管理持久目录、锁、内容校验和共享配额/LRU；任务复制经过 SHA 校验的条目，PublishAck 后提交。Java 决定语言签名 key、可复用性和在途 pin。缺失/损坏/不完整签名有界回退捕获源码；NoCode 不含可执行方法体，不证明目标项目已编译。
+NoCode 签名缓存已经接入：公共 derived-cache crate 管理持久目录、锁、内容校验和共享配额/LRU；任务复制经过 SHA 校验的条目，PublishAck 后提交。Java 决定语言签名 key、可复用性和在途 pin。缺失/损坏/不完整签名有界回退捕获源码；NoCode 不含可执行方法体，不证明目标项目已编译。
 
 ## 3. 存储与查询
 
@@ -156,3 +158,5 @@ Java 在 Rust worker 的同一账户上顺序执行：请求携带已经消耗�
 Java的两个JSON facade共用Jackson流边界，传输与领域各自保留数值/格式契约。Rust通过serde结构访问为Java将解码的JSON值节点预留，Java在封账前为结果编码预留；不先分配中间JSON树，也不在最终回执生成后继续扣账。签名投影/ASM/声明压缩与JSON/SOFA都接续同一个任务账本；第三方内部存储使用保守预留及进程资源约束，不声称精确计量CPU/RSS。
 
 Lombok与扩展不可变元数据复制前沿用同一账户；内部DTO通过contracts的serde结构准入后再复制/解码。根池按语言及稳定实例ID静态拆分，host保留1/4；失败、取消、超时都不能切换head。Java合并JAR先逐类核对reactor产物，避免重复shade引入旧依赖。本机fixture验收及正式边界见当前实现。
+
+公共 scratch 预算位于 application::resources，缓存目录清单而逐次检查实际文件大小；Java 调用方保留 JAVA_SCRATCH_BUDGET 错误身份。普通/prepared Python 输入共用 python_inputs，保留各入口原有预算错误。注释领域模型、归一化规则和 CommentReader 端口已定义；C1 的 Java 主 javac token、v51 脱离模型及语言侧关联已接通，GRA1 交付、持久化、配置及公开查询仍待接入，不声明 comments-v1 能力。编译器内部类型只出现在 Java 8 worker 源集，不进入 Java 25 核心模型或 Native ABI。

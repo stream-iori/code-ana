@@ -139,10 +139,16 @@ def main():
                     raise ValueError('PACKAGE_STABLE_BUNDLE_MISMATCH: '+name)
         report['execution_binary_directory']=str(binaries)
         report['package_bytes_verified_at_execution_paths']=bool(args.bin_root)
-        environment=dict(os.environ,CODEANA_TEST_BIN=str(binaries))
-        for name, script, selector in [('typed_graph', 'java_graph_storage.py', None),
+        environment=dict(os.environ,CODEANA_TEST_BIN=str(binaries),CODEANA_TEST_FIXTURES=str(package/"fixtures"),CODEANA_JAVA_BACKEND="native")
+        planned_gates=[('typed_graph', 'java_graph_storage.py', None),
                                        ('resource_limits', 'java_resource_limits.py', None),
-                                       ('wrong_jdk', 'java_native_environment.py', None)]:
+                                       ('comments', 'comment_search_e2e.py', None),
+                                       ('comment_lifecycle', 'comment_lifecycle_e2e.py', None),
+                                       ('comment_ownership', 'comment_ownership_e2e.py', None),
+                                       ('wrong_jdk', 'java_native_environment.py', None)]
+        shipped_gate='shipped_fixture_automatic_daemon_index_calls_source'
+        report['expected_gates']=[gate[0] for gate in planned_gates]+[shipped_gate]
+        for name,script,selector in planned_gates:
             command=[os.sys.executable,'-m','unittest','discover','-s','tests','-p',script,'-v']
             if selector:
                 command += ['-k', selector]
@@ -153,7 +159,7 @@ def main():
             report['gates'].append(dict(name=name,exit_code=result.returncode,log_sha256=sha256(log)))
         demo=base/'shipped-fixture';demo.mkdir()
         report['shipped_fixture_steps']=packaged_fixture_smoke(package,demo,binaries)
-        report['gates'].append(dict(name='shipped_fixture_automatic_daemon_index_calls_source',exit_code=0))
+        report['gates'].append(dict(name=shipped_gate,exit_code=0))
         current_package=inventory(package)
         current_inputs=alignment.input_files();current_artifacts=release_artifacts()
         report.update(package_files=before,changed_package=sorted(key for key in before.keys()|current_package.keys()
@@ -162,7 +168,7 @@ def main():
             if frozen.get(key)!=current_inputs.get(key))
         report['changed_artifacts']=sorted(key for key in artifacts.keys()|current_artifacts.keys()
             if artifacts.get(key)!=current_artifacts.get(key))
-        report['all_ok']=len(report['gates'])==4 and all(g['exit_code']==0 for g in report['gates']) and not any(
+        report['all_ok']=[gate['name'] for gate in report['gates']]==report['expected_gates'] and all(g['exit_code']==0 for g in report['gates']) and not any(
             report[key] for key in ('changed_package','changed_inputs','changed_artifacts'))
     except Exception as failure:
         report.update(failure=str(failure),failure_type=type(failure).__name__)
@@ -171,6 +177,7 @@ def main():
             atomic_binary_copy(saved,path)
         if original_binaries:
             report['original_binaries_restored']=all(sha(path)==sha(saved) for path,saved in original_binaries.items())
+            report['all_ok'] &= report['original_binaries_restored']
     report['elapsed_seconds']=round(time.monotonic()-started,3)
     (base/'receipt.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(base/'receipt.json',flush=True)

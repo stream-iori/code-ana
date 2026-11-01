@@ -87,8 +87,32 @@ pub struct QueryResources {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Query {
+    pub comments: CommentOptions,
     pub scopes: Vec<String>,
     pub max_output_bytes: Option<u64>,
+}
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct CommentOptions {
+    pub context_before: u32,
+    pub context_after: u32,
+}
+impl Default for CommentOptions {
+    fn default() -> Self {
+        Self {
+            context_before: 5,
+            context_after: 5,
+        }
+    }
+}
+impl CommentOptions {
+    pub fn validate(self) -> Result<codeana_model::CommentContext, codeana_model::DomainError> {
+        codeana_model::CommentContext {
+            before: self.context_before,
+            after: self.context_after,
+        }
+        .validate()
+    }
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]

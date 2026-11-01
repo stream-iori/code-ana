@@ -336,6 +336,68 @@ pub fn emit_with_context(
             )?;
         }
     }
+    for observation in &analysis.comments {
+        let fact = &observation.fact;
+        if !wanted(&fact.source_file, fact.world.as_str()) {
+            continue;
+        }
+        charge(
+            1,
+            codeana_model::retained_size(fact)?
+                .saturating_mul(8)
+                .saturating_add(2048),
+        )?;
+        push(CommentRow::try_from(fact)?.into_row(fact.world.as_str()))?;
+        for link in &observation.links {
+            charge(
+                1,
+                codeana_model::retained_size(link)?
+                    .saturating_mul(8)
+                    .saturating_add(2048),
+            )?;
+            push(CommentLinkRow::from_fact(fact, link)?.into_row(fact.world.as_str()))?;
+        }
+    }
+    for ((file, world), gaps) in &analysis.comment_gaps {
+        if !wanted(file, world) {
+            continue;
+        }
+        let input = config
+            .inputs
+            .crates
+            .iter()
+            .find(|c| &c.world == world)
+            .expect("captured comment world");
+        charge(
+            gaps.len() as u64 + 1,
+            8192 + gaps.iter().map(|s| s.len() as u64 * 16).sum::<u64>(),
+        )?;
+        let counts = gaps.iter().map(|gap| (gap, 1)).collect::<BTreeMap<_, _>>();
+        push(
+            CoverageRow {
+                source_file: Some(file.clone()),
+                module: Some(input.module.clone()),
+                scope: Some(input.scope.clone()),
+                language: Some("rust".into()),
+                provider_id: Some(PRODUCER.into()),
+                capability: Some("COMMENTS".into()),
+                status: Some(
+                    if gaps.is_empty() {
+                        "complete"
+                    } else {
+                        "partial"
+                    }
+                    .into(),
+                ),
+                occurrences: Some(gaps.len().try_into()?),
+                groups_count: Some(gaps.len().try_into()?),
+                codes: Some(serde_json::to_string(gaps)?),
+                code_counts: Some(serde_json::to_string(&counts)?),
+                details_truncated: Some(0),
+            }
+            .into_row(world),
+        )?;
+    }
     for state in states {
         let bytes = codeana_model::retained_size(state)?;
         charge(
@@ -371,7 +433,9 @@ pub fn emit_with_context(
             provider_id: Some((PRODUCER).to_string()),
             language: Some(("rust").to_string()),
             provider_version: Some((crate::ADAPTER_VERSION).to_string()),
-            operations: Some(("[\"declarations\",\"references\",\"calls\"]").to_string()),
+            operations: Some(
+                ("[\"declarations\",\"references\",\"calls\",\"comments\"]").to_string(),
+            ),
             limitations: Some(
                 ("[\"no proc-macro execution\",\"dynamic dispatch incomplete\"]").to_string(),
             ),

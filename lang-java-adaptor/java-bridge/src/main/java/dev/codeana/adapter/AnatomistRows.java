@@ -111,13 +111,58 @@ public final class AnatomistRows {
                 "java-core",
                 source.path(),
                 source.hash(),
-                34,
+                35,
                 unit.facts().nodes.size(),
                 unit.facts().edges.size(),
                 java.nio.file.Path.of(source.file().toString()).toFile().length(),
                 unit.contractHash());
+        comments(source, unit.comments());
+        commentRow(GraphRecords.Table.COVERAGE, source.world(), source.path(), source.module(), source.scope(),
+                "java", "java-core", "COMMENTS", "complete", 0, 0, "[]", "{}", 0);
         batch.addFacts(unit.facts());
         if (++files >= 32 || batch.factCount() >= 10000) flush();
+    }
+
+    private static final String COMMENT_RULE = "java-comments-v1";
+
+    private void comments(CapturedProject.Source source, List<com.anatomist.extract.JavaCommentEvidence> comments) {
+        for (var comment : comments) {
+            var r = comment.range();
+            project.analysisContext.charge(1, 1, 512L + 6L * comment.body().length() + 512L * comment.bodyMap().size());
+            String id = "comment_" + Json.sha(Json.write(List.of(ProducerIds.JAVA_CORE, "java", source.module(),
+                    source.scope(), source.world(), source.path(), source.hash(), Long.toString(r.byteStart()),
+                    Long.toString(r.byteEnd()), comment.kind())).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            var map = new ArrayList<Map<String, Object>>();
+            for (var segment : comment.bodyMap()) {
+                project.analysisContext.charge(1, 1, 512);
+                map.add(Json.object("body_start", segment.bodyStart(), "body_end", segment.bodyEnd(),
+                        "source_start", segment.sourceStart(), "source_end", segment.sourceEnd()));
+            }
+            commentRow(GraphRecords.Table.COMMENT, source.world(), id, source.path(), source.hash(), source.module(),
+                    source.scope(), "java", "java-core", ProducerIds.JAVA_CORE, comment.kind(), r.byteStart(), r.byteEnd(),
+                    r.beginLine(), r.beginColumn(), r.endLine(), r.endColumn(), comment.body(), Json.write(map), COMMENT_RULE);
+            for (var link : comment.links()) {
+                project.analysisContext.charge(1, 1, 512);
+                var range = link.range();
+                String declaration = link.declaration() == null ? null : NodeKeyFactory.key(
+                        new SourceIdentity(source.module(), SourceScope.valueOf(source.scope())), link.declaration());
+                commentRow(GraphRecords.Table.COMMENT_LINK, source.world(), id, link.relation(), declaration,
+                        source.path(), source.module(), source.scope(), range.byteStart(), range.byteEnd(), range.beginLine(),
+                        range.beginColumn(), range.endLine(), range.endColumn(), link.basis(), COMMENT_RULE);
+            }
+        }
+    }
+
+    private void commentRow(GraphRecords.Table table, String world, Object... values) {
+        try {
+            var statement = new Values(table);
+            statement.row.setWorld(world);
+            for (int i = 0; i < values.length; i++) {
+                if (values[i] instanceof Number n) statement.setLong(i + 1, n.longValue());
+                else statement.setString(i + 1, (String) values[i]);
+            }
+            statement.addBatch();
+        } catch (IOException e) { throw new UncheckedIOException(e); }
     }
 
     public void flush() {
@@ -316,6 +361,10 @@ public final class AnatomistRows {
     }
 
     private void bindNode(Values statement, Node node, boolean normalized) throws IOException {
+        if (node.sourceFile != null && !node.sourceFile.isEmpty()) {
+            var captured = project.sources.get(node.sourceFile);
+            if (captured != null) statement.row.setWorld(captured.world());
+        }
         String symbol = symbolOf(node);
         SourceIdentity identity =
                 normalized ? NodeKeyFactory.identity(node.id) : identity(node.sourceFile);

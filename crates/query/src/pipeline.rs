@@ -11,6 +11,11 @@ pub(super) fn run(
     for (i, stage) in req.stages.iter().enumerate() {
         let mut s = req.clone();
         s.operation = stage.operation;
+        s.search_in = if stage.operation == Operation::SearchCode {
+            req.search_in
+        } else {
+            SearchIn::Names
+        };
         s.direction = stage.direction;
         s.relation = stage.relation.clone();
         s.depth = stage.depth;

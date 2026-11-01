@@ -3,17 +3,23 @@
 对齐 2026-10-14。默认 Native/G1，javac 唯一后端，目标 Java 8；版本见 [当前实现](../current-state.md)，接口见 [公共契约](../contracts.md)。
 
 ```text
-daemon ── worker protocol 21 ──► Rust Java worker（独立进程）
+daemon ── worker protocol 23 ──► Rust Java worker（独立进程）
                                       │ C ABI 4 / FFI
                                       ▼
                                GraalVM Java 25 / G1
                                  ├─ 独立 Java 模型 / 框架 / 失效
                                  ├─ GRA1 protobuf Row 归档
                                  └─ batch 2 ──► Java 8 javac 子进程
-                                                javac-model-v50
+                                                javac-model-v51
 ```
 
 显式 JVM 后端供开发/诊断，使用同一模型和行交付；无自动 fallback。Java 8 桥字节码与 Java 25 共享库分开构建，禁止 JNI、JavaParser/SymbolSolver、注解处理器和业务字节码生成。
+
+C1 当前已接通内部注释模型：主 javac 扫描器记录原始 comment token，按编译器的声明归属表建立 documents，空 Javadoc 也通过 token 身份关联；不按名称或最近声明猜测。原始范围、去标记正文、UTF-16 body_map 和声明语法身份经 v51 帧进入 JavaUnit。核心模型不依赖 javac 类型；最近 callable、lambda/初始化块隔离及同块前置/行尾语句关联在语言侧完成。语句关联标为 heuristic，展示窗口不参与归属。文件末尾行注释仅对主扫描器最后 token/comment 之后的尾段补充同一 javac 词法扫描，不向主 AST 插入哨兵。
+
+请求在现有累计账户中预付有界词法范围；流式保守扫描估算可能的注释区间，任何 Unicode 转义按整文件上界处理。无可能注释的源文件不创建录制器，大文件的短文档头不为整文件预付正文映射。子进程只消费已分配范围，宿主解码沿用原预算；NoCode 依赖视图不携带正文，普通扩展及 Lombok overlay 保留原注释。声明契约仍忽略普通注释，源码 hash 随注释变化。
+
+JavaCommentEvidence 在模型关闭前将位置与正文映射冻结为原始 UTF-8 范围，交付独立 GRA1 注释/关联行；图库 schema 12/逻辑 35 和公开查询已接通。匹配的 v51 G1 开发 Native SDK 与 JVM SDK 已安装。C1/C2 产品回归已通过；正式分发与综合验收仍属 C4。
 
 FFI 整数状态在边界解码为 `RunState`。Java engine request、bundle manifest、baseline 和 graph descriptor 使用明确 DTO；JVM 重定位只修改已知路径字段，外部输入保持原路径。Maven export 直接构造 `JavaInputs`，计时使用 `PhaseTiming`。sealed descriptor 的诊断副本读取当前 `graph_archive` / GRA1 并复制为 `graph.rows`。
 
@@ -61,7 +67,7 @@ Maven `selected=false` 模块只保留输入/依赖身份，不作为独立分�
 
 | 边界 | 当前行为 |
 |---|---|
-| 产物 | GRA1 + typed protobuf Row，analysis request/result 11；不生成完整项目 Fact JSON / CAF1 |
+| 产物 | GRA1 + typed protobuf Row，analysis request/result 12；不生成完整项目 Fact JSON / CAF1 |
 | worker | 流式读取/校验原归档，直接交付有界 rows；不运行 Fact JSON 转换或事实去重数据库 |
 | 发布 | Begin/Chunk provisional；完整长度、EOF、SHA、行预算通过才发 End；daemon 再校验并发布 |
 | 编码 | 固定逻辑列与 NULL/text/int64/bytes，metadata JSON 保留原始文本；减少重复投影/编码与拷贝 |
@@ -97,7 +103,7 @@ isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任�
 
 最新正确性、单轮 iopengw 和未完成验收见 [当前实现](../current-state.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。
 
-Maven 源码模式通过 worker 22 / analysis request 11 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
+Maven 源码模式通过 worker 23 / analysis request 12 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
 
 ## 任务内协作与类型边界（2026-10-16）
 
@@ -119,7 +125,7 @@ Spring XML 继续使用 JDK SAX；每文件解析与提取共享 `XmlResourceBud
 
 | 边界 | 当前行为 |
 |---|---|
-| 身份 | anatomist-4a903272-codeana-graph4-resource2-analysis；worker22、request/result11；旧bundle/请求/结果拒绝 |
+| 身份 | anatomist-4a903272-codeana-graph5-resource2-analysis；worker23、request/result12；旧bundle/请求/结果拒绝 |
 | 传递 | 显式 AnalysisContext，不使用全局或ThreadLocal账本；普通、混合、prepared实例下发静态grant |
 | 同账户 | Rust请求编码后发送累计水位；Java接续计费并回传；Rust拒绝错身份/超额/倒退，再为归档解码、重编码及IPC计费 |
 | 计费入口 | 捕获副本/上下文、模型解码、语法与声明索引、自有事实保留、扩展批次、语义JSON、XML解析/提取和归档输出；签名缓存冷暖读取、哈希缓冲、源码校验及行坐标数组也传递任务上下文 |

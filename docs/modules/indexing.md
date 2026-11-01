@@ -14,6 +14,12 @@
 
 Rust 路径先准备输入、启动 worker、固定基线，再分别执行未变复用、单语言流或混合语言归档阶段。Java 准备分别持有 bundle、捕获输入与工具链；Maven 外部导出分为准备、发现、组装和落盘。临时目录、会话与候选的生命周期覆盖其最终消费者，阶段拆分不提前释放资源。
 
+普通、混合、prepared 入口先生成内部 IndexPlan：参与语言包含删除/零输出模块，prepared 实例保留配置顺序及原实例身份。计划自身的单元数组在分配前接续任务账本，不提前复制实例 ID。跨语言 worker 的准备、执行与输入生命周期由公共 index_execution 持有；Rust/Python 输入模块只构造自身描述符。单语言流式、混合归档、Java 健康 worker 复用及 Python 保守全量策略保持。
+
+所有路径使用 publish_candidate 的统一质量门禁和发布入口；strict 拒绝在消费 capture blobs 前返回。发布确认仍在 durable commit 后执行，确认失败只记录 warning。
+
+空闲 worker 用 `waitid(WNOWAIT)` 观察退出，保留 PID 至进程组清理；协议错误先留出有界诊断宽限，再结束进程组并回收，取消沿用两秒协作期限后统一清理。回收后停止监控且不再向旧 PGID 发信号。Darwin 对仅有 zombie leader 的进程组可能返回 EPERM；只在非回收探针确认自有 leader 已退出时继续 wait，活进程权限错误仍报告清理失败。
+
 ## 1. 端口与状态
 
 | 端口 | 输入 | 输出 |
@@ -136,7 +142,7 @@ daemon 不自行实现 Java 名称求解或 Rust 宏失效。adapter 负责解�
 
 ## 当前交付与存储边界
 
-Java 封存 GRA1/protobuf rows，worker 21 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 11，查询以逻辑 schema 34 读取；不再经过 CAF1 / Fact JSON 去重数据库。
+Java 封存 GRA1/protobuf rows，worker 22 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 11，查询以逻辑 schema 34 读取；不再经过 CAF1 / Fact JSON 去重数据库。
 
 增量对兼容基线使用 SQLite backup，保持未变节点整数主键并重映射新暂存引用，封存时回收孤立字典/元注解定义并重建索引/FTS。旧格式 delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 只固定旧 head 的 CAS 身份，建新库成功后切入口。G1 worker 复用健康 isolate，失败恢复换进程。
 
@@ -145,3 +151,15 @@ Maven manifest schema 4 记录外部依赖三态。自动源码降级仍通过�
 ## Python 与混合语言
 
 Python 只读取显式清单并验证全部来源哈希。完全相同的 manifest/profile 可复用；变更后全量重算。含 Python 的多语言任务在所有独立 worker 返回有效 End 后才构造统一候选，严格门禁后一次 CAS；ACK 失败只产生提交后的警告。Python 不写入 Rust 增量元数据表。源码和预算见 [Python worker](python-worker.md)，产品验收状态以该页和当前实现为准。
+
+未变复用的空 delta 候选构建由 stage_reused_revision 共用，普通 Python、prepared 和 Rust 各入口先完成 worker Reused 回执，再调用同一暂存逻辑。基线/profile 校验、取消及后续质量门禁与 CAS 保持。
+
+worker 终态由公共 analysis_unit 处理：单实例、会话列表和 Rust/Java 双实例使用同一迭代入口；Reused 失败仍中止暂存，PublishAck 失败只保存 warning 并继续确认其余实例，不改变已发布 revision。该迭代不复制 worker 或另建预算账户。
+
+prepared 入口以计划中的可用单元确定内存分片和启动语言，保留配置顺序及降级 coverage。RunningUnits 同时持有会话、Java/Rust 输入和共享 scratch，按会话、输入、scratch 的字段顺序释放；输入装箱的内存预留接续既有 host 账户。普通 Python/混合入口也使用此集合持有输入；Rust 增量策略保留其自身输入所有权结构。
+
+计划分别表达资源参与和实际执行：删除/空模块仍保留预算份额，缺少冻结 Rust/Python 输入时不因此启动对应 worker；实际混合参与语言由计划确定。
+
+Java 输入准备统一经 prepare_java_unit 进入受限 blocking 工作，使用 daemon 冻结的用户配置及 home；单语言、混合、prepared 共享入口。prepared 输入工厂按已规划语言委派现有 Java/Rust/Python 准备器，保留各语言 scratch 与 Python 入口校验策略。
+
+运行结束和失败清理增加显式异步回收：普通/混合/prepared 执行的输入 guard 保留在 fallible 执行体之外，结束后等待所属 worker 进程退出，再释放输入。Hello/Discover 启动校验失败、Java warm rediscover 失败、Rust 基线准备失败也等待回收；已确认且符合条件的 Java worker 继续进入健康池。清理 warning 独立于原执行错误和已提交 revision。

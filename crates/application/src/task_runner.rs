@@ -31,7 +31,7 @@ impl TaskRunner {
                 "maximum 8 MiB".to_string()
             )
         );
-        codeana_query::preflight(&req)?;
+        let _ = crate::query_normalization::normalize(&req, None)?;
         let input = PathBuf::from(&req.project);
         let root = project_path(&input)?;
         if root.exists() {
@@ -48,6 +48,31 @@ impl TaskRunner {
             engine.store.project_path(root.to_str().context(
                 codeana_model::DomainError::new(codeana_model::ErrorCode::NonUtf8Project, ""),
             )?)?;
+        }
+        if req.cursor.is_empty()
+            && (req.operation == Operation::SearchComments
+                || req.operation == Operation::SearchCode && req.search_in != SearchIn::Names
+                || req.stages.iter().any(|s| {
+                    matches!(
+                        s.operation,
+                        Operation::SearchComments | Operation::SearchCode
+                    )
+                }))
+        {
+            let normalized = crate::query_normalization::normalize(
+                &req,
+                Some((
+                    CommentQuery {
+                        context_before: req.context_before,
+                        context_after: req.context_after,
+                        ..Default::default()
+                    },
+                    codeana_config::comment_context(&root)?,
+                )),
+            )?
+            .expect("comment options provided");
+            req.context_before = Some(normalized.context.before);
+            req.context_after = Some(normalized.context.after);
         }
         req.project = root
             .to_str()
@@ -91,6 +116,7 @@ impl TaskRunner {
             return Ok(id.into());
         }
         let job = Arc::new(Job {
+            staging_sources: Mutex::new(None),
             analysis_admission: Mutex::new(None),
             analysis_coordinator: Mutex::new(None),
             query_budget,
@@ -206,6 +232,7 @@ impl TaskRunner {
             ) {
                 eprintln!("task persistence failed: {e}");
             }
+            job.staging_sources.lock().unwrap().take();
             engine.jobs.lock().unwrap().remove(&task);
             engine.touch();
         });

@@ -163,7 +163,7 @@ public final class JavaModelExtensions implements JavaDeclarationOverlay {
                                     old.generated(),
                                     old.declarationMetadata(),
                                     diagnostics,
-                                    old.counters(),resources)));
+                                    old.counters(),resources), unit.comments()));
         }
         return new JavaAnalysisContext(
                 context.module(),

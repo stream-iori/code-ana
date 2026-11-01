@@ -89,13 +89,13 @@ record AnalysisRequest(
 
     static AnalysisRequest capture(Map<String, Object> raw) throws IOException {
         var input = new LinkedHashMap<>(raw);
-        input.putIfAbsent("version", 11);
+        input.putIfAbsent("version", 12);
         input.putIfAbsent("java_home", "");
         return parse(input);
     }
 
     static AnalysisRequest parse(Map<String, Object> raw) throws IOException {
-        if (Json.number(raw,"version") != 11) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        if (Json.number(raw,"version") != 12) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
         Path scratch = Path.of(Json.string(raw, "scratch"));
         var resolver = new ContextInputs(raw);
         List<ContextInput> contexts = new ArrayList<>();

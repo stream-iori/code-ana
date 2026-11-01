@@ -9,6 +9,10 @@ mod resources;
 pub use resources::*;
 mod publication;
 pub use publication::PublicationFence;
+pub mod source_positions;
+pub use source_positions::SourcePositions;
+mod comments;
+pub use comments::*;
 mod commands;
 pub use commands::*;
 mod identity;
@@ -36,9 +40,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const VERSION: u32 = 4;
-pub const WORKER_PROTOCOL_VERSION: u32 = 22;
-pub const JAVA_ANALYSIS_VERSION: u32 = 11;
+pub const VERSION: u32 = 5;
+pub const WORKER_PROTOCOL_VERSION: u32 = 23;
+pub const JAVA_ANALYSIS_VERSION: u32 = 12;
 pub const DAEMON_PROTOCOL_VERSION: u32 = 4;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
@@ -707,6 +711,9 @@ pub struct Request {
     pub text_regex: bool,
     pub text_ignore_case: bool,
     pub text_context: u32,
+    pub search_in: SearchIn,
+    pub context_before: Option<u32>,
+    pub context_after: Option<u32>,
     pub overview_section: String,
     pub overview_depth: u32,
 }

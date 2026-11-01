@@ -76,6 +76,7 @@ pub fn seal(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
         "graph_analysis_coverage",
         "annotation_meta_sources",
         "graph_rust_source_states",
+        "graph_comments",
     ] {
         references.push(format!(
             "SELECT source_file FROM {table} WHERE source_file IS NOT NULL"

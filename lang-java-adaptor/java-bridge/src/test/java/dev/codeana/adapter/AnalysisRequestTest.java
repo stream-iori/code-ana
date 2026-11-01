@@ -17,7 +17,7 @@ class AnalysisRequestTest {
     Map<String, Object> input() {
         return Json.object(
                 "version",
-                11,
+                12,
                 "scratch",
                 root.toString(),
                 "java_home",

@@ -49,9 +49,11 @@ class JavacParallelWorkerIT {
                                 root.resolve("cache"));
                 var toolchain = JavacToolchain.resolve(options, release, null);
                 List<String> command =
-                        List.of(
+                        new ArrayList<>(List.of(
                                 toolchain.home().resolve("bin/java").toString(),
-                                "-Xmx1024m",
+                                "-Xmx1024m"));
+                command.addAll(JavacToolchain.compilerAccessOptions(release));
+                command.addAll(List.of(
                                 "-cp",
                                 jar.toString()
                                         + (release == 8
@@ -59,7 +61,7 @@ class JavacParallelWorkerIT {
                                                         + toolchain.home().resolve("lib/tools.jar")
                                                 : ""),
                                 "com.anatomist.worker.JavacWorker",
-                                Integer.toString(threads));
+                                Integer.toString(threads)));
                 try (var session = new JavacWorkerSession(command, root, Duration.ofMinutes(10));
                         var left =
                                 new JavacDeclarationCache(32L * 1024 * 1024)

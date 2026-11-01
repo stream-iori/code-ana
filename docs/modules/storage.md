@@ -2,7 +2,7 @@
 
 对齐 2026-10-20：图库物理 `user_version=11`、Anatomist 逻辑 schema 34；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
 
-Rust 存储按 blob、task、object、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。对象使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
+Rust 存储按 blob、task、object、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。派生缓存位于独立 codeana-derived-cache crate，文本搜索与 Java worker 共享实现，原目录、锁、配额及持久化契约保持。对象使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
 
 ## 1. 布局
 
@@ -92,3 +92,8 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 当前 GC 字节预算只计 facts.db，不是整个 home 硬配额。backup 和不可变 revision 会占额外磁盘；233.49 MB 是单个最终图库，不能等同分析时峰值或整个 home。单轮结果和边界见 [当前实现](../current-state.md)。
 
 活动 blob pin 使用引用计数，覆盖复制、校验到提交/回滚；并发任务共享同 hash 时不会互相解除保护，GC 同时识别活动 pin 和原有暂存保护。大文件复制、发布前流式 hash、facts.db 同步在协调锁外完成；锁内保留最终 head 检查、rename/目录同步及 catalog CAS。故障恢复和持久化屏障保持。
+
+
+## 注释物理布局（C1 已交付）
+
+当前源码 schema 12 / 逻辑 35 新增 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；完整生命周期与分发仍待 C2/C4。

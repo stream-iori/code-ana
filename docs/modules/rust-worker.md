@@ -92,7 +92,7 @@ coverage/diagnostics 按文件和 world 保存。任何 partial 使 `index --str
 | 公共产品路径 | `python3 tests/rust_language_e2e.py`：真实 worker、world、查询、delta/full、strict、过期清单；build.rs 陷阱证明未编译 |
 | 自身源码 | `scripts/rust-source-dogfood.py`；当前源码功能回执 `optimized-functional`，固定旧输入 512 MiB 单轮 `optimized-512m`；256 MiB 失败 `memory-v2` 保留 |
 
-物理 schema 11、graph model 4、worker 22。Java 公开 ID 算法不变；旧图库需 `index --full`，旧 bundle 必须按当前协议重建。开发回归和 dogfood 不等于 Java Native 正式验收、Linux 放行或完整 Rust 语义支持。
+物理 schema 12、graph model 5、worker 23。Java 公开 ID 算法不变；旧图库需 `index --full`，旧 bundle 必须按当前协议重建。开发回归和 dogfood 不等于 Java Native 正式验收、Linux 放行或完整 Rust 语义支持。
 
 ## 输入与预算边界
 
@@ -151,7 +151,7 @@ blocking 行生成 → 有界队列 → async IPC → 有界 GraphStream → blo
 
 ## 统一分析预算
 
-当前 Rust adaptor 身份为 `rust-analyzer-0.0.349-codeana-4-analysis-resources`。生产普通索引和 Java/Rust 混合入口通过 `analysis-resources-v1` 能力门禁附加任务 grant；worker 对输入副本、语法节点/深度和现有提取检查点累计计费，End/Failure 回传核实用量。普通流式入口的漏接已由真实 E2E 发现并修复。host接收、输入/增量投影/输出及prepared静态多实例已接入；当前严格worker22，完整故障矩阵与分发以各自回执为准，不能扩大为正式容量放行。当前支持与回执见 current-state。
+当前 Rust adaptor 身份为 `rust-analyzer-0.0.349-codeana-5-comments`。生产普通索引和 Java/Rust 混合入口通过 `analysis-resources-v1` 能力门禁附加任务 grant；worker 对输入副本、语法节点/深度和现有提取检查点累计计费，End/Failure 回传核实用量。普通流式入口的漏接已由真实 E2E 发现并修复。host接收、输入/增量投影/输出及prepared静态多实例已接入；当前严格worker23，完整故障矩阵与分发以各自回执为准，不能扩大为正式容量放行。当前支持与回执见 current-state。
 
 
 Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker22；旧握手拒绝，控制取消核对attempt；本机fixture混合/分发已通过，正式边界见当前实现。
@@ -161,3 +161,11 @@ Discover现在先校验生产grant及剩余截止时间，为配置文件读取/
 内部JSON DTO复用contracts::json_budget：serde流式预检先累计值节点/深度，预留字符串、容器与解码容量，再由serde构造类型化对象；不分配临时JSON树，不自写JSON语法。Discover配置、Rust基线和重试配置副本都接续同一账本。源码文件使用已准入长度+1的有界读取，变化时拒绝。Python诊断路径自动机固定为稀疏NFA，构造前预留；替换文本按实际匹配计算扩展容量，再创建结果。
 
 本轮统一资源治理八项已完成本机自建fixture验收，状态与历史阶段区分见current-state.md最后一节。三种分发及所有实际release worker的42项资源/混合/历史矩阵已通过；原二进制与SDK恢复记录齐全。此为本机fixture验证，不签完整语义/来源、跨平台或容量/稳定性能放行。
+
+## 源码注释
+
+复用固定 RA 的 COMMENT token；嵌套块注释保留为一个外层事实，字符串中的伪标记不采集。内外文档注释和字面量 `doc` 属性按 AST 归属，转义正文逐段映射原始 UTF-8 源码；非字面量属性不执行，独立披露 `RUST_DOC_ATTRIBUTE_NON_LITERAL`。普通 doc 元数据（hidden/alias 等）不作为正文。
+
+声明引用只取同一语法节点已发布的 ID。最近函数、闭包、async/const 块和非 callable item 构成作用域边界；匿名 callable 只保留范围。前置/行尾语句关联限制在同一块并标为 heuristic。每个替换的源码/world 即使零注释也交付 COMMENTS 覆盖；未映射到 HIR 模块的冻结源码仍提取词法事实。绑定覆盖缺口不直接污染注释覆盖。
+
+注释与现有 Rust facts 共用替换集、累计预算、GRA1 流和单次 candidate 发布；同路径多 world 的替换边界保持。`tests/rust_comment_e2e.py` 验证真实公开查询、world 隔离、声明投影、增量清空和历史读取；各组合由 `tests/comment_mixed_e2e.py` 验证。当前阶段结果以 current-state 与 C3 回执为准，分发属于 C4。

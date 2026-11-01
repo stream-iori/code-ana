@@ -254,6 +254,7 @@ class JavacWorkerSessionTest {
                 out.writeInt(0);
                 out.writeInt(4);
                 out.writeInt(0);
+                out.writeInt(0); // comments
             }
             out.writeBoolean(true);
             out.writeInt(0);

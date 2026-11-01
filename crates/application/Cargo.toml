@@ -16,6 +16,7 @@ anyhow.workspace = true
 sha2.workspace = true
 walkdir.workspace = true
 roxmltree = "=0.21.1"
+codeana-comment-search = { path = "../comment-search" }
 codeana-model = { path = "../model" }
 codeana-config = { path = "../config" }
 codeana-contracts = { path = "../contracts" }

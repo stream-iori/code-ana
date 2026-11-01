@@ -10,7 +10,9 @@
 
 `QueryRequest` 与 `Record` 是核心参数/结果；pipeline 使用枚举端点取输入，转移上阶段记录集，不复制完整向量或按 JSON 键取字段。`Record` 区分事实、调用、派发、路径、源码、文本和聚合。稳定属性由 `FactAttributes` 表达，Map 保留索引/分组用途；历史页兼容见 [公共契约](../contracts.md)。
 
-读能力分为 `SourceContext`、`GraphAccess`、`SourceLocator`、`AnnotationReader`、`OverviewReader` 和 `DependencyReader`。扫描方法必须显式实现，生产读取使用有界 SQL；FILES 文本/源码只需 `SourceContext`，不实现语义图能力。
+读能力分为 `SourceContext`、`GraphAccess`、`SourceLocator`、`AnnotationReader`、`OverviewReader` 和 `DependencyReader`。CommentReader、类型化注释事实、上下文归一化及存储/CLI/RPC/pipeline 路由已在 C1 源码接入，当前产品验收状态见文末和当前实现。扫描方法必须显式实现，生产读取使用有界 SQL；FILES 文本/源码只需 `SourceContext`，不实现语义图能力。
+
+C1 的共享内核位于 `crates/comment-search`，固定 jieba-rs 0.11.0、内置词典 SHA-256 和规则摘要；索引用 search、查询用 default，HMM 开启。英文标识符保留全词并拆分驼峰、缩写、下划线及数字，统一 Unicode 小写；查询词去重且全部匹配，空词查询明确报错。调用方必须接入既有账本/取消回调，在分词临时分配前准入，不另建账户。正文复核使用原 UTF-8 字节位置；body_map 校验完整、顺序与字符边界，转义段整体映射，去除标记的间隙不高亮。公开行列从捕获源码一次顺序扫描计算 UTF-16 坐标。词典是进程内只读固定状态，无运行时替换入口；具体来源见该 crate 的 `provenance.json`。目前这些是内部基础能力，生产查询接入仍待完成。
 
 ## 1. 查询上下文
 
@@ -110,7 +112,7 @@ calls -------- call_relation -> resolve       导航到另一端方法
 | Java 派发回放 | 按 Java fixture 的预期候选、proof、开放世界和预算行为断言 |
 | 外部目标无源码 / 未展开宏 | 返回具体不可用原因，不报告完整空结果 |
 
-公开布局、默认限制和退出码由本项目 fixture/golden 验证，见 [公共契约](../contracts.md)。[Anatomist 输出契约](../../../anatomist/docs/output-contract.md) 仅供设计参考，无兼容验收要求。
+公开布局、默认限制和退出码由本项目 fixture/golden 验证，见 [公共契约](../contracts.md)。Anatomist 的历史输出设计仅供参考，无协议兼容验收要求。
 
 ### 当前新增查询选项
 
@@ -151,3 +153,18 @@ Python 导航/结构/调用使用已发布声明、包含、引用和直接继�
 生产查询使用根操作持有的 `ResourceBudget`，子查询、pipeline 与 diff 共用。扫描提供 `BoundedRead`，区分完整读取、已解码记录和资源停止；计费、配置及退出语义见配置文档“查询累计预算”。聚合在读取未完成时不返回中间计数，selector 不能从受限候选断言唯一，diff 不把未读端点视为空集。受限结果可冻结，但每页保留原 `resource_usage`，不重新读取配置或恢复计算。
 
 新生成的调用关系（含 trace/pipeline/impact）在完整非空 caller/callee 方法 ID 相同时携带可选 `recursion: "direct"`。关系身份、排序和导航不变；旧页缺字段仍可读。该字段只表示静态直接自调用，不证明运行时执行或退出条件；字段缺失不能排除间接递归。
+
+应用层 query_normalization 已接入 TaskRunner 生产提交入口，保留现有预检错误身份；同一入口能生成内部 NormalizedCommentQuery 并保留显式零值。当前公开请求仍不携带注释选项，公开配置、RPC/CLI 和冻结页中的注释实参在 C1 接入。
+
+
+## 源码注释查询（C1 已交付）
+
+```sh
+codeana search-comments "库存不足" --context-before 0 --context-after 8
+codeana search-code "库存不足" --in comments
+codeana search-code "库存不足" --in names,comments
+```
+
+search-code 默认 names，沿用公开 ID 顺序和流式冻结；comments 路径目前有界计算后冻结，最多 10,000 条并披露截断。search-comments 返回类型化 CommentMatch，包含 comment、原源码命中范围、links、source 窗口；按文件、字节起止、world、comment ID 排序。公共分词模块固定词典，关键词 AND，FTS 候选必须经原正文复核。孤立注释可检索；代码投影只采用 documents/enclosing_callable 中实际存在的公开声明，保留所有注释证据。附近语句关联为 heuristic，不能制造声明。
+
+CommentReader 只负责当前 revision 的有界事实/关联读取；源码读取继续校验 manifest hash。展示默认上下各 5 行，配置 [query.comments]，每项 0..=100，CLI 优先；第一次提交冻结有效值，续页沿用。pipeline 的 search-comments 可作为首阶段，以语言提供的声明链接进入后续阶段，不能给孤立注释猜测声明。COMMENTS 覆盖独立披露；Rust/Python 提取尚未实现。

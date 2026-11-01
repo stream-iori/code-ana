@@ -19,7 +19,7 @@ import java.util.*;
 /** Target-JDK javac worker backend. Trees are detached before compiler resources are released. */
 public final class JavacBackend implements JavaSemanticBackend {
     private final JavacModelConsumer modelConsumer = new JavacModelConsumer(this);
-    public static final String MODEL_VERSION = "javac-model-v50";
+    public static final String MODEL_VERSION = "javac-model-v51";
     final Path projectRoot;
     private final List<SourceRoot> sourceRoots;
     final JavacToolchain toolchain;
@@ -320,7 +320,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                     Map.of(),
                                     Map.of(),
                                     List.of(),
-                                    Map.of("lombok_processor_partial", 1L),analysisContext)));
+                                    Map.of("lombok_processor_partial", 1L),analysisContext), candidate.comments()));
         }
     }
 
@@ -469,7 +469,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                         "-Xmx" + config.workerHeapMb() + "m"));
                 if (toolchain.release() == 8)
                     workerPath += File.pathSeparator + toolchain.home().resolve("lib/tools.jar");
-                else command.addAll(List.of("--add-modules", "jdk.compiler"));
+                command.addAll(JavacToolchain.compilerAccessOptions(toolchain.release()));
                 command.addAll(List.of("-cp", workerPath, "com.anatomist.worker.JavacWorker", "1"));
                 activeWorkers =
                         new JavacWorkerPool(
@@ -1036,7 +1036,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                             selectedProcessor,
                                             classes,
                                             scratch,
-                                            lease),
+                                            lease, analysisContext),
                             scratch.resolve("received.bin"));
             var prepared =
                     new JavacAnalysisAttempt(input, declarations, catalogues, directory, request);
@@ -1177,7 +1177,7 @@ public final class JavacBackend implements JavaSemanticBackend {
                                                         processor,
                                                         destination,
                                                         scratch.path(),
-                                                        declarations),
+                                                        declarations, analysisContext),
                                         frames,
                                         declarations,
                                         transcript);

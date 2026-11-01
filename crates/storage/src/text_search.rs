@@ -1,6 +1,6 @@
 //! Optional trigram candidates over a content-verified captured manifest.
 use super::*;
-use crate::derived_cache::{DerivedCacheLimits, DerivedCacheSession};
+use codeana_derived_cache::{DerivedCacheLimits, DerivedCacheSession};
 
 pub type TextCandidates = BTreeSet<(String, String)>;
 const NAMESPACE: &str = "text-trigram-v1";

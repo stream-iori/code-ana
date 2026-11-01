@@ -70,13 +70,48 @@ root="common"
     def catalog(self):
         return json.loads((self.project/'.code-ana/inputs.json').read_text())
 
+    def add_python_comment_inputs(self):
+        for relative in ('app-a/main_a.py','app-b/main_b.py'):
+            source=self.project/relative
+            source.write_text('"""准备库存文档"""\n'+source.read_text())
+
+    def test_comment_display_configuration_preserves_prepared_inputs_and_profile(self):
+        self.add_python_comment_inputs()
+        first=self.cli('index','--prepare',timeout=120)[1]['revision']
+        catalog_bytes=(self.project/'.code-ana/inputs.json').read_bytes()
+        profile=json.loads((self.home/'revisions'/first/'revision.json').read_text())['profile']
+        before=self.cli('search-comments','准备库存文档','--module','app-a')[0]
+        self.config+='\n[query.comments]\ncontext_before=0\ncontext_after=0\n'
+        self.write_config()
+        shown=self.cli('search-comments','准备库存文档','--module','app-a')[0]
+        self.assertLess(len(shown[0]['source']['text']),len(before[0]['source']['text']))
+        rows,current=self.cli('index',timeout=120)
+        previous=json.loads((self.home/'revisions'/first/'revision.json').read_text())
+        updated=json.loads((self.home/'revisions'/current['revision']/'revision.json').read_text())
+        self.assertEqual(updated['profile'],profile)
+        previous_sources={(f['path'],f.get('world','')):f for f in previous['manifest']['files']}
+        updated_sources={(f['path'],f.get('world','')):f for f in updated['manifest']['files']}
+        changed=[key for key in previous_sources.keys()|updated_sources.keys() if previous_sources.get(key)!=updated_sources.get(key)]
+        self.assertEqual(rows[0]['mode'],'delta',repr(changed))
+        self.assertEqual((self.project/'.code-ana/inputs.json').read_bytes(),catalog_bytes)
+        self.assertEqual(shown,self.cli('search-comments','准备库存文档','--module','app-a')[0])
+        # Genuine input-policy changes still require explicit preparation.
+        self.config=self.config.replace('dependencies=["common"]','dependencies=[]')
+        self.write_config()
+        _,failure=self.cli('index',code=1,timeout=120)
+        self.assertIn('INPUT_CATALOG_STALE',str(failure))
+
     def test_python_isolation_explicit_dependency_reuse_and_global_report(self):
+        self.add_python_comment_inputs()
         self.assertFalse((self.project/'.code-ana/inputs.json').exists())
         doctor = self.cli('doctor')[0][0]
         self.assertEqual(doctor['preparation']['catalog_state'], 'missing')
         self.assertFalse((self.project/'.code-ana/inputs.json').exists())
         _, result = self.cli('index', '--prepare', timeout=120)
         first = result['revision']
+        comments,_=self.cli('search-comments','准备库存文档','--strict')
+        self.assertEqual({r['comment']['module'] for r in comments},{'app-a','app-b'})
+        self.assertTrue(all(not r['comment']['source_file'].startswith('/') for r in comments))
         with self.db(first) as db:
             self.assertEqual(db.execute("SELECT count(*) FROM index_diagnostics WHERE code='missing-import'").fetchone()[0], 0)
             rows = db.execute("SELECT DISTINCT module FROM nodes WHERE language='python'").fetchall()
@@ -204,17 +239,18 @@ source_roots=[{path=".",scope="MAIN"}]
 
     @unittest.skipUnless(os.environ.get('CODEANA_TEST_REAL_JAVA') == '1', 'explicit Native Java SDK gate')
     def test_independent_maven_reactors_and_three_languages(self):
+        self.add_python_comment_inputs()
         self.config += '\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\nclasspath="existing"\nvm_classpath=true\n'
         for name, method in (('java-a', 'alpha'), ('java-b', 'beta')):
             path = self.project/name
             (path/'src/main/java').mkdir(parents=True)
             (path/'pom.xml').write_text('<project><modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>same</artifactId><version>1</version><properties><maven.compiler.source>8</maven.compiler.source><maven.compiler.target>8</maven.compiler.target></properties></project>')
-            (path/'src/main/java/App.java').write_text('public class App { public static int '+method+'(){return 1;} }\n')
+            (path/'src/main/java/App.java').write_text('/** 准备库存文档 */ public class App { public static int '+method+'(){return 1;} }\n')
             self.config += f'\n[[inputs.entries]]\nid="{name}"\nlanguage="java"\nroot="{name}"\n[inputs.entries.java]\noffline=true\n'
         path = self.project/'native-rust'
         (path/'src').mkdir(parents=True)
         (path/'Cargo.toml').write_text('[workspace]\n[package]\nname="native-rust"\nversion="0.1.0"\nedition="2024"\n')
-        (path/'src/lib.rs').write_text('pub fn native_rust() -> u32 { 1 }\n')
+        (path/'src/lib.rs').write_text('/// 准备库存文档\npub fn native_rust() -> u32 { 1 }\n')
         subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=path, check=True, capture_output=True)
         self.config += '\n[languages.rust]\nenabled=true\n[[inputs.entries]]\nid="native-rust"\nlanguage="rust"\nroot="native-rust"\n'
         self.write_config()
@@ -222,6 +258,8 @@ source_roots=[{path=".",scope="MAIN"}]
         with self.db(result['revision']) as db:
             self.assertEqual({r[0] for r in db.execute('SELECT DISTINCT language FROM nodes')}, {'java', 'rust', 'python'})
             self.assertEqual({r[0] for r in db.execute("SELECT DISTINCT module FROM nodes WHERE language='java'")}, {'java-a', 'java-b'})
+        comments,_=self.cli('search-comments','准备库存文档','--max-output-bytes','1048576','--strict')
+        self.assertEqual({r['comment']['language'] for r in comments},{'java','rust','python'})
         self.assertTrue(self.cli('resolve', 'alpha')[0])
         self.assertTrue(self.cli('resolve', 'beta')[0])
         pom = self.project/'java-a/pom.xml'

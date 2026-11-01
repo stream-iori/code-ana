@@ -42,7 +42,9 @@ final class JavacModelConsumer {
                         records[0] +=
                                 new JavaSyntax(unit.tree(),backend.analysisContext).nodes().size()
                                         + unit.bindings().size()
-                                        + unit.types().entries().size();
+                                        + unit.types().entries().size()
+                                        + unit.comments().size()
+                                        + unit.comments().stream().mapToLong(comment -> (long) comment.segments().size() + comment.documentOwners().size()).sum();
                         var declarations = new ArrayDeque<>(unit.declarationInventory());
                         while (!declarations.isEmpty()) {
                             records[0]++;

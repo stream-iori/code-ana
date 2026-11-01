@@ -12,6 +12,7 @@ pub enum Record {
     Dispatch(DispatchCandidate),
     Source(SourceSnippet),
     Text(TextMatch),
+    Comment(Box<crate::CommentMatch>),
     Project(ProjectOverview),
     Group(OverviewGroup),
     /// Already rendered operation or historical data. Never a pipeline input.
@@ -48,6 +49,7 @@ impl Record {
             }
             Self::Source(v) => serde_json::to_value(v),
             Self::Text(v) => serde_json::to_value(v),
+            Self::Comment(v) => serde_json::to_value(v),
             Self::Project(v) => serde_json::to_value(v),
             Self::Group(v) => serde_json::to_value(v),
             Self::Display(v) => Ok(v.0.clone()),
@@ -71,6 +73,20 @@ impl Record {
             (Self::Trace(v), Endpoint::Callee | Endpoint::Target) => &v.to,
             (Self::Dispatch(v), Endpoint::Callee | Endpoint::Target) => {
                 v.target.as_ref().ok_or_else(missing)?
+            }
+            (Self::Comment(v), Endpoint::Entity) => {
+                return Ok(v
+                    .links
+                    .iter()
+                    .filter(|link| {
+                        matches!(
+                            link.relation,
+                            crate::CommentRelation::Documents
+                                | crate::CommentRelation::EnclosingCallable
+                        )
+                    })
+                    .filter_map(|link| link.declaration.as_ref().map(|id| id.as_str()))
+                    .collect());
             }
             (Self::Call(v), Endpoint::Site) => {
                 return Ok(v.sites.iter().map(String::as_str).collect());
@@ -96,6 +112,7 @@ impl Record {
                 Record::Project(_) => 6,
                 Record::Group(_) => 7,
                 Record::Display(_) => 8,
+                Record::Comment(_) => 9,
             }
         }
         let order = family(self).cmp(&family(other));
@@ -139,6 +156,20 @@ impl Record {
             (Self::Source(a), Self::Source(b)) => {
                 (&a.path, a.span.start, a.span.end).cmp(&(&b.path, b.span.start, b.span.end))
             }
+            (Self::Comment(a), Self::Comment(b)) => (
+                &a.comment.source_file,
+                a.comment.range.byte_start,
+                a.comment.range.byte_end,
+                &a.comment.world,
+                &a.comment.id,
+            )
+                .cmp(&(
+                    &b.comment.source_file,
+                    b.comment.range.byte_start,
+                    b.comment.range.byte_end,
+                    &b.comment.world,
+                    &b.comment.id,
+                )),
             (Self::Text(a), Self::Text(b)) => (&a.path, a.line).cmp(&(&b.path, b.line)),
             (Self::Group(a), Self::Group(b)) => (
                 &a.module,
@@ -163,12 +194,15 @@ impl From<Fact> for Record {
             fact,
             depth: None,
             runtime_implementation: None,
+            comment_hits: Vec::new(),
         }))
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactRecord {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub comment_hits: Vec<crate::CommentMatch>,
     #[serde(flatten)]
     pub fact: Fact,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -297,6 +331,7 @@ enum RecordDecoder {
     Dispatch(DispatchCandidate),
     Source(SourceSnippet),
     Text(TextMatch),
+    Comment(Box<crate::CommentMatch>),
     Project(ProjectOverview),
     Group(OverviewGroup),
     /// Already rendered operation or historical data. Never a pipeline input.

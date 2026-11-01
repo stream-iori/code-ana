@@ -86,7 +86,7 @@ source_roots = [{path = "src", scope = "MAIN"}]
 
 相同 entry.python.environment 表示共享环境，成员按配置顺序组织，各文件保留实际 module。目标和有序外部依赖根必须一致；冲突拒绝。只有显式共享或依赖才会互相可见。
 
-Python schema 3 增加根 module、模块元数据、上下文 publish_roots/gaps，兼容 schema 1/2。adapter 为 pyrefly-1.4.0-codeana-v4-analysis-resources，后端提交不变。旧格式默认值不改变旧 world 编码；新归属进入 world/profile。
+Python schema 3 增加根 module、模块元数据、上下文 publish_roots/gaps，兼容 schema 1/2。adapter 为 pyrefly-1.4.0-codeana-v5-comments，后端提交不变。旧格式默认值不改变旧 world 编码；新归属进入 world/profile。
 
 ## 输入与降级
 
@@ -119,3 +119,7 @@ Java plain 使用已有显式模块根，不运行 Maven，仍需正确的 Java 
 当前版本为 worker 22、daemon 4、Java ABI 4、graph 4、物理 schema 11。准备与索引不是跨进程事务，报告以实际捕获和提交为准。分析 worker 和 Java SDK 仍须按安装说明具备。
 
 验证入口为 tests/prepared_inputs_e2e.py；CODEANA_TEST_REAL_JAVA=1 显式启用 Native 三语言及两个独立 Maven reactor。旧路径继续由现有 Rust/Python 门禁覆盖。
+
+准备清单 schema 1 新增可选 preparation_sha256：绑定准备时原始 config_sha256 与去除注释展示参数后的类型化配置。只改 [query.comments] 或不改变配置含义的格式时，不要求重新准备，也不改变语义 profile；输入策略或原始回执摘要被修改仍拒绝。旧清单缺少此字段时保留原始字节摘要校验，更新后重新 index --prepare 即可生成新校验。CLI 准备过程的前后原始配置变化检查保持严格。
+
+完整语义 profile 相同、其余源码/owner 完全相同时，普通 Python 与 prepared 可以复用图并更新 FILES 中的根配置捕获；源码、依赖或 world 改变仍沿原策略重算。

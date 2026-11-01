@@ -1,0 +1,20 @@
+{
+  "status": "C1 Java lexical/model and Native/JVM public query cases verified; lifecycle, three-language and distribution gates pending",
+  "source": "Comments.java",
+  "comments": [
+    {"line": 1, "kind": "line", "contains": "文件头", "documents": null, "enclosing_callable": null},
+    {"line": 4, "kind": "doc", "contains": "库存仓库", "documents": "fixture.comments.Comments", "enclosing_callable": null},
+    {"line": 6, "kind": "doc", "contains": "扣减库存", "documents": "fixture.comments.Comments#reserve(int)", "enclosing_callable": null},
+    {"line": 9, "kind": "line", "contains": "检查库存", "enclosing_callable": "fixture.comments.Comments#reserve(int)", "leading_statement_line": 10},
+    {"line": 10, "kind": "line", "contains": "行尾库存不足", "enclosing_callable": "fixture.comments.Comments#reserve(int)", "trailing_statement_line": 10},
+    {"line": 12, "kind": "line", "contains": "独立注释", "enclosing_callable": "fixture.comments.Comments#reserve(int)", "leading_statement_line": null},
+    {"line": 15, "kind": "line", "contains": "lambda", "enclosing_callable": null, "enclosing_range_lines": [14, 17], "leading_statement_line": 16},
+    {"line": 21, "kind": "block", "contains": "普通块注释", "documents": null, "enclosing_callable": null, "leading_statement_line": null}
+  ],
+  "non_comments": [{"line": 8, "contains": "不是注释"}],
+  "queries": [
+    {"text": "扣减库存", "comment_lines": [6], "declarations": ["fixture.comments.Comments#reserve(int)"]},
+    {"text": "文件头", "comment_lines": [1], "declarations": []},
+    {"text": "不是注释", "comment_lines": [], "declarations": []}
+  ]
+}

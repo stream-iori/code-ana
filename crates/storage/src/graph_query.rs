@@ -899,6 +899,9 @@ impl SourceContext for ReadContext {
     }
 }
 impl GraphAccess for ReadContext {
+    fn comment_reader(&self) -> Option<&dyn CommentReader> {
+        Some(self)
+    }
     fn select(&self, f: &FactFilter) -> std::result::Result<Vec<Fact>, DomainError> {
         if self.budget.is_some() {
             let mut output = Vec::new();

@@ -55,6 +55,7 @@ impl task_service_server::TaskService for Service {
                 "query-resources-v1".into(),
                 "call-recursion-v1".into(),
                 "text-search-options-v1".into(),
+                "comment-search-v1".into(),
                 "overview-sections-v1".into(),
                 "reference-options-v1".into(),
                 "annotations-meta-v1".into(),

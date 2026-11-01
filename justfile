@@ -32,6 +32,7 @@ test-rust:
   cargo build --workspace --locked
   python3 tests/rust_graph_e2e.py
   python3 tests/rust_language_e2e.py
+  python3 tests/rust_comment_e2e.py
   python3 tests/rust_dogfood_tests.py
   python3 tests/java_bundle_manifest_tests.py
   python3 tests/java_package_tests.py
@@ -45,6 +46,7 @@ test-rust-release:
   cd "dist/codeana-rust-$(uname -s)-$(uname -m)" && shasum -a 256 -c SHA256SUMS
   CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_graph_e2e.py
   CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_language_e2e.py
+  CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_comment_e2e.py
 
 demo-rust:
   ./scripts/demo-rust.sh
@@ -99,6 +101,9 @@ test-java-native:
   python3 tests/java_native_manifest_tests.py
   python3 tests/java_native_lifecycle.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
+  CODEANA_JAVA_BACKEND=native python3 tests/comment_search_e2e.py
+  CODEANA_JAVA_BACKEND=native python3 tests/comment_lifecycle_e2e.py
+  CODEANA_JAVA_BACKEND=native python3 tests/comment_ownership_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_resource_limits.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_native_environment.py
   python3 tests/java_native_crash_e2e.py
@@ -117,6 +122,7 @@ test-java-native-lifecycle evidence:
 test-java-e2e:
   cargo build --workspace --locked
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
+  CODEANA_JAVA_BACKEND=native python3 tests/comment_search_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_resource_limits.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_native_environment.py
   python3 tests/java_native_crash_e2e.py
@@ -147,6 +153,7 @@ test-python:
   cargo build --workspace --locked
   ./scripts/build-python.sh
   python3 tests/python_language_e2e.py
+  python3 tests/python_comment_e2e.py
   python3 tests/prepared_inputs_e2e.py
 
 package-python output:
@@ -157,10 +164,12 @@ package-python output:
 test-python-release package:
   cd '{{package}}' && shasum -a 256 -c SHA256SUMS
   CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/python_language_e2e.py
+  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/python_comment_e2e.py
   CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/prepared_inputs_e2e.py
 
 # Java combinations require the matching installed Native SDK.
 test-python-mixed:
+  python3 tests/comment_mixed_e2e.py
   python3 tests/python_language_e2e.py PythonJava.test_java_python_and_three_language_publication
   CODEANA_TEST_REAL_JAVA=1 python3 tests/prepared_inputs_e2e.py PreparedInputs.test_independent_maven_reactors_and_three_languages
 
@@ -183,3 +192,19 @@ test-analysis-resources-release-e2e evidence:
   cargo build --release --workspace --locked
   ./scripts/build-python.sh --release
   python3 tests/analysis_resources_release_gate.py --evidence '{{evidence}}'
+
+# Matching Java SDK and frozen Rust inputs are required; no iopengw dependency.
+test-comment-lifecycle:
+  cargo build --workspace --locked
+  CODEANA_JAVA_BACKEND=native python3 tests/comment_lifecycle_e2e.py
+  CODEANA_JAVA_BACKEND=native python3 tests/comment_ownership_e2e.py
+
+# Freeze binaries/SDK and exact generated inputs before validating then measuring once.
+comment-fixture-prepare directory:
+  python3 scripts/comment-feature-acceptance.py prepare --directory '{{directory}}'
+
+comment-fixture-functional directory:
+  python3 scripts/comment-feature-acceptance.py run --directory '{{directory}}' --mode functional
+
+comment-fixture-measure directory:
+  python3 scripts/comment-feature-acceptance.py measure --directory '{{directory}}'

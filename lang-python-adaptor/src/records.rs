@@ -316,6 +316,7 @@ pub fn emit_with_context(
                 .map(|m| (m.path.as_str(), SourceText::new(m.source.as_str())))
                 .collect(),
         };
+        emit_comments(&rows, manifest, budget, &mut push)?;
         for (declaration, id) in rows.declarations.values() {
             let d = declaration;
             let (bl, bc) = rows.texts[d.path.as_str()].position(d.start)?;
@@ -623,7 +624,7 @@ pub fn emit_with_context(
                 codeana_model::python::ADAPTER_VERSION,
                 crate::BACKEND_COMMIT
             )),
-            operations: Some("[\"declarations\",\"references\",\"calls\"]".into()),
+            operations: Some("[\"declarations\",\"references\",\"calls\",\"comments\"]".into()),
             limitations: Some(
                 "[\"static binding only\",\"dynamic and synthesized targets may be unknown\"]"
                     .into(),
@@ -690,4 +691,143 @@ fn coverage(input: &WorldAnalysis, source: &str, gaps: &BTreeSet<String>) -> Res
         details_truncated: Some(0),
     }
     .into_row(&input.world))
+}
+
+fn emit_comments(
+    rows: &Rows<'_>,
+    manifest: &Manifest,
+    budget: &AnalysisContext,
+    push: &mut impl FnMut(Row) -> Result<()>,
+) -> Result<()> {
+    use codeana_model::{
+        CommentBasis, CommentFact, CommentKind, CommentLink, CommentRange, SourcePositions,
+    };
+    let admit = |w, b| {
+        budget
+            .charge(w, 0, b)
+            .map_err(codeana_model::DomainError::analysis)
+    };
+    let mut positions = BTreeMap::new();
+    for observation in &rows.input.analysis.comments {
+        budget.charge(manifest.files.len() as u64, 0, 0)?;
+        let Some(source) = manifest.files.iter().find(|s| {
+            s.path == observation.path
+                && s.world == rows.world
+                && s.language == "python"
+                && !s.auxiliary
+        }) else {
+            continue;
+        };
+        budget.charge(
+            1,
+            1,
+            codeana_model::retained_size(observation)?
+                .saturating_mul(8)
+                .saturating_add(4096),
+        )?;
+        let text = rows.texts[observation.path.as_str()].text;
+        if !positions.contains_key(observation.path.as_str()) {
+            positions.insert(
+                observation.path.as_str(),
+                SourcePositions::new(text, &admit)?,
+            );
+        }
+        let position = &positions[observation.path.as_str()];
+        let range = |start: u32, end: u32| -> Result<CommentRange> {
+            let (begin_line, begin_column) = position.position(text, start as usize, &admit)?;
+            let (end_line, end_column) = position.position(text, end as usize, &admit)?;
+            Ok(CommentRange {
+                byte_start: start.into(),
+                byte_end: end.into(),
+                begin_line,
+                begin_column,
+                end_line,
+                end_column,
+            })
+        };
+        let mut fact = CommentFact {
+            id: Default::default(),
+            source_file: source.path.clone(),
+            source_hash: source.hash.clone(),
+            module: source.module.clone(),
+            scope: source.scope.clone(),
+            world: rows.world.clone().into(),
+            language: "python".into(),
+            provider: PRODUCER.into(),
+            producer: PRODUCER.into(),
+            kind: if observation.docstring {
+                CommentKind::Docstring
+            } else {
+                CommentKind::Line
+            },
+            range: range(observation.start, observation.end)?,
+            body: observation.body.clone(),
+            body_map: observation.body_map.clone(),
+            rule_version: "python-comments-v1".into(),
+        };
+        fact.id = fact.expected_id();
+        push(CommentRow::try_from(&fact)?.into_row(&rows.world))?;
+        for evidence in &observation.links {
+            budget.charge(1, 1, 4096)?;
+            let declaration = evidence
+                .declaration
+                .and_then(|anchor| rows.declarations.get(&(observation.path.as_str(), anchor)))
+                .map(|(_, id)| id.clone().into());
+            let link = CommentLink {
+                comment: fact.id.clone(),
+                relation: evidence.relation,
+                declaration,
+                range: range(evidence.start, evidence.end)?,
+                basis: if matches!(
+                    evidence.relation,
+                    codeana_model::CommentRelation::LeadingStatement
+                        | codeana_model::CommentRelation::TrailingStatement
+                ) {
+                    CommentBasis::Heuristic
+                } else {
+                    CommentBasis::LanguageRule
+                },
+                rule_version: "python-comments-v1".into(),
+            };
+            push(CommentLinkRow::from_fact(&fact, &link)?.into_row(&rows.world))?;
+        }
+    }
+    for (source, gaps) in &rows.input.analysis.comment_gaps {
+        budget.charge(
+            manifest.files.len() as u64,
+            1,
+            8192 + gaps.iter().map(|s| s.len() as u64 * 16).sum::<u64>(),
+        )?;
+        if !manifest.files.iter().any(|s| {
+            &s.path == source && s.world == rows.world && s.language == "python" && !s.auxiliary
+        }) {
+            continue;
+        }
+        let counts = gaps.iter().map(|s| (s, 1)).collect::<BTreeMap<_, _>>();
+        push(
+            CoverageRow {
+                source_file: Some(source.clone()),
+                module: Some(rows.input.module(source)),
+                scope: Some(rows.input.context.scope.clone()),
+                language: Some("python".into()),
+                provider_id: Some(PRODUCER.into()),
+                capability: Some("COMMENTS".into()),
+                status: Some(
+                    if gaps.is_empty() {
+                        "complete"
+                    } else {
+                        "partial"
+                    }
+                    .into(),
+                ),
+                occurrences: Some(gaps.len().try_into()?),
+                groups_count: Some(gaps.len().try_into()?),
+                codes: Some(serde_json::to_string(gaps)?),
+                code_counts: Some(serde_json::to_string(&counts)?),
+                details_truncated: Some(0),
+            }
+            .into_row(&rows.world),
+        )?;
+    }
+    Ok(())
 }

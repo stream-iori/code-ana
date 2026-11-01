@@ -1,6 +1,9 @@
 //! Application orchestration. CLI and Java adapters contain no product policy.
+mod analysis_unit;
 mod doctor;
 mod history;
+mod index_execution;
+mod index_plan;
 mod indexing;
 mod input_process;
 pub mod inputs;
@@ -8,12 +11,13 @@ mod java;
 pub mod maven_inputs;
 mod output;
 pub mod ports;
-mod prepared_indexing;
 mod publication;
-mod python_indexing;
+mod python_inputs;
+mod query_normalization;
 mod reports;
+mod resources;
 pub use reports::report_markdown;
-mod rust_indexing;
+mod rust_inputs;
 mod scheduler;
 mod task_runner;
 use ports::TaskRepository;
@@ -100,6 +104,7 @@ impl Event {
     }
 }
 struct Job {
+    staging_sources: Mutex<Option<Arc<BTreeMap<String, codeana_config::CapturedBlob>>>>,
     analysis_coordinator: Mutex<Option<Arc<Mutex<AnalysisCoordinator>>>>,
     analysis_admission: Mutex<Option<(AnalysisLimits, AnalysisContext)>>,
     query_budget: Option<ResourceBudget>,
@@ -443,6 +448,8 @@ impl Engine {
                     }
                     Err(e) => return Err(e),
                 };
+                let token = cancel.clone();
+                let reader = reader.with_cancellation(Arc::new(move || token.is_cancelled()));
                 ensure!(
                     reader.revision().project == project,
                     codeana_model::DomainError::new(codeana_model::ErrorCode::ProjectMismatch, "")
@@ -451,7 +458,9 @@ impl Engine {
                     inner: &reader,
                     cancel,
                 };
-                if req.operation == codeana_model::Operation::SearchCode {
+                if req.operation == codeana_model::Operation::SearchCode
+                    && req.search_in == SearchIn::Names
+                {
                     return self.search_page(req, &project, &guarded, vec![id], cancel);
                 }
                 let source = |s: &SourceUnit| -> Result<Vec<u8>> {
@@ -575,6 +584,9 @@ impl CancelableReader<'_> {
     }
 }
 impl SourceContext for CancelableReader<'_> {
+    fn charge(&self, work: u64, bytes: u64) -> std::result::Result<(), DomainError> {
+        self.checked(|| self.inner.charge(work, bytes))
+    }
     fn resource_budget(&self) -> Option<&ResourceBudget> {
         self.inner.resource_budget()
     }
@@ -586,6 +598,11 @@ impl SourceContext for CancelableReader<'_> {
     }
 }
 impl GraphAccess for CancelableReader<'_> {
+    fn comment_reader(&self) -> Option<&dyn CommentReader> {
+        self.inner
+            .comment_reader()
+            .map(|_| self as &dyn CommentReader)
+    }
     fn scan(
         &self,
         filter: &FactFilter,
@@ -726,6 +743,34 @@ pub fn project_path(path: &Path) -> Result<PathBuf> {
         resolved.push(part);
     }
     Ok(resolved)
+}
+
+impl CommentReader for CancelableReader<'_> {
+    fn scan_comments(
+        &self,
+        terms: &[String],
+        filter: &CommentFilter,
+        after: Option<&CommentOrderKey>,
+        limit: usize,
+    ) -> std::result::Result<BoundedRead<CommentFact>, DomainError> {
+        self.checked(|| {
+            self.inner
+                .comment_reader()
+                .ok_or_else(|| DomainError::new(ErrorCode::UnsupportedCapability, "comments"))?
+                .scan_comments(terms, filter, after, limit)
+        })
+    }
+    fn comment_links(
+        &self,
+        ids: &[CommentId],
+    ) -> std::result::Result<Vec<CommentLink>, DomainError> {
+        self.checked(|| {
+            self.inner
+                .comment_reader()
+                .ok_or_else(|| DomainError::new(ErrorCode::UnsupportedCapability, "comments"))?
+                .comment_links(ids)
+        })
+    }
 }
 
 #[cfg(test)]

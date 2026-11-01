@@ -6,9 +6,9 @@ use crate::reports::{
 pub(super) type StagedCandidate =
     <crate::ports::storage::IndexAdapter as IndexRepository>::Candidate;
 struct IndexSetup {
+    worker: worker::Worker,
     prepared: Option<java::PreparedJava>,
     expected: RevisionId,
-    worker: worker::Worker,
     pool_key: Option<String>,
     profile: String,
     full: bool,
@@ -46,7 +46,122 @@ pub(super) struct PublishedIndex {
     pub(super) publish_ms: u64,
     pub(super) index_elapsed_ms: u64,
 }
+pub(super) struct CandidatePublication<'a> {
+    pub candidate: StagedCandidate,
+    pub producer: &'a str,
+    pub progress: Option<&'static str>,
+}
+pub(super) enum CandidateOutcome {
+    Committed {
+        revision: Revision,
+        started: Instant,
+    },
+    Rejected(Box<TaskResult>),
+}
+
 impl Engine {
+    pub(super) fn staging_context(&self, id: &str) -> Option<GraphStagingContext> {
+        let jobs = self.jobs.lock().unwrap();
+        let job = jobs.get(&TaskId::from(id))?;
+        let coordinator = job.analysis_coordinator.lock().unwrap().clone()?;
+        let sources = job.staging_sources.lock().unwrap().clone()?;
+        Some(GraphStagingContext {
+            hosts: coordinator.lock().unwrap().hosts(),
+            source: Arc::new(move |hash, size| {
+                let blob = sources.get(hash).ok_or_else(|| {
+                    DomainError::new(ErrorCode::SourceHashMismatch, "captured source missing")
+                })?;
+                let limit = usize::try_from(size)
+                    .map_err(|_| DomainError::new(ErrorCode::SourceHashMismatch, "size"))?;
+                blob.read(limit).map_err(|error| {
+                    DomainError::new(ErrorCode::SourceHashMismatch, error.to_string())
+                })
+            }),
+        })
+    }
+    /// Reuse still creates a private candidate and follows the normal publication fence.
+    /// Workers must finish their Reused receipt before this method is called.
+    pub(super) async fn stage_reused_revision(
+        &self,
+        id: &str,
+        revision: Revision,
+        expected: RevisionId,
+        producer: String,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, StagedCandidate)> {
+        let header = AnalysisHeader {
+            mode: AnalysisMode::Delta,
+            baseline: expected.to_string(),
+            manifest: revision.manifest.id(),
+            profile: revision.profile.clone(),
+            producer,
+            replacements: vec![],
+        };
+        let store = self.index.clone().with_context(self.staging_context(id));
+        let cancellation = cancel.clone();
+        let candidate = tokio::task::spawn_blocking(move || {
+            store.stage_graph_records(
+                revision,
+                &header,
+                std::iter::empty(),
+                &expected,
+                || {
+                    ensure!(
+                        !cancellation.is_cancelled(),
+                        DomainError::new(ErrorCode::Cancelled, "")
+                    );
+                    Ok(())
+                },
+                |_| Ok(()),
+            )
+        })
+        .await??;
+        Ok((AnalysisMode::Delta, candidate))
+    }
+
+    /// Every execution policy passes the same quality gate and publication fence.
+    pub(super) async fn publish_candidate(
+        &self,
+        id: &str,
+        req: &IndexCommand,
+        capture: &mut Capture,
+        publication: CandidatePublication<'_>,
+        cancel: &CancellationToken,
+    ) -> Result<CandidateOutcome> {
+        let evidence = &self.index.summary(&publication.candidate).evidence;
+        if req.strict && !evidence.semantic {
+            let mut result = TaskResult::success(Output {
+                producer: publication.producer.into(),
+                evidence: evidence.clone(),
+                ..Default::default()
+            });
+            result.gate = GateState::Rejected;
+            result.publication = PublicationState::Retained;
+            result.exit_code = 3;
+            return Ok(CandidateOutcome::Rejected(Box::new(result)));
+        }
+        ensure!(
+            !cancel.is_cancelled(),
+            DomainError::new(ErrorCode::Cancelled, "")
+        );
+        if let Some(phase) = publication.progress {
+            self.tasks
+                .event(&TaskId::from(id), &Event::Progress(phase.into()))?;
+        }
+        let started = Instant::now();
+        let revision = self
+            .index
+            .publish(
+                publication.candidate,
+                TaskId::from(id),
+                std::mem::take(&mut capture.blobs),
+                cancel.clone(),
+                self.publication_fence(id)?,
+            )
+            .await?;
+        Ok(CandidateOutcome::Committed { revision, started })
+    }
+
     pub(super) fn analysis_binding(
         &self,
         id: &str,
@@ -73,7 +188,8 @@ impl Engine {
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
         // Admit the frozen input before selecting any language or reuse path.
-        // This ledger covers input admission only; backend traversal is not yet wired.
+        // This ledger admits frozen inputs and the plan; the coordinator assigns the
+        // remaining shared account to language hosts and workers.
         if self.mock.is_none() {
             let user = codeana_config::load_user(self.index.home())?;
             let limits = c
@@ -102,6 +218,14 @@ impl Engine {
                     );
                     budget.charge(1, 1, file.size.saturating_add(file.path.len() as u64))?;
                 }
+                for (hash, blob) in &c.blobs {
+                    budget.charge(
+                        1,
+                        1,
+                        (256 + hash.len() + blob.as_ref().as_os_str().as_encoded_bytes().len())
+                            as u64,
+                    )?;
+                }
                 Ok(())
             };
             if let Err(error) = admit() {
@@ -110,39 +234,21 @@ impl Engine {
                 }
                 return Err(error);
             }
+            if let Some(job) = self.jobs.lock().unwrap().get(&TaskId::from(id)) {
+                *job.staging_sources.lock().unwrap() = Some(Arc::new(c.blobs.clone()));
+            }
         }
+        let plan = {
+            let admission = self
+                .jobs
+                .lock()
+                .unwrap()
+                .get(&TaskId::from(id))
+                .and_then(|job| job.analysis_admission.lock().unwrap().clone());
+            crate::index_plan::IndexPlan::build(&c, admission.as_ref().map(|(_, budget)| budget))?
+        };
         if self.mock.is_none() {
-            // Freeze participants before discovery; deleted/empty modules retain their share.
-            let mut participants = std::collections::BTreeSet::new();
-            for language in c.manifest.files.iter().map(|f| f.language.as_str()).chain(
-                c.effective
-                    .config
-                    .modules
-                    .iter()
-                    .map(|m| m.language.as_str()),
-            ) {
-                match language {
-                    "java" => {
-                        participants.insert(AnalysisLanguage::Java);
-                    }
-                    "rust" => {
-                        participants.insert(AnalysisLanguage::Rust);
-                    }
-                    "python" => {
-                        participants.insert(AnalysisLanguage::Python);
-                    }
-                    _ => {}
-                }
-            }
-            if c.effective.rust_inputs.is_some() {
-                participants.insert(AnalysisLanguage::Rust);
-            }
-            if c.effective.python_inputs.is_some() {
-                participants.insert(AnalysisLanguage::Python);
-            }
-            if c.effective.java_inputs.is_some() {
-                participants.insert(AnalysisLanguage::Java);
-            }
+            let participants = &plan.participants;
             if !participants.is_empty() {
                 let jobs = self.jobs.lock().unwrap();
                 if let Some(job) = jobs.get(&TaskId::from(id)) {
@@ -152,7 +258,7 @@ impl Engine {
                             id,
                             *limits,
                             budget.usage(),
-                            &participants.into_iter().collect::<Vec<_>>(),
+                            participants,
                             *job.control.deadline.lock().unwrap(),
                         )
                         .map_err(|failure| {
@@ -165,14 +271,18 @@ impl Engine {
                 }
             }
         }
-        if !c.effective.input_units.is_empty() {
-            return self.index_prepared(id, req, c, cancel).await;
-        }
-        if c.effective.python_inputs.is_some() {
-            return self.index_python(id, req, c, cancel).await;
-        }
-        if c.effective.rust_inputs.is_some() {
-            return self.index_rust(id, req, c, cancel).await;
+        use crate::index_plan::ExecutionPolicy;
+        match plan.policy {
+            ExecutionPolicy::Prepared => {
+                return self.index_prepared(id, req, c, &plan, cancel).await;
+            }
+            ExecutionPolicy::Conservative => {
+                return self.index_python(id, req, c, &plan, cancel).await;
+            }
+            ExecutionPolicy::RustIncremental => {
+                return self.index_rust(id, req, c, &plan, cancel).await;
+            }
+            ExecutionPolicy::Java => {}
         }
         let started = Instant::now();
         let mut timings = timings::IndexTimings::start(id);
@@ -181,117 +291,131 @@ impl Engine {
             result_mode,
             candidate,
             analyze_ms,
-        } = self
-            .analyze_index(&c, cancel, &mut timings, &mut setup)
-            .await?;
+        } = match self
+            .analyze_index(id, &c, cancel, &mut timings, &mut setup)
+            .await
+        {
+            Ok(analyzed) => analyzed,
+            Err(error) => {
+                if let Err(cleanup) = setup.worker.shutdown().await {
+                    eprintln!("java_analysis_cleanup_warning: {cleanup:#}");
+                }
+                return Err(error);
+            }
+        };
         let IndexSetup {
             prepared,
             expected: _,
-            mut worker,
+            worker,
             pool_key,
             profile: _,
             full: _,
             old: _,
             unchanged,
         } = setup;
-        let limits = prepared
-            .as_ref()
-            .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
-            .transpose()?
-            .unwrap_or_default();
-        ensure!(
-            self.index.summary(&candidate).fact_count <= limits.facts,
-            "JAVA_FACT_BUDGET count={} limit={}",
-            self.index.summary(&candidate).fact_count,
-            limits.facts
-        );
-        let summary = self.index.summary(&candidate).clone();
-        if let Some(timings) = &mut timings {
-            timings.phase("candidate_validated");
-            timings.storage(&summary.phase_ms);
-        }
-        let evidence = summary.evidence.clone();
-        if req.strict && !evidence.semantic {
-            let mut t = TaskResult::success(Output {
-                producer: worker.context.producer.clone(),
-                evidence,
-                ..Default::default()
-            });
-            t.gate = codeana_model::GateState::Rejected;
-            t.publication = codeana_model::PublicationState::Retained;
-            t.exit_code = 3;
-            return Ok(t);
-        }
-        ensure!(
-            !cancel.is_cancelled(),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-        );
-        let blobs = std::mem::take(&mut c.blobs);
-        let publishing = Instant::now();
-        let revision = self
-            .index
-            .publish(
-                candidate,
-                TaskId::from(id),
-                blobs,
-                cancel.clone(),
-                self.publication_fence(id)?,
+        let mut worker_slot = Some(worker);
+        let result: Result<TaskResult> = async {
+            let worker = worker_slot.as_mut().context("INDEX_WORKER_REQUIRED")?;
+            let limits = prepared
+                .as_ref()
+                .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
+                .transpose()?
+                .unwrap_or_default();
+            ensure!(
+                self.index.summary(&candidate).fact_count <= limits.facts,
+                "JAVA_FACT_BUDGET count={} limit={}",
+                self.index.summary(&candidate).fact_count,
+                limits.facts
+            );
+            let summary = self.index.summary(&candidate).clone();
+            if let Some(timings) = &mut timings {
+                timings.phase("candidate_validated");
+                timings.storage(&summary.phase_ms);
+            }
+            let evidence = summary.evidence.clone();
+            let (revision, publishing) = match self
+                .publish_candidate(
+                    id,
+                    req,
+                    &mut c,
+                    CandidatePublication {
+                        candidate,
+                        producer: &worker.context.producer,
+                        progress: None,
+                    },
+                    cancel,
+                )
+                .await?
+            {
+                CandidateOutcome::Committed { revision, started } => (revision, started),
+                CandidateOutcome::Rejected(result) => return Ok(*result),
+            };
+            let publish_ms = publishing.elapsed().as_millis() as u64;
+            if let Some(timings) = &mut timings {
+                timings.phase("published");
+            }
+            // Publication is durable; failure to acknowledge cannot turn it into a failed publication.
+            let ack = if unchanged {
+                None
+            } else {
+                crate::analysis_unit::acknowledge(
+                    crate::analysis_unit::Units::One(Some(&mut *worker)),
+                    &revision.id,
+                )
+                .await
+            };
+            let worker_context = worker.context.clone();
+            if let Some(timings) = &mut timings {
+                timings.phase("ack_finished");
+            }
+            if !unchanged
+                && ack.is_none()
+                && self.mock.is_none()
+                && self.user.daemon.java_warm_workers.unwrap_or(true)
+                && let Some(key) = pool_key
+            {
+                let id = new_id("idle-java");
+                let mut idle = self.idle_java.lock().unwrap();
+                *idle = Some(IdleJava {
+                    key,
+                    revision: revision.id.clone(),
+                    id: id.clone(),
+                    worker: worker_slot.take().context("INDEX_WORKER_REQUIRED")?,
+                });
+                drop(idle);
+                let pool = self.idle_java.clone();
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    let mut pool = pool.lock().unwrap();
+                    if pool.as_ref().is_some_and(|item| item.id == id) {
+                        pool.take();
+                    }
+                });
+            }
+            self.finish_index(
+                id,
+                &c,
+                PublishedIndex {
+                    revision,
+                    result_mode,
+                    summary,
+                    evidence,
+                    ack,
+                    worker_context,
+                    analyze_ms,
+                    publish_ms,
+                    index_elapsed_ms: started.elapsed().as_millis() as u64,
+                },
             )
-            .await?;
-        let publish_ms = publishing.elapsed().as_millis() as u64;
-        if let Some(timings) = &mut timings {
-            timings.phase("published");
+            .await
         }
-        // Publication is durable; failure to acknowledge cannot turn it into a failed publication.
-        let ack = if unchanged {
-            None
-        } else {
-            worker.ack(&revision.id).await.err().map(|e| e.to_string())
-        };
-        let worker_context = worker.context.clone();
-        if let Some(timings) = &mut timings {
-            timings.phase("ack_finished");
-        }
-        if !unchanged
-            && ack.is_none()
-            && self.mock.is_none()
-            && self.user.daemon.java_warm_workers.unwrap_or(true)
-            && let Some(key) = pool_key
+        .await;
+        if let Some(worker) = worker_slot.as_mut()
+            && let Err(cleanup) = worker.shutdown().await
         {
-            let id = new_id("idle-java");
-            let mut idle = self.idle_java.lock().unwrap();
-            *idle = Some(IdleJava {
-                key,
-                revision: revision.id.clone(),
-                id: id.clone(),
-                worker,
-            });
-            drop(idle);
-            let pool = self.idle_java.clone();
-            tokio::spawn(async move {
-                tokio::time::sleep(Duration::from_secs(60)).await;
-                let mut pool = pool.lock().unwrap();
-                if pool.as_ref().is_some_and(|item| item.id == id) {
-                    pool.take();
-                }
-            });
+            eprintln!("java_index_cleanup_warning: {cleanup:#}");
         }
-        self.finish_index(
-            id,
-            &c,
-            PublishedIndex {
-                revision,
-                result_mode,
-                summary,
-                evidence,
-                ack,
-                worker_context,
-                analyze_ms,
-                publish_ms,
-                index_elapsed_ms: started.elapsed().as_millis() as u64,
-            },
-        )
-        .await
+        result
     }
     async fn setup_index(
         &self,
@@ -303,13 +427,7 @@ impl Engine {
     ) -> Result<IndexSetup> {
         codeana_config::require_java(c)?;
         let prepared = if self.mock.is_none() {
-            let captured = c.clone();
-            let user = self.user.clone();
-            let home = self.index.home().to_path_buf();
-            Some(
-                tokio::task::spawn_blocking(move || java::prepare(&captured, &user, &home))
-                    .await??,
-            )
+            Some(self.prepare_java_unit(c.clone()).await?)
         } else {
             None
         };
@@ -347,24 +465,34 @@ impl Engine {
         let mut reused = None;
         if self.mock.is_none() && self.user.daemon.java_warm_workers.unwrap_or(true) {
             let idle = self.idle_java.lock().unwrap().take();
-            if let (Some(mut idle), Some(prepared), Some(key)) =
-                (idle, prepared.as_ref(), pool_key.as_ref())
-                && idle.key == *key
-                && idle.revision == expected.as_str()
-                && idle.worker.alive().unwrap_or(false)
-            {
-                idle.worker
-                    .rediscover(
-                        prepared,
-                        &c.manifest,
-                        cancel,
-                        self.analysis_binding(id, AnalysisLanguage::Java, ""),
-                    )
-                    .await?;
-                reused = Some(idle.worker);
+            if let Some(mut idle) = idle {
+                if let (Some(prepared), Some(key)) = (prepared.as_ref(), pool_key.as_ref())
+                    && idle.key == *key
+                    && idle.revision == expected.as_str()
+                    && idle.worker.alive().unwrap_or(false)
+                {
+                    let discovered = idle
+                        .worker
+                        .rediscover(
+                            prepared,
+                            &c.manifest,
+                            cancel,
+                            self.analysis_binding(id, AnalysisLanguage::Java, ""),
+                        )
+                        .await;
+                    if let Err(error) = discovered {
+                        if let Err(cleanup) = idle.worker.shutdown().await {
+                            eprintln!("java_rediscover_cleanup_warning: {cleanup:#}");
+                        }
+                        return Err(error);
+                    }
+                    reused = Some(idle.worker);
+                } else if let Err(cleanup) = idle.worker.shutdown().await {
+                    eprintln!("java_idle_cleanup_warning: {cleanup:#}");
+                }
             }
         }
-        let worker = if let Some(worker) = reused {
+        let mut worker = if let Some(worker) = reused {
             worker
         } else {
             worker::Worker::start(
@@ -378,99 +506,121 @@ impl Engine {
             )
             .await?
         };
-        ensure!(
-            worker.context.language == "java",
-            codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerLanguageMismatch, "")
-        );
-        for module in &c.effective.config.modules {
-            if module.language == "java" {
-                if let Some(version) = &module.analysis.source_version {
-                    ensure!(
-                        version == "auto" || version == &worker.context.source_version,
-                        codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::SourceVersionUnsupported,
-                            ""
-                        )
-                    );
-                }
-                if self.mock.is_some()
-                    && let Some(toolchain) = &module.analysis.toolchain
-                {
-                    ensure!(
-                        toolchain == "auto"
-                            || toolchain == &format!("mock-jdk{}", worker.context.source_version),
-                        codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::MockToolchainUnsupported,
-                            ""
-                        )
-                    );
+        let validated: Result<_> = async {
+            ensure!(
+                worker.context.language == "java",
+                codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::WorkerLanguageMismatch,
+                    ""
+                )
+            );
+            for module in &c.effective.config.modules {
+                if module.language == "java" {
+                    if let Some(version) = &module.analysis.source_version {
+                        ensure!(
+                            version == "auto" || version == &worker.context.source_version,
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::SourceVersionUnsupported,
+                                ""
+                            )
+                        );
+                    }
+                    if self.mock.is_some()
+                        && let Some(toolchain) = &module.analysis.toolchain
+                    {
+                        ensure!(
+                            toolchain == "auto"
+                                || toolchain
+                                    == &format!("mock-jdk{}", worker.context.source_version),
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::MockToolchainUnsupported,
+                                ""
+                            )
+                        );
+                    }
                 }
             }
-        }
-        let profile = digest(&(
-            &c.effective.semantic_digest,
-            &worker.context,
-            "anatomist-schema32-graph1",
-        ));
-        if let Some(timings) = timings {
-            timings.phase("worker_context");
-        }
-        let mut full = req.full || c.effective.config.index.mode == "full" || expected.is_empty();
-        let mut old = None;
-        let mut unchanged = false;
-        if !expected.is_empty() && !full {
-            let store = self.index.clone();
-            let baseline_id = expected.clone();
-            let desired_profile = profile.clone();
-            let desired_manifest = c.manifest.id();
-            let desired_files = c.manifest.clone();
-            let baseline_cancel = cancel.clone();
-            let summary_root = prepared.as_ref().map(|p| p.disk_budget.root.clone());
-            let (baseline_profile, baseline, same_inputs) = tokio::task::spawn_blocking(
-                move || -> Result<(String, Option<BaselineInput>, bool)> {
-                    ensure!(
-                        !baseline_cancel.is_cancelled(),
-                        codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-                    );
-                    let reader = store.read(&baseline_id)?;
-                    let profile = reader.revision().profile.clone();
-                    let same = reader.revision().manifest.id() == desired_manifest;
-                    let summary = if profile != desired_profile || same {
-                        None
-                    } else {
-                        let summary = reader.baseline_summary_for(&desired_files)?;
-                        if let Some(root) = summary_root {
-                            let path = root.join("baseline-summary.json");
-                            let bytes = serde_json::to_vec(&summary)?;
-                            ensure!(
-                                bytes.len() <= 64 << 20,
-                                codeana_model::DomainError::new(
-                                    codeana_model::ErrorCode::GraphBaselineBudget,
-                                    ""
-                                )
-                            );
-                            store.write_baseline(&path, &bytes)?;
-                            Some(BaselineInput::File(BaselineFile {
-                                path,
-                                sha256: codeana_model::hash(&bytes),
-                                bytes: bytes.len() as u64,
-                            }))
+            let profile = digest(&(
+                codeana_comment_search::identity(),
+                &c.effective.semantic_digest,
+                &worker.context,
+                "anatomist-schema32-graph1",
+            ));
+            if let Some(timings) = timings {
+                timings.phase("worker_context");
+            }
+            let mut full =
+                req.full || c.effective.config.index.mode == "full" || expected.is_empty();
+            let mut old = None;
+            let mut unchanged = false;
+            if !expected.is_empty() && !full {
+                let store = self.index.clone().with_context(self.staging_context(id));
+                let baseline_id = expected.clone();
+                let desired_profile = profile.clone();
+                let desired_manifest = c.manifest.id();
+                let desired_files = c.manifest.clone();
+                let baseline_cancel = cancel.clone();
+                let summary_root = prepared.as_ref().map(|p| p.disk_budget.root.clone());
+                let (baseline_profile, baseline, same_inputs) = tokio::task::spawn_blocking(
+                    move || -> Result<(String, Option<BaselineInput>, bool)> {
+                        ensure!(
+                            !baseline_cancel.is_cancelled(),
+                            codeana_model::DomainError::new(
+                                codeana_model::ErrorCode::Cancelled,
+                                ""
+                            )
+                        );
+                        let reader = store.read(&baseline_id)?;
+                        let profile = reader.revision().profile.clone();
+                        let same = reader.revision().manifest.id() == desired_manifest;
+                        let summary = if profile != desired_profile || same {
+                            None
                         } else {
-                            Some(BaselineInput::Inline(summary))
-                        }
-                    };
-                    Ok((profile, summary, same))
-                },
-            )
-            .await??;
-            if baseline_profile != profile {
-                full = true;
+                            let summary = reader.baseline_summary_for(&desired_files)?;
+                            if let Some(root) = summary_root {
+                                let path = root.join("baseline-summary.json");
+                                let bytes = serde_json::to_vec(&summary)?;
+                                ensure!(
+                                    bytes.len() <= 64 << 20,
+                                    codeana_model::DomainError::new(
+                                        codeana_model::ErrorCode::GraphBaselineBudget,
+                                        ""
+                                    )
+                                );
+                                store.write_baseline(&path, &bytes)?;
+                                Some(BaselineInput::File(BaselineFile {
+                                    path,
+                                    sha256: codeana_model::hash(&bytes),
+                                    bytes: bytes.len() as u64,
+                                }))
+                            } else {
+                                Some(BaselineInput::Inline(summary))
+                            }
+                        };
+                        Ok((profile, summary, same))
+                    },
+                )
+                .await??;
+                if baseline_profile != profile {
+                    full = true;
+                }
+                unchanged = prepared.is_some() && !full && same_inputs;
+                if !full {
+                    old = baseline;
+                }
             }
-            unchanged = prepared.is_some() && !full && same_inputs;
-            if !full {
-                old = baseline;
-            }
+            Ok((profile, full, old, unchanged))
         }
+        .await;
+        let (profile, full, old, unchanged) = match validated {
+            Ok(values) => values,
+            Err(error) => {
+                if let Err(cleanup) = worker.shutdown().await {
+                    eprintln!("java_setup_cleanup_warning: {cleanup:#}");
+                }
+                return Err(error);
+            }
+        };
         Ok(IndexSetup {
             prepared,
             expected,
@@ -484,6 +634,7 @@ impl Engine {
     }
     async fn analyze_index(
         &self,
+        id: &str,
         c: &Capture,
         cancel: &CancellationToken,
         timings: &mut Option<timings::IndexTimings>,
@@ -500,7 +651,7 @@ impl Engine {
         let streaming = prepared.is_some() && !unchanged;
         let analyze_ms;
         let (result_mode, candidate) = if streaming {
-            let store = self.index.clone();
+            let store = self.index.clone().with_context(self.staging_context(id));
             let revision = Revision {
                 id: String::new(),
                 target: c.target.clone(),
@@ -587,7 +738,8 @@ impl Engine {
                 // The captured manifest and semantic profile include adapter/toolchain identity.
                 // Keep baseline export validation/budgets and normal candidate validation/publication,
                 // but avoid sending unchanged facts through Java just to discover zero dirty owners.
-                worker.retire_unused().await?;
+                crate::analysis_unit::retire(crate::analysis_unit::Units::One(Some(&mut *worker)))
+                    .await?;
                 let prepared = prepared.as_ref().context(codeana_model::DomainError::new(
                     codeana_model::ErrorCode::JavaRequired,
                     "",
@@ -633,7 +785,7 @@ impl Engine {
                 producer: result.header.producer.clone(),
                 created: 0,
             };
-            let store = self.index.clone();
+            let store = self.index.clone().with_context(self.staging_context(id));
             let baseline_id = expected.clone();
             let staging_cancel = cancel.clone();
             let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
@@ -855,7 +1007,7 @@ impl Engine {
                 |header| {
                     let (sender, records) = codeana_contracts::stream::GraphStream::channel();
                     metrics = Some(sender.metrics.clone());
-                    let store = self.index.clone();
+                    let store = self.index.clone().with_context(self.staging_context(id));
                     let revision = request.revision.clone();
                     let mut header = header.clone();
                     // The worker receipt binds its language view. Storage owns
@@ -919,8 +1071,10 @@ impl Engine {
 impl Engine {
     /// All End receipts are verified before a combined candidate can be staged.
     /// Used for any language set that requires a conservative full rebuild.
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn stage_full_languages(
         &self,
+        id: &str,
         sessions: &mut [(worker::Worker, Manifest)],
         revision: Revision,
         expected: &RevisionId,
@@ -929,6 +1083,7 @@ impl Engine {
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, StagedCandidate)> {
         self.stage_full_language_rows(
+            id,
             sessions,
             revision,
             expected,
@@ -942,6 +1097,7 @@ impl Engine {
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn stage_full_language_rows(
         &self,
+        id: &str,
         sessions: &mut [(worker::Worker, Manifest)],
         revision: Revision,
         expected: &RevisionId,
@@ -973,7 +1129,7 @@ impl Engine {
             producer: revision.producer.clone(),
             replacements,
         };
-        let store = self.index.clone();
+        let store = self.index.clone().with_context(self.staging_context(id));
         let expected = expected.clone();
         let cancel = cancel.clone();
         let scratch = scratch.to_path_buf();

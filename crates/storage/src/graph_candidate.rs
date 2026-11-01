@@ -7,12 +7,34 @@ use sha2::Digest;
 impl Store {
     pub fn stage_graph_records(
         &self,
+        revision: Revision,
+        header: &AnalysisHeader,
+        records: impl Iterator<Item = Result<Row>>,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+    ) -> Result<StagedCandidate> {
+        self.stage_graph_records_with_context(
+            revision,
+            header,
+            records,
+            expected,
+            cancellation,
+            check_directory,
+            None,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn stage_graph_records_with_context(
+        &self,
         mut revision: Revision,
         header: &AnalysisHeader,
         records: impl Iterator<Item = Result<Row>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
         check_directory: impl Fn(&Path) -> Result<()>,
+        context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
         header
             .validate(&revision.manifest)
@@ -91,6 +113,9 @@ impl Store {
         }
         graph_store::initialize(&db)?;
         db.execute_batch("PRAGMA journal_mode=OFF;PRAGMA synchronous=OFF;PRAGMA locking_mode=EXCLUSIVE;PRAGMA cache_size=-64000;PRAGMA temp_store=FILE;PRAGMA foreign_keys=ON;")?;
+        if baseline.is_some() {
+            crate::graph_comments::validate_baseline(&db)?;
+        }
         let stage_path = directory.path().join("stage.db");
         let stage = Connection::open(&stage_path)?;
         graph_store::initialize_stage(&stage)?;
@@ -118,13 +143,29 @@ impl Store {
             .map(|o| o.id.as_str())
             .collect();
         let mut positions = 0;
+        let mut comment_source = crate::graph_comments::SourceCache::default();
         for row in records {
             if positions % 256 == 0 {
                 check()?;
             }
             let row = row?;
             validate_record(&row, &sources, &replaced, header.mode == "delta")?;
-            graph_store::insert(&stage, &row)?;
+            if matches!(
+                codeana_contracts::graph::Table::try_from(row.table),
+                Ok(codeana_contracts::graph::Table::Comment
+                    | codeana_contracts::graph::Table::CommentLink)
+            ) {
+                crate::graph_comments::stage(
+                    &stage,
+                    &row,
+                    &revision.manifest,
+                    context,
+                    &mut comment_source,
+                    &check,
+                )?;
+            } else {
+                graph_store::insert(&stage, &row)?;
+            }
             positions += 1;
             if positions % 10000 == 0 {
                 stage.execute_batch("COMMIT;BEGIN")?;
@@ -172,6 +213,7 @@ impl Store {
             replace_affected(&db, files)?;
         }
         graph_store::promote(&db)?;
+        crate::graph_comments::promote(&db, &revision.manifest, context, &check)?;
         db.execute(
             "INSERT OR REPLACE INTO project_meta VALUES('schema_version',?)",
             [graph_store::SOURCE_SCHEMA_VERSION.to_string()],
@@ -218,6 +260,10 @@ impl Store {
             "INSERT INTO node_names(node_names) VALUES('integrity-check')",
             [],
         )?;
+        db.execute(
+            "INSERT INTO comment_terms(comment_terms,rank) VALUES('integrity-check',1)",
+            [],
+        )?;
         let mut summary = StagedSummary {
             evidence: Evidence::complete(),
             ..Default::default()
@@ -229,6 +275,8 @@ impl Store {
             "call_site_targets",
             "annotations",
             "annotation_meta_owned",
+            "comments",
+            "comment_links",
         ] {
             let count: i64 =
                 db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
@@ -371,6 +419,8 @@ fn validate_record(
         Table::FileCache => Some((1, None)),
         Table::SourceState | Table::AnalysisDependency => Some((0, None)),
         Table::AnnotationMeta => Some((7, None)),
+        Table::Comment => Some((1, Some((3, 4)))),
+        Table::CommentLink => Some((3, Some((4, 5)))),
         _ => None,
     };
     if let Some((source, identity)) = columns
@@ -444,6 +494,7 @@ fn validate_record(
                 "schema_version"
                     | "codeana.revision"
                     | "codeana.profile"
+                    | "codeana.comment_tokenizer"
                     | "codeana.overview_counts"
             ),
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphMetaReserved, "")
@@ -458,7 +509,7 @@ fn replace_affected(db: &Connection, files: &BTreeSet<String>) -> Result<()> {
         db.execute("INSERT INTO graph_replaced VALUES(?)", [file])?;
     }
     // Retain matching hash/ordinal pairs exactly as Anatomist incremental promotion does.
-    db.execute_batch("DELETE FROM edges WHERE (edges.source_file IN(SELECT source_file FROM graph_replaced) OR edges.producer_id='derived-wiring') AND NOT EXISTS(SELECT 1 FROM staged.stage_edges s WHERE s.relation<>'CALLS' AND s.fact_hash=edges.fact_hash AND s.fact_ordinal=edges.fact_ordinal);
+    db.execute_batch("DELETE FROM graph_comments WHERE source_file IN(SELECT file_pk FROM source_files WHERE path IN(SELECT source_file FROM graph_replaced)); DELETE FROM edges WHERE (edges.source_file IN(SELECT source_file FROM graph_replaced) OR edges.producer_id='derived-wiring') AND NOT EXISTS(SELECT 1 FROM staged.stage_edges s WHERE s.relation<>'CALLS' AND s.fact_hash=edges.fact_hash AND s.fact_ordinal=edges.fact_ordinal);
       DELETE FROM annotations WHERE annotations.source_file IN(SELECT source_file FROM graph_replaced) AND NOT EXISTS(SELECT 1 FROM staged.stage_annotations s WHERE s.fact_hash=annotations.fact_hash AND s.fact_ordinal=annotations.fact_ordinal);
       DELETE FROM annotation_meta_owned WHERE source_file IN(SELECT source_file FROM graph_replaced);
       DELETE FROM nodes WHERE source_file IN(SELECT source_file FROM graph_replaced) AND id NOT IN(SELECT id FROM staged.stage_nodes);
