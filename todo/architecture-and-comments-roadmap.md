@@ -1,6 +1,6 @@
 # 架构整改与注释索引联合开发计划
 
-状态：实施中。整理日期：2026-11-01；审查基线：`0395fe7c8cd7813a0e701ec0edb8ef81ecf677b5`。本文是开发排期，不代表代码已经改造或验收通过；开发开始时重新核对 HEAD、协议、产物和当前门禁。
+状态：已完成本计划本机 fixture 范围的实现与验收。收口日期：2026-11-01；原审查基线：`0395fe7c8cd7813a0e701ec0edb8ef81ecf677b5`。实际提交、产物与失败记录见执行表和各阶段回执；本计划完成不代表跨平台、完整语义或容量/稳定性能认证。
 
 **实施顺序：必要架构拆分 → 注释功能交付 → 后续架构整改。**
 
@@ -15,7 +15,7 @@
 
 ### 当前问题与对应任务
 
-| 已核对的代码边界 | 问题 | 处理任务 |
+| 整改前核对的代码边界 | 整改前问题 | 处理任务 |
 |---|---|---|
 | [索引路由](../crates/application/src/indexing.rs)、[公共执行](../crates/application/src/index_execution.rs)、[Python 输入](../crates/application/src/python_inputs.rs) | 语言入口还组织其他语言，Python 输入构造重复 | A1、A2 |
 | [Worker](../crates/application/src/worker.rs)、[Java worker](../crates/java-worker/src/product.rs) | 公共 Worker 使用 Java 模块的磁盘预算；Java worker 为缓存依赖图库 crate | A1 |
@@ -68,7 +68,7 @@ A0 基线与验收清单
 | A4 | 完成 | 查询语言策略及存储语义补全归属显式化 | C4 | 未声明能力的语言不进入 Java 默认语义；已有支持范围结果保持 |
 | A5 | 完成 | 配置/捕获进一步拆分，Engine 按服务划分状态所有权 | A4 | 服务不通过完整 Engine 访问无关状态；主要策略可独立测试 |
 | A6 | 完成 | Lombok 模块归位，Java 生产扩展预算契约收紧 | C4 | 扩展通过统一装配入口接入，缺预算实现无法进入生产注册 |
-| A7 | 实施中 | 架构依赖门禁、完整回归、文档与分发收口 | A5、A6 | 新边界有自动检查；注释功能及既有能力无回归 |
+| A7 | 完成 | 架构依赖门禁、完整回归、文档与分发收口 | A5、A6 | 新边界有自动检查；注释功能及既有能力无回归 |
 
 A7 通过 A5 传递依赖 A4。A1/A2 与 C0/A3 可以独立推进；A5 与 A6 在满足前置条件后也可独立推进。这里只描述任务关系，不预设并行人员或代理。
 
@@ -147,7 +147,7 @@ A1—A3 不改既有公开 ID、图语义或协议版本，不顺带重写 Java 
 
 - [x] A0—A3：必要边界已拆分，原有索引/查询/发布行为通过对应回归，允许进入 C1。
 - [x] C0—C4：原注释计划全部完成条件和测试要求有实际证据；三语言查询、生命周期、分发及自建 fixture 综合验收范围明确。
-- [ ] A4—A7：语言策略、服务所有权和 Java 扩展整改完成；依赖门禁、既有能力及注释回归通过。
+- [x] A4—A7：语言策略、服务所有权和 Java 扩展整改完成；依赖门禁、既有能力及注释回归通过。
 
 ## 5. 文档维护与排期规则
 
@@ -161,7 +161,7 @@ A1—A3 不改既有公开 ID、图语义或协议版本，不顺带重写 Java 
 
 ### 执行记录
 
-开发基线为 5d2283f37675244f67de928bdb582e6025fb1e17。A0—A3、C0—C2 已完成，C3 开始接入 Rust/Python 提取；验证结果在下表登记。当前源码已接入公开注释路由并升级 worker/graph/analysis/schema，产品验收仍在进行；不能使用旧 Native SDK 证明新链路通过。引用实际产物，不复制大日志到本目录。
+开发基线为 5d2283f37675244f67de928bdb582e6025fb1e17。A0—A7、C0—C4 均已完成本计划范围的实现与验收；验证结果在下表登记。回执绑定实际提交和产物，历史过程保留原义，不复制大日志到本目录。
 
 | 任务 | 代码/文档提交 | fixture | 分发 | 自建 fixture 综合验收 | 证据位置 | 未完成项 |
 |---|---|---|---|---|---|---|
@@ -177,7 +177,7 @@ A1—A3 不改既有公开 ID、图语义或协议版本，不顺带重写 Java 
 | A4 | 显式查询能力与 Java 批量补全策略完成 | workspace 321；最终 query 34；Native 图 8、Python 7、Java 注释 2、混合注释 3、最终 Rust 派发 1 通过 | 留待 A7 | 不适用 | target/todo-implementation/a4/receipt.json | Rust 旧误入 Java CHA 单列缺陷修正；不重测性能 |
 | A5 | 独立配置与服务状态所有权完成 | 完整 Rust 323；资源/故障 42；Native 图 8、Python 7、Python 注释 4、prepared 8、Java 注释 2、生命周期 8、删除 2、混合 3、真实崩溃恢复通过 | 留待 A7 | 不适用 | target/todo-implementation/a5/receipt.json | 旧配置/prepared 指纹不变；SDK 恢复一致 |
 | A6 | Lombok 模块和生产预算契约完成 | Java/Native 728；Native/JVM 各 23；11 组门禁通过 | 留待 A7 | 不适用 | target/todo-implementation/a6/receipt.json | 原生产漏装失败保留，已修正；固定上游对象缺失不冒充覆盖通过 |
-| A7 | 实施中 | 待完整收口 | 待执行 | 不适用 | 无 | 保留原任务 |
+| A7 | 架构门禁及注释缺口修正完成 | Rust 完整；Python 核心 32、prepared 9；Native 23；依赖反例 7 | 三种分发、资源 42、注释/组合 11 通过 | 功能 5 组；未重测性能 | target/todo-implementation/a7/receipt.json | 固定上游对象缺失/跨平台/完整语义与容量仍保留全局边界 |
 
 以下推进段落按各自执行时点保留；现行状态以任务表与各阶段收口回执为准。
 
@@ -224,3 +224,16 @@ A4 收口：`model::LanguagePolicy` 显式注册三语言能力，Java 派发/�
 A5 收口：Engine 仅装配任务服务和操作入口；任务表/队列/调度/终态属于 TaskService，索引接收 TaskContext 的本任务预算/取消/发布/事件，不再访问全局 jobs 或原始 Store。WorkerService 拥有健康 Java 池，HistoryService 与 ReportService 拥有各自存储；快照通过显式索引动作衔接，阻塞查询只捕获所需服务。RustBaselineReader 独立于公共基线端口；JavaLanguage/RustLanguage 与 RustAnalysis 分离，私有 wire 兼容层保持原外部格式及配置/prepared 四个固定摘要。Java 捕获主体迁移前后文本一致，公共冻结字节/spool 独立。完整 Rust 323 单元及产品/clippy、Native 资源/故障 42/42（无源码/产物漂移）、九组产品回归通过；真实 C ABI SIGSEGV 保留旧 head、回收 worker，并恢复 SDK 后成功分析。SDK 字节与门禁前一致。证据：target/todo-implementation/a5/receipt.json。A5 完成，进入 A6；最终分发留待 A7，不签新的性能或全局迁移认证。
 
 A6 收口：Lombok 实现与资源移入 framework-lombok；生产 AnalysisSession 与诊断入口共用 FrameworkPlugins.selected 装配。扩展必须实现带 AnalysisContext 的回调，旧两参实现编译失败；生产入口复用原累计账户。真实产品回归曾发现生产选择器漏装 Lombok，已修正并补回归，原失败保留。当前 Java/Native 728/728；Native/JVM 综合各 23/23，11 组产品/ABI/G1/崩溃恢复门禁全部通过，SDK 前后字节一致。证据：target/todo-implementation/a6/receipt.json。原来源身份不变，8 项覆盖路径迁移；本机参考仓库缺固定提交对象，未宣称重新完成上游全量覆盖验证。A6 完成，A7 继续最终门禁、分发与注释缺口修正；不重测或重标 C4 性能。
+
+A7 收口（2026-11-01）：todo 全部任务在本机 fixture 范围完成。证据：`target/todo-implementation/a7/receipt.json`。
+
+| 项目 | 实际结果 |
+|---|---|
+| 架构 | Cargo 传递依赖、服务状态/语言编排、javac 源集、Lombok/Maven、生产预算门禁；7 个违规反例通过 |
+| 单列缺陷修正 | prepared 不可用输入按冻结 roots/coverage 披露注释缺口；健康路径完整，历史 revision 不漂移 |
+| 完整回归 | Rust 完整门禁；Python 核心 32、产品 7、注释 4、prepared 9；Native 综合 23、混合注释 3；G1 项显式通过 |
+| Java 绑定 | Java 源码及 SDK 与 A6 当前 728 项验收一致；A7 仅改 Rust/测试/文档 |
+| 实际分发 | Rust 矩阵 26、Python 矩阵 36、Java 包通过；release 共享资源 42、注释/组合 11 通过；原可执行文件恢复，SDK 字节不变 |
+| 固定 fixture | 128 类、5 组功能查询通过；未重跑性能，C4 唯一测量只认证原产物 |
+| 原失败 | 测试导入生成未列入清单的 pycache；保留失败包/差异/日志，修正导入后完整复验通过 |
+| 保留边界 | iopengw 排除；固定上游对象缺失不冒充覆盖验证；跨平台/完整语义/容量稳定性未签全局放行 |

@@ -15,7 +15,7 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
-## 三语言注释索引（C0—C4、A4—A6 已完成，A7 实施中）
+## 三语言注释索引（C0—C4、A4—A7 已完成）
 
 | 边界 | 当前源码 / 验证 |
 |---|---|
@@ -23,8 +23,8 @@
 | Java | 主 javac comment token 与语言关联转为独立 GRA1 注释/关联行，原始 UTF-8 字节范围、正文映射、显式 world 和公开声明 ID |
 | 存储 | 独立 comments / comment_links / FTS，来源校验、稳定顺序、共享分词身份；旧图要求 index --full |
 | 查询 | search-comments、search-code --in、CLI/RPC/pipeline、上下文配置及冻结值；Native/JVM 真实产品各 2 项通过 |
-| 已验证 | Java 719/719；完整 Rust 门禁；Native/JVM 真实查询各 2、Native ABI 10、manifest 5、bootstrap 2；见 target/todo-implementation/comment-c1-final/receipt.json，不代表正式 Native/分发放行 |
-| 当前后续 | A7 架构收口与最终分发验证中；匹配的 G1 build-only Native SDK 已安装，完整迁移/跨平台/容量仍未签放行 |
+| C1 历史验证 | Java 719/719；完整 Rust 门禁；Native/JVM 真实查询各 2、Native ABI 10、manifest 5、bootstrap 2；见 target/todo-implementation/comment-c1-final/receipt.json，不代表正式 Native/分发放行 |
+| 本计划收口 | A7 架构收口与三种实际分发通过；匹配的 G1 build-only Native SDK 已安装，完整迁移/跨平台/容量仍未签放行 |
 | C4 实际包 | Rust、Java、Python 通过；共用 release 资源 42/42，注释/Native 组合 11 项；原二进制恢复、SDK 未变 |
 | C4 固定输入 | 128 个类、每类 8 个方法；3,328 注释、4,224 关联；五组路径限定查询及定位通过 |
 | C4 单轮测量 | 索引 3.137 s；完整工作负载 5.215 s；1 s 采样峰值 269.30 MiB；图库 5.35 MiB；独立空 home，OS page cache 不受控 |
@@ -32,7 +32,20 @@
 
 A4 已完成显式三语言查询能力、Java 派发/类型规则及存储批量补全策略；未知语言不再默认进入 Java。Rust 静态派发使用 `rust-analyzer-static`，明确拒绝 CHA/runtime；Java 与 Python 已有支持范围回归通过。A4 证据：`target/todo-implementation/a4/receipt.json`。
 
-A5 已完成服务状态与配置类型拆分：Engine 仅装配；任务、索引上下文、worker 池、历史/分页、报告分别持有状态和窄依赖。旧配置与 prepared 指纹不变；完整 Rust 323、资源/故障 42 及九组产品回归通过，真实崩溃后的 SDK 已恢复且字节一致。证据：`target/todo-implementation/a5/receipt.json`。最终分发仍属 A7。
+A5 已完成服务状态与配置类型拆分：Engine 仅装配；任务、索引上下文、worker 池、历史/分页、报告分别持有状态和窄依赖。旧配置与 prepared 指纹不变；完整 Rust 323、资源/故障 42 及九组产品回归通过，真实崩溃后的 SDK 已恢复且字节一致。证据：`target/todo-implementation/a5/receipt.json`。最终分发由已完成的 A7 回执补充。
+
+A7 收口（2026-11-01）：todo 全部任务在本机 fixture 范围完成。证据：`target/todo-implementation/a7/receipt.json`。
+
+| 项目 | 实际结果 |
+|---|---|
+| 架构 | Cargo 传递依赖、服务状态/语言编排、javac 源集、Lombok/Maven、生产预算门禁；7 个违规反例通过 |
+| 单列缺陷修正 | prepared 不可用输入按冻结 roots/coverage 披露注释缺口；健康路径完整，历史 revision 不漂移 |
+| 完整回归 | Rust 完整门禁；Python 核心 32、产品 7、注释 4、prepared 9；Native 综合 23、混合注释 3；G1 项显式通过 |
+| Java 绑定 | Java 源码及 SDK 与 A6 当前 728 项验收一致；A7 仅改 Rust/测试/文档 |
+| 实际分发 | Rust 矩阵 26、Python 矩阵 36、Java 包通过；release 共享资源 42、注释/组合 11 通过；原可执行文件恢复，SDK 字节不变 |
+| 固定 fixture | 128 类、5 组功能查询通过；未重跑性能，C4 唯一测量只认证原产物 |
+| 原失败 | 测试导入生成未列入清单的 pycache；保留失败包/差异/日志，修正导入后完整复验通过 |
+| 保留边界 | iopengw 排除；固定上游对象缺失不冒充覆盖验证；跨平台/完整语义/容量稳定性未签全局放行 |
 
 本轮回执：`target/todo-implementation/c4/receipt.json`；原始采样和唯一测量 marker：`target/todo-implementation/c4/fixed-fixture-validated/`。该测量仅对应 C4 固定产物，后续 A4—A7 版本不沿用为性能认证。
 
@@ -444,7 +457,7 @@ Lombok/元数据freeze和内部JSON/DTO副本准入已关闭；重复shade旧依
 | A3 完成 | config 解析/发现/捕获/执行预算拆分，CommentReader 与内部有效参数归一化完成；公开注释参数/配置及冻结页实参在 C1 接入 |
 | C1 完成 | Java 提取、GRA1、注释表/FTS、公开查询及配置已验证；完整 Java 719 项通过；证据 comment-c1-final/receipt.json |
 | C2 完成 | 生命周期 Native 8+2 项、完整 Rust、预算/取消及旧冻结页兼容通过；证据 comment-c2-final/receipt.json |
-| C3/C4、A4—A6 完成；A7 实施中 | 三语言注释、实际分发、资源矩阵及自建 fixture 单轮测量通过；范围见本轮回执 |
+| C3/C4、A4—A7 完成 | 三语言注释、实际分发、资源矩阵及自建 fixture 单轮测量通过；范围见本轮回执 |
 
 最终 Rust 完整门禁通过，默认跳过的真实 G1 teardown/禁止重建测试另行显式执行通过。Python 核心、CLI 7 项、显式 Native prepared 7 项、混合产品 2 项、分析资源 29 项、历史 1 项及混合失败/取消/超时 12 项通过。新增计划 4、Python 输入 3、上下文归一化 2 项断言包含在对应回归中；DDL、fmt、clippy、Java 来源清单和本轮新增/调整的相对链接检查通过。历史回执链接保留原记录，不作本轮验收依据。
 
