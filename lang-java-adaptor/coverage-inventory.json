@@ -5741,43 +5741,43 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java",
       "sha256": "89d1a48c8f16f5ca65a156ad0a95812bc71d666638082cd1c2f20a96c6db7afb",
       "disposition": "copied",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java"
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokCapabilitySummary.java",
       "sha256": "63dc8b7eb389d9dc5f06feb8a5646ce3933a43318df215315eb70441000c9649",
       "disposition": "copied",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokCapabilitySummary.java"
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokCapabilitySummary.java"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java",
       "sha256": "8ce196904024ffc995efc7f11c1246c2e3ef005d5ab1cabc523c2f93e17b525a",
       "disposition": "copied",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java"
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java",
       "sha256": "c2f28ffd53116e26af3d986e80e6306c5a2bbaf933ad0861cb27eb0544dab326",
       "disposition": "boundary-adaptation",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java"
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokIndexMetadata.java",
       "sha256": "2e432b303d4300c5c950456df648c07206a7b19445c40ea4e1456113243c0614",
       "disposition": "copied",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokIndexMetadata.java"
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokIndexMetadata.java"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java",
       "sha256": "a2e138b52ad716ed141dd882eb3357026ddb79844672924b47ad01033b5bf2b8",
       "disposition": "boundary-adaptation",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java"
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "sha256": "d2d506432acc3beb99b7b1bcfb11700bebf3cb184d04e7f6a47973b46df5390f",
       "disposition": "boundary-adaptation",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/json/Json.java",
@@ -7078,7 +7078,7 @@
       "source": "anatomist-core/src/main/resources/lombok/annotation-copy-candidates.txt",
       "sha256": "46d78666bbfe6e2f7a44a0d07233c10fdb7cac616be41f468aaa3473bb5478f6",
       "disposition": "copied",
-      "destination": "analysis-core/src/main/resources/lombok/annotation-copy-candidates.txt"
+      "destination": "framework-lombok/src/main/resources/lombok/annotation-copy-candidates.txt"
     },
     {
       "source": "anatomist-core/src/main/resources/schema.sql",

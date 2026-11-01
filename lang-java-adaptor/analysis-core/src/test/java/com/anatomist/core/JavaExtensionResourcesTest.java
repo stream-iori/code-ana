@@ -49,13 +49,23 @@ final class JavaExtensionResourcesTest {
         assertThrows(HardResourceLimit.class,()->new JavaCallSiteEvidenceProvider.Evidence("lombok_usage",Map.of("a",1),"count",root));
         assertNotNull(root.usage().get("failure"));
     }
-    @Test void production_rejects_legacy_callback_without_calling_it() {
-        var root=new AnalysisContext(AnalysisContext.Limits.defaults());
-        JavaModelExtension legacy=new JavaModelExtension(){
-            public String id(){return "legacy";}
-            public JavaAnalysisContext augment(JavaAnalysisContext context,com.anatomist.core.asmsolver.JavaBinaryRepository binaries){throw new AssertionError("legacy callback invoked");}
-        };
-        assertThrows(FatalAnalysisFailure.class,()->new JavaModelExtensions(List.of(legacy),root).augment(empty(),null));
+    @Test void production_requires_budget_callback_at_compile_time(@org.junit.jupiter.api.io.TempDir java.nio.file.Path tmp) throws Exception {
+        var compiler=javax.tools.ToolProvider.getSystemJavaCompiler();
+        assertNotNull(compiler);
+        String prefix="import com.anatomist.framework.*; import com.anatomist.core.java.*; import com.anatomist.core.asmsolver.*; ";
+        var legacy=tmp.resolve("Legacy.java");
+        java.nio.file.Files.writeString(legacy,prefix+"public final class Legacy implements JavaModelExtension { public String id(){return \"legacy\";} public JavaAnalysisContext augment(JavaAnalysisContext c,JavaBinaryRepository b){return c;} }");
+        var output=tmp.resolve("classes");java.nio.file.Files.createDirectory(output);
+        var options=List.of("-proc:none","-classpath",System.getProperty("surefire.test.class.path",System.getProperty("java.class.path")),"-d",output.toString());
+        var diagnostics=new javax.tools.DiagnosticCollector<javax.tools.JavaFileObject>();
+        try(var files=compiler.getStandardFileManager(diagnostics,Locale.ROOT,java.nio.charset.StandardCharsets.UTF_8)) {
+            assertFalse(compiler.getTask(null,files,diagnostics,options,null,files.getJavaFileObjects(legacy.toFile())).call());
+            assertTrue(diagnostics.getDiagnostics().stream().anyMatch(d->d.getCode().contains("does.not.override.abstract")),diagnostics.getDiagnostics().toString());
+            var aware=tmp.resolve("Aware.java");
+            java.nio.file.Files.writeString(aware,prefix+"public final class Aware implements JavaModelExtension { public String id(){return \"aware\";} public JavaAnalysisContext augment(JavaAnalysisContext c,JavaBinaryRepository b,com.anatomist.core.AnalysisContext resources){resources.charge(1,0,0);return c;} }");
+            assertTrue(compiler.getTask(null,files,null,options,null,files.getJavaFileObjects(aware.toFile())).call());
+        }
+        assertThrows(NullPointerException.class,()->new JavaModelExtensions(List.of(),null));
     }
     @Test void explicit_callback_gets_root_and_hard_failure_escapes_recovery() {
         var root=new AnalysisContext(AnalysisContext.Limits.defaults());

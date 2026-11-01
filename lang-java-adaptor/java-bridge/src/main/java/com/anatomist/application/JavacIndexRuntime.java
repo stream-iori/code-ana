@@ -25,7 +25,7 @@ public final class JavacIndexRuntime {
         this.context = Objects.requireNonNull(context);
         this.timings = timings;
         extensions = FrameworkPlugins.builtIns().prepareDetached(context);
-        backend.setDeclarationOverlay(extensions.overlays());
+        backend.setDeclarationOverlay(extensions.overlays(context.analysisContext()));
     }
 
     public JavaModelAnalyzerRegistry extensions() {

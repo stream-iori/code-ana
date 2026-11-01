@@ -756,8 +756,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaFrameworkContext.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaFrameworkContext.java",
       "sha256": "219960dd91fc6c8e31932f2681e7bb4028690555eff83f20da020ea5a89197a5",
-      "migrated_sha256": "e44cf2e4e24bc491d339757c4c9c056a4b586d74538430f209c9ccb567550ab4",
-      "adaptation": "; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding."
+      "migrated_sha256": "d224bab05d6ee8f24003c41e149c0d783f15d08117ad9064f238a4a3c8088afb",
+      "adaptation": "; Explicit task analysis context for cumulative admission, typed failure propagation and bounded semantic JSON/XML/model decoding. A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaFrameworkPlugin.java",
@@ -775,8 +775,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelAnalyzerRegistry.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaModelAnalyzerRegistry.java",
       "sha256": "b5da642c83713b290a6f70d1ae626c1f91d7d338ed3797f4e591d48a214d2a0a",
-      "migrated_sha256": "c1a97b86abf46eb8cbb69e2c1ad85aa2d8eecb3e0284e724db309d74047d21d6",
-      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup."
+      "migrated_sha256": "58457ee8234065097ae4eeb3dfe6142f52ad356946cf1d2b8ff5909d37383e21",
+      "adaptation": "; Explicit shared task ledger in model/extension fact retention and semantic lookup. A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelAnnotations.java",
@@ -788,15 +788,15 @@
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelExtension.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaModelExtension.java",
       "sha256": "976c8ff55dc8518207003c935fde81c696ece55c86874d193ec95480ad6e6be1",
-      "migrated_sha256": "480cb3de70518dc424d21999b6792c95f7636a232a60fa1b1ce3933ffd64fa9f",
-      "adaptation": "; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
+      "migrated_sha256": "bce9cd53cf4a18eac3c8182dc402538bf31d0431bb60db720ca65ea7a4a6a832",
+      "adaptation": "; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaModelExtensions.java",
       "destination": "analysis-core/src/main/java/com/anatomist/framework/JavaModelExtensions.java",
       "sha256": "54ab373401ae23a9f325ff7b6bea6ba2c02f9c88a2556cfb5cf36566968c6160",
-      "migrated_sha256": "7df6e145a8f9cb7a46ce7573434d894cb0a8669a5e05fd85632457b701f24271",
-      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit shared task ledger in model/extension fact retention and semantic lookup.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+      "migrated_sha256": "98503572d1b76f1ceaa7ede7f1e95e6d22e4f25619d1c985b44d24cbc0d88a5d",
+      "adaptation": "; code-ana resource governance: Jackson streaming JSON, typed fatal resource propagation and bounded XML extraction.; Explicit shared task ledger in model/extension fact retention and semantic lookup.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery. A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/JavaUnitAnalysis.java",
@@ -857,26 +857,26 @@
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokAnnotationCopies.java",
       "sha256": "89d1a48c8f16f5ca65a156ad0a95812bc71d666638082cd1c2f20a96c6db7afb",
       "migrated_sha256": "89d1a48c8f16f5ca65a156ad0a95812bc71d666638082cd1c2f20a96c6db7afb"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokCapabilitySummary.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokCapabilitySummary.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokCapabilitySummary.java",
       "sha256": "63dc8b7eb389d9dc5f06feb8a5646ce3933a43318df215315eb70441000c9649",
       "migrated_sha256": "63dc8b7eb389d9dc5f06feb8a5646ce3933a43318df215315eb70441000c9649"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokConfiguration.java",
       "sha256": "8ce196904024ffc995efc7f11c1246c2e3ef005d5ab1cabc523c2f93e17b525a",
       "migrated_sha256": "6e7c755c108ea47d772aec9f0dbe386bd028a9e3dcc71c97aa3edc9d4bd71d30",
       "adaptation": "; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokConfigurationScope.java",
       "sha256": "c2f28ffd53116e26af3d986e80e6306c5a2bbaf933ad0861cb27eb0544dab326",
       "migrated_sha256": "e843af593d1d4b931b8e51a15e5d5d04b5236c95ec6873c35ea992055aeda2f2",
       "adaptation": "Use sealed captured configuration resources and capture-relative fingerprints without rediscovering external directories.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
@@ -884,13 +884,13 @@
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokIndexMetadata.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokIndexMetadata.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokIndexMetadata.java",
       "sha256": "2e432b303d4300c5c950456df648c07206a7b19445c40ea4e1456113243c0614",
       "migrated_sha256": "2e432b303d4300c5c950456df648c07206a7b19445c40ea4e1456113243c0614"
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokJavaCallEvidence.java",
       "sha256": "a2e138b52ad716ed141dd882eb3357026ddb79844672924b47ad01033b5bf2b8",
       "migrated_sha256": "5756c46f8463fd9814ae41434e305f5d875219da0d6c8c8c3c12c2aedcac7be9",
       "adaptation": "Inject the same captured configuration inventory into call evidence.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation",
@@ -898,10 +898,10 @@
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java",
       "sha256": "d2d506432acc3beb99b7b1bcfb11700bebf3cb184d04e7f6a47973b46df5390f",
-      "migrated_sha256": "63a42d1e3f608982f357acc1f460b2b755bfbe68cb116452987b63c7628e5cb2",
-      "adaptation": "Inject captured Lombok configuration inventory.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.",
+      "migrated_sha256": "51609dced0f69b12794f596895dd2e091ea120ed69d4d354e70d56b1bbb07cde",
+      "adaptation": "Inject captured Lombok configuration inventory.; task-local semantic collaborators, immutable captured run configuration and model consumption boundaries; logical output unchanged; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery. A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained.",
       "adaptation_origin": "9c2ab6c465b7944530bced67b49f1cf7c0aa2adc"
     },
     {
@@ -1031,7 +1031,7 @@
     },
     {
       "source": "anatomist-core/src/main/resources/lombok/annotation-copy-candidates.txt",
-      "destination": "analysis-core/src/main/resources/lombok/annotation-copy-candidates.txt",
+      "destination": "framework-lombok/src/main/resources/lombok/annotation-copy-candidates.txt",
       "sha256": "46d78666bbfe6e2f7a44a0d07233c10fdb7cac616be41f468aaa3473bb5478f6",
       "migrated_sha256": "46d78666bbfe6e2f7a44a0d07233c10fdb7cac616be41f468aaa3473bb5478f6"
     },
@@ -1361,14 +1361,15 @@
       "source": "anatomist-app/src/main/java/com/anatomist/application/FrameworkPlugins.java",
       "destination": "java-bridge/src/main/java/com/anatomist/application/FrameworkPlugins.java",
       "sha256": "25ee450a129b0cb4a2a9cea36f54e8302f917dc05a76454ecd31021033dc4148",
-      "migrated_sha256": "f30e0a9474a73b12541b62d59fd040b83d9853c42bea179f8830ba33a2044ad8",
-      "adaptation": "Captured Lombok configuration overload; original plugin validation, dependency order and fingerprint contracts retained.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation"
+      "migrated_sha256": "60ab193de362468014f5fd95c8eab5cd7a3698b8679eec177eb8f69d63131d10",
+      "adaptation": "Captured Lombok configuration overload; original plugin validation, dependency order and fingerprint contracts retained.; explicit shared task admission for Lombok, extension freeze and captured configuration; hard failure propagation A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/application/FrameworkPluginsTest.java",
       "destination": "java-bridge/src/test/java/com/anatomist/application/FrameworkPluginsTest.java",
       "sha256": "f21533408ddb1dbb0c4fc8f75a64e793083e8e548b8b2cc5a97e98503eb3f2b5",
-      "migrated_sha256": "f21533408ddb1dbb0c4fc8f75a64e793083e8e548b8b2cc5a97e98503eb3f2b5"
+      "migrated_sha256": "dd4ae8549b36108514ba69dd3b1cd3409cb06c77d7f5ed0aa25fe59f1eb79c92",
+      "adaptation": " A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/EdgeTargetBinderTest.java",
@@ -1411,7 +1412,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavaModelExtensionIT.java",
       "destination": "java-bridge/src/test/java/com/anatomist/core/javac/JavaModelExtensionIT.java",
       "sha256": "26e60f23b7995e5a963bde67ab523ac2239dcac26d1f22f37282e22b132257c1",
-      "migrated_sha256": "26e60f23b7995e5a963bde67ab523ac2239dcac26d1f22f37282e22b132257c1"
+      "migrated_sha256": "3e74a86229a110b787088f5b290dc359f95615c5e4f8670f22b11cccd1e91dac",
+      "adaptation": " A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/javac/JavaModeledOverridesIT.java",
@@ -1603,7 +1605,8 @@
       "source": "anatomist-app/src/main/java/com/anatomist/application/JavacIndexRuntime.java",
       "destination": "java-bridge/src/main/java/com/anatomist/application/JavacIndexRuntime.java",
       "sha256": "22d232674bd0895de6ad31247d14dd89b6f654bed91c40508ee0bea1dd2db465",
-      "migrated_sha256": "22d232674bd0895de6ad31247d14dd89b6f654bed91c40508ee0bea1dd2db465"
+      "migrated_sha256": "59a241b1229af3a78564157aabfc548c2ea4156096299750740fce7d1b80685c",
+      "adaptation": " A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-app/src/test/resources/golden/lombok-capabilities.json",
@@ -3098,13 +3101,15 @@
       "source": "anatomist-app/src/test/java/com/anatomist/framework/ExtensionLifecycleTest.java",
       "destination": "java-bridge/src/test/java/com/anatomist/framework/ExtensionLifecycleTest.java",
       "sha256": "79e8bbd96b1df764c8eefa21c52f2cdb7a949e20ec5fd994d474c0758c58c1c1",
-      "migrated_sha256": "79e8bbd96b1df764c8eefa21c52f2cdb7a949e20ec5fd994d474c0758c58c1c1"
+      "migrated_sha256": "8634532f45fa42246171cc0e760f3ddade8247dee61fb4d9c2a5d6bf7be10661",
+      "adaptation": " A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/framework/ExtensionNodeMetadataTest.java",
       "destination": "java-bridge/src/test/java/com/anatomist/framework/ExtensionNodeMetadataTest.java",
       "sha256": "73ae38f85f08e896d32ac58eee3e41ef6d85d7b397ac5b3b1285a6b81e0f04f4",
-      "migrated_sha256": "73ae38f85f08e896d32ac58eee3e41ef6d85d7b397ac5b3b1285a6b81e0f04f4"
+      "migrated_sha256": "64a4c9b5589e42489abb33d3ddbd91cd23f5bd6345c73c01892fd76944f8a5dd",
+      "adaptation": " A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained."
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/framework/ProjectFactViewTest.java",
@@ -3317,8 +3322,8 @@
       "source": "anatomist-app/src/test/java/com/anatomist/core/process/ProcessArchitectureTest.java",
       "destination": "migration-audit/process-architecture/src/test/java/com/anatomist/core/process/ProcessArchitectureTest.java",
       "sha256": "58f8b874a9f64b0947c30363f4fa1596f36430e69822ccf7ee9d21f7258fc125",
-      "adaptation": "Only module paths change to the migrated layout; scan additionally covers both thin entry modules. The original process-owner regex/violation assertion remains unchanged. Standalone audit module does not rebuild sealed JVM/native bundles.",
-      "migrated_sha256": "6450ca6625084af912ad0739ed364cf91b2a2efca8933ef24a1b82d0a6291e79"
+      "adaptation": "Only module paths change to the migrated layout; scan additionally covers both thin entry modules. The original process-owner regex/violation assertion remains unchanged. Standalone audit module does not rebuild sealed JVM/native bundles. A6: isolated Lombok module, uniform framework registration and required budget callback; original source identity retained.",
+      "migrated_sha256": "2fa1c160849f08992b5e2d835e909172252ed9dde8ac2e65390878b5cbfd2aee"
     },
     {
       "source": "anatomist-app/src/test/java/com/anatomist/core/ProjectScannerTest.java",
@@ -3419,21 +3424,21 @@
       "extracted_from": "analysis-core/src/main/java/com/anatomist/extract/JavaModeledCallRecovery.java"
     },
     {
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokBuilderRules.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokBuilderRules.java",
       "origin": "codeana",
       "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
       "migrated_sha256": "d2e4ec86872b3ab51c2cb714fbfde78e4271db7c93c37b435056c53b236a50ac",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
     },
     {
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokDeclarationRules.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokDeclarationRules.java",
       "origin": "codeana",
       "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
       "migrated_sha256": "1adc8b00b482029a22afd2a4a163fe42ba3ab24258dfa362783b033dfc390d60",
       "extracted_from": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokJavaModelExtension.java"
     },
     {
-      "destination": "analysis-core/src/main/java/com/anatomist/framework/lombok/LombokGeneratedMembers.java",
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokGeneratedMembers.java",
       "origin": "codeana",
       "reason": "Architecture hardening: named task-local collaborator extracted from the recorded migrated implementation; preserve semantics and source lineage.",
       "migrated_sha256": "311b36e4723c62e5accae9d6460ca6f0edf07c3905bfa19ef73df7d36064b894",
@@ -3532,8 +3537,8 @@
     {
       "destination": "analysis-core/src/test/java/com/anatomist/core/JavaExtensionResourcesTest.java",
       "origin": "codeana",
-      "reason": "Shared task resource admission regression for extension metadata and Lombok overlays",
-      "migrated_sha256": "056da64aff4d2eef5d0b6b5130f8171c26b2bde181c5b1b5179fcb436e530dae"
+      "reason": "Shared task resource admission regression for extension metadata and Lombok overlays A6 budget/module boundary.",
+      "migrated_sha256": "f7b35c82dc2d790b8460d1dbad03b3442cb624aae1e7f42998fe04165bca4c11"
     },
     {
       "destination": "analysis-core/src/main/java/com/anatomist/core/java/JavaComment.java",
@@ -3585,9 +3590,9 @@
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java",
-      "migrated_sha256": "3de3f8714f75b5c3a1d319aaf627a002b79c8e02f0d08823ce25d46563a5c53e",
+      "migrated_sha256": "c5a05d5778b85f7da268db17b3b5e640b782466aebf05ef38cea76fc451ed9ef",
       "origin": "codeana",
-      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery. A6 budget/module boundary."
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnatomistRows.java",
@@ -3603,9 +3608,9 @@
     },
     {
       "destination": "java-bridge/src/test/java/dev/codeana/adapter/AnalysisSessionTest.java",
-      "migrated_sha256": "28c328e6156950cf1d75b24c38cb02e97582af0509361036d7591976ae981b8b",
+      "migrated_sha256": "4c9ab16e702882409d9a4f3eb85007e459ad75c32316870178961f643b3c4e6b",
       "origin": "codeana",
-      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery. A6 budget/module boundary."
     },
     {
       "destination": "jvm-runner/src/main/java/dev/codeana/runner/JvmRunner.java",
@@ -3618,6 +3623,24 @@
       "migrated_sha256": "e0ea5a85be102707559209c9ef1d6e3a5b51d141c16f419822fdc1e272d29674",
       "origin": "codeana",
       "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery."
+    },
+    {
+      "destination": "framework-lombok/src/main/java/com/anatomist/framework/lombok/LombokFrameworkPlugin.java",
+      "origin": "codeana",
+      "reason": "A6: explicit Lombok framework registration or compile-time/budget boundary fixture.",
+      "migrated_sha256": "8f68e639adaadc2538936571308b4424f652410f66f688f487ee565afafef9a7"
+    },
+    {
+      "destination": "framework-lombok/src/test/java/com/anatomist/framework/lombok/LombokFrameworkPluginTest.java",
+      "origin": "codeana",
+      "reason": "A6: explicit Lombok framework registration or compile-time/budget boundary fixture.",
+      "migrated_sha256": "f750c4c1a8c784bb344036169e28d673267e496f22347e732fe1a731b0315b77"
+    },
+    {
+      "destination": "java-bridge/src/test/java/com/anatomist/application/JavacIndexRuntimeBudgetTest.java",
+      "origin": "codeana",
+      "reason": "A6: explicit Lombok framework registration or compile-time/budget boundary fixture.",
+      "migrated_sha256": "fcd174bfdbd6e199869ed850635d992e26d2dbb1e6bbea6422f9a6d203657560"
     }
   ],
   "supplemental_references": [

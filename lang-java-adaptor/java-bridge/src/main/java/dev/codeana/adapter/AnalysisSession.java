@@ -7,7 +7,6 @@ import com.anatomist.core.javac.*;
 import com.anatomist.extract.JavaModelExtractor;
 import com.anatomist.framework.*;
 import com.anatomist.framework.lombok.*;
-import com.anatomist.framework.sofa.SofaFrameworkPlugin;
 import com.anatomist.model.*;
 
 import dev.codeana.common.*;
@@ -453,11 +452,10 @@ public final class AnalysisSession implements AutoCloseable {
                     throw new UncheckedIOException(e);
                 }
             }
-        List<JavaFrameworkPlugin> plugins = new ArrayList<>();
+        JavaFrameworkPlugin spring = null;
         if (c.options().spring() || c.options().springXml() || c.options().sofa())
-            plugins.add(new CapturedSpringPlugin(c.options().spring(), c.options().springXml()));
-        if (c.options().sofa()) plugins.add(new SofaFrameworkPlugin());
-        return new com.anatomist.application.FrameworkPlugins(plugins)
+            spring = new CapturedSpringPlugin(c.options().spring(), c.options().springXml());
+        return com.anatomist.application.FrameworkPlugins.selected(spring, c.options().sofa())
                 .prepareDetached(f, configurations);
     }
 

@@ -6,7 +6,7 @@
 Rust daemon → 独立 Rust worker → C ABI 4 → Java 25 Native/G1
                                              │ 独立模型 / 框架 / GRA1 rows
                                              └→ Java 8 javac 子进程
-Rust 私有候选 → schema 8 紧凑图 → 校验 / catalog CAS → 不可变 revision
+Rust 私有候选 → schema 12 紧凑图 → 校验 / catalog CAS → 不可变 revision
 ```
 
 | 入口（仓库根目录） | 范围 |
@@ -18,8 +18,23 @@ Rust 私有候选 → schema 8 紧凑图 → 校验 / catalog CAS → 不可变 
 | just test-java-release | 成套打包、原执行路径验证与恢复 |
 | python3 scripts/check-java-migration.py | 源码来源清单与 SHA 核对 |
 
-当前源码 daemon 4、worker 22、graph model 4、analysis request/result 11、C ABI 4、compiler batch 2 / javac-model-v51。物理 storage schema 11、逻辑 schema 34 / GraphSemantics 26；C1 内部注释模型已接通，v51 Native SDK 构建/安装与公开查询仍待完成；详见 [现行说明](../docs/current-state.md) 和 [Java worker](../docs/modules/java-worker.md)。
+当前源码 daemon 4、worker 23、graph model 5、analysis request/result 12、C ABI 4、compiler batch 2 / javac-model-v51。物理 schema 12、逻辑 schema 35 / GraphSemantics 27；三语言注释与现行验收边界见 [当前实现](../docs/current-state.md)。A6 模块整理完成；匹配的 G1 build-only Native 与 JVM SDK 已通过当前 728 项 Java/Native 测试及各 23 项产品综合回归。最终分发由 A7 收口，不代表全局迁移或性能认证。
 
 G1 一个进程只创建一次 isolate，健康任务复用；失败/取消恢复换进程。显式 Serial 支持。Oracle GraalVM 固定在 .sdkmanrc；目标 JDK 由本机 SDKMAN Java 8 配置选择。只进行禁用处理器的 javac parse/analyze，不执行目标构建、处理器或业务代码，无 JNI。
 
 过期 lang-adaptor / CAF1 / Fact JSON / raw transport 测试和入口已删除，当前 Python 进程工具在 tests/product_support.py。upstream-sources.json、upstream-archive.json 与原始 Java 参考测试属于来源/覆盖审计输入；保留来源并不证明全部覆盖。正式构建仍由 check-java-jvm-acceptance.py 核对完整回执和源码集合；build-only、fixture 与本次清理均不关闭完整语义/来源覆盖或容量/稳定性能验收。
+
+Java 模块按单向依赖装配：
+
+```text
+analysis-core（独立模型、javac host、扩展契约）
+ ├─ framework-lombok（声明补全、源码使用证据、配置资源）
+ └─ framework-spring
+       └─ framework-sofa（同时依赖 core）
+             ↓
+java-bridge（显式装配上述三个框架模块）
+ ├─ jvm-runner
+ └─ native-bridge
+```
+
+Lombok 不再位于 analysis-core。JavaModelExtension 的带 AnalysisContext 回调是必需实现，旧两参数方法仅提供有限账户的诊断入口；生产装配使用调用方任务账户，不能回到无预算回调。框架装配指纹包含新增 Lombok 插件契约，SDK/装配身份更新；公开声明/关系 ID 和 GRA1 协议不变。JVM/Native 均清理 reactor 后打包，并核对每个模块的类，防止旧 core 中的 Lombok class 残留。

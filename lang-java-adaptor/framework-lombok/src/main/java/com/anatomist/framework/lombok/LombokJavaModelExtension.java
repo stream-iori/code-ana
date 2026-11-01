@@ -93,12 +93,9 @@ public final class LombokJavaModelExtension implements JavaModelExtension {
         configurations.verify();
     }
 
-    @Override
-    public JavaAnalysisContext augment(JavaAnalysisContext context, JavaBinaryRepository binaries) {
-        return augment(context,binaries,null);
-    }
     @Override public JavaAnalysisContext augment(JavaAnalysisContext context,JavaBinaryRepository binaries,
             com.anatomist.core.AnalysisContext resources) {
+        Objects.requireNonNull(resources,"MODEL_EXTENSION_BUDGET_REQUIRED");
         if(resources!=null)resources.charge(context.units().size(),0,1024L+128L*context.units().size());
         Set<JavaUnit> pending = Collections.newSetFromMap(new IdentityHashMap<>());
         for (var unit : context.units())

@@ -18,6 +18,7 @@ class ProcessArchitectureTest {
         for (String module :
                 List.of(
                         "analysis-core",
+                        "framework-lombok",
                         "framework-spring",
                         "framework-sofa",
                         "java-bridge", "jvm-runner", "native-bridge")) {

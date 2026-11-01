@@ -15,7 +15,7 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
-## 三语言注释索引（C0—C4、A4/A5 已完成，A6 实施中）
+## 三语言注释索引（C0—C4、A4—A6 已完成，A7 实施中）
 
 | 边界 | 当前源码 / 验证 |
 |---|---|
@@ -24,7 +24,7 @@
 | 存储 | 独立 comments / comment_links / FTS，来源校验、稳定顺序、共享分词身份；旧图要求 index --full |
 | 查询 | search-comments、search-code --in、CLI/RPC/pipeline、上下文配置及冻结值；Native/JVM 真实产品各 2 项通过 |
 | 已验证 | Java 719/719；完整 Rust 门禁；Native/JVM 真实查询各 2、Native ABI 10、manifest 5、bootstrap 2；见 target/todo-implementation/comment-c1-final/receipt.json，不代表正式 Native/分发放行 |
-| 当前后续 | A6/A7 架构整改；匹配的 G1 build-only Native SDK 已安装，完整迁移/跨平台/容量仍未签放行 |
+| 当前后续 | A7 架构收口；匹配的 G1 build-only Native SDK 已安装，完整迁移/跨平台/容量仍未签放行 |
 | C4 实际包 | Rust、Java、Python 通过；共用 release 资源 42/42，注释/Native 组合 11 项；原二进制恢复、SDK 未变 |
 | C4 固定输入 | 128 个类、每类 8 个方法；3,328 注释、4,224 关联；五组路径限定查询及定位通过 |
 | C4 单轮测量 | 索引 3.137 s；完整工作负载 5.215 s；1 s 采样峰值 269.30 MiB；图库 5.35 MiB；独立空 home，OS page cache 不受控 |
@@ -444,7 +444,7 @@ Lombok/元数据freeze和内部JSON/DTO副本准入已关闭；重复shade旧依
 | A3 完成 | config 解析/发现/捕获/执行预算拆分，CommentReader 与内部有效参数归一化完成；公开注释参数/配置及冻结页实参在 C1 接入 |
 | C1 完成 | Java 提取、GRA1、注释表/FTS、公开查询及配置已验证；完整 Java 719 项通过；证据 comment-c1-final/receipt.json |
 | C2 完成 | 生命周期 Native 8+2 项、完整 Rust、预算/取消及旧冻结页兼容通过；证据 comment-c2-final/receipt.json |
-| C3/C4、A4/A5 完成；A6 实施中；A7 待办 | 三语言注释、实际分发、资源矩阵及自建 fixture 单轮测量通过；范围见本轮回执 |
+| C3/C4、A4—A6 完成；A7 实施中 | 三语言注释、实际分发、资源矩阵及自建 fixture 单轮测量通过；范围见本轮回执 |
 
 最终 Rust 完整门禁通过，默认跳过的真实 G1 teardown/禁止重建测试另行显式执行通过。Python 核心、CLI 7 项、显式 Native prepared 7 项、混合产品 2 项、分析资源 29 项、历史 1 项及混合失败/取消/超时 12 项通过。新增计划 4、Python 输入 3、上下文归一化 2 项断言包含在对应回归中；DDL、fmt、clippy、Java 来源清单和本轮新增/调整的相对链接检查通过。历史回执链接保留原记录，不作本轮验收依据。
 
@@ -461,3 +461,5 @@ A2/A3 现已收口：47 项应用测试覆盖显式回收、非回收的存活�
 C2 收口：注释增量、清空、重命名、语言/world 删除、历史与冻结页、预算/取消/真实 worker 崩溃、CAS 和 FTS 清理通过。SQLite 正文先按长度准入，保留注释再次核对捕获 owner/hash，旧游标兼容由原 HEAD 的真实序列化摘要验证。混合 Java/Rust 生命周期使用既有矩阵的 1 GiB 预算；原默认分片 128 MiB 的 Native 启动失败仍保留，不作为容量通过。证据：`target/todo-implementation/comment-c2-final/receipt.json`；正式分发与测量待 C4。
 
 C3 收口：RA 真实注释 token/字面量 doc 属性与 Ruff/Pyrefly docstring/# token 已接入公共链路；不执行宏、包含表达式或目标代码。精确声明锚点、嵌套/匿名作用域、UTF-8 转义映射、独立 COMMENTS 覆盖、预算和冻结路径还原已验证。Rust producer 为 rust-analyzer-0.0.349-codeana-5-comments，Python 为 pyrefly-1.4.0-codeana-v5-comments。完整 Rust 314 单元通过/1 默认忽略、Python 核心 30；真实注释 Rust 2/Python 3、三对组合及三语言 3、prepared 7/Python 产品 7 通过。原 prepared 缺 Maven PATH 的降级失败及查询页大小/扫描范围测试修正日志保留。证据：`target/todo-implementation/comment-c3-final/receipt.json`。本轮未签分发或性能放行。
+
+A6 收口：Lombok 实现与资源移入 framework-lombok；生产 AnalysisSession 与诊断入口共用 FrameworkPlugins.selected 装配。扩展必须实现带 AnalysisContext 的回调，旧两参实现编译失败；生产入口复用原累计账户。真实产品回归曾发现生产选择器漏装 Lombok，已修正并补回归，原失败保留。当前 Java/Native 728/728；Native/JVM 综合各 23/23，11 组产品/ABI/G1/崩溃恢复门禁全部通过，SDK 前后字节一致。证据：target/todo-implementation/a6/receipt.json。原来源身份不变，8 项覆盖路径迁移；本机参考仓库缺固定提交对象，未宣称重新完成上游全量覆盖验证。A6 完成，A7 继续最终门禁、分发与注释缺口修正；不重测或重标 C4 性能。

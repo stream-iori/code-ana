@@ -61,7 +61,7 @@ public record JavaModelAnalyzerRegistry(
         }
     }
 
-    public JavaDeclarationOverlay overlays() { return overlays(null); }
+    public JavaDeclarationOverlay overlays() { return overlays(new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults())); }
     public JavaDeclarationOverlay overlays(com.anatomist.core.AnalysisContext resources) {
         var overlays = new JavaModelExtensions(declarations,resources);
         String identity = fingerprint();

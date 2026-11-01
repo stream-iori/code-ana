@@ -29,7 +29,7 @@ class JavaPackage(unittest.TestCase):
                         warnings.simplefilter('ignore');jar.writestr(path.name,path.read_bytes())
     def test_current_reactor_classes_are_checked_for_both_backends(self):
         for backend in ('native','jvm'):
-            self.stage(backend);self.assertEqual(package.verify(self.root,backend)['classes'],5)
+            self.stage(backend);self.assertEqual(package.verify(self.root,backend)['classes'],len(package.MODULES)+1)
     def test_stale_dependency_is_rejected_even_when_main_entrypoint_is_unchanged(self):
         self.stage('native',stale=True)
         with self.assertRaisesRegex(ValueError,'JAVA_PACKAGE_STALE_CLASS'):package.verify(self.root,'native')

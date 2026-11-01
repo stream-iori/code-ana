@@ -96,8 +96,8 @@ class JavaModelExtensionIT {
                                     @Override
                                     public JavaAnalysisContext augment(
                                             JavaAnalysisContext context,
-                                            JavaBinaryRepository binaries) {
-                                        super.augment(context, binaries);
+                                            JavaBinaryRepository binaries, com.anatomist.core.AnalysisContext resources) {
+                                        super.augment(context, binaries, resources);
                                         throw new IllegalStateException("fixture failure");
                                     }
                                 })));
@@ -170,7 +170,7 @@ class JavaModelExtensionIT {
                                     @Override
                                     public JavaAnalysisContext augment(
                                             JavaAnalysisContext context,
-                                            JavaBinaryRepository binaries) {
+                                            JavaBinaryRepository binaries, com.anatomist.core.AnalysisContext resources) {
                                         return new JavaAnalysisContext(
                                                 "different",
                                                 context.scope(),
@@ -205,7 +205,7 @@ class JavaModelExtensionIT {
 
         @Override
         public JavaAnalysisContext augment(
-                JavaAnalysisContext context, JavaBinaryRepository binaries) {
+                JavaAnalysisContext context, JavaBinaryRepository binaries, com.anatomist.core.AnalysisContext resources) {
             List<JavaUnit> units = new ArrayList<>();
             for (var unit : context.units()) {
                 var entries = new ArrayList<>(unit.types().entries());

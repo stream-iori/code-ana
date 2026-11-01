@@ -32,7 +32,7 @@ class FrameworkPluginsTest {
                 registry.resourceAnalyzers().stream()
                         .map(com.anatomist.framework.ExtensionPoint::id)
                         .toList());
-        assertEquals(2, registry.pluginContracts().size());
+        assertEquals(3, registry.pluginContracts().size());
         assertEquals(
                 registry.fingerprint(),
                 FrameworkPlugins.builtIns().prepareDetached(context).fingerprint());
@@ -49,6 +49,19 @@ class FrameworkPluginsTest {
                 () ->
                         new FrameworkPlugins(List.of(plugin("unported", List.of())))
                                 .prepareDetached(context));
+    }
+
+    @Test
+    void selectedLombokSurvivesAllOtherFrameworksBeingDisabled(@TempDir Path root) {
+        var config = new com.anatomist.config.ProjectConfig();
+        config.setLombokMode("ast");
+        var context = new JavaFrameworkContext(root, List.of(), config, false);
+        var registry = FrameworkPlugins.selected(null, false).prepareDetached(context, java.util.Map.of());
+        assertEquals(List.of("lombok-ast"), registry.declarations().stream().map(com.anatomist.framework.ExtensionPoint::id).toList());
+        assertEquals(List.of("lombok-call-site"), registry.callSiteEvidenceProviders().stream().map(com.anatomist.framework.ExtensionPoint::id).toList());
+        assertTrue(registry.analyzers().isEmpty());
+        assertTrue(registry.resourceProviders().isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> FrameworkPlugins.selected(null, true));
     }
 
     private static JavaFrameworkPlugin plugin(String id, List<String> requires) {

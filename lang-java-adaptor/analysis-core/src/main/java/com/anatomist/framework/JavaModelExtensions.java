@@ -14,9 +14,9 @@ public final class JavaModelExtensions implements JavaDeclarationOverlay {
     private final String fingerprint;
     private final com.anatomist.core.AnalysisContext resources;
 
-    public JavaModelExtensions(List<JavaModelExtension> extensions) { this(extensions,null); }
+    public JavaModelExtensions(List<JavaModelExtension> extensions) { this(extensions,new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults())); }
     public JavaModelExtensions(List<JavaModelExtension> extensions, com.anatomist.core.AnalysisContext resources) {
-        this.resources=resources;
+        this.resources=Objects.requireNonNull(resources,"MODEL_EXTENSION_BUDGET_REQUIRED");
         this.extensions = List.copyOf(extensions);
         Set<String> ids = new HashSet<>();
         StringBuilder material = new StringBuilder("java-model-extensions-v1\n");

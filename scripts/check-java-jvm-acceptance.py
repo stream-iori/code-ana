@@ -34,7 +34,7 @@ def check(receipt, root):
                 for name, checksum in components['sources'].items() if '/lang-java-adaptor/' in name}
     count = 0
     found = set()
-    for module in ('analysis-core', 'framework-spring', 'framework-sofa', 'java-bridge'):
+    for module in ('analysis-core', 'framework-lombok', 'framework-spring', 'framework-sofa', 'java-bridge'):
         for path in (root / 'lang-java-adaptor' / module / 'src/main').rglob('*'):
             if not path.is_file(): continue
             relative = str(path.relative_to(root / 'lang-java-adaptor'))
@@ -45,7 +45,7 @@ def check(receipt, root):
     if count == 0:
         raise ValueError('JVM_VERIFIED_PRODUCTION_SOURCE_MISSING')
     expected = {name for name in accepted if any(name.startswith(module + '/src/main/')
-                for module in ('analysis-core', 'framework-spring', 'framework-sofa', 'java-bridge'))}
+                for module in ('analysis-core', 'framework-lombok', 'framework-spring', 'framework-sofa', 'java-bridge'))}
     if found != expected:
         raise ValueError('JVM_VERIFIED_PRODUCTION_SOURCE_SET_CHANGED')
     return count

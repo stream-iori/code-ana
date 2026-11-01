@@ -1,17 +1,18 @@
 package com.anatomist.framework;
 
+import com.anatomist.core.AnalysisContext;
 import com.anatomist.core.asmsolver.JavaBinaryRepository;
 import com.anatomist.core.java.JavaAnalysisContext;
 
-/** Augments detached declaration inventories, without creating executable bodies or parser ASTs. */
+/** Augments detached declarations; every implementation must provide the budgeted entry. */
 public interface JavaModelExtension extends ExtensionPoint {
     default void verifyInputs() {}
 
-    JavaAnalysisContext augment(JavaAnalysisContext context, JavaBinaryRepository binaries);
-    /** The production path cannot silently call a legacy unmetered callback. */
-    default JavaAnalysisContext augment(JavaAnalysisContext context,JavaBinaryRepository binaries,
-            com.anatomist.core.AnalysisContext resources) {
-        if(resources==null)return augment(context,binaries);
-        throw new com.anatomist.core.FatalAnalysisFailure("MODEL_EXTENSION_BUDGET_REQUIRED: "+id());
+    /** Explicit diagnostic convenience, with a finite account. Production supplies its task account. */
+    default JavaAnalysisContext augment(JavaAnalysisContext context, JavaBinaryRepository binaries) {
+        return augment(context, binaries, new AnalysisContext(AnalysisContext.Limits.defaults()));
     }
+
+    JavaAnalysisContext augment(JavaAnalysisContext context, JavaBinaryRepository binaries,
+            AnalysisContext resources);
 }

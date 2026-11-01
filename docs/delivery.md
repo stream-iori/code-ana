@@ -103,3 +103,5 @@ Maven schema 4 的导出协议与 Resolver fixture 走 `just test-java-maven`；
 三语言实际提取/检索与各组合由 comment_search、rust_comment、python_comment、comment_mixed 的 E2E 验证。Java 分发包含 comment-indexing fixture；Rust/Python 包包含各自语言 fixture。Java release 门禁覆盖注释查询及生命周期；共享 release 资源门禁的 --comment-package 参数核对包内全部五个二进制与执行字节，再串行验证注释/Native 组合，最后核对原二进制恢复和 SDK 未变。
 
 C4 的单轮测量采用 fixtures/comment-indexing/acceptance.json：128 个类、每类 8 个方法，预期 3,328 条注释和五组路径限定查询。先用 comment-fixture-prepare 固定源码、预算、release 二进制、SDK 与 JDK 摘要；comment-fixture-functional 验证注释数量、方法定位和图完整性；同一目录通过后才能 comment-fixture-measure。测量使用独立空 home、同一源码/产物，不分冷热，不控制 OS page cache；现有监视器按同一时刻完整进程树采样，保留全部 stdout/stderr、采样及失败。排他 marker 防止重测。单轮本机 fixture 测量不代表容量、跨平台或完整 Native 迁移认证。
+
+A6 的 reactor 新增 framework-lombok，JVM/Native 包检查和正式构建的生产源码集合核对均包含该模块。Native 构建也先 clean，防止旧 analysis-core 输出目录残留已迁出的 Lombok 类；SOFA→Spring 依赖保留。源码 ledger 只更新迁移目标/本地 SHA，保留原始来源提交与 SHA；覆盖 inventory 的八处目标按相同原始 SHA 迁移，完整覆盖标记保持 false。新模块 SDK 的构建与产品验收需单独记录，不借 C4 原性能结果放行。

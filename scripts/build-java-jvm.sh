@@ -7,7 +7,7 @@ cd "$repo_root/lang-java-adaptor"
 source "$repo_root/scripts/java-build-env.sh"
 set -u
 # Clean reactor modules, keeping the independently sealed native SDK in parent target/.
-mvn -q -pl analysis-core,framework-spring,framework-sofa,java-bridge,jvm-runner -Djava8.home="${CODEANA_JAVA8_HOME:-$HOME/.sdkman/candidates/java/8.0.492-zulu}" "$@" clean package
+mvn -q -pl analysis-core,framework-lombok,framework-spring,framework-sofa,java-bridge,jvm-runner -Djava8.home="${CODEANA_JAVA8_HOME:-$HOME/.sdkman/candidates/java/8.0.492-zulu}" "$@" clean package
 python3 "$repo_root/scripts/check-java-package.py" jvm
 "$repo_root/scripts/build-java-maven.sh" "$PWD/target/jvm"
 python3 "$repo_root/scripts/java-jvm-manifest.py" "$PWD"

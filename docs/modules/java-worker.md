@@ -145,3 +145,17 @@ Hello先签发grant并回传首个水位，再准入Discover业务帧，配置�
 Lombok声明overlay显式接收原任务账本；配置捕获/合并、生成声明/注解、类型索引、调用证据与JavaExtensionData freeze均在副本构造前检查。常量/注解辅助context不再另领默认账本，硬失败穿透扩展恢复。类型名从活动表读取，保留canonical嵌套名及原方法ID。合并JAR在Native Image前核对reactor全部类；重复package强制重建薄JAR，避免旧依赖混入。
 
 本轮统一资源治理八项已完成本机自建fixture验收，状态与历史阶段区分见current-state.md最后一节。三种分发及所有实际release worker的42项资源/混合/历史矩阵已通过；原二进制与SDK恢复记录齐全。此为本机fixture验证，不签完整语义/来源、跨平台或容量/稳定性能放行。
+
+### A6 框架模块与预算入口
+
+| 模块/边界 | 约束 |
+|---|---|
+| analysis-core | 只提供独立模型、提取和框架契约；不引用 Lombok 实现 |
+| framework-lombok | 持有原 Lombok 类与 annotation-copy 资源，完整类名保持；插件同时注册声明和 call-site evidence |
+| framework-spring / framework-sofa | 独立框架实现；SOFA 继续依赖 Spring |
+| FrameworkPlugins | 统一按编译期列表装配，捕获配置通过 JavaFrameworkContext 传入 |
+| JavaModelExtension | 三参数预算方法必须实现；缺该方法的类无法编译/注册，生产根账户不可为 null |
+| 诊断入口 | 使用明确的有限账户，不再调用旧无预算回调；生产不新建诊断账户 |
+| 构建/包门禁 | 两后端 clean reactor，检查新模块类及源集合；原 upstream source/hash/commit 保留，仅迁移 destination 和本地摘要 |
+
+新增插件契约进入装配指纹；新 SDK 的身份不同，不能沿用旧 C4 性能记录作认证。公开图 ID、worker/analysis/compiler/ABI 版本保持。完整上游覆盖仍保留原缺口，本轮物理移动不作为语义对齐证明。

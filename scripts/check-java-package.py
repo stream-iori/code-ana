@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from zipfile import ZipFile
 
-MODULES=('analysis-core','framework-spring','framework-sofa','java-bridge')
+MODULES=('analysis-core','framework-lombok','framework-spring','framework-sofa','java-bridge')
 
 def verify(project,backend):
     module={'native':'native-bridge','jvm':'jvm-runner'}[backend]

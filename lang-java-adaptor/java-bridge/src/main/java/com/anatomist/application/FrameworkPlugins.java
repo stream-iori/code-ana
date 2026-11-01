@@ -1,8 +1,8 @@
 package com.anatomist.application;
 
-import com.anatomist.config.LombokMode;
 import com.anatomist.framework.*;
 import com.anatomist.framework.sofa.SofaFrameworkPlugin;
+import com.anatomist.framework.lombok.LombokFrameworkPlugin;
 import com.anatomist.framework.spring.SpringFrameworkPlugin;
 
 import java.nio.file.Path;
@@ -14,10 +14,10 @@ import java.util.Set;
 /** The single, explicit build-time composition point for Java framework plugins. */
 public final class FrameworkPlugins {
     private static final FrameworkPlugins BUILT_INS =
-            new FrameworkPlugins(List.of(new SpringFrameworkPlugin(), new SofaFrameworkPlugin()));
+            selected(new SpringFrameworkPlugin(), true);
     private final List<JavaFrameworkPlugin> plugins;
 
-    public FrameworkPlugins(List<JavaFrameworkPlugin> plugins) {
+    FrameworkPlugins(List<JavaFrameworkPlugin> plugins) {
         this.plugins = List.copyOf(plugins);
         Set<String> seen = new HashSet<>();
         for (JavaFrameworkPlugin plugin : this.plugins) {
@@ -38,6 +38,15 @@ public final class FrameworkPlugins {
         }
     }
 
+    /** Every production selection includes the optional Lombok module; the module owns its mode check. */
+    public static FrameworkPlugins selected(JavaFrameworkPlugin spring, boolean sofa) {
+        var plugins = new ArrayList<JavaFrameworkPlugin>();
+        if (spring != null) plugins.add(spring);
+        if (sofa) plugins.add(new SofaFrameworkPlugin());
+        plugins.add(new LombokFrameworkPlugin());
+        return new FrameworkPlugins(plugins);
+    }
+
     public static FrameworkPlugins builtIns() {
         return BUILT_INS;
     }
@@ -53,12 +62,13 @@ public final class FrameworkPlugins {
     }
 
     public JavaModelAnalyzerRegistry prepareDetached(JavaFrameworkContext context) {
-        return prepareDetached(context, null);
+        return prepareDetached(context, context.capturedConfigs());
     }
 
     /** Boundary overload: config files come from the captured logical directory tree. */
     public JavaModelAnalyzerRegistry prepareDetached(
             JavaFrameworkContext context, java.util.Map<Path, String> capturedConfigs) {
+        context = new JavaFrameworkContext(context.projectRoot(),context.sourcePaths(),context.config(),context.springXml(),context.analysisContext(),capturedConfigs);
         var declarations = new ArrayList<JavaModelExtension>();
         var analyzers = new ArrayList<JavaModelAnalyzer>();
         var providers = new ArrayList<ProjectResourceProvider>();
@@ -79,20 +89,6 @@ public final class FrameworkPlugins {
                                     plugin.id(),
                                     plugin.version(),
                                     plugin.requires())));
-        }
-        if (context.config().lombokMode() != LombokMode.OFF) {
-            declarations.add(
-                    capturedConfigs == null
-                            ? new com.anatomist.framework.lombok.LombokJavaModelExtension(
-                                    context.projectRoot(), context.config().lombokStrict())
-                            : new com.anatomist.framework.lombok.LombokJavaModelExtension(
-                                    context.projectRoot(), context.config().lombokStrict(), capturedConfigs, context.analysisContext()));
-            evidence.add(
-                    capturedConfigs == null
-                            ? new com.anatomist.framework.lombok.LombokJavaCallEvidence(
-                                    context.projectRoot())
-                            : new com.anatomist.framework.lombok.LombokJavaCallEvidence(
-                                    context.projectRoot(), capturedConfigs, context.analysisContext()));
         }
         return new JavaModelAnalyzerRegistry(
                 declarations, analyzers, providers, resources, contracts, evidence);

@@ -96,6 +96,22 @@ class AnalysisSessionTest {
         return row.getCells(index).getText();
     }
 
+    @Test void productionSelectionKeepsLombokWithoutSpringOrSofa() throws Exception {
+        var req = request("@lombok.Data class A { String name; }");
+        var context = Json.map(Json.list(req.get("contexts")).getFirst());
+        context.put("lombok", "model");
+        context.put("spring", false);
+        context.put("spring_xml", false);
+        context.put("sofa", false);
+        var annotation = temporary.resolve("Data.java");
+        Files.writeString(annotation, "package lombok; public @interface Data {}");
+        var original = Json.map(Json.list(context.get("sources")).getFirst());
+        var unit = Json.object("path","src/lombok/Data.java","hash",Json.sha(annotation),"module",".","world","main","scope","MAIN","input",annotation.toString(),"publish",true);
+        context.put("sources", List.of(original, unit));
+        var rows = run(req);
+        assertTrue(rows.stream().anyMatch(row -> row.getTable()==dev.codeana.graph.GraphRecords.Table.NODE && text(row,1).equals("A#getName()")));
+    }
+
     @Test void publishesAnatomistNodesDeclarationsAndCallsWithoutRawModelFacts() throws Exception {
         var rows=run(request("class A { void caller(){callee(1);} void callee(int x){} }"));
         var nodes=rows.stream().filter(r->r.getTable()==dev.codeana.graph.GraphRecords.Table.NODE).toList();

@@ -93,7 +93,7 @@ class ExtensionNodeMetadataTest {
             }
 
             public JavaAnalysisContext augment(
-                    JavaAnalysisContext context, JavaBinaryRepository binaries) {
+                    JavaAnalysisContext context, JavaBinaryRepository binaries, com.anatomist.core.AnalysisContext resources) {
                 var units =
                         context.units().stream()
                                 .map(

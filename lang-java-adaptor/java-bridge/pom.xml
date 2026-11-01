@@ -5,6 +5,7 @@
   <dependencies>
     <dependency><groupId>com.google.protobuf</groupId><artifactId>protobuf-javalite</artifactId><version>4.34.1</version></dependency>
     <dependency><groupId>dev.codeana</groupId><artifactId>analysis-core</artifactId><version>${project.version}</version></dependency>
+    <dependency><groupId>dev.codeana</groupId><artifactId>framework-lombok</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>dev.codeana</groupId><artifactId>framework-spring</artifactId><version>${project.version}</version></dependency>
     <dependency><groupId>dev.codeana</groupId><artifactId>framework-sofa</artifactId><version>${project.version}</version></dependency>
   </dependencies>

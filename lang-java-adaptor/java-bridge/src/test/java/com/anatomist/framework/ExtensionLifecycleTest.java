@@ -125,7 +125,7 @@ class ExtensionLifecycleTest {
                     }
 
                     public JavaAnalysisContext augment(
-                            JavaAnalysisContext context, JavaBinaryRepository binaries) {
+                            JavaAnalysisContext context, JavaBinaryRepository binaries, com.anatomist.core.AnalysisContext resources) {
                         generatedMethod(id(), "mustNotLeak").augment(context, binaries);
                         throw new IllegalStateException("boom");
                     }
@@ -167,7 +167,7 @@ class ExtensionLifecycleTest {
             }
 
             public JavaAnalysisContext augment(
-                    JavaAnalysisContext context, JavaBinaryRepository binaries) {
+                    JavaAnalysisContext context, JavaBinaryRepository binaries, com.anatomist.core.AnalysisContext resources) {
                 var units = new ArrayList<JavaUnit>();
                 for (var unit : context.units()) {
                     var entries = new ArrayList<>(unit.types().entries());
