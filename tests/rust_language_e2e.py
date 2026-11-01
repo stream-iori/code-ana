@@ -3,6 +3,7 @@
 import contextlib
 import importlib.machinery
 import importlib.util
+import sys
 import json
 import pathlib
 import shutil
@@ -19,7 +20,14 @@ if not export_path.exists():
 spec = importlib.util.spec_from_loader(
     'rust_export', importlib.machinery.SourceFileLoader('rust_export', str(export_path)))
 exporter = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(exporter)
+# The exporter can live in an immutable release package: importing it must not
+# add unlisted bytecode files to that package. Restore the caller's policy.
+previous_bytecode_policy = sys.dont_write_bytecode
+try:
+    sys.dont_write_bytecode = True
+    spec.loader.exec_module(exporter)
+finally:
+    sys.dont_write_bytecode = previous_bytecode_policy
 
 class RustExport(unittest.TestCase):
     def setUp(self):
