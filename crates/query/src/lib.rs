@@ -5,6 +5,9 @@ mod calls;
 mod comments;
 mod dispatch;
 mod hierarchy;
+mod java_dispatch;
+mod java_policy;
+mod language_policy;
 mod navigation;
 mod overview;
 mod pipeline;
@@ -1103,16 +1106,19 @@ mod tests {
         root_method.id = "api#run()".into();
         root_method.signature = root_method.id.to_string();
         root_method.parent = "api".into();
-        root_method.attributes =
-            serde_json::from_value(json!({"element_kind":"METHOD","modifiers":["abstract"]}))
-                .unwrap();
+        root_method.attributes = serde_json::from_value(
+            json!({"language":"java","element_kind":"METHOD","modifiers":["abstract"]}),
+        )
+        .unwrap();
         inner.facts.push(root_method.clone());
         for number in 0..1200 {
             let mut class = template.clone();
             class.id = format!("impl{number}").into();
             class.signature = class.id.to_string();
-            class.attributes =
-                serde_json::from_value(json!({"element_kind":"CLASS","modifiers":[]})).unwrap();
+            class.attributes = serde_json::from_value(
+                json!({"language":"java","element_kind":"CLASS","modifiers":[]}),
+            )
+            .unwrap();
             let mut method = root_method.clone();
             method.id = format!("{}#run()", class.id).into();
             method.signature = method.id.to_string();
@@ -1138,7 +1144,8 @@ mod tests {
         let mut site = template.clone();
         site.id = "site".into();
         site.kind = FactKind::CallSite;
-        site.attributes = serde_json::from_value(json!({"mechanism":"invoke"})).unwrap();
+        site.attributes =
+            serde_json::from_value(json!({"language":"java","mechanism":"invoke"})).unwrap();
         let mut binding = site.clone();
         binding.id = "binding".into();
         binding.kind = FactKind::CallTarget;
@@ -1261,6 +1268,157 @@ mod tests {
         );
         assert_eq!(candidate.wire().unwrap()["type_proof"], json!([]));
     }
+    #[test]
+    fn language_capabilities_never_default_to_java() {
+        for language in [None, Some("future"), Some("rust"), Some("python")] {
+            let mut reader = navigation_fixture();
+            for fact in &mut reader.facts {
+                fact.attributes.language = language
+                    .map(str::to_owned)
+                    .map(Field::Value)
+                    .unwrap_or(Field::Missing);
+                // Deliberately Java-looking modifiers must not select Java semantics.
+                fact.attributes.element_kind = "CLASS".to_owned().into();
+            }
+            let request = Request {
+                operation: Operation::Dispatch,
+                selector: "site1".into(),
+                ..Default::default()
+            };
+            if let Some(language @ ("rust" | "python")) = language {
+                let result = run(&reader, &request, &|_| bail!("no source")).unwrap();
+                let row = result.records[0].wire().unwrap();
+                assert_eq!(
+                    row["algorithm"],
+                    if language == "rust" {
+                        "rust-analyzer-static"
+                    } else {
+                        "pyrefly-static"
+                    }
+                );
+                assert_eq!(row["possible"], false);
+                let err = run(
+                    &reader,
+                    &Request {
+                        algorithm: DispatchAlgorithm::Cha,
+                        ..request
+                    },
+                    &|_| bail!("no source"),
+                )
+                .unwrap_err();
+                assert!(
+                    err.to_string()
+                        .contains(&format!("{}_CHA_UNSUPPORTED", language.to_uppercase()))
+                );
+            } else {
+                assert!(
+                    run(&reader, &request, &|_| bail!("no source"))
+                        .unwrap_err()
+                        .to_string()
+                        .contains("LANGUAGE_QUERY_CAPABILITY_UNSUPPORTED")
+                );
+            }
+            for operation in [Operation::RuntimeImplementations, Operation::Annotations] {
+                assert!(
+                    run(
+                        &reader,
+                        &Request {
+                            operation,
+                            selector: "caller".into(),
+                            ..Default::default()
+                        },
+                        &|_| bail!("no source")
+                    )
+                    .is_err()
+                );
+            }
+            assert_eq!(hierarchy::instantiability(&reader.facts[0]).0, "unknown");
+            // Generic recorded references remain readable even without a language policy.
+            assert!(
+                run(
+                    &reader,
+                    &Request {
+                        operation: Operation::Resolve,
+                        selector: "caller".into(),
+                        ..Default::default()
+                    },
+                    &|_| bail!("no source")
+                )
+                .is_ok()
+            );
+        }
+    }
+    #[test]
+    fn java_dispatch_does_not_interpret_foreign_or_untyped_declarations() {
+        for language in [None, Some("future"), Some("rust"), Some("python")] {
+            let mut reader = navigation_fixture();
+            let target = reader.facts.iter_mut().find(|f| f.id == "callee").unwrap();
+            target.attributes.language = language
+                .map(str::to_owned)
+                .map(Field::Value)
+                .unwrap_or(Field::Null);
+            target.attributes.element_kind = "METHOD".to_owned().into();
+            let error = run(
+                &reader,
+                &Request {
+                    operation: Operation::Dispatch,
+                    selector: "site1".into(),
+                    ..Default::default()
+                },
+                &|_| bail!("no source"),
+            )
+            .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("LANGUAGE_QUERY_CAPABILITY_UNSUPPORTED")
+            );
+        }
+    }
+    #[test]
+    fn static_dispatch_keeps_partial_binding_evidence_and_exact_filter() {
+        for language in ["rust", "python"] {
+            let mut reader = navigation_fixture();
+            for fact in &mut reader.facts {
+                fact.attributes.language = language.to_owned().into();
+            }
+            let binding = reader
+                .facts
+                .iter_mut()
+                .find(|f| f.id == "binding1")
+                .unwrap();
+            binding.status = "unresolved".into();
+            binding.declaration_resolved = false;
+            let request = Request {
+                operation: Operation::Dispatch,
+                selector: "site1".into(),
+                ..Default::default()
+            };
+            let output = run(&reader, &request, &|_| bail!("no source")).unwrap();
+            assert!(!output.evidence.semantic);
+            assert!(
+                output
+                    .evidence
+                    .reasons
+                    .iter()
+                    .any(|r| r == &format!("{language}_partial_binding:binding1"))
+            );
+            assert_eq!(output.records[0].wire().unwrap()["possible"], true);
+            assert!(
+                run(
+                    &reader,
+                    &Request {
+                        algorithm: DispatchAlgorithm::Exact,
+                        ..request
+                    },
+                    &|_| bail!("no source")
+                )
+                .unwrap()
+                .records
+                .is_empty()
+            );
+        }
+    }
     fn hierarchy_fixture() -> MemoryReader {
         let mut reader = navigation_fixture();
         let template = reader.facts[0].clone();
@@ -1277,7 +1435,7 @@ mod tests {
             fact.name = id.into();
             fact.signature = id.into();
             fact.attributes = serde_json::from_value(json!({
-                "entity_kind":"type", "element_kind":kind, "modifiers":modifiers
+                "entity_kind":"type", "language":"java","element_kind":kind, "modifiers":modifiers
             }))
             .unwrap();
             if id != "api" {
@@ -1631,7 +1789,7 @@ mod tests {
             auxiliary: false,
         });
         let fact = |id: &str, kind: &str, module: usize, parent: &str, target: &str| {
-            serde_json::from_value(json!({"id":id,"kind":kind,"name":id,"signature":id,"parent":parent,"target":target,"source":units[module].path,"owner":{"world":units[module].world,"producer":"mock","kind":"source","id":units[module].path},"status":"resolved","evidence_complete":true,"declaration_resolved":true,"span":{"start":0,"end":12}})).unwrap()
+            serde_json::from_value(json!({"id":id,"kind":kind,"attributes":{"language":"java"},"name":id,"signature":id,"parent":parent,"target":target,"source":units[module].path,"owner":{"world":units[module].world,"producer":"mock","kind":"source","id":units[module].path},"status":"resolved","evidence_complete":true,"declaration_resolved":true,"span":{"start":0,"end":12}})).unwrap()
         };
         MemoryReader {
             revision: Revision {
@@ -2306,7 +2464,7 @@ mod tests {
     fn unresolved_call_is_not_a_confirmed_candidate() {
         let owner = json!({"world":"world","producer":"mock","kind":"source","id":"x"});
         let fact = |id: &str, kind: &str, parent: &str, status: &str| {
-            serde_json::from_value::<Fact>(json!({"id":id,"kind":kind,"owner":owner,"origin":"mock","parent":parent,"status":status})).unwrap()
+            serde_json::from_value::<Fact>(json!({"id":id,"kind":kind,"attributes":{"language":"java"},"owner":owner,"origin":"mock","parent":parent,"status":status})).unwrap()
         };
         let reader = MemoryReader {
             revision: Revision {
@@ -2353,7 +2511,11 @@ mod tests {
     #[test]
     fn possible_candidates_are_explained_and_excluded_from_confirmed_calls() {
         let owner = json!({"world":"world","producer":"javac","kind":"context","id":"ctx"});
-        let make = |value| serde_json::from_value::<Fact>(value).unwrap();
+        let make = |value| {
+            let mut fact = serde_json::from_value::<Fact>(value).unwrap();
+            fact.attributes.language = "java".to_owned().into();
+            fact
+        };
         let mut reader = MemoryReader {
             revision: Revision {
                 id: "rev".into(),
@@ -2465,7 +2627,11 @@ mod tests {
     #[test]
     fn dispatch_distinguishes_exact_and_open_world_targets() {
         let owner = json!({"world":"world","producer":"javac","kind":"source","id":"A.java"});
-        let make = |value| serde_json::from_value::<Fact>(value).unwrap();
+        let make = |value| {
+            let mut fact = serde_json::from_value::<Fact>(value).unwrap();
+            fact.attributes.language = "java".to_owned().into();
+            fact
+        };
         let revision = Revision {
             id: "rev".into(),
             target: "t".into(),
@@ -2478,25 +2644,25 @@ mod tests {
         };
         let mut facts = vec![
             make(
-                json!({"id":"site","kind":"call_site","owner":owner,"origin":"javac","status":"resolved","attributes":{"mechanism":"invoke"}}),
+                json!({"id":"site","kind":"call_site","owner":owner,"origin":"javac","status":"resolved","attributes":{"language":"java","mechanism":"invoke"}}),
             ),
             make(
                 json!({"id":"binding","kind":"call_target","owner":owner,"origin":"javac","parent":"site","target":"method","status":"resolved","declaration_resolved":true,"evidence_complete":true}),
             ),
             make(
-                json!({"id":"method","kind":"declaration","owner":owner,"origin":"javac","parent":"class","signature":"Class#run()","attributes":{"element_kind":"METHOD","modifiers":["static"]}}),
+                json!({"id":"method","kind":"declaration","owner":owner,"origin":"javac","parent":"class","signature":"Class#run()","attributes":{"language":"java","element_kind":"METHOD","modifiers":["static"]}}),
             ),
             make(
-                json!({"id":"class","kind":"declaration","owner":owner,"origin":"javac","attributes":{"element_kind":"CLASS","modifiers":[]}}),
+                json!({"id":"class","kind":"declaration","owner":owner,"origin":"javac","attributes":{"language":"java","element_kind":"CLASS","modifiers":[]}}),
             ),
             make(
-                json!({"id":"child","kind":"declaration","owner":owner,"origin":"javac","parent":"child-class","signature":"Child#run()","attributes":{"element_kind":"METHOD","modifiers":[]}}),
+                json!({"id":"child","kind":"declaration","owner":owner,"origin":"javac","parent":"child-class","signature":"Child#run()","attributes":{"language":"java","element_kind":"METHOD","modifiers":[]}}),
             ),
             make(
                 json!({"id":"edge","kind":"relation","owner":owner,"origin":"javac","parent":"child","target":"method","relation":"overrides"}),
             ),
             make(
-                json!({"id":"child-class","kind":"declaration","owner":owner,"attributes":{"element_kind":"CLASS","modifiers":[]}}),
+                json!({"id":"child-class","kind":"declaration","owner":owner,"attributes":{"language":"java","element_kind":"CLASS","modifiers":[]}}),
             ),
             make(
                 json!({"id":"type-edge","kind":"relation","owner":owner,"parent":"child-class","target":"class","relation":"extends","evidence_complete":true,"declaration_resolved":true}),

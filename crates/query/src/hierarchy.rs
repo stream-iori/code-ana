@@ -37,31 +37,11 @@ fn limit(evidence: &mut Evidence, name: &str) {
 }
 
 pub(super) fn instantiability(fact: &Fact) -> (&'static str, &'static str) {
-    if fact.attributes.language.as_ref().map(String::as_str) == Some("python") {
-        return ("unknown", "python.runtime_instantiability_unknown");
-    }
-    let modifier = |name| {
-        fact.attributes
-            .modifiers
-            .as_ref()
-            .is_some_and(|items| items.iter().any(|item| item == name))
-    };
-    match fact
-        .attributes
-        .element_kind
-        .as_ref()
-        .map(String::as_str)
-        .unwrap_or("")
-    {
-        "INTERFACE" => ("no", "java.interface"),
-        "ANNOTATION" | "ANNOTATION_TYPE" => ("no", "java.annotation"),
-        "ENUM" => ("yes", "java.enum"),
-        "RECORD" => ("yes", "java.record"),
-        "ANONYMOUS_CLASS" => ("yes", "java.anonymous_class"),
-        "CLASS" if modifier("abstract") => ("no", "java.abstract_class"),
-        "CLASS" if modifier("final") => ("yes", "java.final_class"),
-        "CLASS" => ("yes", "java.concrete_class"),
-        _ => ("unknown", "java.kind_unknown"),
+    match LanguagePolicy::lookup(fact.attributes.language.as_ref().map(String::as_str)) {
+        Some(LanguagePolicy::Java) => java_policy::instantiability(fact),
+        Some(LanguagePolicy::Python) => ("unknown", "python.runtime_instantiability_unknown"),
+        Some(LanguagePolicy::Rust) => ("unknown", "rust.runtime_instantiability_unknown"),
+        None => ("unknown", "language.runtime_instantiability_unsupported"),
     }
 }
 
@@ -92,10 +72,11 @@ pub(super) fn runtime(
         evidence.reasons.push("static_candidates_open_world".into());
     }
     for root in roots {
-        ensure!(
-            root.attributes.language.as_ref().map(String::as_str) != Some("python"),
-            "PYTHON_RUNTIME_IMPLEMENTATIONS_UNSUPPORTED"
-        );
+        if let Some(error) =
+            language_policy::require(&root, "runtime-implementations")?.runtime_error()
+        {
+            bail!(error);
+        }
         ensure!(
             root.is_public_entity()
                 && (root.attributes.entity_kind.as_ref().map(String::as_str) == Some("type")

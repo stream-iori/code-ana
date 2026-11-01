@@ -14,6 +14,7 @@ macro_rules! codes {
     }
 }
 codes! {
+    LanguageQueryCapabilityUnsupported = "LANGUAGE_QUERY_CAPABILITY_UNSUPPORTED",
     AnalysisLimitsInvalid = "ANALYSIS_LIMITS_INVALID",
     AnalysisUsageInvalid = "ANALYSIS_USAGE_INVALID",
     AnalysisResourceLimit = "ANALYSIS_RESOURCE_LIMIT",

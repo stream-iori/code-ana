@@ -147,6 +147,15 @@ class RustLanguage(RustHarness):
         self.assertTrue(self.cli('structure','Counter')[0])
         self.assertTrue(self.cli('structure','api')[0])
         self.assertTrue(self.cli('calls','main')[0])
+        sites = self.cli('call-sites', 'main')[0]
+        self.assertTrue(sites)
+        candidates = [candidate for site in sites for candidate in self.cli('dispatch', site['id'])[0]]
+        self.assertTrue(candidates)
+        self.assertTrue(all(row.get('algorithm') == 'rust-analyzer-static' for row in candidates))
+        _, unsupported = self.cli('dispatch', sites[0]['id'], '--algorithm', 'cha', code=1)
+        self.assertIn('RUST_CHA_UNSUPPORTED', str(unsupported))
+        _, unsupported = self.cli('runtime-implementations', 'Counter', code=1)
+        self.assertIn('RUST_RUNTIME_IMPLEMENTATIONS_UNSUPPORTED', str(unsupported))
         self.cli('index','--strict',code=3,timeout=90)
         self.assertEqual(self.cli('overview')[1]['revision'],first)
         source=self.project/'app/src/main.rs'

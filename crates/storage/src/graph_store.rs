@@ -7,6 +7,9 @@ use rusqlite::{
 };
 use sha2::{Digest, Sha256};
 
+mod language_completion;
+use language_completion::resolve_reference;
+
 mod inserts {
     include!("anatomist-inserts.rs");
 }
@@ -233,31 +236,6 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
     Ok(())
 }
 
-fn resolve_reference(
-    db: &Connection,
-    table: &str,
-    output: &str,
-    reference: &str,
-    additional: &str,
-) -> Result<()> {
-    for candidate in [
-        "n.source_file=t.source_file",
-        "n.module=t.source_module AND n.scope=t.source_scope",
-        "n.module=t.source_module AND n.scope='MAIN'",
-        "n.scope='MAIN'",
-        "1=1",
-    ] {
-        let language = if matches!(table, "stage_edges" | "stage_call_sites") {
-            " AND t.language<>'python' AND n.language=t.language"
-        } else {
-            ""
-        };
-        let matches = format!("n.symbol_id=t.{reference} AND {candidate}{language}");
-        db.execute_batch(&format!("UPDATE {table} AS t SET {output}=(SELECT min(n.id) FROM stage_nodes n WHERE {matches}) WHERE {output} IS NULL AND t.{reference} IS NOT NULL AND {additional} AND (SELECT count(*) FROM stage_nodes n WHERE {matches})=1"))?;
-    }
-    Ok(())
-}
-
 pub fn resolve(db: &Connection) -> Result<u64> {
     resolve_reference(db, "stage_edges", "resolved_source", "source_ref", "1=1")?;
     resolve_reference(
@@ -285,20 +263,7 @@ pub fn resolve(db: &Connection) -> Result<u64> {
     )?;
     db.execute_batch("UPDATE stage_edges SET external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND resolved_target IS NOT NULL;
       UPDATE stage_edges SET external_target_fqn=target_ref,external_target_symbol=target_ref,external_target_language=language,external_target_provider_id=provider_id,resolution='source_fallback',target_ref=NULL,is_external=1,confidence='AMBIGUOUS' WHERE is_external=0 AND resolved_target IS NULL AND target_ref IS NOT NULL AND target_is_key=0;")?;
-    for (match_key, condition) in [
-        ("n.id=stage_edges.external_target_fqn", "1=1"),
-        ("n.symbol_id=stage_edges.external_target_fqn", "1=1"),
-        (
-            "n.symbol_id=replace(stage_edges.external_target_fqn,'$','.')",
-            "instr(external_target_fqn,'$')>0 AND metadata LIKE '%\"via\":\"reflection\"%'",
-        ),
-        (
-            "n.arity_key=stage_edges.target_arity_key",
-            "target_arity_key IS NOT NULL",
-        ),
-    ] {
-        db.execute_batch(&format!("UPDATE stage_edges SET resolved_target=(SELECT min(n.id) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language),external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND language<>'python' AND {condition} AND (SELECT count(*) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language)=1"))?;
-    }
+    language_completion::resolve_external(db)?;
     resolve_reference(db, "stage_annotations", "resolved_node", "node_ref", "1=1")?;
     db.execute_batch("UPDATE stage_edges SET source_file=(SELECT n.source_file FROM stage_nodes n WHERE n.id=stage_edges.resolved_source) WHERE source_file IS NULL AND resolved_source IS NOT NULL;
       UPDATE stage_annotations SET source_file=(SELECT n.source_file FROM stage_nodes n WHERE n.id=stage_annotations.resolved_node) WHERE source_file IS NULL AND resolved_node IS NOT NULL;")?;

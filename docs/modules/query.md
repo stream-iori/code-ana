@@ -12,7 +12,20 @@
 
 读能力分为 `SourceContext`、`GraphAccess`、`SourceLocator`、`AnnotationReader`、`OverviewReader` 和 `DependencyReader`。CommentReader、类型化注释事实、上下文归一化及存储/CLI/RPC/pipeline 路由已在 C1 源码接入，当前产品验收状态见文末和当前实现。扫描方法必须显式实现，生产读取使用有界 SQL；FILES 文本/源码只需 `SourceContext`，不实现语义图能力。
 
-C1 的共享内核位于 `crates/comment-search`，固定 jieba-rs 0.11.0、内置词典 SHA-256 和规则摘要；索引用 search、查询用 default，HMM 开启。英文标识符保留全词并拆分驼峰、缩写、下划线及数字，统一 Unicode 小写；查询词去重且全部匹配，空词查询明确报错。调用方必须接入既有账本/取消回调，在分词临时分配前准入，不另建账户。正文复核使用原 UTF-8 字节位置；body_map 校验完整、顺序与字符边界，转义段整体映射，去除标记的间隙不高亮。公开行列从捕获源码一次顺序扫描计算 UTF-16 坐标。词典是进程内只读固定状态，无运行时替换入口；具体来源见该 crate 的 `provenance.json`。目前这些是内部基础能力，生产查询接入仍待完成。
+C1 的共享内核位于 `crates/comment-search`，固定 jieba-rs 0.11.0、内置词典 SHA-256 和规则摘要；索引用 search、查询用 default，HMM 开启。英文标识符保留全词并拆分驼峰、缩写、下划线及数字，统一 Unicode 小写；查询词去重且全部匹配，空词查询明确报错。调用方必须接入既有账本/取消回调，在分词临时分配前准入，不另建账户。正文复核使用原 UTF-8 字节位置；body_map 校验完整、顺序与字符边界，转义段整体映射，去除标记的间隙不高亮。公开行列从捕获源码一次顺序扫描计算 UTF-16 坐标。词典是进程内只读固定状态，无运行时替换入口；具体来源见该 crate 的 `provenance.json`。三语言生产查询、独立注释表/FTS、CLI/RPC/pipeline、历史与冻结分页已接通；C4 证据见当前实现。
+
+## 语言策略
+
+公共能力注册在 `model::LanguagePolicy`，按事实中显式 `attributes.language` 选择；缺失、null 或未知值不会按文件名、provider 或 Java 风格字段猜测。
+
+| 语言 | dispatch | CHA / runtime-implementations | annotations |
+|---|---|---|---|
+| Java | `java_dispatch` 保留接收者、override、默认方法及开放世界证据 | 原 Java 策略；可实例化判断在 `java_policy` | Java annotation / meta 路径 |
+| Rust | 已发布静态目标，`rust-analyzer-static`；partial 证据与 exact 过滤 | 明确 `RUST_*_UNSUPPORTED` | 明确未支持 |
+| Python | 已发布静态目标，`pyrefly-static`；原 partial 证据与 exact 过滤 | 保留 `PYTHON_*_UNSUPPORTED` | 明确未支持 |
+| 缺失 / 未知语言 | `LANGUAGE_QUERY_CAPABILITY_UNSUPPORTED` | 同左 | 同左 |
+
+resolve、源码、注释检索和已记录关系的遍历继续使用公共事实与窄读端口，不要求 Java 策略。Rust 旧派发误入 Java CHA 是单独修正的既有缺陷，不能把该行为变化说成纯文件移动。公共层继续负责批量读取、预算、分页与证据传播；查询不调用编译器补结果。
 
 ## 1. 查询上下文
 

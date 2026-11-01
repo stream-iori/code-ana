@@ -39,8 +39,8 @@ CLI
 | crates/application | 调度、监督、索引、版本和运维编排 | 不解析 AST；不自动执行目标构建 |
 | crates/storage | catalog、blob、候选/发布、紧凑图与只读投影 | SQL/整数引用封装在存储层 |
 | crates/derived-cache | 有界派生缓存、校验、锁、配额和任务副本 | storage 与 Java worker 共用，不依赖图库 |
-| crates/comment-search | 注释分词、关键词 AND 复核与正文到源码位置映射 | 固定词典；只依赖 model，不依赖 storage/query；C1 尚未接生产链路 |
-| crates/query | selector、pipeline、有界遍历和 Java 静态派发 | 只消费已发布图，不启动分析器补结果 |
+| crates/comment-search | 注释分词、关键词 AND 复核与正文到源码位置映射 | 固定词典；只依赖 model，不依赖 storage/query；三语言生产链路已接入 |
+| crates/query | selector、pipeline、有界遍历及显式语言派发策略 | 只消费已发布图，不启动分析器补结果 |
 | crates/cli、crates/daemon | CLI / gRPC 装配 | 本机用户级服务，按项目/checkout/target 隔离 |
 | lang-rust-adaptor / crates/rust-worker | rust-analyzer HIR 与独立 Rust 语言 worker | schema 2 冻结输入；项目与一层直接依赖，过滤后加载；不主动展开宏或执行构建/过程宏 |
 | crates/java-worker | 独立 Rust host、FFI 线程和异步控制 | 一进程一次 G1 isolate 创建 |

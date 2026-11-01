@@ -207,6 +207,13 @@ enabled=false
         rows,_=self.cli('resolve','p.Service#greet(java.lang.String)')
         self.assertEqual(len(rows),1);method=rows[0]['id']
         calls,_=self.cli('calls',method);self.assertTrue(calls)
+        sites = self.cli('call-sites', method)[0]
+        self.assertTrue(sites)
+        for site in sites:
+            candidates = self.cli('dispatch', site['id'])[0]
+            self.assertTrue(candidates)
+            self.assertTrue(all(row.get('algorithm') in (None, 'exact', 'CHA') for row in candidates))
+        self.cli('runtime-implementations', 'p.Service')
         source,_=self.cli('source',method);self.assertTrue(source)
         external,_=self.cli('resolve','java.lang.String#trim()');self.assertTrue(external)
         self.assertEqual(external[0]['kind'],'external_symbol')

@@ -104,6 +104,13 @@ pub(super) fn occurrences(
                 }
             }
             Operation::Annotations => {
+                ensure!(
+                    language_policy::require(&f, "annotations")? == LanguagePolicy::Java,
+                    DomainError::new(
+                        ErrorCode::LanguageQueryCapabilityUnsupported,
+                        "operation=annotations"
+                    )
+                );
                 let direct = select(
                     r,
                     FactFilter {
