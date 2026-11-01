@@ -1,6 +1,7 @@
 //! Host execution policies for a compiled index plan. No language adaptor owns fan-out.
 use super::*;
 use crate::indexing::PublishedIndex;
+use crate::ports::RustBaselineReader;
 use crate::rust_inputs::RustInput;
 use codeana_config::inputs::InputMode;
 use codeana_contracts::graph_rows::{CoverageRow, GraphRow, ProjectMetaRow};
@@ -42,7 +43,7 @@ struct RustAttempt {
     baseline: RustBaseline,
 }
 
-impl Engine {
+impl IndexTask {
     async fn shutdown_rust_workers(&self, id: &str, workers: &mut RustWorkers) {
         if let Some(warning) = crate::analysis_unit::shutdown(crate::analysis_unit::Units::Pair(
             Some(&mut workers.rust),
@@ -50,7 +51,7 @@ impl Engine {
         ))
         .await
         {
-            let _ = self.tasks.event(
+            let _ = self.task.event(
                 &TaskId::from(id),
                 &Event::Progress(format!("worker_cleanup_warning {warning}")),
             );
@@ -68,7 +69,7 @@ impl Engine {
         )
         .await
         {
-            let _ = self.tasks.event(
+            let _ = self.task.event(
                 &TaskId::from(id),
                 &Event::Progress(format!("worker_cleanup_warning {warning}")),
             );
@@ -77,9 +78,7 @@ impl Engine {
     }
 
     pub(super) async fn prepare_java_unit(&self, captured: Capture) -> Result<java::PreparedJava> {
-        let user = self.user.clone();
-        let home = self.index.home().to_path_buf();
-        tokio::task::spawn_blocking(move || java::prepare(&captured, &user, &home)).await?
+        self.workers.prepare_java(captured).await
     }
 
     async fn prepare_analysis_unit(
@@ -142,7 +141,7 @@ impl Engine {
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
         let started = Instant::now();
-        ensure!(self.mock.is_none(), "RUST_REAL_WORKER_REQUIRED");
+        ensure!(!self.workers.is_mock(), "RUST_REAL_WORKER_REQUIRED");
         let expected = self
             .index
             .head(&IndexTarget::from(capture.target.clone()))?;
@@ -181,7 +180,7 @@ impl Engine {
                 .analyze_rust_index(id, &capture, &mut attempt, cancel)
                 .await?;
             let analyze_ms = analyzing.elapsed().as_millis() as u64;
-            self.tasks.event(
+            self.task.event(
                 &TaskId::from(id),
                 &Event::Progress(format!(
                     "rust_worker_memory {}",
@@ -215,7 +214,7 @@ impl Engine {
             );
             let ack = crate::analysis_unit::acknowledge(units, &revision.id).await;
             if let Ok(memory) = serde_json::to_string(&attempt.workers.rust.memory_usage()) {
-                let _ = self.tasks.event(
+                let _ = self.task.event(
                     &TaskId::from(id),
                     &Event::Progress(format!("rust_worker_memory {memory}")),
                 );
@@ -378,7 +377,8 @@ impl Engine {
                 if rust_only && reader.revision().manifest.id() == desired_manifest {
                     return Ok((true, true, None));
                 }
-                let bytes = serde_json::to_vec(&reader.rust_baseline_summary()?)?;
+                let bytes =
+                    serde_json::to_vec(&RustBaselineReader::rust_baseline_summary(&reader)?)?;
                 ensure!(bytes.len() <= 64 << 20, "RUST_BASELINE_BUDGET");
                 std::fs::write(&baseline_path, &bytes)?;
                 Ok((
@@ -396,7 +396,7 @@ impl Engine {
             unchanged = same;
             old = baseline;
         }
-        self.tasks.event(
+        self.task.event(
             &TaskId::from(id),
             &Event::Progress(
                 if full {
@@ -457,7 +457,7 @@ impl Engine {
         let rust_worker = &mut attempt.workers.rust;
         let expected = attempt.baseline.expected.clone();
         crate::analysis_unit::retire(crate::analysis_unit::Units::One(Some(rust_worker))).await?;
-        self.tasks.event(
+        self.task.event(
             &TaskId::from(id),
             &Event::Progress("rust_analyze_unchanged".into()),
         )?;
@@ -518,7 +518,7 @@ impl Engine {
                 cancel,
             )
             .await?;
-        self.tasks.event(
+        self.task.event(
             &TaskId::from(id),
             &Event::Progress(format!(
                 "rust_worker_memory {}",
@@ -594,7 +594,7 @@ impl Engine {
             producer: producer.clone(),
             replacements,
         };
-        self.tasks.event(
+        self.task.event(
             &TaskId::from(id),
             &Event::Progress("rust_stage_graph".into()),
         )?;
@@ -622,7 +622,7 @@ impl Engine {
     }
 }
 
-impl Engine {
+impl IndexTask {
     pub(super) async fn index_python(
         &self,
         id: &str,
@@ -632,7 +632,7 @@ impl Engine {
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
         let started = Instant::now();
-        ensure!(self.mock.is_none(), "PYTHON_REAL_WORKER_REQUIRED");
+        ensure!(!self.workers.is_mock(), "PYTHON_REAL_WORKER_REQUIRED");
 
         let expected = self
             .index
@@ -662,9 +662,11 @@ impl Engine {
         };
         let scratch_bytes = descriptor.scratch_bytes;
         let resources = &capture.effective.config.resources.index;
-        let memory = resources.worker_memory_bytes.unwrap_or(self.worker_memory);
+        let memory = resources
+            .worker_memory_bytes
+            .unwrap_or(self.workers.memory_cap());
         ensure!(
-            memory > 0 && memory <= self.worker_memory,
+            memory > 0 && memory <= self.workers.memory_cap(),
             DomainError::new(ErrorCode::ProjectWorkerMemoryLimit, "")
         );
         let rust_input = if plan.executes(AnalysisLanguage::Rust) {
@@ -810,7 +812,7 @@ impl Engine {
                 self.stage_reused_revision(id, revision, expected.clone(), producer.clone(), cancel)
                     .await?
             } else {
-                self.tasks.event(
+                self.task.event(
                     &TaskId::from(id),
                     &Event::Progress("python_analyze_full: input_or_environment_changed".into()),
                 )?;
@@ -850,7 +852,7 @@ impl Engine {
             }
             let analyze_ms = analyzing.elapsed().as_millis() as u64;
             for (worker, _) in &sessions.sessions {
-                self.tasks.event(
+                self.task.event(
                     &TaskId::from(id),
                     &Event::Progress(format!(
                         "{}_worker_memory {}",
@@ -938,7 +940,7 @@ fn unit_capture(capture: &Capture, effective: &codeana_config::Effective) -> Cap
     result
 }
 
-impl Engine {
+impl IndexTask {
     pub(super) async fn index_prepared(
         &self,
         id: &str,
@@ -947,7 +949,7 @@ impl Engine {
         plan: &crate::index_plan::IndexPlan,
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
-        ensure!(self.mock.is_none(), "PREPARED_REAL_WORKER_REQUIRED");
+        ensure!(!self.workers.is_mock(), "PREPARED_REAL_WORKER_REQUIRED");
         let started = Instant::now();
         let expected = self
             .index
@@ -966,18 +968,14 @@ impl Engine {
             .resources
             .index
             .worker_memory_bytes
-            .unwrap_or(self.worker_memory);
+            .unwrap_or(self.workers.memory_cap());
         ensure!(
-            memory > 0 && memory <= self.worker_memory,
+            memory > 0 && memory <= self.workers.memory_cap(),
             "PROJECT_WORKER_MEMORY_LIMIT"
         );
         let memory = memory / count;
         ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
-        let analysis = {
-            let jobs = self.jobs.lock().unwrap();
-            jobs.get(&TaskId::from(id))
-                .and_then(|job| job.analysis_coordinator.lock().unwrap().clone())
-        };
+        let analysis = self.task.analysis.coordinator.lock().unwrap().clone();
         if let Some(coordinator) = &analysis {
             for language in [
                 AnalysisLanguage::Rust,
@@ -1021,7 +1019,7 @@ impl Engine {
             let mut additional = vec![];
             let mut planned_units = plan.units.iter();
             for (index, unit) in capture.effective.input_units.iter().enumerate() {
-                self.tasks.event(
+                self.task.event(
                     &TaskId::from(id),
                     &Event::Progress(format!(
                         "input_unit {} {:?}",

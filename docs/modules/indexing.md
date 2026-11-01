@@ -10,7 +10,7 @@
 
 当前使用固定基线、归属替换、私有 candidate 和 CAS；语言失效在 adapter，引用/交付/发布校验在 Rust，关联 D05/D07/D09/D11。
 
-索引核心只接收 `IndexCommand`。编排分为 setup、analysis、publication、post-processing；`IndexSetup`、`AnalyzedCandidate`、`PublishedIndex` 持有各阶段所需状态和 worker/candidate。任务通过 `TaskRepository`，基线通过 `IndexBaselineReader`，候选暂存、摘要和发布通过 `IndexRepository` / `IndexService<R>` 接入；关联类型保留各实现的候选与基线所有权。已发布结果与后处理分离，报告/确认失败不能撤销提交。
+索引核心只接收 `IndexCommand`。编排分为 setup、analysis、publication、post-processing；`IndexSetup`、`AnalyzedCandidate`、`PublishedIndex` 持有各阶段所需状态和 worker/candidate。任务事件/预算/发布控制通过本任务 `TaskContext`，公共基线通过 `IndexBaselineReader`、Rust 专用基线通过 `RustBaselineReader`，候选暂存、摘要和发布通过 `IndexRepository` / `IndexService<R>` 接入；关联类型保留各实现的候选与基线所有权。已发布结果与后处理分离，报告/确认失败不能撤销提交。
 
 Rust 路径先准备输入、启动 worker、固定基线，再分别执行未变复用、单语言流或混合语言归档阶段。Java 准备分别持有 bundle、捕获输入与工具链；Maven 外部导出分为准备、发现、组装和落盘。临时目录、会话与候选的生命周期覆盖其最终消费者，阶段拆分不提前释放资源。
 
@@ -163,3 +163,5 @@ prepared 入口以计划中的可用单元确定内存分片和启动语言，�
 Java 输入准备统一经 prepare_java_unit 进入受限 blocking 工作，使用 daemon 冻结的用户配置及 home；单语言、混合、prepared 共享入口。prepared 输入工厂按已规划语言委派现有 Java/Rust/Python 准备器，保留各语言 scratch 与 Python 入口校验策略。
 
 运行结束和失败清理增加显式异步回收：普通/混合/prepared 执行的输入 guard 保留在 fallible 执行体之外，结束后等待所属 worker 进程退出，再释放输入。Hello/Discover 启动校验失败、Java warm rediscover 失败、Rust 基线准备失败也等待回收；已确认且符合条件的 Java worker 继续进入健康池。清理 warning 独立于原执行错误和已提交 revision。
+
+A5 服务边界：索引策略实现于 `IndexTask`，只拿本任务状态、IndexService、WorkerService、ReportService 与发布后维护能力；不读取全局 jobs，也不持有原始 Store。健康 Java 池与 60 秒回收由 WorkerService 拥有；报告与 GC 的异步 join 错误边界、发布后失败结果和原确认顺序保留。

@@ -122,8 +122,8 @@ pub struct Observability {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Languages {
-    pub java: Option<Language>,
-    pub rust: Option<Language>,
+    pub java: Option<JavaLanguage>,
+    pub rust: Option<RustLanguage>,
     pub python: Option<PythonLanguage>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -139,7 +139,7 @@ pub struct PythonDiscovery {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-pub struct Language {
+struct LanguageWire {
     pub enabled: Option<bool>,
     pub mode: String,
     pub discovery: Discovery,
@@ -149,6 +149,113 @@ pub struct Language {
     pub external: External,
     pub dependencies: Option<RustDependencyScan>,
 }
+// Preserve the external TOML/serialized profile shape while separating the
+// configuration consumed by each language. Compatibility fields stay private.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(from = "LanguageWire", into = "LanguageWire")]
+pub struct JavaLanguage {
+    pub enabled: Option<bool>,
+    pub mode: String,
+    pub discovery: Discovery,
+    pub analysis: Analysis,
+    pub lombok: Lombok,
+    pub extensions: Extensions,
+    pub external: External,
+    legacy_dependencies: Option<RustDependencyScan>,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(from = "LanguageWire", into = "LanguageWire")]
+pub struct RustLanguage {
+    pub enabled: Option<bool>,
+    pub mode: String,
+    pub discovery: Discovery,
+    pub analysis: RustAnalysis,
+    pub dependencies: Option<RustDependencyScan>,
+    legacy_java: LanguageWire,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(from = "Analysis", into = "Analysis")]
+pub struct RustAnalysis {
+    pub edition: Option<String>,
+    legacy_java: Analysis,
+}
+impl From<Analysis> for RustAnalysis {
+    fn from(mut value: Analysis) -> Self {
+        Self {
+            edition: value.edition.take(),
+            legacy_java: value,
+        }
+    }
+}
+impl From<RustAnalysis> for Analysis {
+    fn from(value: RustAnalysis) -> Self {
+        let mut wire = value.legacy_java;
+        wire.edition = value.edition;
+        wire
+    }
+}
+impl JavaLanguage {
+    pub(crate) fn has_rust_dependencies(&self) -> bool {
+        self.legacy_dependencies.is_some()
+    }
+}
+impl RustLanguage {
+    pub(crate) fn has_java_fields(&self) -> bool {
+        self.legacy_java.analysis.source_version.is_some() || self.legacy_java.lombok.mode.is_some()
+    }
+}
+impl From<LanguageWire> for JavaLanguage {
+    fn from(w: LanguageWire) -> Self {
+        Self {
+            enabled: w.enabled,
+            mode: w.mode,
+            discovery: w.discovery,
+            analysis: w.analysis,
+            lombok: w.lombok,
+            extensions: w.extensions,
+            external: w.external,
+            legacy_dependencies: w.dependencies,
+        }
+    }
+}
+impl From<JavaLanguage> for LanguageWire {
+    fn from(v: JavaLanguage) -> Self {
+        Self {
+            enabled: v.enabled,
+            mode: v.mode,
+            discovery: v.discovery,
+            analysis: v.analysis,
+            lombok: v.lombok,
+            extensions: v.extensions,
+            external: v.external,
+            dependencies: v.legacy_dependencies,
+        }
+    }
+}
+impl From<LanguageWire> for RustLanguage {
+    fn from(mut w: LanguageWire) -> Self {
+        Self {
+            enabled: w.enabled,
+            mode: std::mem::take(&mut w.mode),
+            discovery: std::mem::take(&mut w.discovery),
+            analysis: w.analysis.clone().into(),
+            dependencies: w.dependencies.take(),
+            legacy_java: w,
+        }
+    }
+}
+impl From<RustLanguage> for LanguageWire {
+    fn from(v: RustLanguage) -> Self {
+        let mut w = v.legacy_java;
+        w.enabled = v.enabled;
+        w.mode = v.mode;
+        w.discovery = v.discovery;
+        w.analysis = v.analysis.into();
+        w.dependencies = v.dependencies;
+        w
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct RustDependencyScan {
@@ -396,6 +503,36 @@ mod analysis_resource_tests {
                     "schema_version=1\nkind='project'\n[resources.index.analysis]\n{input}"
                 ))
                 .is_err()
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod language_identity_tests {
+    use super::*;
+    #[test]
+    fn typed_languages_preserve_pre_split_config_and_preparation_fingerprints() {
+        let texts = [
+            "schema_version=1\nkind='project'\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version='8'\n[languages.java.dependencies]\ninclude=['unused']\n",
+            "schema_version=1\nkind='project'\n[languages.rust]\nenabled=true\nmode='semantic'\n[languages.rust.analysis]\nedition='2021'\ntoolchain='legacy-unused'\n[languages.rust.dependencies]\ninclude=['local']\nexclude=['generated']\n",
+        ];
+        let expected = [
+            (
+                "c97913976e6d86fa6781ccbbd3c111418ec573412660caa5ba4be28d538877b9",
+                "4841980b5babc5915bab0dcd667a8b173e5b313fea77972d9fa2eb0817503d54",
+            ),
+            (
+                "959b30a7190758b5129794b3722a4a781254129b5ea115e60a27f34da5fd629e",
+                "76c98ef4bb1ba8ce69ddf22c4b2c72e0ad882a2602eba8e866fbe98184c8ae9a",
+            ),
+        ];
+        for (text, (config_hash, preparation_hash)) in texts.into_iter().zip(expected) {
+            let config: ProjectConfig = toml::from_str(text).unwrap();
+            assert_eq!(codeana_model::digest(&config), config_hash);
+            assert_eq!(
+                crate::inputs::preparation_fingerprint(&config, "original-config-hash"),
+                preparation_hash
             );
         }
     }

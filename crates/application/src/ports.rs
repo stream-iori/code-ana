@@ -53,6 +53,9 @@ pub trait TaskRepository: Send + Sync {
 }
 pub trait IndexBaselineReader: SourceContext {
     fn baseline_summary_for(&self, next: &Manifest) -> Result<BaselineSummary>;
+}
+/// Rust's dependency and source-state baseline is not a generic index capability.
+pub trait RustBaselineReader: SourceContext {
     fn rust_baseline_summary(&self) -> Result<BaselineSummary>;
 }
 pub trait IndexRepository: Clone + Send + Sync + 'static {
@@ -222,6 +225,8 @@ pub(super) mod storage {
         fn baseline_summary_for(&self, next: &Manifest) -> Result<BaselineSummary> {
             ReadContext::baseline_summary_for(self, next)
         }
+    }
+    impl RustBaselineReader for ReadContext {
         fn rust_baseline_summary(&self) -> Result<BaselineSummary> {
             ReadContext::rust_baseline_summary(self)
         }
@@ -299,9 +304,6 @@ mod tests {
     }
     impl IndexBaselineReader for Baseline {
         fn baseline_summary_for(&self, _: &Manifest) -> Result<BaselineSummary> {
-            Ok(BaselineSummary::default())
-        }
-        fn rust_baseline_summary(&self) -> Result<BaselineSummary> {
             Ok(BaselineSummary::default())
         }
     }

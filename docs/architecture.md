@@ -52,7 +52,21 @@ CLI
 
 Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使用 `IndexCommand` / `QueryRequest`。查询消费按能力拆分的读接口并输出 `Record`；未知语言 metadata 仅透传。索引阶段持有 worker/candidate，任务与发布接入窄端口，提交后的报告/确认不改变发布事实。编码与历史兼容见 [公共契约](contracts.md)。
 
-`Engine` 私有保存存储、任务和生命周期状态；daemon 通过任务读取、事件和 `TaskWatch` 访问，订阅释放时自动回收 watcher。索引策略依赖 `IndexRepository` / `IndexBaselineReader`，`IndexService<R>` 持有实现关联的候选和基线类型；SQLite、候选持久化与 CAS 位于存储适配器。提交后的报告、历史和维护仍使用具体存储实现。
+`Engine` 只装配 `TaskService`、`TaskExecution` 和公开入口。状态按服务归属：
+
+| 服务 | 所有权与依赖 |
+|---|---|
+| TaskService | 任务注册/事件、队列、调度、watcher、取消、截止时间、空闲退出；不持有查询/索引 Engine |
+| TaskExecution | 只组合单次操作；把 TaskContext 交给索引，把索引动作交给历史快照 |
+| IndexTask / IndexService | 本任务预算、捕获源码、发布屏障与窄索引端口；没有全局任务表或原始 Store |
+| WorkerService | worker 配置、内存上限和健康 Java 池；不依赖任务注册表或图库 |
+| HistoryService | 历史快照、diff、冻结页及源码引用；分析快照接收显式索引动作 |
+| ReportService | 报告构造/持久化/读取；接收任务资源快照，不查全局任务表 |
+| QueryService / DoctorService | 固定 revision 查询路由与就绪投影；不访问任务调度或索引内部状态 |
+| MaintenanceService | 发布后 GC；索引不直接操作 Store |
+
+`TaskContext` 只保存本任务的分析账户、取消/发布控制和绑定任务 ID 的事件入口；不会携带 watcher、队列或其他任务。`IndexRepository` / `IndexBaselineReader` 提供公共基线与候选生命周期；Rust 来源/依赖基线独立为 `RustBaselineReader`。SQLite、候选持久化与 CAS 仍在存储适配器。服务没有通过 `Deref<Engine>` 或整机上下文访问无关状态。
+
 
 | Rust 数据边界 | 约定 |
 |---|---|

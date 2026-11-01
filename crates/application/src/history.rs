@@ -158,14 +158,25 @@ fn legacy_options(req: &Request) -> Result<Option<String>> {
     decoder.end()?;
     Ok(Some(hash(legacy)))
 }
-impl Engine {
-    pub(crate) async fn snapshot(
+#[derive(Clone)]
+pub(super) struct HistoryService {
+    store: Store,
+}
+impl HistoryService {
+    pub(super) fn new(store: Store) -> Self {
+        Self { store }
+    }
+    pub(crate) async fn snapshot<F, Fut>(
         &self,
-        id: &str,
         req: &Request,
         capture: Option<Capture>,
         cancel: &CancellationToken,
-    ) -> Result<TaskResult> {
+        index: F,
+    ) -> Result<TaskResult>
+    where
+        F: FnOnce(Capture) -> Fut + Send,
+        Fut: std::future::Future<Output = Result<TaskResult>> + Send,
+    {
         let root = Path::new(&req.project);
         let (project, _checkout) = codeana_config::identity(root);
         let mut selector = "WORKTREE".to_owned();
@@ -283,7 +294,7 @@ impl Engine {
         );
         let _blob_pins = self.store.pin_blobs(c.blobs.keys());
         let mut t = if kind == "analysis" {
-            let t = self.index(id, &IndexCommand::from(req), c, cancel).await?;
+            let t = index(c).await?;
             ensure!(
                 t.publication == codeana_model::PublicationState::Published,
                 codeana_model::DomainError::new(
@@ -933,7 +944,7 @@ mod tests {
         ];
         for (mut request, old_digest) in cases {
             let directory = tempfile::tempdir().unwrap();
-            let engine = Engine::new(directory.path(), None).unwrap();
+            let engine = HistoryService::new(Store::open(directory.path()).unwrap());
             request.max_records = 1;
             request.max_output_bytes = 32768;
             let first = engine
@@ -984,7 +995,7 @@ mod tests {
     #[tokio::test]
     async fn limited_pages_replay_identical_usage_without_refilling() {
         let dir = tempfile::tempdir().unwrap();
-        let engine = Engine::new(dir.path(), None).unwrap();
+        let engine = HistoryService::new(Store::open(dir.path()).unwrap());
         let budget = ResourceBudget::new(ResourceLimits {
             max_work: 1,
             max_payload_bytes: 100,
@@ -1029,7 +1040,7 @@ mod tests {
     #[tokio::test]
     async fn frozen_pages_store_only_metadata_and_allow_different_page_sizes() {
         let directory = tempfile::tempdir().unwrap();
-        let engine = Engine::new(directory.path(), None).unwrap();
+        let engine = HistoryService::new(Store::open(directory.path()).unwrap());
         let mut request = Request {
             operation: codeana_model::Operation::SearchCode,
             selector: "same".into(),

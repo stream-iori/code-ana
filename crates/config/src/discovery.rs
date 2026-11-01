@@ -131,13 +131,13 @@ pub(super) fn resolve_modules(
             }
             continue;
         }
-        let l = match m.language.as_str() {
-            "java" => c.languages.java.as_ref(),
-            "rust" => c.languages.rust.as_ref(),
+        let enabled = match m.language.as_str() {
+            "java" => c.languages.java.as_ref().and_then(|l| l.enabled),
+            "rust" => c.languages.rust.as_ref().and_then(|l| l.enabled),
             _ => None,
         };
         ensure!(
-            l.is_some_and(|l| l.enabled == Some(true)),
+            enabled == Some(true),
             codeana_model::DomainError::new(codeana_model::ErrorCode::ModuleLanguageNotEnabled, "")
         );
         if let Some(p) = &m.manifest {
@@ -153,10 +153,14 @@ pub(super) fn resolve_modules(
             );
         }
         if m.language == "java" {
-            let defaults = l.context(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::ModuleLanguageNotEnabled,
-                "",
-            ))?;
+            let defaults = c
+                .languages
+                .java
+                .as_ref()
+                .context(codeana_model::DomainError::new(
+                    codeana_model::ErrorCode::ModuleLanguageNotEnabled,
+                    "",
+                ))?;
             macro_rules! inherit {
                 ($field:ident) => {
                     if m.analysis.$field.is_none() {

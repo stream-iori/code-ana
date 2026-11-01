@@ -120,3 +120,5 @@ Native 默认 G1。一个 worker 进程仅创建一次 isolate，健康任务复
 `PublicationFence` 用原子状态在取消和开始提交之间裁决。存储在复制/同步后、catalog 写入前检查屏障；提交开始后的取消不能撤销 revision。提交出错后的 durable commit 检查发生在 join 完成之后。幂等查重先于队列准入；拒绝新请求不会登记 queued 任务。
 
 提交去重、名额预约、任务登记与 TaskControl 安装位于短准入临界区；源码捕获在临界区外执行。初次 SubmitTask 尚在捕获时，重复请求已能取消同一任务。提交中的任务不会被误认为 WatchTask 断连；捕获结束才启动断连计时。
+
+任务运行状态由 TaskService 独立拥有。TaskRunner 只持有任务服务和操作装配器；查询阻塞任务只捕获 QueryService，活动文本任务只捕获 HistoryService。索引接收本任务 TaskContext，超时/取消仍先裁决发布屏障、取消累计账户，再等待工作完成和 worker 回收，最后落终态、释放源码 spool 与队列许可。Engine 不再承载这些状态或跨模块策略实现。

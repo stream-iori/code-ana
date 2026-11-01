@@ -17,18 +17,23 @@ mod query_normalization;
 mod reports;
 mod resources;
 pub use reports::report_markdown;
+mod query_service;
 mod rust_inputs;
 mod scheduler;
+mod task_execution;
 mod task_runner;
 use ports::TaskRepository;
 use ports::{IndexRepository, IndexService};
+mod maintenance;
 mod timings;
 mod worker;
+mod worker_service;
 use anyhow::{Context, Result, bail, ensure};
 use codeana_config::Capture;
 use codeana_contracts::{graph_archive::Builder as GraphArchiveBuilder, terminal, v1 as p};
 use codeana_model::*;
 use codeana_storage::Store;
+use indexing::IndexTask;
 use serde::{Deserialize, Serialize};
 
 fn resource_error(e: &anyhow::Error) -> bool {
@@ -104,12 +109,10 @@ impl Event {
     }
 }
 struct Job {
-    staging_sources: Mutex<Option<Arc<BTreeMap<String, codeana_config::CapturedBlob>>>>,
-    analysis_coordinator: Mutex<Option<Arc<Mutex<AnalysisCoordinator>>>>,
-    analysis_admission: Mutex<Option<(AnalysisLimits, AnalysisContext)>>,
+    analysis: Arc<task_runner::AnalysisTaskState>,
     query_budget: Option<ResourceBudget>,
     _queue_permit: OwnedSemaphorePermit,
-    pub control: task_runner::TaskControl,
+    pub control: Arc<task_runner::TaskControl>,
     pub submitting: AtomicBool,
     pub watchers: AtomicUsize,
     pub detached: bool,
@@ -124,28 +127,10 @@ impl Drop for TaskWatch {
         self.job.watchers.fetch_sub(1, Ordering::SeqCst);
     }
 }
-struct IdleJava {
-    key: String,
-    revision: String,
-    id: String,
-    worker: worker::Worker,
-}
 pub struct Engine {
-    store: Store,
-    tasks: Arc<dyn TaskRepository>,
-    index: IndexService<ports::storage::IndexAdapter>,
-    mock: Option<PathBuf>,
+    runtime: Arc<task_runner::TaskService>,
+    execution: task_execution::TaskExecution,
     generation: String,
-    jobs: Mutex<BTreeMap<TaskId, Arc<Job>>>,
-    submissions: Mutex<()>,
-    scheduler: scheduler::Scheduler,
-    draining: AtomicBool,
-    shutdown: CancellationToken,
-    last_activity: Mutex<Instant>,
-    idle_seconds: u64,
-    worker_memory: u64,
-    user: codeana_config::UserConfig,
-    idle_java: Arc<Mutex<Option<IdleJava>>>,
 }
 impl Engine {
     pub fn new(home: &Path, mock: Option<PathBuf>) -> Result<Arc<Self>> {
@@ -167,395 +152,84 @@ impl Engine {
                     .unwrap_or(4 * 1024 * 1024 * 1024),
             codeana_model::DomainError::new(codeana_model::ErrorCode::TotalWorkerMemoryLimit, "")
         );
-        let s = Store::open(home)?;
-        let engine = Arc::new(Self {
-            tasks: Arc::new(s.clone()),
-            index: IndexService::new(ports::storage::IndexAdapter(s.clone())),
-            store: s,
+        let store = Store::open(home)?;
+        let generation = new_id("generation");
+        let runtime = task_runner::TaskService::new(store.clone(), &user);
+        let workers = Arc::new(worker_service::WorkerService::new(
+            home.to_path_buf(),
             mock,
-            generation: new_id("generation"),
-            jobs: Mutex::default(),
-            submissions: Mutex::default(),
-            scheduler: scheduler::Scheduler::new(
-                user.limits.max_workers.unwrap_or(2),
-                user.limits.max_query_tasks.unwrap_or(2),
-            ),
-            draining: AtomicBool::new(false),
-            shutdown: CancellationToken::new(),
-            last_activity: Mutex::new(Instant::now()),
-            idle_seconds: user.daemon.idle_timeout_seconds.unwrap_or(600),
-            worker_memory: user
-                .limits
-                .max_worker_memory_bytes
-                .unwrap_or(256 * 1024 * 1024),
-            idle_java: Arc::new(Mutex::new(None)),
             user,
-        });
-        for (id, published) in engine.tasks.unfinished()? {
-            let result = if let Some(rev) = published {
-                let r = engine.store.read(&rev)?;
-                let mut t = TaskResult::success(Output {
-                    revision: rev.into(),
-                    producer: r.revision().producer.clone(),
-                    evidence: Evidence::complete(),
-                    ..Default::default()
-                });
-                t.publication = codeana_model::PublicationState::Published;
-                t.message = "Recovered durable publication; output was not delivered".into();
-                t
-            } else {
-                TaskResult::failure("DAEMON_RESTARTED", "Task interrupted before publication", 1)
-            };
-            engine
-                .tasks
-                .finish(&id, &result, &Event::Terminal(Box::new(terminal(&result))))?;
-        }
-        engine.store.recover(true)?;
-        Ok(engine)
+            memory,
+        ));
+        let history = history::HistoryService::new(store.clone());
+        let reports = reports::ReportService::new(store.clone());
+        let maintenance = maintenance::MaintenanceService::new(store.clone());
+        let doctor = doctor::DoctorService::new(generation.clone(), workers.clone());
+        let query = query_service::QueryService::new(
+            store.clone(),
+            history.clone(),
+            reports.clone(),
+            doctor,
+        );
+        let execution = task_execution::TaskExecution {
+            index: IndexService::new(ports::storage::IndexAdapter(store)),
+            workers,
+            history,
+            reports,
+            maintenance,
+            query,
+        };
+        runtime.recover_unfinished()?;
+        Ok(Arc::new(Self {
+            runtime,
+            execution,
+            generation,
+        }))
     }
     pub fn generation(&self) -> &str {
         &self.generation
     }
     pub fn is_mock(&self) -> bool {
-        self.mock.is_some()
-    }
-    pub fn is_draining(&self) -> bool {
-        self.draining.load(Ordering::SeqCst)
-    }
-    pub fn drain(&self) {
-        self.draining.store(true, Ordering::SeqCst);
-    }
-    pub fn cancel_all(&self) {
-        self.drain();
-        for job in self.jobs.lock().unwrap().values() {
-            job.control.cancel();
-        }
-    }
-    pub fn shutdown_token(&self) -> CancellationToken {
-        self.shutdown.clone()
-    }
-    pub fn task(&self, id: &str) -> Result<ports::TaskSnapshot> {
-        self.tasks.get(&TaskId::from(id))
-    }
-    pub fn task_events(&self, id: &str, after: u64) -> Result<Vec<(u64, Event)>> {
-        self.tasks.events(&TaskId::from(id), after)
-    }
-    pub fn watch_task(&self, id: &str) -> Option<TaskWatch> {
-        let job = self.jobs.lock().unwrap().get(id).cloned()?;
-        job.watchers.fetch_add(1, Ordering::SeqCst);
-        Some(TaskWatch { job })
+        self.execution.workers.is_mock()
     }
     pub fn java_available(&self) -> bool {
-        java::installed_library().is_ok()
+        self.execution.workers.java_available()
+    }
+    pub fn is_draining(&self) -> bool {
+        self.runtime.is_draining()
+    }
+    pub fn drain(&self) {
+        self.runtime.drain();
+    }
+    pub fn cancel_all(&self) {
+        self.runtime.cancel_all();
+    }
+    pub fn shutdown_token(&self) -> CancellationToken {
+        self.runtime.shutdown_token()
+    }
+    pub fn task(&self, id: &str) -> Result<ports::TaskSnapshot> {
+        self.runtime.task(id)
+    }
+    pub fn task_events(&self, id: &str, after: u64) -> Result<Vec<(u64, Event)>> {
+        self.runtime.task_events(id, after)
+    }
+    pub fn watch_task(&self, id: &str) -> Option<TaskWatch> {
+        self.runtime.watch_task(id)
     }
     pub fn touch(&self) {
-        *self.last_activity.lock().unwrap() = Instant::now();
+        self.runtime.touch();
     }
     pub fn active(&self) -> usize {
-        self.jobs.lock().unwrap().len()
+        self.runtime.active()
     }
     pub fn submit(self: &Arc<Self>, req: Request) -> Result<String> {
-        task_runner::TaskRunner::submit(self, req)
-    }
-    fn publication_fence(&self, id: &str) -> Result<Arc<PublicationFence>> {
-        self.jobs
-            .lock()
-            .unwrap()
-            .get(id)
-            .map(|job| job.control.publication.clone())
-            .context(DomainError::new(
-                ErrorCode::TaskNotFound,
-                "publication owner",
-            ))
-    }
-    fn execute(&self, req: &Request, cancel: &CancellationToken) -> Result<TaskResult> {
-        ensure!(
-            !cancel.is_cancelled(),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-        );
-        let root = Path::new(&req.project);
-        let (project, checkout) = self.store.project_path(&req.project)?;
-        let output = match req.operation {
-            Operation::Doctor => self.doctor(root, req)?,
-            Operation::Gc => Output {
-                records: vec![{
-                    let policy = codeana_config::resolve(root, req)?.config.versions.gc;
-                    Record::display(&self.store.gc_policy(
-                        req.execute,
-                        Some(&project),
-                        policy.keep.unwrap_or(20) as usize,
-                        policy.max_age_days.unwrap_or(30) as u64,
-                        policy.max_bytes.unwrap_or(0),
-                    )?)?
-                }],
-                evidence: Evidence::complete(),
-                ..Default::default()
-            },
-            Operation::Recover => {
-                ensure!(
-                    self.active() <= 1,
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::RecoveryRequiresDrain,
-                        ""
-                    )
-                );
-                Output {
-                    records: vec![Record::display(&self.store.recover(req.execute)?)?],
-                    evidence: Evidence::complete(),
-                    ..Default::default()
-                }
-            }
-            Operation::SnapshotList => Output {
-                records: self
-                    .store
-                    .objects::<history::Snapshot>("snapshot", &project)?
-                    .iter()
-                    .map(Record::display)
-                    .collect::<Result<_, _>>()?,
-                evidence: Evidence::complete(),
-                ..Default::default()
-            },
-            Operation::SnapshotRemove => {
-                self.store
-                    .delete_object("snapshot", &req.selector, &project)?;
-                Output {
-                    records: vec![Record::display(&RemovedSnapshot {
-                        removed: &req.selector,
-                    })?],
-                    evidence: Evidence::complete(),
-                    ..Default::default()
-                }
-            }
-            Operation::Diff => self.diff(req, &project)?,
-            Operation::Report => self.report(req, &project)?,
-            operation if codeana_query::OPERATIONS.contains(&operation.as_str()) => {
-                if !req.cursor.is_empty() {
-                    return self.continue_page(req, &project);
-                }
-                let budget =
-                    ResourceBudget::new(codeana_config::query_limits(root, &self.store.home)?);
-                if let Some(sid) = req.revision.strip_prefix("snapshot:") {
-                    let snapshot: history::Snapshot = match self
-                        .store
-                        .object_budgeted("snapshot", sid, &project, &budget)
-                    {
-                        Ok(snapshot) => snapshot,
-                        Err(e) if resource_error(&e) => {
-                            return self.resource_page(
-                                req,
-                                &project,
-                                &req.revision,
-                                &budget,
-                                vec![],
-                            );
-                        }
-                        Err(e) => return Err(e),
-                    };
-                    if snapshot.revision.is_empty() {
-                        ensure!(
-                            matches!(req.operation, Operation::Source | Operation::SearchText),
-                            codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::AnalysisSnapshotRequired,
-                                ""
-                            )
-                        );
-                        let raw_reader = FilesReader(Revision {
-                            id: format!("snapshot:{sid}"),
-                            target: String::new(),
-                            project: project.clone(),
-                            checkout: checkout.clone(),
-                            manifest: snapshot.manifest,
-                            profile: snapshot.profile,
-                            producer: "files-capture-v1".into(),
-                            created: snapshot.created,
-                        });
-                        let reader = BudgetedSource {
-                            inner: &raw_reader,
-                            budget: &budget,
-                        };
-                        if req.operation == codeana_model::Operation::SearchText {
-                            return self.text_page(
-                                req,
-                                &reader,
-                                &|s| {
-                                    ensure!(
-                                        !cancel.is_cancelled(),
-                                        codeana_model::DomainError::new(
-                                            codeana_model::ErrorCode::Cancelled,
-                                            ""
-                                        )
-                                    );
-                                    self.store.blob_bounded(&s.hash, s.size)
-                                },
-                                vec![],
-                                cancel,
-                            );
-                        }
-                        let out = codeana_query::run_files(&reader, req, &|s| {
-                            ensure!(
-                                !cancel.is_cancelled(),
-                                codeana_model::DomainError::new(
-                                    codeana_model::ErrorCode::Cancelled,
-                                    ""
-                                )
-                            );
-                            self.store.blob_bounded(&s.hash, s.size)
-                        })?;
-                        ensure!(
-                            !cancel.is_cancelled(),
-                            codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::Cancelled,
-                                ""
-                            )
-                        );
-                        return self.page(req, &project, out, vec![]);
-                    }
-                }
-                let id = if req.revision.is_empty() {
-                    self.store.latest(&project, &checkout)?
-                } else if let Some(id) = req.revision.strip_prefix("snapshot:") {
-                    let s: history::Snapshot = match self
-                        .store
-                        .object_budgeted("snapshot", id, &project, &budget)
-                    {
-                        Ok(snapshot) => snapshot,
-                        Err(e) if resource_error(&e) => {
-                            return self.resource_page(
-                                req,
-                                &project,
-                                &req.revision,
-                                &budget,
-                                vec![],
-                            );
-                        }
-                        Err(e) => return Err(e),
-                    };
-                    ensure!(
-                        !s.revision.is_empty(),
-                        codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::AnalysisSnapshotRequired,
-                            ""
-                        )
-                    );
-                    s.revision
-                } else {
-                    req.revision.clone()
-                };
-                let reader = match self.store.read_budgeted(&id, budget.clone()) {
-                    Ok(reader) => reader,
-                    Err(e) if resource_error(&e) => {
-                        return self.resource_page(req, &project, &id, &budget, vec![id.clone()]);
-                    }
-                    Err(e) => return Err(e),
-                };
-                let token = cancel.clone();
-                let reader = reader.with_cancellation(Arc::new(move || token.is_cancelled()));
-                ensure!(
-                    reader.revision().project == project,
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::ProjectMismatch, "")
-                );
-                let guarded = CancelableReader {
-                    inner: &reader,
-                    cancel,
-                };
-                if req.operation == codeana_model::Operation::SearchCode
-                    && req.search_in == SearchIn::Names
-                {
-                    return self.search_page(req, &project, &guarded, vec![id], cancel);
-                }
-                let source = |s: &SourceUnit| -> Result<Vec<u8>> {
-                    ensure!(
-                        !cancel.is_cancelled(),
-                        codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-                    );
-                    if req.revision.is_empty() {
-                        let p = root.join(&s.path);
-                        let real = p.canonicalize()?;
-                        ensure!(
-                            real.starts_with(root),
-                            codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::SourceEscape,
-                                ""
-                            )
-                        );
-                        let b = codeana_config::bounded_read(
-                            &real,
-                            usize::try_from(s.size).unwrap_or(usize::MAX).min(MAX_FRAME),
-                        )?;
-                        ensure!(
-                            hash(&b) == s.hash,
-                            codeana_model::DomainError::new(
-                                codeana_model::ErrorCode::SourceHashMismatch,
-                                "re-index or select --revision".to_string()
-                            )
-                        );
-                        Ok(b)
-                    } else {
-                        self.store.blob_bounded(&s.hash, s.size)
-                    }
-                };
-                if req.operation == codeana_model::Operation::SearchText {
-                    return self.text_page(req, &guarded, &source, vec![id], cancel);
-                }
-                let out = codeana_query::run(&guarded, req, &source)?;
-                ensure!(
-                    !cancel.is_cancelled(),
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")
-                );
-                return self.page(req, &project, out, vec![id]);
-            }
-            _ => bail!(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::UnsupportedOperation,
-                format!("{}", req.operation)
-            )),
-        };
-        Ok(TaskResult::success(output))
-    }
-    fn render(&self, id: &str, req: &Request, result: &mut TaskResult) -> Result<()> {
-        let bytes = output::render(req, result)?;
-        self.tasks.event_batch(
-            &TaskId::from(id),
-            &bytes
-                .chunks(16384)
-                .map(|chunk| Event::Output(chunk.to_vec()))
-                .collect::<Vec<_>>(),
-        )?;
-        Ok(())
+        task_runner::TaskRunner::submit(&self.runtime, self.execution.clone(), req)
     }
     pub fn cancel(&self, id: &str) -> Result<()> {
-        self.task(id)?;
-        if let Some(job) = self.jobs.lock().unwrap().get(id) {
-            job.control.cancel();
-        }
-        Ok(())
+        self.runtime.cancel(id)
     }
     pub fn maintenance(self: &Arc<Self>) {
-        let e = self.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                if e.shutdown.is_cancelled() {
-                    break;
-                }
-                for j in e.jobs.lock().unwrap().values() {
-                    if !j.detached
-                        && !j.submitting.load(Ordering::SeqCst)
-                        && j.watchers.load(Ordering::SeqCst) == 0
-                        && j.disconnected.lock().unwrap().elapsed() > Duration::from_secs(10)
-                    {
-                        j.control.cancel();
-                    }
-                }
-                if e.active() == 0
-                    && ((e.draining.load(Ordering::SeqCst))
-                        || (e.idle_seconds > 0
-                            && e.last_activity.lock().unwrap().elapsed()
-                                > Duration::from_secs(e.idle_seconds)))
-                {
-                    e.shutdown.cancel();
-                }
-            }
-        });
+        self.runtime.maintenance();
     }
 }
 

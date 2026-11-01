@@ -137,45 +137,42 @@ pub(super) struct AnalysisAdmissionReport {
     pub limits: AnalysisLimits,
     pub usage: AnalysisUsage,
 }
-impl Engine {
-    pub(super) fn analysis_admission_report(&self, id: &str) -> Option<AnalysisAdmissionReport> {
-        let jobs = self.jobs.lock().unwrap();
-        let job = jobs.get(&TaskId::from(id))?;
-        let ledger = job.analysis_admission.lock().unwrap();
-        ledger.as_ref().map(|(limits, context)| {
-            let coordinator = job
-                .analysis_coordinator
-                .lock()
-                .unwrap()
-                .as_ref()
-                .map(|c| c.lock().unwrap().snapshot());
-            let has_worker_usage = coordinator.as_ref().is_some_and(|c| {
-                c.languages.iter().any(|l| {
-                    l.worker.usage.is_some() || l.workers.iter().any(|w| w.usage.is_some())
-                })
-            });
-            AnalysisAdmissionReport {
-                coverage: if has_worker_usage {
-                    "input_admission_and_worker_usage"
-                } else {
-                    "input_admission_only"
-                }
-                .into(),
-                limits: *limits,
-                usage: coordinator
-                    .as_ref()
-                    .map(|c| c.known_usage.clone())
-                    .unwrap_or_else(|| context.usage()),
-                coordinator,
-            }
-        })
+#[derive(Clone)]
+pub(super) struct ReportService {
+    store: Store,
+}
+impl ReportService {
+    pub(super) fn new(store: Store) -> Self {
+        Self { store }
     }
-
+    pub(super) async fn save_published(
+        &self,
+        report: ReportDocument,
+        project: String,
+    ) -> Result<Result<()>> {
+        let store = self.store.clone();
+        Ok(tokio::task::spawn_blocking(move || {
+            codeana_storage::test_fault(&store.home, "report_write")?;
+            ensure!(
+                serde_json::to_vec(&report)?.len() <= 4 * 1024 * 1024,
+                DomainError::new(ErrorCode::ReportBudget, "")
+            );
+            store.put_object(
+                "report",
+                &report.id,
+                &project,
+                &report,
+                std::slice::from_ref(&report.revision),
+            )
+        })
+        .await?)
+    }
     pub(super) fn save_unpublished_report(
         &self,
         id: &str,
         req: &Request,
         capture: Option<&Capture>,
+        analysis_resources: Option<AnalysisAdmissionReport>,
         result: &mut TaskResult,
     ) -> Result<()> {
         if req.operation != Operation::Index
@@ -201,7 +198,7 @@ impl Engine {
         let mut persisted = result.clone();
         persisted.report = id.into();
         let report = ReportDocument {
-            analysis_resources: self.analysis_admission_report(id),
+            analysis_resources,
             schema_version: 2,
             id: id.into(),
             created: now(),

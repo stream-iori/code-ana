@@ -441,3 +441,5 @@ max_depth = 256
 context_before = 5
 context_after = 5
 ```
+
+内部配置按 `JavaLanguage` / `RustLanguage` 分开；Rust 的分析视图只暴露 edition，不提供 javac/Lombok/框架字段。私有 wire 编解码保留原 TOML 形状和摘要：原有拒绝规则照常执行，原来允许但不使用的兼容字段只用于原字节语义的序列化。拆分前后的配置及 prepared 指纹由固定 golden 验证；未改变外部配置格式或借重构触发全量索引。

@@ -59,12 +59,29 @@ pub(super) enum CandidateOutcome {
     Rejected(Box<TaskResult>),
 }
 
-impl Engine {
-    pub(super) fn staging_context(&self, id: &str) -> Option<GraphStagingContext> {
-        let jobs = self.jobs.lock().unwrap();
-        let job = jobs.get(&TaskId::from(id))?;
-        let coordinator = job.analysis_coordinator.lock().unwrap().clone()?;
-        let sources = job.staging_sources.lock().unwrap().clone()?;
+pub(super) struct IndexTask {
+    pub index: IndexService<ports::storage::IndexAdapter>,
+    pub task: task_runner::TaskContext,
+    pub workers: Arc<worker_service::WorkerService>,
+    pub reports: reports::ReportService,
+    pub maintenance: maintenance::MaintenanceService,
+}
+
+impl IndexTask {
+    fn publication_fence(&self, id: &str) -> Result<Arc<PublicationFence>> {
+        ensure!(
+            self.task.id.as_str() == id,
+            DomainError::new(ErrorCode::TaskNotFound, "publication owner")
+        );
+        Ok(self.task.control.publication.clone())
+    }
+    fn analysis_admission_report(&self, _id: &str) -> Option<reports::AnalysisAdmissionReport> {
+        self.task.analysis.analysis_admission_report()
+    }
+
+    pub(super) fn staging_context(&self, _id: &str) -> Option<GraphStagingContext> {
+        let coordinator = self.task.analysis.coordinator.lock().unwrap().clone()?;
+        let sources = self.task.analysis.staging_sources.lock().unwrap().clone()?;
         Some(GraphStagingContext {
             hosts: coordinator.lock().unwrap().hosts(),
             source: Arc::new(move |hash, size| {
@@ -145,7 +162,7 @@ impl Engine {
             DomainError::new(ErrorCode::Cancelled, "")
         );
         if let Some(phase) = publication.progress {
-            self.tasks
+            self.task
                 .event(&TaskId::from(id), &Event::Progress(phase.into()))?;
         }
         let started = Instant::now();
@@ -164,15 +181,16 @@ impl Engine {
 
     pub(super) fn analysis_binding(
         &self,
-        id: &str,
+        _id: &str,
         language: AnalysisLanguage,
         instance: &str,
     ) -> Option<worker::AnalysisBinding> {
-        self.jobs
+        self.task
+            .analysis
+            .coordinator
             .lock()
             .unwrap()
-            .get(&TaskId::from(id))
-            .and_then(|job| job.analysis_coordinator.lock().unwrap().clone())
+            .clone()
             .map(|coordinator| worker::AnalysisBinding {
                 coordinator,
                 language,
@@ -190,7 +208,7 @@ impl Engine {
         // Admit the frozen input before selecting any language or reuse path.
         // This ledger admits frozen inputs and the plan; the coordinator assigns the
         // remaining shared account to language hosts and workers.
-        if self.mock.is_none() {
+        if !self.workers.is_mock() {
             let user = codeana_config::load_user(self.index.home())?;
             let limits = c
                 .effective
@@ -199,16 +217,9 @@ impl Engine {
                 .index
                 .analysis
                 .resolve(&user.resources.index.analysis)?;
-            let deadline = self
-                .jobs
-                .lock()
-                .unwrap()
-                .get(&TaskId::from(id))
-                .and_then(|job| *job.control.deadline.lock().unwrap());
+            let deadline = *self.task.control.deadline.lock().unwrap();
             let budget = AnalysisContext::new(limits, deadline)?;
-            if let Some(job) = self.jobs.lock().unwrap().get(&TaskId::from(id)) {
-                *job.analysis_admission.lock().unwrap() = Some((limits, budget.clone()));
-            }
+            *self.task.analysis.admission.lock().unwrap() = Some((limits, budget.clone()));
             let admit = || -> Result<()> {
                 budget.charge(1, 0, 0)?;
                 for file in &c.manifest.files {
@@ -234,38 +245,30 @@ impl Engine {
                 }
                 return Err(error);
             }
-            if let Some(job) = self.jobs.lock().unwrap().get(&TaskId::from(id)) {
-                *job.staging_sources.lock().unwrap() = Some(Arc::new(c.blobs.clone()));
-            }
+            *self.task.analysis.staging_sources.lock().unwrap() = Some(Arc::new(c.blobs.clone()));
         }
         let plan = {
-            let admission = self
-                .jobs
-                .lock()
-                .unwrap()
-                .get(&TaskId::from(id))
-                .and_then(|job| job.analysis_admission.lock().unwrap().clone());
+            let admission = self.task.analysis.admission.lock().unwrap().clone();
             crate::index_plan::IndexPlan::build(&c, admission.as_ref().map(|(_, budget)| budget))?
         };
-        if self.mock.is_none() {
+        if !self.workers.is_mock() {
             let participants = &plan.participants;
             if !participants.is_empty() {
-                let jobs = self.jobs.lock().unwrap();
-                if let Some(job) = jobs.get(&TaskId::from(id)) {
-                    let admission = job.analysis_admission.lock().unwrap();
+                {
+                    let admission = self.task.analysis.admission.lock().unwrap();
                     if let Some((limits, budget)) = admission.as_ref() {
                         let coordinator = AnalysisCoordinator::new(
                             id,
                             *limits,
                             budget.usage(),
                             participants,
-                            *job.control.deadline.lock().unwrap(),
+                            *self.task.control.deadline.lock().unwrap(),
                         )
                         .map_err(|failure| {
                             budget.fail(failure.clone());
                             DomainError::analysis(failure)
                         })?;
-                        *job.analysis_coordinator.lock().unwrap() =
+                        *self.task.analysis.coordinator.lock().unwrap() =
                             Some(Arc::new(Mutex::new(coordinator)));
                     }
                 }
@@ -370,27 +373,14 @@ impl Engine {
             }
             if !unchanged
                 && ack.is_none()
-                && self.mock.is_none()
-                && self.user.daemon.java_warm_workers.unwrap_or(true)
+                && self.workers.can_keep_java()
                 && let Some(key) = pool_key
             {
-                let id = new_id("idle-java");
-                let mut idle = self.idle_java.lock().unwrap();
-                *idle = Some(IdleJava {
+                self.workers.keep_java(
                     key,
-                    revision: revision.id.clone(),
-                    id: id.clone(),
-                    worker: worker_slot.take().context("INDEX_WORKER_REQUIRED")?,
-                });
-                drop(idle);
-                let pool = self.idle_java.clone();
-                tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_secs(60)).await;
-                    let mut pool = pool.lock().unwrap();
-                    if pool.as_ref().is_some_and(|item| item.id == id) {
-                        pool.take();
-                    }
-                });
+                    revision.id.clone(),
+                    worker_slot.take().context("INDEX_WORKER_REQUIRED")?,
+                );
             }
             self.finish_index(
                 id,
@@ -426,7 +416,7 @@ impl Engine {
         timings: &mut Option<timings::IndexTimings>,
     ) -> Result<IndexSetup> {
         codeana_config::require_java(c)?;
-        let prepared = if self.mock.is_none() {
+        let prepared = if !self.workers.is_mock() {
             Some(self.prepare_java_unit(c.clone()).await?)
         } else {
             None
@@ -447,9 +437,9 @@ impl Engine {
             .resources
             .index
             .worker_memory_bytes
-            .unwrap_or(self.worker_memory);
+            .unwrap_or(self.workers.memory_cap());
         ensure!(
-            memory > 0 && memory <= self.worker_memory,
+            memory > 0 && memory <= self.workers.memory_cap(),
             codeana_model::DomainError::new(codeana_model::ErrorCode::ProjectWorkerMemoryLimit, "")
         );
         let pool_key = prepared.as_ref().map(|p| {
@@ -463,8 +453,8 @@ impl Engine {
             ))
         });
         let mut reused = None;
-        if self.mock.is_none() && self.user.daemon.java_warm_workers.unwrap_or(true) {
-            let idle = self.idle_java.lock().unwrap().take();
+        if self.workers.can_keep_java() {
+            let idle = self.workers.take_java();
             if let Some(mut idle) = idle {
                 if let (Some(prepared), Some(key)) = (prepared.as_ref(), pool_key.as_ref())
                     && idle.key == *key
@@ -496,7 +486,7 @@ impl Engine {
             worker
         } else {
             worker::Worker::start(
-                self.mock.as_deref(),
+                self.workers.mock_fixtures(),
                 prepared.as_ref(),
                 &c.root,
                 &c.manifest,
@@ -525,7 +515,7 @@ impl Engine {
                             )
                         );
                     }
-                    if self.mock.is_some()
+                    if self.workers.is_mock()
                         && let Some(toolchain) = &module.analysis.toolchain
                     {
                         ensure!(
@@ -915,25 +905,10 @@ impl Engine {
                 context: worker_context,
                 diagnostics: vec![],
             };
-            let store = self.store.clone();
-            let report_id = id.to_owned();
-            let report_project = revision.project.clone();
-            let report_revision = revision.id.clone();
-            let saved = tokio::task::spawn_blocking(move || -> Result<()> {
-                codeana_storage::test_fault(&store.home, "report_write")?;
-                ensure!(
-                    serde_json::to_vec(&report)?.len() <= 4 * 1024 * 1024,
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::ReportBudget, "")
-                );
-                store.put_object(
-                    "report",
-                    &report_id,
-                    &report_project,
-                    &report,
-                    &[report_revision],
-                )
-            })
-            .await?;
+            let saved = self
+                .reports
+                .save_published(report, revision.project.clone())
+                .await?;
             match saved {
                 Ok(()) => t.report = id.into(),
                 Err(e) => {
@@ -945,22 +920,13 @@ impl Engine {
             }
         }
         let policy = c.effective.config.versions.gc.clone();
-        if policy.auto.unwrap_or(true) {
-            let store = self.store.clone();
-            let project = revision.project.clone();
-            if let Err(e) = tokio::task::spawn_blocking(move || {
-                store.gc_policy(
-                    true,
-                    Some(&project),
-                    policy.keep.unwrap_or(20) as usize,
-                    policy.max_age_days.unwrap_or(30) as u64,
-                    policy.max_bytes.unwrap_or(0),
-                )
-            })
-            .await?
-            {
-                t.message = format!("Published; GC pending: {e}");
-            }
+        if policy.auto.unwrap_or(true)
+            && let Err(e) = self
+                .maintenance
+                .after_publish(revision.project.clone(), policy)
+                .await?
+        {
+            t.message = format!("Published; GC pending: {e}");
         }
         Ok(t)
     }
@@ -974,7 +940,7 @@ pub(super) struct StreamRequest<'a> {
     pub full: bool,
 }
 
-impl Engine {
+impl IndexTask {
     pub(super) async fn stage_language_stream(
         &self,
         id: &str,
@@ -1055,7 +1021,7 @@ impl Engine {
             (Ok(_), None) => anyhow::bail!("CANDIDATE_STREAM_NOT_STARTED"),
         };
         if let Some(metrics) = metrics {
-            self.tasks.event(
+            self.task.event(
                 &TaskId::from(id),
                 &Event::Progress(format!(
                     "{}_stream {}",
@@ -1068,7 +1034,7 @@ impl Engine {
     }
 }
 
-impl Engine {
+impl IndexTask {
     /// All End receipts are verified before a combined candidate can be staged.
     /// Used for any language set that requires a conservative full rebuild.
     #[allow(clippy::too_many_arguments)]

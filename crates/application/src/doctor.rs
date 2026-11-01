@@ -40,7 +40,19 @@ struct PreparationReadiness<'a> {
     execution: &'a str,
     readiness: &'a str,
 }
-impl Engine {
+#[derive(Clone)]
+pub(super) struct DoctorService {
+    generation: String,
+    workers: Arc<worker_service::WorkerService>,
+}
+impl DoctorService {
+    pub(super) fn new(generation: String, workers: Arc<worker_service::WorkerService>) -> Self {
+        Self {
+            generation,
+            workers,
+        }
+    }
+
     pub(super) fn doctor(&self, root: &Path, req: &Request) -> Result<Output> {
         let effective = codeana_config::resolve_files(root, req)?;
         let python_discovery =
@@ -114,7 +126,7 @@ impl Engine {
                 capabilities: Capabilities {
                     files_snapshot: "available",
                     search_text: "available",
-                    java_index: if java && discovery && self.mock.is_some() {
+                    java_index: if java && discovery && self.workers.is_mock() {
                         "mock_fixture_only"
                     } else if java && backend == Some("jvm") {
                         "java8_jvm"
@@ -123,7 +135,7 @@ impl Engine {
                     } else {
                         "unavailable"
                     },
-                    auto_discovery: if self.mock.is_none() && self.java_available() {
+                    auto_discovery: if !self.workers.is_mock() && self.workers.java_available() {
                         "java_metadata_only"
                     } else {
                         "unavailable"
@@ -132,7 +144,7 @@ impl Engine {
                     diff: "existing_behavior",
                     python_source_analysis: "pyrefly-1.4.0; explicit frozen inputs; full analysis or identical-input reuse; static bindings; no CHA",
                 },
-                java_adapter: if self.mock.is_some() {
+                java_adapter: if self.workers.is_mock() {
                     "mock-fixture-v1"
                 } else {
                     adapter
@@ -157,7 +169,7 @@ impl Engine {
                     "scratch_bytes": effective.config.resources.index.python_scratch_bytes.unwrap_or(512 << 20),
                 }),
                 worker_memory_enforcement: "process_group_rss_sample_100ms",
-                worker_memory_cap_bytes: self.worker_memory,
+                worker_memory_cap_bytes: self.workers.memory_cap(),
                 rust_worker_memory_bytes: effective
                     .config
                     .languages

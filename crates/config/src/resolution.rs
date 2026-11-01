@@ -86,7 +86,7 @@ pub(crate) fn resolve_text(
         .map(|_| rust_inputs::policy(&c))
         .transpose()?;
     if let Some(java) = &c.languages.java {
-        ensure!(java.dependencies.is_none(), "RUST_DEPENDENCIES_IN_JAVA");
+        ensure!(!java.has_rust_dependencies(), "RUST_DEPENDENCIES_IN_JAVA");
     }
     ensure!(
         c.schema_version == 1 && c.kind == "project",
@@ -282,87 +282,72 @@ fn resolve_languages(
                 .is_some_and(|l| l.enabled == Some(true)),
         codeana_model::DomainError::new(codeana_model::ErrorCode::NoEnabledLanguage, "")
     );
-    for (name, language) in [
-        ("java", &mut c.languages.java),
-        ("rust", &mut c.languages.rust),
-    ] {
-        if let Some(l) = language {
-            ensure!(
-                l.enabled.is_some(),
-                codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::LanguageEnabledRequired,
-                    name.to_string()
-                )
-            );
-            if name == "java" {
-                ensure!(
-                    l.mode.is_empty() || l.mode == "semantic",
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::JavaRequiresSemantic,
-                        ""
-                    )
-                );
-                if l.mode.is_empty() {
-                    l.mode = "semantic".into();
-                }
-                l.analysis.source_version.get_or_insert("auto".into());
-                l.analysis.toolchain.get_or_insert("auto".into());
-                l.analysis.classpath.get_or_insert("existing".into());
-                l.analysis.vm_classpath.get_or_insert(true);
-                l.lombok.mode.get_or_insert("off".into());
-                l.lombok.strict.get_or_insert(false);
-                l.extensions.spring.enabled.get_or_insert(true);
-                l.extensions.spring.xml.get_or_insert(false);
-                l.extensions.sofa.enabled.get_or_insert(true);
-                ensure!(
-                    l.analysis.edition.is_none(),
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::JavaEditionInvalid,
-                        ""
-                    )
-                );
-                ensure!(
-                    l.analysis.vm_classpath != Some(false),
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::VmClasspathRequired,
-                        ""
-                    )
-                );
-                ensure!(
-                    l.lombok
-                        .mode
-                        .as_deref()
-                        .is_none_or(|v| matches!(v, "off" | "model")),
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::InvalidLombokMode,
-                        ""
-                    )
-                );
-                if let Some(v) = &request.source_version {
-                    l.analysis.source_version = Some(v.clone());
-                    origins.insert(
-                        "languages.java.analysis.source_version".into(),
-                        "CLI".into(),
-                    );
-                }
-                if let Some(v) = &request.toolchain {
-                    l.analysis.toolchain = Some(v.clone());
-                    origins.insert("languages.java.analysis.toolchain".into(), "CLI".into());
-                }
-            } else {
-                if l.mode.is_empty() {
-                    l.mode = "semantic".into();
-                }
-                ensure!(
-                    matches!(l.mode.as_str(), "syntax" | "semantic"),
-                    "RUST_ANALYSIS_MODE"
-                );
-                ensure!(
-                    l.analysis.source_version.is_none() && l.lombok.mode.is_none(),
-                    codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFieldInRust, "")
-                );
-            }
+    if let Some(l) = &mut c.languages.java {
+        ensure!(
+            l.enabled.is_some(),
+            DomainError::new(ErrorCode::LanguageEnabledRequired, "java")
+        );
+
+        ensure!(
+            l.mode.is_empty() || l.mode == "semantic",
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaRequiresSemantic, "")
+        );
+        if l.mode.is_empty() {
+            l.mode = "semantic".into();
         }
+        l.analysis.source_version.get_or_insert("auto".into());
+        l.analysis.toolchain.get_or_insert("auto".into());
+        l.analysis.classpath.get_or_insert("existing".into());
+        l.analysis.vm_classpath.get_or_insert(true);
+        l.lombok.mode.get_or_insert("off".into());
+        l.lombok.strict.get_or_insert(false);
+        l.extensions.spring.enabled.get_or_insert(true);
+        l.extensions.spring.xml.get_or_insert(false);
+        l.extensions.sofa.enabled.get_or_insert(true);
+        ensure!(
+            l.analysis.edition.is_none(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaEditionInvalid, "")
+        );
+        ensure!(
+            l.analysis.vm_classpath != Some(false),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::VmClasspathRequired, "")
+        );
+        ensure!(
+            l.lombok
+                .mode
+                .as_deref()
+                .is_none_or(|v| matches!(v, "off" | "model")),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidLombokMode, "")
+        );
+        if let Some(v) = &request.source_version {
+            l.analysis.source_version = Some(v.clone());
+            origins.insert(
+                "languages.java.analysis.source_version".into(),
+                "CLI".into(),
+            );
+        }
+        if let Some(v) = &request.toolchain {
+            l.analysis.toolchain = Some(v.clone());
+            origins.insert("languages.java.analysis.toolchain".into(), "CLI".into());
+        }
+    }
+    if let Some(l) = &mut c.languages.rust {
+        ensure!(
+            l.enabled.is_some(),
+            DomainError::new(ErrorCode::LanguageEnabledRequired, "rust")
+        );
+
+        if l.mode.is_empty() {
+            l.mode = "semantic".into();
+        }
+        ensure!(
+            matches!(l.mode.as_str(), "syntax" | "semantic"),
+            "RUST_ANALYSIS_MODE"
+        );
+        ensure!(
+            !l.has_java_fields(),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFieldInRust, "")
+        );
     }
     if let Some(python) = &c.languages.python {
         ensure!(

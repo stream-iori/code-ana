@@ -20,7 +20,7 @@ pub(super) struct RustInput {
     pub(super) manifest: Manifest,
     pub(super) memory: u64,
 }
-impl Engine {
+impl IndexTask {
     pub(super) async fn prepare_rust_inputs(
         &self,
         id: &str,
@@ -122,7 +122,7 @@ impl Engine {
             ))
         })
         .await??;
-        self.tasks.event(
+        self.task.event(
             &TaskId::from(id),
             &Event::Progress(format!(
                 "rust_input_summary {}",
@@ -137,7 +137,7 @@ impl Engine {
             .worker_memory_bytes
             .unwrap_or(codeana_model::rust::DEFAULT_WORKER_MEMORY);
         ensure!(
-            memory > 0 && memory <= self.worker_memory,
+            memory > 0 && memory <= self.workers.memory_cap(),
             DomainError::new(ErrorCode::ProjectWorkerMemoryLimit, "")
         );
         let manifest = Manifest {
