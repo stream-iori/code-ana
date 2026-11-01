@@ -66,7 +66,7 @@ A7 收口（2026-11-01）：todo 全部任务在本机 fixture 范围完成。�
 | 原始字节 | nodes / edges / index_diagnostics / call_sites 的原始 metadata JSON 键序有差异；按值比较一致，原始图摘要和查询输出均保留 |
 | 放行边界 | 无新增正式性能测量；不签完整语义/来源覆盖、Native 或容量/稳定性能放行；以下历史回执保持各自含义 |
 
-本轮证据：[汇总回执](../target/business-annotations-removal/20261020/validation.json)、[变更前版本来源](../target/business-annotations-removal/20261020/prechange-provenance.json)、[冻结图与查询对照](../target/business-annotations-removal/20261020/iopengw-final/receipt.json)。变更前包的二进制 SHA 对齐已提交回执中的 `0c769f6`，其运行时代码与本轮开始时 HEAD 相同；未把 2026-10-16 旧图当作当前基线。
+该历史轮次登记的证据路径：`target/business-annotations-removal/20261020/validation.json`、`prechange-provenance.json`、`iopengw-final/receipt.json`。当前工作区没有这些历史产物，不能作为本轮验收依据。变更前包的二进制 SHA 对齐已提交回执中的 `0c769f6`，其运行时代码与本轮开始时 HEAD 相同；未把 2026-10-16 旧图当作当前基线。
 
 安全拦截导致的 Rust release SIGKILL、首次 protobuf 生成方式错误、Native 缺少 Row.world_ 反射配置及初次历史基线差异均保留原日志和回执；安全放行后沿原可执行路径重试。补齐反射字段后生命周期 8/8 通过。覆盖清单撤销了 4 组指向已删除测试的旧“已覆盖”映射，恢复为待补；保留映射使用本轮真实执行证据，整体覆盖清单仍未关闭。
 
