@@ -420,6 +420,16 @@ pub fn project_path(path: &Path) -> Result<PathBuf> {
 }
 
 impl CommentReader for CancelableReader<'_> {
+    fn unavailable_comment_inputs(
+        &self,
+    ) -> std::result::Result<Vec<UnavailableCommentInput>, DomainError> {
+        self.checked(|| {
+            self.inner
+                .comment_reader()
+                .ok_or_else(|| DomainError::new(ErrorCode::UnsupportedCapability, "comments"))?
+                .unavailable_comment_inputs()
+        })
+    }
     fn scan_comments(
         &self,
         terms: &[String],

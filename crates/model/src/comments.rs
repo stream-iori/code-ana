@@ -335,3 +335,17 @@ mod gap_tests {
         }
     }
 }
+
+/// Frozen prepared-input gaps, independent of binding completeness and comment matches.
+#[derive(Debug)]
+pub struct UnavailableCommentInput {
+    pub language: String,
+    pub roots: Vec<String>,
+    pub scopes: Vec<CommentInputScope>,
+}
+#[derive(Debug)]
+pub struct CommentInputScope {
+    pub module: String,
+    pub scope: String,
+    pub world: WorldId,
+}

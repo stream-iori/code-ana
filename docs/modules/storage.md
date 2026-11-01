@@ -96,8 +96,10 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 
 ## 注释物理布局（C1 已交付）
 
-当前源码 schema 12 / 逻辑 35 新增 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；完整生命周期与分发仍待 C2/C4。
+当前源码 schema 12 / 逻辑 35 新增 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；三语言生命周期与实际分发已由 C2—C4 覆盖，A7 验证最终重构产物。
 
 ### 显式语言补全
 
 `graph_store/language_completion.rs` 执行语言注册表声明的批量 SQL 补全。当前只有 Java 声明按符号与 source/module/scope 顺序唯一匹配、外部 ID/符号、反射 `$` 名和 arity 补全；顺序与唯一性检查保留。Rust/Python 的精确 producer ID 引用在行交付时已指定，不进入这些 Java 规则。缺失或未知语言的模糊引用不补成 Java 关系。注释关联始终只校验精确声明 ID、world 与捕获范围，不进入此模块。
+
+CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage 投影为类型化注释输入缺口。JSON 及 scope/world 字符串先按存储长度准入，再解码/复制；SQL VM 与读取共用当前账户和取消 token。仅消费已冻结字段，不新增 schema 或修改历史库。

@@ -85,7 +85,7 @@ codeana search-code "库存不足" --in names,comments
 - [x] 位置推断标记 `heuristic`；无法确定时保留文件定位，不猜测。
 - [x] 附近语句范围作为关联证据保存；源码展示始终使用配置行数，不自动扩大为整个语句块。
 - [x] 文件头、嵌套函数、lambda、局部类、初始化块分别处理；无公开实体时保留范围，不伪造节点。
-- [x] 注释提取及关联覆盖缺口独立披露，不能因类型绑定缺失直接丢弃可提取注释。
+- [x] 注释提取及关联覆盖缺口独立披露，不能因类型绑定缺失直接丢弃可提取注释；prepared 不可用输入也按冻结 roots/module/scope/world 影响注释完整性，健康路径不受其他输入失败牵连。
 - [x] 通过语言词法规则处理字符串伪注释、转义及多行边界，不采用全文件正则抽取。
 
 ### 存储与分词
@@ -195,7 +195,7 @@ codeana search-code "库存不足" --in names,comments
 | CommentFilter | module/scope/world/path 过滤；不得跨 source instance 连接 |
 | CommentQuery | 普通关键词、过滤、可选 context_before/context_after；应用层归一化成实际值，再保存到冻结查询 |
 | CommentMatch | 注释身份/位置/正文、命中正文与源码范围、关联证据、捕获源码窗口、可选可导航声明；不暴露内部主键 |
-| CommentReader | 固定 revision 的有界候选枚举、批量注释关联读取；使用现有 SourceContext/ResourceBudget，不另建查询账本 |
+| CommentReader | 固定 revision 的有界候选枚举、批量注释关联读取、冻结输入可用性投影；使用现有 SourceContext/ResourceBudget，不另建查询账本 |
 
 - comment ID 由 producer、语言、module/scope/world、路径、源码 hash、原始范围和种类确定；不含任务 ID、内部主键或时间。
 - GRA1 追加 COMMENT/COMMENT_LINK 表族；两类行均须显式 Row.world，不使用空 world 推断注释来源，禁止占用 reserved 6。

@@ -74,6 +74,7 @@ pub(super) fn run(
             selected.sources.clone()
         },
     };
+    unavailable_input_evidence(reader, req, &filter, &mut evidence)?;
     let context = CommentContext {
         before: req.context_before.unwrap_or(5),
         after: req.context_after.unwrap_or(5),
@@ -184,6 +185,67 @@ pub(super) fn run(
         evidence,
         cursor: String::new(),
     })
+}
+
+fn unavailable_input_evidence(
+    reader: &dyn CommentReader,
+    req: &Request,
+    filter: &CommentFilter,
+    evidence: &mut Evidence,
+) -> Result<()> {
+    for input in reader.unavailable_comment_inputs()? {
+        let policy = LanguagePolicy::lookup(Some(&input.language));
+        for scope in input.scopes {
+            reader.charge(1, 0)?;
+            if !req.module.is_empty() && req.module != scope.module {
+                continue;
+            }
+            let declared_scope =
+                req.scope.is_empty() || req.scope == "ALL" || req.scope == scope.scope;
+            let declared_world = req.world.is_empty() || req.world == scope.world;
+            let mut intersects = filter.paths.is_empty() && declared_scope && declared_world;
+            if !intersects {
+                for source in &reader.manifest().files {
+                    reader.charge(
+                        1 + filter.paths.len().checked_ilog2().unwrap_or(0) as u64,
+                        0,
+                    )?;
+                    if source.auxiliary
+                        || (!filter.paths.is_empty()
+                            && filter.paths.binary_search(&source.path).is_err())
+                        || (!declared_scope && req.scope != source.scope)
+                        || (!declared_world && req.world != source.world)
+                        || if source.language.is_empty() {
+                            policy.is_some_and(|p| !p.owns_source_path(&source.path))
+                        } else {
+                            source.language != input.language
+                        }
+                    {
+                        continue;
+                    }
+                    for root in &input.roots {
+                        reader.charge(1 + root.len() as u64 + source.path.len() as u64, 0)?;
+                        if root == "." || std::path::Path::new(&source.path).starts_with(root) {
+                            intersects = true;
+                            break;
+                        }
+                    }
+                    if intersects {
+                        break;
+                    }
+                }
+            }
+            if intersects {
+                reader.charge(1, 256 + (scope.module.len() + scope.scope.len()) as u64 * 2)?;
+                evidence.semantic = false;
+                evidence.reasons.push(format!(
+                    "comment_inputs_unavailable:{}:{}",
+                    scope.module, scope.scope
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn window(

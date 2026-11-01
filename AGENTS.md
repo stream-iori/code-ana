@@ -30,7 +30,7 @@
 
 | 场景 | 命令 / 约束 |
 |---|---|
-| Rust 回归，无 JDK | `just test-rust`；含生成 DDL 检查、workspace、图/文本 E2E、clippy |
+| Rust 回归，无 JDK | `just test-rust`；含架构依赖门禁、生成 DDL 检查、workspace、图/文本 E2E、clippy |
 | Java fixture | `just test-java`，优先验证分析与模型 |
 | Python fixture | `just test-python`；先 Java fixture，再 Python 核心与 CLI；独立 workspace 使用 `just build-python` 构建 |
 | Python 分发 | `just package-python /absolute/new/package`、`just test-python-release /absolute/new/package`；Java SDK 单独安装 |
@@ -41,7 +41,7 @@
 | 紧凑 DDL | 改 `anatomist-schema.sql` / `compact-meta.sql` 及生成器，再生成 `compact-schema.sql`；`python3 scripts/generate-compact-schema.py --check` |
 | mock | 独立 home + 显式 `--dev-mock-fixtures`，仅 Rust 产品回归，不是 Rust/Java parser |
 
-不能把 Hello、开发构建、旧版本或 fixture 的通过写成当前正式放行；Linux、目标 Java 17/25、Rust 完整语义/来源覆盖与容量/稳定性能仍有未完成项。当前边界及最新 214.55 s / 233.62 MB 单轮记录见 `docs/current-state.md`。
+不能把 Hello、开发构建、旧版本或 fixture 的通过写成当前正式放行；Linux、目标 Java 17/25、Rust 完整语义/来源覆盖与容量/稳定性能仍有未完成项。当前边界、历史项目测量及 C4 自建 fixture 唯一单轮记录见 `docs/current-state.md`。
 
 `lang-java-adaptor/e2e/fixtures/*/AGENTS.md` 是 Anatomist 参考场景的分析输入，保留其原始 CLI/编辑边界，不作为 code-ana 根目录开发命令。
 

@@ -434,7 +434,7 @@ max_depth = 256
 三语言主要执行入口已接入累计回执；Java平台限制可比任务限额更严格，回执会记录实际局部拒绝，不能提高平台限额来让任务通过。Discover、未变复用与Java局部作用域已接入；当前严格worker22/Java11；帧分配前准入、codec 与本机 fixture 分发验证已完成对应轮次，证据及正式边界以 current-state 为准，不能扩大为所有内部运算或跨平台正式验收。
 
 
-注释查询源码已接入以下项目配置（C1 产品验收进行中）；每项为 0..=100，省略时为 5，CLI --context-before/--context-after 优先。展示配置不影响语义 profile，冻结页保留首次解析的实际值。
+注释查询源码已接入以下项目配置（三语言产品回归已覆盖）；每项为 0..=100，省略时为 5，CLI --context-before/--context-after 优先。展示配置不影响语义 profile，冻结页保留首次解析的实际值。
 
 ```toml
 [query.comments]

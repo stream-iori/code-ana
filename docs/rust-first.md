@@ -11,7 +11,7 @@ clap CLI ── authenticated gRPC ── Rust daemon
                                   └─ 查询 / pipeline / snapshot / diff / report / GC
 
 生产：Rust java-worker ── C ABI 4 ── Java 25/G1 ── Java 8 javac
-      GRA1/protobuf 行 → 紧凑 SQLite（物理 11 / 逻辑 34）；mock 保留独立回归
+      GRA1/protobuf 行 → 紧凑 SQLite（物理 12 / 逻辑 35）；mock 保留独立回归
 ```
 
 Rust 源码分析使用真实 `codeana-rust-worker`，无需 JDK；配置、输入导出及当前语义边界见 [Rust worker](modules/rust-worker.md)。以下 mock 示例用于公共产品回归。

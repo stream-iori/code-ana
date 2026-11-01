@@ -24,7 +24,7 @@
 | 存储 | 独立 comments / comment_links / FTS，来源校验、稳定顺序、共享分词身份；旧图要求 index --full |
 | 查询 | search-comments、search-code --in、CLI/RPC/pipeline、上下文配置及冻结值；Native/JVM 真实产品各 2 项通过 |
 | 已验证 | Java 719/719；完整 Rust 门禁；Native/JVM 真实查询各 2、Native ABI 10、manifest 5、bootstrap 2；见 target/todo-implementation/comment-c1-final/receipt.json，不代表正式 Native/分发放行 |
-| 当前后续 | A7 架构收口；匹配的 G1 build-only Native SDK 已安装，完整迁移/跨平台/容量仍未签放行 |
+| 当前后续 | A7 架构收口与最终分发验证中；匹配的 G1 build-only Native SDK 已安装，完整迁移/跨平台/容量仍未签放行 |
 | C4 实际包 | Rust、Java、Python 通过；共用 release 资源 42/42，注释/Native 组合 11 项；原二进制恢复、SDK 未变 |
 | C4 固定输入 | 128 个类、每类 8 个方法；3,328 注释、4,224 关联；五组路径限定查询及定位通过 |
 | C4 单轮测量 | 索引 3.137 s；完整工作负载 5.215 s；1 s 采样峰值 269.30 MiB；图库 5.35 MiB；独立空 home，OS page cache 不受控 |

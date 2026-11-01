@@ -75,6 +75,43 @@ root="common"
             source=self.project/relative
             source.write_text('"""准备库存文档"""\n'+source.read_text())
 
+    def test_unavailable_comment_inputs_are_scoped_and_frozen(self):
+        self.add_python_comment_inputs()
+        self.cli('index','--prepare',timeout=120)
+        pyproject=self.project/'app-b/pyproject.toml'
+        original=pyproject.read_text()
+        pyproject.write_text('[broken')
+        revision=self.cli('index','--prepare',timeout=120)[1]['revision']
+        manifest=json.loads((self.home/'revisions'/revision/'revision.json').read_text())['manifest']['files']
+        healthy_world=next(f['world'] for f in manifest if f['path']=='app-a/main_a.py' and f['language']=='python')
+        files_world=next(f['world'] for f in manifest if f['path']=='app-b/main_b.py')
+        results={}
+        def check(name,options,hits,complete,enumeration=True):
+            rows,terminal=self.cli('search-comments','准备库存文档',*options)
+            self.assertEqual(len(rows),hits,(name,terminal))
+            self.assertEqual(terminal['evidence']['semantic'],complete,(name,terminal))
+            self.assertEqual(terminal['evidence']['enumeration'],enumeration,(name,terminal))
+            results[name]={'hits':len(rows),'evidence':terminal['evidence']}
+        check('all',[],1,False)
+        check('healthy-path',['--path','app-a/**'],1,True)
+        check('missing-path',['--path','app-b/**'],0,False)
+        check('healthy-module',['--module','app-a'],1,True)
+        check('missing-module',['--module','app-b'],0,False,False)
+        check('healthy-world',['--world',healthy_world],1,True)
+        check('files-world',['--world',files_world,'--path','app-b/**'],0,False)
+        check('missing-main',['--scope','MAIN','--path','app-b/**'],0,False)
+        _,code=self.cli('search-code','准备库存文档','--in','comments')
+        self.assertFalse(code['evidence']['semantic'])
+        # Recovery changes the current revision, never the frozen gap's meaning.
+        pyproject.write_text(original)
+        self.cli('index','--prepare',timeout=120)
+        check('recovered',[],2,True)
+        check('historical',['--revision',revision],1,False)
+        check('historical-healthy',['--revision',revision,'--path','app-a/**'],1,True)
+        destination=os.environ.get('CODEANA_COMMENT_GAP_EVIDENCE')
+        if destination:
+            pathlib.Path(destination).write_text(json.dumps(results,ensure_ascii=False,indent=2)+'\n')
+
     def test_comment_display_configuration_preserves_prepared_inputs_and_profile(self):
         self.add_python_comment_inputs()
         first=self.cli('index','--prepare',timeout=120)[1]['revision']

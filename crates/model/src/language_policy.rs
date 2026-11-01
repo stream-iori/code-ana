@@ -23,6 +23,17 @@ impl LanguagePolicy {
             Self::Python => "python",
         }
     }
+    /// Identify untyped FILES captured after an input context became unavailable.
+    pub fn owns_source_path(self, path: &str) -> bool {
+        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|s| s.to_str());
+        match self {
+            Self::Java => extension == Some("java"),
+            Self::Rust => extension == Some("rs"),
+            Self::Python => matches!(extension, Some("py" | "pyi")),
+        }
+    }
     /// Only Java currently declares scoped symbol/reflection/arity completion.
     /// Other producers deliver exact IDs; those references bypass completion.
     pub const fn reference_completion(self) -> bool {

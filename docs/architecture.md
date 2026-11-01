@@ -1,6 +1,6 @@
 # 总体架构
 
-对齐 2026-10-31。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
+对齐 2026-11-01。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
 CLI
@@ -162,7 +162,7 @@ adapter v2 可在导出阶段显式读取 pyproject 静态元数据；没有该�
 
 Java/Rust/Python worker 共用 model::AnalysisTaskMeter 管理进程内任务账本，worker 仅适配协议。父任务将一个截止时间贯穿排队、host、worker 和发布准入；worker 重试不能重置账本或续期。Python 的 frozen/context、AST/type/QName 提取和输出预留复用 AnalysisContext；prepared 多实例沿语言池静态拆分，host 分片共享，实例之间不借用。
 
-Java主要入口已接入共享任务上下文、局部作用域和累计FFI回执；三语言在Discover前签发grant，BuildContext回传核实水位，未变复用通过Reuse/Reused结束账户。当前严格worker22/Java11，必填回执及已知/未知水位共用host策略；帧/codec与内部DTO分配前准入、混合/分发门禁已完成本机fixture验证；正式跨平台和容量/性能范围另列。实际验证范围见当前实现文档，不以单语言回执替代全计划验收。
+Java主要入口已接入共享任务上下文、局部作用域和累计FFI回执；三语言在Discover前签发grant，BuildContext回传核实水位，未变复用通过Reuse/Reused结束账户。当前严格 worker 23 / Java analysis 12，必填回执及已知/未知水位共用host策略；帧/codec与内部DTO分配前准入、混合/分发门禁已完成本机fixture验证；正式跨平台和容量/性能范围另列。实际验证范围见当前实现文档，不以单语言回执替代全计划验收。
 
 Java 在 Rust worker 的同一账户上顺序执行：请求携带已经消耗的水位，Java显式上下文穿过捕获、javac模型解码、模型/语法索引、扩展事实集合、语义JSON入口、XML及归档，返回累计回执后由Rust继续处理输出。失败前已接受的消耗保留，崩溃或无可信回执时标Unknown。javac内核自身运算仍由进程树内存、原编译器超时和supervisor截止时间约束，不把自有模型遍历计费冒充其内部每一步的精确计数。
 
@@ -174,4 +174,8 @@ Java的两个JSON facade共用Jackson流边界，传输与领域各自保留数�
 
 Lombok与扩展不可变元数据复制前沿用同一账户；内部DTO通过contracts的serde结构准入后再复制/解码。根池按语言及稳定实例ID静态拆分，host保留1/4；失败、取消、超时都不能切换head。Java合并JAR先逐类核对reactor产物，避免重复shade引入旧依赖。本机fixture验收及正式边界见当前实现。
 
-公共 scratch 预算位于 application::resources，缓存目录清单而逐次检查实际文件大小；Java 调用方保留 JAVA_SCRATCH_BUDGET 错误身份。普通/prepared Python 输入共用 python_inputs，保留各入口原有预算错误。注释领域模型、归一化规则和 CommentReader 端口已定义；C1 的 Java 主 javac token、v51 脱离模型及语言侧关联已接通，GRA1 交付、持久化、配置及公开查询仍待接入，不声明 comments-v1 能力。编译器内部类型只出现在 Java 8 worker 源集，不进入 Java 25 核心模型或 Native ABI。
+公共 scratch 预算位于 application::resources，缓存目录清单而逐次检查实际文件大小；Java 调用方保留 JAVA_SCRATCH_BUDGET 错误身份。普通/prepared Python 输入共用 python_inputs，保留各入口原有预算错误。三语言注释领域模型、归一化、CommentReader、GRA1 交付、持久化、配置及公开查询已接通；Java 主 javac token 和 v51 脱离模型提供语言侧关联。编译器内部类型只出现在 Java 8 worker 源集，不进入 Java 25 核心模型或 Native ABI。
+
+## 架构依赖门禁
+
+`just check-architecture` 检查 Cargo 传递依赖、Engine/索引/服务状态访问、语言单元编排、Java 编译器源集、Lombok 模块与 Maven 依赖方向，以及生产扩展预算入口。`just test-rust` 自动执行该门禁；7 个违规反例验证检查能拒绝边界回归。行为验收继续验证公开查询、发布和预算；静态检查不代替产品回归。

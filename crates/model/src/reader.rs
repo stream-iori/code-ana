@@ -264,6 +264,10 @@ impl SourceContext for BudgetedSource<'_> {
 /// Comment algorithms consume a fixed revision through this port, never a Store or Engine.
 /// Implementors must use the SourceContext budget for candidate enumeration and link copies.
 pub trait CommentReader: SourceContext {
+    /// Read frozen input availability, never current workspace configuration.
+    fn unavailable_comment_inputs(&self) -> Result<Vec<UnavailableCommentInput>, DomainError> {
+        Ok(Vec::new())
+    }
     fn scan_comments(
         &self,
         terms: &[String],

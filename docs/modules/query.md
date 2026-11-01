@@ -180,4 +180,6 @@ codeana search-code "库存不足" --in names,comments
 
 search-code 默认 names，沿用公开 ID 顺序和流式冻结；comments 路径目前有界计算后冻结，最多 10,000 条并披露截断。search-comments 返回类型化 CommentMatch，包含 comment、原源码命中范围、links、source 窗口；按文件、字节起止、world、comment ID 排序。公共分词模块固定词典，关键词 AND，FTS 候选必须经原正文复核。孤立注释可检索；代码投影只采用 documents/enclosing_callable 中实际存在的公开声明，保留所有注释证据。附近语句关联为 heuristic，不能制造声明。
 
-CommentReader 只负责当前 revision 的有界事实/关联读取；源码读取继续校验 manifest hash。展示默认上下各 5 行，配置 [query.comments]，每项 0..=100，CLI 优先；第一次提交冻结有效值，续页沿用。pipeline 的 search-comments 可作为首阶段，以语言提供的声明链接进入后续阶段，不能给孤立注释猜测声明。COMMENTS 覆盖独立披露；Rust/Python 提取尚未实现。
+CommentReader 只负责当前 revision 的有界事实/关联读取；源码读取继续校验 manifest hash。展示默认上下各 5 行，配置 [query.comments]，每项 0..=100，CLI 优先；第一次提交冻结有效值，续页沿用。pipeline 的 search-comments 可作为首阶段，以语言提供的声明链接进入后续阶段，不能给孤立注释猜测声明。COMMENTS 覆盖独立于绑定覆盖；Java/Rust/Python 均已接入。
+
+prepared 输入降为 files_only 时，纯注释查询也必须披露 `comment_inputs_unavailable:模块:scope`。CommentReader 从当前 revision 的 `inputs.unit.*` 元数据读取冻结 roots，再结合 `codeana-inputs/AGGREGATE` 回执判断所选路径、模块、scope 与 world；不读取现行 inputs.json，不把模块名猜成目录。健康子目录保持完整，失败目录的零命中不能宣称语义穷尽；恢复输入不改变历史 revision 的缺口。读取/解码/比较接续原预算及取消。

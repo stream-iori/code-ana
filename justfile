@@ -25,7 +25,12 @@ smoke:
   ./scripts/smoke.sh
 
 # Rust product checks; no JDK required.
+check-architecture:
+  python3 scripts/check-architecture.py
+  python3 tests/architecture_boundary_tests.py
+
 test-rust:
+  just check-architecture
   python3 scripts/generate-compact-schema.py --check
   cargo fmt --all -- --check
   cargo test --workspace --locked

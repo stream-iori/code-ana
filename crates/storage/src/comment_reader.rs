@@ -22,6 +22,16 @@ fn range(row: &Row<'_>) -> Result<CommentRange> {
 fn invalid() -> DomainError {
     DomainError::new(ErrorCode::CommentRecordInvalid, "stored evidence")
 }
+/// Only the frozen fields needed for availability; no config/backend dependency.
+#[derive(serde::Deserialize)]
+struct StoredInputUnit {
+    mode: String,
+    language: String,
+    roots: Vec<String>,
+    entries: Vec<String>,
+    #[serde(default)]
+    modules: Vec<String>,
+}
 fn fact(row: &Row<'_>) -> Result<CommentFact> {
     let kind: String = row.get("kind")?;
     Ok(CommentFact {
@@ -197,6 +207,53 @@ impl ReadContext {
     }
 }
 impl CommentReader for ReadContext {
+    fn unavailable_comment_inputs(
+        &self,
+    ) -> std::result::Result<Vec<UnavailableCommentInput>, DomainError> {
+        (|| -> Result<_> {
+            ensure!(!self.comment_cancelled(), DomainError::new(ErrorCode::Cancelled, ""));
+            let _sql_budget = self.comment_sql_budget()?;
+            // Admit JSON before decoding; keys are indexed, ordinary revisions return no rows.
+            let mut metadata = self.connection.prepare(
+                "SELECT key,octet_length(value)+octet_length(key) FROM project_meta WHERE key GLOB 'inputs.unit.*' ORDER BY key")?;
+            let mut detail = self.connection.prepare_cached("SELECT value FROM project_meta WHERE key=?")?;
+            let mut rows = metadata.query([])?;
+            let mut result = Vec::new();
+            while let Some(row) = rows.next()? {
+                ensure!(!self.comment_cancelled(), DomainError::new(ErrorCode::Cancelled, ""));
+                self.admit_comment_payload(row.get(1)?)?;
+                let key: String = row.get(0)?;
+                let value: String = detail.query_row([key], |r| r.get(0))?;
+                let unit: StoredInputUnit = serde_json::from_str(&value)?;
+                match unit.mode.as_str() {
+                    "semantic" | "source_only" => continue,
+                    "files_only" => (),
+                    _ => return Err(invalid().into()),
+                }
+                ensure!(!unit.roots.is_empty() && !unit.language.is_empty(), invalid());
+                for root in &unit.roots {
+                    ensure!(!root.is_empty() && std::path::Path::new(root).components().all(|c|
+                        matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir)), invalid());
+                }
+                let modules = if unit.modules.is_empty() { unit.entries } else { unit.modules };
+                ensure!(!modules.is_empty(), invalid());
+                let mut scopes = Vec::new();
+                let mut coverage = self.connection.prepare_cached(
+                    "SELECT scope,world,128+octet_length(scope)+octet_length(world) FROM analysis_coverage WHERE provider_id='codeana-inputs' AND capability='AGGREGATE' AND status<>'complete' AND module=? AND language=? ORDER BY scope,world")?;
+                for module in modules {
+                    let mut matches = coverage.query(rusqlite::params![module,unit.language])?;
+                    let before = scopes.len();
+                    while let Some(row) = matches.next()? {
+                        self.admit_comment_payload(row.get::<_, i64>(2)?.saturating_add(module.len() as i64))?;
+                        scopes.push(CommentInputScope { module: module.clone(), scope: row.get(0)?, world: row.get::<_, String>(1)?.into() });
+                    }
+                    ensure!(scopes.len()>before, invalid());
+                }
+                result.push(UnavailableCommentInput { language: unit.language, roots: unit.roots, scopes });
+            }
+            Ok(result)
+        })().map_err(|error| self.comment_read_error(error))
+    }
     fn scan_comments(
         &self,
         terms: &[String],
@@ -264,6 +321,75 @@ impl CommentReader for ReadContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn prepared_comment_gaps_use_frozen_roots_and_the_existing_account() -> Result<()> {
+        use codeana_contracts::graph_rows::{CoverageRow, GraphRow, ProjectMetaRow};
+        let directory = tempfile::tempdir()?;
+        let store = Store::open(directory.path())?;
+        let revision = crate::tests::revision();
+        let mut result = crate::tests::result();
+        result.manifest = revision.manifest.id();
+        let rows = [
+            ProjectMetaRow {
+                key: Some("inputs.unit.unavailable".into()),
+                value: Some(
+                    serde_json::json!({"mode":"files_only", "language":"python",
+                    "entries":["logical-module"], "roots":["physical-root"],
+                    "reason":"captured preparation failure"})
+                    .to_string(),
+                ),
+            }
+            .into_row(""),
+            CoverageRow {
+                source_file: Some("*".into()),
+                module: Some("logical-module".into()),
+                scope: Some("MAIN".into()),
+                language: Some("python".into()),
+                provider_id: Some("codeana-inputs".into()),
+                capability: Some("AGGREGATE".into()),
+                status: Some("partial".into()),
+                occurrences: Some(1),
+                groups_count: Some(1),
+                codes: Some("[\"INPUT_CONTEXT_UNAVAILABLE\"]".into()),
+                code_counts: Some("{\"INPUT_CONTEXT_UNAVAILABLE\":1}".into()),
+                details_truncated: Some(0),
+            }
+            .into_row("availability-world"),
+        ];
+        let candidate = store.stage_graph_records(
+            revision,
+            &result.header(),
+            rows.into_iter().map(Ok),
+            "",
+            || Ok(()),
+            |_| Ok(()),
+        )?;
+        let published = store.publish_staged(candidate, "gap")?;
+        let read = store.read(&published.id)?;
+        let gaps = read.unavailable_comment_inputs()?;
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0].roots, ["physical-root"]);
+        assert_eq!(gaps[0].scopes[0].module, "logical-module");
+        assert_eq!(gaps[0].scopes[0].world, "availability-world");
+        let budget = ResourceBudget::new(ResourceLimits {
+            max_work: 1_000_000,
+            max_payload_bytes: 1,
+        });
+        let limited = store.read(&published.id)?.with_budget(budget.clone());
+        assert_eq!(
+            limited.unavailable_comment_inputs().unwrap_err().code,
+            ErrorCode::ComputationLimit
+        );
+        assert!(budget.usage().exhausted.is_some());
+        let cancelled = store
+            .read(&published.id)?
+            .with_cancellation(Arc::new(|| true));
+        assert_eq!(
+            cancelled.unavailable_comment_inputs().unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+        Ok(())
+    }
     #[test]
     fn sqlite_work_is_charged_before_returned_rows_and_the_hook_is_scoped() -> Result<()> {
         let directory = tempfile::tempdir()?;

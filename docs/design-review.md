@@ -44,7 +44,7 @@ Rust、daemon、SQLite 都是实现选择；正确性首先由输入捕获、事
 |---|---|---|---|
 | D01 | daemon 管理范围 | 每 OS 用户一个 daemon；内部项目隔离 | 用户已确认，2026-09-24；版本升级协调见 D02 |
 | D02 | CLI-daemon 通信 | HTTP/2 + protobuf gRPC，.proto 为源；loopback + token | 已落地 tonic；handshake 4；任务/事件与传输状态分开，规模化背压仍按预算验收 |
-| D03 | revision 物理存储 | 不可变 SQLite generation；delta backup，私有候选，catalog CAS | 已落地；当前图物理 schema 11 / 逻辑 34；复制和磁盘峰值单独记录，失败保旧版 |
+| D03 | revision 物理存储 | 不可变 SQLite generation；delta backup，私有候选，catalog CAS | 已落地；当前图物理 schema 12 / 逻辑 35；复制和磁盘峰值单独记录，失败保旧版 |
 | D04 | Java 容量边界 | 进程树 RSS、heap、解码/结果/暂存分别限额 | fixture 和冻结 iopengw 单轮已验证；正式容量承诺未完成，不把 heap 当 RSS |
 | D05 | 基线与重规划 | 固定 revision/profile；归属替换、有界重规划 | 已落地；旧格式要求全量，worker 不读半成品 |
 | D06 | 语言查询策略 | Rust 只读逻辑投影与公共事实，Java 层级/CHA 不重跑 javac | 查询/pipeline 与固定图门禁已实现；raw type/binding/syntax 图查询不支持；Rust 冻结输入 adapter 已接入，语义缺口见 Rust worker 模块 |
