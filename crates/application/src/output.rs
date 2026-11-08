@@ -173,7 +173,7 @@ mod tests {
     fn published() -> TaskResult {
         let mut result = TaskResult::success(Output {
             revision: "rev-real".into(),
-            producer: "javac-java8-v1".into(),
+            producer: "javac-v3".into(),
             records: vec![
                 Record::display(&json!({"files": 2857, "revision": "rev-real"})).unwrap(),
             ],

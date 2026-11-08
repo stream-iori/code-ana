@@ -67,7 +67,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
         probe=subprocess.run([str(root/'target/debug/codeana-java-worker'),str(source/'runner.jar'),'--backend','jvm','--runtime-info'],capture_output=True,text=True,timeout=15)
         if probe.returncode:raise ValueError('JVM_RUNTIME_WORKER_NOT_CURRENT: '+probe.stderr)
         versions=json.loads(probe.stdout)
-        if versions['backend']!='jvm' or versions['worker_protocol']!=manifest['worker_protocol'] or versions['adapter']!=manifest['adapter'] or versions['analysis_request']!=12 or versions['fact_ir']!=manifest['fact_ir']:raise ValueError('JVM_RUNTIME_PROTOCOL_MISMATCH')
+        if versions['backend']!='jvm' or versions['worker_protocol']!=manifest['worker_protocol'] or versions['adapter']!=manifest['adapter'] or versions['analysis_request']!=13 or versions['fact_ir']!=manifest['fact_ir']:raise ValueError('JVM_RUNTIME_PROTOCOL_MISMATCH')
         installed_files = {}
         if stable_paths:
             install_jvm(root, source, destination.parent/'jvm-install')
@@ -98,7 +98,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
     manifest = json.loads((source / 'native/manifest.json').read_text())
     suffix = 'dylib' if sys.platform == 'darwin' else 'so'
     library = 'native/libcodeana_java.' + suffix
-    required = {library, 'compiler-bridge.jar', 'maven-input-worker.jar'}
+    required = {library, 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'}
     if not required.issubset(manifest['files']):
         raise ValueError('JAVA_RUNTIME_MANIFEST_INCOMPLETE')
     for relative, expected in manifest['files'].items():
@@ -112,7 +112,7 @@ def prepare(root, destination, backend=None, stable_paths=False):
         raise ValueError('JAVA_RUNTIME_WORKER_NOT_CURRENT: rebuild Rust binaries; ' + probe.stderr.strip())
     versions = json.loads(probe.stdout)
     expected_versions = dict(worker_protocol=manifest['worker_protocol'], fact_ir=manifest['fact_ir'],
-                             adapter=manifest['adapter'], analysis_request=12, abi=4, backend='native')
+                             adapter=manifest['adapter'], analysis_request=13, abi=4, backend='native')
     if versions != expected_versions:
         raise ValueError('JAVA_RUNTIME_PROTOCOL_MISMATCH: ' + json.dumps(versions))
     installed = root / 'target/lib/java'

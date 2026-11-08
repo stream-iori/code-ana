@@ -22,7 +22,7 @@ class StableRuntimeTests(unittest.TestCase):
             source=self.root/'lang-java-adaptor/target';source=source/'jvm' if backend=='jvm' else source
             runtime='runner.jar' if backend=='jvm' else 'native/libcodeana_java.'+('dylib' if stable.sys.platform=='darwin' else 'so')
             files={}
-            for name in (runtime,'compiler-bridge.jar','maven-input-worker.jar'):
+            for name in (runtime,'compiler-bridge.jar','compiler-bridge17.jar','maven-input-worker.jar'):
                 p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(backend+name);files[name]=stable.sha256(p)
             manifest=source/('manifest.json' if backend=='jvm' else 'native/manifest.json')
             manifest.write_text(json.dumps(dict(files=files,worker_protocol=22,adapter='test',abi=4 if backend=='native' else None,fact_ir=4,analysis_request=11,native_gc='G1' if backend=='native' else None)))

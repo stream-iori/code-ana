@@ -75,11 +75,6 @@ pub(super) fn run(
         },
     };
     unavailable_input_evidence(reader, req, &filter, &mut evidence)?;
-    let context = CommentContext {
-        before: req.context_before.unwrap_or(5),
-        after: req.context_after.unwrap_or(5),
-    }
-    .validate()?;
     let mut records = Vec::new();
     let mut after = None;
     loop {
@@ -138,23 +133,10 @@ pub(super) fn run(
                     &admit,
                 )?;
                 let links = reader.comment_links(std::slice::from_ref(&comment.id))?;
-                let span = window(text, &comment.range, context, &admit)?;
-                let snippet = &text[span.start as usize..span.end as usize];
-                // Reserve retained text plus worst-case escaped JSON in the frozen output.
-                reader.charge(
-                    1,
-                    (snippet.len() as u64).saturating_mul(8).saturating_add(256),
-                )?;
                 Ok(Record::Comment(Box::new(CommentMatch {
                     comment,
                     hits,
                     links,
-                    source: SourceSnippet {
-                        path: source.path.clone(),
-                        hash: source.hash.clone(),
-                        span,
-                        text: snippet.into(),
-                    },
                 })))
             })();
             match materialized {
@@ -248,44 +230,6 @@ fn unavailable_input_evidence(
     Ok(())
 }
 
-fn window(
-    text: &str,
-    range: &CommentRange,
-    context: CommentContext,
-    admit: &dyn Fn(u64, u64) -> Result<(), DomainError>,
-) -> Result<Span> {
-    let first = range.begin_line.saturating_sub(context.before).max(1);
-    let last = range.end_line.saturating_add(context.after);
-    let mut line = 1u32;
-    let mut start = 0;
-    let mut end = text.len();
-    let mut chars = text.char_indices().peekable();
-    while let Some((offset, ch)) = chars.next() {
-        admit(1, 0)?;
-        if ch == '\n' || ch == '\r' {
-            let mut next = offset + ch.len_utf8();
-            if ch == '\r' && chars.peek().is_some_and(|(_, c)| *c == '\n') {
-                chars.next();
-                next += 1;
-            }
-            if line < first {
-                start = next;
-            }
-            if line == last {
-                end = next;
-                break;
-            }
-            line = line.checked_add(1).ok_or_else(|| {
-                DomainError::new(ErrorCode::CommentSourceMapInvalid, "line overflow")
-            })?;
-        }
-    }
-    Ok(Span {
-        start: start as u64,
-        end: end as u64,
-    })
-}
-
 pub(super) fn search_code(
     graph: &dyn GraphReader,
     req: &Request,
@@ -327,7 +271,6 @@ pub(super) fn search_code(
                     continue;
                 }
                 let copies = hit.comment.body.len() as u64
-                    + hit.source.text.len() as u64
                     + hit.comment.body_map.len() as u64 * 64
                     + hit.hits.len() as u64 * 128
                     + hit.links.len() as u64 * 256;
@@ -345,40 +288,4 @@ pub(super) fn search_code(
         records: records.into_values().collect(),
         ..comments
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn context_windows_keep_explicit_zero_utf8_and_crlf() {
-        let source = "一\r\n//中😀\r\n末\r尾";
-        let range = CommentRange {
-            byte_start: 5,
-            byte_end: 14,
-            begin_line: 2,
-            begin_column: 1,
-            end_line: 2,
-            end_column: 6,
-        };
-        let no = window(
-            source,
-            &range,
-            CommentContext {
-                before: 0,
-                after: 0,
-            },
-            &|_, _| Ok(()),
-        )
-        .unwrap();
-        assert_eq!(&source[no.start as usize..no.end as usize], "//中😀\r\n");
-        let all = window(source, &range, CommentContext::default(), &|_, _| Ok(())).unwrap();
-        assert_eq!(
-            all,
-            Span {
-                start: 0,
-                end: source.len() as u64
-            }
-        );
-    }
 }

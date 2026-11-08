@@ -25,7 +25,8 @@ def assert_languages(test,expected):
     test.assertTrue(terminal['evidence']['semantic'],terminal['evidence'])
     test.assertEqual({r['comment']['language'] for r in rows},set(expected))
     for row in rows:
-        test.assertTrue(row['source']['hash'])
+        test.assertTrue(row['comment']['source_hash'])
+        test.assertNotIn('source', row)
         for link in row['links']:
             test.assertEqual(link['comment'],row['comment']['id'])
 

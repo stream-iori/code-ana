@@ -39,6 +39,7 @@ test-rust:
   python3 tests/rust_language_e2e.py
   python3 tests/rust_comment_e2e.py
   python3 tests/rust_dogfood_tests.py
+  python3 tests/sdkman_java_tests.py
   python3 tests/java_bundle_manifest_tests.py
   python3 tests/java_package_tests.py
   python3 tests/java_reference_tests.py
@@ -107,6 +108,7 @@ test-java-native:
   python3 tests/java_native_lifecycle.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
   CODEANA_JAVA_BACKEND=native python3 tests/comment_search_e2e.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java17_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/comment_lifecycle_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/comment_ownership_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_resource_limits.py
@@ -128,6 +130,7 @@ test-java-e2e:
   cargo build --workspace --locked
   CODEANA_JAVA_BACKEND=native python3 tests/java_graph_storage.py
   CODEANA_JAVA_BACKEND=native python3 tests/comment_search_e2e.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java17_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_resource_limits.py
   CODEANA_JAVA_BACKEND=native python3 tests/java_native_environment.py
   python3 tests/java_native_crash_e2e.py
@@ -213,3 +216,8 @@ comment-fixture-functional directory:
 
 comment-fixture-measure directory:
   python3 scripts/comment-feature-acceptance.py measure --directory '{{directory}}'
+
+# Matching JVM/Native bundles required; both use the same Java 17 public truth.
+test-java17:
+  CODEANA_JAVA_BACKEND=jvm python3 tests/java17_e2e.py
+  CODEANA_JAVA_BACKEND=native python3 tests/java17_e2e.py

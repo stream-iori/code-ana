@@ -55,7 +55,7 @@ impl task_service_server::TaskService for Service {
                 "query-resources-v1".into(),
                 "call-recursion-v1".into(),
                 "text-search-options-v1".into(),
-                "comment-search-v1".into(),
+                "comment-search-v2".into(),
                 "overview-sections-v1".into(),
                 "reference-options-v1".into(),
                 "annotations-meta-v1".into(),
@@ -68,7 +68,7 @@ impl task_service_server::TaskService for Service {
                 if self.0.is_mock() {
                     "mock-fixture-v1".into()
                 } else if self.0.java_available() {
-                    "javac-java8-v1".into()
+                    "javac-v3".into()
                 } else {
                     "java-unavailable".into()
                 },

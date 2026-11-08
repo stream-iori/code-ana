@@ -28,7 +28,7 @@ class UpgradeTests(unittest.TestCase):
         self.stable.mkdir()
         for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker'):
             (self.binaries / name).write_text(name)
-        files = ('runner.jar', 'compiler-bridge.jar', 'maven-input-worker.jar')
+        files = ('runner.jar', 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar')
         for name in files:
             (self.source / name).write_text('new-' + name)
             (self.installed / name).write_text('old-' + name)

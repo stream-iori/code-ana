@@ -35,7 +35,7 @@ def release_artifacts():
     files = [root / 'target/release' / name for name in
              ('codeana-cli', 'codeana-daemon', 'codeana-java-worker', 'codeana-rust-worker')]
     files += [root / 'lang-java-adaptor/target' / name for name in
-              ('compiler-bridge.jar', 'maven-input-worker.jar',
+              ('compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar',
                'native/libcodeana_java.dylib', 'native/manifest.json')]
     return {str(path.relative_to(root)): sha256(path) for path in files}
 
@@ -134,7 +134,7 @@ def main():
             for name in ('codeana-cli','codeana-daemon','codeana-java-worker','codeana-rust-worker'):
                 if sha256(binaries/name) != sha256(package/'bin'/name):
                     raise ValueError('PACKAGE_STABLE_BINARY_MISMATCH: '+name)
-            for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','maven-input-worker.jar','native/manifest.json'):
+            for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','compiler-bridge17.jar','maven-input-worker.jar','native/manifest.json'):
                 if sha256(binaries.parent/'lib/java'/name) != sha256(package/'lib/java'/name):
                     raise ValueError('PACKAGE_STABLE_BUNDLE_MISMATCH: '+name)
         report['execution_binary_directory']=str(binaries)
@@ -143,6 +143,7 @@ def main():
         planned_gates=[('typed_graph', 'java_graph_storage.py', None),
                                        ('resource_limits', 'java_resource_limits.py', None),
                                        ('comments', 'comment_search_e2e.py', None),
+                                       ('java17', 'java17_e2e.py', None),
                                        ('comment_lifecycle', 'comment_lifecycle_e2e.py', None),
                                        ('comment_ownership', 'comment_ownership_e2e.py', None),
                                        ('wrong_jdk', 'java_native_environment.py', None)]

@@ -37,6 +37,12 @@ impl WorkerService {
     pub(super) fn memory_cap(&self) -> u64 {
         self.memory
     }
+    pub(super) fn java_toolchain(
+        &self,
+        effective: &codeana_config::Effective,
+    ) -> Result<java::ToolchainEvidence> {
+        java::toolchain_evidence(&self.user, effective)
+    }
     pub(super) fn java_available(&self) -> bool {
         java::installed_library().is_ok()
     }

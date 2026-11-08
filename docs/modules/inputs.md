@@ -116,11 +116,11 @@ Java plain 使用已有显式模块根，不运行 Maven，仍需正确的 Java 
 
 无 inputs 配置时保持旧入口；新公共清单与启用语言的旧 inputs_manifest 互斥。原导出器、java-inputs export 保留，Python 原脚本默认不读 pyproject，显式 --pyproject 不变。独立导出器可只准备、不索引。
 
-当前版本为 worker 23、daemon 4、Java ABI 4、graph 5、物理 schema 12。准备与索引不是跨进程事务，报告以实际捕获和提交为准。分析 worker 和 Java SDK 仍须按安装说明具备。
+当前版本为 worker 24、daemon 5、Java ABI 4、graph 6、物理 schema 13。准备与索引不是跨进程事务，报告以实际捕获和提交为准。分析 worker 和 Java SDK 仍须按安装说明具备。
 
 验证入口为 tests/prepared_inputs_e2e.py；CODEANA_TEST_REAL_JAVA=1 显式启用 Native 三语言及两个独立 Maven reactor。旧路径继续由现有 Rust/Python 门禁覆盖。
 
-准备清单 schema 1 新增可选 preparation_sha256：绑定准备时原始 config_sha256 与去除注释展示参数后的类型化配置。只改 [query.comments] 或不改变配置含义的格式时，不要求重新准备，也不改变语义 profile；输入策略或原始回执摘要被修改仍拒绝。旧清单缺少此字段时保留原始字节摘要校验，更新后重新 index --prepare 即可生成新校验。CLI 准备过程的前后原始配置变化检查保持严格。
+准备清单 schema 1 只使用 config_sha256 精确校验原始配置字节；注释展示参数及 preparation_sha256 例外已删除。旧例外清单、配置字节变化或输入策略变化均需重新 index --prepare；artifact、来源和任务前后配置漂移检查保持。
 
 完整语义 profile 相同、其余源码/owner 完全相同时，普通 Python 与 prepared 可以复用图并更新 FILES 中的根配置捕获；源码、依赖或 world 改变仍沿原策略重算。
 

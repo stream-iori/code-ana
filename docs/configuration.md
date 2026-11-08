@@ -4,9 +4,9 @@
 
 **公共配置管扫描、预算和版本；语言配置管分析语义；模块与 world 表达同仓库中的不同构建上下文。**
 
-状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与捕获已实现；Rust 语言分析使用外部输入清单和独立 rust-analyzer worker，Java 8 支持显式 plain 和外部 Maven metadata，现行边界见 [当前实现](current-state.md) 和 [Java worker](modules/java-worker.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；Rust 最小可运行配置与导出命令见 [Rust worker](modules/rust-worker.md)。
+状态：用户已确定语言需显式启用、目标项目构建只返回建议、全新产品无旧配置兼容。Java 后端固定 javac（D16）；执行方案见 D17。严格 Rust 加载器与捕获已实现；Rust 语言分析使用外部输入清单和独立 rust-analyzer worker，Java 8／17 支持显式 plain 和外部 Maven metadata，现行边界见 [当前实现](current-state.md) 和 [Java worker](modules/java-worker.md)。示例见 [项目 config.toml](config.toml) 和 [用户 config.toml](examples/user-config.toml)；Rust 最小可运行配置与导出命令见 [Rust worker](modules/rust-worker.md)。
 
-配置实现按 resolution（解析/默认/校验）、discovery（语言输入与模块）、capture（冻结源码/控制文件）、execution（执行预算）拆分；现有导出函数和 TOML 形状保持。注释上下文领域类型已定义，`[query.comments]` 尚未加入配置 schema。
+配置实现按 resolution（解析/默认/校验）、discovery（语言输入与模块）、capture（冻结源码/控制文件）、execution（执行预算）拆分；现有导出函数和 TOML 形状保持。注释查询不提供上下文配置；旧 `[query.comments]` 必须删除。
 
 ## 1. 配置分层
 
@@ -106,7 +106,7 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 
 | 语言专属键 | 值域 / 解释 |
 |---|---|
-| Java `analysis.source_version` | `"auto"` 或十进制版本字符串，如 `"8"`；当前产品只支持目标 Java 8，schema 接受其他数字不等于可执行 |
+| Java `analysis.source_version` | `"auto"` 或十进制版本字符串，如 `"8"`；产品仅接受显式 8、17，auto 或其他版本在分析前拒绝 |
 | Java `analysis.toolchain` | `"auto"` 或 Java 工具链别名；解析出的 JDK 必须满足所请求的分析能力 |
 | Java `analysis.classpath` | `"existing"` 或 `"none"`；none 仅禁用项目依赖类路径，javac 所需目标 JDK 平台类型仍必需 |
 | Java `analysis.vm_classpath` | boolean；javac semantic 只接受 true，false 在分析前拒绝；不取宿主 GraalVM JDK 冒充目标 JDK |
@@ -121,7 +121,7 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 
 ## 4. 默认值与最小配置
 
-当前 Java fixture 的显式模块示例见 [java-fixture-config.toml](examples/java-fixture-config.toml)。下方最小配置只启用 Java，模块在该语言内发现仍需已导出的 Maven inputs_manifest；plain 需显式源码根和目标 Java 8。它不启用 Rust 或其他语言。
+当前 Java fixture 的显式模块示例见 [java-fixture-config.toml](examples/java-fixture-config.toml)。下方最小配置只启用 Java，模块在该语言内发现仍需已导出的 Maven inputs_manifest；plain 需显式源码根和目标 Java 8／17。它不启用 Rust 或其他语言。
 
 ```toml
 schema_version = 1
@@ -157,8 +157,8 @@ enabled = true
 |---|---|
 | 后端 | 固定 javac，无 parser 切换字段、JavaParser 依赖或失败回退；未知旧解析器配置按未知键拒绝 |
 | 构建 JDK | 原生库由锁定的 GraalVM JDK 25 构建；不参与目标版本自动推测 |
-| 执行 JDK | D17 使用目标 Java 8 JDK 启动编译器桥；检查 java/javac、平台/编译器产物和内容身份 |
-| 目标版本 | 当前仅目标 Java 8，并要求完整 SDKMAN Java 8 JDK；17/25、跨版本 --release 和 preview 未支持 |
+| 执行 JDK | 使用目标 Java 8／17 JDK 启动编译器桥；检查 java/javac、平台/编译器产物和内容身份 |
+| 目标版本 | 目标 8、17，实际 JDK 主版本须匹配；JDK 17 由 SDKMAN 匹配后显式登记，多个候选需别名。25、混合版本、跨版本 --release 和 preview 未支持 |
 | auto | 不读取 PATH、JAVA_HOME 或宿主版本作隐式回退；用户别名的实际版本与内容摘要冻结到请求 |
 | 多模块 | 首版同目标版本 Maven reactor；混合目标版本、多个命名 JPMS 模块或未验收语法明确 unsupported，不能扁平化后伪装成功 |
 | Lombok | 使用 off/model；model 是声明覆盖层，不执行处理器、不生成业务方法体。没有 compile=true 产品开关；缺真实产物给外部建议 |
@@ -354,7 +354,7 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 | 缺 classpath/生成产物、建议开关 true/false | 产品不执行目标构建或处理器；true 返回建议，false 保留缺口；外部执行后重试才捕获新产物 |
 | TOML 到 protobuf / FFI 输入 | 各语言收到明确类型和相同摘要，不在 worker 二次加载文件 |
 
-示例 TOML 已由 config 单元测试读取；Rust 显式配置/捕获走端到端验收。Java 8 工具链/metadata 已有独立回归；Rust 能力边界见 [Rust worker](modules/rust-worker.md)；Gradle 和 Java 17/25 仍未交付。
+示例 TOML 已由 config 单元测试读取；Rust 显式配置/捕获走端到端验收。Java 8 工具链/metadata 已有独立回归；Rust 能力边界见 [Rust worker](modules/rust-worker.md)；Gradle 和目标 Java 25 仍未交付。
 
 ## 12. 当前执行边界
 
@@ -363,7 +363,7 @@ javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使
 | discovery.mode=explicit + Java plain | 显式源码根、source_version=8 和登记的 SDKMAN Java 8 工具链 |
 | discovery.mode=auto + languages.java.discovery.inputs_manifest | 外部 Maven metadata 展开，索引不调用 Maven |
 | Rust syntax/semantic | 显式导出的冻结输入 + 独立 worker；范围与缺口见 Rust worker 文档 |
-| Java 17/25、Gradle | schema 可描述部分请求形状；产品能力仍不支持，不静默降级 |
+| Java 25、Gradle | schema 可描述部分请求形状；产品能力仍不支持，不静默降级 |
 | daemon.java_warm_workers | 健康 worker/isolate 复用开关；名字不表示 Native 有冷/热执行模式 |
 | Native GC | 构建默认 G1；不在项目 TOML 运行时切 GC，切换需成套构建/安装 |
 
@@ -431,15 +431,9 @@ max_depth = 256
 
 扣除冻结输入准入用量后，按实际语言Java/Rust/Python平均静态分片，余数顺序固定；每语言host取向上取整的1/4，其余worker额度再按稳定实例ID拆分，不借用其他语言或实例的余量。索引硬超限返回ANALYSIS_RESOURCE_LIMIT、整次不发布，旧head可读；超时与取消分别保留TIMEOUT/CANCELLED。
 
-三语言主要执行入口已接入累计回执；Java平台限制可比任务限额更严格，回执会记录实际局部拒绝，不能提高平台限额来让任务通过。Discover、未变复用与Java局部作用域已接入；当前严格worker22/Java11；帧分配前准入、codec 与本机 fixture 分发验证已完成对应轮次，证据及正式边界以 current-state 为准，不能扩大为所有内部运算或跨平台正式验收。
+三语言主要执行入口已接入累计回执；Java平台限制可比任务限额更严格，回执会记录实际局部拒绝，不能提高平台限额来让任务通过。Discover、未变复用与Java局部作用域已接入；当前严格worker24/Java13；帧分配前准入、codec 与本机 fixture 分发验证已完成对应轮次，证据及正式边界以 current-state 为准，不能扩大为所有内部运算或跨平台正式验收。
 
 
-注释查询源码已接入以下项目配置（三语言产品回归已覆盖）；每项为 0..=100，省略时为 5，CLI --context-before/--context-after 优先。展示配置不影响语义 profile，冻结页保留首次解析的实际值。
+注释检索不再读取或输出源码窗口。删除 `[query.comments]`、`--context-before` 和 `--context-after`；旧配置／参数报错，通用文本检索的 `--context` 保持。检索后以 symbol 和同一 revision 调用 source 读取完整声明。prepared 输入只接受原始 config_sha256 精确匹配，配置字节变化后需重新 index --prepare。
 
-```toml
-[query.comments]
-context_before = 5
-context_after = 5
-```
-
-内部配置按 `JavaLanguage` / `RustLanguage` 分开；Rust 的分析视图只暴露 edition，不提供 javac/Lombok/框架字段。私有 wire 编解码保留原 TOML 形状和摘要：原有拒绝规则照常执行，原来允许但不使用的兼容字段只用于原字节语义的序列化。拆分前后的配置及 prepared 指纹由固定 golden 验证；未改变外部配置格式或借重构触发全量索引。
+内部配置按 `JavaLanguage` / `RustLanguage` 分开；Rust 的分析视图只暴露 edition，不提供 javac/Lombok/框架字段。私有 wire 编解码保留原 TOML 形状和摘要：原有拒绝规则照常执行，原来允许但不使用的兼容字段只用于原字节语义的序列化。内部语言配置拆分仍保持字段边界；本轮删除注释展示参数及其 prepared 指纹例外，旧图库要求全量重建。

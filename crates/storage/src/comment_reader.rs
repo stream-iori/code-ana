@@ -305,9 +305,9 @@ impl CommentReader for ReadContext {
                 let basis:String=row.get("basis")?;
                 output.push(CommentLink{comment:row.get::<_,String>("comment_id")?.into(),
                     relation:match relation.as_str(){"documents"=>CommentRelation::Documents,"enclosing_callable"=>CommentRelation::EnclosingCallable,
-                        "leading_statement"=>CommentRelation::LeadingStatement,"trailing_statement"=>CommentRelation::TrailingStatement,_=>return Err(invalid().into())},
+                        _=>return Err(invalid().into())},
                     declaration:row.get::<_,Option<String>>("declaration_id")?.map(Into::into),range:range(row)?,
-                    basis:match basis.as_str(){"language_rule"=>CommentBasis::LanguageRule,"heuristic"=>CommentBasis::Heuristic,_=>return Err(invalid().into())},
+                    basis:match basis.as_str(){"language_rule"=>CommentBasis::LanguageRule,_=>return Err(invalid().into())},
                     rule_version:row.get("rule_version")?});
             }
             self.charge(payload_bytes.saturating_mul(output.len().checked_ilog2().unwrap_or(0) as u64+1),0)?;

@@ -96,7 +96,7 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 
 ## 注释物理布局（C1 已交付）
 
-当前源码 schema 12 / 逻辑 35 新增 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；三语言生命周期与实际分发已由 C2—C4 覆盖，A7 验证最终重构产物。
+当前源码 schema 13 / 逻辑 36 保留 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。关联只接受 documents/enclosing_callable，basis 只接受 language_rule。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；三语言生命周期与实际分发已由 C2—C4 覆盖，A7 验证最终重构产物。
 
 ### 显式语言补全
 

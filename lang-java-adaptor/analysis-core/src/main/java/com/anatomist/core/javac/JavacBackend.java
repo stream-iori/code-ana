@@ -79,8 +79,8 @@ public final class JavacBackend implements JavaSemanticBackend {
     public void setCapturedInputs(
             List<CapturedContext> contexts, JavaSourcePlan plan, JavacMavenInputs inputs) {
         if (activeWorkers != null) throw new IllegalStateException("analysis already running");
-        if (toolchain.release() != 8 || config.lombokCompile())
-            throw new IllegalArgumentException("CODEANA_JAVA8_STATIC_ONLY");
+        if ((toolchain.release() != 8 && toolchain.release() != 17) || config.lombokCompile())
+            throw new IllegalArgumentException("CODEANA_JAVA_STATIC_ONLY");
         Set<Path> captured = Set.copyOf(plan.visibleFiles());
         if (contexts.stream().anyMatch(c -> !captured.containsAll(c.sources())))
             throw new IllegalArgumentException("context outside captured inventory");
@@ -755,11 +755,16 @@ public final class JavacBackend implements JavaSemanticBackend {
     }
 
     public static String workerFingerprint() {
-        try (InputStream input =
-                JavacBackend.class.getResourceAsStream("/META-INF/anatomist/javac-worker.jar")) {
-            if (input == null) throw new IOException("packaged javac worker is missing");
-            return HexFormat.of().formatHex(sha256(input.readAllBytes()));
-        } catch (IOException failure) {
+        try {
+            var digest = java.security.MessageDigest.getInstance("SHA-256");
+            for (String name : List.of("javac-worker.jar", "javac-worker17.jar")) {
+                try (InputStream input = JavacBackend.class.getResourceAsStream("/META-INF/anatomist/" + name)) {
+                    if (input == null) throw new IOException("packaged javac worker is missing: " + name);
+                    digest.update(input.readAllBytes());
+                }
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (IOException | java.security.NoSuchAlgorithmException failure) {
             com.anatomist.core.HardResourceLimit.rethrow(failure);
             throw new IllegalStateException(failure);
         }
@@ -1204,10 +1209,10 @@ public final class JavacBackend implements JavaSemanticBackend {
         }
     }
 
-    private static Path worker(Path cacheDirectory) throws IOException {
+    private Path worker(Path cacheDirectory) throws IOException {
         byte[] bytes;
         try (InputStream input =
-                JavacBackend.class.getResourceAsStream("/META-INF/anatomist/javac-worker.jar")) {
+                JavacBackend.class.getResourceAsStream(toolchain.release() == 8 ? "/META-INF/anatomist/javac-worker.jar" : "/META-INF/anatomist/javac-worker17.jar")) {
             if (input == null) throw new IOException("packaged javac worker is missing");
             bytes = input.readAllBytes();
         }

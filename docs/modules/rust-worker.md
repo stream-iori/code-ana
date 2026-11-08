@@ -92,7 +92,7 @@ coverage/diagnostics 按文件和 world 保存。任何 partial 使 `index --str
 | 公共产品路径 | `python3 tests/rust_language_e2e.py`：真实 worker、world、查询、delta/full、strict、过期清单；build.rs 陷阱证明未编译 |
 | 自身源码 | `scripts/rust-source-dogfood.py`；当前源码功能回执 `optimized-functional`，固定旧输入 512 MiB 单轮 `optimized-512m`；256 MiB 失败 `memory-v2` 保留 |
 
-物理 schema 12、graph model 5、worker 23。Java 公开 ID 算法不变；旧图库需 `index --full`，旧 bundle 必须按当前协议重建。开发回归和 dogfood 不等于 Java Native 正式验收、Linux 放行或完整 Rust 语义支持。
+物理 schema 13、graph model 6、worker 24。Java 公开 ID 算法不变；旧图库需 `index --full`，旧 bundle 必须按当前协议重建。开发回归和 dogfood 不等于 Java Native 正式验收、Linux 放行或完整 Rust 语义支持。
 
 ## 输入与预算边界
 
@@ -129,7 +129,7 @@ max_total_worker_memory_bytes = 536870912
 
 worker 内存错误包含 `limit_bytes/rss_bytes/peak_rss_bytes/stage/process_group`；峰值是 100 ms 采样结果，不能当绝对峰值。阶段包括输入、数据库加载、声明、绑定、归档和传输。任务进度同时记录 `rust_input_summary` 和成功后的 `rust_worker_memory`，失败前已有的进度也保留。
 
-`rust_result_bytes`（64 KiB–1 GiB）和 `rust_fact_limit`（1–2,000,000）控制输出预算，不进入符号身份。`RootDatabase` 的 LRU setter 在固定版本中为空实现，不作为内存限制。旧宏生成事实因 adapter/profile 变化首次全量重建后清除；当前物理 schema 12、worker 23 / graph model 5；旧图按版本门禁要求全量重建。
+`rust_result_bytes`（64 KiB–1 GiB）和 `rust_fact_limit`（1–2,000,000）控制输出预算，不进入符号身份。`RootDatabase` 的 LRU setter 在固定版本中为空实现，不作为内存限制。旧宏生成事实因 adapter/profile 变化首次全量重建后清除；当前物理 schema 13、worker 24 / graph model 6；旧图按版本门禁要求全量重建。
 
 ## 流水线与诊断
 
@@ -151,10 +151,10 @@ blocking 行生成 → 有界队列 → async IPC → 有界 GraphStream → blo
 
 ## 统一分析预算
 
-当前 Rust adaptor 身份为 `rust-analyzer-0.0.349-codeana-5-comments`。生产普通索引和 Java/Rust 混合入口通过 `analysis-resources-v1` 能力门禁附加任务 grant；worker 对输入副本、语法节点/深度和现有提取检查点累计计费，End/Failure 回传核实用量。普通流式入口的漏接已由真实 E2E 发现并修复。host接收、输入/增量投影/输出及prepared静态多实例已接入；当前严格worker23，完整故障矩阵与分发以各自回执为准，不能扩大为正式容量放行。当前支持与回执见 current-state。
+当前 Rust adaptor 身份为 `rust-analyzer-0.0.349-codeana-5-comments`。生产普通索引和 Java/Rust 混合入口通过 `analysis-resources-v1` 能力门禁附加任务 grant；worker 对输入副本、语法节点/深度和现有提取检查点累计计费，End/Failure 回传核实用量。普通流式入口的漏接已由真实 E2E 发现并修复。host接收、输入/增量投影/输出及prepared静态多实例已接入；当前严格worker24，完整故障矩阵与分发以各自回执为准，不能扩大为正式容量放行。当前支持与回执见 current-state。
 
 
-Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker22；旧握手拒绝，控制取消核对attempt；本机fixture混合/分发已通过，正式边界见当前实现。
+Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker24；旧握手拒绝，控制取消核对attempt；本机fixture混合/分发已通过，正式边界见当前实现。
 
 业务 IPC 共用 contracts 分配前准入：小型 Hello 初始化账本，随后 Discover/Analyze 在分配/解码前检查额度；有界堆控制通道支持超限后的失败回执，取消保留半帧进度并流式丢弃业务字节。实现与证据见 contracts.md 和当前 frame-admission 回执；语言内部投影/完整分发仍按各自未关闭项验收。
 

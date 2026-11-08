@@ -4,6 +4,7 @@ use anyhow::{Context, Result, ensure};
 use codeana_config::{Capture, UserConfig};
 use codeana_contracts::{map, worker as w};
 use codeana_model::*;
+use serde::Serialize;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
@@ -169,6 +170,9 @@ struct PreparedInputs {
     input: PathBuf,
 }
 struct JavaToolchain {
+    release: u32,
+    actual_version: String,
+    aliases: Vec<String>,
     home: PathBuf,
     inputs: Vec<(PathBuf, String)>,
     digest: String,
@@ -299,36 +303,118 @@ fn prepare_captured_inputs(c: &Capture, user: &UserConfig) -> Result<PreparedInp
         input,
     })
 }
+#[derive(Serialize)]
+pub(super) struct ToolchainEvidence {
+    target_java: u32,
+    actual_java_version: String,
+    aliases: Vec<String>,
+    home: PathBuf,
+    sha256: String,
+}
+pub(super) fn toolchain_evidence(
+    user: &UserConfig,
+    effective: &codeana_config::Effective,
+) -> Result<ToolchainEvidence> {
+    let modules = effective
+        .config
+        .modules
+        .iter()
+        .filter(|m| m.language == "java")
+        .collect::<Vec<_>>();
+    let toolchain = prepare_toolchain(user, &modules)?;
+    let release = std::fs::read_to_string(toolchain.home.join("release"))?;
+    let actual = release
+        .lines()
+        .find_map(|line| line.strip_prefix("JAVA_VERSION="))
+        .unwrap_or("")
+        .trim_matches('"')
+        .to_owned();
+    Ok(ToolchainEvidence {
+        target_java: toolchain.release,
+        actual_java_version: actual,
+        aliases: toolchain.aliases,
+        home: toolchain.home,
+        sha256: toolchain.digest,
+    })
+}
+fn jdk_major(release: &str) -> Option<u32> {
+    let version = release
+        .lines()
+        .find_map(|line| line.strip_prefix("JAVA_VERSION=\""))?;
+    let version = version.strip_prefix("1.").unwrap_or(version);
+    version
+        .split(|c: char| !c.is_ascii_digit())
+        .next()?
+        .parse()
+        .ok()
+}
 fn prepare_toolchain(
     user: &UserConfig,
     modules: &[&codeana_config::Module],
 ) -> Result<JavaToolchain> {
+    let release = modules
+        .first()
+        .and_then(|m| m.analysis.source_version.as_deref())
+        .and_then(|v| v.parse::<u32>().ok())
+        .filter(|v| matches!(v, 8 | 17))
+        .context(DomainError::new(
+            ErrorCode::SourceVersionUnsupported,
+            "explicit Java 8 or 17 required",
+        ))?;
     let mut homes = Vec::new();
+    let mut aliases = std::collections::BTreeSet::new();
     for module in modules {
         ensure!(
-            module.analysis.source_version.as_deref() == Some("8"),
+            module.analysis.source_version.as_deref() == Some(release.to_string().as_str()),
             codeana_model::DomainError::new(
                 codeana_model::ErrorCode::SourceVersionUnsupported,
-                "Java 8 must be explicit".to_string()
+                "all Java modules must have the same explicit target version (8 or 17)".to_string()
             )
         );
         let alias = module.analysis.toolchain.as_deref().unwrap_or("auto");
-        let candidates: Vec<_> = user
+        let mut candidates = Vec::new();
+        let mut observed = Vec::new();
+        for (id, toolchain) in user
             .toolchains
             .iter()
             .filter(|(id, t)| t.language == "java" && (alias == "auto" || alias == id.as_str()))
-            .filter(|(_, t)| {
-                std::fs::read_to_string(Path::new(&t.home).join("release"))
-                    .is_ok_and(|s| s.lines().any(|l| l.starts_with("JAVA_VERSION=\"1.8.")))
-            })
-            .collect();
+        {
+            let description = std::fs::read_to_string(Path::new(&toolchain.home).join("release"));
+            if let Ok(text) = &description
+                && jdk_major(text) == Some(release)
+            {
+                candidates.push((id, toolchain));
+            }
+            if observed.len() < 8 {
+                let version = description
+                    .as_ref()
+                    .ok()
+                    .and_then(|text| {
+                        text.lines()
+                            .find_map(|line| line.strip_prefix("JAVA_VERSION="))
+                    })
+                    .unwrap_or("unavailable")
+                    .chars()
+                    .take(64)
+                    .collect::<String>();
+                observed.push(format!(
+                    "{id}: home={}, actual={version}",
+                    toolchain.home.chars().take(256).collect::<String>()
+                ));
+            }
+        }
         ensure!(
             candidates.len() == 1,
-            codeana_model::DomainError::new(
-                codeana_model::ErrorCode::TargetJdkRequired,
-                "register one Java 8 SDKMAN home or select an explicit alias".to_string()
+            DomainError::new(
+                ErrorCode::TargetJdkRequired,
+                format!(
+                    "target=Java {release}, alias={alias}: expected one registered SDKMAN JDK; matching={}; observed=[{}]",
+                    candidates.len(),
+                    observed.join("; ")
+                )
             )
         );
+        aliases.insert(candidates[0].0.clone());
         homes.push(PathBuf::from(&candidates[0].1.home).canonicalize()?);
     }
     let home = homes
@@ -342,19 +428,45 @@ fn prepare_toolchain(
         homes.iter().all(|p| p == &home),
         codeana_model::DomainError::new(codeana_model::ErrorCode::MixedToolchainUnsupported, "")
     );
-    ensure!(
-        home.join("lib/tools.jar").is_file(),
-        codeana_model::DomainError::new(codeana_model::ErrorCode::Jdk8CompilerRequired, "")
-    );
+    for name in if release == 8 {
+        vec!["bin/java", "bin/javac", "lib/tools.jar", "jre/lib/rt.jar"]
+    } else {
+        vec![
+            "bin/java",
+            "bin/javac",
+            "lib/modules",
+            "lib/ct.sym",
+            "jmods/jdk.compiler.jmod",
+        ]
+    } {
+        ensure!(
+            home.join(name).is_file(),
+            DomainError::new(
+                ErrorCode::TargetJdkRequired,
+                format!("Java {release}: missing {}", home.join(name).display())
+            )
+        );
+        if name.starts_with("bin/") {
+            use std::os::unix::fs::PermissionsExt;
+            ensure!(
+                std::fs::metadata(home.join(name))?.permissions().mode() & 0o111 != 0,
+                DomainError::new(
+                    ErrorCode::TargetJdkRequired,
+                    format!("non-executable Java {release} tool: {name}")
+                )
+            );
+        }
+    }
     let mut toolchain = Vec::new();
     // Hash the actual SDK execution/compiler/platform inputs, preserving relative identities.
-    for entry in walkdir::WalkDir::new(&home).follow_links(false) {
+    for entry in walkdir::WalkDir::new(&home).follow_links(true) {
         let entry = entry?;
-        if entry.file_type().is_file() {
+        if entry.path().is_file() {
             let rel = entry.path().strip_prefix(&home)?;
             if rel.starts_with("bin")
                 || rel.starts_with("lib")
                 || rel.starts_with("jre")
+                || rel.starts_with("jmods")
                 || rel == Path::new("release")
             {
                 toolchain.push((entry.path().to_path_buf(), hash_file(entry.path())?));
@@ -375,7 +487,17 @@ fn prepare_toolchain(
     } else {
         None
     };
+    let release_text = std::fs::read_to_string(home.join("release"))?;
+    let actual_version = release_text
+        .lines()
+        .find_map(|line| line.strip_prefix("JAVA_VERSION="))
+        .context("JAVA_VERSION_REQUIRED")?
+        .trim_matches('"')
+        .to_owned();
     Ok(JavaToolchain {
+        release,
+        actual_version,
+        aliases: aliases.into_iter().collect(),
         home,
         inputs: toolchain,
         digest: toolchain_digest,
@@ -668,20 +790,28 @@ fn prepare_config(
     let host_identity = &toolchain.host_identity;
     let library = &bundle.library;
     let bundle = &bundle.root;
+    let bridge_name = if toolchain.release == 8 {
+        "compiler-bridge.jar"
+    } else {
+        "compiler-bridge17.jar"
+    };
     let mut config = w::JavaConfig {
+        target_java: toolchain.release,
+        actual_java_version: toolchain.actual_version.clone(),
+        toolchain_aliases: toolchain.aliases.clone(),
         java_home: home.to_string_lossy().into_owned(),
         toolchain_digest,
-        bridge: bundle
-            .join("compiler-bridge.jar")
-            .to_string_lossy()
-            .into_owned(),
+        bridge: bundle.join(bridge_name).to_string_lossy().into_owned(),
         scratch: scratch.path().to_string_lossy().into_owned(),
         semantic_identity: digest(&(
             &c.effective.java_inputs,
             &c.effective.config.resources.index,
             hash(std::fs::read(library)?),
-            hash(std::fs::read(bundle.join("compiler-bridge.jar"))?),
+            hash(std::fs::read(bundle.join(bridge_name))?),
             &host_identity,
+            toolchain.release,
+            home,
+            &toolchain.digest,
         )),
         parallelism: compiler_parallelism(
             c.effective
@@ -823,6 +953,69 @@ mod tests {
         assert!(context_worlds(&source_only, "app", true).is_empty());
     }
 
+    #[test]
+    fn java17_selection_and_platform_bytes_are_frozen_without_environment_fallback() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let home = directory.path();
+        for file in [
+            "bin/java",
+            "bin/javac",
+            "lib/modules",
+            "lib/ct.sym",
+            "jmods/jdk.compiler.jmod",
+            "jmods/java.base.jmod",
+        ] {
+            let path = home.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, file).unwrap();
+            if file.starts_with("bin/") {
+                std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+            }
+        }
+        std::fs::write(home.join("release"), "JAVA_VERSION=\"17.0.17\"\n").unwrap();
+        let mut user = UserConfig::default();
+        user.toolchains.insert(
+            "java17".into(),
+            codeana_config::Toolchain {
+                language: "java".into(),
+                home: home.to_string_lossy().into_owned(),
+            },
+        );
+        let mut module = codeana_config::Module {
+            language: "java".into(),
+            ..Default::default()
+        };
+        module.analysis.source_version = Some("17".into());
+        module.analysis.toolchain = Some("java17".into());
+        let selected = prepare_toolchain(&user, &[&module]).unwrap();
+        assert_eq!(selected.release, 17);
+        assert_eq!(selected.actual_version, "17.0.17");
+        assert_eq!(selected.aliases, ["java17"]);
+        std::fs::write(home.join("jmods/java.base.jmod"), "different platform").unwrap();
+        assert_ne!(
+            selected.digest,
+            prepare_toolchain(&user, &[&module]).unwrap().digest
+        );
+        module.analysis.source_version = Some("8".into());
+        let mismatch = prepare_toolchain(&user, &[&module])
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(
+            mismatch.contains("target=Java 8")
+                && mismatch.contains("17.0.17")
+                && mismatch.contains("java17")
+        );
+        module.analysis.source_version = Some("17".into());
+        module.analysis.toolchain = Some("auto".into());
+        user.toolchains
+            .insert("another".into(), user.toolchains["java17"].clone());
+        assert!(prepare_toolchain(&user, &[&module]).is_err());
+        module.analysis.toolchain = Some("java17".into());
+        std::fs::remove_file(home.join("lib/ct.sym")).unwrap();
+        assert!(prepare_toolchain(&user, &[&module]).is_err());
+    }
     #[test]
     fn host_toolchain_identity_follows_bytes_and_survives_relocation() {
         let first = tempfile::tempdir().unwrap();

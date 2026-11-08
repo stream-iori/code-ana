@@ -431,22 +431,17 @@ mod tests {
         assert!(read_frame(&mut reader).await.is_err());
     }
     #[test]
-    fn comment_query_wire_preserves_zero_presence_and_rejects_unknown_search_mode() {
+    fn comment_query_wire_preserves_operation_and_rejects_unknown_search_mode() {
         let request = m::Request {
             operation: m::Operation::SearchComments,
-            context_before: Some(0),
-            context_after: Some(100),
             ..Default::default()
         };
         let wire: v1::TaskRequest = map(&request).unwrap();
         let decoded = v1::TaskRequest::decode(wire.encode_to_vec().as_slice()).unwrap();
         let restored: m::Request = map(&decoded).unwrap();
-        assert_eq!(restored.context_before, Some(0));
-        assert_eq!(restored.context_after, Some(100));
         assert_eq!(restored.operation, m::Operation::SearchComments);
         let legacy = v1::TaskRequest::default();
         let absent: m::Request = map(&legacy).unwrap();
-        assert_eq!(absent.context_before, None);
         assert_eq!(absent.search_in, m::SearchIn::Names);
         let invalid = v1::TaskRequest {
             search_in: "unknown".into(),

@@ -2,7 +2,7 @@
 
 Native 默认采用 G1，worker 进程内复用一个 isolate；显式 `CODEANA_NATIVE_GC=serial` 可构建 Serial。
 
-当前 bundle 为逻辑 schema 34 / adapter `anatomist-4a903272-codeana-graph4-resource2-analysis`，图库采用紧凑 storage schema 11。旧 schema 10 及更旧查询及增量明确要求 `index --full`；保留旧文件，成功全量发布后才切换 head，不进行原地迁移。GRA1 protobuf 行和 ABI 4 保持不变；worker 为 22，analysis request/result 为 11，旧 adapter bundle 拒绝混装。
+当前 bundle 为逻辑 schema 36 / adapter `anatomist-4a903272-codeana-graph6-resource2-analysis`，图库采用紧凑 storage schema 13。旧 schema 12 及更旧查询及增量明确要求 `index --full`；保留旧文件，成功全量发布后才切换 head，不进行原地迁移。GRA1 protobuf 行和 ABI 4 保持不变；worker 为 24，analysis request/result 为 13，旧 adapter bundle 拒绝混装。
 
 包内包含 CLI、daemon、Java host worker、Rust 语言 worker、GraalVM 共享库、Java 8 编译器桥和 C header。目标 JDK 由本机 SDKMAN 提供，不随包分发。混合语言使用同包 Rust worker 与 `codeana-export-rust-inputs`；Rust 输入导出需要 Python 3.11+，Java 输入导出仍由 Rust CLI 执行。
 
@@ -33,7 +33,7 @@ CONFIG
 ./bin/codeana-cli --home "$demo_workspace/home" daemon stop
 ```
 
-若已安装其他 SDKMAN Java 8，请将 `home` 改为对应绝对路径。默认 CLI 自动启动同目录 daemon。Java 17/25 目标、Linux、Gradle、完整框架推断与大型项目容量不在当前验收范围。
+若已安装其他 SDKMAN Java 8，请将 `home` 改为对应绝对路径。默认 CLI 自动启动同目录 daemon。Java 25 目标、Linux、Gradle、完整框架推断与大型项目容量不在当前验收范围。
 
 Maven 项目先由用户显式准备 metadata：
 
@@ -46,3 +46,9 @@ Maven 项目先由用户显式准备 metadata：
 开发回归使用 `just test-java-native` / `just test-java-release`；开发构建不替代完整迁移验收。测试需保留原执行路径时，可使用 `python3 tests/java_release.py --bin-root "$PWD/target/debug" --stage-release`；先校验包与原路径二进制/SDK 字节完全一致，再运行用例，执行路径会进入回执。`--stage-release` 要求原路径无活跃进程，归档并临时原子安装 release 字节，测试后恢复原二进制。
 
 分发回归同时校验并暂存 CLI、daemon、Java host worker 和 Rust 语言 worker，避免混合语言测试借用包外旧 worker。
+
+## Java 17 工具链
+
+构建脚本通过 SDKMAN 匹配 Java 17，忽略 current 并合并指向同一安装的别名；多个不同安装需设置 CODEANA_JAVA17_HOME（SDKMAN 别名或绝对路径）。源码仓库中可用 `python3 scripts/resolve-sdkman-java.py 17` 查看已核验的真实路径。
+
+产品仍要求在用户配置的 toolchains 中显式登记该路径，在项目 languages.java.analysis 中设置 source_version="17" 和对应 toolchain 别名；实际主版本不匹配会在分析前拒绝。Java 8 的配置保持可用，混合目标版本拒绝。Native 3 / JVM 2 SDK 同时包含 8／17 桥及摘要，缺桥、旧协议、摘要错误或混装包拒绝；Rust 和三语言 worker 应成套更新，旧图库使用 index --full。

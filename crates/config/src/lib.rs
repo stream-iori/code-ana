@@ -15,7 +15,7 @@ use capture::add_captured;
 use capture::source_ownership;
 pub use capture::{CapturedBlob, capture, capture_query, identity, require_java};
 use codeana_model::*;
-pub use execution::{analysis_limits, comment_context, query_limits};
+pub use execution::{analysis_limits, query_limits};
 use java_inputs::JavaInputs;
 pub(crate) use resolution::resolve_text;
 pub use resolution::{load_user, resolve, resolve_files};
@@ -25,6 +25,14 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Path, PathBuf},
 };
+fn parse_project(text: &str) -> Result<ProjectConfig> {
+    toml::from_str(text).map_err(|error: toml::de::Error| {
+        let message = error.to_string();
+        if message.contains("unknown field `comments`") {
+            anyhow::anyhow!("Remove retired [query.comments] configuration; use source with the declaration symbol: {message}")
+        } else { error.into() }
+    })
+}
 const MAX_CAPTURE_BYTES: usize = 2 * 1024 * 1024 * 1024;
 const MAX_ARTIFACT_BYTES: usize = 256 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize)]

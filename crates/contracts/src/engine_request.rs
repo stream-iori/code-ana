@@ -26,6 +26,7 @@ pub struct EngineRequest {
     pub classpath_table: Vec<String>,
     pub facts: bool,
     pub java_home: String,
+    pub target_java: u32,
     pub bridge: String,
     pub scratch: PathBuf,
     pub contexts: Vec<EngineContext>,
@@ -112,6 +113,7 @@ impl EngineRequest {
             classpath_table: config.classpath_table.clone(),
             facts: true,
             java_home: config.java_home.clone(),
+            target_java: config.target_java,
             bridge: config.bridge.clone(),
             scratch: config.scratch.clone().into(),
             contexts: config

@@ -5,11 +5,11 @@
 | 架构依据 | 先读 `docs/architecture.md`、`docs/contracts.md` 和对应模块文档。设计与实现冲突时，查证后同步修改。 |
 | CLI / daemon | Rust；CLI 与本机用户级 daemon 使用 HTTP/2 + protobuf（gRPC）。项目在 daemon 内隔离。 |
 | Java | Java 代码放在 `lang-java-adaptor/`（旧 `lang-adaptor/` 已删除）；原生适配器使用 Java 25 + GraalVM Native Image 生成共享库；独立 Rust worker 通过 C ABI / FFI 调用。禁止 JNI。 |
-| Java 后端 | 仅采用 javac；不引入 JavaParser/SymbolSolver，也不提供回退。原生库协调目标 Java 8 javac 子进程；桥的 Java 8 字节码与 Java 25 原生库分开构建。显式 JVM 仅供开发/诊断，无自动回退。 |
+| Java 后端 | 仅采用 javac；不引入 JavaParser/SymbolSolver，也不提供回退。原生库协调目标 Java 8／17 javac 子进程；桥分别由目标 JDK 8／17 编译，与 Java 25 原生库分开构建。显式 JVM 仅供开发/诊断，无自动回退。 |
 | JDK 选择 | `lang-java-adaptor/.sdkmanrc` 固定 GraalVM JDK 25，Oracle `25.3.4+1.r25-graal`；进入该目录执行 `sdk env`。默认 Native GC 为 G1；显式 Serial 仍支持。 |
 | 配置 | 语义索引须在 `.code-ana/config.toml` 显式启用语言；FILES 和工作区文本搜索可无语言配置。Maven 自动展开模块需外部准备的 `inputs_manifest`；Lombok 配在 `[languages.java.lombok]`。 |
 | 构建 | 产品只给目标项目的构建建议，不自动运行目标项目的编译命令或注解处理器。禁用处理器、无业务字节码生成的 javac parse/analyze 属于索引分析。开发和测试可显式编译本项目与 fixture。 |
-| 存储 | GRA1/protobuf 行交付；Rust 图库物理 schema 12、上游逻辑 schema 35。公开 ID 不变，内部整数主键不输出。旧格式查询/增量要求 `index --full`，成功建新 revision 才切 head。 |
+| 存储 | GRA1/protobuf 行交付；Rust 图库物理 schema 13、上游逻辑 schema 36。公开 ID 不变，内部整数主键不输出。旧格式查询/增量要求 `index --full`，成功建新 revision 才切 head。 |
 | 生命周期 | G1 每个 worker 进程仅创建一次 isolate，健康任务复用；teardown 后也不在同进程重建，取消/致命失败由 supervisor 换进程。 |
 | 验证顺序 | Java fixture 优先；能力对齐不要求 Anatomist 协议兼容；后续仅使用本仓库自建 fixture 验收；iopengw 不作为开发、构建或放行前置。Native 不分冷热；性能只做一轮，固定输入、空应用状态、预算和产物，保留原失败回执。 |
 
@@ -24,7 +24,7 @@
 | 依赖倒置原则 | 高层策略和底层实现共同依赖抽象，而非高层直接依赖细节。 |
 | 迪米特法则 | 对象尽量只与直接协作者交互，减少对其他对象内部结构的了解。 |
 
-现行说明先读 [文档导航](docs/README.md)、[当前实现](docs/current-state.md)、[架构](docs/architecture.md) 和 [契约](docs/contracts.md)。协议版本：daemon 4、worker 23、graph model 5、analysis request/result 12、C ABI 4；javac-model-v51 / compiler batch 2。参考 Anatomist 固定 `4a903272c22083585107e982f2899ed03a280aa2`，来源清单保留各自提交，不能把 sibling HEAD 或旧验收回执当作当前依据。
+现行说明先读 [文档导航](docs/README.md)、[当前实现](docs/current-state.md)、[架构](docs/architecture.md) 和 [契约](docs/contracts.md)。协议版本：daemon 5、worker 24、graph model 6、analysis request/result 13、C ABI 4；javac-model-v51 / compiler batch 2。参考 Anatomist 固定 `4a903272c22083585107e982f2899ed03a280aa2`，来源清单保留各自提交，不能把 sibling HEAD 或旧验收回执当作当前依据。
 
 ## 开发与验证
 
@@ -41,7 +41,7 @@
 | 紧凑 DDL | 改 `anatomist-schema.sql` / `compact-meta.sql` 及生成器，再生成 `compact-schema.sql`；`python3 scripts/generate-compact-schema.py --check` |
 | mock | 独立 home + 显式 `--dev-mock-fixtures`，仅 Rust 产品回归，不是 Rust/Java parser |
 
-不能把 Hello、开发构建、旧版本或 fixture 的通过写成当前正式放行；Linux、目标 Java 17/25、Rust 完整语义/来源覆盖与容量/稳定性能仍有未完成项。当前边界、历史项目测量及 C4 自建 fixture 唯一单轮记录见 `docs/current-state.md`。
+不能把 Hello、开发构建、旧版本或 fixture 的通过写成当前正式放行；Java 17 已完成本机自建 fixture、产品与分发验证；Linux、目标 Java 25、Rust 完整语义/来源覆盖与容量/稳定性能仍有未完成项。当前边界、历史项目测量及 C4 自建 fixture 唯一单轮记录见 `docs/current-state.md`。
 
 `lang-java-adaptor/e2e/fixtures/*/AGENTS.md` 是 Anatomist 参考场景的分析输入，保留其原始 CLI/编辑边界，不作为 code-ana 根目录开发命令。
 

@@ -19,7 +19,7 @@ Python 通过独立 Rust worker 接入固定的 Pyrefly 内核。验收范围及
 | 构建 | `lang-python-adaptor/` 是独立 Cargo workspace，worker 位于其 `worker/`；保留两个锁文件 |
 | 分析线程 | 固定 10 MiB 栈，与上游默认一致；单个 blocking 分析任务，不读取 PYREFLY_STACK_SIZE |
 | 原因 | Pyrefly 要求 unicode-ident ≥1.0.25；现有 Rust 适配器固定 1.0.24，不能合并解析依赖或静默更换 Unicode 版本 |
-| 协议 | worker 23、graph model 5、物理 schema 12 / 逻辑 schema 35；Java ABI 4、analysis 12；ABI保持4 |
+| 协议 | worker 24、graph model 6、物理 schema 13 / 逻辑 schema 36；Java ABI 4、analysis 12；ABI保持4 |
 | 环境 | 首轮目标 Python 3.12 / darwin；冻结的有序源码根和辅助依赖根，标准库随固定后端封装 |
 | 执行 | 不执行目标模块、解释器探测、构建、安装、editable hook 或 `.pth` |
 | 来源 | UTF-8（含 BOM）及 ASCII；其他编码明确拒绝；声明使用 UTF-8 字节范围，图列坐标为一基 UTF-16 |
@@ -109,10 +109,10 @@ Python 普通、Python/Rust 组合及 prepared 多实例入口下发静态 grant
 
 重试沿用同一 grant、计数和单调截止时间；Failure / End 携带累计回执，断连用量未知保留 Unknown。预算异常中止整次发布，输入修复后的新任务可恢复。Pyrefly 内部 solver 仍由进程内存与 supervisor 截止时间约束，不能把 adaptor 自有遍历的计数当成其内部每一步的精确计数。
 
-当前严格worker23/Java12，缺失grant和终态回执拒绝；Discover/未变复用共用累计账本。本机fixture混合/分发已通过，正式容量/语义/来源范围另列。
+当前严格worker24/Java12，缺失grant和终态回执拒绝；Discover/未变复用共用累计账本。本机fixture混合/分发已通过，正式容量/语义/来源范围另列。
 
 
-Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker23；本机fixture混合/分发已通过，正式边界见当前实现。
+Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker24；本机fixture混合/分发已通过，正式边界见当前实现。
 
 业务 IPC 共用 contracts 分配前准入：小型 Hello 初始化账本，随后 Discover/Analyze 在分配/解码前检查额度；有界堆控制通道支持超限后的失败回执，取消保留半帧进度并流式丢弃业务字节。实现与证据见 contracts.md 和当前 frame-admission 回执；语言内部投影/完整分发仍按各自未关闭项验收。
 

@@ -16,8 +16,8 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 12;
-pub const SOURCE_SCHEMA_VERSION: i64 = 35;
+pub const SCHEMA_VERSION: i64 = 13;
+pub const SOURCE_SCHEMA_VERSION: i64 = 36;
 pub const PAGE_SIZE: i64 = 4096;
 
 pub fn initialize(db: &Connection) -> Result<()> {

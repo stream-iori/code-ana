@@ -54,21 +54,13 @@ class JavacCommentModelIT {
                     Object name = golden.get(relation.name().toLowerCase(Locale.ROOT));
                     assertEquals(name == null ? List.of() : List.of(name), actual, "line " + line);
                 }
-                for (var relation : List.of(JavaCommentRelations.Relation.LEADING_STATEMENT, JavaCommentRelations.Relation.TRAILING_STATEMENT)) {
-                    var actual = links.stream().filter(link -> link.relation() == relation)
-                            .map(link -> (long) model.source(source).position(link.span().start()).line()).toList();
-                    Number expectedLine = (Number) golden.get(relation.name().toLowerCase(Locale.ROOT) + "_line");
-                    assertEquals(expectedLine == null ? List.of() : List.of(expectedLine.longValue()), actual, "line " + line);
-                }
                 if (golden.get("enclosing_range_lines") instanceof List<?> range) {
                     var scope = links.stream().filter(link -> link.relation() == JavaCommentRelations.Relation.ENCLOSING_CALLABLE).findFirst().orElseThrow();
                     assertNull(scope.declaration());
                     assertEquals(((Number) range.getFirst()).intValue(), model.source(source).position(scope.span().start()).line());
                     assertEquals(((Number) range.getLast()).intValue(), model.source(source).position(scope.span().end()).line());
                 }
-                for (var link : links) assertEquals(
-                        link.relation() == JavaCommentRelations.Relation.LEADING_STATEMENT || link.relation() == JavaCommentRelations.Relation.TRAILING_STATEMENT
-                                ? JavaCommentRelations.Basis.HEURISTIC : JavaCommentRelations.Basis.LANGUAGE_RULE, link.basis());
+                for (var link : links) assertEquals(JavaCommentRelations.Basis.LANGUAGE_RULE, link.basis());
             }
             assertThrows(UnsupportedOperationException.class, () -> model.comments(source).clear());
         }
@@ -154,8 +146,6 @@ class JavacCommentModelIT {
         try (var model = new JavaModel(contexts.getFirst())) {
             for (var comment : model.comments(source)) {
                 var links = model.commentLinks(source, comment);
-                assertEquals(comment.body().contains("adjacent") ? 1 : 0,
-                        links.stream().filter(link -> link.relation() == JavaCommentRelations.Relation.LEADING_STATEMENT).count());
                 assertEquals(1, links.stream().filter(link -> link.relation() == JavaCommentRelations.Relation.ENCLOSING_CALLABLE).count());
             }
         }

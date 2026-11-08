@@ -35,8 +35,6 @@ pub struct QueryRequest {
     pub text_ignore_case: bool,
     pub text_context: u32,
     pub search_in: SearchIn,
-    pub context_before: Option<u32>,
-    pub context_after: Option<u32>,
     pub overview_section: String,
     pub overview_depth: u32,
 }
@@ -74,8 +72,6 @@ impl From<&Request> for QueryRequest {
             text_ignore_case: value.text_ignore_case,
             text_context: value.text_context,
             search_in: value.search_in,
-            context_before: value.context_before,
-            context_after: value.context_after,
             overview_section: value.overview_section.clone(),
             overview_depth: value.overview_depth,
         }

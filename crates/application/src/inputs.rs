@@ -112,7 +112,6 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
     let mut catalog = InputCatalog {
         schema_version: 1,
         config_sha256: before.clone(),
-        preparation_sha256: Some(preparation_fingerprint(&config, &before)),
         units: vec![],
     };
     let result = (|| -> Result<()> {

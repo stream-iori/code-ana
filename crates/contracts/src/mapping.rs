@@ -226,8 +226,6 @@ impl From<&m::Request> for v1::TaskRequest {
             text_ignore_case: value.text_ignore_case,
             text_context: value.text_context,
             search_in: value.search_in.to_string(),
-            context_before: value.context_before,
-            context_after: value.context_after,
             overview_section: value.overview_section.clone(),
             overview_depth: value.overview_depth,
         }
@@ -291,8 +289,6 @@ impl TryFrom<&v1::TaskRequest> for m::Request {
             } else {
                 value.search_in.parse()?
             },
-            context_before: value.context_before,
-            context_after: value.context_after,
             overview_section: value.overview_section.clone(),
             overview_depth: value.overview_depth,
         })

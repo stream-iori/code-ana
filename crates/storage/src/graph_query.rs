@@ -1041,7 +1041,15 @@ impl SourceLocator for ReadContext {
                 Ok(bytes.len() as u64)
             };
             let start = offset(bl, bc)?;
-            let end = offset(el, ec)?;
+            let mut end = offset(el, ec)?;
+            // Java declaration coordinates name the last character (inclusive).
+            // Public snippets use UTF-8 half-open byte ranges.
+            if source.language == "java" {
+                end += text[end as usize..]
+                    .chars()
+                    .next()
+                    .map_or(0, |ch| ch.len_utf8() as u64);
+            }
             ensure!(
                 start <= end,
                 codeana_model::DomainError::new(codeana_model::ErrorCode::SourceRangeInvalid, "")

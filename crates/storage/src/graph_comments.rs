@@ -179,24 +179,11 @@ pub(crate) fn stage(
                 || matches!(declaration,Some(cell::Value::Text(id)) if !id.is_empty()),
             invalid("declaration identity type")
         );
-        let semantic = matches!(relation, "documents" | "enclosing_callable");
         ensure!(
-            semantic || matches!(relation, "leading_statement" | "trailing_statement"),
+            matches!(relation, "documents" | "enclosing_callable"),
             invalid("relation")
         );
-        ensure!(
-            basis
-                == if semantic {
-                    "language_rule"
-                } else {
-                    "heuristic"
-                },
-            invalid("association basis")
-        );
-        ensure!(
-            semantic || declaration.is_none(),
-            invalid("statement declaration")
-        );
+        ensure!(basis == "language_rule", invalid("association basis"));
         ensure!(
             !text(row, 0)?.is_empty() && !text(row, 13)?.is_empty(),
             invalid("link identity/rule")
@@ -367,7 +354,7 @@ mod tests {
                 source_start: 2,
                 source_end: end,
             }],
-            rule_version: "java-comments-v1".into(),
+            rule_version: "java-comments-v2".into(),
         };
         let id = fact.expected_id();
         let comment = CommentRow {
@@ -388,7 +375,7 @@ mod tests {
             end_column: Some(range.end_column as i64),
             body: Some(body.into()),
             body_map: Some(serde_json::to_string(&fact.body_map).unwrap()),
-            rule_version: Some("java-comments-v1".into()),
+            rule_version: Some("java-comments-v2".into()),
         }
         .into_row("main");
         let link = CommentLinkRow {
@@ -405,7 +392,7 @@ mod tests {
             end_line: Some(2),
             end_column: Some(11),
             basis: Some("language_rule".into()),
-            rule_version: Some("java-comments-v1".into()),
+            rule_version: Some("java-comments-v2".into()),
         }
         .into_row("main");
         let bytes = source.as_bytes().to_vec();
@@ -1016,8 +1003,6 @@ mod tests {
         let request = Request {
             operation: Operation::SearchComments,
             selector: "库存 HTTPServer2".into(),
-            context_before: Some(0),
-            context_after: Some(0),
             ..Default::default()
         };
         let out = codeana_query::run(&reader, &request, &source)?;
@@ -1025,7 +1010,7 @@ mod tests {
         let Record::Comment(hit) = &out.records[0] else {
             panic!("not a typed comment")
         };
-        assert_eq!(hit.source.text, "// 库存😀HTTPServer2\r\n");
+        assert_eq!(hit.comment.body, " 库存😀HTTPServer2");
         assert!(!hit.hits.is_empty());
         assert!(
             hit.hits.iter().all(

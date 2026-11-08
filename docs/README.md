@@ -17,7 +17,7 @@
 | [CLI / daemon](modules/runtime.md) / [索引](modules/indexing.md) | 任务、调度、冻结输入和增量 |
 | [Java worker](modules/java-worker.md) / [Rust worker](modules/rust-worker.md) | Java 与 Rust 分析链路、能力限制 |
 | [Python worker](modules/python-worker.md) | 显式冻结输入、Pyrefly、两个 Cargo workspace、fixture、分发和真实项目验证边界 |
-| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 12、逻辑 schema 35、只读投影和 pipeline |
+| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 13、逻辑 schema 36、只读投影和 pipeline |
 | [版本与源码](modules/versioning.md) / [诊断与报告](modules/operations.md) | 冻结历史、diff、引用保护和报告 |
 | [决策登记](design-review.md) / [实施与验收](delivery.md) | 已落实决策、剩余门禁与实际测试入口 |
 | [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |

@@ -25,6 +25,8 @@ struct DoctorRecord<'a> {
     java_adapter: &'a str,
     java_backend: Option<&'a str>,
     java_bundle: &'a Option<codeana_contracts::bundle::BundleManifest>,
+    java_toolchain: Option<java::ToolchainEvidence>,
+    java_toolchain_error: Option<String>,
     worker_memory_enforcement: &'a str,
     worker_memory_cap_bytes: u64,
     rust_worker_memory_bytes: Option<u64>,
@@ -71,6 +73,14 @@ impl DoctorService {
             .java
             .as_ref()
             .is_some_and(|l| l.enabled == Some(true));
+        let (java_toolchain, java_toolchain_error) = if java && !self.workers.is_mock() {
+            match self.workers.java_toolchain(&effective) {
+                Ok(evidence) => (Some(evidence), None),
+                Err(error) => (None, Some(format!("{error:#}"))),
+            }
+        } else {
+            (None, None)
+        };
         let discovery = effective.config.discovery.mode == "explicit";
         let library = java::installed_library().ok();
         let backend = library.as_ref().map(|path| {
@@ -129,9 +139,9 @@ impl DoctorService {
                     java_index: if java && discovery && self.workers.is_mock() {
                         "mock_fixture_only"
                     } else if java && backend == Some("jvm") {
-                        "java8_jvm"
+                        "java8_java17_jvm"
                     } else if java && backend == Some("native") {
-                        "java8_native"
+                        "java8_java17_native"
                     } else {
                         "unavailable"
                     },
@@ -151,6 +161,8 @@ impl DoctorService {
                 },
                 java_backend: backend,
                 java_bundle: &bundle,
+                java_toolchain,
+                java_toolchain_error,
                 python_worker: serde_json::json!({
                     "binary_present": std::env::current_exe()?.with_file_name("codeana-python-worker").is_file(),
                     "adapter_version": python::ADAPTER_VERSION,

@@ -1,11 +1,11 @@
 # 当前实现与验证边界
 
-对齐日期：2026-11-01。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-11-08。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
 | 服务 | Rust CLI → loopback gRPC → 用户级 Rust daemon | `crates/cli/`、`crates/daemon/`、`proto/codeana/v1/task.proto` |
-| 分析 | Rust 独立 worker → C ABI → Java 25 Native Image → 目标 Java 8 javac 子进程 | `crates/java-worker/`、`lang-java-adaptor/` |
+| 分析 | Rust 独立 worker → C ABI → Java 25 Native Image → 目标 Java 8／17 javac 子进程 | `crates/java-worker/`、`lang-java-adaptor/` |
 | 后端 | javac 唯一后端；显式 JVM 后端供开发/诊断，无自动回退 | `crates/application/src/java.rs` |
 | GC | Oracle GraalVM G1 默认；每进程仅创建一次 isolate，健康任务复用，故障后换进程 | `crates/java-worker/src/native.rs` |
 | 输出 | GRA1 + protobuf Row；JSON 仅用于控制输入、metadata/attributes 和查询展示 | `proto/codeana/v1/graph.proto`、`crates/contracts/src/graph_archive.rs` |
@@ -15,9 +15,25 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
-## 三语言注释索引（C0—C4、A4—A7 已完成）
+## 注释收敛与 Java 17 联合改造（本机 fixture 范围完成）
 
-| 边界 | 当前源码 / 验证 |
+| 边界 | 当前源码与已取得证据 |
+|---|---|
+| 版本 | daemon 5、worker 24、graph model 6、analysis 13、物理 schema 13、逻辑 36、GraphSemantics 28；v51 / batch 2 / ABI 4 / catalog 2 保持 |
+| 注释 | 三语言只产生 documents/enclosing_callable；删除源码窗口、专用参数／配置与 prepared 展示指纹例外；旧图库要求 index --full，旧注释游标要求重新查询 |
+| Java 17 | SDKMAN 匹配；冻结目标、实际版本、别名、规范化路径、JDK 内容及桥身份；8／17 分桥构建，SDK manifest Native 3 / JVM 2 显式登记桥映射和摘要 |
+| 已验证 | 当前完整 Java fixture 727 项通过（0 失败／错误／跳过），含新增 Java 17 模型专项；JVM／Native 各 3 项 Java 17 产品测试通过，含取消及 worker 崩溃保留旧 head，Native 注释查询 3 项、JVM 注释生命周期 8 项、Native ABI 生命周期 10 项、Native 图 8 项、Native 注释生命周期 8 项通过；Python 核心、产品 7 项、注释 4 项、prepared 9 项和显式三语言组合通过 |
+| 源码读取 | 修复 Java 含末字符坐标到半开 UTF-8 范围的转换，JVM／Native 长函数、多分块、多字节与历史源码产品测试通过 |
+| Rust | 完整 just test-rust 已通过；真实 G1 teardown 后禁止重建的独立 Rust 测试通过，默认门禁中的该项跳过不冒充实测 |
+| 原失败 | 默认 Rust 1.95、旧 SDK 混装拒绝、旧 schema 断言、迁移摘要漂移、测试中的旧 revision 假设、Native Java 17 资源缺失均保留日志；未重标失败 |
+| 分发与故障 | Rust、Java、Python 当前实际包通过；Java 包 8 组门禁包含 Java 17，Release 共享资源 42/42 与组合注释 11 项通过；原二进制恢复且 SDK 字节未变 |
+| 完成边界 | 仅本机自建 fixture、产品与分发；未测真实项目／性能，不签 Linux、目标 Java 25、完整语义／来源或容量稳定性放行 |
+
+汇总回执为 `target/java17-plan-check/joint-receipt.json`；原失败日志和各阶段回执均保留。Java 17 扩充真值覆盖 record 隐式／紧凑／显式／重载构造器、accessor、构造器内回调、泛型方法引用及歧义／非法模式变量；同时检查脱离模型、提取后的 CALLS 与已发布图库的精确目标。Python 已删除仅供语句关联使用的 body 集合缓存，最终核心、实际包及共享 Release 矩阵使用更新后的 worker。按用户要求仅用本仓库 fixture，不安排真实项目或性能测量。下列旧验收与测量保持原产物含义。
+
+## 历史三语言注释索引（C0—C4、A4—A7）
+
+| 边界 | 当时源码 / 验证 |
 |---|---|
 | 版本 | worker 23、graph model 5、analysis 12、物理 schema 12、逻辑 35、GraphSemantics 27、javac-model-v51；daemon/ABI/compiler batch/catalog 保持 4/4/2/2 |
 | Java | 主 javac comment token 与语言关联转为独立 GRA1 注释/关联行，原始 UTF-8 字节范围、正文映射、显式 world 和公开声明 ID |

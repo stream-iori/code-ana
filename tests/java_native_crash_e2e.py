@@ -85,6 +85,7 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         manifest['files'] = {
             'native/' + library.name: sha(library),
             'compiler-bridge.jar': sha(source_bundle/'compiler-bridge.jar'),
+            'compiler-bridge17.jar': sha(source_bundle/'compiler-bridge17.jar'),
             'maven-input-worker.jar': sha(source_bundle/'maven-input-worker.jar'),
         }
         (native_dir / 'manifest.json').write_text(json.dumps(manifest))

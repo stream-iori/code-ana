@@ -87,32 +87,8 @@ pub struct QueryResources {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Query {
-    pub comments: CommentOptions,
     pub scopes: Vec<String>,
     pub max_output_bytes: Option<u64>,
-}
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(default, deny_unknown_fields)]
-pub struct CommentOptions {
-    pub context_before: u32,
-    pub context_after: u32,
-}
-impl Default for CommentOptions {
-    fn default() -> Self {
-        Self {
-            context_before: 5,
-            context_after: 5,
-        }
-    }
-}
-impl CommentOptions {
-    pub fn validate(self) -> Result<codeana_model::CommentContext, codeana_model::DomainError> {
-        codeana_model::CommentContext {
-            before: self.context_before,
-            after: self.context_after,
-        }
-        .validate()
-    }
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -503,36 +479,6 @@ mod analysis_resource_tests {
                     "schema_version=1\nkind='project'\n[resources.index.analysis]\n{input}"
                 ))
                 .is_err()
-            );
-        }
-    }
-}
-
-#[cfg(test)]
-mod language_identity_tests {
-    use super::*;
-    #[test]
-    fn typed_languages_preserve_pre_split_config_and_preparation_fingerprints() {
-        let texts = [
-            "schema_version=1\nkind='project'\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version='8'\n[languages.java.dependencies]\ninclude=['unused']\n",
-            "schema_version=1\nkind='project'\n[languages.rust]\nenabled=true\nmode='semantic'\n[languages.rust.analysis]\nedition='2021'\ntoolchain='legacy-unused'\n[languages.rust.dependencies]\ninclude=['local']\nexclude=['generated']\n",
-        ];
-        let expected = [
-            (
-                "c97913976e6d86fa6781ccbbd3c111418ec573412660caa5ba4be28d538877b9",
-                "4841980b5babc5915bab0dcd667a8b173e5b313fea77972d9fa2eb0817503d54",
-            ),
-            (
-                "959b30a7190758b5129794b3722a4a781254129b5ea115e60a27f34da5fd629e",
-                "76c98ef4bb1ba8ce69ddf22c4b2c72e0ad882a2602eba8e866fbe98184c8ae9a",
-            ),
-        ];
-        for (text, (config_hash, preparation_hash)) in texts.into_iter().zip(expected) {
-            let config: ProjectConfig = toml::from_str(text).unwrap();
-            assert_eq!(codeana_model::digest(&config), config_hash);
-            assert_eq!(
-                crate::inputs::preparation_fingerprint(&config, "original-config-hash"),
-                preparation_hash
             );
         }
     }

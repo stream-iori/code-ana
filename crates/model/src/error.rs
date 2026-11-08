@@ -21,7 +21,6 @@ codes! {
     SemanticInputsUnavailable = "SEMANTIC_INPUTS_UNAVAILABLE",
     InvalidMode = "INVALID_MODE",
     CommentSearchIn = "COMMENT_SEARCH_IN",
-    CommentContextRange = "COMMENT_CONTEXT_RANGE",
     CommentQueryEmpty = "COMMENT_QUERY_EMPTY",
     CommentSourceMapInvalid = "COMMENT_SOURCE_MAP_INVALID",
     CommentRecordInvalid = "COMMENT_RECORD_INVALID",

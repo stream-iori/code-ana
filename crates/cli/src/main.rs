@@ -159,10 +159,6 @@ struct QueryArgs {
     context: u32,
     #[arg(long = "in", default_value = "names", value_parser = ["names", "comments", "names,comments"])]
     search_in: String,
-    #[arg(long)]
-    context_before: Option<u32>,
-    #[arg(long)]
-    context_after: Option<u32>,
     #[arg(default_value = "")]
     selector: String,
     #[arg(long, default_value = "")]
@@ -403,7 +399,21 @@ async fn main() {
     }
 }
 async fn run() -> Result<i32> {
-    let cli = Cli::parse();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
+        Err(error) => {
+            if error.kind() == clap::error::ErrorKind::UnknownArgument
+                && ["--context-before", "--context-after"]
+                    .iter()
+                    .any(|flag| error.to_string().contains(flag))
+            {
+                eprintln!(
+                    "Removed comment context options: delete --context-before/--context-after; use source with the declaration symbol."
+                );
+            }
+            error.exit()
+        }
+    };
     let markdown = matches!(&cli.command, Command::Report(args) if args.format == "markdown");
     if let Command::Report(args) = &cli.command {
         ensure!(
@@ -637,8 +647,6 @@ async fn run() -> Result<i32> {
         text_ignore_case: a.ignore_case,
         text_context: a.context,
         search_in: a.search_in.parse()?,
-        context_before: a.context_before,
-        context_after: a.context_after,
         request_id: a.request_id.unwrap_or_else(|| new_id("request")).into(),
         project: codeana_application::project_path(&cli.project)?
             .to_str()
@@ -807,8 +815,6 @@ async fn run() -> Result<i32> {
     }
     if req.operation == codeana_model::Operation::SearchComments
         || req.search_in != codeana_model::SearchIn::Names
-        || req.context_before.is_some()
-        || req.context_after.is_some()
         || req
             .stages
             .iter()
@@ -824,10 +830,10 @@ async fn run() -> Result<i32> {
             .await?
             .into_inner();
         ensure!(
-            hello.capabilities.iter().any(|c| c == "comment-search-v1"),
+            hello.capabilities.iter().any(|c| c == "comment-search-v2"),
             codeana_model::DomainError::new(
                 codeana_model::ErrorCode::UnsupportedCapability,
-                "daemon comment-search-v1"
+                "daemon comment-search-v2"
             )
         );
     }

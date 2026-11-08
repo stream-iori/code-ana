@@ -123,7 +123,7 @@ public final class AnatomistRows {
         if (++files >= 32 || batch.factCount() >= 10000) flush();
     }
 
-    private static final String COMMENT_RULE = "java-comments-v1";
+    private static final String COMMENT_RULE = "java-comments-v2";
 
     private void comments(CapturedProject.Source source, List<com.anatomist.extract.JavaCommentEvidence> comments) {
         for (var comment : comments) {
@@ -335,7 +335,7 @@ public final class AnatomistRows {
                         "world",
                         s.world(),
                         "producer",
-                        "javac-java8-v2",
+                        "javac-v3",
                         "kind",
                         "source",
                         "id",
@@ -349,7 +349,7 @@ public final class AnatomistRows {
                         "world",
                         world,
                         "producer",
-                        "javac-java8-v2",
+                        "javac-v3",
                         "kind",
                         "source",
                         "id",

@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""The current product rejects an unsupported target JDK before analysis."""
-import json
+"""Wrong toolchains and unsupported targets fail before analysis."""
 import unittest
 from product_support import JavaProductHarness
 
@@ -8,9 +7,13 @@ from product_support import JavaProductHarness
 class JavaEnvironment(JavaProductHarness):
     def test_wrong_jdk(self):
         config=self.project/'.code-ana/config.toml'
-        config.write_text(config.read_text().replace('source_version = "8"','source_version = "17"'))
-        _,terminal=self.cli('index',code=1,timeout=150)
-        self.assertIn('SOURCE_VERSION_UNSUPPORTED',json.dumps(terminal))
+        original = config.read_text()
+        for version, expected in [('17', 'TARGET_JDK_REQUIRED'), ('25', 'SOURCE_VERSION_UNSUPPORTED')]:
+            with self.subTest(target=version):
+                config.write_text(original.replace('source_version = "8"', 'source_version = "'+version+'"'))
+                _,terminal=self.cli('index',code=1,timeout=150)
+                self.assertEqual(terminal['code'], expected)
+
 
 
 

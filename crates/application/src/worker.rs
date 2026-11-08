@@ -546,7 +546,7 @@ impl Worker {
                                 } else if python.is_some() {
                                     "python-core"
                                 } else {
-                                    "javac-java8-v1"
+                                    "javac-v3"
                                 },
                         codeana_model::DomainError::new(
                             codeana_model::ErrorCode::WorkerVersionMismatch,

@@ -84,7 +84,7 @@ class CommentLifecycle(JavaProductHarness):
         self.assertEqual(len(self.canonical_comments(first)['comments']), 8)
         historical = self.cli('search-comments', '扣减库存', '--revision', first)[0]
         self.assertEqual(len(historical), 1)
-        self.assertIn('boolean reserve', historical[0]['source']['text'])
+        self.assertIn('扣减库存', historical[0]['comment']['body'])
 
     def test_frozen_pages_survive_source_edits_publication_and_configuration_changes(self):
         first = self.prepare_comments()
@@ -94,14 +94,14 @@ class CommentLifecycle(JavaProductHarness):
         self.source().write_text('package fixture.comments; class Comments { // 新版本\n void changed() {} }')
         self.cli('index', timeout=180)
         config = self.project / '.code-ana/config.toml'
-        config.write_text(config.read_text() + '\n[query.comments]\ncontext_before=0\ncontext_after=0\n')
+        config.write_text(config.read_text() + '\n# display-only change\n')
         while terminal['cursor']:
             page, terminal = self.cli(*arguments, '--cursor', terminal['cursor'])
             rows.extend(page)
             self.assertEqual(terminal['revision'], first)
         self.assertGreater(len(rows), 1)
-        self.assertTrue(all('新版本' not in row['source']['text'] for row in rows))
-        self.assertTrue(all(row['comment']['source_hash'] == row['source']['hash'] for row in rows))
+        self.assertTrue(all('新版本' not in row['comment']['body'] for row in rows))
+        self.assertTrue(all('source' not in row for row in rows))
         historical = self.cli('search-comments', '库存', '--revision', first)[0]
         self.assertEqual([r['comment']['id'] for r in rows], [r['comment']['id'] for r in historical])
         self.assertFalse(self.cli('search-comments', '库存')[0])
@@ -134,7 +134,7 @@ class CommentLifecycle(JavaProductHarness):
         before = self.canonical_comments(first)
         profile = json.loads((self.home/'revisions'/first/'revision.json').read_text())['profile']
         config = self.project / '.code-ana/config.toml'
-        config.write_text(config.read_text() + '\n[query.comments]\ncontext_before=0\ncontext_after=8\n')
+        config.write_text(config.read_text() + '\n# configuration whitespace change\n')
         records, changed = self.cli('index', timeout=180)
         self.assertNotEqual(records[0]['mode'], 'full')
         self.assertEqual(json.loads((self.home/'revisions'/changed['revision']/'revision.json').read_text())['profile'], profile)
@@ -192,7 +192,7 @@ class CommentLifecycle(JavaProductHarness):
         self.assertIsNotNone(partial, 'no completed evidence survived the exhausted query')
         rows, terminal = partial
         self.assertTrue(terminal['evidence']['resource_usage']['exhausted'])
-        self.assertTrue(all(row['hits'] and row['source']['text'] for row in rows))
+        self.assertTrue(all(row['hits'] and row['comment']['body'] and 'source' not in row for row in rows))
         _, strict = self.cli('search-comments', '库存', '--strict', code=3)
         self.assertFalse(strict['evidence']['enumeration'])
         config.write_text(original)

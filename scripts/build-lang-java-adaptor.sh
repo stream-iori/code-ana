@@ -20,13 +20,14 @@ source "$HOME/.sdkman/bin/sdkman-init.sh"
 cd "$repo_root/lang-java-adaptor"
 source "$repo_root/scripts/java-build-env.sh"
 set -u
-java8_home="${CODEANA_JAVA8_HOME:-$HOME/.sdkman/candidates/java/8.0.492-zulu}"
-[[ -x "$java8_home/bin/javac" ]] || { echo "Java 8 compiler required" >&2; exit 1; }
-mvn -q -Pnative -Djava8.home="$java8_home" "$@" clean package
+java8_home="$(CODEANA_JAVA8_HOME="${CODEANA_JAVA8_HOME:-$HOME/.sdkman/candidates/java/8.0.492-zulu}" python3 "$repo_root/scripts/resolve-sdkman-java.py" 8)"
+java17_home="$(python3 "$repo_root/scripts/resolve-sdkman-java.py" 17)"
+mvn -q -Pnative -Djava8.home="$java8_home" -Djava17.home="$java17_home" "$@" clean package
 python3 "$repo_root/scripts/check-java-package.py" native
 "$repo_root/scripts/build-java-maven.sh"
 mkdir -p target/native
 cp analysis-core/target/classes/META-INF/anatomist/javac-worker.jar target/compiler-bridge.jar
+cp analysis-core/target/classes/META-INF/anatomist/javac-worker17.jar target/compiler-bridge17.jar
 python3 - <<'PY'
 import pathlib,zipfile,struct
 with zipfile.ZipFile('target/compiler-bridge.jar') as jar:
@@ -46,6 +47,7 @@ native_command+=(-R:MaxHeapSize=256m \
   "-J-Dcodeana.completion.library=$native_temp" \
   "-J-Djava.io.tmpdir=$native_temp" "-H:TempDirectory=$native_temp" \
   -H:IncludeResources='META-INF/anatomist/javac-worker.jar' \
+  -H:IncludeResources='META-INF/anatomist/javac-worker17.jar' \
   --native-compiler-options=-save-temps=obj \
   -cp native-bridge/target/native-bridge-0.1.0.jar \
   -o "$native_temp/libcodeana_java")

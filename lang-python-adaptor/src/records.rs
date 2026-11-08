@@ -763,7 +763,7 @@ fn emit_comments(
             range: range(observation.start, observation.end)?,
             body: observation.body.clone(),
             body_map: observation.body_map.clone(),
-            rule_version: "python-comments-v1".into(),
+            rule_version: "python-comments-v2".into(),
         };
         fact.id = fact.expected_id();
         push(CommentRow::try_from(&fact)?.into_row(&rows.world))?;
@@ -778,16 +778,8 @@ fn emit_comments(
                 relation: evidence.relation,
                 declaration,
                 range: range(evidence.start, evidence.end)?,
-                basis: if matches!(
-                    evidence.relation,
-                    codeana_model::CommentRelation::LeadingStatement
-                        | codeana_model::CommentRelation::TrailingStatement
-                ) {
-                    CommentBasis::Heuristic
-                } else {
-                    CommentBasis::LanguageRule
-                },
-                rule_version: "python-comments-v1".into(),
+                basis: CommentBasis::LanguageRule,
+                rule_version: "python-comments-v2".into(),
             };
             push(CommentLinkRow::from_fact(&fact, &link)?.into_row(&rows.world))?;
         }

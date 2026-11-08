@@ -79,12 +79,12 @@ pub(crate) struct Snapshot {
     pub effective: Option<codeana_config::Effective>,
 }
 #[derive(Serialize, Deserialize)]
-struct Page {
+struct Page<T = Output> {
     #[serde(default)]
-    comment_context: Option<CommentContext>,
+    comment_format: u32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     order_policy: Option<QueryOrderPolicy>,
-    output: Output,
+    output: T,
     options: String,
     created: u64,
     #[serde(default)]
@@ -109,10 +109,7 @@ fn options(req: &Request) -> String {
 /// Existing C1 digests remain primary. Only default comment options can match a pre-C1 page.
 /// Serde preserves the original field/value order, including nested pipeline stages.
 fn legacy_options(req: &Request) -> Result<Option<String>> {
-    if req.search_in != SearchIn::Names
-        || req.context_before.is_some()
-        || req.context_after.is_some()
-    {
+    if req.search_in != SearchIn::Names {
         return Ok(None);
     }
     use serde::{
@@ -138,10 +135,7 @@ fn legacy_options(req: &Request) -> Result<Option<String>> {
                     .map_err(serde::de::Error::custom)?;
                 while let Some(key) = input.next_key::<String>()? {
                     let value = input.next_value::<&serde_json::value::RawValue>()?;
-                    if !matches!(
-                        key.as_str(),
-                        "search_in" | "context_before" | "context_after"
-                    ) {
+                    if !matches!(key.as_str(), "search_in") {
                         fields
                             .serialize_entry(&key, value)
                             .map_err(serde::de::Error::custom)?;
@@ -751,10 +745,7 @@ impl HistoryService {
         );
         let id = new_id("page");
         let page = Page {
-            comment_context: req
-                .context_before
-                .zip(req.context_after)
-                .map(|(before, after)| CommentContext { before, after }),
+            comment_format: 2,
             order_policy: Some(QueryOrderPolicy::for_operation(req.operation)),
             output,
             options: options(req),
@@ -773,15 +764,33 @@ impl HistoryService {
                 codeana_model::ErrorCode::InvalidCursor,
                 "",
             ))?;
-        let page: Page = self.store.object("page", id, project)?;
-        let mut effective = req.clone();
-        if let Some(context) = page.comment_context {
-            effective.context_before.get_or_insert(context.before);
-            effective.context_after.get_or_insert(context.after);
-        }
+        let stored: Page<Box<serde_json::value::RawValue>> =
+            self.store.object("page", id, project)?;
+        let comments = req.operation == Operation::SearchComments
+            || req.search_in != SearchIn::Names
+            || req
+                .stages
+                .iter()
+                .any(|s| s.operation == Operation::SearchComments);
         ensure!(
-            page.options == options(&effective)
-                || legacy_options(&effective)?.is_some_and(|legacy| legacy == page.options),
+            stored.comment_format == 2 || !comments,
+            DomainError::new(
+                ErrorCode::InvalidCursor,
+                "comment result format changed; run the query again"
+            )
+        );
+        let page = Page {
+            comment_format: stored.comment_format,
+            order_policy: stored.order_policy,
+            output: serde_json::from_str(stored.output.get())?,
+            options: stored.options,
+            created: stored.created,
+            spooled: stored.spooled,
+            total: stored.total,
+        };
+        ensure!(
+            page.options == options(req)
+                || legacy_options(req)?.is_some_and(|legacy| legacy == page.options),
             codeana_model::DomainError::new(codeana_model::ErrorCode::CursorOptionsMismatch, "")
         );
         ensure!(
@@ -964,7 +973,7 @@ mod tests {
             let id = first.output.cursor.rsplit_once(':').unwrap().0.to_owned();
             let mut metadata: Value = engine.store.object("page", &id, "p").unwrap();
             metadata["options"] = json!(old_digest);
-            metadata.as_object_mut().unwrap().remove("comment_context");
+            metadata.as_object_mut().unwrap().remove("comment_format");
             engine
                 .store
                 .put_object("page", &id, "p", &metadata, &[])
@@ -973,24 +982,59 @@ mod tests {
             request.max_records = 2;
             let resumed = engine.continue_page(&request, "p").unwrap();
             assert_eq!(resumed.output.records.len(), 2);
-            request.context_before = Some(0);
-            assert!(
-                engine
-                    .continue_page(&request, "p")
-                    .unwrap_err()
-                    .to_string()
-                    .contains("CURSOR_OPTIONS_MISMATCH")
-            );
-            request.context_before = None;
             request.search_in = SearchIn::Comments;
             assert!(
                 engine
                     .continue_page(&request, "p")
                     .unwrap_err()
                     .to_string()
-                    .contains("CURSOR_OPTIONS_MISMATCH")
+                    .contains("run the query again")
             );
         }
+    }
+    #[test]
+    fn old_comment_pages_require_a_new_query() {
+        let directory = tempfile::tempdir().unwrap();
+        let engine = HistoryService::new(Store::open(directory.path()).unwrap());
+        let mut request = Request {
+            operation: Operation::SearchComments,
+            selector: "keyword".into(),
+            max_records: 1,
+            max_output_bytes: 32768,
+            ..Default::default()
+        };
+        let first = engine
+            .page(
+                &request,
+                "p",
+                Output {
+                    records: vec![
+                        Record::display(&json!({"id":1})).unwrap(),
+                        Record::display(&json!({"id":2})).unwrap(),
+                    ],
+                    evidence: Evidence::complete(),
+                    ..Default::default()
+                },
+                vec![],
+            )
+            .unwrap();
+        let id = first.output.cursor.rsplit_once(':').unwrap().0.to_owned();
+        let mut metadata: Value = engine.store.object("page", &id, "p").unwrap();
+        metadata.as_object_mut().unwrap().remove("comment_format");
+        metadata["output"]["records"] =
+            json!([{"record_type":"comment","source":{"text":"retired window"}}]);
+        engine
+            .store
+            .put_object("page", &id, "p", &metadata, &[])
+            .unwrap();
+        request.cursor = first.output.cursor;
+        assert!(
+            engine
+                .continue_page(&request, "p")
+                .unwrap_err()
+                .to_string()
+                .contains("run the query again")
+        );
     }
     #[tokio::test]
     async fn limited_pages_replay_identical_usage_without_refilling() {

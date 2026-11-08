@@ -76,13 +76,13 @@ class PythonComments(ProductHarness):
         profile=json.loads((self.home/'revisions'/first/'revision.json').read_text())['profile']
         shown=self.cli('search-comments','扣减库存')[0]
         config=self.project/'.code-ana/config.toml'
-        config.write_text(config.read_text()+'\n[query.comments]\ncontext_before=0\ncontext_after=0\n')
+        config.write_text(config.read_text()+'\n# harmless whitespace change\n')
         rows,current=self.cli('index',timeout=120)
         self.assertEqual(rows[0]['mode'],'delta')
         self.assertEqual(json.loads((self.home/'revisions'/current['revision']/'revision.json').read_text())['profile'],profile)
         self.assertEqual(before,self.canonical_comments(current['revision']))
         after=self.cli('search-comments','扣减库存')[0]
-        self.assertLess(len(after[0]['source']['text']),len(shown[0]['source']['text']))
+        self.assertTrue(all('source' not in row for row in shown+after))
 
     def test_shared_source_worlds_are_isolated_and_removed_explicitly(self):
         self.prepare()

@@ -140,7 +140,7 @@ terminal { "execution":..., "publication":..., "evidence":... }
 | 报告 | off/basic/full；诊断总量、分组、至多 100 条样例与省略数；自动报告上限 4 MiB。显式导出不可覆盖；没有 Java 原始诊断时 mock 不能验证诊断质量 |
 | 平台 | 本轮 macOS 实测；Linux 分发未验收；Rust 源码能力见 [Rust worker](modules/rust-worker.md) |
 
-`docs/config.toml` 保留目标完整 schema 示例。schema 接受不等于字段已执行；query 默认、diff_spill_bytes、文本 backend、GC include_caches 尚未接入。auto GC 已在发布后调用，adapter 能力仍分别验收；doctor 与本页列出当前能力。真实 Java 8 的 BuildContext、框架、签名缓存和 native/compiler bridge 使用独立门禁，不能由 mock 代替；Java 17/25 仍未支持；真实 Rust 解析由 `tests/rust_language_e2e.py` 验证。
+`docs/config.toml` 保留目标完整 schema 示例。schema 接受不等于字段已执行；query 默认、diff_spill_bytes、文本 backend、GC include_caches 尚未接入。auto GC 已在发布后调用，adapter 能力仍分别验收；doctor 与本页列出当前能力。真实 Java 8 的 BuildContext、框架、签名缓存和 native/compiler bridge 使用独立门禁，不能由 mock 代替；Java 25 仍未支持；真实 Rust 解析由 `tests/rust_language_e2e.py` 验证。
 
 ## 验证入口
 

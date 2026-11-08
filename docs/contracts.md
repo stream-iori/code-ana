@@ -14,13 +14,13 @@
 | profile / 输入 digest | 包含实际工具链、依赖顺序、adapter/模型/规则及语义配置；执行预算另记录 |
 | replacement owners | 源文件/资源/producer 的替换范围包含删除和零输出，避免留下旧事实 |
 
-当前 graph model 5、worker 23、analysis request/result 12、C ABI 4、daemon handshake 4；javac-model-v51、compiler batch 2。图库物理 user_version 12，上游逻辑 schema 35、GraphSemantics 27，adapter `anatomist-4a903272-codeana-graph5-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
+当前 graph model 6、worker 24、analysis request/result 13、C ABI 4、daemon handshake 5；javac-model-v51、compiler batch 2。图库物理 user_version 13，上游逻辑 schema 36、GraphSemantics 28，adapter `anatomist-4a903272-codeana-graph6-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
 
 内部 Rust 状态、操作、端点和错误码使用枚举，protobuf 与 JSON 边界显式映射；这些类型不改变线上字段拼写。未知 producer 扩展透传，稳定语义字段类型错误明确拒绝。
 
-C1 内部 javac 模型当前为 v51：每个源码请求附带从现有累计账户预付的 work/nodes/payload 上界，编译器录制器只能消费该范围；响应在声明帧之后交付类型化注释范围、正文、正文到原始源码的分段映射及文档声明语法身份。该内部模型的范围仍是 Java 原始 UTF-16 半开偏移，由 JavaCommentEvidence 在模型关闭前转为 GRA1/public comment 的 UTF-8 偏移。声明所有权来自主 javac 的同一 comment token；不按同名或最近声明推测。核心模型只保存自有记录，不保存编译器对象。GRA1 与公开注释查询已接通，compiler batch/daemon/ABI 保持 2/4/4；匹配的 v51 开发 Native SDK 已安装。
+C1 内部 javac 模型当前为 v51：每个源码请求附带从现有累计账户预付的 work/nodes/payload 上界，编译器录制器只能消费该范围；响应在声明帧之后交付类型化注释范围、正文、正文到原始源码的分段映射及文档声明语法身份。该内部模型的范围仍是 Java 原始 UTF-16 半开偏移，由 JavaCommentEvidence 在模型关闭前转为 GRA1/public comment 的 UTF-8 偏移。声明所有权来自主 javac 的同一 comment token；不按同名或最近声明推测。核心模型只保存自有记录，不保存编译器对象。GRA1 与公开注释查询已接通，compiler batch/daemon/ABI 保持 2/5/4；匹配的 v51 开发 Native SDK 已安装。
 
 | 内部编码 | 兼容约束 |
 |---|---|
@@ -133,7 +133,7 @@ pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续�
 
 导出 XML `maven-inputs-v2`、manifest schema 4；旧 schema 3 要求重新导出。三态 `resolved` / `source_only_requested` / `source_only_fallback` 与 `resolved_classpath` 一致，源码模式不允许外部 classpath。失败模式必须包含模块、实际 POM、坐标、原因、轮次及失败回执 SHA。schema 4 的 inputs SHA 在降级时指向本次已验证 metadata；失败回执另有独立 SHA。
 
-worker 23 的 JavaConfig 与 analysis request/result 12 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。当前 C ABI 4、graph model 5、图库 schema 12、compiler batch 2。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
+worker 24 的 JavaConfig 与 analysis request/result 13 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。当前 C ABI 4、graph model 6、图库 schema 13、compiler batch 2。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
 
 全局 coverage 使用 `*` 来源；模块级缺口同样影响 semantic evidence，不计作真实源码文件。SQL NULL 来源仍受现有图库 NOT NULL 约束拒绝。增量替换全局降级覆盖与诊断，不随任务次数重复累加；模式切换全量重建。报告新增可选 `analysis_mode/classpath_status`，旧报告缺字段仍可读取。
 
@@ -156,7 +156,7 @@ Rust 单语言由 blocking 记录生成器直接送入 IPC，daemon 复用 `anal
 
 只有独立校验过的 End 才产生内部 `VerifiedEnd`；断流、错序、摘要错误或取消均不可封存候选。队列等待和终态发送可取消；worker 独立读半帧保留的控制流，写阻塞不阻止取消。混合 Java/Rust 使用已验证归档合并，全部成功后一次 CAS。
 
-物理 schema 12 沿用 schema 9 引入的 Rust 路径/world/key 内部整数引用，依赖只存在类型化表中；状态 JSON 不再包含 dependencies。baseline 批量关联重建完整 SourceState，公开 ID、worker 23 和 graph model 5 保持。旧图必须全量重建。
+物理 schema 13 沿用 schema 9 引入的 Rust 路径/world/key 内部整数引用，依赖只存在类型化表中；状态 JSON 不再包含 dependencies。baseline 批量关联重建完整 SourceState，公开 ID、worker 24 和 graph model 6 保持。旧图必须全量重建。
 
 ## 10. 取消与提交的裁决
 
@@ -166,21 +166,21 @@ Rust 单语言由 blocking 记录生成器直接送入 IPC，daemon 复用 `anal
 
 ## Python 输入与版本
 
-worker 23 的 `Discover.python` 与 Java/Rust 描述符互斥，携带冻结配置文件的路径、SHA-256、长度及结果/事实/scratch 预算。PythonConfig 不改变 Java ABI 或请求版本。Python world 包含显式上下文和根身份顺序；公共位置是一基 UTF-16 列，偏移来自原始 UTF-8 字节。
+worker 24 的 `Discover.python` 与 Java/Rust 描述符互斥，携带冻结配置文件的路径、SHA-256、长度及结果/事实/scratch 预算。PythonConfig 不改变 Java ABI 或请求版本。Python world 包含显式上下文和根身份顺序；公共位置是一基 UTF-16 列，偏移来自原始 UTF-8 字节。
 
 Python 当前输入 schema 3，兼容 1/2；新增根 module、模块元数据和上下文发布范围/缺口。独立导出器仍可用 --pyproject 读取可选静态配置，统一准备默认检查入口根；没有 pyproject 不构成前置条件。adapter v5-comments 与固定后端提交严格核对，旧 worker 拒绝；新 profile 不复用旧结果。诊断仍按实际反向依赖归因，辅助/后端来源和未知影响保留。公共准备清单 schema 1、报告 schema 2 独立版本化，不升级 worker/daemon/GRA1/图库协议。详见 [统一输入准备](modules/inputs.md)。
 
-物理 schema 12 在保持 schema 9 紧凑表结构的基础上扩展 Python 声明约束，逻辑 schema 35。Python 只发布已绑定目标，不按同名函数跨 world/语言补边。未解析调用继承已验证 source 的 language/provider。缺模块即使被源码 ignore 也计入完整性；严格模式拒绝 partial。旧 revision 查询/增量必须先 `index --full`。详见 [Python worker](modules/python-worker.md)。
+物理 schema 13 在保持 schema 9 紧凑表结构的基础上扩展 Python 声明约束，逻辑 schema 36。Python 只发布已绑定目标，不按同名函数跨 world/语言补边。未解析调用继承已验证 source 的 language/provider。缺模块即使被源码 ignore 也计入完整性；严格模式拒绝 partial。旧 revision 查询/增量必须先 `index --full`。详见 [Python worker](modules/python-worker.md)。
 
 查询资源能力标签为 `query-resources-v1`，直接递归投影为 `call-recursion-v1`。Evidence 新增可选 resource_usage；正常输出省略。protobuf 采用新增字段号，daemon/worker/ABI 版本不变。账本快照按根操作写入，不把共享快照相加；旧冻结记录缺新字段可读。
 
-### 分析截止时间与 Python 累计回执（接入中）
+### 分析截止时间与 Python 累计回执（已接入）
 
 任务排队、分析和发布共享同一单调截止时间；Hello.deadline_ms、Discover.deadline_ms 与 Analyze.deadline_ms 显式发送剩余时长；三者均用optional字段区分缺失与明确0（无任务截止时间），缺失拒绝。Rust/Python 使用公共 AnalysisTaskMeter 保留 grant、用量和首个截止时间，后续 attempt 不能延长或清除截止时间。TIMEOUT、CANCELLED、ANALYSIS_RESOURCE_LIMIT 维持独立身份。PublicationFence 在提交准入前原子检查截止时间；一旦进入提交，后续取消/超时不能撤销已准入的提交。
 
-Python 普通/组合/prepared 入口加入 analysis-resources-v1，End/Failure 回传累计用量；host 与同语言多实例严格使用各自分片。当前严格使用worker22/Java11；生产Hello/Discover/Analyze拒绝缺失或语言错误的grant，Java生产请求还要求累计seed和deadline。公共 IPC 帧已在分配/解码前准入；语言内部投影与 codec 仍按各自审计边界验收。
+Python 普通/组合/prepared 入口加入 analysis-resources-v1，End/Failure 回传累计用量；host 与同语言多实例严格使用各自分片。当前严格使用worker24/Java13；生产Hello/Discover/Analyze拒绝缺失或语言错误的grant，Java生产请求还要求累计seed和deadline。公共 IPC 帧已在分配/解码前准入；语言内部投影与 codec 仍按各自审计边界验收。
 
-### Java 同账户累计回执（接入阶段）
+### Java 同账户累计回执（已接入）
 
 Java worker 下发同一个 grant、当前累计 analysis_usage 和剩余 deadline_ms；Java AnalysisContext 从该水位继续累计，成功/失败结果均可返回 grant_id、usage、phase。Rust 先核对身份、阶段、额度和不倒退，再接续归档读取、编码及 IPC 消耗。该接续只允许无子作用域的 worker 根账户，不能重置失败或额度；回执本身不证明归档有效，成功 End 仍要求原始归档 EOF/SHA 校验通过。
 
@@ -188,10 +188,10 @@ Java 普通、Java/Rust、Java/Python 和 prepared 入口已接入；健康 work
 
 JDK SAX 先拒绝深度时，记录平台实际限制：固定工具链当前为 100，比任务默认 256 更小。通过 JAXP00010006 与已接受 SAX 深度识别这次拒绝，不提高 JDK 限额；资源异常继续使用 HardResourceLimit，超时/取消保持独立身份。实现身份为 anatomist-4a903272-codeana-graph4-resource2-analysis。
 
-当前已切换worker22/Java11，旧握手/请求/结果与混装bundle拒绝；后续语义 JSON、签名投影、混合与分发的本机验证见 current-state 的对应轮次，正式跨平台与容量边界保持。
+当前已切换worker24/Java13，旧握手/请求/结果与混装bundle拒绝；后续语义 JSON、签名投影、混合与分发的本机验证见 current-state 的对应轮次，正式跨平台与容量边界保持。
 
 
-### Discover 与未变复用累计终态（接入阶段）
+### Discover 与未变复用累计终态（已接入）
 
 生产入口在小型 Hello 中签发静态实例grant、初始化账本并核对首个水位，再准入 Discover 业务帧；三种worker均拒绝缺失/语言错误的grant。Discover描述符和配置文件读取/解码预留计入同一个AnalysisTaskMeter，BuildContext.analysis_usage回传累计水位；该字段只用于传输，不进入领域BuildContext或语义profile。Analyze必须接续同一个grant、累计用量及截止时间。
 
@@ -200,9 +200,9 @@ JDK SAX 先拒绝深度时，记录平台实际限制：固定工具链当前为
 进程丢失最终回执时，state=unknown、complete=false；usage若存在，只表示最后核实水位。当前真实Native崩溃场景保留Discover水位，不证明FFI最终消耗；Markdown同步提示不完整。所有发送的End/Failure/Replan/Reused必须携带回执和显式usage_known（protobuf optional bool，缺失拒绝）；FrameReader 在业务缓冲与 prost 解码前核算额度；取消排空不解码业务模型。
 
 
-worker22的usage_known=true表示该回执时刻的累计用量已核实；false仅允许Failure携带最后核实水位，host登记Unknown，不能认证成功或重规划。已死亡/失联的进程没有最终消息时，仍保留之前水位并标Unknown。控制取消核对attempt，回执写入有短时限；回压导致无法送达时不阻塞退出，也不伪造完整终态。
+worker24的usage_known=true表示该回执时刻的累计用量已核实；false仅允许Failure携带最后核实水位，host登记Unknown，不能认证成功或重规划。已死亡/失联的进程没有最终消息时，仍保留之前水位并标Unknown。控制取消核对attempt，回执写入有短时限；回压导致无法送达时不阻塞退出，也不伪造完整终态。
 
-Java11请求显式要求analysis_grant、analysis_usage的四项整数水位及deadline_ms；缺失时不创建默认生产账本。成功结果要求version11、usage_known=true及analysis_usage；预分配OOM/Stack/Fatal错误结果使用version11、usage_known=false，Rust保留原错误并给出Unknown回执。C ABI保持4。
+Java13请求显式要求analysis_grant、analysis_usage的四项整数水位及deadline_ms；缺失时不创建默认生产账本。成功结果要求version13、usage_known=true及analysis_usage；预分配OOM/Stack/Fatal错误结果使用version13、usage_known=false，Rust保留原错误并给出Unknown回执。C ABI保持4。
 
 ### Java 签名与 JSON 传输准入
 
@@ -225,10 +225,12 @@ JVM/Native合并JAR必须逐类匹配本次reactor编译结果；父构建强制
 
 ## 源码注释契约（C1 已交付）
 
-当前源码使用 worker 23 / graph model 5 / analysis 12，物理 schema 12、逻辑 35、GraphSemantics 27、javac-model-v51；daemon 4、C ABI 4、compiler batch 2 和 catalog 2 保持。本文较早阶段的版本描述按各自变更记录解释。匹配的 G1 build-only Native/JVM SDK 已安装并通过 C1 公开查询，完整生命周期/分发及正式放行仍按 C2/C4 门槛执行。
+当前源码使用 worker 24 / graph model 6 / analysis 12，物理 schema 13、逻辑 35、GraphSemantics 28、javac-model-v51；daemon 5、C ABI 4、compiler batch 2 和 catalog 2 保持。本文较早阶段的版本描述按各自变更记录解释。匹配的 G1 build-only Native/JVM SDK 已安装并通过 C1 公开查询，完整生命周期/分发及正式放行仍按 C2/C4 门槛执行。
 
 GRA1 新增 COMMENT=17、COMMENT_LINK=18；保留 reserved 6。两类行必须给出捕获源码的显式 world；注释 ID 由 producer、language、module、scope、world、相对路径、source hash、原始 UTF-8 起止偏移及 kind 的 JSON 数组摘要产生。正文映射、来源范围和声明引用在同一捕获文件/world 内校验；存储不推断语言归属。公开坐标为一基 UTF-16，字节区间为 UTF-8 半开区间，内部整数主键不输出。
 
-TaskRequest 字段 48 为 search_in，49/50 为可选 context_before/context_after；缺省分别 names、5/5，0 有效，范围 0..=100。CLI 要求 comment-search-v1 能力；旧 daemon 明确拒绝。项目 [query.comments] 的默认值在首次提交解析，实际值与冻结页保存；翻页不重新读取配置。COMMENTS 覆盖与代码绑定覆盖独立；尚未接入注释的语言披露缺口。
+TaskRequest 字段 48 为 search_in；49/50 及名称 context_before/context_after 保留 reserved。CLI 要求 comment-search-v2；删除 --context-before/--context-after 和 [query.comments]，旧参数／配置明确报错。CommentMatch 仅包含 comment、hits、links，不附带源码窗口；links 只接受 documents/enclosing_callable 和 language_rule。源文件仍按捕获 hash 验证，以计算原始命中范围。
 
-prepared 清单的 preparation_sha256 是可选的展示配置例外证明，绑定原始 config_sha256 与清除 query.comments 后的完整类型化配置；不替代 artifact 校验。缺该字段的历史 schema 1 清单继续精确校验原始配置。重用仍要求语义 profile 相同，除根配置的 FILES hash/size 外所有来源/owner 完全相同。
+冻结页记录 comment_format=2；旧注释游标拒绝并提示重新查询，已支持的非注释旧页继续按保存顺序重放，不重算查询。prepared 清单删除展示配置例外，config_sha256 精确匹配原始配置字节；旧例外清单需要重新 index --prepare。artifact、来源和语义 profile 校验保持。
+
+JavaConfig 必填 target_java（8/17），附带 actual_java_version 与 toolchain_aliases；analysis 13 请求必填目标，缺失或非法值拒绝。SDK manifest Native 3 / JVM 2 登记 target_java=[8,17]、compiler_bridges 映射及每个文件摘要；缺桥、错误摘要和混装 SDK 拒绝。javac-model-v51、compiler batch 2、C ABI 4 保持；Native 构建 JDK 25 与目标 JDK 分开。新语义与旧图库不原地迁移，index --full 建成后切 head。

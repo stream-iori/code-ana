@@ -145,7 +145,7 @@ class RustLanguage(RustHarness):
             self.assertGreater(catalog.execute("SELECT count(*) FROM events WHERE body LIKE '%rust_analyze_unchanged%'").fetchone()[0],0)
         first=unchanged['revision']
         with self.db(first) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],12)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],13)
             self.assertEqual(db.execute("SELECT count(*) FROM rust_source_states WHERE json_type(state,'$.dependencies') IS NOT NULL").fetchone()[0],0)
             self.assertGreater(db.execute('SELECT count(*) FROM graph_rust_analysis_dependencies').fetchone()[0],0)
         with self.db(first) as db:

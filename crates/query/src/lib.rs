@@ -130,11 +130,6 @@ fn hierarchy_options(
     Ok(())
 }
 fn preflight_query(request: &Request) -> Result<()> {
-    CommentContext {
-        before: request.context_before.unwrap_or(5),
-        after: request.context_after.unwrap_or(5),
-    }
-    .validate()?;
     ensure!(
         request.search_in == SearchIn::Names
             || request.operation == Operation::SearchCode
@@ -2345,12 +2340,13 @@ mod tests {
         };
         let declaration: Fact = serde_json::from_value(json!({
             "id":"producer-method", "kind":"declaration", "source":source.path,
-            "owner":{"world":source.world,"producer":"javac-java8-v1","kind":"source","id":source.path},
+            "owner":{"world":source.world,"producer":"javac-v3","kind":"source","id":source.path},
             "signature":"Api#read()", "origin":"javac", "span":{"start":start,"end":end}
-        })).unwrap();
+        }))
+        .unwrap();
         let auxiliary: Fact = serde_json::from_value(json!({
             "id":"consumer-method", "kind":"external_symbol", "signature":"Api#read()", "origin":"javac",
-            "owner":{"world":"app-main","producer":"javac-java8-v1","kind":"context","id":"app@MAIN"},
+            "owner":{"world":"app-main","producer":"javac-v3","kind":"context","id":"app@MAIN"},
             "attributes":{"source_available":false,"source_origin":{
                 "path":source.path,"hash":source.hash,"world":source.world,"module":source.module,"scope":source.scope
             }}

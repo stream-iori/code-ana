@@ -126,8 +126,6 @@ pub struct PreparedUnit {
 pub struct InputCatalog {
     pub schema_version: u32,
     pub config_sha256: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preparation_sha256: Option<String>,
     pub units: Vec<PreparedUnit>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -136,22 +134,13 @@ pub struct EffectiveUnit {
     pub effective: Option<Box<Effective>>,
 }
 
-/// Bind the original config receipt to preparation policy while allowing comment
-/// presentation defaults to change. Legacy catalogs retain their exact-byte check.
-pub fn preparation_fingerprint(config: &ProjectConfig, original_hash: &str) -> String {
-    let mut policy = config.clone();
-    policy.query.comments = Default::default();
-    digest(&("prepared-comments-presentation-v1", original_hash, &policy))
-}
-fn matches_configuration(catalog: &InputCatalog, config: &ProjectConfig, raw_hash: &str) -> bool {
-    match &catalog.preparation_sha256 {
-        Some(expected) => *expected == preparation_fingerprint(config, &catalog.config_sha256),
-        None => catalog.config_sha256 == raw_hash,
-    }
+/// Prepared inputs require the exact configuration bytes they were exported from.
+fn matches_configuration(catalog: &InputCatalog, _config: &ProjectConfig, raw_hash: &str) -> bool {
+    catalog.config_sha256 == raw_hash
 }
 
 pub fn load(project: &Path) -> Result<ProjectConfig> {
-    let config: ProjectConfig = toml::from_str(std::str::from_utf8(&bounded_read(
+    let config: ProjectConfig = super::parse_project(std::str::from_utf8(&bounded_read(
         &project.join(".code-ana/config.toml"),
         1 << 20,
     )?)?)?;
@@ -468,41 +457,37 @@ mod tests {
 }
 
 #[cfg(test)]
-mod presentation_tests {
+mod strict_config_tests {
     use super::*;
     #[test]
-    fn catalog_presentation_exception_keeps_policy_and_raw_receipt_bound() {
-        let mut config = ProjectConfig::default();
-        let raw = hash(b"original TOML bytes");
-        let mut catalog = InputCatalog {
+    fn prepared_configuration_requires_original_bytes() {
+        let original = hash(b"original TOML");
+        let catalog = InputCatalog {
             schema_version: 1,
-            config_sha256: raw.clone(),
-            preparation_sha256: Some(preparation_fingerprint(&config, &raw)),
+            config_sha256: original.clone(),
             units: vec![],
         };
-        config.query.comments.context_before = 0;
-        config.query.comments.context_after = 100;
         assert!(matches_configuration(
             &catalog,
-            &config,
-            &hash(b"changed comment context")
+            &ProjectConfig::default(),
+            &original
         ));
-        config.scan.scopes = vec!["TEST".into()];
-        assert!(!matches_configuration(&catalog, &config, &raw));
-        config.scan = Default::default();
-        catalog.config_sha256 = hash(b"tampered receipt");
-        assert!(!matches_configuration(&catalog, &config, &raw));
-        catalog.preparation_sha256 = None;
-        catalog.config_sha256 = raw.clone();
-        assert!(matches_configuration(&catalog, &config, &raw));
         assert!(!matches_configuration(
             &catalog,
-            &config,
-            &hash(b"different legacy TOML")
+            &ProjectConfig::default(),
+            &hash(b"changed TOML")
         ));
-        let legacy = r#"{"schema_version":1,"config_sha256":"old","units":[]}"#;
-        let decoded: InputCatalog = serde_json::from_str(legacy).unwrap();
-        assert!(decoded.preparation_sha256.is_none());
-        assert_eq!(serde_json::to_string(&decoded).unwrap(), legacy);
+    }
+    #[test]
+    fn removed_comment_configuration_has_a_removal_hint() {
+        let error = super::super::parse_project(
+            "schema_version=1\nkind='project'\n[query.comments]\ncontext_before=0\n",
+        )
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Remove retired [query.comments]")
+        );
     }
 }

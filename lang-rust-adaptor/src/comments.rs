@@ -1,17 +1,17 @@
 //! Frozen syntax evidence. HIR failures never suppress lexically available comments.
-use anyhow::{Result, ensure};
+use anyhow::Result;
 use codeana_model::{
     AnalysisContext, CommentBasis, CommentBodySegment, CommentFact, CommentKind, CommentLink,
     CommentRange, CommentRelation, SourcePositions,
     rust::{CrateInput, FrozenFile, PRODUCER},
 };
 use ra_ap_syntax::{
-    AstNode, AstToken, SyntaxNode, SyntaxToken, TextRange,
+    AstNode, AstToken, SyntaxNode, TextRange,
     ast::{self, IsString},
 };
 use std::collections::{BTreeSet, HashMap};
 
-pub const RULE: &str = "rust-comments-v1";
+pub const RULE: &str = "rust-comments-v2";
 #[derive(Debug)]
 pub struct Observation {
     pub fact: CommentFact,
@@ -93,7 +93,6 @@ impl Collector<'_> {
                     )?;
                 }
                 self.enclosing(&positions, &mut observation, token.syntax().parent())?;
-                self.statements(&positions, &mut observation, token.syntax())?;
                 result.push(observation);
             } else if let Some(attr) = element.as_node().and_then(|n| ast::Attr::cast(n.clone())) {
                 if attr.simple_name().as_deref() != Some("doc") {
@@ -329,93 +328,6 @@ impl Collector<'_> {
         }
         Ok(())
     }
-    fn statements(
-        &self,
-        positions: &SourcePositions,
-        observation: &mut Observation,
-        token: &SyntaxToken,
-    ) -> Result<()> {
-        let Some(parent) = token.parent() else {
-            return Ok(());
-        };
-        if !ast::StmtList::can_cast(parent.kind()) {
-            return Ok(());
-        }
-        for (direction, relation) in [
-            (
-                ra_ap_syntax::Direction::Prev,
-                CommentRelation::TrailingStatement,
-            ),
-            (
-                ra_ap_syntax::Direction::Next,
-                CommentRelation::LeadingStatement,
-            ),
-        ] {
-            let mut next = if direction == ra_ap_syntax::Direction::Prev {
-                token.prev_sibling_or_token()
-            } else {
-                token.next_sibling_or_token()
-            };
-            while let Some(element) = next {
-                self.budget.charge(1, 0, 0)?;
-                (self.check)()?;
-                if let Some(node) = element.as_node() {
-                    if ast::LetStmt::can_cast(node.kind())
-                        || ast::ExprStmt::can_cast(node.kind())
-                        || ast::Expr::can_cast(node.kind())
-                    {
-                        let range = node.text_range();
-                        let (a, b) = if direction == ra_ap_syntax::Direction::Prev {
-                            (
-                                usize::from(range.end()),
-                                observation.fact.range.byte_start as usize,
-                            )
-                        } else {
-                            (
-                                observation.fact.range.byte_end as usize,
-                                usize::from(range.start()),
-                            )
-                        };
-                        ensure!(a <= b, "RUST_COMMENT_STATEMENT_RANGE");
-                        self.budget.charge((b - a) as u64, 0, 0)?;
-                        let gap = &self.text[a..b];
-                        let newline_count = gap.bytes().filter(|c| *c == b'\n').count()
-                            + gap
-                                .as_bytes()
-                                .iter()
-                                .enumerate()
-                                .filter(|(i, c)| {
-                                    **c == b'\r' && gap.as_bytes().get(i + 1) != Some(&b'\n')
-                                })
-                                .count();
-                        if (direction == ra_ap_syntax::Direction::Prev && newline_count == 0)
-                            || (direction == ra_ap_syntax::Direction::Next
-                                && !codeana_model::comment_gap_has_blank_line(gap))
-                        {
-                            self.link(
-                                positions,
-                                observation,
-                                relation,
-                                node,
-                                CommentBasis::Heuristic,
-                            )?;
-                        }
-                    }
-                    break;
-                }
-                let trivia = element.as_token().is_some_and(|t| t.kind().is_trivia());
-                if !trivia {
-                    break;
-                }
-                next = if direction == ra_ap_syntax::Direction::Prev {
-                    element.prev_sibling_or_token()
-                } else {
-                    element.next_sibling_or_token()
-                };
-            }
-        }
-        Ok(())
-    }
 }
 fn doc_owner(parent: SyntaxNode, inner: bool) -> Option<SyntaxNode> {
     if !inner {
@@ -635,28 +547,15 @@ mod tests {
         assert!(enclosing("类内").is_none());
     }
     #[test]
-    fn statement_links_obey_same_block_and_blank_lines() {
-        let source = "fn run(){\n// 前置\nlet a=1; // 行尾\n\n// 空行\n\nlet b=2;\n{ // 子块\nlet c=3;\n}\n}";
-        let (all, _) = extract(source);
-        let links = |name, relation| {
-            find(&all, name)
-                .links
-                .iter()
-                .filter(|l| l.relation == relation)
-                .count()
-        };
-        assert_eq!(links("前置", CommentRelation::LeadingStatement), 1);
-        assert_eq!(links("行尾", CommentRelation::TrailingStatement), 1);
-        assert_eq!(links("空行", CommentRelation::LeadingStatement), 0);
-        assert_eq!(links("子块", CommentRelation::TrailingStatement), 0);
-        assert!(
-            all.iter()
-                .flat_map(|o| &o.links)
-                .filter(|l| matches!(
-                    l.relation,
-                    CommentRelation::LeadingStatement | CommentRelation::TrailingStatement
-                ))
-                .all(|l| l.basis == CommentBasis::Heuristic && l.declaration.is_none())
+    fn internal_comments_only_link_to_the_callable() {
+        let (all, _) = extract(
+            "fn run(){\n// 前置\nlet a=1; // 行尾\n\n// 空行\n\nlet b=2;\n{ // 子块\nlet c=3;\n}\n}",
         );
+        for name in ["前置", "行尾", "空行", "子块"] {
+            let links = &find(&all, name).links;
+            assert_eq!(links.len(), 1);
+            assert_eq!(links[0].relation, CommentRelation::EnclosingCallable);
+            assert_eq!(links[0].basis, CommentBasis::LanguageRule);
+        }
     }
 }

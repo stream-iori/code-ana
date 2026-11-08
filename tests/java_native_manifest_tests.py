@@ -28,7 +28,7 @@ class NativeManifest(unittest.TestCase):
         self.target = self.project / 'target'
         (self.target / 'native').mkdir(parents=True)
         self.library = self.target / 'native' / ('libcodeana_java.dylib' if sys.platform == 'darwin' else 'libcodeana_java.so')
-        for path in [self.library, self.target / 'compiler-bridge.jar', self.target / 'maven-input-worker.jar']:
+        for path in [self.library, self.target / 'compiler-bridge.jar', self.target / 'compiler-bridge17.jar', self.target / 'maven-input-worker.jar']:
             path.write_bytes(('fixture:' + path.name).encode())
         self.environment = dict(os.environ)
         self.environment.pop('CODEANA_NATIVE_GC', None)
@@ -48,9 +48,9 @@ class NativeManifest(unittest.TestCase):
 
     def test_shared_bridge_identity_and_all_distribution_resources(self):
         self.assertEqual(self.manifest['backend'], 'native')
-        self.assertEqual(self.manifest['adapter'], 'anatomist-4a903272-codeana-graph5-resource2-analysis')
-        self.assertEqual(self.manifest['graph_schema'], 35)
-        self.assertEqual(set(self.manifest['files']), {str(self.library.relative_to(self.target)), 'compiler-bridge.jar', 'maven-input-worker.jar'})
+        self.assertEqual(self.manifest['adapter'], 'anatomist-4a903272-codeana-graph6-resource2-analysis')
+        self.assertEqual(self.manifest['graph_schema'], 36)
+        self.assertEqual(set(self.manifest['files']), {str(self.library.relative_to(self.target)), 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'})
         for name, digest in self.manifest['files'].items():
             self.assertEqual(hashlib.sha256((self.target / name).read_bytes()).hexdigest(), digest)
         result = self.probe()
@@ -76,6 +76,13 @@ class NativeManifest(unittest.TestCase):
         result = self.probe()
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('BUNDLE_VERSION_MISMATCH', result.stderr)
+
+    def test_java17_bridge_is_required_and_content_checked(self):
+        self.assertEqual(self.manifest['compiler_bridges'], {'8':'compiler-bridge.jar','17':'compiler-bridge17.jar'})
+        (self.target / 'compiler-bridge17.jar').write_bytes(b'changed')
+        result = self.probe()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('BUNDLE_HASH_MISMATCH', result.stderr)
 
     def test_maven_metadata_worker_checksum_is_required(self):
         (self.target / 'maven-input-worker.jar').write_bytes(b'changed')

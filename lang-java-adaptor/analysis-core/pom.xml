@@ -3,6 +3,14 @@
   <javac fork="true" executable="${java8.home}/bin/javac" srcdir="${project.basedir}/src/worker/java" destdir="${project.build.directory}/worker-classes" source="8" target="8" encoding="UTF-8" includeantruntime="false"><classpath><pathelement location="${java8.home}/lib/tools.jar"/></classpath><compilerarg value="-Xlint:-options"/></javac>
   <mkdir dir="${project.build.outputDirectory}/META-INF/anatomist"/>
   <jar destfile="${project.build.outputDirectory}/META-INF/anatomist/javac-worker.jar" basedir="${project.build.directory}/worker-classes"/>
+  <mkdir dir="${project.build.directory}/worker17-classes"/>
+  <javac fork="true" executable="${java17.home}/bin/javac" srcdir="${project.basedir}/src/worker/java" destdir="${project.build.directory}/worker17-classes" source="17" target="17" encoding="UTF-8" includeantruntime="false">
+    <compilerarg value="--add-exports=jdk.compiler/com.sun.tools.javac.api=ALL-UNNAMED"/>
+    <compilerarg value="--add-exports=jdk.compiler/com.sun.tools.javac.parser=ALL-UNNAMED"/>
+    <compilerarg value="--add-exports=jdk.compiler/com.sun.tools.javac.tree=ALL-UNNAMED"/>
+    <compilerarg value="--add-exports=jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED"/>
+  </javac>
+  <jar destfile="${project.build.outputDirectory}/META-INF/anatomist/javac-worker17.jar" basedir="${project.build.directory}/worker17-classes"/>
   <mkdir dir="${project.build.directory}/maven-input-classes"/>
   <javac srcdir="${project.basedir}/src/maven-worker/java" destdir="${project.build.directory}/maven-input-classes" source="8" target="8" encoding="UTF-8" includeantruntime="false"><classpath refid="maven.compile.classpath"/><compilerarg value="-Xlint:-options"/></javac>
   <copy todir="${project.build.directory}/maven-input-classes"><fileset dir="${project.basedir}/src/maven-worker/resources"/></copy>

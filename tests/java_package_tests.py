@@ -14,7 +14,7 @@ class JavaPackage(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.root=pathlib.Path(self.temp.name)
-    def stage(self,backend,stale=False,missing=False,duplicate=False):
+    def stage(self,backend,stale=False,missing=False,duplicate=False,missing_bridge=False,wrong_version=False):
         main='native-bridge' if backend=='native' else 'jvm-runner'
         artifact=self.root/main/'target'/(main+'-0.1.0.jar');artifact.parent.mkdir(parents=True,exist_ok=True)
         with zipfile.ZipFile(artifact,'w') as jar:
@@ -27,6 +27,18 @@ class JavaPackage(unittest.TestCase):
                     import warnings
                     with warnings.catch_warnings():
                         warnings.simplefilter('ignore');jar.writestr(path.name,path.read_bytes())
+            for filename, major in [('javac-worker.jar', 52), ('javac-worker17.jar', 61)]:
+                path=self.root/'analysis-core/target/classes/META-INF/anatomist'/filename
+                path.parent.mkdir(parents=True,exist_ok=True)
+                with zipfile.ZipFile(path,'w') as bridge:
+                    version=52 if wrong_version else major
+                    bridge.writestr('Worker.class',b'\xca\xfe\xba\xbe\x00\x00'+version.to_bytes(2,'big'))
+                if not missing_bridge:
+                    jar.writestr('META-INF/anatomist/'+filename,path.read_bytes())
+    def test_missing_bridge_and_wrong_bytecode_are_rejected(self):
+        for option, error in [('missing_bridge','JAVA_PACKAGE_COMPILER_MISSING_OR_STALE'),('wrong_version','JAVA_PACKAGE_COMPILER_VERSION')]:
+            self.stage('jvm',**{option:True})
+            with self.assertRaisesRegex(ValueError,error):package.verify(self.root,'jvm')
     def test_current_reactor_classes_are_checked_for_both_backends(self):
         for backend in ('native','jvm'):
             self.stage(backend);self.assertEqual(package.verify(self.root,backend)['classes'],len(package.MODULES)+1)

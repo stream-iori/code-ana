@@ -38,6 +38,7 @@ public final class CapturedProject {
             Set<String> dependencies,
             ContextOptions options) {}
 
+    public final int targetJava;
     public final Path root;
     public final Path diagnosticRoot;
     public final boolean deferFactDedup;
@@ -55,6 +56,7 @@ public final class CapturedProject {
     CapturedProject(AnalysisRequest request) throws IOException { this(request, new com.anatomist.core.AnalysisContext(com.anatomist.core.AnalysisContext.Limits.defaults())); }
     CapturedProject(AnalysisRequest request, com.anatomist.core.AnalysisContext analysisContext) throws IOException {
         this.analysisContext = Objects.requireNonNull(analysisContext);
+        targetJava = request.targetJava();
         dependencyMode = request.dependencyMode();
         if (!Set.of("resolved", "source_only_requested", "source_only_fallback")
                 .contains(dependencyMode))
@@ -301,7 +303,7 @@ public final class CapturedProject {
                             module,
                             root.resolve(module).normalize(),
                             module,
-                            8,
+                            targetJava,
                             main,
                             test,
                             dependencies(m),

@@ -56,7 +56,7 @@ public final class JvmRunner {
             var detail = new java.io.StringWriter();
             failure.printStackTrace(new java.io.PrintWriter(detail));
             failureDetail = detail.toString();
-            Json.writeTo(resultPath, Json.object("version",12,"usage_known",true,"error", detail.toString(), "analysis_usage", resources.receipt()), 64L << 20);
+            Json.writeTo(resultPath, Json.object("version",13,"usage_known",true,"error", detail.toString(), "analysis_usage", resources.receipt()), 64L << 20);
             throw failure;
         } finally {
             telemetry.save(Path.of(Json.string(request, "scratch")).resolve("native-timings.json"), terminalState, failureDetail);

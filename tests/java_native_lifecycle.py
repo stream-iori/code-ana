@@ -43,7 +43,7 @@ class NativeLifecycle(unittest.TestCase):
         self.gc = manifest['native_gc']
         self.assertEqual(manifest['backend'], 'native')
         self.assertEqual(manifest['abi'], 4)
-        self.assertEqual(manifest['analysis_request'], 12)
+        self.assertEqual(manifest['analysis_request'], 13)
         for name, expected in manifest['files'].items():
             path = bundle.parent / name
             self.assertTrue(path.resolve().is_relative_to(bundle.parent))
@@ -71,7 +71,7 @@ class NativeLifecycle(unittest.TestCase):
         unit = dict(path='src/A.java', input=str(source), hash=hashlib.sha256(source.read_bytes()).hexdigest(),
                     module='.', world='main', scope='MAIN', publish=True)
         self.request = dict(analysis_grant=dict(id='native-lifecycle/java/worker',language='java',limits=dict(max_work=10000000,max_nodes=1000000,max_payload_bytes=536870912,max_depth=256)),
-            analysis_usage=dict(work=0,nodes=0,payload_bytes=0,max_depth=0,failure=None),deadline_ms=0,version=12, full=True, facts=True,
+            analysis_usage=dict(work=0,nodes=0,payload_bytes=0,max_depth=0,failure=None),deadline_ms=0,version=13, target_java=8, full=True, facts=True,
             java_home=os.environ.get('CODEANA_JAVA8_HOME', str(pathlib.Path.home() / '.sdkman/candidates/java/8.0.492-zulu')),
             scratch=str(self.root), compiler_timeout_seconds=30,
             contexts=[dict(context='.@MAIN', module='.', world='main', scope='MAIN',
@@ -137,7 +137,7 @@ class NativeLifecycle(unittest.TestCase):
         self.assertEqual(self.library.codeana_java_read_result_chunk(
             self.thread, task, len(output) + 1, buffer, 41), -2)
         value=json.loads(output)
-        self.assertEqual(value['version'],12)
+        self.assertEqual(value['version'],13)
         self.assertIsInstance(value['usage_known'],bool)
         self.assertEqual(value['usage_known'],'analysis_usage' in value)
         return state, value

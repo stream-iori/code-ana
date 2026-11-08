@@ -5,7 +5,7 @@ use codeana_model::{AnalysisContext, CommentBodySegment, CommentRelation};
 use ruff_python_ast::{Expr, Stmt, token::TokenKind};
 use ruff_text_size::Ranged;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Link {
@@ -30,8 +30,7 @@ struct Token {
     start: u32,
     end: u32,
 }
-struct Suite<'a> {
-    body: &'a [Stmt],
+struct Suite {
     start: u32,
     end: u32,
     indent: u32,
@@ -158,10 +157,6 @@ impl<'a> TokenBounds<'a> {
         Ok(column)
     }
 }
-fn body_key(body: &[Stmt]) -> (usize, usize) {
-    (body.as_ptr() as usize, body.len())
-}
-
 /// Balanced interval bounds prune sibling scopes, while keeping enclosing ranges
 /// available when a trailing comment has already dedented out of an inner suite.
 struct RangeIndex {
@@ -243,13 +238,13 @@ impl RangeIndex {
     }
 }
 
-fn suite<'a>(
+fn suite(
     source: &str,
-    body: &'a [Stmt],
+    body: &[Stmt],
     bounds: &TokenBounds<'_>,
     budget: &AnalysisContext,
     check: &dyn Fn() -> Result<()>,
-) -> Result<Option<Suite<'a>>> {
+) -> Result<Option<Suite>> {
     let Some(first) = body.first().map(|s| s.start().to_u32()) else {
         return Ok(None);
     };
@@ -300,7 +295,6 @@ fn suite<'a>(
         check,
     )?;
     Ok(Some(Suite {
-        body,
         start: begin,
         end,
         indent,
@@ -361,30 +355,6 @@ pub(super) fn collect(
         }
     }
     let bounds = TokenBounds::new(source, &tokens, &close, budget, check)?;
-    let mut suites = vec![Suite {
-        body,
-        start: 0,
-        end: source.len() as u32,
-        indent: 0,
-    }];
-    let mut by_body = BTreeMap::from([(body_key(body), 0usize)]);
-    for body in &facts.bodies {
-        check()?;
-        budget.charge(
-            by_body.len().checked_ilog2().unwrap_or(0) as u64 + 1,
-            1,
-            256,
-        )?;
-        if by_body.contains_key(&body_key(body)) {
-            continue;
-        }
-        if let Some(s) = suite(source, body, &bounds, budget, check)? {
-            by_body.insert(body_key(body), suites.len());
-            suites.push(s);
-        } else if !body.is_empty() {
-            gaps.insert("PYTHON_COMMENT_SUITE_RANGE_UNAVAILABLE".into());
-        }
-    }
     let mut scopes = Vec::new();
     let mut docs = vec![(body, Some(u32::MAX), 0, source.len() as u32)];
     for stmt in &facts.statements {
@@ -394,12 +364,8 @@ pub(super) fn collect(
             Stmt::ClassDef(c) => (c.body.as_slice(), c.name.start().to_u32(), false),
             _ => continue,
         };
-        budget.charge(
-            by_body.len().checked_ilog2().unwrap_or(0) as u64 + 1,
-            1,
-            256,
-        )?;
-        if let Some(s) = by_body.get(&body_key(body)).map(|i| &suites[*i]) {
+        budget.charge(1, 1, 256)?;
+        if let Some(s) = suite(source, body, &bounds, budget, check)? {
             scopes.push(Scope {
                 start: s.start,
                 end: s.end,
@@ -409,6 +375,8 @@ pub(super) fn collect(
                 target_start: stmt.start().to_u32(),
             });
             docs.push((body, Some(anchor), stmt.start().to_u32(), s.end));
+        } else if !body.is_empty() {
+            gaps.insert("PYTHON_COMMENT_SUITE_RANGE_UNAVAILABLE".into());
         }
     }
     for expr in &facts.expressions {
@@ -491,7 +459,6 @@ pub(super) fn collect(
         }
     }
     let scope_index = RangeIndex::new(scopes.iter().map(|s| (s.start, s.end, s.indent)), budget)?;
-    let suite_index = RangeIndex::new(suites.iter().map(|s| (s.start, s.end, s.indent)), budget)?;
     for comment in &mut result {
         check()?;
         let indentation = bounds.indentation(source, comment.start, budget, check)?;
@@ -507,81 +474,6 @@ pub(super) fn collect(
                 scope.target_start,
                 scope.end,
             ));
-        }
-        if comment.docstring {
-            continue;
-        }
-        let Some(suite) = suite_index
-            .nearest(comment.start, comment.end, indentation, budget, check)?
-            .map(|i| &suites[i])
-        else {
-            continue;
-        };
-        budget.charge(
-            suite.body.len().checked_ilog2().unwrap_or(0) as u64 + 1,
-            0,
-            0,
-        )?;
-        let at = suite
-            .body
-            .partition_point(|stmt| stmt.end().to_u32() <= comment.start);
-        for (stmt, relation) in [
-            (
-                at.checked_sub(1).and_then(|i| suite.body.get(i)),
-                CommentRelation::TrailingStatement,
-            ),
-            (suite.body.get(at), CommentRelation::LeadingStatement),
-        ] {
-            let Some(stmt) = stmt else {
-                continue;
-            };
-            if matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-                continue;
-            }
-            let (a, b) = if relation == CommentRelation::TrailingStatement {
-                (stmt.end().to_u32(), comment.start)
-            } else {
-                (comment.end, stmt.start().to_u32())
-            };
-            if a > b {
-                continue;
-            }
-            budget.charge(
-                u64::from(b - a) + tokens.len().checked_ilog2().unwrap_or(0) as u64 + 1,
-                0,
-                0,
-            )?;
-            let first = tokens.partition_point(|t| t.end <= a);
-            let last = tokens.partition_point(|t| t.start < b);
-            if a < b
-                && tokens[first..last].iter().any(|t| {
-                    !matches!(
-                        t.kind,
-                        TokenKind::Comment
-                            | TokenKind::Newline
-                            | TokenKind::NonLogicalNewline
-                            | TokenKind::Indent
-                            | TokenKind::Dedent
-                    )
-                })
-            {
-                continue;
-            }
-            let gap = &source[a as usize..b as usize];
-            let allowed = if relation == CommentRelation::TrailingStatement {
-                !gap.contains(['\n', '\r'])
-            } else {
-                !codeana_model::comment_gap_has_blank_line(gap)
-            };
-            if allowed {
-                budget.charge(1, 1, 128)?;
-                comment.links.push(link(
-                    relation,
-                    None,
-                    stmt.start().to_u32(),
-                    stmt.end().to_u32(),
-                ));
-            }
         }
     }
     result.sort_by_key(|c| (c.start, c.end));
@@ -742,11 +634,7 @@ mod tests {
                 l.relation == CommentRelation::EnclosingCallable && l.declaration.is_some()
             })
         }));
-        assert!(all.iter().all(|c| {
-            c.links
-                .iter()
-                .any(|l| l.relation == CommentRelation::LeadingStatement)
-        }));
+        assert!(all.iter().all(|c| c.links.len() == 1));
     }
     #[test]
     fn lexical_absence_does_not_build_per_function_token_scopes() {
@@ -846,15 +734,15 @@ mod tests {
         assert!(owner("文件尾注释").is_none());
     }
     #[test]
-    fn same_suite_statement_links_blank_lines_and_inline_suite() {
+    fn callable_links_ignore_statement_adjacency() {
         let source = "def run():\n    # 前置\n    a=1 # 行尾\n    # 空行\n\n    b=2\n    if a:\n        # 子块\n        b=3\ndef inline(): pass # 单行函数\n";
         let (all, gaps) = extract(source);
         assert!(gaps.is_empty());
         let has = |name, kind| find(&all, name).links.iter().any(|l| l.relation == kind);
-        assert!(has("前置", CommentRelation::LeadingStatement), "{all:#?}");
-        assert!(has("行尾", CommentRelation::TrailingStatement));
-        assert!(!has("空行", CommentRelation::LeadingStatement));
-        assert!(!has("子块", CommentRelation::TrailingStatement));
+        for name in ["前置", "行尾", "空行", "子块"] {
+            assert!(has(name, CommentRelation::EnclosingCallable), "{all:#?}");
+            assert_eq!(find(&all, name).links.len(), 1);
+        }
         assert!(has("单行函数", CommentRelation::EnclosingCallable));
     }
     #[test]

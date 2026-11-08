@@ -20,6 +20,7 @@ pub struct BundleManifest {
     pub os: String,
     pub arch: String,
     pub target_java: Vec<u32>,
+    pub compiler_bridges: BTreeMap<String, String>,
     pub native_gc: Option<String>,
     pub files: BTreeMap<String, String>,
     #[serde(flatten)]

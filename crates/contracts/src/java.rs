@@ -145,6 +145,10 @@ impl OutputLimits {
 }
 pub fn validate(config: &w::JavaConfig) -> Result<()> {
     OutputLimits::from_config(config)?;
+    ensure!(
+        matches!(config.target_java, 8 | 17),
+        "JAVA_TARGET_REQUIRED: expected 8 or 17"
+    );
     let mode =
         w::JavaDependencyMode::try_from(config.dependency_mode).context("JAVA_DEPENDENCY_MODE")?;
     ensure!(
@@ -374,6 +378,7 @@ mod tests {
     }
     fn fixture() -> w::JavaConfig {
         w::JavaConfig {
+            target_java: 8,
             contexts: vec![
                 w::JavaContext {
                     world: "main".into(),
@@ -501,6 +506,7 @@ mod tests {
             })
             .collect();
         let mut config = w::JavaConfig {
+            target_java: 8,
             contexts: (0..66)
                 .map(|_| w::JavaContext {
                     sources: sources.clone(),

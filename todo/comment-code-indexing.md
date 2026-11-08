@@ -1,6 +1,6 @@
 # 注释索引与代码关联开发计划
 
-状态：注释功能阶段完成。C0—C4 已完成本机 fixture 范围的实现与验收；后续架构整改 A4—A7 也已收口，最终验收见总计划 A7 回执。当前证据见总计划执行记录。
+状态：原 C0—C4 注释功能阶段完成；现行规则已按 symbol 收敛改造更新，联合改造已于 2026-11-08 在本机 fixture、产品与实际分发范围完成，见 target/java17-plan-check/joint-receipt.json。C0—C4 已完成本机 fixture 范围的实现与验收；后续架构整改 A4—A7 也已收口，最终验收见总计划 A7 回执。当前证据见总计划执行记录。
 
 总排期见 [架构整改与注释索引联合开发计划](architecture-and-comments-roadmap.md)。本文保留注释功能的详细规则；架构任务、硬依赖和阶段门禁由总计划维护。实施顺序为：必要架构拆分 → 本文注释功能 → 后续架构整改。
 
@@ -11,15 +11,15 @@ P0 对应总计划 C0，在 A0 基线建立后即可开展；P1 对应 C1，须�
 - [x] 支持 Java、Rust、Python 标准注释及文档注释的索引。
 - [x] 引入 jieba-rs，支持通过中文关键词检索注释，导航到相关代码和所属方法。
 - [x] 注释、关联、全文索引随代码 revision 原子发布，支持删除、增量、历史查询和冻结分页。
-- [x] 周边代码默认显示**注释开始行之前 5 行、结束行之后 5 行**，包含完整注释；文件边界自动裁剪。
-- [x] 展示窗口可以跨方法边界；语义关联仍遵守作用域，不能把窗口中的其他方法误认为注释所属方法。
+- [x] 查询只交付注释正文、精确位置和声明关联，不生成周边源码窗口。
+- [x] 完整声明由现有 source 按 symbol 和同一 revision 读取，长声明读取全部分块。
 - [x] 首期支持关键词全文检索；任意子串、错字容错、项目自定义词典及相关性排序留待后续。
 - [x] 语义关联要求显式启用对应语言；FILES-only 场景继续使用现有文本搜索。
 
 ```text
 冻结源码
    ↓
-语言侧：注释提取 + 声明归属 + 附近语句关联
+语言侧：注释提取 + 声明／callable 归属
    ↓
 Rust：统一分词 → 注释表 / 关联表 / FTS5
    ↓
@@ -27,29 +27,15 @@ Rust：统一分词 → 注释表 / 关联表 / FTS5
    ↓
 关键词查询
    ├─ 命中注释
-   ├─ 上下文代码：默认上下各 5 行
-   └─ 所属方法：公开身份、声明位置
+   ├─ 精确正文与位置
+   └─ 所属声明 → 同 revision 的 source 完整源码
 ```
 
 ## 2. 配置与查询接口
 
-### 上下文配置
+### 配置边界
 
-项目 `.code-ana/config.toml` 新增：
-
-```toml
-[query.comments]
-context_before = 5
-context_after = 5
-```
-
-- [x] 两项分别接受 `0..=100` 的整数，缺省均为 5；负数、超范围及未知字段明确报错。
-- [x] 查询增加 `--context-before N`、`--context-after N`，分别覆盖配置；显式 `0` 必须与未提供区分。
-- [x] 优先级：显式请求参数 > 项目配置 > 内置默认值。
-- [x] 注释配置已贯通加载、请求归一化与执行；其他查询默认值按各自现行能力解释。
-- [x] 上下文配置只影响展示，不进入语义索引指纹，不触发重新索引。
-- [x] 首页查询冻结实际上下文参数；修改配置后续页仍使用原参数。
-- [x] 保持已有 `search-text --context` 行为。
+`[query.comments]` 与注释专用上下文参数已删除；旧配置／参数明确报错并提示删除。通用 `search-text --context` 保持。prepared 清单使用原始 config_sha256 精确校验，旧展示例外清单需要重新准备。
 
 ### 查询入口
 
@@ -57,11 +43,10 @@ context_after = 5
 
 ```sh
 codeana search-comments "库存不足"
-codeana search-comments "库存不足" --context-before 3 --context-after 8
 codeana search-code "库存不足" --in names,comments
 ```
 
-- [x] `search-comments` 返回注释、命中证据、源码窗口、可选所属声明及附近语句关联。
+- [x] `search-comments` 返回注释正文、命中证据、精确位置及可选所属声明。
 - [x] `search-code --in names|comments|names,comments` 默认 `names`，保持已有行为；注释命中投影为可导航声明。
 - [x] 文件级或无法关联声明的注释仍可由 `search-comments` 返回。
 - [x] 方法结果按实体去重，保留不同注释命中；支持继续进入 `resolve/source`。
@@ -75,15 +60,15 @@ codeana search-code "库存不足" --in names,comments
 
 | 语言 | 首期规则 | 实现边界 |
 |---|---|---|
-| Java | Javadoc、行注释、块注释 | 扩展现有 javac 桥及模型；保持目标 Java 8，不引入其他解析后端 |
+| Java | Javadoc、行注释、块注释 | 扩展现有 javac 桥及模型；支持目标 Java 8／17，不引入其他解析后端 |
 | Rust | 内外文档注释、普通注释、字面量 `doc` 属性 | 复用 rust-analyzer 语法树；不执行宏或外部文档包含 |
 | Python | `#`、标准位置的模块/类/函数 docstring | 复用现有 AST 并补词法提取；普通字符串不作为注释 |
 
-- [x] 分别保存 `documents`、`enclosing_callable`、`leading_statement`、`trailing_statement` 关系。
+- [x] 只保存 `documents`、`enclosing_callable`，关联依据为 `language_rule`。
 - [x] 文档归属按语言规则；方法归属按最近有效作用域。
-- [x] 行尾注释关联同块同行前一语句；前置注释仅在同块、无空行及其他有效 token 隔断时关联下一语句。
-- [x] 位置推断标记 `heuristic`；无法确定时保留文件定位，不猜测。
-- [x] 附近语句范围作为关联证据保存；源码展示始终使用配置行数，不自动扩大为整个语句块。
+- [x] 不计算相邻语句关系，函数体内注释仍关联最近有效 callable。
+- [x] 无可导航 symbol 时保留文件／作用域范围，不猜测声明。
+- [x] 删除仅服务于相邻语句的扫描、空白判断和缓存，保留作用域隔离。
 - [x] 文件头、嵌套函数、lambda、局部类、初始化块分别处理；无公开实体时保留范围，不伪造节点。
 - [x] 注释提取及关联覆盖缺口独立披露，不能因类型绑定缺失直接丢弃可提取注释；prepared 不可用输入也按冻结 roots/module/scope/world 影响注释完整性，健康路径不受其他输入失败牵连。
 - [x] 通过语言词法规则处理字符串伪注释、转义及多行边界，不采用全文件正则抽取。
@@ -93,17 +78,17 @@ codeana search-code "库存不足" --in names,comments
 | 对象（建议名称） | 内容 | 职责 |
 |---|---|---|
 | `graph_comments` | 公开 ID、来源身份、源码 hash、种类、原始范围、正文、分词文本及位置映射 | 保存注释事实 |
-| `graph_comment_links` | 注释引用、关系类型、可选声明引用、目标源码范围、关联依据与规则版本 | 保存声明归属及附近语句关联 |
+| `graph_comment_links` | 注释引用、关系类型、可选声明引用、目标源码范围、关联依据与规则版本 | 保存声明及 callable 归属 |
 | `comment_terms` | external-content FTS5，指向注释表 | 全文检索 |
 | `project_meta` | 分词器、词典、归一化及关联规则版本或摘要 | 复用与兼容性验证 |
 
 - [x] 复用文件字典、节点整数引用和逻辑只读投影；内部整数主键不输出。
 - [x] 注释正文只保存一次，不复制到方法 metadata。
-- [x] 原始注释及周边代码从捕获 blob 读取；去标记后的正文保留到原始源码的位置映射。
+- [x] 原始注释命中映射从捕获 blob 读取；去标记后的正文保留到原始源码的位置映射。
 - [x] 新增字节范围使用 UTF-8 半开区间；公开行列遵守现有 UTF-16 契约。
 - [x] 注释关联限制在同一 source instance/world 内。
 - [x] 注释公开 ID 在固定 revision 内可重现；不承诺位置变化后的跨 revision 身份稳定。
-- [x] 普通语句只保存关联范围，首期不持久化完整 AST。
+- [x] 不保存普通语句关联，不持久化完整 AST。
 - [x] Rust 侧统一封装 jieba-rs：建索引使用搜索模式，查询使用默认分词模式，HMM 固定开启；查询词默认 AND。
 - [x] 英文及代码标识符保留完整词并拆分驼峰、下划线；查询与索引采用同一归一化规则。
 - [x] 固定依赖版本、内置词典及分词策略，将其摘要纳入索引身份；不提供运行时热换词典。
@@ -115,7 +100,7 @@ codeana search-code "库存不足" --in names,comments
 - [x] 新增 GRA1 注释及关联交付契约，接入 staging、引用校验、owner 替换和封存。
 - [x] 全量导入后构建 FTS；增量替换同步清理旧记录，封存时验证 FTS 与正文一致。
 - [x] 注释独改按源码 hash 更新当前 owner；保持 Java 契约指纹忽略注释，不扩大无关消费者重算。
-- [x] 代码独改也重新计算注释归属、位置及附近语句。
+- [x] 代码独改也重新计算注释声明归属与位置。
 - [x] 零注释、删除、改名、语言禁用、world 删除均显式清理旧事实。
 - [x] Python 沿用当前变更后全量重算策略。
 - [x] 分词及关联规则变化使旧 profile 不可复用；首期要求全量重建。
@@ -169,7 +154,7 @@ codeana search-code "库存不足" --in names,comments
 完成条件：
 
 - [x] 三种语言均能通过注释关键词找到周边代码和可关联声明。
-- [x] 默认上下各 5 行及 TOML/CLI 覆盖均有端到端测试。
+- [x] 历史上下文配置／窗口已由 symbol 收敛改造删除；当前验收正文、位置、声明关联及独立 source。
 - [x] 注释生命周期与代码 revision 一致，全量/增量等价验证通过。
 - [x] 查询结果明确区分确定归属与位置推断。
 - [x] 所有要求的回归留存真实结果，未完成范围明确列出。
@@ -193,18 +178,18 @@ codeana search-code "库存不足" --in names,comments
 | BodySegment | body_start/body_end/source_start/source_end；全部为 UTF-8 半开区间。正文每段都能回到捕获源码；转义或去标记导致长度不同时，不按线性字节偏移猜测高亮 |
 | CommentLink | comment ID、四种关系之一、可选公开 declaration ID、目标源码范围、basis（language_rule / heuristic）、规则版本；目标无公开实体时只存范围 |
 | CommentFilter | module/scope/world/path 过滤；不得跨 source instance 连接 |
-| CommentQuery | 普通关键词、过滤、可选 context_before/context_after；应用层归一化成实际值，再保存到冻结查询 |
-| CommentMatch | 注释身份/位置/正文、命中正文与源码范围、关联证据、捕获源码窗口、可选可导航声明；不暴露内部主键 |
+| CommentQuery | 普通关键词与过滤；不携带注释上下文参数 |
+| CommentMatch | 注释身份/位置/正文、命中正文与源码范围、声明关联证据、可选可导航声明；不暴露内部主键 |
 | CommentReader | 固定 revision 的有界候选枚举、批量注释关联读取、冻结输入可用性投影；使用现有 SourceContext/ResourceBudget，不另建查询账本 |
 
 - comment ID 由 producer、语言、module/scope/world、路径、源码 hash、原始范围和种类确定；不含任务 ID、内部主键或时间。
 - GRA1 追加 COMMENT/COMMENT_LINK 表族；两类行均须显式 Row.world，不使用空 world 推断注释来源，禁止占用 reserved 6。
 - 声明文档和最近 callable 分开记录。方法前的 Javadoc 可以 documents 指向该方法，但不把它当作位于方法体内的注释。
 - lambda/初始化块等无公开节点的独立执行作用域阻断外层 callable 归属；保留最近作用域范围，不伪造节点。
-- 前置/行尾语句只在相同语句块按既定相邻规则关联；声明不是普通语句，方法前普通块注释不变成 documents。
+- 不生产前置／行尾语句关联；方法前普通块注释不变成 documents。
 - search-code 的 comments 入口只投影 documents/enclosing_callable 中存在的公开声明；同一声明保留全部不同注释命中证据。范围关联不单独制造声明命中。
 - 空白或仅标点且分词后无词的注释查询返回明确参数错误；重复查询词去重，关键词 AND；不开放 FTS 操作符。
-- 展示窗口包含完整注释及配置行数，必须读取 revision 的 blob；普通 source 的当前文件校验行为保持。
+- 不生成展示窗口；命中映射读取固定 revision 的 blob，普通 source 的当前文件校验行为保持。
 
 ### C1 版本切换清单
 

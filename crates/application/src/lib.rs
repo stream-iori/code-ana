@@ -13,7 +13,6 @@ mod output;
 pub mod ports;
 mod publication;
 mod python_inputs;
-mod query_normalization;
 mod reports;
 mod resources;
 pub use reports::report_markdown;

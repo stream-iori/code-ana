@@ -33,7 +33,7 @@ D01/D02 已落地：每用户一个 daemon，tonic gRPC/HTTP/2 + protobuf，hand
 
 CLI 持有可复用的 gRPC channel；daemon 的连接生命周期与任务生命周期独立。RPC 定义、protobuf presence、业务状态与传输状态分离详见 [公共契约的进程协议](../contracts.md#3-cli-daemon-与-worker)。
 
-Java 分析进程内部为 `Rust host -> C ABI/FFI -> GraalVM Java shared library`；daemon 不装载该库。host 负责 isolate/线程和缓冲生命周期，supervisor 负责进程级取消兜底与崩溃恢复。host 与库的内存共同计入一个进程 RSS。D17 已接入目标 Java 8 javac 子进程：host/原生库拥有内部协议与上下文，supervisor 登记进程启动身份、归属及退出状态；顶层 worker 退出时必须回收所属子进程。整个进程树计入该 worker 预算，不能把 -Xmx 当 RSS 上限。
+Java 分析进程内部为 `Rust host -> C ABI/FFI -> GraalVM Java shared library`；daemon 不装载该库。host 负责 isolate/线程和缓冲生命周期，supervisor 负责进程级取消兜底与崩溃恢复。host 与库的内存共同计入一个进程 RSS。D17 已接入目标 Java 8／17 javac 子进程：host/原生库拥有内部协议与上下文，supervisor 登记进程启动身份、归属及退出状态；顶层 worker 退出时必须回收所属子进程。整个进程树计入该 worker 预算，不能把 -Xmx 当 RSS 上限。
 默认使用 Native/G1；显式 JVM 用于开发/诊断：`Rust host -> JVM runner -> 目标 JDK javac`。JVM runner 单独验证 bundle manifest 与各文件 SHA；任务请求、结果及取消标记放在私有目录，Java 消费同一捕获输入/bridge。JVM host 与 javac 的 RSS 均计入 worker 进程树；JVM 堆上限复用 java_native_heap_bytes。后端显式选择，无 JVM/native 自动回退。显式 JVM 的宿主 JDK 25 由 daemon 与 worker 共用路径选择，bin/lib/release 内容摘要进入语义身份，发布前重新验证；路径搬迁不改变内容身份，宿主字节变化阻止旧基线复用。
 
 用户配置管理 daemon 生命周期、worker 总资源上限和本机工具链别名；项目配置管理语言/module/world。首版用户配置经 drain/restart 切换 generation，任务固定生效值；项目无权改变单用户 daemon 的服务设置。具体字段与优先级见 [configuration](../configuration.md)。

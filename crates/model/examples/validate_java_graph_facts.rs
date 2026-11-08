@@ -27,7 +27,7 @@ fn main() -> Result<(), String> {
         baseline: "fixture-baseline".into(),
         manifest: input.manifest.id(),
         profile: "graph-fixture".into(),
-        producer: "javac-java8-v1".into(),
+        producer: "javac-v3".into(),
         replacements: input.replacements,
         facts: input.facts,
     };

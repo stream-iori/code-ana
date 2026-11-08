@@ -321,7 +321,7 @@ impl JavaInputs {
         for m in &value.modules {
             ensure!(
                 relative(&m.root)
-                    && m.source_version == "8"
+                    && matches!(m.source_version.as_str(), "8" | "17")
                     && (m.physical_id.is_empty() || m.physical_id == m.root),
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::JavaModuleUnsupported,

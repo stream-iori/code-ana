@@ -26,7 +26,7 @@ class BundleVersions(unittest.TestCase):
                 path.write_text(text)
             output=project/'target'
             suffix='dylib' if sys.platform=='darwin' else 'so'
-            for path in [output/'native'/('libcodeana_java.'+suffix),output/'compiler-bridge.jar',output/'maven-input-worker.jar',output/'jvm/maven-input-worker.jar',project/'jvm-runner/target/jvm-runner-0.1.0.jar',project/'analysis-core/target/classes/META-INF/anatomist/javac-worker.jar']:
+            for path in [output/'native'/('libcodeana_java.'+suffix),output/'compiler-bridge.jar',output/'compiler-bridge17.jar',output/'maven-input-worker.jar',output/'jvm/maven-input-worker.jar',project/'jvm-runner/target/jvm-runner-0.1.0.jar',project/'analysis-core/target/classes/META-INF/anatomist/javac-worker.jar',project/'analysis-core/target/classes/META-INF/anatomist/javac-worker17.jar']:
                 path.parent.mkdir(parents=True,exist_ok=True)
                 path.write_bytes(b'fixture artifact')
             for script,argument,manifest in [('java-jvm-manifest.py',project,output/'jvm/manifest.json'),('java-adaptor-manifest.py',output,output/'native/manifest.json')]:

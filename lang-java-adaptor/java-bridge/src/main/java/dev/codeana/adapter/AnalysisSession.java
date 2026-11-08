@@ -17,7 +17,7 @@ import java.util.*;
 
 /** Task lifetime at the native boundary. All semantics belong to the migrated core. */
 public final class AnalysisSession implements AutoCloseable {
-    public static final String IDENTITY = "anatomist-4a903272-codeana-graph5-resource2-analysis";
+    public static final String IDENTITY = "anatomist-4a903272-codeana-graph6-resource2-analysis";
     private final AnalysisRequest request;
     private final AnalysisLimits limits;
     private final Path taskRoot;
@@ -36,7 +36,7 @@ public final class AnalysisSession implements AutoCloseable {
         this(request, observer, com.anatomist.core.AnalysisContext.fromRequest(request));
     }
     public AnalysisSession(Map<String,Object> request, AnalysisObserver observer, com.anatomist.core.AnalysisContext resources) throws IOException {
-        if (Json.number(request,"version") != 12) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        if (Json.number(request,"version") != 13) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
         this.resources = Objects.requireNonNull(resources);
         resources.charge(1, 1, 1024);
         this.observer = Objects.requireNonNull(observer);
@@ -82,7 +82,7 @@ public final class AnalysisSession implements AutoCloseable {
         executing = Thread.currentThread();
         resources.phase("backend");
         check();
-        if (request.version() != 12) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        if (request.version() != 13) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
         var plan = prepareAnalysis();
         extractJava(plan);
         extractResources(plan);
@@ -192,7 +192,7 @@ public final class AnalysisSession implements AutoCloseable {
         int heap = request.compilerHeapMb();
         JavacOptions options =
                 new JavacOptions(home, true, true, false, false, cache, threads, heap);
-        var toolchain = JavacToolchain.resolve(options, 8, null);
+        var toolchain = JavacToolchain.resolve(options, request.targetJava(), null);
         var timings = observer.timings();
         Map<String, JavacBackend.ModelBudget> modelBudgets = new HashMap<>();
         for (var c : project.contexts)
@@ -212,7 +212,7 @@ public final class AnalysisSession implements AutoCloseable {
         for (var c : project.contexts) {
             String key = c.module() + "@" + c.scope();
             ProjectConfig config = new ProjectConfig();
-            config.setJavaVersion(8);
+            config.setJavaVersion(request.targetJava());
             config.setLombokMode("model".equals(c.options().lombok()) ? "ast" : "off");
             config.setLombokStrict(c.options().lombokStrict());
             config.setSpringXml(c.options().springXml());

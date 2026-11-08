@@ -112,26 +112,15 @@ root="common"
         if destination:
             pathlib.Path(destination).write_text(json.dumps(results,ensure_ascii=False,indent=2)+'\n')
 
-    def test_comment_display_configuration_preserves_prepared_inputs_and_profile(self):
+    def test_prepared_config_bytes_remain_strict_and_comments_have_no_window(self):
         self.add_python_comment_inputs()
         first=self.cli('index','--prepare',timeout=120)[1]['revision']
         catalog_bytes=(self.project/'.code-ana/inputs.json').read_bytes()
         profile=json.loads((self.home/'revisions'/first/'revision.json').read_text())['profile']
         before=self.cli('search-comments','准备库存文档','--module','app-a')[0]
-        self.config+='\n[query.comments]\ncontext_before=0\ncontext_after=0\n'
-        self.write_config()
-        shown=self.cli('search-comments','准备库存文档','--module','app-a')[0]
-        self.assertLess(len(shown[0]['source']['text']),len(before[0]['source']['text']))
-        rows,current=self.cli('index',timeout=120)
-        previous=json.loads((self.home/'revisions'/first/'revision.json').read_text())
-        updated=json.loads((self.home/'revisions'/current['revision']/'revision.json').read_text())
-        self.assertEqual(updated['profile'],profile)
-        previous_sources={(f['path'],f.get('world','')):f for f in previous['manifest']['files']}
-        updated_sources={(f['path'],f.get('world','')):f for f in updated['manifest']['files']}
-        changed=[key for key in previous_sources.keys()|updated_sources.keys() if previous_sources.get(key)!=updated_sources.get(key)]
-        self.assertEqual(rows[0]['mode'],'delta',repr(changed))
+        self.assertTrue(before)
+        self.assertTrue(all('source' not in row for row in before))
         self.assertEqual((self.project/'.code-ana/inputs.json').read_bytes(),catalog_bytes)
-        self.assertEqual(shown,self.cli('search-comments','准备库存文档','--module','app-a')[0])
         # Genuine input-policy changes still require explicit preparation.
         self.config=self.config.replace('dependencies=["common"]','dependencies=[]')
         self.write_config()

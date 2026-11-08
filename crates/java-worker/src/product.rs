@@ -89,7 +89,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     active_analysis=task_meter.active(); active_phase="discover".into(); ffi_usage_known=true;
                     let (grant,budget)=initialized?;
                     hello = true;
-                    write_frame(&mut ipc,&envelope(&attempt,Body::Hello(w::Hello {protocol:WORKER_PROTOCOL_VERSION,fact_ir:VERSION,producer:"javac-java8-v1".into(),analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"discover")),..Default::default()}))).await?;
+                    write_frame(&mut ipc,&envelope(&attempt,Body::Hello(w::Hello {protocol:WORKER_PROTOCOL_VERSION,fact_ir:VERSION,producer:"javac-v3".into(),analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"discover")),..Default::default()}))).await?;
                 }
                 Body::Discover(d) => {
                     let initialized=codeana_contracts::analysis_budget::begin_discovery(&mut task_meter,&d,AnalysisLanguage::Java);
@@ -99,7 +99,9 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     ensure!(d.rust.is_none() && d.python.is_none(), "JAVA_DISCOVERY_CONFIG");
                     ensure!(hello && config.is_none() && !awaiting_ack, codeana_model::DomainError::new(codeana_model::ErrorCode::DiscoverState, ""));
                     let c = d.java.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaConfigRequired, ""))?;
-                    ensure!(Path::new(&c.bridge).canonicalize()?==bridge, codeana_model::DomainError::new(codeana_model::ErrorCode::BridgeBundleMismatch, ""));
+                    codeana_contracts::java::validate(&c)?;
+                    let expected_bridge = if c.target_java == 8 { bridge.clone() } else { bridge.with_file_name("compiler-bridge17.jar") };
+                    ensure!(Path::new(&c.bridge).canonicalize()?==expected_bridge, codeana_model::DomainError::new(codeana_model::ErrorCode::BridgeBundleMismatch, ""));
                     codeana_contracts::java::validate(&c)?;
                     if c.compact_inputs {
                         let manifest = d.manifest.as_ref().context(codeana_model::DomainError::new(codeana_model::ErrorCode::ManifestRequired, ""))?;
@@ -109,7 +111,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                             ensure!(units.get(unit.path.as_str()).is_some_and(|captured| *captured==unit), codeana_model::DomainError::new(codeana_model::ErrorCode::JavaUncapturedInputTable, ""));
                         }
                     }
-                    let context = w::BuildContext {analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"discover")),language:"java".into(),modules:c.contexts.iter().map(|m|m.id.clone()).collect(),source_version:"8".into(),classpath:vec![],producer:"javac-java8-v1".into(),capabilities:vec!["analysis-resources-v1".into(),"declarations".into(),"calls".into(),"references".into(),"relations".into(),format!("toolchain:{}",c.toolchain_digest),format!("adapter:{}",c.semantic_identity)]};
+                    let context = w::BuildContext {analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"discover")),language:"java".into(),modules:c.contexts.iter().map(|m|m.id.clone()).collect(),source_version:c.target_java.to_string(),classpath:vec![],producer:"javac-v3".into(),capabilities:vec!["analysis-resources-v1".into(),"declarations".into(),"calls".into(),"references".into(),"relations".into(),format!("toolchain:{}",c.toolchain_digest),format!("target-java:{}",c.target_java),format!("java-version:{}",c.actual_java_version),format!("toolchain-aliases:{}",c.toolchain_aliases.join(",")),format!("java-home:{}",c.java_home),format!("compiler-bridge:{}",codeana_model::hash_file(Path::new(&c.bridge))?),format!("adapter:{}",c.semantic_identity)]};
                     codeana_contracts::java::OutputLimits::from_config(&c)?;
                     config=Some(c);
                     write_frame_with_budget(&mut ipc,&envelope(&attempt,Body::Context(context)),Some(&budget)).await?;
@@ -246,7 +248,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                                 crate::delivery::Event::Begin { mode, replacements } => {
                                     ensure!(!begun, codeana_model::DomainError::new(codeana_model::ErrorCode::DuplicateResultBegin, "")); begun = true;
                                     let r = AnalysisHeader { mode:mode.parse()?, baseline: a.baseline.clone(), manifest: manifest.id(),
-                                        profile: a.profile.clone(), producer: "javac-java8-v1".into(), replacements };
+                                        profile: a.profile.clone(), producer: "javac-v3".into(), replacements };
                                     r.validate(&manifest).map_err(anyhow::Error::msg)?;
                                     Body::Begin(w::Begin { mode:r.mode.to_string(), baseline:r.baseline, manifest:r.manifest,
                                         profile:r.profile, producer:r.producer,

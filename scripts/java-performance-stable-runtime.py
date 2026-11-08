@@ -47,7 +47,7 @@ def prepare(root, destination, backend):
     else:
         raise ValueError('JAVA_RUNTIME_BACKEND')
     manifest = json.loads(manifest_path.read_text())
-    required = {runtime_file, 'compiler-bridge.jar', 'maven-input-worker.jar'}
+    required = {runtime_file, 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'}
     if not required.issubset(manifest['files']):
         raise ValueError('JAVA_RUNTIME_MANIFEST_INCOMPLETE')
     # Validate the complete source bundle before writing any installation files.

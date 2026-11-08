@@ -40,6 +40,8 @@ message JavaConfig {
  uint32 fact_limit = 17;
  JavaDependencyMode dependency_mode = 18;
  MavenDependencyFailure dependency_failure = 19;
+ uint32 target_java = 20;
+ string actual_java_version = 21; repeated string toolchain_aliases = 22;
 }
 message RustConfig { string input = 1; string sha256 = 2; uint64 bytes = 3; uint64 result_bytes = 4; uint64 fact_limit = 5; }
 message PythonConfig { string input = 1; string sha256 = 2; uint64 bytes = 3; uint64 result_bytes = 4; uint64 fact_limit = 5; uint64 scratch_bytes = 6; }

@@ -2,10 +2,13 @@
   "resources": {
     "includes": [
       {
-        "pattern": "META-INF/anatomist/javac-worker\\.jar"
+        "pattern": "META-INF/anatomist/javac-worker.jar"
       },
       {
-        "pattern": "lombok/annotation-copy-candidates\\.txt"
+        "pattern": "META-INF/anatomist/javac-worker17.jar"
+      },
+      {
+        "pattern": "lombok/annotation-copy-candidates.txt"
       }
     ]
   },

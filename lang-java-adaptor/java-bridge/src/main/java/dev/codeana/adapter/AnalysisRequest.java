@@ -13,6 +13,7 @@ record AnalysisRequest(
         Path scratch,
         Path diagnosticScratch,
         Path javaHome,
+        int targetJava,
         Path cacheRoot,
         int parallelism,
         int compilerHeapMb,
@@ -89,13 +90,16 @@ record AnalysisRequest(
 
     static AnalysisRequest capture(Map<String, Object> raw) throws IOException {
         var input = new LinkedHashMap<>(raw);
-        input.putIfAbsent("version", 12);
+        input.putIfAbsent("version", 13);
         input.putIfAbsent("java_home", "");
+        input.putIfAbsent("target_java", 8);
         return parse(input);
     }
 
     static AnalysisRequest parse(Map<String, Object> raw) throws IOException {
-        if (Json.number(raw,"version") != 12) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        if (Json.number(raw,"version") != 13) throw new IllegalArgumentException("ABI_REQUEST_VERSION");
+        int targetJava = Math.toIntExact(Json.number(raw, "target_java"));
+        if (targetJava != 8 && targetJava != 17) throw new IllegalArgumentException("JAVA_TARGET_REQUIRED");
         Path scratch = Path.of(Json.string(raw, "scratch"));
         var resolver = new ContextInputs(raw);
         List<ContextInput> contexts = new ArrayList<>();
@@ -124,6 +128,7 @@ record AnalysisRequest(
                 scratch,
                 diagnostic,
                 Path.of(Json.string(raw, "java_home")),
+                targetJava,
                 raw.get("cache_root") instanceof String p ? Path.of(p) : null,
                 Math.max(1, Math.toIntExact(ContextOptions.number(raw, "parallelism", 1))),
                 heap > 0 ? (int) (heap / (1 << 20)) : 512,

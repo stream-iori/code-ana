@@ -356,7 +356,7 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
     let manifest: codeana_contracts::bundle::BundleManifest =
         serde_json::from_slice(&std::fs::read(parent.join("manifest.json"))?)?;
     ensure!(
-        manifest.version == 2
+        manifest.version == 3
             && manifest.backend == "native"
             && manifest.worker_protocol == codeana_model::WORKER_PROTOCOL_VERSION
             && manifest.fact_ir == codeana_model::VERSION
@@ -364,9 +364,19 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
             && manifest.analysis_request == codeana_model::JAVA_ANALYSIS_VERSION
             && manifest.compiler_protocol == 2
             && manifest.compiler_batch_protocol == 2
-            && manifest.adapter == "anatomist-4a903272-codeana-graph5-resource2-analysis"
+            && manifest.adapter == "anatomist-4a903272-codeana-graph6-resource2-analysis"
             && manifest.java_model == "javac-model-v51"
-            && manifest.graph_schema == 35
+            && manifest.graph_schema == 36
+            && manifest.target_java == [8, 17]
+            && manifest.compiler_bridges.len() == 2
+            && manifest
+                .compiler_bridges
+                .get("8")
+                .is_some_and(|name| name == "compiler-bridge.jar")
+            && manifest
+                .compiler_bridges
+                .get("17")
+                .is_some_and(|name| name == "compiler-bridge17.jar")
             && manifest.graph_encoding == "GRA1-protobuf-row-v1",
         codeana_model::DomainError::new(codeana_model::ErrorCode::BundleVersionMismatch, "")
     );
@@ -398,6 +408,7 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
     ensure!(
         files.contains_key(&library_key)
             && files.contains_key("compiler-bridge.jar")
+            && files.contains_key("compiler-bridge17.jar")
             && files.contains_key("maven-input-worker.jar"),
         codeana_model::DomainError::new(codeana_model::ErrorCode::BundleFilesRequired, "")
     );

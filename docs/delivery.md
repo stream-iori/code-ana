@@ -7,8 +7,8 @@
 | 已落实 | 仍需完成 |
 |---|---|
 | Rust CLI/daemon/gRPC、任务与取消、不可变 revision/CAS | 规模化公平性、内核级资源隔离 |
-| Java 8 javac、Java 25 Native/G1、C ABI、NoCode、框架静态图 | 目标 Java 17/25、Gradle、Linux、完整框架覆盖 |
-| GRA1 行交付、物理 schema 11、逻辑 schema 34、FTS | 当前版本完整语义/来源覆盖验收；过期 raw transport 测试已删除 |
+| Java 8／17 javac、Java 25 Native/G1、C ABI、NoCode、框架静态图 | 目标 Java 25、Gradle、Linux、完整框架覆盖 |
+| GRA1 行交付、物理 schema 13、逻辑 schema 36、FTS | 当前版本完整语义/来源覆盖验收；过期 raw transport 测试已删除 |
 | 查询/pipeline、源码、快照/diff、报告、GC | 跨语言语义 |
 | 冻结 iopengw 单轮观测，逐轮输入和产物见当前实现 | 独占容量/稳定性能承诺；native_accepted/performance_accepted 仍 false |
 | 独立 mock、真实 Rust fixture、一层依赖与过滤/预算回归 | 完整 Rust sysroot/过程宏/动态派发；Linux、稳定性能 |

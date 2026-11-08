@@ -154,8 +154,13 @@ def check(root):
             failures.append(f'Java backend is javac only: {pom.relative_to(root)}')
     pom = ET.parse(java/'analysis-core/pom.xml').getroot()
     workers=[node for node in pom.iter() if node.tag.split('}')[-1]=='javac' and node.get('srcdir','').endswith('/src/worker/java')]
-    if len(workers)!=1 or workers[0].get('source')!='8' or workers[0].get('target')!='8' or '${java8.home}/bin/javac' not in workers[0].get('executable',''):
-        failures.append('Compiler worker must be separately compiled by Java 8')
+    for release, property_name in [('8', 'java8.home'), ('17', 'java17.home')]:
+        selected = [node for node in workers if node.get('source') == release and node.get('target') == release
+                    and '${' + property_name + '}/bin/javac' == node.get('executable')]
+        if len(selected) != 1:
+            failures.append(f'Compiler worker must be separately compiled by Java {release}')
+    if len(workers) != 2:
+        failures.append('Exactly two versioned compiler workers are required')
     dependencies = {name:maven_dependencies(java/name/'pom.xml') for name in ['analysis-core','framework-lombok','framework-spring','framework-sofa','java-bridge']}
     for name in ['framework-lombok','framework-spring','framework-sofa']:
         if 'analysis-core' not in dependencies[name] or 'java-bridge' in dependencies[name]:

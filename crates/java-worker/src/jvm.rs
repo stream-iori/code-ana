@@ -18,15 +18,24 @@ pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
     let manifest: codeana_contracts::bundle::BundleManifest =
         serde_json::from_slice(&std::fs::read(root.join("manifest.json"))?)?;
     ensure!(
-        manifest.version == 1
+        manifest.version == 2
             && manifest.backend == "jvm"
             && manifest.analysis_request == codeana_model::JAVA_ANALYSIS_VERSION
             && manifest.worker_protocol == codeana_model::WORKER_PROTOCOL_VERSION
             && manifest.fact_ir == codeana_model::VERSION
-            && manifest.adapter == "anatomist-4a903272-codeana-graph5-resource2-analysis"
+            && manifest.adapter == "anatomist-4a903272-codeana-graph6-resource2-analysis"
             && manifest.compiler_batch_protocol == 2
             && manifest.java_model == "javac-model-v51"
-            && manifest.target_java == [8],
+            && manifest.target_java == [8, 17]
+            && manifest.compiler_bridges.len() == 2
+            && manifest
+                .compiler_bridges
+                .get("8")
+                .is_some_and(|name| name == "compiler-bridge.jar")
+            && manifest
+                .compiler_bridges
+                .get("17")
+                .is_some_and(|name| name == "compiler-bridge17.jar"),
         codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleVersionMismatch, "")
     );
     let files = &manifest.files;
@@ -50,6 +59,7 @@ pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
     ensure!(
         files.contains_key("runner.jar")
             && files.contains_key("compiler-bridge.jar")
+            && files.contains_key("compiler-bridge17.jar")
             && files.contains_key("maven-input-worker.jar"),
         codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleFilesRequired, "")
     );

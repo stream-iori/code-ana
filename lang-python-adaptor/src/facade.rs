@@ -200,7 +200,6 @@ fn call_targets(
 }
 
 struct AstFacts<'a> {
-    bodies: Vec<&'a [Stmt]>,
     statements: Vec<&'a Stmt>,
     expressions: Vec<&'a Expr>,
     bindings: Vec<(&'a str, &'a str, ruff_text_size::TextRange)>,
@@ -230,12 +229,6 @@ impl AstQueue<'_, '_> {
     }
 }
 impl<'a> SourceOrderVisitor<'a> for AstQueue<'a, '_> {
-    fn visit_body(&mut self, body: &'a [Stmt]) {
-        if self.reserve(1, 32) {
-            self.facts.bodies.push(body);
-        }
-        source_order::walk_body(self, body);
-    }
     fn enter_node(&mut self, node: AnyNodeRef<'a>) -> TraversalSignal {
         if self.failure.is_none() {
             let next = self.depth.saturating_add(1);
@@ -302,7 +295,6 @@ fn ast_facts<'a>(body: &'a [Stmt], budget: &AnalysisContext) -> Result<AstFacts<
     let mut queue = AstQueue {
         pending: vec![],
         facts: AstFacts {
-            bodies: vec![],
             statements: vec![],
             expressions: vec![],
             bindings: vec![],

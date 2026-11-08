@@ -18,7 +18,7 @@ CLI
        ▼
    Java 25 / Oracle GraalVM G1 共享库
        ├─ Anatomist 独立模型 / 提取器 / Lombok / Spring / SOFA
-       └─ compiler batch 2 ──► 目标 Java 8 javac 子进程
+       └─ compiler batch 2 ──► 目标 Java 8／17 javac 子进程
                               parse / analyze，禁用处理器
        │ GRA1 类型化行
        ▼
@@ -48,7 +48,7 @@ CLI
 | lang-java-adaptor/analysis-core | 独立 Java 模型/提取器/扩展契约 | javac 唯一后端，编译器对象不进入模型 |
 | lang-java-adaptor/framework-lombok、framework-spring、framework-sofa | 编译期框架实现与配置资源 | 分别依赖 core；SOFA 保留对 Spring 的依赖，由 java-bridge 统一装配 |
 | lang-java-adaptor/java-bridge | 捕获输入、编译器桥、行输出和 Maven metadata 桥 | Java 8 编译器桥独立构建 |
-| lang-java-adaptor/native-bridge、jvm-runner | Native C 入口 / 显式 JVM 执行入口 | Java 25 构建环境与目标 Java 8 分开 |
+| lang-java-adaptor/native-bridge、jvm-runner | Native C 入口 / 显式 JVM 执行入口 | Java 25 构建环境与目标 Java 8／17 分开 |
 | tests、scripts | fixture、故障/产品回归、构建/打包 | 开发可显式编译 fixture，不授予产品自动构建权限 |
 
 Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使用 `IndexCommand` / `QueryRequest`。查询消费按能力拆分的读接口并输出 `Record`；未知语言 metadata 仅透传。索引阶段持有 worker/candidate，任务与发布接入窄端口，提交后的报告/确认不改变发布事实。编码与历史兼容见 [公共契约](contracts.md)。
@@ -116,7 +116,7 @@ delta: SQLite backup(兼容 baseline) → 替换归属 → 同样封存校验
                      老读者保留旧 revision；新查询固定新 head
 ```
 
-物理 schema 11，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 34。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
+物理 schema 13，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 36。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
 
 graph/catalog 分别版本化。源码 blobs、分页结果、snapshot/diff/report 等仍由 Rust 生命周期和引用保护管理。
 
@@ -138,7 +138,7 @@ graph/catalog 分别版本化。源码 blobs、分页结果、snapshot/diff/repo
 
 ## 5. 验证边界
 
-当前 macOS ARM64 / Java 8 的 fixture、故障、紧凑存储和冻结 iopengw 单轮已验证。Linux、Java 17/25、完整 Rust 语义与框架覆盖、当前 raw model/AST 迁移与容量/稳定性能门禁仍待完成；Hello 或 build-only 不代表正式放行。
+当前 macOS ARM64 / Java 8 的 fixture、故障、紧凑存储和冻结 iopengw 单轮已验证。Linux、Java 25、完整 Rust 语义与框架覆盖、当前 raw model/AST 迁移与容量/稳定性能门禁仍待完成；Hello 或 build-only 不代表正式放行。
 
 现行 [契约](contracts.md)、[模块](README.md)、[验证入口](delivery.md) 与 [当前实现](current-state.md) 分别说明协议、行为、验证要求和已执行证据。
 
@@ -162,7 +162,7 @@ adapter v2 可在导出阶段显式读取 pyproject 静态元数据；没有该�
 
 Java/Rust/Python worker 共用 model::AnalysisTaskMeter 管理进程内任务账本，worker 仅适配协议。父任务将一个截止时间贯穿排队、host、worker 和发布准入；worker 重试不能重置账本或续期。Python 的 frozen/context、AST/type/QName 提取和输出预留复用 AnalysisContext；prepared 多实例沿语言池静态拆分，host 分片共享，实例之间不借用。
 
-Java主要入口已接入共享任务上下文、局部作用域和累计FFI回执；三语言在Discover前签发grant，BuildContext回传核实水位，未变复用通过Reuse/Reused结束账户。当前严格 worker 23 / Java analysis 12，必填回执及已知/未知水位共用host策略；帧/codec与内部DTO分配前准入、混合/分发门禁已完成本机fixture验证；正式跨平台和容量/性能范围另列。实际验证范围见当前实现文档，不以单语言回执替代全计划验收。
+Java主要入口已接入共享任务上下文、局部作用域和累计FFI回执；三语言在Discover前签发grant，BuildContext回传核实水位，未变复用通过Reuse/Reused结束账户。当前严格 worker 24 / Java analysis 13，必填回执及已知/未知水位共用host策略；帧/codec与内部DTO分配前准入、混合/分发门禁已完成本机fixture验证；正式跨平台和容量/性能范围另列。实际验证范围见当前实现文档，不以单语言回执替代全计划验收。
 
 Java 在 Rust worker 的同一账户上顺序执行：请求携带已经消耗的水位，Java显式上下文穿过捕获、javac模型解码、模型/语法索引、扩展事实集合、语义JSON入口、XML及归档，返回累计回执后由Rust继续处理输出。失败前已接受的消耗保留，崩溃或无可信回执时标Unknown。javac内核自身运算仍由进程树内存、原编译器超时和supervisor截止时间约束，不把自有模型遍历计费冒充其内部每一步的精确计数。
 

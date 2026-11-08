@@ -70,11 +70,10 @@ pub(crate) fn resolve_text(
     text: &str,
     catalog: bool,
 ) -> Result<Effective> {
-    let mut c: ProjectConfig = toml::from_str(text).context(codeana_model::DomainError::new(
+    let mut c: ProjectConfig = parse_project(text).context(codeana_model::DomainError::new(
         codeana_model::ErrorCode::InvalidProjectConfig,
         "",
     ))?;
-    c.query.comments.validate()?;
     if catalog && c.inputs.is_some() {
         return inputs::resolve(root, request, language_required, c, text);
     }

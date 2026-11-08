@@ -7,7 +7,7 @@ use std::{
 };
 
 pub const PRODUCER: &str = "python-core";
-pub const ADAPTER_VERSION: &str = "pyrefly-1.4.0-codeana-v5-comments";
+pub const ADAPTER_VERSION: &str = "pyrefly-1.4.0-codeana-v6-comments";
 pub const INPUT_SCHEMA: u32 = 3;
 pub const BACKEND_COMMIT: &str = "feeee254e65844f23f973a0a29cae02d09931068";
 

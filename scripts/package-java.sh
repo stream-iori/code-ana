@@ -27,7 +27,7 @@ python3 - "$repo_root/lang-java-adaptor/target" <<'VERIFY'
 import hashlib,json,pathlib,subprocess,sys
 root=pathlib.Path(sys.argv[1]).resolve()
 manifest=json.loads((root/'native/manifest.json').read_text())
-for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','maven-input-worker.jar'):
+for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','compiler-bridge17.jar','maven-input-worker.jar'):
     path=root/name
     assert path.resolve().is_relative_to(root), 'NATIVE_ARTIFACT_PATH'
     assert hashlib.sha256(path.read_bytes()).hexdigest()==manifest['files'][name], 'NATIVE_BUILD_CHECKSUM: '+name
@@ -35,7 +35,7 @@ worker=root.parent.parent/'target/release/codeana-java-worker'
 versions=json.loads(subprocess.check_output([str(worker),str(root/'native/libcodeana_java.dylib'),
                                             '--runtime-info'],text=True,timeout=15))
 assert versions==dict(worker_protocol=manifest['worker_protocol'],fact_ir=manifest['fact_ir'],adapter=manifest['adapter'],
-                      analysis_request=12,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
+                      analysis_request=13,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
 VERIFY
 if [[ "$custom_output" == true && -e "$package_dir" ]]; then
   echo "Package output already exists: $package_dir" >&2; exit 2
@@ -46,7 +46,7 @@ for binary in codeana-cli codeana-daemon codeana-java-worker codeana-rust-worker
   cp "target/release/$binary" "$package_dir/bin/"
 done
 cp lang-java-adaptor/target/native/libcodeana_java.dylib lang-java-adaptor/target/native/manifest.json "$package_dir/lib/java/native/"
-cp lang-java-adaptor/target/compiler-bridge.jar "$package_dir/lib/java/"
+cp lang-java-adaptor/target/compiler-bridge.jar lang-java-adaptor/target/compiler-bridge17.jar "$package_dir/lib/java/"
 cp lang-java-adaptor/target/maven-input-worker.jar "$package_dir/lib/java/"
 cp lang-java-adaptor/target/native/*.h "$package_dir/include/"
 cat > "$package_dir/bin/codeana-export-java-inputs" <<'EXPORT'
@@ -68,15 +68,16 @@ text=text.replace('](configuration.md)','](docs/configuration.md)').replace('](c
 (root/'README.md').write_text(text)
 DOCS
 cp -R tests/fixtures/java-native/base "$package_dir/fixtures/"
+cp -R tests/fixtures/java-native/java17 "$package_dir/fixtures/"
 cp -R lang-java-adaptor/fixtures/comment-indexing "$package_dir/fixtures/"
 python3 - "$package_dir" <<'PY'
 import hashlib,json,pathlib,sys
 root=pathlib.Path(sys.argv[1])
 native=json.loads((root/'lib/java/native/manifest.json').read_text())
 metadata={key:native[key] for key in ('abi','analysis_request','compiler_protocol','java_model',
-    'graph_schema','graph_encoding','native_gc','native_build_mode','target_java')}
-metadata.update(package='codeana-java8',worker_protocol=native['worker_protocol'],fact_ir=native['fact_ir'],backend='native',
-    toolchain='externally registered SDKMAN Java 8')
+    'graph_schema','graph_encoding','native_gc','native_build_mode','target_java','compiler_bridges')}
+metadata.update(package='codeana-java',worker_protocol=native['worker_protocol'],fact_ir=native['fact_ir'],backend='native',
+    toolchain='externally registered SDKMAN Java 8/17')
 (root/'manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
 files=sorted(p for p in root.rglob('*') if p.is_file() and p.name!='SHA256SUMS')
 (root/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(root))+'\n' for p in files))

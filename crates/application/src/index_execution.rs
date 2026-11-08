@@ -356,7 +356,7 @@ impl IndexTask {
             config.inputs.semantic_digest(),
             &rust_worker.context,
             java_worker.as_ref().map(|w| &w.context),
-            "graph5-schema12",
+            "graph6-schema13",
         ));
         let mut full =
             req.full || expected.is_empty() || capture.effective.config.index.mode == "full";

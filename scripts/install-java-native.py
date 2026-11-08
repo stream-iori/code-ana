@@ -37,7 +37,7 @@ def install(root, archive):
     if manifest.get('native_gc') not in ('G1', 'serial'):
         raise ValueError('NATIVE_GC_REQUIRED')
     library = 'native/libcodeana_java.' + ('dylib' if os.uname().sysname == 'Darwin' else 'so')
-    required = {library, 'compiler-bridge.jar', 'maven-input-worker.jar'}
+    required = {library, 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'}
     if not required.issubset(manifest['files']):
         raise ValueError('NATIVE_INSTALL_FILES_REQUIRED')
     for name, digest in manifest['files'].items():

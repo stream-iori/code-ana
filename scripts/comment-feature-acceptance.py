@@ -37,7 +37,7 @@ def artifacts(binaries):
     paths = [binaries/name for name in ('codeana-cli', 'codeana-daemon', 'codeana-java-worker')]
     sdk = binaries.parent/'lib/java'
     paths += [sdk/name for name in ('native/libcodeana_java.dylib', 'native/manifest.json',
-                                    'compiler-bridge.jar', 'maven-input-worker.jar')]
+                                    'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar')]
     return {str(p.resolve()): sha(p) for p in paths}
 
 
