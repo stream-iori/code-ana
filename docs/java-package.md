@@ -38,7 +38,7 @@ CONFIG
 Maven 项目先由用户显式准备 metadata：
 
 ```sh
-./bin/codeana-export-java-inputs --project /absolute/project --output /absolute/project/.code-ana/java-inputs.json
+./bin/codeana-cli java-inputs export --project /absolute/project --output /absolute/project/.code-ana/java-inputs.json
 ```
 
 导出由包内 Rust CLI 执行，需要 Maven 与 SDKMAN Java 8，无需 Python。一次 Maven 会话通过 core extension 导出有效模型和已调解依赖，并在生命周期前退出；可能下载依赖。索引只消费已有输入，不调用 Maven、不运行处理器、不生成业务 class。项目配置与能力范围见 [现行配置](configuration.md)，实际验证见 [当前验证范围](current-state.md)。

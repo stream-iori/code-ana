@@ -59,7 +59,7 @@ mode = "semantic"
 
 [languages.java.discovery]
 build_system = "maven" # auto / maven / plain；gradle 仅保留 schema，adapter 未支持
-# inputs_manifest = ".code-ana/java-inputs.json" # auto 展开需外部 codeana-export-java-inputs 准备
+# inputs_manifest = ".code-ana/java-inputs.json" # auto 展开需外部 codeana-cli java-inputs export 准备
 
 [languages.java.analysis]
 source_version = "auto" # 从模块构建声明解析；不是 adapter 的 Java 25 版本
@@ -94,7 +94,6 @@ exclude = [] # 可显式设置 ["tests/**", "examples/**", "benches/**"]，按�
 
 [languages.rust.analysis]
 edition = "auto"
-toolchain = "auto"
 
 [[modules]]
 id = "order-service"

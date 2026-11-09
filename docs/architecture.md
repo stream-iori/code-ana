@@ -134,7 +134,7 @@ graph/catalog 分别版本化。源码 blobs、分页结果、snapshot/diff/repo
 | 查询 | pipeline/续页固定版本，缺口随阶段传播；历史兼容库读取不依赖当前 JDK |
 | source | 普通入口校验当前文件 hash；显式历史入口读捕获 blob，不回退活文件 |
 
-本产品不自动运行 Maven/Gradle/Cargo 编译、注解处理器或业务代码。独立 `codeana-export-java-inputs` 是用户显式调用的外部准备命令，会启动 Maven 并可能下载依赖；索引只读取已导出的 metadata。
+本产品不自动运行 Maven/Gradle/Cargo 编译、注解处理器或业务代码。独立 `codeana-cli java-inputs export` 是用户显式调用的外部准备命令，会启动 Maven 并可能下载依赖；索引只读取已导出的 metadata。
 
 ## 5. 验证边界
 
@@ -179,3 +179,5 @@ Lombok与扩展不可变元数据复制前沿用同一账户；内部DTO通过co
 ## 架构依赖门禁
 
 `just check-architecture` 检查 Cargo 传递依赖、Engine/索引/服务状态访问、语言单元编排、Java 编译器源集、Lombok 模块与 Maven 依赖方向，以及生产扩展预算入口。`just test-rust` 自动执行该门禁；7 个违规反例验证检查能拒绝边界回归。行为验收继续验证公开查询、发布和预算；静态检查不代替产品回归。
+
+CLI 交互边界（daemon 协议 6）：命令输入契约由应用层组合查询能力字段；OperationRouter 组合查询、历史、维护、就绪与报告服务。类型化 Record/TaskResult 先持久化，再由 presentation/output 编码和计量，CLI 使用有界观察编码及原子不覆盖导出。投影/编码与原发布事务分离；交付失败或 strict 拒绝不能重判分析门禁与提交事实。

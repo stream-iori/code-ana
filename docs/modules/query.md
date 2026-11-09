@@ -68,7 +68,7 @@ TaskRequest / pipeline spec
 | LanguageQueryPolicy | 已发布公共事实和语言 facets | dispatch、type/callable relations、proof |
 | EvidenceAccumulator | 各阶段 page/semantic/output | 保留缺口并按归属合并 |
 | SourceReader | declaration/site、捕获范围 | 校验后的源码片段，见 versioning |
-| OutputRenderer | typed records、证据、最终字节预算 | 完整记录文本、恢复动作与终止标记 |
+| OutputRenderer | typed records、证据、最终字节预算 | 规范公开投影、text/JSON、实际 cursor 与终止标记；不生成 Next |
 
 Rust 中的 Java 策略负责解释已解析类型关系和静态派发规则，不重新运行 javac 或 Java 名称解析。P0 若发现现有 Java 查询需要 worker 未输出的信息，先补事实契约；若仍无法表达，应重新评审 D06，不能隐式启动分析弥补。
 
@@ -180,3 +180,9 @@ search-code 默认 names，沿用公开 ID 顺序和流式冻结；comments 路�
 CommentReader 只负责当前 revision 的有界事实/关联读取；源码读取继续校验 manifest hash。[query.comments] 与注释专用上下文参数已删除；旧配置／参数明确拒绝。按 symbol 和同一 revision 使用 source 按需读取完整声明，长声明需读取全部分块。旧注释分页游标拒绝并提示重新查询。pipeline 的 search-comments 可作为首阶段，以语言提供的声明链接进入后续阶段，不能给孤立注释猜测声明。COMMENTS 覆盖独立于绑定覆盖；Java/Rust/Python 均已接入。
 
 prepared 输入降为 files_only 时，纯注释查询也必须披露 `comment_inputs_unavailable:模块:scope`。CommentReader 从当前 revision 的 `inputs.unit.*` 元数据读取冻结 roots，再结合 `codeana-inputs/AGGREGATE` 回执判断所选路径、模块、scope 与 world；不读取现行 inputs.json，不把模块名猜成目录。健康子目录保持完整，失败目录的零命中不能宣称语义穷尽；恢复输入不改变历史 revision 的缺口。读取/解码/比较接续原预算及取消。
+
+## CLI 投影 v2
+
+查询输入字段契约由本 crate 声明，应用输入契约将其与执行/交付参数组合；CLI help 与本地拒绝使用同一字段集合。pipeline 文件改为每行一个文本阶段，内部 Stage 仍类型化。
+
+调用关系批量补充现场的源码范围，现场 ID/次数保留；call-sites 附带同 world 的既有绑定事实，未知不猜目标，不额外执行 CHA。原文按 UTF-8 边界分块，公开范围为 UTF-16 行列，text 合并连续块，不逐行加编号。预算考虑控制字符的 JSON 转义上界，最终页仍由所选编码器精确计量。分页本身不再将 enumeration 改成 false。

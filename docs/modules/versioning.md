@@ -1,6 +1,6 @@
 # 版本、源码、diff 与 GC
 
-> 对齐 2026-10-13。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
+> CLI 对齐 2026-11-09。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 FILES 快照现在允许无语言配置，并保存本次 EffectiveConfig/捕获策略；`search-text` 可独立搜索工作区 `text_only`，不改变已存历史。Git 输出在读取时按字节上限截断。files/declarations/relations/impact diff 已接入，冻结结果与双端引用保护保持；不做重命名推断，完整语义对应仍受 producer 证据限制。
 
@@ -56,12 +56,14 @@ source 行为已由 D15 确认：工作区变更需重新索引或显式选择�
 
 | 能力 | 依赖 | 结果与边界 |
 |---|---|---|
-| files | 两端冻结 manifest/blob | 文件文本变化；捕获政策不同须披露 |
+| files | 两端冻结 manifest/blob | 文件新增/删除/修改，不提供文本 patch；捕获政策不同须披露 |
 | declarations | 两端声明事实 | 声明对应及变化；重命名推断需附依据和不确定性 |
 | relations | 两端关系/调用点 | 规范化关系多重集比较，不按 rowid 或含位置 hash 直接判定 |
-| impact | relations + 双端调用遍历/派发依据 | 静态可能影响；按每端深度/实体/状态预算披露 |
+| impact | relations + 双端反向调用遍历 | 仅变更关系的声明/外部目标作为根；静态可能影响，按实际预算披露 |
 
-文本、声明、关系、影响各自有 completeness、limits、reasons 与否定判断。环境变化可以限制关系比较，不能无条件抹掉仍成立的文件文本证据。`--section` 和 `--view` 只改变展示，不偷偷改变分析范围。
+files/declarations/relations/impact 通过 `--section` 选择实际求解能力；无 `--view` 参数。impact 的 --depth 限制传播深度，未实现的 world/module/scope 筛选拒绝。环境变化可以限制关系比较，不能无条件抹掉仍成立的文件变化证据。
+
+text 在共同 header 显示 section、双方快照名称/类型及实际 revision 或 manifest 身份；JSON 在 delivery.context.comparison 保存相同事实。快照同名替换不改变已冻结比较的端点，续页仅接受 cursor 与允许的交付选项。
 
 ```text
 resolve base/target -> 准备所需快照 -> 取得双方读者引用
@@ -74,7 +76,7 @@ resolve base/target -> 准备所需快照 -> 取得双方读者引用
 结果过期 -------------------------------> 明确失败，不重算
 ```
 
-impact 用双方捕获图分别遍历；展示 scope 不截断中间路径。可能派发边带依据，不能把这些候选写成关系变更。预算、默认值和选择规则在本项目的 fixture 中冻结，不要求与其他产品相同。
+impact 用双方捕获图分别遍历；增删端不存在的实体不在该端求解，调用点先归到所属声明，不把调用点 ID 直接当方法 selector。明确 relation_change_roots_only / static_possible_impact，不覆盖通用源码或数据流影响。可能派发边带依据，不能把这些候选写成关系变更。
 
 ## 4. GC 与恢复
 
@@ -106,7 +108,7 @@ impact 用双方捕获图分别遍历；展示 scope 不截断中间路径。可
 
 重点场景：构建后改工作区再读历史；diff 首屏后切分支再续页；files 模式无 Maven；TEST 未捕获；不同 profile 对比；读者与 GC 竞争；发布前后崩溃；孤儿工作目录和子进程恢复；容量不足但所有对象被固定。
 
-设计参考：[Anatomist 版本管理](../../../anatomist/docs/git-snapshots.md) 与 [文本搜索](../../../anatomist/docs/text-search.md)。不读取或迁移其历史库。
+实际输入、输出和兼容边界以 [本项目契约](../contracts.md) 与 [产品回归](../../tests/cli_contract_e2e.py) 为准；不读取或迁移其他产品的历史库。
 
 ## javac 环境与历史
 

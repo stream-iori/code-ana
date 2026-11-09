@@ -11,7 +11,7 @@ clap CLI ── authenticated gRPC ── Rust daemon
                                   └─ 查询 / pipeline / snapshot / diff / report / GC
 
 生产：Rust java-worker ── C ABI 4 ── Java 25/G1 ── Java 8 javac
-      GRA1/protobuf 行 → 紧凑 SQLite（物理 12 / 逻辑 35）；mock 保留独立回归
+      GRA1/protobuf 行 → 紧凑 SQLite（物理 13 / 逻辑 36）；mock 保留独立回归
 ```
 
 Rust 源码分析使用真实 `codeana-rust-worker`，无需 JDK；配置、输入导出及当前语义边界见 [Rust worker](modules/rust-worker.md)。以下 mock 示例用于公共产品回归。
@@ -63,38 +63,39 @@ cli=./target/debug/codeana-cli
 | trace | 有界调用遍历，`--depth` 上限 32 |
 | source / search-text | 源码按 UTF-8 字节范围分块；工作区文本搜索独立捕获，可由 `search.text.include` 选中 `text_only`，无需语义索引；历史只搜原快照文件 |
 | overview | 固定修订的事实计数、profile、coverage 证据 |
-| pipeline | `pipeline /path/stages.json`，最多 16 个类型校验阶段 |
-| snapshot | `snapshot before --name files` 可不启用语言；`--name analysis` 仍需适配器；`--target HEAD` 捕获 Git commit；保存有效配置与捕获策略 |
+| pipeline | `pipeline /path/stages.txt`，最多 16 个类型校验阶段 |
+| snapshot | `snapshot before --kind files` 可不启用语言；`--kind analysis` 仍需适配器；`--target HEAD` 捕获 Git commit；保存有效配置与捕获策略 |
 | snapshot-list / snapshot-remove | 列出/删除命名快照引用 |
-| diff | 旧命令保持：`diff --base before --target after --name files`；另有 declarations / relations / impact，本轮只做回归，不扩展能力 |
+| diff | `diff --base before --target after --section files`；另有 declarations / relations / impact |
 | report | `report <task-id>`；`--base <task-id>` 比较同 profile/捕获策略/级别的指标，旧版无 summary 报告明确拒绝比较；`--export` 只写新路径 |
 | gc / recover | 默认预览；显式 `--execute` 修改；recover 要求无其他活动任务 |
 | task | `task status/cancel/watch <task-id>`；watch 可用 `--after-seq N` |
 | daemon | status / drain / stop / restart；mock 重启需显式 fixtures |
 
-pipeline 示例：
+pipeline 示例（stages.txt）：
 
-```json
-[
-  {"operation":"resolve","selector":"main"},
-  {"operation":"call-sites"},
-  {"operation":"source"}
-]
+```text
+resolve 'fixture.App#main()'
+calls
+source --from callee
 ```
 
 同一 pipeline 固定一个 ReadContext。非法类型连接在读取前拒绝；下游空结果不会清掉上游 coverage 缺口。
 
-分页通过 `--cursor` 续读；保持原命令和选择参数，可调整展示条数和字节预算。结果冻结 24 小时，工作区变化、发布新修订都不改变续页。过期明确失败，不自动重跑。GC 清理过期页及其引用；任务输出事件保留 24 小时，任务身份/发布终态继续保留，过期 watch 返回 TASK_EVENTS_EXPIRED。报告默认保留至少 30 天。
+分页通过 `--cursor` 续读；仅传原命令与 cursor，选择参数从冻结请求恢复，可调整展示条数和字节预算。结果冻结 24 小时，工作区变化、发布新修订都不改变续页。过期明确失败，不自动重跑。GC 清理过期页及其引用；任务输出事件保留 24 小时，任务身份/发布终态继续保留，过期 watch 返回 TASK_EVENTS_EXPIRED。报告默认保留至少 30 天。
 
 ## 输出与任务
 
 ```text
-codeana-text-v1
-record { ... }
-terminal { "execution":..., "publication":..., "evidence":... }
+src/p/Service.java
+  owner p.Service
+    method greet(java.lang.String) @6:5–9:6
+end
 ```
 
-`record`、`terminal` 后为单行 JSON，用于固定文本 v1 的转义和机器读取；RPC 任务终态仍是类型化 protobuf。stdout 为结果，stderr 为进度。退出码：0 成功、1 错误、2 CLI 参数错误、3 strict 门禁拒绝、124 超时、130 取消。
+默认 text 不输出 record/terminal JSON。结构化测试/导出显式加 `--format json`；`--detail` 查看来源。`--export NEWPATH` 原子导出且不覆盖。分页只需原命令和 `--cursor TOKEN`，不再重复 selector/筛选；格式与上下文从冻结请求恢复。
+
+RPC 任务终态仍是类型化 protobuf。stdout 为结果/显式观察事件，stderr 为未形成回执的错误。退出码：0 成功、1 错误、2 CLI 参数错误、3 strict 门禁拒绝、124 超时、130 取消。
 
 | 状态边界 | 实现 |
 |---|---|

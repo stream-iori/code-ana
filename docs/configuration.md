@@ -319,11 +319,11 @@ EffectiveConfig + 捕获源码/依赖/工具链 + adapter/model/compiler-bridge/
 
 这是全新配置格式：不搜索或导入 `.anatomist/config.toml`，不实现旧字段别名或旧优先级兼容。未知字段直接报错。构建 code-ana 自身和 fixture 测试准备是开发流程，与产品分析目标项目时的执行权限分开。
 
-javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使用封存输入时属于索引分析，不属于目标项目构建。Maven 有效模型读取仍只消费已有 metadata；独立 codeana-export-java-inputs 命令显式启动 Maven，通过 core extension 在生命周期前退出并导出 metadata，可能下载依赖；该外部准备不同于索引只读发现。签名缓存是工具内部派生数据，不作为“目标项目已构建”的证明。
+javac 的 `parse/analyze` 在禁用处理器、无业务字节码生成、仅使用封存输入时属于索引分析，不属于目标项目构建。Maven 有效模型读取仍只消费已有 metadata；显式 codeana-cli java-inputs export 命令显式启动 Maven，通过 core extension 在生命周期前退出并导出 metadata，可能下载依赖；该外部准备不同于索引只读发现。签名缓存是工具内部派生数据，不作为“目标项目已构建”的证明。
 
 ### Maven 依赖失败与源码模式
 
-独立 `java-inputs export` / `codeana-export-java-inputs` 使用 `maven-inputs-v2`，生成 schema 4 manifest。schema 3 必须重新导出。索引不运行 Maven；依赖恢复后需再次显式导出并提交新索引任务。导出仍拒绝覆盖已有文件，应先导出到新路径，确认成功后替换项目配置指向的 manifest。
+独立 `java-inputs export` / `codeana-cli java-inputs export` 使用 `maven-inputs-v2`，生成 schema 4 manifest。schema 3 必须重新导出。索引不运行 Maven；依赖恢复后需再次显式导出并提交新索引任务。导出仍拒绝覆盖已有文件，应先导出到新路径，确认成功后替换项目配置指向的 manifest。
 
 | dependency_mode | 行为 |
 |---|---|
@@ -398,7 +398,7 @@ Rust 项目 `resources.index.worker_memory_bytes` 默认 268435456（256 MiB）�
 
 `[languages.python] enabled=true` 与 `[languages.python.discovery] inputs_manifest=".code-ana/python-inputs.json"` 同时显式配置。清单由 `scripts/export-python-inputs.py` 从外部准备的源码/依赖根导出，目标先固定 3.12/darwin；不会运行目标解释器。资源字段为 `python_result_bytes`、`python_fact_limit`、`python_scratch_bytes`，worker 内存沿用公共上限。完整示例和边界见 [Python worker](modules/python-worker.md)。
 
-导出器可选 `--pyproject PATH` 静态读取标准项目字段、setuptools 布局和 TEST 的 pytest pythonpath；无 pyproject 时继续显式根流程。`--extra` 选择可选依赖，`--scope` 默认 MAIN。显式根覆盖全部推导根；动态元数据不求值。schema 2 冻结被读取配置的哈希，仍接受 schema 1；控制文件变更要求重新导出，不能沿用旧基线。依赖请求和版本范围只作说明，不代表已满足。
+导出器可选 `--pyproject PATH` 静态读取标准项目字段、setuptools 布局和 TEST 的 pytest pythonpath；无 pyproject 时继续显式根流程。`--extra` 选择可选依赖，`--scope` 默认 MAIN。显式根覆盖全部推导根；动态元数据不求值。schema 3 冻结被读取配置的哈希，不接受其他输入版本；控制文件变更要求重新导出，不能沿用旧基线。依赖请求和版本范围只作说明，不代表已满足。
 
 ## 查询累计预算
 

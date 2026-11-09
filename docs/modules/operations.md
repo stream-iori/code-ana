@@ -1,11 +1,11 @@
 # 诊断与报告
 
-现行报告 schema 2 为全局摘要：JSON/Markdown 同源，不内嵌完整配置、逐文件诊断或日志，不新增 JSONL。失败、取消、strict 拒绝也保存可用摘要；最终计数不可得用 measurements_available=false 表达。旧报告仍可读，off/basic/full 配置接受但新报告均不携带诊断明细。具体排查使用 CLI 和日志；详见 [统一输入准备](inputs.md)。
+现行报告 schema 3 为全局摘要：JSON/Markdown 同源，不内嵌完整配置、逐文件诊断或日志，不新增 JSONL。失败、取消、strict 拒绝也保存可用摘要；最终计数不可得用 measurements_available=false 表达。仅支持当前报告格式，off/basic/full 配置接受但新报告均不携带诊断明细。具体排查使用 CLI 和日志；详见 [统一输入准备](inputs.md)。
 
 
 > 对齐 2026-10-20。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
-当前 `doctor` 返回生效 generation、字段来源与能力；报告保存全局诊断计数、分组和可比指标差值，导出只写新路径。真实 javac 诊断进入图与报告。报告、diff、doctor、GC/recovery 使用结构化参数和结果。
+当前 `doctor` 默认返回就绪事实与能力，--detail 才展开 generation、完整生效配置与字段来源；报告保存全局诊断计数、分组和可比指标差值。CLI 默认 text，显式 JSON 用于测试/导出，report 的 Markdown 仅通过 --format markdown --export 写入新路径。真实 javac 诊断进入图与报告。
 
 **执行、质量、门禁、发布和报告是五个独立结果。**
 
@@ -21,7 +21,7 @@
 | publication | 未提交 / 已发布 revision / 冲突 / 保留旧版 | 发布后报告失败不能写成未发布 |
 | report | 保存成功 / 写入失败 / 关闭 / 已过期 | 无报告不代表无索引事实 |
 
-对外按本项目独立定义的结构与退出码表达；字段与默认值见现行公共契约，不继承旧文本协议。内部 unknown/interrupted 需通过恢复查明发布结果后再给出确定结论。
+对外按本项目独立定义的结构与退出码表达；字段与默认值见现行公共契约。恢复可核实提交，却未必能核实质量/门禁/报告；这些维度保留 unknown，不能从已发布反推成功。
 
 ## 2. 组件与接口
 
@@ -60,7 +60,7 @@
 | 报告对比 | project/profile/扫描策略满足可比性；缺基线明确失败 |
 | 报告过期/格式不支持 | 明确 unavailable/unsupported，不重跑写操作 |
 
-报告字段、预算和退出码用本项目 fixture 冻结；[Anatomist output-contract](../../../anatomist/docs/output-contract.md) 只作设计参考。
+报告字段、预算和退出码用本项目 fixture 冻结；公开输出以 [本项目契约](../contracts.md) 为准。
 
 ## 4. 验收
 

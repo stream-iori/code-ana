@@ -14,18 +14,18 @@
 | profile / 输入 digest | 包含实际工具链、依赖顺序、adapter/模型/规则及语义配置；执行预算另记录 |
 | replacement owners | 源文件/资源/producer 的替换范围包含删除和零输出，避免留下旧事实 |
 
-当前 graph model 6、worker 24、analysis request/result 13、C ABI 4、daemon handshake 5；javac-model-v51、compiler batch 2。图库物理 user_version 13，上游逻辑 schema 36、GraphSemantics 28，adapter `anatomist-4a903272-codeana-graph6-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
+当前 graph model 6、worker 24、analysis request/result 13、C ABI 4、daemon handshake 7；javac-model-v51、compiler batch 2。图库物理 user_version 13，上游逻辑 schema 36、GraphSemantics 28，adapter `anatomist-4a903272-codeana-graph6-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
 
 内部 Rust 状态、操作、端点和错误码使用枚举，protobuf 与 JSON 边界显式映射；这些类型不改变线上字段拼写。未知 producer 扩展透传，稳定语义字段类型错误明确拒绝。
 
-C1 内部 javac 模型当前为 v51：每个源码请求附带从现有累计账户预付的 work/nodes/payload 上界，编译器录制器只能消费该范围；响应在声明帧之后交付类型化注释范围、正文、正文到原始源码的分段映射及文档声明语法身份。该内部模型的范围仍是 Java 原始 UTF-16 半开偏移，由 JavaCommentEvidence 在模型关闭前转为 GRA1/public comment 的 UTF-8 偏移。声明所有权来自主 javac 的同一 comment token；不按同名或最近声明推测。核心模型只保存自有记录，不保存编译器对象。GRA1 与公开注释查询已接通，compiler batch/daemon/ABI 保持 2/5/4；匹配的 v51 开发 Native SDK 已安装。
+C1 内部 javac 模型当前为 v51：每个源码请求附带从现有累计账户预付的 work/nodes/payload 上界，编译器录制器只能消费该范围；响应在声明帧之后交付类型化注释范围、正文、正文到原始源码的分段映射及文档声明语法身份。该内部模型的范围仍是 Java 原始 UTF-16 半开偏移，由 JavaCommentEvidence 在模型关闭前转为 GRA1/public comment 的 UTF-8 偏移。声明所有权来自主 javac 的同一 comment token；不按同名或最近声明推测。核心模型只保存自有记录，不保存编译器对象。GRA1 与公开注释查询已接通，compiler batch/daemon/ABI 现为 2/6/4；匹配的 v51 开发 Native SDK 已安装。
 
 | 内部编码 | 兼容约束 |
 |---|---|
 | `FactAttributes` | 稳定语义字段有明确类型；`Field<T>` 区分缺失、null 和具体值；未知字段由 `OpaqueMetadata` 透传 |
-| 冻结页与任务记录 | 新记录带 `record_type`；旧无标签记录作为 `Record::Display` 保持重放/续页，不作为新 pipeline 的语义输入；renderer 不输出内部标签 |
+| 冻结页与任务记录 | 新事件带投影版本 3 和类型化 `Record`；仅接受当前带标签记录；不存在旧格式解码或旧事件回放分支；renderer 不输出内部标签 |
 | `Record::Display` | 仅承载已呈现运维/历史数据，不提供语义端点访问 |
 | 图身份与 profile | 公开 ID、hash/ordinal、输入摘要及 profile 编码保持；既有命名盐不表示现行协议版本 |
 | `DomainError` | 错误码独立于上下文和文案；类型化 cause 保持读取/取消身份；外部 producer 代码显式保留，故障注入文本保持原拼写 |
@@ -111,7 +111,27 @@ G1 的 heap 不是 RSS 上限。预算按同一时刻 host/原生库与 javac �
 | report | 保存/导出/关闭/失败，与图发布分开 |
 | evidence | 覆盖、枚举、工作/深度/输出限制；空结果不能掩盖缺口 |
 
-文本输出为 `codeana-text-v1`，record/terminal 后为单行 JSON；RPC 终态是类型化 protobuf。stdout 放数据，stderr 放进度。退出码 0 成功、1 错误、2 参数错误、3 strict 拒绝、124 超时、130 取消。
+CLI 默认 text：按文件/所属者共享上下文，声明使用规范签名，连续源码使用可变长度反引号围栏，不逐行加编号；末行 `end` 仅确认本次回执闭合。原文围栏关闭前恰有一个 framing LF，移除该 LF 后保留真实源码的结尾，包括无换行和 CRLF。
+
+Java 成员表达为 `method greet(java.lang.String) -> java.lang.String [public] @范围`，文件与 owner 在共同 header；参数名单列，只有无法由规范签名还原的泛型参数类型才额外保留。不重复 name/display_name/signature/metadata。投影仅删除已知 DTO 的辅助字段，不递归删生产者扩展中的同名键。
+
+显式 `--format json` 输出一个标准文档：`records`、`result`、`evidence`、`delivery`。JSON 用于测试和结构化导出；不根据 TTY 改格式。watch 使用 `events`，不会同时重复 `records`；事件逐条编码，暂存不超过当前输出预算，最终计入头部和终态预算后闭合。`after_seq` 是观察起点，`last_seq` 是可续接的已交付前缀，`observed_seq` 是已观察的流位置。因预算省略正文时，两者可以不同；重连用 `last_seq`。
+
+watch 逐个检查连续序号，缺失、乱序、未知投影或缺少终态时不给闭合回执，不用 GetTask 终态代替正文。TaskStatus.operation 保存原业务操作，使运行中的 watch 也能选用正确公开投影。任务事件仅使用 Progress／Record／Result，持久终态不包含 protobuf。
+
+语义证据、计算边界、执行、门禁、发布、报告与交付状态独立。分页不修改 `evidence.enumeration`；交付 strict 拒绝不覆盖分析门禁或已提交事实。stdout 放结果/必要观察事件，stderr 放未形成回执的参数/连接/断流错误，不重复打印终态错误。退出码 0 成功、1 错误、2 参数错误、3 strict 拒绝、124 超时、130 取消。
+
+启动恢复若仅能核实 durable commit，则保留 `publication=published` 与真实 revision，同时记录 execution=failed、assessment/gate/report=unknown、delivery=failed、DAEMON_RESTARTED；不能从提交推断原质量或报告成功。`No matches.` 仅在语义充分、计算及交付完整时成立；未完成枚举不提供结果总数。
+
+数据入口支持 `--format text|json`、`--detail`、`--export NEWPATH`。导出预检先于任务受理；同目录临时文件 fsync 后原子不覆盖发布，stdout 仅返回导出回执。`report --format markdown` 必须显式导出；`java-inputs export --output` 是准备产物，`--export` 是 CLI 回执。后台与导出/查询 cursor 互斥。
+
+`diff --section files|declarations|relations|impact`；`snapshot NAME --kind files|analysis`。pipeline 是 UTF-8 文本文件，每行一个阶段，`--from entity|caller|callee|site|target` 映射类型化端点，不执行 shell 内容。无关参数本地拒绝；daemon/task/recover 不接受伪装项目范围的 `--project`。
+
+diff 的 DeliveryContext.comparison 冻结双方名称、快照类型、revision 或 manifest 身份，续页不读取同名快照的新值。impact 仅从变更关系涉及的声明/外部目标反向传播调用，保留 static_possible_impact / relation_change_roots_only；--depth 仅用于 impact，尚未实现的 world/module/scope 筛选拒绝。
+
+TaskRequest 字段 51–54 保存格式/详情 presence 与显式参数。新 OutputRecord 事件携带投影版本和带枚举标签的 Record 编码，正文不是已格式化 stdout；Terminal 的 Delivery 保留交付上下文。应用内持久终态采用 TaskResult，在协议边界映射 protobuf。daemon 协议 7 拒绝旧 CLI；worker/图/ABI 和兼容图库保持。
+
+查询 cursor 保存投影/排序版本、原请求、项目、格式与详情以及冻结输出和保护引用；只凭 cursor 续页，可调整页大小/字节预算，不能重复 selector/筛选或切换格式。过期或不兼容页显式拒绝，不自动重新执行。分页器使用最终格式编码计量，包含 header、必要状态、cursor 和 end，不按 JSON 估算 text 大小。
 
 pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续页不重新读取当前工作区。普通 source 验证当前源码 hash，显式历史 source 读捕获 blob。兼容图历史查询无需 JDK；旧物理格式仍要求重建。
 
@@ -127,7 +147,7 @@ pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续�
 | Group | module、package、target_package、relation |
 | Project / Display | 保持输入顺序 |
 
-流式 search-code 保持公开 ID 顺序，search-text 保持文件/行顺序。新冻结页记录可选 `order_policy`；旧页缺此字段仍按已保存顺序续页，不重新排序。新查询首页可能与旧 JSON 排序不同，记录内容及身份保持不变。
+流式 search-code 保持公开 ID 顺序，search-text 保持文件/行顺序。冻结页同时校验 projection_version=3 和 order_policy，兼容页按保存顺序交付，不重新排序；旧投影 cursor 明确拒绝。新查询首页可能与旧 JSON 排序不同，记录内容及身份保持不变。
 
 ## 7. Maven 外部输入
 
@@ -135,7 +155,7 @@ pipeline 固定一个 ReadContext；分页固定结果对象，24 小时内续�
 
 worker 24 的 JavaConfig 与 analysis request/result 13 携带冻结的依赖状态及类型化失败信息，旧 bundle 在分析前拒绝。当前 C ABI 4、graph model 6、图库 schema 13、compiler batch 2。模块拓扑已捕获与外部 classpath 可用性分别表达；不以缺 jar 否定 reactor 源码上下文。
 
-全局 coverage 使用 `*` 来源；模块级缺口同样影响 semantic evidence，不计作真实源码文件。SQL NULL 来源仍受现有图库 NOT NULL 约束拒绝。增量替换全局降级覆盖与诊断，不随任务次数重复累加；模式切换全量重建。报告新增可选 `analysis_mode/classpath_status`，旧报告缺字段仍可读取。
+全局 coverage 使用 `*` 来源；模块级缺口同样影响 semantic evidence，不计作真实源码文件。SQL NULL 来源仍受现有图库 NOT NULL 约束拒绝。增量替换全局降级覆盖与诊断，不随任务次数重复累加；模式切换全量重建。报告新增可选 `analysis_mode/classpath_status`，当前报告必须提供其必需字段。
 
 ## 8. Rust 冻结输入与公共行
 
@@ -168,11 +188,11 @@ Rust 单语言由 blocking 记录生成器直接送入 IPC，daemon 复用 `anal
 
 worker 24 的 `Discover.python` 与 Java/Rust 描述符互斥，携带冻结配置文件的路径、SHA-256、长度及结果/事实/scratch 预算。PythonConfig 不改变 Java ABI 或请求版本。Python world 包含显式上下文和根身份顺序；公共位置是一基 UTF-16 列，偏移来自原始 UTF-8 字节。
 
-Python 当前输入 schema 3，兼容 1/2；新增根 module、模块元数据和上下文发布范围/缺口。独立导出器仍可用 --pyproject 读取可选静态配置，统一准备默认检查入口根；没有 pyproject 不构成前置条件。adapter v5-comments 与固定后端提交严格核对，旧 worker 拒绝；新 profile 不复用旧结果。诊断仍按实际反向依赖归因，辅助/后端来源和未知影响保留。公共准备清单 schema 1、报告 schema 2 独立版本化，不升级 worker/daemon/GRA1/图库协议。详见 [统一输入准备](modules/inputs.md)。
+Python 当前输入 schema 3，仅接受 3；新增根 module、模块元数据和上下文发布范围/缺口。独立导出器仍可用 --pyproject 读取可选静态配置，统一准备默认检查入口根；没有 pyproject 不构成前置条件。adapter v5-comments 与固定后端提交严格核对，旧 worker 拒绝；新 profile 不复用旧结果。诊断仍按实际反向依赖归因，辅助/后端来源和未知影响保留。公共准备清单 schema 1、报告 schema 3 独立版本化，不升级 worker/daemon/GRA1/图库协议。详见 [统一输入准备](modules/inputs.md)。
 
 物理 schema 13 在保持 schema 9 紧凑表结构的基础上扩展 Python 声明约束，逻辑 schema 36。Python 只发布已绑定目标，不按同名函数跨 world/语言补边。未解析调用继承已验证 source 的 language/provider。缺模块即使被源码 ignore 也计入完整性；严格模式拒绝 partial。旧 revision 查询/增量必须先 `index --full`。详见 [Python worker](modules/python-worker.md)。
 
-查询资源能力标签为 `query-resources-v1`，直接递归投影为 `call-recursion-v1`。Evidence 新增可选 resource_usage；正常输出省略。protobuf 采用新增字段号，daemon/worker/ABI 版本不变。账本快照按根操作写入，不把共享快照相加；旧冻结记录缺新字段可读。
+查询资源能力标签为 `query-resources-v1`，直接递归投影为 `call-recursion-v1`。Evidence 新增可选 resource_usage；正常输出省略。protobuf 采用新增字段号，daemon/worker/ABI 版本不变。账本快照按根操作写入，不把共享快照相加；冻结记录仅接受当前投影契约。
 
 ### 分析截止时间与 Python 累计回执（已接入）
 
@@ -223,14 +243,14 @@ JVM/Native合并JAR必须逐类匹配本次reactor编译结果；父构建强制
 注释事实与关联使用 CommentFact/CommentLink、UTF-8 正文映射和 CommentReader 端口；Java 公共链路及生命周期已验证，Rust/Python 提取由 C3 接入。详细规则见 todo/comment-code-indexing.md。
 
 
-## 源码注释契约（C1 已交付）
+## 源码注释契约（C1 已交付，版本以本页开头为准）
 
-当前源码使用 worker 24 / graph model 6 / analysis 12，物理 schema 13、逻辑 35、GraphSemantics 28、javac-model-v51；daemon 5、C ABI 4、compiler batch 2 和 catalog 2 保持。本文较早阶段的版本描述按各自变更记录解释。匹配的 G1 build-only Native/JVM SDK 已安装并通过 C1 公开查询，完整生命周期/分发及正式放行仍按 C2/C4 门槛执行。
+C1 的版本与原验收按历史记录解释；当前版本以本页开头及 current-state 为准。注释模型的规则如下，本轮 CLI 展示重构不改变其图协议或已有 SDK 身份。
 
 GRA1 新增 COMMENT=17、COMMENT_LINK=18；保留 reserved 6。两类行必须给出捕获源码的显式 world；注释 ID 由 producer、language、module、scope、world、相对路径、source hash、原始 UTF-8 起止偏移及 kind 的 JSON 数组摘要产生。正文映射、来源范围和声明引用在同一捕获文件/world 内校验；存储不推断语言归属。公开坐标为一基 UTF-16，字节区间为 UTF-8 半开区间，内部整数主键不输出。
 
 TaskRequest 字段 48 为 search_in；49/50 及名称 context_before/context_after 保留 reserved。CLI 要求 comment-search-v2；删除 --context-before/--context-after 和 [query.comments]，旧参数／配置明确报错。CommentMatch 仅包含 comment、hits、links，不附带源码窗口；links 只接受 documents/enclosing_callable 和 language_rule。源文件仍按捕获 hash 验证，以计算原始命中范围。
 
-冻结页记录 comment_format=2；旧注释游标拒绝并提示重新查询，已支持的非注释旧页继续按保存顺序重放，不重算查询。prepared 清单删除展示配置例外，config_sha256 精确匹配原始配置字节；旧例外清单需要重新 index --prepare。artifact、来源和语义 profile 校验保持。
+冻结页统一采用公开投影版本 3，不再另设注释兼容版本。旧投影游标拒绝并要求显式重新查询，不自动重算。prepared 清单删除展示配置例外，config_sha256 精确匹配原始配置字节；旧例外清单需要重新 index --prepare。artifact、来源和语义 profile 校验保持。
 
 JavaConfig 必填 target_java（8/17），附带 actual_java_version 与 toolchain_aliases；analysis 13 请求必填目标，缺失或非法值拒绝。SDK manifest Native 3 / JVM 2 登记 target_java=[8,17]、compiler_bridges 映射及每个文件摘要；缺桥、错误摘要和混装 SDK 拒绝。javac-model-v51、compiler batch 2、C ABI 4 保持；Native 构建 JDK 25 与目标 JDK 分开。新语义与旧图库不原地迁移，index --full 建成后切 head。

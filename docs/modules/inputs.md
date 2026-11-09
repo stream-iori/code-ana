@@ -86,7 +86,7 @@ source_roots = [{path = "src", scope = "MAIN"}]
 
 相同 entry.python.environment 表示共享环境，成员按配置顺序组织，各文件保留实际 module。目标和有序外部依赖根必须一致；冲突拒绝。只有显式共享或依赖才会互相可见。
 
-Python schema 3 增加根 module、模块元数据、上下文 publish_roots/gaps，兼容 schema 1/2。adapter 为 pyrefly-1.4.0-codeana-v5-comments，后端提交不变。旧格式默认值不改变旧 world 编码；新归属进入 world/profile。
+Python schema 3 增加根 module、模块元数据、上下文 publish_roots/gaps，只接受 schema 3。adapter 为 pyrefly-1.4.0-codeana-v5-comments，后端提交不变。不提供旧格式默认值或迁移；归属进入 world/profile。
 
 ## 输入与降级
 
@@ -110,13 +110,13 @@ Java plain 使用已有显式模块根，不运行 Maven，仍需正确的 Java 
 
 ## 报告与兼容
 
-报告 schema 2 提供执行、质量、门禁、发布、报告五个状态，范围、输入模式分布、主要原因和日志/CLI 定位。JSON/Markdown 同源；不增加 JSONL，不嵌入完整配置、逐文件诊断或日志全文。入口样例上限 20，另给总量及省略量；详细排查继续使用 CLI/日志。
+报告 schema 3 提供执行、质量、门禁、发布、报告五个状态，范围、输入模式分布、主要原因和日志/CLI 定位。JSON/Markdown 同源；不增加 JSONL，不嵌入完整配置、逐文件诊断或日志全文。入口样例上限 20，另给总量及省略量；详细排查继续使用 CLI/日志。
 
-失败、取消、strict 拒绝也保存可用摘要；global.measurements_available=false 表示最终分析计数不可得，零值不能解释成无问题。报告关闭仍有终态；报告失败不撤销发布。旧报告可读。
+失败、取消、strict 拒绝也保存可用摘要；global.measurements_available=false 表示最终分析计数不可得，零值不能解释成无问题。报告关闭仍有终态；报告失败不撤销发布。仅接受当前 schema 3 报告。
 
 无 inputs 配置时保持旧入口；新公共清单与启用语言的旧 inputs_manifest 互斥。原导出器、java-inputs export 保留，Python 原脚本默认不读 pyproject，显式 --pyproject 不变。独立导出器可只准备、不索引。
 
-当前版本为 worker 24、daemon 5、Java ABI 4、graph 6、物理 schema 13。准备与索引不是跨进程事务，报告以实际捕获和提交为准。分析 worker 和 Java SDK 仍须按安装说明具备。
+当前版本为 worker 24、daemon 7、Java ABI 4、graph 6、物理 schema 13。准备与索引不是跨进程事务，报告以实际捕获和提交为准。分析 worker 和 Java SDK 仍须按安装说明具备。
 
 验证入口为 tests/prepared_inputs_e2e.py；CODEANA_TEST_REAL_JAVA=1 显式启用 Native 三语言及两个独立 Maven reactor。旧路径继续由现有 Rust/Python 门禁覆盖。
 

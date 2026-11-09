@@ -1,6 +1,6 @@
 # CLI 与 daemon
 
-> 对齐 2026-10-16。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
+> CLI 重构对齐 2026-11-09。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。
 
 当前 daemon 把提交时捕获、定向查询、Git 读取和发布存储工作放入阻塞线程；每项目一项分析、同目标写入串行，只读查询可并发。取消在查询选择器和源码读取边界生效；单条正在执行的 SQLite 语句、硬 RSS 隔离与严格项目间公平性仍需规模化验证。
 
@@ -8,7 +8,7 @@
 
 **CLI 只表达任务；daemon 管执行、版本句柄和资源。**
 
-D01/D02 已落地：每用户一个 daemon，tonic gRPC/HTTP/2 + protobuf，handshake 4；有界调度与进程树 RSS 采样。协议见 [contracts](../contracts.md)，正式容量阈值仍待验收。
+D01/D02 已落地：每用户一个 daemon，tonic gRPC/HTTP/2 + protobuf，handshake 7；有界调度与进程树 RSS 采样。协议见 [contracts](../contracts.md)，正式容量阈值仍待验收。
 
 接入 `Request` 经显式映射成为 `TaskCommand`，调度依据命令判断分析与写入许可。任务登记、事件、终态和提交恢复通过 `TaskRepository`；该端口不暴露 SQL 或连接。状态及错误使用枚举，错误分类读取类型化 cause，不拆分错误文案。
 
@@ -18,7 +18,7 @@ D01/D02 已落地：每用户一个 daemon，tonic gRPC/HTTP/2 + protobuf，hand
 
 | 组件 | 输入 | 输出 / 责任 |
 |---|---|---|
-| CLI parser | argv / pipeline JSON spec | 类型化任务；按本项目契约校验参数 |
+| CLI parser | argv / pipeline 文本阶段 | 类型化任务；按本项目契约校验参数 |
 | DaemonLocator | 用户、协议版本 | 用户级 endpoint 发现；启动竞争用独占注册控制 |
 | GrpcGateway | protobuf 请求和应用握手 | unary 任务控制、server streaming 事件、版本不兼容原因 |
 | ConfigResolver | 用户配置 generation、项目配置、明确 CLI overrides | 校验并冻结任务配置和字段来源；语言实际环境解析交给发现阶段 |
@@ -122,3 +122,18 @@ Native 默认 G1。一个 worker 进程仅创建一次 isolate，健康任务复
 提交去重、名额预约、任务登记与 TaskControl 安装位于短准入临界区；源码捕获在临界区外执行。初次 SubmitTask 尚在捕获时，重复请求已能取消同一任务。提交中的任务不会被误认为 WatchTask 断连；捕获结束才启动断连计时。
 
 任务运行状态由 TaskService 独立拥有。TaskRunner 只持有任务服务和操作装配器；查询阻塞任务只捕获 QueryService，活动文本任务只捕获 HistoryService。索引接收本任务 TaskContext，超时/取消仍先裁决发布屏障、取消累计账户，再等待工作完成和 worker 回收，最后落终态、释放源码 spool 与队列许可。Engine 不再承载这些状态或跨模块策略实现。
+
+## CLI 投影与运行边界
+
+```text
+命令输入契约 → 本地校验 → 原请求恢复/任务准入 → OperationRouter
+                                            ├─ QueryService：固定上下文求解
+                                            ├─ HistoryService：快照、比较、冻结页
+                                            ├─ DoctorService / ReportService
+                                            └─ MaintenanceService：GC / recover
+类型化 Record / TaskResult → 持久事件 → 公共投影 → text / JSON → stdout / 原子导出
+```
+
+查询核心继续只依赖窄读取接口。任务、发布和引用保护使用既有端口/事务，不随投影改动图库或公开 ID。旧 OutputChunk 不反向解析；无法确认正文的断流不使用 GetTask 伪造完整结果。
+
+`daemon stop` 先取消并 drain，`restart` 先 drain；CLI 依据 PID 与进程启动身份等待原实例退出，再确认 restart 的新 generation。默认等待 10 秒；超时返回未确认退出事实和 124，不盲杀。`task cancel` 返回取消已请求和当前事实，已发布不会变成回滚。

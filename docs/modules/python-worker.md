@@ -1,6 +1,6 @@
 # Python worker
 
-现行 adapter 为 `pyrefly-1.4.0-codeana-v5-comments`：统一 `index --prepare` 默认静态检查各入口 pyproject，支持隔离/共享环境与显式模块依赖，输出 schema 3（兼容 1/2）。原独立导出器仍默认 schema 2、必须显式 --pyproject 才读取元数据。配置与行为见 [统一输入准备](inputs.md)；下文独立导出示例继续有效。
+现行 adapter 为 `pyrefly-1.4.0-codeana-v5-comments`：统一 `index --prepare` 默认静态检查各入口 pyproject，支持隔离/共享环境与显式模块依赖，输出并仅接受 schema 3。独立导出器同样输出 schema 3、必须显式 --pyproject 才读取元数据。配置与行为见 [统一输入准备](inputs.md)；下文独立导出示例继续有效。
 
 
 Python 通过独立 Rust worker 接入固定的 Pyrefly 内核。验收范围及回执见 [当前实现](../current-state.md)；历史失败证据保留在 `lang-python-adaptor/validation/2026-10-16/`。

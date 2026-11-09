@@ -24,7 +24,7 @@
 | 依赖倒置原则 | 高层策略和底层实现共同依赖抽象，而非高层直接依赖细节。 |
 | 迪米特法则 | 对象尽量只与直接协作者交互，减少对其他对象内部结构的了解。 |
 
-现行说明先读 [文档导航](docs/README.md)、[当前实现](docs/current-state.md)、[架构](docs/architecture.md) 和 [契约](docs/contracts.md)。协议版本：daemon 5、worker 24、graph model 6、analysis request/result 13、C ABI 4；javac-model-v51 / compiler batch 2。参考 Anatomist 固定 `4a903272c22083585107e982f2899ed03a280aa2`，来源清单保留各自提交，不能把 sibling HEAD 或旧验收回执当作当前依据。
+现行说明先读 [文档导航](docs/README.md)、[当前实现](docs/current-state.md)、[架构](docs/architecture.md) 和 [契约](docs/contracts.md)。协议版本：daemon 7、worker 24、graph model 6、analysis request/result 13、C ABI 4；javac-model-v51 / compiler batch 2。参考 Anatomist 固定 `4a903272c22083585107e982f2899ed03a280aa2`，来源清单保留各自提交，不能把 sibling HEAD 或旧验收回执当作当前依据。
 
 ## 开发与验证
 

@@ -1,6 +1,6 @@
 # 当前实现与验证边界
 
-对齐日期：2026-11-08。源码为准，历史回执按其提交和产物解释。
+对齐日期：2026-11-09。源码为准，历史回执按其提交和产物解释。
 
 | 边界 | 当前实现 | 核查入口 |
 |---|---|---|
@@ -8,18 +8,79 @@
 | 分析 | Rust 独立 worker → C ABI → Java 25 Native Image → 目标 Java 8／17 javac 子进程 | `crates/java-worker/`、`lang-java-adaptor/` |
 | 后端 | javac 唯一后端；显式 JVM 后端供开发/诊断，无自动回退 | `crates/application/src/java.rs` |
 | GC | Oracle GraalVM G1 默认；每进程仅创建一次 isolate，健康任务复用，故障后换进程 | `crates/java-worker/src/native.rs` |
-| 输出 | GRA1 + protobuf Row；JSON 仅用于控制输入、metadata/attributes 和查询展示 | `proto/codeana/v1/graph.proto`、`crates/contracts/src/graph_archive.rs` |
+| 输出 | 内部 GRA1 + protobuf Row；CLI 默认 text，显式 JSON 用于测试与结构化导出 | `crates/application/src/presentation.rs`、`proto/codeana/v1/task.proto` |
 | 存储 | 不可变 SQLite revision；私有 candidate 校验、落盘后 catalog CAS | `crates/storage/src/graph_store.rs`、`crates/storage/src/lib.rs` |
 | 紧凑布局 | 整数引用、路径/外部目标字典、重复大 metadata 共享、元注解定义/归属分离 | `crates/storage/src/compact-schema.sql`、`compact-meta.sql` |
 | 配置 | 显式启用 Java；plain 显式源码根，Maven auto 需已导出的 inputs_manifest；仅解析字段另标注 | `crates/config/src/lib.rs` |
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
-## 注释收敛与 Java 17 联合改造（本机 fixture 范围完成）
+## 删除产品旧格式兼容（2026-11-09，本机验证完成）
+
+当前 daemon 7、公开投影 3、报告 schema 3。页、Record、任务事件、报告、资源回执、语言配置及输入仅保留当前路径；删除清单见 [单一当前格式](../design/legacy-removal.md)。原协议 6 的验收记录保留于下节，不作为本轮产物验证。
+
+本轮证据：`target/legacy-removal/receipt.json`，仅以该回执列出的最终日志为依据。
+
+| 检查 | 本轮结果 |
+|---|---|
+| Java fixture / 来源清单 | `java.log`、`java-source-verified.log` 通过；NodeKey 三段读取删除，保留原来源 SHA，适配记录 87 |
+| Rust 完整门禁 | `rust-sealed.log`：workspace 331 通过、默认 G1 1 项跳过；图 22、CLI 15、Rust 产品 5、注释 2、架构/DDL/fmt/clippy 通过 |
+| G1 补跑 | `g1.log`：更新 SDK 上真实 teardown 后拒绝重建 1 项通过 |
+| Python | 核心 32、产品 7、注释 4、当前报告及 unknown 水位 1；prepared 8 通过、真实 Java 组合另行显式通过 |
+| Native / JVM | 新 SDK 构建；Native 图 8、注释 3；JVM 图 7、注释 3 均通过 |
+| Maven | 唯一 CLI 入口上的 alignment 21 项和真实导出 fixture 通过 |
+| Rust 实际包 | 标准 release 门禁与 SHA；CLI 15 中 2 项 debug 故障点跳过，对应 debug 已验证；图 22 中 9 项同类跳过 |
+| Java 实际包 | 校验和、仅保留 CLI Maven 入口、新包上的实际 Native 查询 fixture 1 项通过；未扩写为全部 Java release 门禁通过 |
+| Python 实际包 | 校验和、产品 7、注释 4、prepared 8 通过；Java 专项 1 项按包边界跳过，开发路径已显式验证 |
+
+原失败保留：Maven 回执缺轮次、Rust 示例残留 Java 字段、旧格式正向断言、测试编辑语法错误、旧包装入口的错误文案预期、Java 适配清单缺理由，均已修正并复验。Native 为 build-only SDK 与功能验证，不签正式 Native、跨平台或性能放行；本轮无性能测量。
+
+## CLI 输入、text 交付与用例路由（2026-11-09）
+
+| 交付 | 当前行为 |
+|---|---|
+| 输入/help | 35 条路径按有效参数展示及本地拒绝；保留显式参数；diff --section、snapshot --kind；pipeline 使用受限文本规格 |
+| 正文 | 默认 text，文件/owner 共享，一种规范声明；必要参数名与泛型类型保留。原文不逐行编号，可还原 CRLF/无末尾换行/多字节；回执末行 end |
+| 身份与证据 | 正常查询省 revision/producer/profile/hash 与默认 Next；现场次数、关系证明、可能/确认、未知和语义缺口保留 |
+| 分页 | 只凭 cursor 恢复原项目/请求/格式/来源；最终 codec 核算字节；只交付完整单元，未完成枚举不提供虚构总数 |
+| diff | 四种 section；固定两端 revision/manifest 身份。impact 仅变更关系根的静态反向调用传播，不能解释为通用源码/数据流/运行影响 |
+| 事件/恢复 | 投影 2 的类型化记录及内部 TaskResult；watch 检查连续序号、终态和观察边界；旧 stdout 正文不可安全重放时明确不可用，保留真实提交 |
+| 独立状态 | 语义、计算、执行、门禁、提交、报告、交付各自保存。恢复只核实提交时，质量/门禁/报告保持 unknown；交付 strict 不改写分析门禁 |
+| 操作效果 | 原子导出新路径；竞争/写出失败不掩盖已发布。stop 等待原进程退出，restart 再确认新 generation；超时返回实际 draining |
+| 应用边界 | OperationRouter 调用查询/历史/维护/就绪/报告；查询核心继续使用窄读端口。部分服务仍持完整 Store，未宣称完成全部 DDD 模块化 |
+| 兼容 | daemon 5→6；worker 24、graph model 6、analysis 13、ABI 4、物理/逻辑 schema 13/36 保持。旧 cursor 拒绝，已有兼容图不因显示升级重建 |
+
+本轮证据根目录：`target/cli-refactor-20261109/`。先运行 `just test-java`，再使用 Rust 1.96.0 运行 Rust/Python 检查；Java 源码与 Native SDK 未因 CLI 重构修改。完整命令、产物摘要和范围见该目录的 `receipt.json`。
+
+| 本轮验证 | 证据及范围 |
+|---|---|
+| Java fixture | `java-baseline.log`；先行检查通过，未重建 Native |
+| Rust 完整门禁 | `verified-final-rust.log`；workspace 334 通过，1 项真实 G1 测试按默认规则跳过；架构/DDL/fmt、图 22、CLI 16、Rust 产品 5、注释 2、工具及 clippy |
+| CLI 关键边界 | 35 help、参数拒绝无任务；原文最小预算、冻结页/同名替换、导出竞争、事件缺口/旧正文、提交/取消、停服超时/重启；含真实进程与持久提交断言 |
+| Java 产品 | JVM 图 7 / 注释 3；Native 图 8 / 注释 3。最后另用 Native 验证四种 diff 及实际 text：`native-diff-verified.log` / `native-diff-receipt.json` |
+| Python | 核心 32 与 fmt/clippy：`final-python-core.log`；产品 7 / 注释 4：`final-python-product.log`；prepared 9 中 1 项需显式真实 Java，已补跑通过 |
+| prepared 显式组合 | 首次因 PATH 缺 Maven 失败保留于 `mixed-failure/`；配置 SDKMAN Maven 后 `prepared-mixed-with-maven.log` 通过，未把失败记作成功 |
+| Rust 实际包 | `verified-final-package.log`：SHA256 全部核对，图 22 中 9 项 debug 故障点跳过，Rust 产品 5、注释 2；`package-cli-verified.log`：CLI 16 中 2 项 debug 故障点跳过，这些均由 debug 门禁实测 |
+| 新旧接入 | `protocol-mismatch.json`：真实新客户端/旧 daemon 与旧客户端/新 daemon 均拒绝，原服务未被替换 |
+
+固定三个 agent 任务，对照 HEAD `39290fc` 的独立实际二进制与本轮二进制，使用 `tiktoken 0.12.0 / o200k_base`。计入 help、命令输入、输出和续页；双方相同的准备索引不计入，业务结果逐项相等。不是 Native 性能测量。
+
+| 固定任务 | 原 token（输入＋输出） | 本轮 token | 调用数（原→本轮） |
+|---|---:|---:|---:|
+| 定位并读源码 | 3,585 | 847 | 4→4 |
+| 检查调用与现场 | 2,581 | 1,156 | 4→4 |
+| 冻结分页后读取 | 1,165 | 453 | 3→3 |
+| 合计 | 7,331 | 2,456 | 11→11 |
+
+该任务集总 token 减少约 66.5%，没有新增补查调用；原始输出、35 help、二进制 SHA 与逐步数据在 `agent-baseline/`、`agent-current/`、`agent-comparison.json`。只证明这三个固定任务的本次结果，不外推全部场景的节省比例。
+
+原失败与中间版本日志均保留；最终结果以上述指定日志和 receipt 为准。本轮完成 CLI 与 Rust 本机分发验证，未重签 Java/Python 正式分发或 Native、跨平台、容量、稳定性能放行；历史测量不重标。
+
+## 注释收敛与 Java 17 联合改造（2026-11-08，本机 fixture 范围完成）
 
 | 边界 | 当前源码与已取得证据 |
 |---|---|
-| 版本 | daemon 5、worker 24、graph model 6、analysis 13、物理 schema 13、逻辑 36、GraphSemantics 28；v51 / batch 2 / ABI 4 / catalog 2 保持 |
+| 当时版本 | daemon 5、worker 24、graph model 6、analysis 13、物理 schema 13、逻辑 36、GraphSemantics 28；v51 / batch 2 / ABI 4 / catalog 2 保持 |
 | 注释 | 三语言只产生 documents/enclosing_callable；删除源码窗口、专用参数／配置与 prepared 展示指纹例外；旧图库要求 index --full，旧注释游标要求重新查询 |
 | Java 17 | SDKMAN 匹配；冻结目标、实际版本、别名、规范化路径、JDK 内容及桥身份；8／17 分桥构建，SDK manifest Native 3 / JVM 2 显式登记桥映射和摘要 |
 | 已验证 | 当前完整 Java fixture 727 项通过（0 失败／错误／跳过），含新增 Java 17 模型专项；JVM／Native 各 3 项 Java 17 产品测试通过，含取消及 worker 崩溃保留旧 head，Native 注释查询 3 项、JVM 注释生命周期 8 项、Native ABI 生命周期 10 项、Native 图 8 项、Native 注释生命周期 8 项通过；Python 核心、产品 7 项、注释 4 项、prepared 9 项和显式三语言组合通过 |
