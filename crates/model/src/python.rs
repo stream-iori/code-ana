@@ -116,17 +116,7 @@ impl Context {
 
 impl Inputs {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if !matches!(self.schema_version, 1 | 2 | INPUT_SCHEMA)
-            || (self.schema_version == 1 && (!self.controls.is_empty() || self.metadata.is_some()))
-            || (self.schema_version < 3
-                && (!self.module_metadata.is_empty()
-                    || self.roots.iter().any(|r| r.module.is_some())
-                    || self
-                        .contexts
-                        .iter()
-                        .any(|c| c.publish_roots.is_some() || !c.gaps.is_empty())))
-            || self.roots.is_empty()
-            || self.contexts.is_empty()
+        if self.schema_version != INPUT_SCHEMA || self.roots.is_empty() || self.contexts.is_empty()
         {
             return Err("PYTHON_INPUT_SCHEMA");
         }

@@ -86,8 +86,8 @@ class XmlPublication(JavaProductHarness):
             account = self.cli('report',failed['report'])[0][0]['analysis_resources']['coordinator']
             self.assertIsNone(account['admission']['failure'])
             java = next(item for item in account['languages'] if item['allocation']['language']=='java')
-            self.assertEqual(java['worker']['state'],'failed')
-            self.assertEqual(java['worker']['usage']['failure']['Limit']['resource'],'work')
+            self.assertEqual(java['workers'][0]['state'],'failed')
+            self.assertEqual(java['workers'][0]['usage']['failure']['Limit']['resource'],'work')
             self.assertEqual(self.cli('overview')[1]['revision'],old)
             self.assertTrue(self.cli('resolve','p.Model#getName()','--revision',old)[0])
             config.write_text(original)

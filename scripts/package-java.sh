@@ -49,13 +49,6 @@ cp lang-java-adaptor/target/native/libcodeana_java.dylib lang-java-adaptor/targe
 cp lang-java-adaptor/target/compiler-bridge.jar lang-java-adaptor/target/compiler-bridge17.jar "$package_dir/lib/java/"
 cp lang-java-adaptor/target/maven-input-worker.jar "$package_dir/lib/java/"
 cp lang-java-adaptor/target/native/*.h "$package_dir/include/"
-cat > "$package_dir/bin/codeana-export-java-inputs" <<'EXPORT'
-#!/bin/sh
-set -eu
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-exec "$script_dir/codeana-cli" java-inputs export "$@"
-EXPORT
-chmod +x "$package_dir/bin/codeana-export-java-inputs"
 cp scripts/export-rust-inputs.py "$package_dir/bin/codeana-export-rust-inputs"
 chmod +x "$package_dir/bin/codeana-export-rust-inputs"
 cp -R docs "$package_dir/docs"

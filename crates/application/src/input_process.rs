@@ -192,7 +192,12 @@ mod tests {
         let ready = pid.clone();
         let signal = thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(3);
-            while !ready.is_file() && Instant::now() < deadline {
+            while fs::read_to_string(&ready)
+                .ok()
+                .and_then(|s| s.trim().parse::<i32>().ok())
+                .is_none()
+                && Instant::now() < deadline
+            {
                 thread::sleep(Duration::from_millis(10));
             }
             flag.store(true, Ordering::Release);

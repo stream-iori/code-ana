@@ -4,6 +4,9 @@ import hashlib
 import json
 import os
 import pathlib
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
+from cli_response import decode_response
 import shutil
 import subprocess
 import time
@@ -97,22 +100,22 @@ int codeana_java_analyze_start(void *thread, unsigned long task) { *(volatile in
         source.write_text(source.read_text() + '\n// force a new analysis\n')
         failed = subprocess.run(
             [str(binary_dir / 'codeana-cli'), '--home', str(case.home),
-             '--project', str(case.project), 'index', '--full'],
+             '--project', str(case.project), 'index', '--full', '--format', 'json', '--detail'],
             capture_output=True, text=True, timeout=90)
         assert failed.returncode != 0, failed.stdout
         evidence = failed.stdout + failed.stderr + case.daemon_log()
         assert 'signal: 11' in evidence or 'SIGSEGV' in evidence, evidence
         assert case.daemon.poll() is None, case.daemon_log()
         assert case.cli('overview')[1]['revision'] == good
-        terminal = next(json.loads(line[9:]) for line in failed.stdout.splitlines() if line.startswith('terminal '))
+        terminal = decode_response(failed.stdout)[1]
         resources = case.cli('report', terminal['report'])[0][0]['analysis_resources']['coordinator']
         slot = next(s for s in resources['languages'] if s['allocation']['language'] == 'java')
-        assert slot['worker']['state'] == 'unknown', slot
-        assert slot['worker']['phase'] == 'discover', slot
-        watermark = slot['worker']['usage']
+        assert slot['workers'][0]['state'] == 'unknown', slot
+        assert slot['workers'][0]['phase'] == 'discover', slot
+        watermark = slot['workers'][0]['usage']
         assert watermark and watermark['work'] > 0 and watermark['payload_bytes'] > 0, slot
         assert watermark['failure'] is None, slot
-        markdown = case.cli('report', terminal['report'], '--format', 'markdown', raw=True)
+        markdown = case.markdown(terminal['report'])
         assert 'unknown' in markdown and 'incomplete' in markdown, markdown
         assert not resources['complete']
         until = time.monotonic() + 5

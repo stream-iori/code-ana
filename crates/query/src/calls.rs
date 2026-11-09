@@ -79,6 +79,7 @@ pub(super) fn trace(
                     (
                         previous.clone(),
                         CallRelation {
+                            locations: Vec::new(),
                             recursion: CallRelation::recursion_for(&from, &to),
                             from: from.clone(),
                             to: to.clone(),
@@ -163,6 +164,7 @@ pub(super) fn run(
                 }
                 if emitted.insert((from.clone(), to.clone())) {
                     records.push(Record::Call(CallRelation {
+                        locations: Vec::new(),
                         recursion: CallRelation::recursion_for(&from, &to),
                         from,
                         to,
@@ -176,4 +178,101 @@ pub(super) fn run(
         frontier = next.into_iter().collect();
     }
     Ok(records)
+}
+
+/// One bounded batch per 500 distinct sites, shared by relations and trace hops.
+pub(super) fn locate(r: &dyn GraphAccess, records: &mut [Record]) -> Result<()> {
+    let mut ids = BTreeSet::new();
+    for record in records.iter() {
+        match record {
+            Record::Call(call) => ids.extend(call.sites.iter().cloned()),
+            Record::Trace(path) => {
+                for hop in &path.hops {
+                    ids.extend(hop.sites.iter().cloned());
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut locations = BTreeMap::new();
+    let ids: Vec<_> = ids.into_iter().collect();
+    for batch in ids.chunks(500) {
+        for fact in select(
+            r,
+            FactFilter {
+                kinds: vec![FactKind::CallSite],
+                ids: batch.to_vec(),
+                ..Default::default()
+            },
+        )? {
+            locations.insert(
+                fact.id.to_string(),
+                CallSiteLocation {
+                    id: fact.id.to_string(),
+                    path: fact.source,
+                    range: fact.attributes.source_range.as_ref().cloned(),
+                },
+            );
+        }
+    }
+    for record in records {
+        let attach = |call: &mut CallRelation| {
+            call.locations = call
+                .sites
+                .iter()
+                .filter_map(|id| locations.get(id).cloned())
+                .collect();
+        };
+        match record {
+            Record::Call(call) => attach(call),
+            Record::Trace(path) => {
+                for hop in &mut path.hops {
+                    attach(hop);
+                }
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Call-site answers include existing binding facts; no dispatch inference is run.
+pub(super) fn bindings(r: &dyn GraphAccess, records: &mut [Record]) -> Result<()> {
+    let ids: Vec<_> = records
+        .iter()
+        .filter_map(|record| match record {
+            Record::Fact(row) if row.fact.kind == FactKind::CallSite => {
+                Some(row.fact.id.to_string())
+            }
+            _ => None,
+        })
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let mut bindings: BTreeMap<(WorldId, String), Vec<Fact>> = BTreeMap::new();
+    for batch in ids.chunks(500) {
+        for fact in select(
+            r,
+            FactFilter {
+                kinds: vec![FactKind::CallTarget],
+                parents: batch.to_vec(),
+                ..Default::default()
+            },
+        )? {
+            bindings
+                .entry((fact.owner.world.clone(), fact.parent.clone()))
+                .or_default()
+                .push(fact);
+        }
+    }
+    for record in records {
+        if let Record::Fact(row) = record
+            && row.fact.kind == FactKind::CallSite
+        {
+            row.call_targets = bindings
+                .remove(&(row.fact.owner.world.clone(), row.fact.id.to_string()))
+                .unwrap_or_default();
+        }
+    }
+    Ok(())
 }

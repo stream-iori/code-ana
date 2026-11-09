@@ -18,8 +18,6 @@ pub struct JavaInputs {
     pub scopes: Vec<String>,
     #[serde(default)]
     pub resolved_classpath: bool,
-    /// Default is only for historical report snapshots; live inputs require schema 4 and this field.
-    #[serde(default)]
     pub dependency_mode: DependencyMode,
     #[serde(default)]
     pub dependency_failure: Option<DependencyFailure>,
@@ -35,7 +33,6 @@ pub struct ExportReceipt {
     pub inputs_sha256: String,
     pub extension_sha256: String,
     pub maven_processes: u32,
-    #[serde(default)]
     pub prerequisite_classpath_rounds: u32,
     #[serde(default)]
     pub dependency_failure_sha256: Option<String>,
@@ -527,7 +524,7 @@ pub fn missing_inputs(root: &Path, path: &str, suggestions: bool) -> anyhow::Err
     let advice = BuildAdvice {
         missing: vec![path.into()],
         cwd: root.to_string_lossy().into_owned(),
-        argv: if suggestions { vec!["codeana-export-java-inputs".into(),"--project".into(),root.to_string_lossy().into_owned(),"--output".into(),root.join(path).to_string_lossy().into_owned()] } else { vec![] },
+        argv: if suggestions { vec!["codeana-cli".into(),"java-inputs".into(),"export".into(),"--project".into(),root.to_string_lossy().into_owned(),"--output".into(),root.join(path).to_string_lossy().into_owned()] } else { vec![] },
         purpose: "Externally export the effective Maven model and ordered classpath".into(),
         expected: vec![path.into()],
         impact: "The explicit exporter runs Maven extensions and may download dependencies; index never executes it".into(),
@@ -583,7 +580,7 @@ mod tests {
                 .to_string()
                 .contains("JAVA_DEPENDENCY_FAILURE_RECEIPT")
         );
-        value["receipt"] = serde_json::json!({"nonce":"n".repeat(36),"maven_processes":1,"metadata_sha256":hash(b"m"),"inputs_sha256":hash(b"m"),"extension_sha256":hash(b"e"),"dependency_failure_sha256":hash(b"f")});
+        value["receipt"] = serde_json::json!({"nonce":"n".repeat(36),"maven_processes":1,"metadata_sha256":hash(b"m"),"inputs_sha256":hash(b"m"),"extension_sha256":hash(b"e"),"dependency_failure_sha256":hash(b"f"),"prerequisite_classpath_rounds":0});
         assert!(check(&value).is_ok());
         value["dependency_failure"]["pom"] = serde_json::json!("unknown.xml");
         assert!(check(&value).is_err());
@@ -595,27 +592,6 @@ mod tests {
                 .to_string()
                 .contains("schema 4 exporter")
         );
-    }
-    #[test]
-    fn historical_report_inputs_remain_readable_but_live_inputs_require_explicit_mode() {
-        let root = tempfile::tempdir().unwrap();
-        let mut value = input(root.path());
-        value.as_object_mut().unwrap().remove("dependency_mode");
-        std::fs::write(
-            root.path().join("inputs.json"),
-            serde_json::to_vec(&value).unwrap(),
-        )
-        .unwrap();
-        assert!(
-            JavaInputs::read(root.path(), "inputs.json")
-                .unwrap_err()
-                .to_string()
-                .contains("MODE_REQUIRED")
-        );
-        value["schema_version"] = serde_json::json!(3);
-        let historical: JavaInputs = serde_json::from_value(value).unwrap();
-        assert_eq!(historical.schema_version, 3);
-        assert_eq!(historical.dependency_mode, DependencyMode::Resolved);
     }
     #[test]
     fn compact_classpath_order_rejects_duplicate_missing_and_reordered_slots() {
@@ -687,14 +663,14 @@ mod tests {
         assert_eq!(advice.missing, vec![".code-ana/inputs.json"]);
     }
     #[test]
-    fn prerequisite_receipt_is_backward_compatible_and_bounded() {
+    fn prerequisite_receipt_is_required_and_bounded() {
         let root = tempfile::tempdir().unwrap();
         let mut value = input(root.path());
         value["receipt"] = serde_json::json!({"nonce":"00000000-0000-0000-0000-000000000000",
             "metadata_sha256":"0".repeat(64),"inputs_sha256":"1".repeat(64),
-            "extension_sha256":"2".repeat(64),"maven_processes":1});
+            "extension_sha256":"2".repeat(64),"maven_processes":1,"prerequisite_classpath_rounds":0});
         let path = root.path().join("inputs.json");
-        for round in [None, Some(2), Some(257)] {
+        for round in [Some(0), Some(2), Some(257)] {
             if let Some(round) = round {
                 value["receipt"]["prerequisite_classpath_rounds"] = serde_json::json!(round);
             }

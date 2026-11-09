@@ -148,11 +148,11 @@ root="common"
         reused, second = self.cli('index', timeout=120)
         self.assertEqual(reused[0]['mode'], 'delta')
         report = self.cli('report', second['report'])[0][0]
-        self.assertEqual(report['schema_version'], 2)
+        self.assertEqual(report['schema_version'], 3)
         self.assertEqual(report['diagnostics'], [])
         self.assertEqual(len(report['global']['units']), 3)
         self.assertNotIn('Full', report['effective'])
-        markdown = self.cli('report', second['report'], '--format', 'markdown', raw=True)
+        markdown = self.markdown(second['report'])
         self.assertIn('| Execution | Quality |', markdown)
         (self.project/'app-a/pyproject.toml').write_text('[broken')
         self.cli('index', code=1)

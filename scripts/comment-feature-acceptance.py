@@ -15,6 +15,9 @@ import subprocess
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / 'scripts'))
+from cli_response import decode_response
 SPEC = ROOT/'fixtures/comment-indexing/acceptance.json'
 SCRIPT = pathlib.Path(__file__).resolve()
 
@@ -99,11 +102,11 @@ def run(args):
         '[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(fixture['jdk'])+'\n')
     base=[str(binaries/'codeana-cli'),'--home',str(home),'--project',str(project)]
     def cli(name,argv):
-        completed=subprocess.run(base+argv,capture_output=True,text=True,timeout=600)
+        completed=subprocess.run(base+argv+['--format','json','--detail'],capture_output=True,text=True,timeout=600)
         (output/(name+'.stdout')).write_text(completed.stdout)
         (output/(name+'.stderr')).write_text(completed.stderr)
-        records=[json.loads(line[7:]) for line in completed.stdout.splitlines() if line.startswith('record ')]
-        terminals=[json.loads(line[9:]) for line in completed.stdout.splitlines() if line.startswith('terminal ')]
+        records = decode_response(completed.stdout)[0]
+        terminals = [decode_response(completed.stdout)[1]]
         if completed.returncode or len(terminals)!=1 or not terminals[0]['evidence']['semantic'] or not terminals[0]['evidence']['enumeration']:
             raise ValueError('COMMENT_ACCEPTANCE_FAILED: '+name+' '+completed.stdout[-3000:]+' '+completed.stderr[-1000:])
         return records,terminals[0]
@@ -148,7 +151,7 @@ def run(args):
             receipt['failure']=str(error)
             raise
         finally:
-            stopped=subprocess.run(base+['daemon','stop'],capture_output=True,text=True,timeout=30)
+            stopped=subprocess.run(base[:3] + ['daemon','stop'],capture_output=True,text=True,timeout=30)
             (output/'stop.stdout').write_text(stopped.stdout)
             (output/'stop.stderr').write_text(stopped.stderr)
             if stopped.returncode and receipt['status']=='passed':

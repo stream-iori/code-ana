@@ -346,7 +346,7 @@ mod tests {
         let absent = w::AnalysisBudgetReceipt::decode(raw.encode_to_vec().as_slice()).unwrap();
         assert_eq!(absent.usage_known, None);
         assert!(reconcile_receipt(&mut c, &g, Some(&absent), true, true).is_err());
-        assert!(c.snapshot().languages[0].worker.usage.is_none());
+        assert!(c.snapshot().languages[0].workers[0].usage.is_none());
     }
     #[test]
     fn cancellation_control_requires_the_active_attempt_and_correct_message() {
@@ -388,15 +388,22 @@ mod tests {
         assert!(reconcile_receipt(&mut c, &g, Some(&raw), true, true).is_err());
         raw.usage_known = Some(false);
         assert!(reconcile_receipt(&mut c, &g, Some(&raw), true, false).is_err());
-        assert!(c.snapshot().languages[0].worker.usage.is_none());
+        assert!(c.snapshot().languages[0].workers[0].usage.is_none());
         reconcile_receipt(&mut c, &g, Some(&raw), true, true).unwrap();
         let snapshot = c.snapshot();
         assert!(!snapshot.complete);
         assert_eq!(
-            snapshot.languages[0].worker.state,
+            snapshot.languages[0].workers[0].state,
             codeana_model::GrantState::Unknown
         );
-        assert_eq!(snapshot.languages[0].worker.usage.as_ref().unwrap().work, 7);
+        assert_eq!(
+            snapshot.languages[0].workers[0]
+                .usage
+                .as_ref()
+                .unwrap()
+                .work,
+            7
+        );
     }
     #[test]
     fn strict_replan_receipt_is_cumulative_and_final_end_is_idempotent() {
@@ -498,11 +505,15 @@ mod tests {
         reconcile_receipt(&mut c, &g, Some(&raw), true, true).unwrap();
         let snapshot = c.snapshot();
         assert_eq!(
-            snapshot.languages[0].worker.state,
+            snapshot.languages[0].workers[0].state,
             codeana_model::GrantState::Failed
         );
         assert_eq!(
-            snapshot.languages[0].worker.usage.as_ref().unwrap().failure,
+            snapshot.languages[0].workers[0]
+                .usage
+                .as_ref()
+                .unwrap()
+                .failure,
             None
         );
     }

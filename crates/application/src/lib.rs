@@ -10,12 +10,18 @@ pub mod inputs;
 mod java;
 pub mod maven_inputs;
 mod output;
+pub mod presentation;
+pub use output::render as render_response;
 pub mod ports;
 mod publication;
 mod python_inputs;
 mod reports;
 mod resources;
+pub use codeana_query::input_contract::input_fields as query_input_fields;
 pub use reports::report_markdown;
+mod input_contract;
+mod operation_router;
+pub use input_contract::input_fields as command_input_fields;
 mod query_service;
 mod rust_inputs;
 mod scheduler;
@@ -60,6 +66,35 @@ pub struct Endpoint {
     pub token: String,
     pub generation: String,
     pub mock: bool,
+    #[serde(default)]
+    pub pid: u32,
+    #[serde(default)]
+    pub process_started: String,
+}
+
+/// Private local-process identity used only for confirming management effects.
+/// A zombie has exited even when another parent has not reaped it yet.
+pub fn process_identity(pid: u32) -> Result<Option<(String, bool)>> {
+    let output = std::process::Command::new("/bin/ps")
+        .args(["-p", &pid.to_string(), "-o", "lstart=", "-o", "stat="])
+        .env("LC_ALL", "C")
+        .env("TZ", "UTC")
+        .output()?;
+    if !output.status.success() {
+        ensure!(
+            output.stderr.is_empty(),
+            "PROCESS_STATE_UNAVAILABLE: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        return Ok(None);
+    }
+    let text = std::str::from_utf8(&output.stdout)?;
+    let fields: Vec<_> = text.split_whitespace().collect();
+    ensure!(
+        fields.len() >= 6,
+        "PROCESS_STATE_UNAVAILABLE: invalid ps response"
+    );
+    Ok(Some((fields[..5].join(" "), fields[5].starts_with('Z'))))
 }
 pub fn default_home() -> Result<PathBuf> {
     Ok(PathBuf::from(
@@ -90,15 +125,23 @@ pub fn private_home(path: &Path) -> Result<PathBuf> {
 #[derive(Serialize, Deserialize, Clone)]
 pub enum Event {
     Progress(String),
-    Output(Vec<u8>),
-    Terminal(Box<p::Terminal>),
+    Record(Box<Record>),
+    Result(Box<TaskResult>),
 }
 impl Event {
+    pub fn result(result: &TaskResult) -> Self {
+        let mut metadata = result.clone();
+        metadata.output.records.clear();
+        Self::Result(Box::new(metadata))
+    }
     pub fn wire(self, task: String, seq: u64) -> p::TaskEvent {
         let body = match self {
+            Self::Record(record) => p::task_event::Event::Record(p::OutputRecord {
+                projection_version: PUBLIC_PROJECTION_VERSION,
+                record: serde_json::to_vec(&record).expect("typed record serialization"),
+            }),
             Self::Progress(phase) => p::task_event::Event::Progress(p::Progress { phase }),
-            Self::Output(data) => p::task_event::Event::Output(p::OutputChunk { data }),
-            Self::Terminal(t) => p::task_event::Event::Terminal(*t),
+            Self::Result(t) => p::task_event::Event::Terminal(terminal(&t)),
         };
         p::TaskEvent {
             task_id: task,
@@ -164,11 +207,13 @@ impl Engine {
         let reports = reports::ReportService::new(store.clone());
         let maintenance = maintenance::MaintenanceService::new(store.clone());
         let doctor = doctor::DoctorService::new(generation.clone(), workers.clone());
-        let query = query_service::QueryService::new(
-            store.clone(),
+        let query = query_service::QueryService::new(store.clone(), history.clone());
+        let operations = operation_router::OperationRouter::new(
+            query,
             history.clone(),
             reports.clone(),
             doctor,
+            maintenance.clone(),
         );
         let execution = task_execution::TaskExecution {
             index: IndexService::new(ports::storage::IndexAdapter(store)),
@@ -176,7 +221,7 @@ impl Engine {
             history,
             reports,
             maintenance,
-            query,
+            operations,
         };
         runtime.recover_unfinished()?;
         Ok(Arc::new(Self {
@@ -222,6 +267,7 @@ impl Engine {
         self.runtime.active()
     }
     pub fn submit(self: &Arc<Self>, req: Request) -> Result<String> {
+        let req = self.execution.history.restore_request(&req)?;
         task_runner::TaskRunner::submit(&self.runtime, self.execution.clone(), req)
     }
     pub fn cancel(&self, id: &str) -> Result<()> {
@@ -454,6 +500,12 @@ impl CommentReader for CancelableReader<'_> {
                 .comment_links(ids)
         })
     }
+}
+
+/// Context-free validation used before local preparation/daemon discovery.
+pub fn preflight_request(request: &Request) -> Result<()> {
+    input_contract::validate(request)?;
+    codeana_query::preflight(request)
 }
 
 #[cfg(test)]

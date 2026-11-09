@@ -3,7 +3,7 @@ use crate::{Fact, Span};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "record_type", content = "record")]
 pub enum Record {
     Fact(Box<FactRecord>),
@@ -21,6 +21,13 @@ pub enum Record {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DisplayRecord(serde_json::Value);
 impl Record {
+    /// All stored and transmitted records require the tagged schema.
+    pub fn decode_current(bytes: &[u8]) -> Result<Self, serde_json::Error> {
+        let mut decoder = serde_json::Deserializer::from_slice(bytes);
+        let record = Self::deserialize(&mut decoder)?;
+        decoder.end()?;
+        Ok(record)
+    }
     pub fn display<T: Serialize>(value: &T) -> Result<Self, serde_json::Error> {
         Ok(Self::Display(DisplayRecord(serde_json::to_value(value)?)))
     }
@@ -191,6 +198,7 @@ impl Record {
 impl From<Fact> for Record {
     fn from(fact: Fact) -> Self {
         Self::Fact(Box::new(FactRecord {
+            call_targets: Vec::new(),
             fact,
             depth: None,
             runtime_implementation: None,
@@ -201,6 +209,8 @@ impl From<Fact> for Record {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FactRecord {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub call_targets: Vec<Fact>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub comment_hits: Vec<crate::CommentMatch>,
     #[serde(flatten)]
@@ -220,6 +230,8 @@ pub struct RuntimeImplementation {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallRelation {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub locations: Vec<CallSiteLocation>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recursion: Option<Recursion>,
     pub from: String,
@@ -228,6 +240,12 @@ pub struct CallRelation {
     pub kind: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub depth: Option<u32>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CallSiteLocation {
+    pub id: String,
+    pub path: String,
+    pub range: Option<crate::SourceRange>,
 }
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -279,6 +297,10 @@ pub struct ModeledBinding {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SourceSnippet {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub range: Option<crate::SourceRange>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub language: String,
     pub path: String,
     pub hash: String,
     pub span: Span,
@@ -321,36 +343,21 @@ pub struct OverviewGroup {
     pub extra: BTreeMap<String, serde_json::Value>,
 }
 
-// Old frozen pages and task results are presentation data, never semantic inputs.
-#[derive(Deserialize)]
-#[serde(remote = "Record", tag = "record_type", content = "record")]
-enum RecordDecoder {
-    Fact(Box<FactRecord>),
-    Call(CallRelation),
-    Trace(TracePath),
-    Dispatch(DispatchCandidate),
-    Source(SourceSnippet),
-    Text(TextMatch),
-    Comment(Box<crate::CommentMatch>),
-    Project(ProjectOverview),
-    Group(OverviewGroup),
-    /// Already rendered operation or historical data. Never a pipeline input.
-    Display(DisplayRecord),
-}
-impl<'de> Deserialize<'de> for Record {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let value = serde_json::Value::deserialize(d)?;
-        if value.get("record_type").is_some() {
-            RecordDecoder::deserialize(value).map_err(serde::de::Error::custom)
-        } else {
-            Ok(Self::Display(DisplayRecord(value)))
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn tagged_records_round_trip_and_untagged_data_is_invalid() {
+        let record = Record::display(&serde_json::json!({"count":2})).unwrap();
+        let bytes = serde_json::to_vec(&record).unwrap();
+        assert_eq!(
+            Record::decode_current(&bytes).unwrap().wire().unwrap()["count"],
+            2
+        );
+        assert!(serde_json::from_str::<Record>(r#"{"count":2}"#).is_err());
+        assert!(Record::decode_current(br#"{"record_type":"invalid","record":{}}"#).is_err());
+    }
+
     #[test]
     fn direct_recursion_requires_equal_nonempty_ids() {
         assert_eq!(
@@ -393,6 +400,7 @@ mod tests {
         assert_eq!(names, vec!["Z", "A", "A"]);
         let mut calls = [
             Record::Call(CallRelation {
+                locations: Vec::new(),
                 recursion: None,
                 from: "b".into(),
                 to: "a".into(),
@@ -401,6 +409,7 @@ mod tests {
                 depth: None,
             }),
             Record::Call(CallRelation {
+                locations: Vec::new(),
                 recursion: None,
                 from: "a".into(),
                 to: "b".into(),
@@ -418,6 +427,7 @@ mod tests {
     #[test]
     fn endpoints_are_typed_and_display_records_cannot_enter_a_pipeline() {
         let record = Record::Call(CallRelation {
+            locations: Vec::new(),
             recursion: None,
             from: "a".into(),
             to: "b".into(),
@@ -435,13 +445,13 @@ mod tests {
         let persisted = serde_json::to_vec(&record).unwrap();
         let restored: Record = serde_json::from_slice(&persisted).unwrap();
         assert_eq!(restored.wire().unwrap(), record.wire().unwrap());
-        let historical: Record = serde_json::from_value(record.wire().unwrap()).unwrap();
-        assert_eq!(historical.wire().unwrap(), record.wire().unwrap());
-        assert!(historical.endpoint(crate::Endpoint::Target).is_err());
+        let display = Record::display(&record.wire().unwrap()).unwrap();
+        assert_eq!(display.wire().unwrap(), record.wire().unwrap());
+        assert!(display.endpoint(crate::Endpoint::Target).is_err());
     }
 }
 
-/// Persisted page metadata only; old pages have no policy and retain frozen order.
+/// Sorting policy of the frozen current result.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryOrderPolicy {

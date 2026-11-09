@@ -30,6 +30,8 @@ pub use reader::*;
 mod records;
 pub use records::*;
 mod choices;
+mod delivery;
+pub use delivery::*;
 mod error;
 pub use choices::*;
 pub use error::{DomainError, ErrorCode};
@@ -43,7 +45,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub const VERSION: u32 = 6;
 pub const WORKER_PROTOCOL_VERSION: u32 = 24;
 pub const JAVA_ANALYSIS_VERSION: u32 = 13;
-pub const DAEMON_PROTOCOL_VERSION: u32 = 5;
+pub const DAEMON_PROTOCOL_VERSION: u32 = 7;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
 pub const MAX_RESULT: usize = 64 * 1024 * 1024;
 pub const MAX_FACTS: usize = 100_000;
@@ -667,6 +669,8 @@ pub struct Stage {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Request {
+    #[serde(default, skip_serializing_if = "DeliveryOptions::is_default")]
+    pub delivery: DeliveryOptions,
     pub request_id: RequestId,
     pub project: String,
     pub operation: Operation,
@@ -717,6 +721,8 @@ pub struct Request {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Output {
+    #[serde(default, skip_serializing_if = "DeliveryStatus::is_default")]
+    pub delivery: DeliveryStatus,
     pub revision: String,
     pub producer: String,
     pub records: Vec<Record>,

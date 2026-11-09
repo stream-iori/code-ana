@@ -12,6 +12,9 @@ import subprocess
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / 'scripts'))
+from cli_response import decode_response
 SPEC = importlib.util.spec_from_file_location('single_monitor', ROOT/'scripts/java-performance-monitor-single-v2.py')
 MONITOR = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MONITOR)
@@ -63,12 +66,12 @@ def main():
             daemon = subprocess.Popen([str(binaries/'codeana-daemon'), '--home', str(home)], stdout=log, stderr=log,
                                       env=dict(os.environ, CODEANA_JAVA_BACKEND='native'))
         ready = time.monotonic()+15
-        while subprocess.run(command+['daemon', 'status'], capture_output=True, timeout=3).returncode:
+        while subprocess.run(command[:3] + ['daemon', 'status'], capture_output=True, timeout=3).returncode:
             if daemon.poll() is not None or time.monotonic() > ready:
                 raise ValueError('PROFILE_DAEMON_START_FAILED')
             time.sleep(.05)
         with (output/'index.stdout').open('wb') as out, (output/'index.stderr').open('wb') as err:
-            index = subprocess.Popen(command+['index', '--full', '--deadline-seconds', '3600'], stdout=out, stderr=err)
+            index = subprocess.Popen(command+['index', '--full', '--deadline-seconds', '3600', '--format', 'json', '--detail'], stdout=out, stderr=err)
         wanted = [('rust_worker', 150), ('rust_worker', 300), ('rust_worker', 450), ('daemon', 300), ('daemon', 450)]
         next_progress = started+60
         scratch = None
@@ -107,7 +110,7 @@ def main():
                 print(json.dumps(dict(seconds=report['seconds'], samples=len(report['samples']), processes=report['processes'])), flush=True)
                 next_progress += 60
             time.sleep(1)
-        terminals = [json.loads(line[9:]) for line in (output/'index.stdout').read_text().splitlines() if line.startswith('terminal ')]
+        terminals = [decode_response((output/'index.stdout').read_text())[1]]
         if index.returncode or len(terminals) != 1 or terminals[0].get('publication') != 'published' or wanted:
             raise ValueError('PROFILE_INDEX_OR_SAMPLES_INCOMPLETE')
         if any(sha(Path(p)) != digest for p, digest in inputs.items()):
@@ -117,7 +120,7 @@ def main():
         report.update(status='failed', failure=str(error))
     finally:
         if daemon and daemon.poll() is None:
-            subprocess.run(command+['daemon', 'stop'], capture_output=True, timeout=10)
+            subprocess.run(command[:3] + ['daemon', 'stop'], capture_output=True, timeout=10)
             try:
                 daemon.wait(timeout=10)
             except subprocess.TimeoutExpired:

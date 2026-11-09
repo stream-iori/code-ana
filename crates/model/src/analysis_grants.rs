@@ -95,9 +95,6 @@ pub struct AnalysisCoordinatorSnapshot {
 pub struct AnalysisLanguageSnapshot {
     pub allocation: AnalysisAllocation,
     pub host_usage: AnalysisUsage,
-    /// Compatibility alias for the first instance; never sum this with workers.
-    pub worker: AnalysisGrantSnapshot,
-    #[serde(default)]
     pub workers: Vec<AnalysisGrantSnapshot>,
 }
 impl AnalysisCoordinator {
@@ -380,7 +377,6 @@ impl AnalysisCoordinator {
             languages.push(AnalysisLanguageSnapshot {
                 allocation: slot.allocation.clone(),
                 host_usage: host,
-                worker: workers[0].clone(),
                 workers,
             });
         }
@@ -559,7 +555,7 @@ mod tests {
         let s = c.snapshot();
         assert_eq!(s.known_usage.nodes, 3);
         assert!(!s.complete);
-        assert_eq!(s.languages[0].worker.state, GrantState::Unknown);
+        assert_eq!(s.languages[0].workers[0].state, GrantState::Unknown);
     }
     #[test]
     fn host_and_worker_reservations_are_independent() {
@@ -590,7 +586,7 @@ mod tests {
         c.reconcile_failure(&grant, usage).unwrap();
         let snapshot = c.snapshot();
         assert!(!snapshot.complete);
-        assert_eq!(snapshot.languages[0].worker.state, GrantState::Failed);
+        assert_eq!(snapshot.languages[0].workers[0].state, GrantState::Failed);
         assert_eq!(snapshot.known_usage.work, 10);
     }
     #[test]

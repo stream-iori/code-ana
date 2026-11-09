@@ -147,7 +147,7 @@ def export(project, sources, dependencies, version='3.12', platform='darwin', *,
             roots.append(dict(id=f'{"source" if publish else "dependency"}-{index}', path=declared, publish=publish, files=inventory(path)))
     if not sources:
         raise ValueError('PYTHON_SOURCE_ROOT_REQUIRED')
-    return dict(schema_version=2, roots=roots, controls=controls, metadata=metadata,
+    return dict(schema_version=3, roots=roots, controls=controls, metadata=metadata,
                 contexts=[dict(id=scope.lower(), module='python', scope=scope, python_version=version, platform=platform, roots=[root['id'] for root in roots])])
 
 

@@ -31,7 +31,7 @@ fn config(temp: &tempfile::TempDir, entries: &[(&str, &str)]) -> AnalysisConfig 
     AnalysisConfig {
         inputs: Inputs {
             module_metadata: Default::default(),
-            schema_version: 1,
+            schema_version: 3,
             controls: vec![],
             metadata: None,
             roots: vec![root],

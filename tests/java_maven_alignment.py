@@ -10,9 +10,24 @@ import unittest
 import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SPEC = importlib.util.spec_from_file_location('java_inputs_exporter', ROOT / 'scripts/export-java-inputs.py')
-EXPORTER = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(EXPORTER)
+import subprocess
+class Exporter:
+    @staticmethod
+    def export(project, output, maven='mvn', **options):
+        args=[str(ROOT/'target/debug/codeana-cli'),'--project',str(project),'java-inputs','export','--output',str(output),'--maven',maven]
+        for key,value in options.items():
+            flag='--'+{'profiles':'profile','modules':'module','scopes':'scope'}.get(key,key.replace('_','-'))
+            if isinstance(value,bool):
+                if value:args.append(flag)
+            elif isinstance(value,(tuple,list)):
+                for item in value:args.extend([flag,str(item)])
+            elif value is not None:args.extend([flag,str(value)])
+        process=subprocess.run(args,capture_output=True,text=True)
+        if process.returncode:
+            if 'MAVEN_INPUTS_TIMEOUT' in process.stderr:raise TimeoutError(process.stderr)
+            raise ValueError(process.stderr)
+        return json.loads(pathlib.Path(output).read_text())
+EXPORTER=Exporter()
 NS = 'xmlns="http://maven.apache.org/POM/4.0.0"'
 
 
@@ -331,7 +346,7 @@ class MavenAlignment(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'output must not exist'):
             EXPORTER.export(self.project, output, 'mvn', settings=self.settings, offline=True)
         self.assertEqual(output.read_text(), 'preserve')
-        with self.assertRaisesRegex(ValueError, 'timeout must be'):
+        with self.assertRaisesRegex(ValueError, 'not in 1..=3600'):
             self.export(timeout=0)
         self.assertFalse(list(self.project.glob('out-*.json')))
         self.assertFalse(list(self.project.rglob('*.class')))

@@ -65,7 +65,7 @@ features=["fixture-core/extra"]
         self.assertTrue(all(set(c['dependencies'].values()) <= ids for c in inputs['crates']))
 
     def test_unsupported_toolchain_and_reserved_cfg_are_rejected(self):
-        with self.assertRaisesRegex(ValueError, 'RUST_TOOLCHAIN_ALIAS_UNSUPPORTED'):
+        with self.assertRaisesRegex(ValueError, 'unknown field `toolchain`'):
             self.export('[languages.rust.analysis]\ntoolchain="unregistered"\n')
         with self.assertRaisesRegex(ValueError, 'RUST_RESERVED_CFG'):
             self.export('''

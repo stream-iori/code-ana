@@ -37,10 +37,8 @@ class CommentSearch(JavaProductHarness):
         docs, _ = self.cli('search-comments', '扣减库存')
         self.assertNotIn('source', docs[0])
         self.assertTrue(all(link['relation'] in ('documents', 'enclosing_callable') for row in docs for link in row['links']))
-        stages = self.root / "pipeline.json"
-        stages.write_text(json.dumps([
-            {'operation': 'search-comments', 'selector': '扣减库存'},
-            {'operation': 'resolve'}], ensure_ascii=False))
+        stages = self.root / "pipeline.txt"
+        stages.write_text('search-comments "扣减库存"\nresolve\n')
         pipeline, _ = self.cli('pipeline', stages)
         self.assertEqual([r['signature'] for r in pipeline], ['fixture.comments.Comments#reserve(int)'])
         names, _ = self.cli('search-code', 'reserve')
@@ -79,7 +77,7 @@ class CommentSearch(JavaProductHarness):
         literal, _ = self.cli('search-comments', '--', '--context-before')
         self.assertFalse(literal)
         first, terminal = self.cli('search-comments', '库存', '--max-records', '1')
-        remaining, _ = self.cli('search-comments', '库存', '--cursor', terminal['cursor'], '--max-records', '100')
+        remaining, _ = self.cli('search-comments', '--cursor', terminal['cursor'], '--max-records', '100')
         self.assertTrue(first and remaining)
         self.assertTrue(all('source' not in row for row in first + remaining))
         config = self.project / '.code-ana/config.toml'

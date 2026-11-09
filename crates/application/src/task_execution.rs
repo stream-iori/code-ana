@@ -7,7 +7,7 @@ pub(super) struct TaskExecution {
     pub history: history::HistoryService,
     pub reports: reports::ReportService,
     pub maintenance: maintenance::MaintenanceService,
-    pub query: query_service::QueryService,
+    pub operations: operation_router::OperationRouter,
 }
 impl TaskExecution {
     pub(super) async fn index(

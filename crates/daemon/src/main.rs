@@ -35,6 +35,7 @@ impl Service {
             state: snapshot.state.as_str().into(),
             terminal: snapshot.result.as_ref().map(terminal),
             last_seq: snapshot.last_seq,
+            operation: snapshot.operation.to_string(),
         })
     }
 }
@@ -52,6 +53,9 @@ impl task_service_server::TaskService for Service {
             protocol: codeana_model::DAEMON_PROTOCOL_VERSION,
             capabilities: vec![
                 "task-v2".into(),
+                "typed-output-v3".into(),
+                "command-input-v2".into(),
+                "cursor-request-v3".into(),
                 "query-resources-v1".into(),
                 "call-recursion-v1".into(),
                 "text-search-options-v1".into(),
@@ -118,7 +122,7 @@ impl task_service_server::TaskService for Service {
                 };
                 let mut terminal_seen = false;
                 for (n, e) in events {
-                    terminal_seen = matches!(e, Event::Terminal(_));
+                    terminal_seen = matches!(e, Event::Result(_));
                     seq = n;
                     if tx.send(Ok(e.wire(r.task_id.clone(), n))).await.is_err() {
                         terminal_seen = true;
@@ -237,11 +241,17 @@ async fn main() -> Result<()> {
         ),
         generation: engine.generation().into(),
         mock: engine.is_mock(),
+        pid: std::process::id(),
+        process_started: codeana_application::process_identity(std::process::id())?
+            .context("PROCESS_STATE_UNAVAILABLE")?
+            .0,
     };
     codeana_storage::durable_write(&home.join("endpoint.json"), &serde_json::to_vec(&endpoint)?)?;
     let token = endpoint.token;
-    let service = task_service_server::TaskServiceServer::with_interceptor(
-        Service(engine.clone()),
+    let service = tonic::service::interceptor::InterceptedService::new(
+        task_service_server::TaskServiceServer::new(Service(engine.clone()))
+            .max_decoding_message_size(codeana_model::MAX_FRAME)
+            .max_encoding_message_size(codeana_model::MAX_FRAME),
         move |request: Request<()>| {
             if request
                 .metadata()

@@ -14,6 +14,10 @@ macro_rules! codes {
     }
 }
 codes! {
+    EventStreamInterrupted = "EVENT_STREAM_INTERRUPTED",
+    InvalidOutputFormat = "INVALID_OUTPUT_FORMAT",
+    InvalidArgument = "INVALID_ARGUMENT",
+    OutputFormatUnavailable = "OUTPUT_FORMAT_UNAVAILABLE",
     LanguageQueryCapabilityUnsupported = "LANGUAGE_QUERY_CAPABILITY_UNSUPPORTED",
     AnalysisLimitsInvalid = "ANALYSIS_LIMITS_INVALID",
     AnalysisUsageInvalid = "ANALYSIS_USAGE_INVALID",

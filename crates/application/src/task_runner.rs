@@ -35,6 +35,7 @@ impl TaskRunner {
                 "maximum 8 MiB".to_string()
             )
         );
+        input_contract::validate(&req)?;
         codeana_query::preflight(&req)?;
         let input = PathBuf::from(&req.project);
         let root = project_path(&input)?;
@@ -198,19 +199,15 @@ impl TaskRunner {
                 }
             }
             if let Err(e) = runtime.render(&task, &req, &mut result) {
-                if result.publication == codeana_model::PublicationState::Published {
-                    result.code = "OUTPUT_FAILURE".into();
-                    result.message = e.to_string();
-                    result.exit_code = 1;
-                } else {
-                    result = TaskResult::failure("OUTPUT_FAILURE", e.to_string(), 1);
-                }
+                result.output.delivery.state = DeliveryState::Failed;
+                result.code = "OUTPUT_FAILURE".into();
+                result.message = e.to_string();
+                result.exit_code = 1;
             }
-            if let Err(e) = runtime.tasks.finish(
-                &task,
-                &result,
-                &Event::Terminal(Box::new(terminal(&result))),
-            ) {
+            if let Err(e) = runtime
+                .tasks
+                .finish(&task, &result, &Event::result(&result))
+            {
                 eprintln!("task persistence failed: {e}");
             }
             job.analysis.staging_sources.lock().unwrap().take();
@@ -360,10 +357,10 @@ impl TaskRunner {
                     _ => {
                         let request = req.clone();
                         let runtime = runtime.clone();
-                        let query = execution.query.clone();
+                        let operations = execution.operations.clone();
                         let cancellation = job.control.token.clone();
                         tokio::task::spawn_blocking(move || {
-                            query.execute(&request, &cancellation, runtime.active())
+                            operations.execute(&request, &cancellation, runtime.active())
                         })
                         .await??
                     }
@@ -374,6 +371,11 @@ impl TaskRunner {
             {
                 result.gate = codeana_model::GateState::Rejected;
                 result.exit_code = 3;
+                if result.code.as_str().is_empty() {
+                    result.code = "QUALITY_GATE_REJECTED".into();
+                    result.message =
+                        "Result does not satisfy --strict analysis requirements".into();
+                }
             }
             Ok::<_, anyhow::Error>(result)
         };
@@ -413,9 +415,9 @@ impl AnalysisTaskState {
                 .as_ref()
                 .map(|c| c.lock().unwrap().snapshot());
             let has_worker_usage = coordinator.as_ref().is_some_and(|c| {
-                c.languages.iter().any(|l| {
-                    l.worker.usage.is_some() || l.workers.iter().any(|w| w.usage.is_some())
-                })
+                c.languages
+                    .iter()
+                    .any(|l| l.workers.iter().any(|w| w.usage.is_some()))
             });
             crate::reports::AnalysisAdmissionReport {
                 coverage: if has_worker_usage {
@@ -496,22 +498,31 @@ impl TaskService {
     }
     pub(super) fn recover_unfinished(&self) -> Result<()> {
         for (id, published) in self.tasks.unfinished()? {
-            let result = if let Some(rev) = published {
+            let mut result = if let Some(rev) = published {
                 let r = self.store.read(&rev)?;
                 let mut t = TaskResult::success(Output {
                     revision: rev.into(),
                     producer: r.revision().producer.clone(),
-                    evidence: Evidence::complete(),
+                    evidence: Evidence {
+                        reasons: vec!["Recovered publication has no durable task evidence".into()],
+                        ..Default::default()
+                    },
                     ..Default::default()
                 });
+                t.assessment = Assessment::Unknown;
+                t.execution = ExecutionState::Failed;
                 t.publication = PublicationState::Published;
                 t.message = "Recovered durable publication; output was not delivered".into();
+                t.output.delivery.state = DeliveryState::Failed;
+                t.code = "DAEMON_RESTARTED".into();
+                t.exit_code = 1;
                 t
             } else {
                 TaskResult::failure("DAEMON_RESTARTED", "Task interrupted before publication", 1)
             };
-            self.tasks
-                .finish(&id, &result, &Event::Terminal(Box::new(terminal(&result))))?;
+            result.gate = GateState::Unknown;
+            result.report = ReportState::Unknown;
+            self.tasks.finish(&id, &result, &Event::result(&result))?;
         }
         self.store.recover(true)?;
         Ok(())
@@ -549,12 +560,36 @@ impl TaskService {
         self.jobs.lock().unwrap().len()
     }
     fn render(&self, id: &str, req: &Request, result: &mut TaskResult) -> Result<()> {
-        let bytes = output::render(req, result)?;
+        // Validate the initial delivery using its codec, while retaining typed
+        // records so an observer can select a format without parsing stdout.
+        let _ = output::render(req, result)?;
+        let mut event_bytes = 0u64;
+        for record in &result.output.records {
+            let bytes = retained_size(record)?;
+            ensure!(
+                bytes + 256 <= MAX_FRAME as u64,
+                DomainError::new(
+                    ErrorCode::RecordExceedsOutputBudget,
+                    "typed event exceeds RPC frame budget"
+                )
+            );
+            event_bytes = event_bytes.saturating_add(bytes);
+        }
+        ensure!(
+            event_bytes <= MAX_RESULT as u64,
+            DomainError::new(
+                ErrorCode::ExportBudget,
+                "typed task events exceed observation budget"
+            )
+        );
         self.tasks.event_batch(
             &TaskId::from(id),
-            &bytes
-                .chunks(16384)
-                .map(|chunk| Event::Output(chunk.to_vec()))
+            &result
+                .output
+                .records
+                .iter()
+                .cloned()
+                .map(|record| Event::Record(Box::new(record)))
                 .collect::<Vec<_>>(),
         )?;
         Ok(())

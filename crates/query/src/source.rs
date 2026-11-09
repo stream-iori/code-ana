@@ -33,6 +33,18 @@ pub(super) fn snippets(
             hash(&bytes) == s.hash,
             codeana_model::DomainError::new(codeana_model::ErrorCode::SourceHashMismatch, "")
         );
+        let positions = SourcePositions::new(std::str::from_utf8(&bytes)?, &|w, p| r.charge(w, p))?;
+        let full_text = std::str::from_utf8(&bytes)?;
+        let location = |start: u64, end: u64| -> Result<SourceRange> {
+            let (bl, bc) = positions.position(full_text, start as usize, &|w, p| r.charge(w, p))?;
+            let (el, ec) = positions.position(full_text, end as usize, &|w, p| r.charge(w, p))?;
+            Ok(SourceRange {
+                begin_line: Some(bl.into()),
+                begin_column: Some(bc.into()),
+                end_line: Some(el.into()),
+                end_column: Some(ec.into()),
+            })
+        };
         let range = span.unwrap_or(Span {
             start: 0,
             end: bytes.len() as u64,
@@ -51,10 +63,13 @@ pub(super) fn snippets(
         } else {
             (req.max_output_bytes as usize)
                 .saturating_sub(1800)
-                .clamp(64, 4096)
+                .saturating_div(6)
+                .clamp(16, 4096)
         };
         if text.is_empty() {
             records.push(Record::Source(SourceSnippet {
+                range: Some(location(range.start, range.end)?),
+                language: s.language.clone(),
                 path: s.path.clone(),
                 hash: s.hash.clone(),
                 span: range.clone(),
@@ -73,6 +88,11 @@ pub(super) fn snippets(
                 return Ok(records);
             }
             records.push(Record::Source(SourceSnippet {
+                range: Some(location(
+                    range.start + offset as u64,
+                    range.start + end as u64,
+                )?),
+                language: s.language.clone(),
                 path: s.path.clone(),
                 hash: s.hash.clone(),
                 span: Span {

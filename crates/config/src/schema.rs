@@ -115,20 +115,6 @@ pub struct PythonDiscovery {
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
-struct LanguageWire {
-    pub enabled: Option<bool>,
-    pub mode: String,
-    pub discovery: Discovery,
-    pub analysis: Analysis,
-    pub lombok: Lombok,
-    pub extensions: Extensions,
-    pub external: External,
-    pub dependencies: Option<RustDependencyScan>,
-}
-// Preserve the external TOML/serialized profile shape while separating the
-// configuration consumed by each language. Compatibility fields stay private.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(from = "LanguageWire", into = "LanguageWire")]
 pub struct JavaLanguage {
     pub enabled: Option<bool>,
     pub mode: String,
@@ -137,99 +123,20 @@ pub struct JavaLanguage {
     pub lombok: Lombok,
     pub extensions: Extensions,
     pub external: External,
-    legacy_dependencies: Option<RustDependencyScan>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(from = "LanguageWire", into = "LanguageWire")]
+#[serde(default, deny_unknown_fields)]
 pub struct RustLanguage {
     pub enabled: Option<bool>,
     pub mode: String,
     pub discovery: Discovery,
     pub analysis: RustAnalysis,
     pub dependencies: Option<RustDependencyScan>,
-    legacy_java: LanguageWire,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(from = "Analysis", into = "Analysis")]
+#[serde(default, deny_unknown_fields)]
 pub struct RustAnalysis {
     pub edition: Option<String>,
-    legacy_java: Analysis,
-}
-impl From<Analysis> for RustAnalysis {
-    fn from(mut value: Analysis) -> Self {
-        Self {
-            edition: value.edition.take(),
-            legacy_java: value,
-        }
-    }
-}
-impl From<RustAnalysis> for Analysis {
-    fn from(value: RustAnalysis) -> Self {
-        let mut wire = value.legacy_java;
-        wire.edition = value.edition;
-        wire
-    }
-}
-impl JavaLanguage {
-    pub(crate) fn has_rust_dependencies(&self) -> bool {
-        self.legacy_dependencies.is_some()
-    }
-}
-impl RustLanguage {
-    pub(crate) fn has_java_fields(&self) -> bool {
-        self.legacy_java.analysis.source_version.is_some() || self.legacy_java.lombok.mode.is_some()
-    }
-}
-impl From<LanguageWire> for JavaLanguage {
-    fn from(w: LanguageWire) -> Self {
-        Self {
-            enabled: w.enabled,
-            mode: w.mode,
-            discovery: w.discovery,
-            analysis: w.analysis,
-            lombok: w.lombok,
-            extensions: w.extensions,
-            external: w.external,
-            legacy_dependencies: w.dependencies,
-        }
-    }
-}
-impl From<JavaLanguage> for LanguageWire {
-    fn from(v: JavaLanguage) -> Self {
-        Self {
-            enabled: v.enabled,
-            mode: v.mode,
-            discovery: v.discovery,
-            analysis: v.analysis,
-            lombok: v.lombok,
-            extensions: v.extensions,
-            external: v.external,
-            dependencies: v.legacy_dependencies,
-        }
-    }
-}
-impl From<LanguageWire> for RustLanguage {
-    fn from(mut w: LanguageWire) -> Self {
-        Self {
-            enabled: w.enabled,
-            mode: std::mem::take(&mut w.mode),
-            discovery: std::mem::take(&mut w.discovery),
-            analysis: w.analysis.clone().into(),
-            dependencies: w.dependencies.take(),
-            legacy_java: w,
-        }
-    }
-}
-impl From<RustLanguage> for LanguageWire {
-    fn from(v: RustLanguage) -> Self {
-        let mut w = v.legacy_java;
-        w.enabled = v.enabled;
-        w.mode = v.mode;
-        w.discovery = v.discovery;
-        w.analysis = v.analysis.into();
-        w.dependencies = v.dependencies;
-        w
-    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

@@ -96,7 +96,7 @@ class CommentLifecycle(JavaProductHarness):
         config = self.project / '.code-ana/config.toml'
         config.write_text(config.read_text() + '\n# display-only change\n')
         while terminal['cursor']:
-            page, terminal = self.cli(*arguments, '--cursor', terminal['cursor'])
+            page, terminal = self.cli(arguments[0], '--cursor', terminal['cursor'])
             rows.extend(page)
             self.assertEqual(terminal['revision'], first)
         self.assertGreater(len(rows), 1)

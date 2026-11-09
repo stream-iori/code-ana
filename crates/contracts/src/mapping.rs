@@ -181,6 +181,10 @@ impl TryFrom<&v1::Stage> for m::Stage {
 impl From<&m::Request> for v1::TaskRequest {
     fn from(value: &m::Request) -> Self {
         Self {
+            output_format: value.delivery.format.map(|v| v.to_string()),
+            detail: value.delivery.detail,
+            explicit_options: value.delivery.supplied.clone(),
+            project_explicit: value.delivery.project_explicit,
             request_id: value.request_id.to_string(),
             project: value.project.clone(),
             operation: value.operation.to_string(),
@@ -236,6 +240,12 @@ impl TryFrom<&v1::TaskRequest> for m::Request {
     type Error = m::DomainError;
     fn try_from(value: &v1::TaskRequest) -> Result<Self, Self::Error> {
         Ok(Self {
+            delivery: m::DeliveryOptions {
+                format: value.output_format.as_deref().map(str::parse).transpose()?,
+                detail: value.detail,
+                supplied: value.explicit_options.clone(),
+                project_explicit: value.project_explicit,
+            },
             request_id: value.request_id.clone().into(),
             project: value.project.clone(),
             operation: value.operation.parse()?,
@@ -378,6 +388,52 @@ mod tests {
             m::Request::try_from(&wire).unwrap_err().code,
             m::ErrorCode::InvalidDirection
         );
+    }
+    #[test]
+    fn delivery_presence_and_terminal_dimensions_survive_the_wire() {
+        let request = m::Request {
+            operation: m::Operation::SearchCode,
+            delivery: m::DeliveryOptions {
+                format: Some(m::OutputFormat::Json),
+                detail: Some(false),
+                supplied: vec!["format".into()],
+                project_explicit: true,
+            },
+            ..Default::default()
+        };
+        let wire = v1::TaskRequest::from(&request);
+        let restored = m::Request::try_from(&wire).unwrap();
+        assert_eq!(restored.delivery, request.delivery);
+        let absent = m::Request::try_from(&v1::TaskRequest {
+            operation: "search-code".into(),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(absent.delivery.format, None);
+        let mut result = m::TaskResult::success(m::Output {
+            evidence: m::Evidence::complete(),
+            ..Default::default()
+        });
+        result.publication = m::PublicationState::Published;
+        result.gate = m::GateState::Unknown;
+        result.report = m::ReportState::Unknown;
+        result.output.delivery.state = m::DeliveryState::Partial;
+        result.output.delivery.strict_rejected = true;
+        result.output.delivery.projection_version = m::PUBLIC_PROJECTION_VERSION;
+        result.output.delivery.context.format = m::OutputFormat::Json;
+        result.output.delivery.context.comparison = Some(m::ComparisonContext {
+            section: "files".into(),
+            base: "before".into(),
+            target: "after".into(),
+            base_kind: "files".into(),
+            target_kind: "analysis".into(),
+            base_identity: "hash".into(),
+            target_identity: "revision".into(),
+        });
+        let restored = crate::task_result(&crate::terminal(&result)).unwrap();
+        assert_eq!(restored.output.delivery, result.output.delivery);
+        assert_eq!(restored.publication, result.publication);
+        assert_eq!(restored.gate, result.gate);
     }
     #[test]
     fn context_wrapping_preserves_cancellation_identity() {

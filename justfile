@@ -36,6 +36,7 @@ test-rust:
   cargo test --workspace --locked
   cargo build --workspace --locked
   python3 tests/rust_graph_e2e.py
+  python3 tests/cli_contract_e2e.py
   python3 tests/rust_language_e2e.py
   python3 tests/rust_comment_e2e.py
   python3 tests/rust_dogfood_tests.py

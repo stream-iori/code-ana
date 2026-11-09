@@ -4,6 +4,7 @@ impl Store {
     pub fn find_task(&self, request: &Request) -> Result<Option<String>> {
         let mut normalized = request.clone();
         normalized.request_id.clear();
+        normalized.delivery.normalize_identity();
         let found: Option<(String, String)> = self
             .catalog()?
             .query_row(
@@ -25,6 +26,7 @@ impl Store {
     pub fn register_task(&self, id: &str, r: &Request) -> Result<(String, bool)> {
         let mut normalized = r.clone();
         normalized.request_id.clear();
+        normalized.delivery.normalize_identity();
         let h = digest(&normalized);
         let c = self.catalog()?;
         c.execute(
@@ -62,6 +64,18 @@ impl Store {
             result.map(|r| serde_json::from_str(&r)).transpose()?,
             seq as u64,
         ))
+    }
+    pub fn task_operation(&self, id: &str) -> Result<Operation> {
+        #[derive(serde::Deserialize)]
+        struct OriginalOperation {
+            operation: Operation,
+        }
+        let body: String =
+            self.catalog()?
+                .query_row("SELECT request FROM tasks WHERE id=?", [id], |row| {
+                    row.get(0)
+                })?;
+        Ok(serde_json::from_str::<OriginalOperation>(&body)?.operation)
     }
     pub fn running(&self, id: &str) -> Result<()> {
         self.catalog()?.execute(

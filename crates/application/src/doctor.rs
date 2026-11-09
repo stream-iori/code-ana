@@ -168,7 +168,7 @@ impl DoctorService {
                     "adapter_version": python::ADAPTER_VERSION,
                     "backend_commit": python::BACKEND_COMMIT,
                     "input_schema": python::INPUT_SCHEMA,
-                    "accepted_input_schemas": [1, 2, python::INPUT_SCHEMA],
+                    "accepted_input_schemas": [python::INPUT_SCHEMA],
                     "project_metadata": python_inputs.and_then(|i| i.metadata.as_ref()),
                     "controls": python_inputs.map(|i| &i.controls),
                     "input_error": python_input_error,

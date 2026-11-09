@@ -260,7 +260,7 @@ mod tests {
         std::fs::write(root.join(".code-ana/config.toml"), "schema_version=1\nkind='project'\n[languages.python]\nenabled=true\n[languages.python.discovery]\ninputs_manifest='.code-ana/python-inputs.json'\n").unwrap();
         let inputs = Inputs {
             module_metadata: Default::default(),
-            schema_version: 1,
+            schema_version: 3,
             controls: vec![],
             metadata: None,
             roots: vec![InputRoot {
@@ -298,7 +298,7 @@ mod tests {
         let (_temp, root, mut inputs) = project();
         let metadata = b"[project]\nname='fixture'\n";
         std::fs::write(root.join("pyproject.toml"), metadata).unwrap();
-        inputs.schema_version = 2;
+        inputs.schema_version = 3;
         inputs.controls.push(codeana_model::python::Control {
             path: "pyproject.toml".into(),
             sha256: hash(metadata),

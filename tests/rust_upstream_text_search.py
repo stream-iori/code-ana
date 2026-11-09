@@ -29,14 +29,14 @@ class TextSearchProduct(product_support.MockProductHarness):
         rows, terminal = self.cli('search-text', 'hit', '--path', 'many.txt', '--max-records', '1', '--context', '1')
         self.assertEqual(len(rows), 1)
         self.assertTrue(terminal['cursor'])
-        self.assertFalse(terminal['evidence']['enumeration'])
+        self.assertTrue(terminal['evidence']['enumeration'])
         self.assertEqual(rows[0]['context_after'], [{'line': 2, 'text': 'hit'}])
         missing, _ = self.cli('search-text', 'missing', '--path', 'many.txt')
         self.assertEqual(missing, [])
         for path in self.project.rglob('*'):
             if path.is_file() and '.code-ana' not in path.parts:
                 path.unlink()
-        _, rejected = self.cli('search-text', '[', '--regex', code=1)
+        _, rejected = self.cli('search-text', '[', '--regex', code=2)
         self.assertIn('TEXT_REGEX_INVALID', rejected['message'])
 
 

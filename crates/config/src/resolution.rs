@@ -84,9 +84,6 @@ pub(crate) fn resolve_text(
         .filter(|l| l.enabled == Some(true))
         .map(|_| rust_inputs::policy(&c))
         .transpose()?;
-    if let Some(java) = &c.languages.java {
-        ensure!(!java.has_rust_dependencies(), "RUST_DEPENDENCIES_IN_JAVA");
-    }
     ensure!(
         c.schema_version == 1 && c.kind == "project",
         codeana_model::DomainError::new(codeana_model::ErrorCode::UnsupportedConfigSchema, "")
@@ -342,10 +339,6 @@ fn resolve_languages(
         ensure!(
             matches!(l.mode.as_str(), "syntax" | "semantic"),
             "RUST_ANALYSIS_MODE"
-        );
-        ensure!(
-            !l.has_java_fields(),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFieldInRust, "")
         );
     }
     if let Some(python) = &c.languages.python {

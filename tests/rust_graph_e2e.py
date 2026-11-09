@@ -13,10 +13,10 @@ class GraphProduct(product_support.MockProductHarness):
             self.assertEqual(db.execute('SELECT count(*) FROM call_sites').fetchone()[0],2)
             self.assertEqual(db.execute('SELECT count(*) FROM call_site_targets').fetchone()[0],2)
         self.assertTrue(self.cli('structure','app')[0]);self.assertTrue(self.cli('annotations','app')[0])
-        self.cli('snapshot','before','--name','analysis')
+        self.cli('snapshot','before','--kind','analysis')
         self.state('edited');delta=self.cli('index')[1]['revision'];changed=self.canonical(delta)
         full=self.cli('index','--full')[1]['revision'];self.assertEqual(changed,self.canonical(full));self.assertEqual(before,self.canonical(first))
-        self.cli('snapshot','after','--name','analysis');self.assertTrue(self.cli('diff','--base','before','--target','after')[0])
+        self.cli('snapshot','after','--kind','analysis');self.assertTrue(self.cli('diff','--base','before','--target','after')[0])
         self.assertTrue(self.cli('calls','main')[0])
     def test_business_annotations_are_removed(self):
         self.assertNotIn('annotate', self.cli('--help', raw=True).split())
@@ -38,7 +38,7 @@ class GraphProduct(product_support.MockProductHarness):
                 self.assertEqual(self.cli('overview')[1]['revision'], good)
         self.state('hang')
         self.cli('index', '--deadline-seconds', '1', code=124)
-        task_id = json.loads(self.cli('index', '--background', raw=True))['task_id']
+        task_id = self.cli_record('index', '--background')['task']
         self.wait_task(task_id)
         self.cli('task', 'cancel', task_id, raw=True)
         self.cli('task', 'watch', task_id, code=130)
@@ -59,7 +59,7 @@ class GraphProduct(product_support.MockProductHarness):
 
     def test_historical_text_search_is_independent_of_active_workspace(self):
         revision = self.cli('index')[1]['revision']
-        snapshot_revision = self.cli('snapshot', 'before', '--name', 'analysis')[1]['revision']
+        snapshot_revision = self.cli('snapshot', 'before', '--kind', 'analysis')[1]['revision']
         args = ['search-text', 'hello', '--path', 'src/App.java']
         frozen, terminal = self.cli(*args, '--revision', revision)
         self.assertTrue(frozen)
@@ -129,7 +129,7 @@ class GraphProduct(product_support.MockProductHarness):
         self.assertTrue(terminal['cursor'])
         source.write_text('active bytes changed after the first page\n')
         while terminal['cursor']:
-            page, terminal = self.cli(*argv, '--cursor', terminal['cursor'])
+            page, terminal = self.cli(argv[0], '--cursor', terminal['cursor'])
             records.extend(page)
         self.assertEqual([r['line'] for r in records], [2, 4])
         self.assertEqual([r['text'] for r in records], ['Hello 中文😀', 'HELLO second'])
@@ -144,19 +144,19 @@ class GraphProduct(product_support.MockProductHarness):
         self.assertEqual(literal, [])
         folded, _ = self.cli('search-text', 'hello', '--ignore-case', '--path', 'src/Case.java')
         self.assertEqual([r['line'] for r in folded], [2, 4])
-        _, invalid = self.cli('search-text', '[', '--regex', code=1)
+        _, invalid = self.cli('search-text', '[', '--regex', code=2)
         self.assertIn('TEXT_REGEX_INVALID', invalid['message'])
-        _, rejected = self.cli('search-text', 'hello', '--context', '101', code=1)
+        _, rejected = self.cli('search-text', 'hello', '--context', '101', code=2)
         self.assertIn('TEXT_CONTEXT_BUDGET', rejected['message'])
 
 
     def test_queue_freeze_restart_and_auth(self):
         self.cli('index')
         self.state('hang')
-        blocking = json.loads(self.cli('index', '--background', raw=True))['task_id']
+        blocking = self.cli_record('index', '--background')['task']
         self.wait_task(blocking)
         self.state('base')
-        queued = json.loads(self.cli('index', '--background', raw=True))['task_id']
+        queued = self.cli_record('index', '--background')['task']
         (self.project / 'src/App.java').write_text('changed while queued')
         self.cli('task', 'cancel', blocking, raw=True)
         published = self.cli('task', 'watch', queued)[1]
@@ -176,7 +176,7 @@ class GraphProduct(product_support.MockProductHarness):
                                 capture_output=True, text=True, timeout=5)
         self.assertIn('DAEMON_ALREADY_RUNNING', second.stderr)
         self.state('hang')
-        interrupted = json.loads(self.cli('index', '--background', raw=True))['task_id']
+        interrupted = self.cli_record('index', '--background')['task']
         self.wait_task(interrupted)
         self.stop(kill=True)
         self.start()
@@ -189,8 +189,8 @@ class GraphProduct(product_support.MockProductHarness):
         tasks = []
         try:
             for i in range(8):
-                tasks.append(json.loads(self.cli('index', '--background',
-                                                 '--request-id', f'queue-{i}', raw=True))['task_id'])
+                tasks.append(self.cli_record('index', '--background',
+                                                 '--request-id', f'queue-{i}')['task'])
             self.wait_task(tasks[0])
             self.assertIn('QUEUE_BUDGET', self.cli('index', '--background',
                                                     '--request-id', 'queue-overflow', code=1, raw=True))
@@ -201,10 +201,10 @@ class GraphProduct(product_support.MockProductHarness):
 
     def test_watch_reconnect_after_client_disconnect(self):
         self.state('hang')
-        task_id = json.loads(self.cli('index', '--background', raw=True))['task_id']
+        task_id = self.cli_record('index', '--background')['task']
         self.wait_task(task_id)
         watcher = subprocess.Popen([str(BIN / 'codeana-cli'), '--home', str(self.home),
-                                    '--project', str(self.project), 'task', 'watch', task_id],
+                                    'task', 'watch', task_id],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         try:
             self.assertIsNone(watcher.poll())
@@ -227,7 +227,7 @@ class GraphProduct(product_support.MockProductHarness):
         self.state('edited')
         self.start('pause:' + point)
         argv = ['index', '--background'] + (['--deadline-seconds', '1'] if timeout else [])
-        task = json.loads(self.cli(*argv, raw=True))['task_id']
+        task = self.cli_record(*argv)['task']
         until = time.monotonic() + 8
         while not (self.home / 'test-fault-reached').exists():
             self.assertLess(time.monotonic(), until, self.daemon_log())
@@ -271,18 +271,18 @@ class GraphProduct(product_support.MockProductHarness):
         self.state('edited')
         self.start('pause:before_capture')
         process = subprocess.Popen([str(BIN / 'codeana-cli'), '--home', str(self.home), '--project', str(self.project),
-                                    'index', '--background', '--request-id', 'capturing'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                    'index', '--background', '--request-id', 'capturing', '--format', 'json', '--detail'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         try:
             until = time.monotonic() + 8
             while not (self.home / 'test-fault-reached').exists():
                 self.assertLess(time.monotonic(), until, self.daemon_log())
                 time.sleep(.02)
-            duplicate = json.loads(self.cli('index', '--background', '--request-id', 'capturing', raw=True))['task_id']
+            duplicate = self.cli_record('index', '--background', '--request-id', 'capturing')['task']
             self.cli('task', 'cancel', duplicate, raw=True)
             (self.home / 'test-fault-release').write_text('release')
             out, err = process.communicate(timeout=10)
             self.assertEqual(process.returncode, 0, err)
-            self.assertEqual(json.loads(out)['task_id'], duplicate)
+            self.assertEqual(json.loads(out)['records'][0]['task'], duplicate)
             self.assertEqual(self.wait_task(duplicate, 'terminal')['terminal']['code'], 'CANCELLED')
             self.assertEqual(self.cli('overview')[1]['revision'], old)
         finally:
@@ -293,7 +293,7 @@ class GraphProduct(product_support.MockProductHarness):
         from concurrent.futures import ThreadPoolExecutor
         self.state('hang')
         def submit(_):
-            return json.loads(self.cli('index', '--background', '--request-id', 'concurrent-repeat', raw=True))['task_id']
+            return self.cli_record('index', '--background', '--request-id', 'concurrent-repeat')['task']
         with ThreadPoolExecutor(max_workers=6) as pool:
             tasks = list(pool.map(submit, range(6)))
         self.assertEqual(len(set(tasks)), 1)
@@ -313,9 +313,9 @@ class GraphProduct(product_support.MockProductHarness):
         tasks = []
         try:
             for i in range(8):
-                tasks.append(json.loads(self.cli('index', '--background', '--request-id', f'saturated-{i}', raw=True))['task_id'])
+                tasks.append(self.cli_record('index', '--background', '--request-id', f'saturated-{i}')['task'])
             self.wait_task(tasks[0])
-            retry = json.loads(self.cli('index', '--background', '--request-id', 'saturated-0', raw=True))['task_id']
+            retry = self.cli_record('index', '--background', '--request-id', 'saturated-0')['task']
             self.assertEqual(retry, tasks[0])
             conflict = self.cli('index', '--background', '--request-id', 'saturated-0', '--full', code=1, raw=True)
             self.assertIn('REQUEST_ID_CONFLICT', conflict)

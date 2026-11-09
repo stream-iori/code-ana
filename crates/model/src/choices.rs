@@ -123,6 +123,7 @@ choice!(
     GateState,
     InvalidTaskState,
     NotEvaluated = "not_evaluated",
+    Unknown = "unknown",
     Passed = "passed",
     Rejected = "rejected"
 );
@@ -138,6 +139,7 @@ choice!(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReportState {
     Off,
+    Unknown,
     Pending,
     Saved(String),
 }
@@ -145,6 +147,7 @@ impl ReportState {
     pub fn as_str(&self) -> &str {
         match self {
             Self::Off => "off",
+            Self::Unknown => "unknown",
             Self::Pending => "pending",
             Self::Saved(id) => id,
         }
@@ -154,6 +157,7 @@ impl From<String> for ReportState {
     fn from(value: String) -> Self {
         match value.as_str() {
             "off" => Self::Off,
+            "unknown" => Self::Unknown,
             "pending" => Self::Pending,
             _ => Self::Saved(value),
         }

@@ -18,3 +18,5 @@ tokio-stream.workspace = true
 codeana-model = { path = "../model" }
 codeana-config = { path = "../config" }
 codeana-application = { path = "../application" }
+
+libc.workspace = true

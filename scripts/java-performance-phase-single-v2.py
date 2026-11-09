@@ -11,6 +11,9 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / 'scripts'))
+from cli_response import decode_response
 sys.path.insert(0, str(ROOT / 'tests'))
 from acceptance_support import sha256
 from acceptance_support import atomic_json
@@ -76,17 +79,17 @@ def main():
             daemon = subprocess.Popen([str(binaries / 'codeana-daemon'), '--home', str(args.home.resolve())], stdout=log, stderr=log,
                                       env=dict(os.environ, TMPDIR=str(scratch), JAVA_TOOL_OPTIONS=java_options, CODEANA_PERFORMANCE_TMPDIR=str(scratch), CODEANA_JAVA_BACKEND=args.backend, CODEANA_PERFORMANCE_TIMINGS_DIR=str(args.evidence/'worker-timings')))
         deadline = time.monotonic() + 15
-        while subprocess.run(command + ['daemon', 'status'], capture_output=True, timeout=3).returncode:
+        while subprocess.run(command[:3] + ['daemon', 'status'], capture_output=True, timeout=3).returncode:
             if daemon.poll() is not None or time.monotonic() > deadline:
                 raise ValueError('PERFORMANCE_DAEMON_START_FAILED: ' + str(daemon.poll()))
             time.sleep(.05)
         start = time.monotonic()
         with (args.evidence / 'index.stdout').open('wb') as out, (args.evidence / 'index.stderr').open('wb') as err:
-            execution = subprocess.run(command + ['index', '--full', '--deadline-seconds', str(args.deadline_seconds)], stdout=out, stderr=err, timeout=args.deadline_seconds+30)
+            execution = subprocess.run(command + ['index', '--full', '--deadline-seconds', str(args.deadline_seconds), '--format', 'json', '--detail'], stdout=out, stderr=err, timeout=args.deadline_seconds+30)
         row['index_seconds'] = time.monotonic() - start
         lines = (args.evidence / 'index.stdout').read_text().splitlines()
-        terminal = [json.loads(line[9:]) for line in lines if line.startswith('terminal ')]
-        records = [json.loads(line[7:]) for line in lines if line.startswith('record ')]
+        terminal = [decode_response('\n'.join(lines))[1]]
+        records = decode_response('\n'.join(lines))[0]
         if execution.returncode or len(terminal) != 1 or terminal[0].get('publication') != 'published' or not records:
             raise ValueError('PERFORMANCE_INDEX_NOT_PUBLISHED')
         row.update(revision=terminal[0]['revision'], terminal=terminal[0], records=records)
@@ -130,20 +133,20 @@ def main():
             if name != 'overview':
                 argv += ['--module', chosen['module'], '--scope', chosen['scope']]
             start = time.monotonic()
-            result = subprocess.run(command + argv + ['--revision', row['revision'], '--max-records', '10000', '--max-output-bytes', '8388608'], capture_output=True, text=True, timeout=120)
+            result = subprocess.run(command + argv + ['--revision', row['revision'], '--max-records', '10000', '--max-output-bytes', '8388608', '--format', 'json', '--detail'], capture_output=True, text=True, timeout=120)
             elapsed = time.monotonic() - start
             (args.evidence / (name + '.stdout')).write_text(result.stdout)
             (args.evidence / (name + '.stderr')).write_text(result.stderr)
-            terminals = [json.loads(line[9:]) for line in result.stdout.splitlines() if line.startswith('terminal ')]
+            terminals = [decode_response(result.stdout)[1]]
             if (result.returncode or len(terminals) != 1 or terminals[0]['revision'] != row['revision']
-                    or not any(line.startswith('record ') for line in result.stdout.splitlines())):
+                    or not decode_response(result.stdout)[0]):
                 raise ValueError('PERFORMANCE_QUERY_FAILED: ' + name)
-            actual_records=[json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith('record ')]
+            actual_records = decode_response(result.stdout)[0]
             if 'expected_records' in plan:
                 expected_records=plan['expected_records'].get(name)
                 if expected_records is None or canonical_query_records(actual_records,name)!=canonical_query_records(expected_records,name):
                     raise ValueError('PERFORMANCE_QUERY_RESULT_DRIFT: '+name)
-            row['queries'].append(dict(id=name, seconds=elapsed, records=sum(line.startswith('record ') for line in result.stdout.splitlines()), terminal=terminals[0]))
+            row['queries'].append(dict(id=name, seconds=elapsed, records=len(decode_response(result.stdout)[0]), terminal=terminals[0]))
         start = time.monotonic()
         with sqlite3.connect('file:' + str(database.resolve()) + '?mode=ro', uri=True) as connection:
             row['storage'] = dict(page_size=connection.execute('PRAGMA page_size').fetchone()[0],

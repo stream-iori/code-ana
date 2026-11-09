@@ -102,7 +102,7 @@ class MixedResources(python.PythonLanguage):
             self.export()
             args=['index','--full','--background']
             if not cancel:args+=['--deadline-seconds','1']
-            task=json.loads(self.cli(*args,raw=True))['task_id']
+            task=self.cli_record(*args)['task']
             if cancel:
                 self.wait_task(task)
                 self.cli('task','cancel',task,raw=True)

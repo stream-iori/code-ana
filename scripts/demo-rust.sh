@@ -24,10 +24,10 @@ cli() { ./target/debug/codeana-cli --home "$run_dir/home" --project "$run_dir/pr
 cli index
 cli calls main
 cli call-sites main
-cli snapshot before --name analysis
+cli snapshot before --kind analysis
 cp tests/fixtures/java/edited/src/App.java "$run_dir/project/src/App.java"
 cli index
-cli snapshot after --name analysis
-cli diff --base before --target after --name relations
+cli snapshot after --kind analysis
+cli diff --base before --target after --section relations
 cli source greet --revision snapshot:before
 cli gc

@@ -42,6 +42,20 @@ impl Store {
 
         Ok(())
     }
+    /// Locate a globally random frozen-page identity before restoring its project.
+    /// Refuse ambiguous identities instead of selecting a project arbitrarily.
+    pub fn page_project(&self, id: &str) -> Result<String> {
+        let c = self.catalog()?;
+        let mut q = c.prepare("SELECT project FROM objects WHERE kind='page' AND id=? LIMIT 2")?;
+        let projects = q
+            .query_map([id], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        ensure!(
+            projects.len() == 1,
+            DomainError::new(ErrorCode::InvalidCursor, "page missing or ambiguous")
+        );
+        Ok(projects[0].clone())
+    }
     pub fn object<T: DeserializeOwned>(&self, kind: &str, id: &str, project: &str) -> Result<T> {
         self.object_metered(kind, id, project, None)
     }

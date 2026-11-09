@@ -148,6 +148,7 @@ impl IndexTask {
         let evidence = &self.index.summary(&publication.candidate).evidence;
         if req.strict && !evidence.semantic {
             let mut result = TaskResult::success(Output {
+                delivery: Default::default(),
                 producer: publication.producer.into(),
                 evidence: evidence.clone(),
                 ..Default::default()
@@ -833,6 +834,7 @@ impl IndexTask {
             index_elapsed_ms,
         } = published;
         let mut t = TaskResult::success(Output {
+            delivery: Default::default(),
             revision: revision.id.clone(),
             producer: revision.producer.clone(),
             evidence,
@@ -890,7 +892,7 @@ impl IndexTask {
             );
             let report = ReportDocument {
                 analysis_resources: self.analysis_admission_report(id),
-                schema_version: 2,
+                schema_version: 3,
                 global: crate::reports::GlobalReport::from_capture(c, true),
                 id: id.into(),
                 created: now(),
@@ -898,7 +900,7 @@ impl IndexTask {
                 level: if full { "full" } else { "basic" }.into(),
                 summary: report_summary,
                 result: t.clone(),
-                effective: ReportConfig::Basic {
+                effective: ReportConfig {
                     config_digest: c.effective.config_digest.clone(),
                     origins: BTreeMap::new(),
                 },

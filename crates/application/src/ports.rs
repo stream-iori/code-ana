@@ -9,6 +9,7 @@ use tokio_util::sync::CancellationToken;
 
 #[derive(Debug)]
 pub struct TaskSnapshot {
+    pub operation: Operation,
     pub state: TaskPhase,
     pub result: Option<TaskResult>,
     pub last_seq: u64,
@@ -238,6 +239,7 @@ pub(super) mod storage {
         fn get(&self, id: &TaskId) -> Result<TaskSnapshot> {
             let (state, result, last_seq) = Store::task(self, id)?;
             Ok(TaskSnapshot {
+                operation: self.task_operation(id)?,
                 state: TaskPhase::parse(&state)?,
                 result,
                 last_seq,

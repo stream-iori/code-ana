@@ -49,28 +49,41 @@ class ProductHarness(unittest.TestCase):
 
 
     def cli(self, *args, code=0, raw=False, timeout=30):
+        args = list(map(str, args))
+        if not any(flag in args for flag in ('--help', '-h', '--version', '-V', '--format')):
+            at = args.index('--') if '--' in args else len(args)
+            args[at:at] = ['--format', 'json', '--detail']
+        project_args = [] if args[0] in ('task', 'daemon', 'hello', 'recover') else ['--project', str(self.project)]
         p = subprocess.run(
-            [str(BIN / 'codeana-cli'), '--home', str(self.home),
-             '--project', str(self.project), *map(str, args)],
+            [str(BIN / 'codeana-cli'), '--home', str(self.home), *project_args, *args],
             capture_output=True, text=True, timeout=timeout)
         self.assertEqual(p.returncode, code,
                          f'args={args}\nstdout={p.stdout}\nstderr={p.stderr}\n{self.daemon_log()}')
         if raw:
             return p.stdout if code == 0 else p.stdout + p.stderr
-        records, terminal = [], None
-        for line in p.stdout.splitlines():
-            if line.startswith('record '):
-                records.append(json.loads(line[7:]))
-            if line.startswith('terminal '):
-                terminal = json.loads(line[9:])
-        if code != 0 and terminal is None:
-            return [], {'message': p.stderr, 'code': p.returncode}
-        self.assertIsNotNone(terminal, p.stdout + p.stderr)
+        try:
+            response = json.loads(p.stdout)
+        except json.JSONDecodeError:
+            if code != 0:
+                return [], {'message': p.stderr, 'code': p.returncode}
+            self.fail(p.stdout + p.stderr)
+        records = response.get('records', [e['record'] for e in response.get('events', []) if 'record' in e])
+        terminal = dict(response['result'], evidence=response['evidence'], cursor=response['delivery']['cursor'])
         return records, terminal
+
+    def cli_record(self, *args, **kwargs):
+        records, _ = self.cli(*args, **kwargs)
+        self.assertEqual(len(records), 1)
+        return records[0]
+
+    def markdown(self, report):
+        path = self.root / ('report-' + str(time.monotonic_ns()) + '.md')
+        self.cli('report', report, '--format', 'markdown', '--export', path, raw=True)
+        return path.read_text()
 
 
     def task(self, task_id):
-        return json.loads(self.cli('task', 'status', task_id, raw=True))
+        return self.cli_record('task', 'status', task_id)
 
 
     def wait_task(self, task_id, state='running'):
@@ -141,7 +154,7 @@ class MockProductHarness(ProductHarness):
         self.stop()
         self.state('edited')
         self.start(f'crash:{point}')
-        task_id = json.loads(self.cli('index', '--background', raw=True))['task_id']
+        task_id = self.cli_record('index', '--background')['task']
         self.assertEqual(self.daemon.wait(timeout=10), 75, self.daemon_log())
         self.stop()
         self.start()
@@ -151,6 +164,9 @@ class MockProductHarness(ProductHarness):
             self.assertNotEqual(head, old)
             self.assertEqual(status['terminal']['publication'], 'published')
             self.assertEqual(status['terminal']['revision'], head)
+            self.assertEqual(status['terminal']['execution'], 'failed')
+            self.assertEqual(status['terminal']['assessment'], 'unknown')
+            self.assertEqual(status['terminal']['gate'], 'unknown')
         else:
             self.assertEqual(head, old)
             self.assertEqual(status['terminal']['code'], 'DAEMON_RESTARTED')
@@ -194,7 +210,7 @@ class JavaProductHarness(ProductHarness):
             return [line.split(None,3) for line in rows.splitlines() if line.strip()]
         for action in ('cancel','cancel_again','crash'):
             with self.subTest(action=action):
-                task=json.loads(self.cli('index','--full','--background',raw=True))['task_id']
+                task=self.cli_record('index','--full','--background')['task']
                 until=time.monotonic()+90
                 owned=[]
                 while time.monotonic()<until:

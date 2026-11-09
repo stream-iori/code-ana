@@ -1,4 +1,5 @@
 //! Query semantics operate on a fixed read port, independent of SQLite and RPC.
+pub mod input_contract;
 use anyhow::{Result, bail, ensure};
 mod annotations;
 mod calls;
@@ -836,6 +837,7 @@ fn stream_search_query(
         }
     }
     Ok(Output {
+        delivery: Default::default(),
         revision: r.revision().id.to_string(),
         producer: r.revision().producer.clone(),
         evidence,
@@ -957,6 +959,8 @@ fn run_query_inner(
             )),
         }
     }
+    calls::locate(r, &mut records)?;
+    calls::bindings(r, &mut records)?;
     records.sort_by(Record::query_cmp);
     if records.len() > 10000 {
         records.truncate(10000);
@@ -968,6 +972,7 @@ fn run_query_inner(
     evidence.reasons.sort();
     evidence.reasons.dedup();
     Ok(Output {
+        delivery: Default::default(),
         revision: r.revision().id.to_string(),
         producer: r.revision().producer.clone(),
         records,
@@ -1030,6 +1035,7 @@ where
         .ok_or_else(|| DomainError::new(ErrorCode::SourceUnavailable, request.selector.clone()))?;
     let records = source::snippets(reader, &request, vec![(file.clone(), None)], source)?;
     Ok(Output {
+        delivery: Default::default(),
         revision: reader.revision().id.to_string(),
         producer: reader.revision().producer.clone(),
         records,

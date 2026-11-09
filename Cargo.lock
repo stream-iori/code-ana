@@ -320,6 +320,7 @@ dependencies = [
  "codeana-config",
  "codeana-contracts",
  "codeana-model",
+ "libc",
  "serde",
  "serde_json",
  "tokio",

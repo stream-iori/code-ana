@@ -7,6 +7,9 @@ import importlib.util
 import json
 import os
 import pathlib
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
+from cli_response import decode_response
 import re
 import sqlite3
 import subprocess
@@ -92,10 +95,10 @@ def run(args):
                 continue
 
     def cli(*command, timeout=900):
-        result = subprocess.run([str(binary/'codeana-cli'), '--home', str(home), '--project', str(project), *command],
+        result = subprocess.run([str(binary/'codeana-cli'), '--home', str(home), '--project', str(project), *command, '--format', 'json', '--detail'],
                                 capture_output=True, text=True, timeout=timeout)
-        records = [json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith('record ')]
-        terminal = [json.loads(line[9:]) for line in result.stdout.splitlines() if line.startswith('terminal ')]
+        records = decode_response(result.stdout)[0]
+        terminal = [decode_response(result.stdout)[1]]
         return result, records, terminal[-1] if terminal else None
 
     try:
@@ -109,7 +112,7 @@ def run(args):
             thread = threading.Thread(target=monitor, daemon=True)
             thread.start()
             started = time.monotonic()
-            command = ['index', '--full', '--deadline-seconds', '900']
+            command = ['index', '--full', '--deadline-seconds', '900', '--format', 'json', '--detail']
             if args.prepare_inputs:
                 command.append('--prepare')
             result, records, terminal = cli(*command)

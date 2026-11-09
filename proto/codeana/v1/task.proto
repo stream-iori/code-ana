@@ -28,12 +28,16 @@ message TaskRequest {
  string instantiability = 44; bool transitive = 45;
  string algorithm = 46; string analysis_world = 47;
  string search_in = 48; reserved 49, 50; reserved "context_before", "context_after";
+ optional string output_format = 51; optional bool detail = 52;
+ repeated string explicit_options = 53; bool project_explicit = 54;
 }
 message TaskAccepted { string task_id = 1; }
 message TaskId { string task_id = 1; }
 message WatchRequest { string task_id = 1; uint64 after_seq = 2; }
 message Progress { string phase = 1; }
-message OutputChunk { bytes data = 1; }
+// Versioned serialization of one typed Record, never rendered stdout. The outer
+// protobuf envelope and event sequence bound and identify each atomic record.
+message OutputRecord { uint32 projection_version = 1; bytes record = 2; }
 message ResourceLimits { uint64 max_work = 1; uint64 max_payload_bytes = 2; }
 message ResourceLimit { string resource = 1; uint64 limit = 2; uint64 used = 3; uint64 requested = 4; }
 message ResourceUsage { ResourceLimits limits = 1; uint64 work = 2; uint64 payload_bytes = 3; ResourceLimit exhausted = 4; }
@@ -42,8 +46,11 @@ message Terminal {
  string execution = 1; string assessment = 2; string gate = 3; string publication = 4; string report = 5;
  string revision = 6; string producer = 7; string code = 8; string message = 9; int32 exit_code = 10;
  Evidence evidence = 11; string cursor = 12;
+ Delivery delivery = 13;
 }
-message TaskEvent { string task_id = 1; uint64 seq = 2; oneof event { Progress progress = 3; OutputChunk output = 4; Terminal terminal = 5; } }
-message TaskStatus { string task_id = 1; string state = 2; Terminal terminal = 3; uint64 last_seq = 4; }
+message Delivery { string state = 1; uint32 projection_version = 2; uint64 returned = 3; uint64 offset = 4; optional uint64 total = 5; bool strict_rejected = 6; string output_format = 7; bool detail = 8; string operation = 9; uint64 max_output_bytes = 10; bool historical = 11; bool range_known = 12; ComparisonContext comparison = 13; }
+message ComparisonContext { string section = 1; string base = 2; string target = 3; string base_kind = 4; string target_kind = 5; string base_identity = 6; string target_identity = 7; }
+message TaskEvent { string task_id = 1; uint64 seq = 2; reserved 4; reserved "output"; oneof event { Progress progress = 3; Terminal terminal = 5; OutputRecord record = 6; } }
+message TaskStatus { string task_id = 1; string state = 2; Terminal terminal = 3; uint64 last_seq = 4; string operation = 5; }
 message ManageRequest { string action = 1; }
 message ManageReply { string state = 1; uint32 active_tasks = 2; }

@@ -2,6 +2,9 @@
 """Index frozen captured sources with the existing runtime; compare Anatomist tables."""
 import argparse, hashlib, json, os, pathlib, sqlite3, subprocess, time
 ROOT=pathlib.Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / 'scripts'))
+from cli_response import decode_response
 TABLES=('nodes','edges','annotations','annotation_meta_relations',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
@@ -59,12 +62,12 @@ def main():
         with (a.evidence/'daemon.log').open('w') as log:
             daemon=subprocess.Popen([str(ROOT/'target/debug/codeana-daemon'),'--home',str(home.resolve())],stdout=log,stderr=log,env=dict(os.environ,CODEANA_JAVA_BACKEND=a.backend))
         until=time.monotonic()+15
-        while subprocess.run(cmd+['daemon','status'],capture_output=True,timeout=3).returncode:
+        while subprocess.run(cmd[:3] + ['daemon','status'],capture_output=True,timeout=3).returncode:
             if daemon.poll() is not None or time.monotonic()>until:raise RuntimeError('DAEMON_START_FAILED')
             time.sleep(.05)
         with (a.evidence/'index.stdout').open('w') as out,(a.evidence/'index.stderr').open('w') as err:
-            result=subprocess.run(cmd+['index','--full','--deadline-seconds','86400'],stdout=out,stderr=err,timeout=86430)
-        terminals=[json.loads(l[9:]) for l in (a.evidence/'index.stdout').read_text().splitlines() if l.startswith('terminal ')]
+            result=subprocess.run(cmd+['index','--full','--deadline-seconds','86400', '--format', 'json', '--detail'],stdout=out,stderr=err,timeout=86430)
+        terminals=[decode_response((a.evidence/'index.stdout').read_text())[1]]
         if result.returncode or len(terminals)!=1 or terminals[0]['publication']!='published':raise RuntimeError('GRAPH_INDEX_NOT_PUBLISHED: '+str(terminals))
         db=home/'revisions'/terminals[0]['revision']/'facts.db'
         receipt.update(database=str(db),database_bytes=db.stat().st_size,terminal=terminals[0],graph=graph(db),reference_graph=graph(a.reference))

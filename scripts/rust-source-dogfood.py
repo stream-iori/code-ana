@@ -19,6 +19,9 @@ import sqlite3
 import threading
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+import sys
+sys.path.insert(0, str(ROOT / 'scripts'))
+from cli_response import decode_response
 
 def prepare(destination, worker_memory_bytes=268435456):
     destination.resolve().relative_to(ROOT)
@@ -178,7 +181,7 @@ def measure(project, evidence, build_messages=None, cargo_configs=(), *, worker_
         monitor=None
         (evidence/'index.stdout').write_text(result.stdout)
         (evidence/'index.stderr').write_text(result.stderr)
-        terminal = next((json.loads(line[9:]) for line in result.stdout.splitlines() if line.startswith('terminal ')), None)
+        terminal = decode_response(result.stdout)[1] if result.stdout.strip() else None
         receipt = dict(frozen, elapsed_seconds=elapsed, exit_code=result.returncode,
                        terminal=terminal, state='empty-home', performance_accepted=False,memory=memory)
         for key in ('rust_input_summary', 'rust_worker_memory','rust_stream'):

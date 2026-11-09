@@ -135,7 +135,7 @@ class PythonLanguage(ProductHarness):
         self.cli('index', '--full', code=1, timeout=90)
         self.assertEqual(self.cli('overview')[1]['revision'], first)
 
-    def test_optional_pyproject_controls_and_legacy_inventory(self):
+    def test_optional_pyproject_controls_and_current_inventory(self):
         pyproject = self.project/'pyproject.toml'
         fixture = FIX/'python/metadata/pyproject.toml'
         pyproject.write_bytes((fixture if fixture.exists() else ROOT/'fixtures/python/metadata/pyproject.toml').read_bytes())
@@ -157,10 +157,7 @@ class PythonLanguage(ProductHarness):
         self.assertEqual(self.cli('index', timeout=90)[0][0]['mode'], 'full')
         self.export()
         path = self.project/'.code-ana/python-inputs.json'
-        legacy = json.loads(path.read_text())
-        legacy['schema_version'] = 1
-        del legacy['controls'], legacy['metadata']
-        path.write_text(json.dumps(legacy))
+        self.assertEqual(json.loads(path.read_text())['schema_version'], 3)
         self.cli('index', timeout=90)
         self.assertEqual(self.cli('index', timeout=90)[0][0]['mode'], 'delta')
 
@@ -187,7 +184,7 @@ class PythonLanguage(ProductHarness):
             groups = dict(db.execute('SELECT code,sum(occurrence_count) FROM index_diagnostics GROUP BY code'))
         self.assertEqual(report['summary']['diagnostics']['groups'], groups)
         self.assertGreater(groups.get('missing-import', 0), 0)
-        markdown = self.cli('report', first['report'], '--format', 'markdown', raw=True)
+        markdown = self.markdown(first['report'])
         self.assertIn('missing-import', markdown)
         self.assertIn('Coverage:', markdown)
         (self.project/'missing.py').write_text('class Service:\n    def run(self):\n        return 1\ndef make():\n    return Service()\n')
@@ -220,7 +217,7 @@ class PythonLanguage(ProductHarness):
         self.export()
         for action in ('cancel', 'crash'):
             with self.subTest(action=action):
-                task = json.loads(self.cli('index', '--full', '--background', raw=True))['task_id']
+                task = self.cli_record('index', '--full', '--background')['task']
                 until = time.monotonic()+20
                 worker = None
                 while time.monotonic() < until:

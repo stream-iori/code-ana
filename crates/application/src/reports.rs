@@ -91,19 +91,15 @@ pub(super) struct ReportSummary {
     pub diagnostics: ReportDiagnostics,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(untagged)]
-pub(super) enum ReportConfig {
-    Full(Box<codeana_config::Effective>),
-    Basic {
-        config_digest: String,
-        origins: BTreeMap<String, String>,
-    },
+#[serde(deny_unknown_fields)]
+pub(super) struct ReportConfig {
+    pub config_digest: String,
+    pub origins: BTreeMap<String, String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct ReportDocument {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub analysis_resources: Option<AnalysisAdmissionReport>,
-    #[serde(default = "legacy_schema")]
     pub schema_version: u32,
     pub id: String,
     pub created: u64,
@@ -114,11 +110,7 @@ pub(super) struct ReportDocument {
     pub effective: ReportConfig,
     pub context: BuildContext,
     pub diagnostics: Vec<Fact>,
-    #[serde(default)]
     pub global: GlobalReport,
-}
-fn legacy_schema() -> u32 {
-    1
 }
 #[derive(Serialize)]
 struct ReportComparison<'a> {
@@ -199,7 +191,7 @@ impl ReportService {
         persisted.report = id.into();
         let report = ReportDocument {
             analysis_resources,
-            schema_version: 2,
+            schema_version: 3,
             id: id.into(),
             created: now(),
             revision: revision.clone(),
@@ -232,7 +224,7 @@ impl ReportService {
                 },
             },
             result: persisted,
-            effective: ReportConfig::Basic {
+            effective: ReportConfig {
                 config_digest,
                 origins: BTreeMap::new(),
             },
@@ -263,10 +255,12 @@ impl ReportService {
     }
     pub(super) fn report(&self, req: &Request, project: &str) -> Result<Output> {
         let value: ReportDocument = self.store.object("report", &req.selector, project)?;
+        ensure!(value.schema_version == 3, "REPORT_SCHEMA_UNSUPPORTED");
         let record = if req.base.is_empty() {
             Record::display(&value)?
         } else {
             let base: ReportDocument = self.store.object("report", &req.base, project)?;
+            ensure!(base.schema_version == 3, "REPORT_SCHEMA_UNSUPPORTED");
             let a = &base.summary;
             let b = &value.summary;
             ensure!(
@@ -347,10 +341,7 @@ impl ReportService {
 /// Presentation only; machine consumers continue reading the same JSON document.
 pub fn report_markdown(value: serde_json::Value) -> Result<String> {
     let report: ReportDocument = serde_json::from_value(value)?;
-    ensure!(
-        matches!(report.schema_version, 1 | 2),
-        "REPORT_SCHEMA_UNSUPPORTED"
-    );
+    ensure!(report.schema_version == 3, "REPORT_SCHEMA_UNSUPPORTED");
     let clean = |text: &str| text.replace(['\n', '\r', '|'], " ");
     let mut out = format!(
         "# Index report {}\n\n| Execution | Quality | Gate | Publication | Revision |\n|---|---|---|---|---|\n| {} | {} | {} | {} | {} |\n\n",
@@ -468,13 +459,7 @@ fn analysis_resources_markdown(resources: &AnalysisAdmissionReport) -> String {
                 host.max_depth,
                 quota.max_depth
             ));
-            // The singular worker field is a compatibility alias. Never render/sum it twice.
-            let workers = if language.workers.is_empty() {
-                std::slice::from_ref(&language.worker)
-            } else {
-                &language.workers
-            };
-            for worker in workers {
+            for worker in &language.workers {
                 let state = format!("{:?}", worker.state).to_lowercase();
                 let quota = worker.grant.limits;
                 let phase = worker.phase.as_deref().unwrap_or("unreported");

@@ -1,12 +1,15 @@
+mod command_contract;
+mod output_io;
+mod pipeline;
+mod watch_output;
 use anyhow::{Context, Result, bail, ensure};
 use clap::{Args, Parser, Subcommand};
 use codeana_application::{Endpoint, default_home, private_home};
 use codeana_contracts::{map, v1 as p};
-use codeana_model::{Request, Stage, new_id};
+use codeana_model::{Request, new_id};
 use p::task_service_client::TaskServiceClient;
 use std::os::unix::process::CommandExt;
 use std::{
-    io::Write,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -20,6 +23,8 @@ struct Cli {
     project: PathBuf,
     #[command(subcommand)]
     command: Command,
+    #[arg(skip)]
+    project_explicit: bool,
 }
 #[derive(Subcommand)]
 enum Command {
@@ -28,14 +33,22 @@ enum Command {
         action: JavaInputsCommand,
     },
     Hello {
+        #[command(flatten)]
+        output: LocalOutputArgs,
         #[arg(default_value = "world")]
         name: String,
     },
     Daemon {
+        #[command(flatten)]
+        output: LocalOutputArgs,
+        #[arg(long, default_value_t = 10, value_parser = clap::value_parser!(u64).range(0..=codeana_model::MAX_TASK_DEADLINE_SECONDS))]
+        deadline_seconds: u64,
         #[arg(value_parser=["status","drain","stop","restart"])]
         action: String,
     },
     Task {
+        #[command(flatten)]
+        output: LocalOutputArgs,
         #[arg(value_parser=["status","cancel","watch"])]
         action: String,
         id: String,
@@ -79,6 +92,8 @@ enum JavaInputsCommand {
 }
 #[derive(Args)]
 struct JavaInputsExport {
+    #[command(flatten)]
+    response: LocalOutputArgs,
     #[arg(long)]
     output: PathBuf,
     #[arg(long, default_value = "mvn")]
@@ -95,7 +110,7 @@ struct JavaInputsExport {
     offline: bool,
     #[arg(long)]
     source_only: bool,
-    #[arg(long, default_value_t = 300)]
+    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
     timeout: u64,
     #[arg(long)]
     extension: Option<PathBuf>,
@@ -113,14 +128,18 @@ struct IndexArgs {
 struct ReportArgs {
     #[command(flatten)]
     query: QueryArgs,
-    #[arg(long, value_parser = ["json", "markdown"], default_value = "json")]
-    format: String,
 }
 #[derive(Args, Default)]
 #[command(
     after_help = "Execution budgets: set max_work and max_payload_bytes in [resources.query]. Each field inherits project -> user -> default. Limited results retain completed evidence; --strict exits 3."
 )]
 struct QueryArgs {
+    #[arg(long, value_parser = ["text", "json", "markdown"])]
+    format: Option<String>,
+    #[arg(long)]
+    detail: bool,
+    #[arg(skip)]
+    supplied: Vec<String>,
     #[arg(long, default_value = "", value_parser = ["", "project", "modules", "packages", "dependencies"])]
     section: String,
     #[arg(long, default_value_t = 0)]
@@ -193,11 +212,11 @@ struct QueryArgs {
     name: String,
     #[arg(long, default_value_t = 100)]
     max_records: u32,
-    #[arg(long, default_value_t = 32768)]
+    #[arg(long, default_value_t = 32768, value_parser = clap::value_parser!(u64).range(2048..=8388608))]
     max_output_bytes: u64,
     #[arg(long, default_value_t = 1)]
     depth: u32,
-    #[arg(long, default_value_t = 120)]
+    #[arg(long, default_value_t = 120, value_parser = clap::value_parser!(u64).range(0..=codeana_model::MAX_TASK_DEADLINE_SECONDS))]
     deadline_seconds: u64,
     #[arg(long)]
     source_version: Option<String>,
@@ -212,6 +231,40 @@ struct QueryArgs {
     #[arg(long)]
     export: Option<PathBuf>,
 }
+#[derive(Args, Clone, Default)]
+struct LocalOutputArgs {
+    #[arg(long, value_parser = ["text", "json"])]
+    format: Option<String>,
+    #[arg(long)]
+    detail: bool,
+    #[arg(long)]
+    export: Option<PathBuf>,
+    #[arg(long, default_value_t = 32768, value_parser = clap::value_parser!(u64).range(2048..=8388608))]
+    max_output_bytes: u64,
+}
+impl LocalOutputArgs {
+    fn request(&self) -> Result<Request> {
+        Ok(Request {
+            delivery: codeana_model::DeliveryOptions {
+                format: self.format.as_deref().map(str::parse).transpose()?,
+                detail: Some(self.detail),
+                ..Default::default()
+            },
+            max_output_bytes: self.max_output_bytes,
+            ..Default::default()
+        })
+    }
+}
+fn local_response<T: serde::Serialize>(value: &T, output: &LocalOutputArgs) -> Result<i32> {
+    let request = output.request()?;
+    let mut result = codeana_model::TaskResult::success(codeana_model::Output {
+        records: vec![codeana_model::Record::display(value)?],
+        evidence: codeana_model::Evidence::complete(),
+        ..Default::default()
+    });
+    let bytes = codeana_application::render_response(&request, &mut result)?;
+    output_io::emit(&request, &result, &bytes, output.export.as_deref())
+}
 fn authenticated<T>(value: T, e: &Endpoint) -> Result<tonic::Request<T>> {
     let mut r = tonic::Request::new(value);
     r.metadata_mut()
@@ -224,7 +277,9 @@ async fn try_connect(home: &Path) -> Result<(TaskServiceClient<Channel>, Endpoin
         endpoint.address.starts_with("http://127.0.0.1:"),
         codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidLocalEndpoint, "")
     );
-    let mut client = TaskServiceClient::connect(endpoint.address.clone()).await?;
+    let mut client = TaskServiceClient::connect(endpoint.address.clone())
+        .await?
+        .max_decoding_message_size(codeana_model::MAX_FRAME);
     let hello = client
         .handshake(authenticated(
             p::HandshakeRequest {
@@ -243,8 +298,34 @@ async fn try_connect(home: &Path) -> Result<(TaskServiceClient<Channel>, Endpoin
     Ok((client, endpoint))
 }
 async fn connect(home: &Path, start: bool) -> Result<(TaskServiceClient<Channel>, Endpoint)> {
-    if let Ok(c) = try_connect(home).await {
-        return Ok(c);
+    match try_connect(home).await {
+        Ok(connection) => return Ok(connection),
+        Err(error)
+            if error.downcast_ref::<tonic::Status>().is_some_and(|status| {
+                matches!(
+                    status.code(),
+                    tonic::Code::FailedPrecondition
+                        | tonic::Code::Unauthenticated
+                        | tonic::Code::PermissionDenied
+                )
+            }) =>
+        {
+            return Err(error);
+        }
+        Err(error)
+            if error
+                .downcast_ref::<codeana_model::DomainError>()
+                .is_some_and(|error| {
+                    matches!(
+                        error.code,
+                        codeana_model::ErrorCode::StaleEndpoint
+                            | codeana_model::ErrorCode::InvalidLocalEndpoint
+                    )
+                }) =>
+        {
+            return Err(error);
+        }
+        Err(_) => {}
     }
     ensure!(
         start,
@@ -298,14 +379,36 @@ async fn connect(home: &Path, start: bool) -> Result<(TaskServiceClient<Channel>
         ""
     ))
 }
+struct WatchOptions<'a> {
+    after_seq: u64,
+    export: Option<&'a Path>,
+    markdown: bool,
+    requested: &'a Request,
+    observing: bool,
+}
 async fn watch(
+    client: &mut TaskServiceClient<Channel>,
+    endpoint: &Endpoint,
+    id: &str,
+    options: WatchOptions<'_>,
+) -> Result<i32> {
+    watch_inner(client, endpoint, id, options)
+        .await
+        .with_context(|| format!("task={id}; output not confirmed"))
+}
+async fn watch_inner(
     client: &mut TaskServiceClient<Channel>,
     e: &Endpoint,
     id: &str,
-    after_seq: u64,
-    export: Option<&Path>,
-    markdown: bool,
+    options: WatchOptions<'_>,
 ) -> Result<i32> {
+    let WatchOptions {
+        after_seq,
+        export,
+        markdown,
+        requested,
+        observing,
+    } = options;
     let mut stream = client
         .watch_task(authenticated(
             p::WatchRequest {
@@ -316,31 +419,64 @@ async fn watch(
         )?)
         .await?
         .into_inner();
-    let mut saved = Vec::new();
+    let mut records = Vec::new();
+    let mut payload_bytes = 0usize;
     let mut cancelled = false;
     let mut terminal = None;
+    let mut last_seq = after_seq;
+    let mut observation = watch_output::WatchOutput::new(requested, id, after_seq);
     loop {
-        let next = tokio::select! {m=stream.message()=>m?,_=tokio::signal::ctrl_c(),if !cancelled=>{cancelled=true;client.cancel_task(authenticated(p::TaskId{task_id:id.into()},e)?).await?;continue;}};
+        let next = tokio::select! {
+            message = stream.message() => message.context(codeana_model::DomainError::new(codeana_model::ErrorCode::EventStreamInterrupted, format!("task={id}; last_seq={last_seq}")))?,
+            _ = tokio::time::sleep(Duration::from_millis(100)), if export.is_none() => {
+                if let Err(error) = output_io::ensure_open() {
+                    if !observing { let _ = client.cancel_task(authenticated(p::TaskId { task_id: id.into() }, e)?).await; }
+                    return Err(error);
+                }
+                continue;
+            }
+            _ = tokio::signal::ctrl_c(), if !cancelled => { cancelled = true; client.cancel_task(authenticated(p::TaskId { task_id: id.into() }, e)?).await?; continue; }
+        };
         let Some(event) = next else {
             break;
         };
+        ensure!(
+            event.seq == last_seq.saturating_add(1),
+            "EVENT_ORDER_INVALID: task={id}; after_seq={last_seq}"
+        );
+        let seq = event.seq;
         match event.event {
             Some(p::task_event::Event::Progress(progress)) => {
-                eprintln!("{}: {}", id, progress.phase)
-            }
-            Some(p::task_event::Event::Output(chunk)) => {
-                if export.is_some() || markdown {
-                    ensure!(
-                        saved.len() + chunk.data.len() <= 8 * 1024 * 1024,
-                        codeana_model::DomainError::new(codeana_model::ErrorCode::ExportBudget, "")
-                    );
-                    saved.extend(chunk.data);
-                } else {
-                    std::io::stdout().write_all(&chunk.data)?;
+                if observing {
+                    observation.progress(event.seq, &progress.phase)?;
                 }
             }
-            Some(p::task_event::Event::Terminal(t)) => {
-                terminal = Some(t);
+            Some(p::task_event::Event::Record(record)) => {
+                ensure!(
+                    record.projection_version == codeana_model::PUBLIC_PROJECTION_VERSION,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::OutputFormatUnavailable,
+                        "task projection changed"
+                    )
+                );
+                payload_bytes = payload_bytes.saturating_add(record.record.len());
+                ensure!(
+                    payload_bytes <= codeana_model::MAX_RESULT && records.len() < 10000,
+                    codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::ExportBudget,
+                        "bounded task observation exceeded"
+                    )
+                );
+                let record = codeana_model::Record::decode_current(&record.record)?;
+                if observing {
+                    observation.record(event.seq, record)?;
+                } else {
+                    records.push(record);
+                }
+            }
+            Some(p::task_event::Event::Terminal(value)) => {
+                terminal = Some(value);
+                last_seq = seq;
                 break;
             }
             None => bail!(codeana_model::DomainError::new(
@@ -348,45 +484,58 @@ async fn watch(
                 ""
             )),
         }
+        last_seq = seq;
     }
-    let t = if let Some(t) = terminal {
-        t
+    let terminal = terminal.context(codeana_model::DomainError::new(
+        codeana_model::ErrorCode::EventStreamInterrupted,
+        format!("task={id}; last_seq={last_seq}; body not confirmed"),
+    ))?;
+    let mut result = codeana_contracts::task_result(&terminal)?;
+    result.output.records = records;
+    let mut request = requested.clone();
+    let context = &result.output.delivery.context;
+    if !observing {
+        if context.operation != codeana_model::Operation::Unspecified {
+            request.operation = context.operation;
+        }
+        request.delivery.format = Some(context.format);
+        request.delivery.detail = Some(context.detail);
+        request.max_output_bytes = context.max_output_bytes;
     } else {
-        client
-            .get_task(authenticated(p::TaskId { task_id: id.into() }, e)?)
-            .await?
-            .into_inner()
-            .terminal
-            .context("EVENT_STREAM_INTERRUPTED: use task watch to reconnect")?
-    };
-    if markdown && t.exit_code == 0 {
-        let text = std::str::from_utf8(&saved)?;
-        let value = text
-            .lines()
-            .find_map(|line| line.strip_prefix("record "))
-            .context("REPORT_OUTPUT_TRUNCATED: increase --max-output-bytes")?;
-        saved = codeana_application::report_markdown(serde_json::from_str(value)?)?.into_bytes();
-        if export.is_none() {
-            std::io::stdout().write_all(&saved)?;
+        if context.operation != codeana_model::Operation::Unspecified {
+            request.operation = context.operation;
         }
     }
-    if let Some(path) = export {
-        let mut output = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .context(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::ExportPathExistsOrUnavailable,
-                "",
-            ))?;
-        output.write_all(&saved)?;
-        output.sync_all()?;
-        eprintln!("exported {} bytes to {}", saved.len(), path.display());
+    if observing && after_seq > 0 {
+        result.output.delivery.state = codeana_model::DeliveryState::Partial;
     }
-    if t.exit_code != 0 {
-        eprintln!("{}: {}", t.code, t.message);
+    if markdown && result.exit_code == 0 {
+        let value = result
+            .output
+            .records
+            .first()
+            .context("REPORT_OUTPUT_UNAVAILABLE")?
+            .wire()?;
+        let bytes = codeana_application::report_markdown(value)?.into_bytes();
+        return output_io::emit(&request, &result, &bytes, export)
+            .with_context(|| response_context(id, &result));
     }
-    Ok(t.exit_code)
+    let bytes = if observing {
+        observation
+            .finish(&mut result, last_seq)
+            .with_context(|| response_context(id, &result))?
+    } else {
+        codeana_application::render_response(&request, &mut result)
+            .with_context(|| response_context(id, &result))?
+    };
+    output_io::emit(&request, &result, &bytes, export)
+        .with_context(|| response_context(id, &result))
+}
+fn response_context(id: &str, result: &codeana_model::TaskResult) -> String {
+    format!(
+        "task={id}; execution={}; publication={}; gate={}; response incomplete",
+        result.execution, result.publication, result.gate
+    )
 }
 #[tokio::main]
 async fn main() {
@@ -399,7 +548,7 @@ async fn main() {
     }
 }
 async fn run() -> Result<i32> {
-    let cli = match Cli::try_parse() {
+    let mut cli = match command_contract::parse() {
         Ok(cli) => cli,
         Err(error) => {
             if error.kind() == clap::error::ErrorKind::UnknownArgument
@@ -414,7 +563,23 @@ async fn run() -> Result<i32> {
             error.exit()
         }
     };
-    let markdown = matches!(&cli.command, Command::Report(args) if args.format == "markdown");
+    output_io::ensure_open()?;
+    {
+        let export = match &cli.command {
+            Command::Hello { output, .. }
+            | Command::Daemon { output, .. }
+            | Command::Task { output, .. } => output.export.as_deref(),
+            Command::JavaInputs {
+                action: JavaInputsCommand::Export(a),
+            } => a.response.export.as_deref(),
+            _ => None,
+        };
+        output_io::preflight(export)?;
+    }
+    if let Some(query) = command_contract::query_mut(&mut cli.command) {
+        output_io::preflight(query.export.as_deref())?;
+    }
+    let markdown = matches!(&cli.command, Command::Report(args) if args.query.format.as_deref() == Some("markdown"));
     if let Command::Report(args) = &cli.command {
         ensure!(
             !markdown || args.query.base.is_empty(),
@@ -447,12 +612,14 @@ async fn run() -> Result<i32> {
             return Ok(130);
         }
         let prepared = prepared?;
-        eprintln!(
-            "input preparation: {}; units={}; report={}",
-            prepared.status,
-            prepared.units.len(),
-            prepared.report
-        );
+        if args.query.detail {
+            eprintln!(
+                "input preparation: {}; units={}; report={}",
+                prepared.status,
+                prepared.units.len(),
+                prepared.report
+            );
+        }
     }
     if let Command::JavaInputs {
         action: JavaInputsCommand::Export(args),
@@ -487,19 +654,11 @@ async fn run() -> Result<i32> {
             _ = tokio::signal::ctrl_c() => { cancel.store(true, Ordering::Release); task.await?? },
             _ = term.recv() => { cancel.store(true, Ordering::Release); task.await?? },
         };
-        if let Some(failure) = &result.dependency_failure {
-            eprintln!(
-                "WARNING: CLASSPATH_UNAVAILABLE module={} pom={} dependency={}: {}; continuing source analysis without external classpath; type and call relationships may be incomplete",
-                failure.module, failure.pom, failure.coordinate, failure.reason
-            );
-        }
-        println!(
-            "{}",
-            serde_json::json!({"manifest":args.output,"modules":result.modules.len(), "analysis_mode":if result.resolved_classpath { "semantic" } else { "source_only" }, "classpath_status":if result.resolved_classpath { "available" } else { "unavailable" }, "dependency_mode":result.dependency_mode})
-        );
-        return Ok(0);
+        let value = serde_json::json!({"manifest":args.output,"modules":result.modules.len(), "analysis_mode":if result.resolved_classpath { "semantic" } else { "source_only" }, "classpath_status":if result.resolved_classpath { "available" } else { "unavailable" }, "dependency_mode":result.dependency_mode, "dependency_failure":result.dependency_failure});
+        return local_response(&value, &args.response);
     }
-    if let Command::Hello { name } = &cli.command
+
+    if let Command::Hello { name, output } = &cli.command
         && let Ok(port) = std::env::var("CODEANA_PORT")
     {
         let port: u16 = port.parse()?;
@@ -507,35 +666,30 @@ async fn run() -> Result<i32> {
             "http://127.0.0.1:{port}"
         ))
         .await?;
-        println!(
-            "{}",
-            client
-                .say_hello(p::HelloRequest { name: name.clone() })
-                .await?
-                .into_inner()
-                .message
-        );
-        return Ok(0);
+        let response = client
+            .say_hello(p::HelloRequest { name: name.clone() })
+            .await?
+            .into_inner();
+        return local_response(&serde_json::json!({"hello":response.message}), output);
     }
+
     let home = private_home(&cli.home.unwrap_or(default_home()?))?;
-    let auto = !matches!(cli.command, Command::Task { .. } | Command::Daemon { .. });
-    let (mut client, e) = connect(&home, auto).await?;
     let (operation, a) = match cli.command {
         Command::JavaInputs { .. } => {
             unreachable!("explicit Maven export returned before daemon connection")
         }
-        Command::Hello { name } => {
+        Command::Hello { name, output } => {
+            let (_, e) = connect(&home, true).await?;
             let mut c = p::hello_service_client::HelloServiceClient::connect(e.address).await?;
-            println!(
-                "{}",
-                c.say_hello(p::HelloRequest { name })
-                    .await?
-                    .into_inner()
-                    .message
-            );
-            return Ok(0);
+            let response = c.say_hello(p::HelloRequest { name }).await?.into_inner();
+            return local_response(&serde_json::json!({"hello":response.message}), &output);
         }
-        Command::Daemon { action } => {
+        Command::Daemon {
+            action,
+            output,
+            deadline_seconds,
+        } => {
+            let (mut client, e) = connect(&home, false).await?;
             if action == "restart" {
                 ensure!(
                     !e.mock,
@@ -544,41 +698,102 @@ async fn run() -> Result<i32> {
                         ""
                     )
                 );
-                client
-                    .manage(authenticated(
-                        p::ManageRequest {
-                            action: "drain".into(),
-                        },
-                        &e,
-                    )?)
-                    .await?;
-                for _ in 0..200 {
-                    if try_connect(&home).await.is_err() {
-                        let _ = connect(&home, true).await?;
-                        println!("restarted");
-                        return Ok(0);
-                    }
-                    tokio::time::sleep(Duration::from_millis(50)).await;
-                }
-                bail!(codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::DrainPending,
-                    ""
-                ));
             }
-            let r = client
-                .manage(authenticated(p::ManageRequest { action }, &e)?)
+            let manage_action = if action == "restart" {
+                "drain"
+            } else {
+                &action
+            };
+            let response = client
+                .manage(authenticated(
+                    p::ManageRequest {
+                        action: manage_action.into(),
+                    },
+                    &e,
+                )?)
                 .await?
                 .into_inner();
-            println!("{}", serde_json::to_string(&r)?);
-            return Ok(0);
+            if action == "stop" || action == "restart" {
+                ensure!(
+                    e.pid != 0 && !e.process_started.is_empty(),
+                    "PROCESS_STATE_UNAVAILABLE: service identity not recorded"
+                );
+                let deadline = std::time::Instant::now() + Duration::from_secs(deadline_seconds);
+                loop {
+                    let exited = match codeana_application::process_identity(e.pid)? {
+                        None => true,
+                        Some((started, zombie)) => zombie || started != e.process_started,
+                    };
+                    if exited {
+                        break;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        let request = output.request()?;
+                        let mut result = codeana_model::TaskResult::failure(
+                            "TIMEOUT",
+                            "Original service exit was not confirmed",
+                            124,
+                        );
+                        result.publication = codeana_model::PublicationState::NotRequested;
+                        result.output.records = vec![codeana_model::Record::display(
+                            &serde_json::json!({"daemon":response.state,"active_tasks":response.active_tasks}),
+                        )?];
+                        let bytes = codeana_application::render_response(&request, &mut result)?;
+                        return output_io::emit(
+                            &request,
+                            &result,
+                            &bytes,
+                            output.export.as_deref(),
+                        );
+                    }
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                if action == "restart" {
+                    let (_, next) = connect(&home, true).await?;
+                    ensure!(
+                        next.generation != e.generation,
+                        "STALE_ENDPOINT: restart did not create a new instance"
+                    );
+                }
+                return local_response(
+                    &serde_json::json!({"daemon":if action == "stop" {"stopped"} else {"restarted"}}),
+                    &output,
+                );
+            }
+            return local_response(&response, &output);
         }
         Command::Task {
             action,
             id,
             after_seq,
+            output,
         } => {
+            let (mut client, e) = connect(&home, false).await?;
             if action == "watch" {
-                return watch(&mut client, &e, &id, after_seq, None, false).await;
+                let mut request = output.request()?;
+                let status = client
+                    .get_task(authenticated(
+                        p::TaskId {
+                            task_id: id.clone(),
+                        },
+                        &e,
+                    )?)
+                    .await?
+                    .into_inner();
+                request.operation = status.operation.parse()?;
+                return watch(
+                    &mut client,
+                    &e,
+                    &id,
+                    WatchOptions {
+                        after_seq,
+                        export: output.export.as_deref(),
+                        markdown: false,
+                        requested: &request,
+                        observing: true,
+                    },
+                )
+                .await;
             }
             let r = if action == "cancel" {
                 client
@@ -589,8 +804,43 @@ async fn run() -> Result<i32> {
                     .get_task(authenticated(p::TaskId { task_id: id }, &e)?)
                     .await?
             };
-            println!("{}", serde_json::to_string(r.get_ref())?);
-            return Ok(0);
+            if output.format.as_deref().unwrap_or("text") == "text" && !output.detail {
+                let status = r.get_ref();
+                let mut view = serde_json::json!({"task":status.task_id,"state":status.state,"last-seq":status.last_seq});
+                if action == "cancel" {
+                    view["cancel"] = "requested".into();
+                }
+                if let Some(terminal) = &status.terminal {
+                    let result = codeana_contracts::task_result(terminal)?;
+                    view["publication"] = serde_json::to_value(result.publication)?;
+                    if result.assessment != codeana_model::Assessment::Complete {
+                        view["assessment"] = serde_json::to_value(result.assessment)?;
+                    }
+                    if matches!(
+                        result.gate,
+                        codeana_model::GateState::Rejected | codeana_model::GateState::Unknown
+                    ) {
+                        view["gate"] = serde_json::to_value(result.gate)?;
+                    }
+
+                    if result.exit_code != 0 {
+                        view["task-error"] = serde_json::to_value(result.code)?;
+                        view["reason"] = result.message.into();
+                    }
+                    if matches!(result.report.as_str(), "pending" | "failed" | "unknown") {
+                        view["report"] = result.report.to_string().into();
+                    }
+                }
+                return local_response(&view, &output);
+            }
+            let mut value = serde_json::to_value(r.get_ref())?;
+            if action == "cancel" {
+                value
+                    .as_object_mut()
+                    .expect("task status")
+                    .insert("cancel".into(), "requested".into());
+            }
+            return local_response(&value, &output);
         }
         Command::Index(a) => ("index", a.query),
         Command::Doctor(a) => ("doctor", a),
@@ -620,26 +870,40 @@ async fn run() -> Result<i32> {
         Command::Recover(a) => ("recover", a),
     };
     let stages = if operation == "pipeline" {
-        let bytes = std::fs::read(&a.selector)?;
-        ensure!(
-            bytes.len() <= 1024 * 1024,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::PipelineSpecBudget, "")
-        );
-        serde_json::from_slice::<Vec<Stage>>(&bytes)?
+        pipeline::read(Path::new(&a.selector))?
     } else {
         vec![]
     };
     let reference_options = (operation == "references"
         && (a.direction.is_some() || !a.relation.is_empty()))
         || stages.iter().any(|stage| stage.operation == "references");
-    let req = Request {
-        overview_section: a.section,
+    let mut req = Request {
+        delivery: codeana_model::DeliveryOptions {
+            format: a
+                .format
+                .as_deref()
+                .filter(|s| *s != "markdown")
+                .map(str::parse)
+                .transpose()?,
+            detail: a.supplied.iter().any(|s| s == "detail").then_some(a.detail),
+            supplied: a.supplied.clone(),
+            project_explicit: cli.project_explicit,
+        },
+        overview_section: if operation == "overview" {
+            a.section.clone()
+        } else {
+            String::new()
+        },
         overview_depth: a.package_depth,
         signature: a.signature,
         package: a.package,
         package_prefix: a.package_prefix,
         paths: a.paths,
-        entity_kind: a.entity_kind,
+        entity_kind: if operation == "snapshot" {
+            String::new()
+        } else {
+            a.entity_kind.clone()
+        },
         annotation: a.annotation,
         visibility: a.visibility,
         synthetic: a.synthetic,
@@ -690,7 +954,11 @@ async fn run() -> Result<i32> {
         base: a.base,
         target: a.target,
         cursor: a.cursor,
-        name: a.name,
+        name: match operation {
+            "diff" => a.section,
+            "snapshot" => a.entity_kind,
+            _ => String::new(),
+        },
         stages,
         max_records: a.max_records,
         max_output_bytes: a.max_output_bytes,
@@ -701,6 +969,34 @@ async fn run() -> Result<i32> {
         suggestions: a.suggestions,
         expected_revision: a.expected_revision,
     };
+    if !req.cursor.is_empty() {
+        req = Request {
+            operation: req.operation,
+            request_id: req.request_id,
+            project: req.project,
+            cursor: req.cursor,
+            max_records: if a.supplied.iter().any(|s| s == "max_records") {
+                req.max_records
+            } else {
+                0
+            },
+            max_output_bytes: if a.supplied.iter().any(|s| s == "max_output_bytes") {
+                req.max_output_bytes
+            } else {
+                0
+            },
+            deadline_seconds: req.deadline_seconds,
+            delivery: req.delivery,
+            ..Default::default()
+        };
+    }
+    if req.cursor.is_empty()
+        && let Err(error) = codeana_application::preflight_request(&req)
+    {
+        eprintln!("{error:#}");
+        return Ok(2);
+    }
+    let (mut client, e) = connect(&home, true).await?;
     let budgeted_query = codeana_query_operation(&req.operation);
     let runtime_candidates = req.operation == "runtime-implementations"
         || req
@@ -864,16 +1160,28 @@ async fn run() -> Result<i32> {
         .await?
         .into_inner();
     if req.background {
-        println!("{}", serde_json::to_string(&accepted)?);
-        return Ok(0);
+        let output = LocalOutputArgs {
+            format: a.format.clone(),
+            detail: a.detail,
+            export: None,
+            max_output_bytes: a.max_output_bytes,
+        };
+        return local_response(
+            &serde_json::json!({"task":accepted.task_id,"state":"accepted"}),
+            &output,
+        );
     }
     watch(
         &mut client,
         &e,
         &accepted.task_id,
-        0,
-        a.export.as_deref(),
-        markdown,
+        WatchOptions {
+            after_seq: 0,
+            export: a.export.as_deref(),
+            markdown,
+            requested: &req,
+            observing: false,
+        },
     )
     .await
 }

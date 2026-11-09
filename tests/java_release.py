@@ -8,6 +8,9 @@ import argparse
 import json
 import os
 import pathlib
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / 'scripts'))
+from cli_response import decode_response
 import subprocess
 import shutil
 from java_product_runtime import sha
@@ -53,12 +56,12 @@ def packaged_fixture_smoke(package, evidence, binaries=None):
         primary_failure = None
         try:
             for name in ('index','calls','source'):
-                result=subprocess.run(command+[name]+([] if name=='index' else ['main']),
+                result=subprocess.run(command+[name, '--format', 'json', '--detail']+([] if name=='index' else ['main']),
                     capture_output=True,text=True,timeout=180)
                 (evidence/(name+'.stdout')).write_text(result.stdout)
                 (evidence/(name+'.stderr')).write_text(result.stderr)
-                records=[json.loads(line[7:]) for line in result.stdout.splitlines() if line.startswith('record ')]
-                terminals=[json.loads(line[9:]) for line in result.stdout.splitlines() if line.startswith('terminal ')]
+                records = decode_response(result.stdout)[0]
+                terminals = [decode_response(result.stdout)[1]]
                 if result.returncode or len(terminals)!=1 or terminals[0]['execution']!='completed' or not records:
                     raise ValueError('PACKAGED_FIXTURE_QUERY_FAILED: '+name+' '+result.stdout[-2000:]+' '+result.stderr[-2000:])
                 if name=='index' and (terminals[0]['publication']!='published'
@@ -72,7 +75,7 @@ def packaged_fixture_smoke(package, evidence, binaries=None):
             daemon_log = home/'daemon.log'
             if daemon_log.exists():
                 shutil.copy2(daemon_log, evidence/'daemon.log')
-            stopped=subprocess.run(command+['daemon','stop'],capture_output=True,text=True,timeout=30)
+            stopped=subprocess.run(command[:3] + ['daemon','stop'],capture_output=True,text=True,timeout=30)
             (evidence/'stop.stdout').write_text(stopped.stdout)
             (evidence/'stop.stderr').write_text(stopped.stderr)
             if stopped.returncode and primary_failure is None:

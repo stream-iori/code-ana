@@ -59,7 +59,7 @@ class PythonComments(ProductHarness):
         self.export()
         second=self.cli('index',timeout=120)[1]['revision']
         self.assertTrue(self.cli('search-comments','冻结余额')[0])
-        frozen,_=self.cli('search-comments','库存','--cursor',cursor,'--max-records','100')
+        frozen,_=self.cli('search-comments','--cursor',cursor,'--max-records','100')
         self.assertTrue(any('扣减库存' in r['comment']['body'] for r in frozen))
         full=self.cli('index','--full',timeout=120)[1]['revision']
         self.assertEqual(self.canonical_comments(second),self.canonical_comments(full))

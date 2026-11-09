@@ -44,6 +44,41 @@ where
 }
 pub fn terminal(r: &m::TaskResult) -> v1::Terminal {
     v1::Terminal {
+        delivery: Some(v1::Delivery {
+            output_format: r.output.delivery.context.format.to_string(),
+            detail: r.output.delivery.context.detail,
+            operation: r.output.delivery.context.operation.to_string(),
+            max_output_bytes: r.output.delivery.context.max_output_bytes,
+            historical: r.output.delivery.context.historical,
+            comparison: r
+                .output
+                .delivery
+                .context
+                .comparison
+                .as_ref()
+                .map(|context| v1::ComparisonContext {
+                    section: context.section.clone(),
+                    base: context.base.clone(),
+                    target: context.target.clone(),
+                    base_kind: context.base_kind.clone(),
+                    target_kind: context.target_kind.clone(),
+                    base_identity: context.base_identity.clone(),
+                    target_identity: context.target_identity.clone(),
+                }),
+            state: match r.output.delivery.state {
+                m::DeliveryState::Complete => "complete",
+                m::DeliveryState::Page => "page",
+                m::DeliveryState::Partial => "partial",
+                m::DeliveryState::Failed => "failed",
+            }
+            .into(),
+            projection_version: r.output.delivery.projection_version,
+            returned: r.output.delivery.returned as u64,
+            offset: r.output.delivery.offset as u64,
+            range_known: r.output.delivery.range_known,
+            total: r.output.delivery.total.map(|n| n as u64),
+            strict_rejected: r.output.delivery.strict_rejected,
+        }),
         execution: r.execution.to_string(),
         assessment: r.assessment.to_string(),
         gate: r.gate.to_string(),
@@ -57,6 +92,75 @@ pub fn terminal(r: &m::TaskResult) -> v1::Terminal {
         evidence: Some(map(&r.output.evidence).expect("evidence mapping")),
         cursor: r.output.cursor.clone(),
     }
+}
+/// Decode a task result without deriving publication or quality from exit status.
+pub fn task_result(value: &v1::Terminal) -> Result<m::TaskResult> {
+    Ok(m::TaskResult {
+        execution: value.execution.parse()?,
+        assessment: value.assessment.parse()?,
+        gate: value.gate.parse()?,
+        publication: value.publication.parse()?,
+        report: value.report.clone().into(),
+        revision: value.revision.clone(),
+        producer: value.producer.clone(),
+        code: value.code.clone().into(),
+        message: value.message.clone(),
+        exit_code: value.exit_code,
+        output: m::Output {
+            evidence: value
+                .evidence
+                .as_ref()
+                .map(map)
+                .transpose()?
+                .unwrap_or_default(),
+            cursor: value.cursor.clone(),
+            delivery: if let Some(delivery) = &value.delivery {
+                m::DeliveryStatus {
+                    context: m::DeliveryContext {
+                        format: if delivery.output_format.is_empty() {
+                            m::OutputFormat::Text
+                        } else {
+                            delivery.output_format.parse()?
+                        },
+                        detail: delivery.detail,
+                        operation: delivery.operation.parse()?,
+                        max_output_bytes: delivery.max_output_bytes,
+                        historical: delivery.historical,
+                        comparison: delivery.comparison.as_ref().map(|context| {
+                            m::ComparisonContext {
+                                section: context.section.clone(),
+                                base: context.base.clone(),
+                                target: context.target.clone(),
+                                base_kind: context.base_kind.clone(),
+                                target_kind: context.target_kind.clone(),
+                                base_identity: context.base_identity.clone(),
+                                target_identity: context.target_identity.clone(),
+                            }
+                        }),
+                    },
+                    state: match delivery.state.as_str() {
+                        "complete" => m::DeliveryState::Complete,
+                        "page" => m::DeliveryState::Page,
+                        "partial" => m::DeliveryState::Partial,
+                        "failed" => m::DeliveryState::Failed,
+                        _ => bail!(m::DomainError::new(
+                            m::ErrorCode::OutputFormatUnavailable,
+                            "unknown delivery state"
+                        )),
+                    },
+                    projection_version: delivery.projection_version,
+                    returned: delivery.returned as usize,
+                    offset: delivery.offset as usize,
+                    range_known: delivery.range_known,
+                    total: delivery.total.map(|n| n as usize),
+                    strict_rejected: delivery.strict_rejected,
+                }
+            } else {
+                m::DeliveryStatus::default()
+            },
+            ..Default::default()
+        },
+    })
 }
 pub use frame_budget::{FrameReader, read_frame_with_budget, write_frame_with_budget};
 pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, e: &worker::Envelope) -> Result<()> {

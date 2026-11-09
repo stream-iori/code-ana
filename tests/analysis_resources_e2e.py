@@ -65,7 +65,7 @@ class BudgetCases:
         coordinator = report['analysis_resources']['coordinator']
         slots = coordinator['languages']
         self.assertTrue(slots)
-        markdown = self.cli('report', result['report'], '--format', 'markdown', raw=True)
+        markdown = self.markdown(result['report'])
         self.assertIn('Analysis resources:', markdown)
         self.assertIn(report['analysis_resources']['coverage'], markdown)
         for slot in slots:
@@ -75,16 +75,16 @@ class BudgetCases:
             slot = next(s for s in slots if s['allocation']['language'] == self.language)
             self.assertGreater(slot['host_usage']['payload_bytes'], 0)
             self.assertGreater(slot['host_usage']['nodes'], 0)
-            self.assertEqual(slot['worker']['state'], 'complete')
-            self.assertGreater(slot['worker']['usage']['work'], 0)
-            self.assertGreater(slot['worker']['usage']['max_depth'], 1)
-        self.assertEqual(len({s['worker']['grant']['id'] for s in slots}), len(slots))
+            self.assertEqual(slot['workers'][0]['state'], 'complete')
+            self.assertGreater(slot['workers'][0]['usage']['work'], 0)
+            self.assertGreater(slot['workers'][0]['usage']['max_depth'], 1)
+        self.assertEqual(len({s['workers'][0]['grant']['id'] for s in slots}), len(slots))
         for used, limit in [('work', 'max_work'), ('nodes', 'max_nodes'), ('payload_bytes', 'max_payload_bytes')]:
             self.assertEqual(coordinator['admission'][used] + sum(s['allocation']['total'][limit] for s in slots), coordinator['limits'][limit])
             for slot in slots:
                 allocation = slot['allocation']
                 self.assertEqual(allocation['host'][limit] + allocation['worker'][limit], allocation['total'][limit])
-                self.assertEqual(slot['worker']['grant']['limits'][limit], allocation['worker'][limit])
+                self.assertEqual(slot['workers'][0]['grant']['limits'][limit], allocation['worker'][limit])
 
     def test_unchanged_reuse_has_discovery_receipt(self):
         _, first = self.cli('index', '--full', timeout=180)
@@ -131,7 +131,7 @@ class JavaBudget(BudgetCases, java.JavaProductHarness):
             _, failed = self.cli('index', '--full', code=1, timeout=180)
             self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
             usage = self.cli('report', failed['report'])[0][0]['analysis_resources']['coordinator']
-            worker = usage['languages'][0]['worker']
+            worker = usage['languages'][0]['workers'][0]
             self.assertEqual(worker['phase'], 'input_decode')
             self.assertEqual(worker['state'], 'failed')
             self.assertEqual(worker['usage']['failure']['Limit']['resource'], 'payload_bytes')
@@ -159,7 +159,7 @@ class JavaBudget(BudgetCases, java.JavaProductHarness):
                 self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
                 report = self.cli('report', failed['report'])[0][0]['analysis_resources']['coordinator']
                 self.assertIsNone(report['admission']['failure'])
-                worker = next(s for s in report['languages'] if s['allocation']['language'] == 'java')['worker']
+                worker = next(s for s in report['languages'] if s['allocation']['language'] == 'java')['workers'][0]
                 self.assertEqual(worker['state'], 'failed')
                 self.assertEqual(worker['usage']['failure']['Limit']['resource'], 'work')
                 self.assertEqual(self.cli('overview')[1]['revision'], old)
@@ -188,9 +188,9 @@ class RustBudget(BudgetCases, rust.RustHarness):
             self.assertIsNone(report['coordinator']['admission']['failure'])
             slot = report['coordinator']['languages'][0]
             self.assertIsNone(slot['host_usage']['failure'])
-            self.assertEqual(slot['worker']['state'], 'failed')
-            self.assertEqual(slot['worker']['phase'], 'records')
-            self.assertEqual(slot['worker']['usage']['failure']['Limit']['resource'], 'nodes')
+            self.assertEqual(slot['workers'][0]['state'], 'failed')
+            self.assertEqual(slot['workers'][0]['phase'], 'records')
+            self.assertEqual(slot['workers'][0]['usage']['failure']['Limit']['resource'], 'nodes')
             self.assertEqual(self.cli('overview')[1]['revision'], old)
             self.assertEqual(self.graph(old), before)
         finally:
@@ -213,7 +213,7 @@ class RustBudget(BudgetCases, rust.RustHarness):
                 self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
                 report = self.cli('report', failed['report'])[0][0]['analysis_resources']
                 self.assertIsNone(report['coordinator']['admission']['failure'])
-                worker = report['coordinator']['languages'][0]['worker']
+                worker = report['coordinator']['languages'][0]['workers'][0]
                 self.assertEqual(worker['state'], 'failed')
                 self.assertEqual(worker['usage']['failure']['Limit']['resource'], 'work')
                 self.assertLessEqual(worker['usage']['work'], worker['grant']['limits']['max_work'])
@@ -257,7 +257,7 @@ class PythonBudget(BudgetCases, python.PythonLanguage):
                 self.assertIsNone(report['admission']['failure'])
                 self.assertFalse(report['complete'])
                 slot = next(s for s in report['languages'] if s['allocation']['language'] == 'python')
-                worker = slot['worker']
+                worker = slot['workers'][0]
                 self.assertEqual(worker['state'], 'failed')
                 self.assertEqual(worker['usage']['failure']['Limit']['resource'], 'work')
                 self.assertLessEqual(worker['usage']['work'], worker['grant']['limits']['max_work'])

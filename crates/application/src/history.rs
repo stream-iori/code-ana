@@ -1,20 +1,20 @@
 use super::*;
 use std::collections::BTreeSet;
 
-#[derive(Clone, Serialize)]
-struct SemanticFact {
-    kind: FactKind,
-    world: WorldId,
-    name: String,
-    signature: String,
-    parent: String,
-    target: String,
-    relation: String,
-    status: FactStatus,
-    origin: String,
-    evidence_complete: bool,
-    declaration_resolved: bool,
-    attributes: FactAttributes,
+#[derive(Clone, Serialize, Deserialize)]
+pub(super) struct SemanticFact {
+    pub(super) kind: FactKind,
+    pub(super) world: WorldId,
+    pub(super) name: String,
+    pub(super) signature: String,
+    pub(super) parent: String,
+    pub(super) target: String,
+    pub(super) relation: String,
+    pub(super) status: FactStatus,
+    pub(super) origin: String,
+    pub(super) evidence_complete: bool,
+    pub(super) declaration_resolved: bool,
+    pub(super) attributes: FactAttributes,
 }
 impl From<&Fact> for SemanticFact {
     fn from(f: &Fact) -> Self {
@@ -37,32 +37,32 @@ impl From<&Fact> for SemanticFact {
 fn semantic_hash(f: &SemanticFact) -> String {
     digest(&serde_json::to_value(f).expect("semantic identity encoding"))
 }
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(untagged)]
-enum DiffRecord {
+pub(super) enum DiffRecord {
     File(FileChange),
     Fact(Box<FactChange>),
     Impact(ImpactRecord),
 }
-#[derive(Serialize)]
-struct FileChange {
-    path: String,
-    base: Option<String>,
-    target: Option<String>,
-    change: String,
+#[derive(Serialize, Deserialize)]
+pub(super) struct FileChange {
+    pub(super) path: String,
+    pub(super) base: Option<String>,
+    pub(super) target: Option<String>,
+    pub(super) change: String,
 }
-#[derive(Serialize)]
-struct FactChange {
-    fact: SemanticFact,
-    base_count: i64,
-    target_count: i64,
+#[derive(Serialize, Deserialize)]
+pub(super) struct FactChange {
+    pub(super) fact: SemanticFact,
+    pub(super) base_count: i64,
+    pub(super) target_count: i64,
 }
-#[derive(Serialize)]
-struct ImpactRecord {
-    side: String,
-    changed: String,
-    edge: CallRelation,
-    possible: bool,
+#[derive(Serialize, Deserialize)]
+pub(super) struct ImpactRecord {
+    pub(super) side: String,
+    pub(super) changed: String,
+    pub(super) edge: CallRelation,
+    pub(super) possible: bool,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -79,22 +79,20 @@ pub(crate) struct Snapshot {
     pub effective: Option<codeana_config::Effective>,
 }
 #[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct Page<T = Output> {
-    #[serde(default)]
-    comment_format: u32,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    order_policy: Option<QueryOrderPolicy>,
+    projection_version: u32,
+    request: Request,
+    order_policy: QueryOrderPolicy,
     output: T,
     options: String,
     created: u64,
-    #[serde(default)]
-    spooled: bool,
-    #[serde(default)]
-    total: Option<usize>,
+    total: usize,
 }
 fn option_request(req: &Request) -> Request {
     let mut r = req.clone();
     r.request_id.clear();
+    r.delivery.normalize_identity();
     r.cursor.clear();
     r.max_records = 0;
     r.max_output_bytes = 0;
@@ -106,52 +104,6 @@ fn options(req: &Request) -> String {
     digest(&option_request(req))
 }
 
-/// Existing C1 digests remain primary. Only default comment options can match a pre-C1 page.
-/// Serde preserves the original field/value order, including nested pipeline stages.
-fn legacy_options(req: &Request) -> Result<Option<String>> {
-    if req.search_in != SearchIn::Names {
-        return Ok(None);
-    }
-    use serde::{
-        Deserializer as _,
-        de::{MapAccess, Visitor},
-        ser::{SerializeMap, Serializer as _},
-    };
-    struct PreCommentOptions;
-    impl<'de> Visitor<'de> for PreCommentOptions {
-        type Value = Vec<u8>;
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("request options")
-        }
-        fn visit_map<A: MapAccess<'de>>(
-            self,
-            mut input: A,
-        ) -> std::result::Result<Self::Value, A::Error> {
-            let mut output = Vec::new();
-            {
-                let mut serializer = serde_json::Serializer::new(&mut output);
-                let mut fields = serializer
-                    .serialize_map(None)
-                    .map_err(serde::de::Error::custom)?;
-                while let Some(key) = input.next_key::<String>()? {
-                    let value = input.next_value::<&serde_json::value::RawValue>()?;
-                    if !matches!(key.as_str(), "search_in") {
-                        fields
-                            .serialize_entry(&key, value)
-                            .map_err(serde::de::Error::custom)?;
-                    }
-                }
-                fields.end().map_err(serde::de::Error::custom)?;
-            }
-            Ok(output)
-        }
-    }
-    let current = serde_json::to_vec(&option_request(req))?;
-    let mut decoder = serde_json::Deserializer::from_slice(&current);
-    let legacy = decoder.deserialize_map(PreCommentOptions)?;
-    decoder.end()?;
-    Ok(Some(hash(legacy)))
-}
 #[derive(Clone)]
 pub(super) struct HistoryService {
     store: Store,
@@ -159,6 +111,29 @@ pub(super) struct HistoryService {
 impl HistoryService {
     pub(super) fn new(store: Store) -> Self {
         Self { store }
+    }
+    pub(super) fn project_identity(&self, path: &str) -> Result<(String, String)> {
+        self.store.project_path(path)
+    }
+    pub(super) fn list_snapshots(&self, project: &str) -> Result<Output> {
+        Ok(Output {
+            records: self
+                .store
+                .objects::<Snapshot>("snapshot", project)?
+                .iter()
+                .map(Record::display)
+                .collect::<Result<_, _>>()?,
+            evidence: Evidence::complete(),
+            ..Default::default()
+        })
+    }
+    pub(super) fn remove_snapshot(&self, project: &str, id: &str) -> Result<Output> {
+        self.store.delete_object("snapshot", id, project)?;
+        Ok(Output {
+            records: vec![Record::display(&RemovedSnapshot { removed: id })?],
+            evidence: Evidence::complete(),
+            ..Default::default()
+        })
     }
     pub(crate) async fn snapshot<F, Fut>(
         &self,
@@ -491,40 +466,83 @@ impl HistoryService {
                         .flat_map(|f| [f.parent.clone(), f.target.clone()])
                         .filter(|s| !s.is_empty())
                         .collect();
-                    let mut impact = Vec::new();
+                    rows.clear();
+                    evidence.semantic = false;
+                    evidence.reasons.push("static_possible_impact".into());
+                    evidence.reasons.push("relation_change_roots_only".into());
                     'impact: for (side, reader) in [("base", &a), ("target", &b)] {
-                        for symbol in &changed {
-                            let r = Request {
-                                operation: codeana_model::Operation::Calls,
-                                selector: symbol.clone(),
-                                direction: codeana_model::Direction::Incoming,
-                                depth: req.depth.max(1),
-                                ..Default::default()
-                            };
-                            if budget.charge(1, symbol.len() as u64).is_err() {
-                                break 'impact;
+                        let mut pending = changed.clone();
+                        let mut seen = BTreeSet::new();
+                        let mut roots = BTreeSet::new();
+                        for _ in 0..32 {
+                            if pending.is_empty() {
+                                break;
                             }
-                            let out = codeana_query::run(reader, &r, &|s| {
-                                self.store.blob_bounded(&s.hash, s.size)
-                            })?;
-                            {
-                                evidence.merge(&out.evidence);
-                                for edge in out.records {
-                                    if let Record::Call(edge) = edge {
-                                        impact.push(DiffRecord::Impact(ImpactRecord {
-                                            side: side.into(),
-                                            changed: symbol.clone(),
-                                            edge,
-                                            possible: true,
-                                        }));
+                            let batch_ids: Vec<_> = std::mem::take(&mut pending)
+                                .into_iter()
+                                .filter(|id| seen.insert(id.clone()))
+                                .collect();
+                            for ids in batch_ids.chunks(500) {
+                                budget.charge(1, ids.iter().map(|id| id.len() as u64).sum())?;
+                                let facts = reader
+                                    .select(&FactFilter {
+                                        ids: ids.to_vec(),
+                                        ..Default::default()
+                                    })
+                                    .map_err(anyhow::Error::new)?;
+                                if budget.exhausted() {
+                                    return Err(ResourceBudget::error().into());
+                                }
+                                for fact in facts {
+                                    if matches!(
+                                        fact.kind,
+                                        FactKind::Declaration | FactKind::ExternalSymbol
+                                    ) {
+                                        roots.insert(fact.id.to_string());
+                                    } else {
+                                        for id in [fact.parent, fact.target] {
+                                            if !id.is_empty() && !seen.contains(&id) {
+                                                pending.insert(id);
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                        if !pending.is_empty() {
+                            evidence.enumeration = false;
+                            evidence.limits.push("impact_endpoint_depth".into());
+                        }
+                        // Occurrence parents may be call sites, and added/removed
+                        // endpoints need not exist on both sides. Only resolved
+                        // entity roots enter the incoming-call solver.
+                        for symbol in roots {
+                            if budget.charge(1, symbol.len() as u64).is_err() {
+                                break 'impact;
+                            }
+                            let request = Request {
+                                operation: Operation::Calls,
+                                selector: symbol.clone(),
+                                direction: Direction::Incoming,
+                                depth: req.depth.max(1),
+                                ..Default::default()
+                            };
+                            let output = codeana_query::run(reader, &request, &|source| {
+                                self.store.blob_bounded(&source.hash, source.size)
+                            })?;
+                            evidence.merge(&output.evidence);
+                            for record in output.records {
+                                if let Record::Call(edge) = record {
+                                    rows.push(DiffRecord::Impact(ImpactRecord {
+                                        side: side.into(),
+                                        changed: symbol.clone(),
+                                        edge,
+                                        possible: true,
+                                    }));
+                                }
+                            }
+                        }
                     }
-                    rows = impact;
-                    evidence.semantic = false;
-                    evidence.reasons.push("static_possible_impact".into());
                 }
                 if budget.exhausted() {
                     return Ok(());
@@ -563,12 +581,29 @@ impl HistoryService {
             rows.clear();
         }
         budget.apply(&mut evidence);
-        let output = Output {
+        let mut output = Output {
             records: rows.iter().map(Record::display).collect::<Result<_, _>>()?,
             evidence,
             producer: "rust-diff-v1".into(),
             ..Default::default()
         };
+        output.delivery.context.comparison = Some(ComparisonContext {
+            section: section.to_owned(),
+            base: req.base.clone(),
+            target: req.target.clone(),
+            base_kind: base.kind.clone(),
+            target_kind: target.kind.clone(),
+            base_identity: if base.revision.is_empty() {
+                base.manifest.id()
+            } else {
+                base.revision.clone()
+            },
+            target_identity: if target.revision.is_empty() {
+                target.manifest.id()
+            } else {
+                target.revision.clone()
+            },
+        });
         Ok(self.page(req, project, output, refs)?.output)
     }
     pub(crate) fn resource_page(
@@ -745,17 +780,124 @@ impl HistoryService {
         );
         let id = new_id("page");
         let page = Page {
-            comment_format: 2,
-            order_policy: Some(QueryOrderPolicy::for_operation(req.operation)),
+            projection_version: PUBLIC_PROJECTION_VERSION,
+            request: req.clone(),
+            order_policy: QueryOrderPolicy::for_operation(req.operation),
             output,
             options: options(req),
             created: now(),
-            spooled: true,
-            total: Some(spool.count()),
+            total: spool.count(),
         };
         self.store.freeze_page(&id, project, &page, &refs, spool)?;
         self.slice_page(req, project, &id, page, 0)
     }
+    pub(crate) fn restore_request(&self, incoming: &Request) -> Result<Request> {
+        if incoming.cursor.is_empty() {
+            return Ok(incoming.clone());
+        }
+        let (id, _) = incoming
+            .cursor
+            .rsplit_once(':')
+            .ok_or_else(|| DomainError::new(ErrorCode::InvalidCursor, "missing page offset"))?;
+        let project = self.store.page_project(id)?;
+        let stored: Page<Box<serde_json::value::RawValue>> = self
+            .store
+            .object("page", id, &project)
+            .context(DomainError::new(
+                ErrorCode::InvalidCursor,
+                "invalid frozen result",
+            ))?;
+        ensure!(
+            stored.projection_version == PUBLIC_PROJECTION_VERSION,
+            DomainError::new(
+                ErrorCode::InvalidCursor,
+                "projection changed; issue a new query explicitly"
+            )
+        );
+        ensure!(
+            now().saturating_sub(stored.created) < 86400,
+            DomainError::new(ErrorCode::CursorExpired, "")
+        );
+        let mut original = stored.request;
+        ensure!(
+            incoming.operation == original.operation,
+            DomainError::new(
+                ErrorCode::CursorOptionsMismatch,
+                "operation differs from frozen request"
+            )
+        );
+        ensure!(
+            incoming.selector.is_empty(),
+            DomainError::new(
+                ErrorCode::CursorOptionsMismatch,
+                "omit selector when resuming"
+            )
+        );
+        for supplied in &incoming.delivery.supplied {
+            ensure!(
+                [
+                    "cursor",
+                    "max_records",
+                    "max_output_bytes",
+                    "format",
+                    "detail",
+                    "export",
+                    "deadline_seconds",
+                    "request_id",
+                    "project",
+                    "home"
+                ]
+                .contains(&supplied.as_str()),
+                DomainError::new(
+                    ErrorCode::CursorOptionsMismatch,
+                    format!("omit {supplied} when resuming")
+                )
+            );
+        }
+        if incoming.delivery.project_explicit {
+            ensure!(
+                project_path(Path::new(&incoming.project))? == Path::new(&original.project),
+                DomainError::new(ErrorCode::ProjectMismatch, "cursor project differs")
+            );
+        }
+        if let Some(format) = incoming.delivery.format {
+            ensure!(
+                format == original.delivery.format(),
+                DomainError::new(ErrorCode::CursorOptionsMismatch, "format differs")
+            );
+        }
+        if let Some(detail) = incoming.delivery.detail {
+            ensure!(
+                detail == original.delivery.detail(),
+                DomainError::new(ErrorCode::CursorOptionsMismatch, "detail differs")
+            );
+        }
+        original.request_id = incoming.request_id.clone();
+        original.cursor = incoming.cursor.clone();
+        original.background = false;
+        if incoming.max_records != 0
+            || incoming
+                .delivery
+                .supplied
+                .iter()
+                .any(|s| s == "max_records")
+        {
+            original.max_records = incoming.max_records;
+        }
+        if incoming.max_output_bytes != 0
+            || incoming
+                .delivery
+                .supplied
+                .iter()
+                .any(|s| s == "max_output_bytes")
+        {
+            original.max_output_bytes = incoming.max_output_bytes;
+        }
+        original.deadline_seconds = incoming.deadline_seconds;
+        original.delivery.clear_presence();
+        Ok(original)
+    }
+
     pub(crate) fn continue_page(&self, req: &Request, project: &str) -> Result<TaskResult> {
         let (id, offset) = req
             .cursor
@@ -766,31 +908,17 @@ impl HistoryService {
             ))?;
         let stored: Page<Box<serde_json::value::RawValue>> =
             self.store.object("page", id, project)?;
-        let comments = req.operation == Operation::SearchComments
-            || req.search_in != SearchIn::Names
-            || req
-                .stages
-                .iter()
-                .any(|s| s.operation == Operation::SearchComments);
-        ensure!(
-            stored.comment_format == 2 || !comments,
-            DomainError::new(
-                ErrorCode::InvalidCursor,
-                "comment result format changed; run the query again"
-            )
-        );
         let page = Page {
-            comment_format: stored.comment_format,
+            projection_version: stored.projection_version,
+            request: stored.request,
             order_policy: stored.order_policy,
             output: serde_json::from_str(stored.output.get())?,
             options: stored.options,
             created: stored.created,
-            spooled: stored.spooled,
             total: stored.total,
         };
         ensure!(
-            page.options == options(req)
-                || legacy_options(req)?.is_some_and(|legacy| legacy == page.options),
+            page.options == options(req),
             codeana_model::DomainError::new(codeana_model::ErrorCode::CursorOptionsMismatch, "")
         );
         ensure!(
@@ -808,7 +936,7 @@ impl HistoryService {
         offset: usize,
     ) -> Result<TaskResult> {
         let mut output = page.output;
-        let total = page.total.unwrap_or(output.records.len());
+        let total = page.total;
         ensure!(
             offset <= total,
             codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidCursorOffset, "")
@@ -822,20 +950,11 @@ impl HistoryService {
             (1..=10000).contains(&limit),
             codeana_model::DomainError::new(codeana_model::ErrorCode::RecordBudget, "")
         );
-        if page.spooled {
-            output.records = self.store.page_records(id, project, offset, limit)?;
-            ensure!(
-                output.records.len() == (total - offset).min(limit),
-                codeana_model::DomainError::new(codeana_model::ErrorCode::IncompleteFrozenPage, "")
-            );
-        } else {
-            output.records = output
-                .records
-                .into_iter()
-                .skip(offset)
-                .take(limit)
-                .collect();
-        }
+        output.records = self.store.page_records(id, project, offset, limit)?;
+        ensure!(
+            output.records.len() == (total - offset).min(limit),
+            DomainError::new(ErrorCode::IncompleteFrozenPage, "")
+        );
         let bytes_limit = if req.max_output_bytes == 0 {
             32768
         } else {
@@ -845,35 +964,67 @@ impl HistoryService {
             bytes_limit >= 2048,
             codeana_model::DomainError::new(codeana_model::ErrorCode::OutputBudgetTooSmall, "")
         );
-        let mut size = 1536;
-        let mut count = 0;
-        for row in &output.records {
-            let n = serde_json::to_vec(&row.wire()?)?.len() + 8;
-            if size + n > bytes_limit {
-                break;
+        let count = output.records.len();
+        let mut result = TaskResult::success(output);
+        set_delivery_page(&mut result, id, offset, total);
+        crate::output::prepare(req, &mut result);
+        let fits_all = crate::presentation::encode(req, &result)?.len() <= bytes_limit;
+        let mut low = if fits_all { count } else { 0 };
+        let mut high = count;
+        while low < high {
+            let middle = low + (high - low).div_ceil(2);
+            let tail = result.output.records.split_off(middle);
+            set_delivery_page(&mut result, id, offset, total);
+            crate::output::prepare(req, &mut result);
+            let size = crate::presentation::encode(req, &result)?.len();
+            result.output.records.extend(tail);
+            if size <= bytes_limit {
+                low = middle;
+            } else {
+                high = middle - 1;
             }
-            size += n;
-            count += 1;
         }
         ensure!(
-            count > 0 || offset == total,
-            codeana_model::DomainError::new(
-                codeana_model::ErrorCode::RecordExceedsOutputBudget,
-                "increase --max-output-bytes".to_string()
+            low > 0 || offset == total,
+            DomainError::new(
+                ErrorCode::RecordExceedsOutputBudget,
+                "a complete public record and required status do not fit"
             )
         );
-        let end = offset + count;
-        output.records.truncate(count);
-        if end < total {
-            output.cursor = format!("{id}:{end}");
-            output.evidence.enumeration = false;
-            output.evidence.limits.push("page".into());
-        } else {
-            output.cursor.clear();
-        }
-        Ok(TaskResult::success(output))
+        result.output.records.truncate(low);
+        set_delivery_page(&mut result, id, offset, total);
+        crate::output::prepare(req, &mut result);
+        ensure!(
+            crate::presentation::encode(req, &result)?.len() <= bytes_limit,
+            DomainError::new(ErrorCode::TerminalOutputBudget, "")
+        );
+        Ok(result)
     }
 }
+fn set_delivery_page(result: &mut TaskResult, id: &str, offset: usize, total: usize) {
+    let returned = result.output.records.len();
+    let end = offset + returned;
+    result.output.cursor = if end < total {
+        format!("{id}:{end}")
+    } else {
+        String::new()
+    };
+    result.output.delivery = DeliveryStatus {
+        state: if end < total {
+            DeliveryState::Page
+        } else {
+            DeliveryState::Complete
+        },
+        projection_version: PUBLIC_PROJECTION_VERSION,
+        returned,
+        offset,
+        range_known: true,
+        total: result.output.evidence.enumeration.then_some(total),
+        strict_rejected: false,
+        context: std::mem::take(&mut result.output.delivery.context),
+    };
+}
+
 fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
     use std::io::Read;
     let mut child = std::process::Command::new("git")
@@ -912,130 +1063,6 @@ fn git_output(root: &Path, args: &[&str]) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn legacy_frozen_pages_keep_original_order_without_a_sort_policy() {
-        let original = serde_json::json!({"output":{"revision":"r","producer":"p","records":[{"id":"z"},{"id":"a"}],"evidence":{"enumeration":true,"semantic":true,"limits":[],"reasons":[]},"cursor":""},"options":"frozen-options","created":1});
-        let page: Page = serde_json::from_value(original).unwrap();
-        assert_eq!(page.order_policy, None);
-        assert_eq!(page.output.records[0].wire().unwrap()["id"], "z");
-        assert_eq!(page.output.records[1].wire().unwrap()["id"], "a");
-    }
-    #[tokio::test]
-    async fn pre_comment_request_digests_can_resume_frozen_pages_without_ignoring_new_options() {
-        // Generated by the committed 5d2283f model, not the current serializer.
-        let cases = [
-            (
-                Request {
-                    operation: Operation::SearchCode,
-                    selector: "legacy".into(),
-                    ..Default::default()
-                },
-                "33587c26ec806df4bb51d14fb3f9d767f9d79de1a179e986188e0b33f2a17d50",
-            ),
-            (
-                Request {
-                    operation: Operation::Pipeline,
-                    stages: vec![
-                        Stage {
-                            operation: Operation::Resolve,
-                            selector: "A#方法(\"中\")".into(),
-                            ..Default::default()
-                        },
-                        Stage {
-                            operation: Operation::Source,
-                            ..Default::default()
-                        },
-                    ],
-                    ..Default::default()
-                },
-                "e7cfd714a2c9210a7eea80a152baef0575b26b94e0602daafb90011d865111c9",
-            ),
-        ];
-        for (mut request, old_digest) in cases {
-            let directory = tempfile::tempdir().unwrap();
-            let engine = HistoryService::new(Store::open(directory.path()).unwrap());
-            request.max_records = 1;
-            request.max_output_bytes = 32768;
-            let first = engine
-                .page(
-                    &request,
-                    "p",
-                    Output {
-                        records: (0..3)
-                            .map(|id| Record::display(&json!({"id":id})).unwrap())
-                            .collect(),
-                        evidence: Evidence::complete(),
-                        ..Default::default()
-                    },
-                    vec![],
-                )
-                .unwrap();
-            let id = first.output.cursor.rsplit_once(':').unwrap().0.to_owned();
-            let mut metadata: Value = engine.store.object("page", &id, "p").unwrap();
-            metadata["options"] = json!(old_digest);
-            metadata.as_object_mut().unwrap().remove("comment_format");
-            engine
-                .store
-                .put_object("page", &id, "p", &metadata, &[])
-                .unwrap();
-            request.cursor = first.output.cursor;
-            request.max_records = 2;
-            let resumed = engine.continue_page(&request, "p").unwrap();
-            assert_eq!(resumed.output.records.len(), 2);
-            request.search_in = SearchIn::Comments;
-            assert!(
-                engine
-                    .continue_page(&request, "p")
-                    .unwrap_err()
-                    .to_string()
-                    .contains("run the query again")
-            );
-        }
-    }
-    #[test]
-    fn old_comment_pages_require_a_new_query() {
-        let directory = tempfile::tempdir().unwrap();
-        let engine = HistoryService::new(Store::open(directory.path()).unwrap());
-        let mut request = Request {
-            operation: Operation::SearchComments,
-            selector: "keyword".into(),
-            max_records: 1,
-            max_output_bytes: 32768,
-            ..Default::default()
-        };
-        let first = engine
-            .page(
-                &request,
-                "p",
-                Output {
-                    records: vec![
-                        Record::display(&json!({"id":1})).unwrap(),
-                        Record::display(&json!({"id":2})).unwrap(),
-                    ],
-                    evidence: Evidence::complete(),
-                    ..Default::default()
-                },
-                vec![],
-            )
-            .unwrap();
-        let id = first.output.cursor.rsplit_once(':').unwrap().0.to_owned();
-        let mut metadata: Value = engine.store.object("page", &id, "p").unwrap();
-        metadata.as_object_mut().unwrap().remove("comment_format");
-        metadata["output"]["records"] =
-            json!([{"record_type":"comment","source":{"text":"retired window"}}]);
-        engine
-            .store
-            .put_object("page", &id, "p", &metadata, &[])
-            .unwrap();
-        request.cursor = first.output.cursor;
-        assert!(
-            engine
-                .continue_page(&request, "p")
-                .unwrap_err()
-                .to_string()
-                .contains("run the query again")
-        );
-    }
     #[tokio::test]
     async fn limited_pages_replay_identical_usage_without_refilling() {
         let dir = tempfile::tempdir().unwrap();

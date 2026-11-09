@@ -161,6 +161,7 @@ pub(super) fn run(
         }
     }
     Ok(Output {
+        delivery: Default::default(),
         revision: reader.revision().id.to_string(),
         producer: reader.revision().producer.clone(),
         records,
@@ -285,6 +286,7 @@ pub(super) fn search_code(
         }
     }
     Ok(Output {
+        delivery: Default::default(),
         records: records.into_values().collect(),
         ..comments
     })
