@@ -115,7 +115,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/NodeKeyFactory.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/NodeKeyFactory.java",
       "sha256": "2aa3d3494a0fc0083f80a29a884d247ac1c8db00dc967af3c0e20aaba86b5fdb",
-      "migrated_sha256": "2aa3d3494a0fc0083f80a29a884d247ac1c8db00dc967af3c0e20aaba86b5fdb"
+      "migrated_sha256": "471546790f0f1749af8a56603322aa5159ecd8c3878378e6d1d5a8bc6aeca384",
+      "adaptation": "Remove v22 three-part node-key compatibility; only current provider/module/scope/symbol keys are parsed."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/OfflineXml.java",

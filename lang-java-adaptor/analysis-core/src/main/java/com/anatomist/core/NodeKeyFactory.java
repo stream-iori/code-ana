@@ -59,14 +59,7 @@ public final class NodeKeyFactory {
         int second = first < 0 ? -1 : value.indexOf(SEP, first + SEP.length());
         if (first < 0 || second < 0) return null;
         int third = value.indexOf(SEP, second + SEP.length());
-        if (third < 0) {
-            // Read legacy v22 keys so compatibility diagnostics and tests can explain them.
-            return new Parts(
-                    DEFAULT_PROVIDER,
-                    value.substring(0, first),
-                    value.substring(first + SEP.length(), second),
-                    value.substring(second + SEP.length()));
-        }
+        if (third < 0) throw new IllegalArgumentException("INVALID_NODE_KEY");
         return new Parts(
                 value.substring(0, first),
                 value.substring(first + SEP.length(), second),

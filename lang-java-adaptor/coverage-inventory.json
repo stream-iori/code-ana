@@ -4988,7 +4988,7 @@
     {
       "source": "anatomist-core/src/main/java/com/anatomist/core/NodeKeyFactory.java",
       "sha256": "2aa3d3494a0fc0083f80a29a884d247ac1c8db00dc967af3c0e20aaba86b5fdb",
-      "disposition": "copied",
+      "disposition": "adapted",
       "destination": "analysis-core/src/main/java/com/anatomist/core/NodeKeyFactory.java"
     },
     {
