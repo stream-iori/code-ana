@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "upstream_lock": "upstream.lock.json",
+  "upstream_lock_sha256": "14b5b73a9ff11ede2e7a9d08920dbb694e1c2086d5884186d6c6b1ee0527e7fa",
+  "dependencies": [
+    {
+      "module": "google.golang.org/protobuf",
+      "version": "v1.36.11",
+      "sum": "h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=",
+      "go_mod_sum": "h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=",
+      "license": "LICENSE",
+      "license_sha256": "4835612df0098ca95f8e7d9e3bffcb02358d435dbb38057c844c99d7f725eb20"
+    }
+  ],
+  "protoc": {
+    "version": "libprotoc 34.1",
+    "sha256": "59001d00d60e6ed0e6c49e2ae6591b58882cec5bf45402f937b22566be893d4e"
+  },
+  "generator": {
+    "module": "google.golang.org/protobuf/cmd/protoc-gen-go",
+    "version": "v1.36.11"
+  },
+  "generated_packages": {
+    "codeana/v1/graph.proto": "github.com/microsoft/typescript-go/codeana/graphpb",
+    "codeana/v1/worker.proto": "github.com/microsoft/typescript-go/codeana/workerpb",
+    "codeana/typescript/v1/analysis.proto": "github.com/microsoft/typescript-go/codeana/typescriptpb"
+  },
+  "patches": []
+}

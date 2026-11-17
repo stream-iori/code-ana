@@ -19,6 +19,8 @@
 
 C ABI 1 header、私有 analysis protobuf 1、状态/所有权和公共设施对接已定义；SDK 的 TypeScript 变体强制校验子模块提交、编译器版本及 analysis/graph proto SHA，Java 变体保持。Rust 绑定由同源 protobuf 构建生成，普通 workspace 构建无需 Go。契约 35 项、Python SDK 校验 4 项、contracts clippy 与 workspace 构建通过。证据：`target/typescript-c-abi/t2a/receipt.json`；详见 [TypeScript worker](modules/typescript-worker.md)。这只是 T2a，尚无生产 Go ABI、TS worker 或产品能力，不替代 T2b—T8。
 
+T2b 基础已增加 production.lock、固定来源克隆/生成工具、Go 累计账本、wire 预解码及 GRA1 写入。实际固定 Go/protoc 生成绑定后 8 项核心测试通过，Rust 契约 35 项补验通过；`target/typescript-c-abi/t2b-foundation-version/receipt.json` 状态为 prepared、sdk_created=false。真实异步 ABI、Checker 组件、worker 和产品仍未完成。
+
 ## R5 既有三语言重构验证（2026-11-18，本机通过）
 
 普通与 prepared 已共用分析单元、冻结视图、预算、运行监督、图交付、候选合并和一次 CAS；Java/Rust 保留自身增量策略，Python 保守全量。旧组合执行器已删除。TypeScript 生产接入 T2—T8 继续实施，当前不能索引 JS/TS。

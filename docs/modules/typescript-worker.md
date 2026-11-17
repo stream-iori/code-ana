@@ -45,3 +45,5 @@ Rust worker → Request protobuf → Go 独立会话 / goroutine
 | application supervisor | 自有进程组、RSS、硬截止时间与输入租约；确认 worker 停止后释放捕获及 scratch |
 
 T2b 仍需真实 Go 异步成功、失败、取消、panic、运行中关闭、句柄/FD/缓冲边界及 Rust 归档验证。T3—T8 的闭包、语义、产品、故障和实际分发不能由本页或 protobuf 编译通过代替。
+
+T2b 基础代码已加入 `overlay/engine`：累计 Meter、反射驱动的 protobuf 预解码准入和 GRA1 写入。独立 production.lock 固定 protobuf 运行库/生成器与 protoc，构建脚本先克隆固定上游再生成 Go 绑定，不修改原 checkout。`--prepare-only` 只校验来源、生成绑定和执行 Go 核心测试；当前未建立 SDK、C ABI 组件或生产 worker，不能作为 T2b 出口。基础证据为 `target/typescript-c-abi/t2b-foundation-version/receipt.json`。
