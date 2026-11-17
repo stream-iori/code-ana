@@ -15,6 +15,19 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 多配置与单元选择（2026-11-18）
+
+| 已实现 / 验证 | 结果 |
+|---|---|
+| 多 tsconfig、同文件多上下文 | CLI 7 场景通过，两个 context 的 unit/world 独立；同一模块策略可共享，冲突仍拒绝 |
+| 普通单元选择 | 冻结视图保留对应原生 context；按 unit 选择后仅带本 context，按后端选择多个 context 明确拒绝歧义 |
+| 当前任务预算 | 单元使用捕获后当前共享任务策略；不会沿用旧预算副本 |
+| 完整 Rust 门禁 | just test-rust 通过，含 workspace、CLI/图/源码/注释和 clippy |
+| workspace 实际二进制 | JS/TS provider 7/7、ABI 12 场景 / 20 检查通过，无漂移 |
+| 聚焦与既有后端 | 应用 67、配置 64、链接 13、观察 5、TS 输入 12 项通过；Native Java/Rust/Python prepared 19/19，通过无漂移 |
+
+汇总回执为 `target/typescript-c-abi/t3-multicontext-sealed/receipt.json`，完整 Rust 日志为 `t3-multicontext-full-rust.log`。workspace 二进制的专项为 `t3-multicontext-provider-workspace/receipt.json`、`t3-multicontext-abi-workspace/receipt.json`。先前聚焦构建的专项证据为 `target/typescript-c-abi/t3-multicontext-provider-first/receipt.json`、`t3-multicontext-prepared-first/receipt.json` 及 `t3-multicontext-focused-policy.log`。原私有字段编译失败与预算副本回归失败保留，修正后验证通过。这里只共享完全相同的脚本模块策略，不合并 compiler context；同根存在多个不同脚本模块时明确拒绝，文件级多模块归属仍需补齐。
+
 ## TypeScript T3 project references（2026-11-18）
 
 | 已实现 / 验证 | 边界 |

@@ -110,3 +110,5 @@ JS/TS 各自显式启用，共用原生清单与依赖根。普通输入按 comp
 inputs3 SDK 保留 compiler 配置给出的有序 references，按内核的引用映射区分消费者输入与引用项目的源码/声明产物。已有 `.d.ts` 可作为辅助解析输入，不能由消费者发布；缺产物记录真实失败查找，不改用引用源码充当实现目标，不自动构建。引用配置的 content mapper 仍明确拒绝。Go 冻结重放校验 references 与封存配置一致。
 
 共享 fixture 现为五组，新增 reference 声明目标；另有缺声明产物的两次 unknown 调用测试。实际 SDK / ABI / provider / 公共 capture 及聚焦 Rust 门禁均通过，见当前实现的 t3-references 回执。空根 solution、多配置编排和产品诊断/BuildAdvice 仍待完成；协议不变，旧 inputs2 SDK 要求重建。
+
+公共 capture 的单元选择按稳定 unit ID 读取封存 context，不从后端重新选择整份清单；多个 context 不允许仅凭 TypeScript 后端猜选。CLI 多配置测试已实际验证相同文件、共享模块策略与独立 world。当前任务资源策略仍从共享 task 读取，冻结输入不会恢复旧预算。

@@ -531,7 +531,7 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
         write_json(&temporary, &catalog)?;
         // Validate normalized views before making any generation active.
         let parent = resolve_task_configuration(&project, config.clone())?;
-        let mut module_ids = BTreeSet::new();
+        let mut modules = Vec::new();
         for unit in &catalog.units {
             if let Some(config) = &unit.config {
                 let bytes = read_artifact(&project, config)?;
@@ -541,13 +541,7 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                     &parent.context,
                     std::str::from_utf8(&bytes)?,
                 )?;
-                for module in &effective.config.modules {
-                    ensure!(
-                        module_ids.insert(module.id.clone()),
-                        "INPUT_DUPLICATE_MODULE: {}",
-                        module.id
-                    );
-                }
+                merge_prepared_modules(&mut modules, &effective.config.modules, unit.backend)?;
             }
         }
         let output = project.join(&preparation.manifest);
@@ -657,6 +651,19 @@ mod script_tests {
                 && child.languages.typescript.is_some()
         );
         assert_eq!(child.modules.len(), 1);
+    }
+    #[test]
+    fn ambiguous_script_modules_do_not_depend_on_configuration_order() {
+        let mut config = config();
+        let mut other = config.modules[0].clone();
+        other.id = "other".into();
+        other.language = "javascript".into();
+        config.modules.push(other);
+        for _ in 0..2 {
+            let entry = &config.inputs.as_ref().unwrap().entries[0];
+            assert!(typescript::members(entry, &config).is_err());
+            config.modules.reverse();
+        }
     }
     #[test]
     fn identical_config_paths_with_conflicting_module_owners_are_not_analyzed_twice() {

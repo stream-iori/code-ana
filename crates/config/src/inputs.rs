@@ -212,6 +212,33 @@ pub struct ResolvedUnit {
     pub context: Option<ResolvedContext>,
 }
 
+/// Distinct compiler contexts can share an identical script module policy.
+/// Their files/worlds remain in separate unit views; conflicting policies and
+/// duplicate module identities in all other backends are still rejected.
+pub fn merge_prepared_modules(
+    current: &mut Vec<Module>,
+    additions: &[Module],
+    backend: AnalysisBackend,
+) -> Result<()> {
+    for module in additions {
+        if let Some(previous) = current.iter().find(|existing| existing.id == module.id) {
+            ensure!(
+                backend == AnalysisBackend::TypeScript
+                    && SourceLanguage::lookup(&previous.language)
+                        .is_some_and(|language| language.backend() == backend)
+                    && SourceLanguage::lookup(&module.language)
+                        .is_some_and(|language| language.backend() == backend)
+                    && digest(previous) == digest(module),
+                "INPUT_DUPLICATE_MODULE: {}",
+                module.id
+            );
+        } else {
+            current.push(module.clone());
+        }
+    }
+    Ok(())
+}
+
 /// Prepared inputs require the exact configuration bytes they were exported from.
 fn matches_configuration(catalog: &InputCatalog, _config: &ProjectConfig, raw_hash: &str) -> bool {
     catalog.config_sha256 == raw_hash
@@ -537,10 +564,11 @@ pub(super) fn resolve_using(
                     "INPUT_UNIT_CONTEXT_MISMATCH"
                 );
             }
-            effective
-                .config
-                .modules
-                .extend(child.config.modules.clone());
+            merge_prepared_modules(
+                &mut effective.config.modules,
+                &child.config.modules,
+                unit.backend,
+            )?;
             Some(child)
         } else {
             ensure!(
@@ -554,14 +582,6 @@ pub(super) fn resolve_using(
             context: child,
         });
         reader.leave_unit();
-    }
-    let mut ids = BTreeSet::new();
-    for module in &effective.config.modules {
-        ensure!(
-            ids.insert(&module.id),
-            "INPUT_DUPLICATE_MODULE: {}",
-            module.id
-        );
     }
     let entries = effective
         .input_units
@@ -623,6 +643,36 @@ mod tests {
         let entry = config.inputs.as_ref().unwrap().entries[0].clone();
         config.inputs.as_mut().unwrap().entries.push(entry);
         assert!(validate(temp.path(), &config).is_err());
+    }
+    #[test]
+    fn repeated_script_modules_share_policy_only_when_identical() {
+        let module = Module {
+            id: "app".into(),
+            language: "typescript".into(),
+            root: ".".into(),
+            ..Default::default()
+        };
+        let mut modules = vec![];
+        merge_prepared_modules(
+            &mut modules,
+            std::slice::from_ref(&module),
+            AnalysisBackend::TypeScript,
+        )
+        .unwrap();
+        merge_prepared_modules(
+            &mut modules,
+            std::slice::from_ref(&module),
+            AnalysisBackend::TypeScript,
+        )
+        .unwrap();
+        assert_eq!(modules.len(), 1);
+        let mut conflict = module.clone();
+        conflict.root = "different".into();
+        assert!(
+            merge_prepared_modules(&mut modules, &[conflict], AnalysisBackend::TypeScript).is_err()
+        );
+        assert!(merge_prepared_modules(&mut modules, &[module], AnalysisBackend::Python).is_err());
+        assert_eq!(modules.len(), 1);
     }
     #[test]
     fn native_views_inherit_task_policy_and_reject_policy_injection() {

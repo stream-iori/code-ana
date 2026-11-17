@@ -109,7 +109,17 @@ fn each_compiler_context_has_its_own_capture_view_and_world() -> Result<()> {
     write_inputs(&root, &inputs)?;
     let frozen = capture(&root, &Request::default())?;
     assert_eq!(frozen.unit_views.len(), 2);
+    assert!(
+        frozen
+            .backend_capture(codeana_model::AnalysisBackend::TypeScript)
+            .is_err()
+    );
     for (id, view) in &frozen.unit_views {
+        let selected = frozen.unit_capture(id)?;
+        let native = selected.effective.typescript_inputs().unwrap();
+        assert_eq!(native.contexts.len(), 1);
+        assert_eq!(&native.contexts[0].unit, id);
+        assert_eq!(selected.manifest, view.manifest);
         assert!(
             view.manifest
                 .files

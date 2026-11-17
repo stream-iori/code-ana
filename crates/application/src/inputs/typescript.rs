@@ -20,9 +20,22 @@ fn compiler_config(entry: &InputEntry) -> PathBuf {
     }
 }
 
+fn module(entry: &InputEntry, config: &ProjectConfig) -> Result<String> {
+    let candidates = config
+        .modules
+        .iter()
+        .filter(|module| is_script(&module.language) && module.root == entry.root)
+        .collect::<Vec<_>>();
+    ensure!(
+        candidates.len() <= 1,
+        "TYPESCRIPT_CONTEXT_CONFLICT: ambiguous script modules at compiler root"
+    );
+    Ok(module_id(entry, &entry.root, config))
+}
+
 pub(super) fn members(entry: &InputEntry, config: &ProjectConfig) -> Result<Vec<String>> {
     let mut members = Vec::new();
-    let module = module_id(entry, &entry.root, config);
+    let module = module(entry, config)?;
     for candidate in &config.inputs.as_ref().context("INPUTS_REQUIRED")?.entries {
         if is_script(&candidate.language)
             && candidate.root == entry.root
@@ -30,7 +43,7 @@ pub(super) fn members(entry: &InputEntry, config: &ProjectConfig) -> Result<Vec<
             && candidate.typescript.scope == entry.typescript.scope
         {
             ensure!(
-                module_id(candidate, &candidate.root, config) == module,
+                self::module(candidate, config)? == module,
                 "TYPESCRIPT_CONTEXT_CONFLICT: same compiler context has different modules"
             );
             members.push(candidate.id.clone());
@@ -68,7 +81,7 @@ pub(super) fn prepare(
         project,
         compiler_config(entry).to_str().context("INPUT_PATH_UTF8")?,
     )?;
-    let module = module_id(entry, &entry.root, config);
+    let module = module(entry, config)?;
     let relative = manifest
         .strip_prefix(project)?
         .to_str()

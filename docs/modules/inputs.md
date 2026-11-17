@@ -269,3 +269,5 @@ Java 的每个声明 jar 路径都核对原字节，不能因相同 SHA 的另�
 Java 单元还保留项目根模块的 XML 资源输入规则：启用 Spring XML/SOFA 时，把公共扫描选中的项目 XML 纳入该视图，跳过 pom.xml；原生资源根已有 owner 时保持该 owner，Lombok 控制仍独立捕获。不会因此把 Cargo.toml 等无关控制或其他语言源码交给 Java。根资源目录观察随单元保留，XML 内容变更继续参与增量与资源限制检查。
 
 普通与 prepared 原生描述符均以 PREPARATION 登记，只承担字节完整性校验；有效配置进入语义 profile。pom.xml、Cargo.toml、pyproject.toml 等实际控制文件仍以 CONTROL 登记并参与失效判断。等价原生视图从 prepared 改为普通入口时可 Reuse；旧普通角色清单至多触发一次保守全量。
+
+多个 JS/TS 入口可使用不同 compiler 配置且共享相同的模块策略；相同源文件按各 context 的 world 独立登记。重复 module ID 仅允许完全一致的脚本策略，其他冲突拒绝。当前同根多个不同脚本 module 明确报上下文冲突，尚未实现文件级多模块归属。

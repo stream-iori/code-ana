@@ -109,6 +109,7 @@ pub struct FrozenUnitView {
     pub manifest: Manifest,
     pub blobs: BTreeMap<String, CapturedBlob>,
     pub observations: ObservationSet,
+    pub(super) context: ResolvedContext,
 }
 impl Capture {
     pub fn backend_capture(&self, backend: AnalysisBackend) -> Result<Self> {
@@ -119,7 +120,16 @@ impl Capture {
             );
             return Ok(self.clone());
         }
-        self.unit_capture(&backend.as_str().into())
+        let mut units = self
+            .unit_views
+            .values()
+            .filter(|view| view.backend == backend);
+        let unit = units.next().context("CAPTURE_UNIT_BACKEND_MISSING")?;
+        ensure!(
+            units.next().is_none(),
+            "CAPTURE_BACKEND_AMBIGUOUS: select an analysis unit"
+        );
+        self.unit_capture(&unit.unit)
     }
     /// Only the selected unit's immutable references enter language preparation.
     pub fn unit_capture(&self, unit: &AnalysisUnitId) -> Result<Self> {
@@ -127,17 +137,12 @@ impl Capture {
             .unit_views
             .get(unit)
             .context("CAPTURE_UNIT_VIEW_MISSING")?;
-        let context = if self.effective.input_units.is_empty() {
-            self.effective.for_backend(view.backend)?
-        } else {
-            self.effective
-                .input_units
-                .iter()
-                .find(|u| u.prepared.id == unit.as_str())
-                .and_then(|u| u.context.as_ref())
-                .context("CAPTURE_UNIT_CONTEXT_MISSING")?
-                .clone()
-        };
+        let mut context = view.context.clone();
+        // Resource allocation may tighten the task policy after capture. Native
+        // context identity is frozen, while every unit uses that current policy.
+        context.config.task = self.effective.config.task.clone();
+        context.config_digest = digest(&context.config);
+        context.semantic_digest = semantic::context(&context.config, &context.inputs);
         ensure!(
             context.inputs.len() == 1 && context.inputs[0].backend() == view.backend,
             "CAPTURE_UNIT_BACKEND_MISMATCH"

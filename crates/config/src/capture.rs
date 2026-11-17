@@ -591,6 +591,7 @@ fn capture_metered(
                 unit,
                 backend: context.inputs[0].backend(),
                 semantic_digest: context.semantic_digest.clone(),
+                context: context.clone(),
                 manifest,
                 blobs: unit_blobs,
                 observations,
