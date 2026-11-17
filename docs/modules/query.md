@@ -137,7 +137,7 @@ calls -------- call_relation -> resolve       导航到另一端方法
 
 Bean、Spring/SOFA XML、MVC 和 handler 的公开配置节点保留 Facet 类型，可按名字/签名定位、search-code、structure 和 source 读取。语法、绑定、类型辅助 facet 不参与实体发现或结构树。配置节点的选择范围和属性从当前 Anatomist 逻辑投影读取；旧物理 schema 不兼容时明确要求 index --full。raw type/binding/syntax 图查询不支持。
 
-`annotations ENTITY --meta` 在直接注解 occurrence 上展开元注解，保留 `direct`、`meta_depth` 和 `via`。同一 occurrence 的不同路径分别返回；路径内防环，固定最多 16 层，达到深度或工作预算明确披露枚举缺口。元注解按冻结上游的 annotation/meta 对合并跨 producer 重复记录；属性值为 null，来源位置仍是直接注解现场。pipeline 对应 stage 设置 `meta: true`；其他操作设置 meta 拒绝。gRPC TaskRequest 字段 43、Stage 字段 8，以及 `annotations-meta-v1` 能力检查确保选项被传递。
+`annotations ENTITY --meta` 在直接注解 occurrence 上展开元注解，保留 `direct`、`meta_depth` 和 `via`。同一 occurrence 的不同路径分别返回；路径内防环，固定最多 16 层，达到深度或工作预算明确披露枚举缺口。元注解先由直接 occurrence 的公开 hash/ordinal 定位主机记录的分析单元，再在该单元内按 annotation/meta 对合并跨 producer 重复记录；缓存按单元/world/producer 隔离，不按全项目同名 FQN 借用定义。直接注解未精确绑定时保留 possible 现场，不按名字扩展；任一元注解路径经过不确定边，后续精确边也不能恢复完整证据。属性值为 null，来源位置仍是直接注解现场。pipeline 对应 stage 设置 `meta: true`；其他操作设置 meta 拒绝。gRPC TaskRequest 字段 43、Stage 字段 8，以及 `annotations-meta-v1` 能力检查确保选项被传递。
 
 
 ### Java 层级和静态派发

@@ -107,9 +107,17 @@ pub trait SourceLocator: SourceContext {
     }
 }
 pub trait AnnotationReader: GraphAccess {
+    fn annotation_context(&self, direct: &Fact) -> Result<AnnotationContext, DomainError> {
+        Ok(AnnotationContext {
+            unit: None,
+            world: direct.owner.world.clone(),
+            producer: direct.owner.producer.clone(),
+        })
+    }
     fn annotation_meta_edges(
         &self,
         names: &[String],
+        direct: &Fact,
     ) -> Result<Vec<AnnotationMetaEdge>, DomainError> {
         if names.is_empty() || names.len() > 500 {
             return Err("ANNOTATION_META_KEY_BUDGET".into());
@@ -126,7 +134,10 @@ pub trait AnnotationReader: GraphAccess {
             ) else {
                 continue;
             };
-            if names.iter().any(|name| name == annotation) {
+            if fact.owner.world == direct.owner.world
+                && fact.owner.producer == direct.owner.producer
+                && names.iter().any(|name| name == annotation)
+            {
                 pairs
                     .entry((annotation.clone(), meta.clone()))
                     .or_default()

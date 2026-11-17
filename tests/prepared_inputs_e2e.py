@@ -472,6 +472,57 @@ source_roots=[{path=".",scope="MAIN"}]
         with self.db(removed['revision']) as db:
             self.assertEqual({r[0] for r in db.execute("SELECT DISTINCT module FROM nodes WHERE source_file='java-shared/src/main/java/Shared.java'")}, {'first'})
 
+    @unittest.skipUnless(os.environ.get('CODEANA_TEST_REAL_JAVA') == '1', 'explicit real Java SDK gate')
+    def test_meta_annotations_do_not_cross_independent_java_contexts(self):
+        self.config = '''schema_version=1
+kind="project"
+[resources.index]
+worker_memory_bytes=3221225472
+[languages.java]
+enabled=true
+[languages.java.analysis]
+source_version="8"
+toolchain="java8"
+classpath="existing"
+vm_classpath=true
+[inputs]
+'''
+        sources = {}
+        def source(marker):
+            return ('package fixture;\n@interface '+marker+' {}\n@'+marker+
+                    ' @interface Shared {}\n@Shared public class Subject {}\n')
+        for name, marker in [('java-left', 'LeftMarker'), ('java-right', 'RightMarker')]:
+            path = self.project/name
+            (path/'src/main/java/fixture').mkdir(parents=True)
+            (path/'pom.xml').write_text('<project><modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>same</artifactId><version>1</version><properties><maven.compiler.source>8</maven.compiler.source><maven.compiler.target>8</maven.compiler.target></properties></project>')
+            sources[name] = path/'src/main/java/fixture/Subject.java'
+            sources[name].write_text(source(marker))
+            self.config += f'\n[[inputs.entries]]\nid="{name}"\nlanguage="java"\nroot="{name}"\n[inputs.entries.java]\noffline=true\n'
+        self.write_config()
+        def check(revision, left):
+            with self.db(revision) as db:
+                subjects = dict(db.execute("SELECT u.unit_id,n.id FROM graph_nodes n JOIN node_units m USING(node_pk) JOIN unit_catalog u USING(unit_pk) WHERE n.qualified_name='fixture.Subject' AND n.kind='CLASS'"))
+            self.assertEqual(set(subjects), {'java-left', 'java-right'})
+            for name, marker in [('java-left', left), ('java-right', 'RightMarker')]:
+                rows, terminal = self.cli('annotations', subjects[name], '--meta', '--revision', revision)
+                self.assertTrue(terminal['evidence']['semantic'], terminal)
+                paths = sorted(row['attributes']['via'] for row in rows)
+                self.assertEqual(paths, ['fixture.Shared', 'fixture.Shared>fixture.'+marker])
+                self.assertTrue(all(not isinstance(row['attributes'].get('id'), int) for row in rows), rows)
+        first = self.cli('index', '--prepare', timeout=180)[1]['revision']
+        check(first, 'LeftMarker')
+        repeated = self.cli('index', '--prepare', timeout=180)[1]
+        check(repeated['revision'], 'LeftMarker')
+        report = self.cli('report', repeated['report'])[0][0]
+        self.assertTrue(all(w['phase']=='reused' for slot in report['analysis_resources']['coordinator']['languages'] for w in slot['workers']))
+        sources['java-left'].write_text(source('ChangedMarker'))
+        changed = self.cli('index', '--prepare', timeout=180)[1]['revision']
+        check(changed, 'ChangedMarker')
+        check(first, 'LeftMarker')
+        full = self.cli('index', '--full', timeout=180)[1]['revision']
+        check(full, 'ChangedMarker')
+        self.assertFalse(list(self.project.rglob('*.class')), 'index must not compile the fixture project')
+
     @unittest.skipUnless(os.environ.get('CODEANA_TEST_REAL_JAVA') == '1', 'explicit Native Java SDK gate')
     def test_independent_maven_reactors_and_three_languages(self):
         self.add_python_comment_inputs()

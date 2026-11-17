@@ -1,12 +1,14 @@
 //! Frozen AnnotationQueryService semantics: occurrence-local, cycle-safe paths.
 use super::*;
+use anyhow::Context;
 
 pub(super) fn expand(
     reader: &dyn AnnotationQueryReader,
     direct: Vec<Fact>,
     evidence: &mut Evidence,
 ) -> Result<Vec<Fact>> {
-    let mut catalogue = BTreeMap::<String, Vec<AnnotationMetaEdge>>::new();
+    let mut catalogues =
+        BTreeMap::<AnnotationContext, BTreeMap<String, Vec<AnnotationMetaEdge>>>::new();
     let mut output = Vec::new();
     for direct in direct {
         let name = direct
@@ -14,12 +16,21 @@ pub(super) fn expand(
             .annotation
             .as_ref()
             .map(String::as_str)
+            .filter(|name| !name.is_empty())
             .or_else(|| direct.attributes.raw_name.as_ref().map(String::as_str))
             .unwrap_or("")
             .to_owned();
         if reader.charge(1, retained_size(&direct)?).is_err() {
             break;
         }
+        let mut catalogue = if direct.declaration_resolved {
+            let context = reader
+                .annotation_context(&direct)
+                .map_err(anyhow::Error::new)?;
+            Some(catalogues.entry(context).or_default())
+        } else {
+            None
+        };
         let mut queue = VecDeque::from([(direct.clone(), vec![name], 0_u32)]);
         while let Some((mut fact, path, depth)) = queue.pop_front() {
             if output.len() >= 10000 {
@@ -34,11 +45,30 @@ pub(super) fn expand(
             fact.attributes.direct = (depth == 0).into();
             fact.attributes.meta_depth = depth.into();
             fact.attributes.via = path.join(">").into();
+            let unresolved_direct = depth == 0 && !direct.declaration_resolved;
+            if unresolved_direct {
+                fact.evidence_complete = false;
+                fact.status = "possible".into();
+                evidence.semantic = false;
+                evidence
+                    .reasons
+                    .push("annotation_resolution_incomplete".into());
+            }
+            let path_complete = fact.evidence_complete;
             output.push(fact);
+            if unresolved_direct {
+                continue;
+            }
+            let catalogue = catalogue.as_deref_mut().with_context(|| {
+                DomainError::new(
+                    ErrorCode::GraphColumnType,
+                    "direct annotation context missing",
+                )
+            })?;
             let annotation = path.last().unwrap();
             if !catalogue.contains_key(annotation) {
                 let edges = reader
-                    .annotation_meta_edges(std::slice::from_ref(annotation))
+                    .annotation_meta_edges(std::slice::from_ref(annotation), &direct)
                     .map_err(anyhow::Error::new)?;
                 if reader.resource_exhausted() {
                     return Ok(output);
@@ -85,8 +115,13 @@ pub(super) fn expand(
                 next.attributes.values = Field::Null;
                 next.attributes.resolved_type = Field::Missing;
                 let resolved = attributes.resolution.as_ref().map(String::as_str) == Some("exact");
-                next.evidence_complete &= resolved;
-                next.status = if resolved { "complete" } else { "possible" }.into();
+                next.evidence_complete = path_complete && resolved;
+                next.status = if next.evidence_complete {
+                    "complete"
+                } else {
+                    "possible"
+                }
+                .into();
                 if resolved {
                     next.attributes.resolved_type = meta.clone().into();
                 } else {

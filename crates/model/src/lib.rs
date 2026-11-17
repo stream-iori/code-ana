@@ -842,6 +842,13 @@ pub struct AnnotationMetaEdge {
     pub meta_annotation: String,
     pub attributes: FactAttributes,
 }
+/// Reader-local cache identity; never serialized as a fact or public graph ID.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct AnnotationContext {
+    pub unit: Option<AnalysisUnitId>,
+    pub world: WorldId,
+    pub producer: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -344,7 +344,9 @@ pub fn prepare_identities(db: &Connection, check: &dyn Fn() -> Result<()>) -> Re
         ("stage_annotations", "fact_hash IS NOT NULL"),
     ] {
         check()?;
-        db.execute_batch(&format!("WITH ranked AS(SELECT seq,row_number() OVER(PARTITION BY producer_id,coalesce(source_file,''),world,fact_hash ORDER BY seq)-1 AS ordinal FROM {table} WHERE {predicate}) UPDATE {table} SET fact_ordinal=(SELECT ordinal FROM ranked WHERE ranked.seq={table}.seq) WHERE {predicate}"))?;
+        // Reuse is staged before fresh rows. Arrival order and private primary keys
+        // must not change which logical unit owns a duplicate public occurrence.
+        db.execute_batch(&format!("WITH unit_order AS(SELECT unit_pk,row_number() OVER(ORDER BY backend,unit_id) AS logical_order FROM unit_catalog), ranked AS(SELECT s.seq,row_number() OVER(PARTITION BY producer_id,coalesce(source_file,''),world,fact_hash ORDER BY u.logical_order,s.seq)-1 AS ordinal FROM {table} s JOIN unit_order u ON u.unit_pk=s.unit_pk WHERE {predicate}) UPDATE {table} SET fact_ordinal=(SELECT ordinal FROM ranked WHERE ranked.seq={table}.seq) WHERE {predicate}"))?;
     }
     db.execute_batch("CREATE INDEX stage_edges_fact ON stage_edges(fact_hash,fact_ordinal) WHERE relation<>'CALLS'; CREATE INDEX stage_annotations_fact ON stage_annotations(fact_hash,fact_ordinal);")?;
     Ok(())

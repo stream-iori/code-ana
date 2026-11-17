@@ -2,7 +2,8 @@
 use super::test_support::{canonical, units_fixture};
 use super::*;
 use codeana_contracts::graph_rows::{
-    AnnotationMetaRow, EdgeRow, FileCacheRow, FileDependencyRow, GraphRow, SymbolDependencyRow,
+    AnnotationMetaRow, AnnotationRow, EdgeRow, FileCacheRow, FileDependencyRow, GraphRow,
+    SymbolDependencyRow,
 };
 use sha2::{Digest, Sha256};
 
@@ -461,5 +462,308 @@ fn explicit_file_dependencies_cannot_select_a_peer_target_outside_their_bindings
         ErrorCode::AnalysisUnitScope
     );
     assert_eq!(store.head("t")?, "");
+    Ok(())
+}
+
+fn annotation_context_fixture(
+    global: bool,
+    exact: bool,
+) -> Result<(tempfile::TempDir, Store, Revision, Vec<GraphRecord>)> {
+    let (directory, store, mut revision, template) = units_fixture(&["left", "right"])?;
+    let shared = SourceUnit {
+        path: "Shared.java".into(),
+        world: "library".into(),
+        auxiliary: true,
+        ..revision.manifest.files[0].clone()
+    };
+    revision.manifest.files.push(shared.clone());
+    for unit in &mut revision.unit_ownership.as_mut().unwrap().units {
+        unit.inputs.push(shared.clone());
+    }
+    let mut rows = vec![];
+    for (id, target) in [("left", "a.Left"), ("right", "b.Right")] {
+        let origin = Origin::Unit(Arc::new(id.into()));
+        let owner = if global { "shared" } else { id };
+        let mut node = template[0].clone();
+        for (column, value) in [
+            (0, owner.to_owned()),
+            (1, owner.to_owned()),
+            (
+                12,
+                if global {
+                    String::new()
+                } else {
+                    format!("{id}.java")
+                },
+            ),
+        ] {
+            node.cells[column].value = Some(codeana_contracts::graph::cell::Value::Text(value));
+        }
+        if global {
+            node.world.clear();
+        }
+        rows.push(Ok(origin.record(node)));
+        rows.push(Ok(origin.record(
+            AnnotationRow {
+                node_ref: Some(owner.into()),
+                node_is_key: Some(1),
+                resolved_node: Some(owner.into()),
+                annotation_fqn: Some("p.Shared".into()),
+                raw_name: Some("Shared".into()),
+                attributes: Some("{}".into()),
+                target_kind: Some("type".into()),
+                target_path: Some("".into()),
+                language: Some("java".into()),
+                provider_id: Some("java-core".into()),
+                mechanism: Some("java.declaration_annotation".into()),
+                resolution_status: Some(if exact { "exact" } else { "heuristic" }.into()),
+                source_file: (!global).then(|| format!("{id}.java")),
+                source_module: Some("app".into()),
+                source_scope: Some("MAIN".into()),
+                producer_id: Some("mock".into()),
+                ..Default::default()
+            }
+            .into_row(if global { "" } else { "main" }),
+        )));
+        rows.push(Ok(origin.record(
+            AnnotationMetaRow {
+                annotation_fqn: Some("p.Shared".into()),
+                meta_annotation_fqn: Some(target.into()),
+                raw_name: Some(target.into()),
+                language: Some("java".into()),
+                provider_id: Some("java-core".into()),
+                mechanism: Some("java.annotation.meta".into()),
+                resolution_status: Some("exact".into()),
+                source_file: Some("Shared.java".into()),
+                source_location: None,
+                producer_id: Some("mock".into()),
+            }
+            .into_row("library"),
+        )));
+    }
+    let rows = rows.into_iter().collect::<Result<Vec<_>>>()?;
+    let published = store.publish_staged(
+        store.stage_mixed_graph_records_with_context(
+            revision,
+            vec![
+                update("left", UnitUpdateKind::Full),
+                update("right", UnitUpdateKind::Full),
+            ],
+            rows.iter()
+                .map(|record| Ok(record.origin.record(record.row.clone()))),
+            "",
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "meta-contexts",
+    )?;
+    Ok((directory, store, published, rows))
+}
+
+#[test]
+fn meta_annotation_queries_keep_shared_input_definitions_in_the_direct_occurrences_unit()
+-> Result<()> {
+    let (_directory, store, published, _) = annotation_context_fixture(false, true)?;
+    let reader = store.read(&published.id)?;
+    for (id, target) in [("left", "a.Left"), ("right", "b.Right")] {
+        let request = Request {
+            operation: Operation::Annotations,
+            selector: id.into(),
+            meta: true,
+            ..Default::default()
+        };
+        let result =
+            codeana_query::run(&reader, &request, &|_| anyhow::bail!("no source expected"))?;
+        let mut paths = result
+            .records
+            .iter()
+            .map(|r| {
+                r.wire().unwrap()["attributes"]["via"]
+                    .as_str()
+                    .unwrap()
+                    .to_owned()
+            })
+            .collect::<Vec<_>>();
+        paths.sort();
+        assert_eq!(paths, ["p.Shared".to_owned(), format!("p.Shared>{target}")]);
+    }
+    Ok(())
+}
+
+#[test]
+fn meta_annotation_cache_is_local_to_each_occurrence_on_a_shared_global_node() -> Result<()> {
+    let (_directory, store, published, _) = annotation_context_fixture(true, true)?;
+    let reader = store.read(&published.id)?;
+    let request = Request {
+        operation: Operation::Annotations,
+        selector: "shared".into(),
+        meta: true,
+        ..Default::default()
+    };
+    let result = codeana_query::run(&reader, &request, &|_| anyhow::bail!("no source expected"))?;
+    let mut paths = result
+        .records
+        .iter()
+        .map(|r| {
+            r.wire().unwrap()["attributes"]["via"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        })
+        .collect::<Vec<_>>();
+    paths.sort();
+    assert_eq!(
+        paths,
+        [
+            "p.Shared",
+            "p.Shared",
+            "p.Shared>a.Left",
+            "p.Shared>b.Right"
+        ]
+    );
+    Ok(())
+}
+
+#[test]
+fn meta_annotation_unknown_direct_type_does_not_become_an_exact_name_binding() -> Result<()> {
+    let (_directory, store, published, _) = annotation_context_fixture(false, false)?;
+    let reader = store.read(&published.id)?;
+    let request = Request {
+        operation: Operation::Annotations,
+        selector: "left".into(),
+        meta: true,
+        ..Default::default()
+    };
+    let result = codeana_query::run(&reader, &request, &|_| anyhow::bail!("no source expected"))?;
+    assert_eq!(result.records.len(), 1);
+    assert!(!result.evidence.semantic);
+    assert_eq!(
+        result.records[0].wire().unwrap()["evidence_complete"],
+        false
+    );
+    Ok(())
+}
+
+#[test]
+fn meta_annotation_lookup_rejects_forged_occurrence_identity_and_uses_the_query_budget()
+-> Result<()> {
+    let (_directory, store, published, _) = annotation_context_fixture(false, true)?;
+    let reader = store.read(&published.id)?;
+    let direct = reader
+        .select(&FactFilter {
+            kinds: vec![FactKind::Facet],
+            parent: Some("left".into()),
+            relation: Some("java.annotation".into()),
+            ..Default::default()
+        })?
+        .remove(0);
+    for field in ["hash", "ordinal", "parent", "source", "producer", "world"] {
+        let mut forged = direct.clone();
+        match field {
+            "hash" => forged.id = "annotation:+f+f+f+f+f+f+f+f+f+f+f+f+f+f+f+f:0".into(),
+            "ordinal" => {
+                forged.id = format!("{}:00", direct.id.as_str().rsplit_once(':').unwrap().0).into()
+            }
+            "parent" => forged.parent = "right".into(),
+            "source" => forged.source = "right.java".into(),
+            "producer" => forged.owner.producer = "peer".into(),
+            "world" => forged.owner.world = "foreign-world".into(),
+            _ => unreachable!(),
+        }
+        let error = reader
+            .annotation_meta_edges(&["p.Shared".into()], &forged)
+            .unwrap_err();
+        assert_eq!(error.code, ErrorCode::GraphColumnType, "{field}");
+    }
+    let budget = ResourceBudget::new(ResourceLimits {
+        max_work: 100,
+        max_payload_bytes: 1,
+    });
+    let limited = store.read(&published.id)?.with_budget(budget.clone());
+    assert!(
+        limited
+            .annotation_meta_edges(&["p.Shared".into()], &direct)
+            .is_err()
+    );
+    assert_eq!(budget.usage().exhausted.unwrap().resource, "payload_bytes");
+    Ok(())
+}
+
+#[test]
+fn mixed_reuse_preserves_global_occurrence_ids_and_their_meta_paths() -> Result<()> {
+    let (_directory, store, first, rows) = annotation_context_fixture(true, true)?;
+    let request = Request {
+        operation: Operation::Annotations,
+        selector: "shared".into(),
+        meta: true,
+        ..Default::default()
+    };
+    let snapshot = |revision: &Revision| -> Result<BTreeMap<String, String>> {
+        let reader = store.read(&revision.id)?;
+        let result =
+            codeana_query::run(&reader, &request, &|_| anyhow::bail!("no source expected"))?;
+        result
+            .records
+            .iter()
+            .map(|record| {
+                let wire = record.wire()?;
+                Ok((
+                    wire["id"].as_str().context("fact id")?.to_owned(),
+                    wire["attributes"]["via"]
+                        .as_str()
+                        .context("meta path")?
+                        .to_owned(),
+                ))
+            })
+            .collect()
+    };
+    let expected = snapshot(&first)?;
+    let mixed = store.publish_staged(
+        store.stage_mixed_graph_records_with_context(
+            first.clone(),
+            vec![
+                update("left", UnitUpdateKind::Full),
+                update("right", UnitUpdateKind::Reuse),
+            ],
+            rows.iter()
+                .filter(
+                    |record| matches!(&record.origin, Origin::Unit(id) if id.as_str() == "left"),
+                )
+                .map(|record| Ok(record.origin.record(record.row.clone()))),
+            &first.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "mixed-global-occurrences",
+    )?;
+    assert_eq!(
+        snapshot(&mixed)?,
+        expected,
+        "unchanged unit inputs must retain occurrence/meta identities"
+    );
+    let full = store.publish_staged(
+        store.stage_mixed_graph_records_with_context(
+            mixed.clone(),
+            vec![
+                update("left", UnitUpdateKind::Full),
+                update("right", UnitUpdateKind::Full),
+            ],
+            rows.iter()
+                .map(|record| Ok(record.origin.record(record.row.clone()))),
+            &mixed.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "full-global-occurrences",
+    )?;
+    assert_eq!(snapshot(&full)?, expected);
+    assert_eq!(
+        snapshot(&first)?,
+        expected,
+        "historical reader remains stable"
+    );
     Ok(())
 }

@@ -1868,6 +1868,46 @@ mod tests {
         );
     }
     #[test]
+    fn meta_annotation_uncertain_path_never_recovers_exactness_at_a_later_edge() {
+        let mut reader = navigation_fixture();
+        for (id, parent, relation, annotation, target, resolution) in [
+            ("direct", "caller", "java.annotation", "A", "", "exact"),
+            ("ab", "", "java.annotation.meta", "A", "B", "heuristic"),
+            ("bc", "", "java.annotation.meta", "B", "C", "exact"),
+        ] {
+            let mut fact = reader.facts[0].clone();
+            fact.id = id.into();
+            fact.parent = parent.into();
+            fact.kind = FactKind::Facet;
+            fact.relation = relation.into();
+            fact.attributes.annotation = annotation.to_owned().into();
+            fact.attributes.meta_annotation = target.to_owned().into();
+            fact.attributes.resolution = resolution.to_owned().into();
+            reader.facts.push(fact);
+        }
+        let output = run(
+            &reader,
+            &Request {
+                operation: Operation::Annotations,
+                selector: "caller".into(),
+                meta: true,
+                ..Default::default()
+            },
+            &|_| bail!("no source"),
+        )
+        .unwrap();
+        let leaf = output
+            .records
+            .iter()
+            .map(|r| r.wire().unwrap())
+            .find(|r| r["attributes"]["annotation"] == "C")
+            .unwrap();
+        assert_eq!(leaf["evidence_complete"], false);
+        assert_eq!(leaf["status"], "possible");
+        assert!(!output.evidence.semantic);
+    }
+
+    #[test]
     fn meta_annotations_preserve_paths_occurrences_and_stop_cycles() {
         let mut reader = navigation_fixture();
         for (id, parent, relation, annotation, meta) in [

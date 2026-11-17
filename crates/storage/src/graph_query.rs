@@ -11,7 +11,9 @@ fn attributes(row: &Row<'_>) -> Result<BTreeMap<String, JsonValue>> {
     let mut values = BTreeMap::new();
     for column in row.as_ref().column_names() {
         // These are physical dictionary/row identities, never public graph attributes.
-        if column.ends_with("_pk") {
+        if column.ends_with("_pk")
+            || (column == "id" && matches!(row.get_ref(column)?, ValueRef::Integer(_)))
+        {
             continue;
         }
         let value = match row.get_ref(column)? {
@@ -523,6 +525,10 @@ impl ReadContext {
                 relation_name = "calls".into();
             }
             FactKind::Facet => {
+                let resolution = text(row, "resolution_status")?;
+                complete = resolution == "exact" && !text(row, "annotation_fqn")?.is_empty();
+                resolved = complete;
+                status = if complete { "complete" } else { "possible" }.into();
                 attrs.insert("annotation".into(), json!(text(row, "annotation_fqn")?));
                 attrs.insert("raw_name".into(), json!(text(row, "raw_name")?));
                 if let Some(JsonValue::String(s)) = attrs.get("attributes")
@@ -1128,9 +1134,30 @@ impl SourceLocator for ReadContext {
     }
 }
 impl AnnotationReader for ReadContext {
+    fn annotation_context(
+        &self,
+        direct: &Fact,
+    ) -> std::result::Result<AnnotationContext, DomainError> {
+        (|| -> Result<_> {
+            let unit = self.annotation_unit(direct)?;
+            self.charge(1, 1024)?;
+            let id: String = self.connection.query_row(
+                "SELECT unit_id FROM unit_catalog WHERE unit_pk=?",
+                [unit],
+                |r| r.get(0),
+            )?;
+            Ok(AnnotationContext {
+                unit: (unit != 0).then(|| id.into()),
+                world: direct.owner.world.clone(),
+                producer: direct.owner.producer.clone(),
+            })
+        })()
+        .map_err(codeana_contracts::read_error)
+    }
     fn annotation_meta_edges(
         &self,
         names: &[String],
+        direct: &Fact,
     ) -> std::result::Result<Vec<AnnotationMetaEdge>, DomainError> {
         (|| -> Result<_> {
             ensure!(
@@ -1140,16 +1167,19 @@ impl AnnotationReader for ReadContext {
             if names.is_empty() {
                 return Ok(Vec::new());
             }
+            let unit = self.annotation_unit(direct)?;
             let placeholders = vec!["?"; names.len()].join(",");
             let sql = format!(
                 "SELECT annotation_fqn,meta_annotation_fqn,min(raw_name),min(language),\
                  min(mechanism),min(resolution_status),min(producer_id) \
-                 FROM annotation_meta_relations WHERE annotation_fqn IN({placeholders}) \
+                 FROM annotation_meta_units WHERE unit_pk=? AND annotation_fqn IN({placeholders}) \
                  AND meta_annotation_fqn IS NOT NULL \
                  GROUP BY annotation_fqn,meta_annotation_fqn LIMIT 10001"
             );
             let mut statement = self.connection.prepare(&sql)?;
-            let mut rows = statement.query(rusqlite::params_from_iter(names))?;
+            let values = std::iter::once(&unit as &dyn rusqlite::ToSql)
+                .chain(names.iter().map(|name| name as &dyn rusqlite::ToSql));
+            let mut rows = statement.query(rusqlite::params_from_iter(values))?;
             let mut output = Vec::new();
             while let Some(row) = rows.next()? {
                 self.charge_row(row)?;
@@ -1403,5 +1433,14 @@ mod projection_tests {
         assert!(!attrs.contains_key("owner_pk"));
         assert_eq!(attrs["id"], "public-id");
         assert_eq!(attrs["producer_extension"], json!({"n":7}));
+        let physical = database
+            .query_row(
+                "SELECT 29 AS id,'annotation:hash:0' AS display_id",
+                [],
+                |row| Ok(attributes(row).unwrap()),
+            )
+            .unwrap();
+        assert!(!physical.contains_key("id"));
+        assert_eq!(physical["display_id"], "annotation:hash:0");
     }
 }

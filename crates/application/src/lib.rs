@@ -360,11 +360,18 @@ impl SourceLocator for CancelableReader<'_> {
     }
 }
 impl AnnotationReader for CancelableReader<'_> {
+    fn annotation_context(
+        &self,
+        direct: &Fact,
+    ) -> std::result::Result<AnnotationContext, DomainError> {
+        self.checked(|| self.inner.annotation_context(direct))
+    }
     fn annotation_meta_edges(
         &self,
         names: &[String],
+        direct: &Fact,
     ) -> std::result::Result<Vec<AnnotationMetaEdge>, DomainError> {
-        self.checked(|| self.inner.annotation_meta_edges(names))
+        self.checked(|| self.inner.annotation_meta_edges(names, direct))
     }
 }
 impl OverviewReader for CancelableReader<'_> {

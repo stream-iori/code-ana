@@ -1,4 +1,5 @@
 //! Immutable fact revisions, catalog compare-and-swap, durable task and history records.
+mod annotation_context;
 mod blobs;
 mod comment_reader;
 mod graph_calls;

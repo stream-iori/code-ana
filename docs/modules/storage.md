@@ -129,6 +129,8 @@ R4 的混合暂存组件 `stage_mixed_graph_records_with_context` 接受逐单�
 
 物理 schema 17 将元注解来源、file_cache、显式 file/symbol dependencies 按主机 unit 保存。模式表区别 Full/Delta/Reuse/Removed/FilesOnly：Full、不可用与删除清理该单元所有原始观察，Delta 继承未替换来源，Reuse 保留原值；全局元注解每次活动单元重新交付。辅助输入的四类观察独立于语义发布范围，首次新交付只替换该单元、该输入、该表的继承快照，后续行累积并保持首个位置；诊断和语义行仍不能借辅助输入或其他单元的替换范围。共享元注解定义保留，来源/状态/位置分单元。
 
-依赖的 host_derived 标记与 unit_pk 均为私有列；重建只清理推导行，显式交付不丢失，公开依赖视图按原逻辑列去重。推导包含静态调用点，注解/元注解的名称依赖仅指向本单元声明输入内的节点；Java 增量反查也按单元过滤。输入 file dependency 只有路径时，在本单元声明的目标 world 集合内保守展开，不按全项目第一个路径猜 world，未声明目标拒绝；空来源的观察不作为可导航文件依赖。交付策略 4 纳入 profile，公开 ID / worker / ABI / GRA1 列不因此改变；旧图需显式全量重建。SQL VM、SQLite cache 与临时磁盘的完整预算审计、公共执行器及 R5/TS 仍待完成。
+依赖的 host_derived 标记与 unit_pk 均为私有列；重建只清理推导行，显式交付不丢失，公开依赖视图按原逻辑列去重。推导包含静态调用点，注解/元注解的名称依赖仅指向本单元声明输入内的节点；Java 增量反查也按单元过滤。输入 file dependency 只有路径时，在本单元声明的目标 world 集合内保守展开，不按全项目第一个路径猜 world，未声明目标拒绝；空来源的观察不作为可导航文件依赖。交付策略 5 纳入 profile，公开 ID / worker / ABI / GRA1 列不因此改变；旧图需显式全量重建。SQL VM、SQLite cache 与临时磁盘的完整预算审计、公共执行器及 R5/TS 仍待完成。
 
 元注解查询展开的全局 FQN 目录尚待按直接注解所属单元隔离；当前逐单元持久化及依赖补全通过，不代表该查询闭包已完成隔离。
+
+元注解查询以真实直接 occurrence 为锚定位 unit，拒绝伪造 hash/ordinal 或来源归属，再读取该 unit 的原始元注解观察；查询缓存使用稳定 unit/world/producer 上下文。重复事实按逻辑 backend/unit ID 排列序号，保证 Full+Reuse 与 Full 的公开 occurrence/元注解 ID 一致。公开属性过滤内部整数行号及 *_pk，保留文本业务 ID。
