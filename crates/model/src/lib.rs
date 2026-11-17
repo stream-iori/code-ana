@@ -30,6 +30,7 @@ pub use baseline::*;
 mod attributes;
 pub mod python;
 pub mod rust;
+pub mod typescript;
 pub use attributes::*;
 mod reader;
 pub use reader::*;

@@ -112,6 +112,170 @@ pub fn decode_result(bytes: &[u8]) -> Result<p::Result> {
     Ok(result)
 }
 
+// Fixed-depth inventory admission. Repeated messages are bounded before prost
+// allocates them; generated protobuf remains the only decoder.
+fn inventory_fields(
+    bytes: &[u8],
+    allowed: u64,
+    repeated: u64,
+    remaining: &mut usize,
+    mut nested: impl FnMut(u64, &[u8], &mut usize) -> Result<()>,
+) -> Result<u64> {
+    let mut seen = 0;
+    crate::wire_fields(bytes, |tag, value| {
+        ensure!(*remaining > 0, "TYPESCRIPT_INVENTORY_VALUES");
+        *remaining -= 1;
+        ensure!(
+            tag < 64 && allowed & (1 << tag) != 0,
+            "TYPESCRIPT_INVENTORY_FIELD"
+        );
+        let bit = 1 << tag;
+        ensure!(
+            seen & bit == 0 || repeated & bit != 0,
+            "TYPESCRIPT_INVENTORY_DUPLICATE"
+        );
+        seen |= bit;
+        nested(tag, value, remaining)
+    })?;
+    Ok(seen)
+}
+
+fn inventory_languages(mut bytes: &[u8]) -> Result<()> {
+    use prost::encoding::{DecodeContext, WireType, decode_key, decode_varint, skip_field};
+    while !bytes.is_empty() {
+        let (tag, kind) = decode_key(&mut bytes)?;
+        if tag != 4 {
+            skip_field(kind, tag, &mut bytes, DecodeContext::default())?;
+            continue;
+        }
+        match kind {
+            WireType::Varint => ensure!(
+                matches!(decode_varint(&mut bytes)?, 1 | 2),
+                "TYPESCRIPT_INVENTORY_LANGUAGE"
+            ),
+            WireType::LengthDelimited => {
+                let length = usize::try_from(decode_varint(&mut bytes)?)?;
+                ensure!(length <= bytes.len(), "TYPESCRIPT_INVENTORY_LANGUAGE");
+                let (mut packed, rest) = bytes.split_at(length);
+                while !packed.is_empty() {
+                    ensure!(
+                        matches!(decode_varint(&mut packed)?, 1 | 2),
+                        "TYPESCRIPT_INVENTORY_LANGUAGE"
+                    );
+                }
+                bytes = rest;
+            }
+            _ => anyhow::bail!("TYPESCRIPT_INVENTORY_LANGUAGE"),
+        }
+    }
+    Ok(())
+}
+
+pub fn decode_inventory(bytes: &[u8]) -> Result<p::PreparationInventory> {
+    ensure!(
+        !bytes.is_empty() && bytes.len() <= 32 << 20,
+        "TYPESCRIPT_INVENTORY_BYTES"
+    );
+    let mut remaining = 1_000_000;
+    let seen = inventory_fields(
+        bytes,
+        mask(&[1, 2]),
+        mask(&[2]),
+        &mut remaining,
+        |tag, value, remaining| {
+            if tag == 1 {
+                let context = inventory_fields(
+                    value,
+                    mask(&[1, 2, 3, 4, 6, 7, 8, 9, 10, 11]),
+                    mask(&[4, 6, 7, 8, 9, 10]),
+                    remaining,
+                    |tag, value, remaining| {
+                        match tag {
+                            4 => {
+                                // Generated Go encodes repeated enum values as packed.
+                                // Both wire forms are range-checked below.
+                                let mut packed = value;
+                                while !packed.is_empty() {
+                                    ensure!(*remaining > 0, "TYPESCRIPT_INVENTORY_VALUES");
+                                    *remaining -= 1;
+                                    ensure!(
+                                        matches!(
+                                            prost::encoding::decode_varint(&mut packed)?,
+                                            1 | 2
+                                        ),
+                                        "TYPESCRIPT_INVENTORY_LANGUAGE"
+                                    );
+                                }
+                            }
+                            6 => {
+                                let seen = inventory_fields(
+                                    value,
+                                    mask(&[1, 2, 3, 4]),
+                                    mask(&[2, 3]),
+                                    remaining,
+                                    |_, _, _| Ok(()),
+                                )?;
+                                ensure!(seen & (1 << 1) != 0, "TYPESCRIPT_DIRECTORY_PATH");
+                                scalars(value, &[(4, 1)])?;
+                            }
+                            7 => {
+                                let seen = inventory_fields(
+                                    value,
+                                    mask(&[1, 2, 3]),
+                                    0,
+                                    remaining,
+                                    |_, _, _| Ok(()),
+                                )?;
+                                ensure!(seen == mask(&[1, 2, 3]), "TYPESCRIPT_LINK_FIELDS");
+                            }
+                            8 => {
+                                let seen = inventory_fields(
+                                    value,
+                                    mask(&[1, 2]),
+                                    0,
+                                    remaining,
+                                    |_, _, _| Ok(()),
+                                )?;
+                                ensure!(seen == mask(&[1, 2]), "TYPESCRIPT_LOOKUP_FIELDS");
+                                scalars(value, &[(2, 2)])?;
+                            }
+                            _ => {}
+                        }
+                        Ok(())
+                    },
+                )?;
+                ensure!(
+                    context & mask(&[1, 2, 3, 4, 9, 11]) == mask(&[1, 2, 3, 4, 9, 11]),
+                    "TYPESCRIPT_CONTEXT_FIELDS"
+                );
+                inventory_languages(value)?;
+                scalars(value, &[(11, 1)])?;
+            } else {
+                let file = inventory_fields(
+                    value,
+                    mask(&[1, 2, 3, 4, 5, 6, 7, 8]),
+                    0,
+                    remaining,
+                    |tag, value, _| {
+                        if tag == 2 {
+                            ensure!(value.len() == 64, "TYPESCRIPT_FILE_SHA");
+                        }
+                        Ok(())
+                    },
+                )?;
+                ensure!(
+                    file & mask(&[1, 2, 4]) == mask(&[1, 2, 4]),
+                    "TYPESCRIPT_FILE_FIELDS"
+                );
+                scalars(value, &[(4, 3), (5, 2)])?;
+            }
+            Ok(())
+        },
+    )?;
+    ensure!(seen == mask(&[1, 2]), "TYPESCRIPT_INVENTORY_FIELDS");
+    Ok(p::PreparationInventory::decode(bytes)?)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -135,5 +299,66 @@ mod tests {
         ] {
             assert!(decode_result(&data).is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod inventory_tests {
+    use super::*;
+    fn valid() -> p::PreparationInventory {
+        p::PreparationInventory {
+            context: Some(p::ProjectContext {
+                unit: "unit".into(),
+                root: "/project".into(),
+                config_path: "/project/tsconfig.json".into(),
+                publish_languages: vec![2],
+                root_files: vec!["/project/a.ts".into()],
+                case_sensitive: Some(false),
+                ..Default::default()
+            }),
+            files: vec![p::FileIdentity {
+                path: "/project/a.ts".into(),
+                sha256: "a".repeat(64),
+                role: 1,
+                language: 2,
+                ..Default::default()
+            }],
+        }
+    }
+    #[test]
+    fn inventory_repeated_entries_are_bounded_and_singular_fields_cannot_be_overwritten() {
+        let original = valid();
+        let bytes = original.encode_to_vec();
+        assert_eq!(decode_inventory(&bytes).unwrap(), original);
+        let mut duplicate = bytes.clone();
+        duplicate.extend_from_slice(&bytes);
+        assert!(decode_inventory(&duplicate).is_err());
+        assert!(decode_inventory(&[0x0a, 0x00, 0x12, 0x00]).is_err());
+        let mut missing = original;
+        missing.context.as_mut().unwrap().case_sensitive = None;
+        assert!(decode_inventory(&missing.encode_to_vec()).is_err());
+    }
+    #[test]
+    fn inventory_enums_and_explicit_booleans_are_checked_before_decode() {
+        let mut unknown = valid();
+        unknown.context.as_mut().unwrap().publish_languages = vec![99];
+        assert!(decode_inventory(&unknown.encode_to_vec()).is_err());
+        unknown = valid();
+        unknown.files[0].role = 99;
+        assert!(decode_inventory(&unknown.encode_to_vec()).is_err());
+        // A large unpacked enum must not truncate to an accepted i32 value.
+        let mut context = valid().context.unwrap().encode_to_vec();
+        context.extend_from_slice(&[0x20, 0x82, 0x80, 0x80, 0x80, 0x10]);
+        assert!(inventory_languages(&context).is_err());
+        context = valid().context.unwrap().encode_to_vec();
+        context.extend_from_slice(&[0x58, 0x02]);
+        let mut bytes = vec![0x0a];
+        prost::encoding::encode_varint(context.len() as u64, &mut bytes);
+        bytes.extend(context);
+        let file = valid().files.pop().unwrap().encode_to_vec();
+        bytes.push(0x12);
+        prost::encoding::encode_varint(file.len() as u64, &mut bytes);
+        bytes.extend(file);
+        assert!(decode_inventory(&bytes).is_err());
     }
 }

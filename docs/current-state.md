@@ -22,9 +22,15 @@
 | 同内核 prepare | 显式允许根、实际配置/模块解析、文件摘要、目录存在与完整枚举、链接、失败查找；只捕获编译器实际使用的内容，不复制整个依赖目录 |
 | 冻结重放 | 捕获后删除活输入仍得到两次真实调用绑定；大小写使用固定内核规则，保存原始拼写；目录矛盾、链接越界、未观察读取和写入尝试均拒绝 |
 | 本轮验证 | 两个新 SDK 各 25 项 Go 测试；Rust 聚焦 contracts 37 / runtime 41 / worker 1 与 clippy 通过；空 PATH 实际 ABI 组件 12 项、ABI 检查 20 项通过，产物无漂移 |
-| 待办 | 配置显式开关、类型化原生清单、公共 capture/provider、多配置、references/pnpm 真值与产品路径；当前不支持 CLI JS/TS 索引 |
+| 待办 | 配置显式开关、公共 capture/provider、多配置、references/pnpm 真值与产品路径；当前不支持 CLI JS/TS 索引 |
 
 证据：`target/typescript-c-abi/t3-input-component-sealed/receipt.json`；实际组件回执为 `t3-components-prepare-first/receipt.json`。原 fixture SDK 构建在生成器版本列表请求遇到代理 504；失败日志保留。构建器改为使用同一已校验模块锁构建生成器，不再查询无关版本列表，两个 SDK 重建通过。本轮没有重跑完整 Rust/Python 或 Java 门禁，也不表示 T3 全部、正式分发或性能验收完成。
+
+### T3 原生清单与身份组件
+
+`model::typescript::Inputs` 已与私有 protobuf 分开，包含内容身份、上下文、发布/辅助/控制角色、目录完整性、链接和失败查找。SDK 的实际库/header/标准库/proto 摘要进入语义身份，不包含安装位置或准备 generation。枚举顺序规范化；root files/reference 顺序保留。单一上下文允许同时发布 JS/TS；同文件可有独立 world，内容冲突拒绝。
+
+Rust 在 prost 解码 inventory 前限制大小、字段数、重复单值字段、必需字段、枚举与 bool，再映射到严格原生模型。实际 ABI Prepare 已生成并校验 `native-inputs.json`，核对库摘要来自实际 SDK。模型 79、contracts 39、TS worker 3 项聚焦测试与 clippy 通过；当前二进制复验 12 个组件场景和 20 个 ABI 检查通过。证据：`target/typescript-c-abi/t3-native-inputs-sealed/receipt.json`。保留原枚举变体编译错误和 clippy 失败；配置/provider/capture 生产调用仍待接入，未完成整个 T3。
 
 ## TypeScript T2b 组件（阶段历史，2026-11-18）
 

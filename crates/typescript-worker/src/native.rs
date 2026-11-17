@@ -33,6 +33,7 @@ impl Drop for ProbeSession {
 pub struct Native {
     _library: ManuallyDrop<Library>,
     pub runtime: p::RuntimeIdentity,
+    pub compiler: codeana_model::typescript::CompilerIdentity,
     create: Create,
     feed: Feed,
     seal: Unary,
@@ -271,6 +272,7 @@ impl Native {
                 cancel: *library.get(b"codeana_ts_cancel")?,
                 ack: *library.get(b"codeana_ts_publish_ack")?,
                 close: *library.get(b"codeana_ts_session_close")?,
+                compiler: sdk.semantic_identity(),
                 _library: library,
                 runtime,
                 handle: 0,

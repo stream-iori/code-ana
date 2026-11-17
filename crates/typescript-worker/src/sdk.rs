@@ -12,6 +12,21 @@ pub struct Sdk {
 }
 
 impl Sdk {
+    pub fn semantic_identity(&self) -> codeana_model::typescript::CompilerIdentity {
+        codeana_model::typescript::CompilerIdentity {
+            adapter: self.runtime.adapter.clone(),
+            upstream_commit: self.runtime.upstream_commit.clone(),
+            typescript_commit: self.runtime.typescript_commit.clone(),
+            compiler_version: self.runtime.compiler_version.clone(),
+            go_version: self.runtime.go_version.clone(),
+            library_sha256: self.manifest.files["libcodeana_typescript.dylib"].clone(),
+            header_sha256: self.manifest.files["codeana_ts.h"].clone(),
+            standard_library_digest: self.runtime.standard_library_digest.clone(),
+            analysis_proto_sha256: self.runtime.analysis_proto_sha256.clone(),
+            graph_proto_sha256: self.runtime.graph_proto_sha256.clone(),
+        }
+    }
+
     pub fn load(root: &Path) -> Result<Self> {
         Self::load_with_fixture(root, false)
     }

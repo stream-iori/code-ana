@@ -72,3 +72,9 @@ fixture SDK 只在显式 `--dev-abi-fixture` 构建时对本仓库 overlay 增�
 最新 `t3-components-prepare-first/receipt.json` 为 12 场景、20 ABI 检查；两个锁定 SDK 各 25 项 Go 测试，包含删除活输入后的真实重放和大小写路径绑定。汇总为 `target/typescript-c-abi/t3-input-component-sealed/receipt.json`。T2b 的 11/16 数量属于其历史回执。
 
 当前 Prepare 对 references 和 live WalkDir 明确拒绝；配置错误尚未输出产品诊断。尚未完成公共配置/provider/capture、依赖模式/多上下文真值，不能把本组件写成 T3 或 TS 产品全部完成。生成器现在从已校验 production.mod 构建，与 protobuf runtime 共用锁；原代理 504 构建失败继续保留。
+
+## 原生输入模型
+
+私有 `PreparationInventory` 只在 worker 内解码。先执行有界 wire 准入，再显式映射到 `model::typescript::Inputs`；model/config 不依赖引擎 protobuf。model 的 Context/文件角色/目录/链接/缺失观察均为严格类型，SDK 语义身份包括实际库摘要，不只比较 adapter 名称。清单没有安装路径或 generation 字段；文件/观察枚举规范化，编译器 root/reference 顺序保留。
+
+当前实际 Prepare 组件写出 `native-inputs.json`，验证其库 SHA 与 SDK 文件清单一致。12 场景、20 ABI 检查、模型 79 / contracts 39 / worker 3 项聚焦及 clippy 通过，见 `target/typescript-c-abi/t3-native-inputs-sealed/receipt.json`。公共 config/provider/capture 尚未消费该模型；下一步接生产路径，不将类型测试算作输入闭包全部验收。

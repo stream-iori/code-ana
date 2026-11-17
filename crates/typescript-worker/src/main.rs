@@ -305,7 +305,7 @@ async fn main() -> Result<()> {
             data.len() as u64 == archive.bytes && codeana_model::hash(&data) == archive.sha256,
             "TYPESCRIPT_INVENTORY_SHA"
         );
-        let inventory = p::PreparationInventory::decode(data.as_slice())?;
+        let inventory = codeana_contracts::typescript::decode_inventory(&data)?;
         ensure!(
             inventory.files.len() as u64 == archive.count,
             "TYPESCRIPT_INVENTORY_COUNT"
@@ -318,6 +318,13 @@ async fn main() -> Result<()> {
             context.case_sensitive.is_some() && context.root_files.len() == 2,
             "TYPESCRIPT_INVENTORY_CONTEXT"
         );
+        let compiler = owner.call(|native| Ok(native.compiler.clone())).await?;
+        let inputs =
+            codeana_typescript_worker::inputs::from_inventory(inventory.clone(), compiler)?;
+        std::fs::write(
+            output.join("native-inputs.json"),
+            serde_json::to_vec_pretty(&inputs)?,
+        )?;
         prepared = Some(inventory);
     }
     if let Some(p::result::Outcome::Analysis(analysis)) = &result.outcome {

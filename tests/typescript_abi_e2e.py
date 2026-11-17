@@ -64,6 +64,11 @@ def main():
                 assert receipt['analysis_usage']['failure'] is None
             elif name=='prepare':
                 assert receipt['verified_graph'] is None and receipt['accounting_owner']=='HostOwned'
+                native=json.loads((evidence/'native-inputs.json').read_text())
+                assert native['schema_version']==1 and len(native['contexts'])==1
+                manifest=json.loads((sdk/'manifest.json').read_text())
+                assert native['compiler']['library_sha256']==manifest['files']['libcodeana_typescript.dylib']
+                assert 'sdk_path' not in native['compiler']
                 inventory=receipt['prepared_inventory']
                 assert len(inventory['files'])==3 and len(inventory['context']['root_files'])==2
                 assert len(inventory['context']['absent'])>0
