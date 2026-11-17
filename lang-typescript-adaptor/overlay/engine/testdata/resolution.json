@@ -1,0 +1,51 @@
+[
+  {
+    "name": "extends-paths",
+    "files": {
+      "base.json": "{\"compilerOptions\":{\"noLib\":true,\"module\":\"ESNext\",\"moduleResolution\":\"bundler\",\"baseUrl\":\".\",\"paths\":{\"@fixture/*\":[\"src/*\"]}}}",
+      "tsconfig.json": "{\"extends\":\"./base.json\",\"files\":[\"entry.ts\"]}",
+      "entry.ts": "import { greet } from \"@fixture/library\"; greet(1); greet(2);",
+      "src/library.ts": "export function greet(value: number) { return value + 1; }"
+    },
+    "links": {},
+    "target": "/src/library.ts"
+  },
+  {
+    "name": "pnpm-exports",
+    "files": {
+      "tsconfig.json": "{\"compilerOptions\":{\"noLib\":true,\"types\":[],\"module\":\"ESNext\",\"moduleResolution\":\"bundler\"},\"files\":[\"entry.ts\"]}",
+      "entry.ts": "import { greet } from \"fixture/feature\"; greet(1); greet(2);",
+      "node_modules/.pnpm/fixture@1.0.0/node_modules/fixture/package.json": "{\"name\":\"fixture\",\"version\":\"1.0.0\",\"exports\":{\"./feature\":{\"types\":\"./types/feature.d.ts\",\"default\":\"./runtime.js\"}}}",
+      "node_modules/.pnpm/fixture@1.0.0/node_modules/fixture/types/feature.d.ts": "export declare function greet(value: number): number;",
+      "node_modules/.pnpm/fixture@1.0.0/node_modules/fixture/runtime.js": "throw Error(\"target runtime must not execute\");"
+    },
+    "links": {
+      "node_modules/fixture": ".pnpm/fixture@1.0.0/node_modules/fixture"
+    },
+    "target": "/node_modules/.pnpm/fixture@1.0.0/node_modules/fixture/types/feature.d.ts"
+  },
+  {
+    "name": "nodenext-package-imports",
+    "files": {
+      "tsconfig.json": "{\"compilerOptions\":{\"noLib\":true,\"types\":[],\"module\":\"NodeNext\",\"moduleResolution\":\"NodeNext\"},\"files\":[\"entry.mts\"]}",
+      "package.json": "{\"type\":\"module\",\"imports\":{\"#fixture\":{\"types\":\"./types/library.d.ts\",\"default\":\"./runtime.cjs\"}}}",
+      "entry.mts": "import { greet } from \"#fixture\"; greet(1); greet(2);",
+      "types/library.d.ts": "export declare function greet(value: number): number;",
+      "runtime.cjs": "throw Error(\"target runtime must not execute\");"
+    },
+    "links": {},
+    "target": "/types/library.d.ts"
+  },
+  {
+    "name": "types-versions",
+    "files": {
+      "tsconfig.json": "{\"compilerOptions\":{\"noLib\":true,\"types\":[],\"module\":\"CommonJS\",\"moduleResolution\":\"node10\"},\"files\":[\"entry.cts\"]}",
+      "entry.cts": "import { greet } from \"fixture\"; greet(1); greet(2);",
+      "node_modules/fixture/package.json": "{\"name\":\"fixture\",\"types\":\"index.d.ts\",\"typesVersions\":{\"*\":{\"*\":[\"versioned/*\"]}}}",
+      "node_modules/fixture/index.d.ts": "export declare const wrong: boolean;",
+      "node_modules/fixture/versioned/index.d.ts": "export declare function greet(value: number): number;"
+    },
+    "links": {},
+    "target": "/node_modules/fixture/versioned/index.d.ts"
+  }
+]

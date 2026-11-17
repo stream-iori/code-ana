@@ -444,3 +444,86 @@ fn a_changed_target_volume_case_rule_cannot_be_silently_replayed() -> Result<()>
     );
     Ok(())
 }
+
+#[test]
+#[ignore = "requires explicit actual Go resolution inventories; mandatory in test-typescript-resolution"]
+fn actual_resolution_inventories_freeze_roles_and_reject_stale_observations() -> Result<()> {
+    let evidence = PathBuf::from(std::env::var("CODEANA_TYPESCRIPT_RESOLUTION_FIXTURE")?);
+    let cases: Vec<String> = serde_json::from_slice(&std::fs::read(evidence.join("cases.json"))?)?;
+    assert_eq!(cases.len(), 4, "complete real resolver matrix required");
+    let mut proofs = Vec::new();
+    for case in cases {
+        anyhow::ensure!(codeana_model::safe_path(&case), "FIXTURE_CASE_PATH");
+        let root = evidence.join(&case).canonicalize()?;
+        let inputs: ts::Inputs =
+            serde_json::from_slice(&std::fs::read(root.join(".code-ana/native.json"))?)?;
+        inputs.validate().map_err(anyhow::Error::msg)?;
+        assert_eq!(inputs.contexts.len(), 1);
+        let context = &inputs.contexts[0];
+        assert_eq!(Path::new(&context.root), root);
+        let bodies = context
+            .files
+            .iter()
+            .map(|file| Ok((file.sha256.clone(), std::fs::read(&file.path)?)))
+            .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+        let frozen = capture(&root, &Request::default())?;
+        assert_eq!(frozen.unit_views.len(), 1);
+        let expected = context
+            .files
+            .iter()
+            .filter(|file| file.role == ts::FileRole::Publish)
+            .count();
+        let published = frozen
+            .manifest
+            .files
+            .iter()
+            .filter(|file| file.language == "typescript" && !file.auxiliary)
+            .count();
+        assert_eq!(published, expected);
+        assert!(published > 0);
+        for file in &frozen.manifest.files {
+            if file.path.contains("node_modules/") && file.language == "typescript" {
+                assert!(file.auxiliary, "dependency became published: {}", file.path);
+            }
+        }
+        // A control edit invalidates the old inventory, even when sources stay identical.
+        let config = Path::new(&context.config_path);
+        let original = std::fs::read(config)?;
+        let mut changed = original.clone();
+        changed.push(b' ');
+        std::fs::write(config, &changed)?;
+        assert!(capture(&root, &Request::default()).is_err());
+        std::fs::write(config, original)?;
+        // A previously failed resolution becoming positive must invalidate preparation.
+        let lookup = context
+            .absent
+            .iter()
+            .find(|entry| {
+                entry.kind == ts::LookupKind::File
+                    && Path::new(&entry.path).starts_with(&root)
+                    && !Path::new(&entry.path).exists()
+                    && Path::new(&entry.path).parent().is_some_and(Path::is_dir)
+            })
+            .ok_or_else(|| anyhow::anyhow!("REAL_FAILED_LOOKUP_REQUIRED: {case}"))?;
+        std::fs::write(&lookup.path, b"{}")?;
+        assert!(capture(&root, &Request::default()).is_err());
+        std::fs::remove_file(&lookup.path)?;
+        capture(&root, &Request::default())?;
+        for file in &context.files {
+            std::fs::remove_file(&file.path)?;
+        }
+        for (digest, body) in &bodies {
+            assert_eq!(&frozen.blobs[digest].read(32 << 20)?, body);
+        }
+        assert!(capture(&root, &Request::default()).is_err());
+        proofs.push(
+            json!({"case":case,"captured_bodies":bodies.len(),"published":published,
+            "live_files_deleted":true,"control_and_failed_lookup_staleness":true}),
+        );
+    }
+    std::fs::write(
+        evidence.join("capture-proof.json"),
+        serde_json::to_vec_pretty(&proofs)?,
+    )?;
+    Ok(())
+}

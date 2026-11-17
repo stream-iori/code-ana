@@ -15,6 +15,19 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 解析闭包真值（2026-11-18）
+
+| 自建 fixture | 通过的行为 |
+|---|---|
+| extends / paths | 基础配置与路径别名进入实际捕获闭包 |
+| pnpm / exports | 相对符号链接保留，types 条件选择声明文件，依赖保持辅助角色 |
+| NodeNext / imports | package.json 的类型与 imports 条件选择正确声明目标 |
+| typesVersions | CommonJS / node10 按版本映射选择声明文件 |
+
+同一份 `overlay/engine/testdata/resolution.json` 驱动 Go 与公共 Rust 捕获测试。Go 每组删除全部实际输入后，冻结 Checker 仍给出两次正确调用目标；重复发现 inventory 完全一致。Rust 每组校验控制文件及失败查找变化会拒绝旧准备清单，删除活输入后仍能读取全部已封存正文。两个入口均实际执行四组，无跳过；不表示公开调用图已交付。
+
+回执：`target/typescript-c-abi/t3-resolution-shared-go/receipt.json`、`t3-resolution-public-first/receipt.json`。Go 为准备构建（未生成新 SDK），公共捕获使用已校验 inputs2 SDK，四组均捕获 4 个正文；pnpm 与 typesVersions 各发布 1 源，另两组各 2 源。references、多配置、缺声明产物及产品冻结输入交接继续实施。
+
 ## TypeScript T3 真实准备入口（2026-11-18，继续实施）
 
 | 已验证 | 证据目录（target/typescript-c-abi 下） |

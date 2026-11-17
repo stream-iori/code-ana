@@ -255,3 +255,8 @@ test-typescript-prepare sdk evidence:
 test-typescript-provider sdk evidence:
     cargo build -p codeana-cli -p codeana-daemon -p codeana-typescript-worker --locked
     python3 tests/typescript_provider_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'
+
+# Same checked-in fixtures drive Go frozen replay and actual Rust capture.
+test-typescript-resolution sdk evidence:
+    cargo build -p codeana-typescript-worker --locked
+    python3 tests/typescript_resolution_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'

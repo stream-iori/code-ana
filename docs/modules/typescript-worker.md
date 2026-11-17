@@ -100,3 +100,7 @@ JS/TS 各自显式启用，共用原生清单与依赖根。普通输入按 comp
 | 既有语言 prepared | Native Java/Rust/Python 19 项通过；首次报告版本/历史注释字段失败日志保留 |
 
 目标卷大小写探测由共享 input-io 完成，Rust capture 再核对；`.code-ana` 从编译器目录视图排除。adapter `inputs2` 要求重建旧 SDK；ABI 和引擎 protobuf 仍为 1。上述门禁属于准备阶段，不能作为公开图、正式分发或性能放行。最新证据入口见当前实现。
+
+## 解析闭包专项
+
+`just test-typescript-resolution SDK NEW_EVIDENCE` 必须执行真实准备与公共 Rust capture 的四组 fixture：extends/paths、pnpm/exports、NodeNext/imports、typesVersions。普通无 Go 门禁显式忽略该真实编译器测试，专项入口强制执行并核对四组证明。相同 JSON fixture 也进入构建时 Go 测试，验证捕获后删除活文件的实际 Checker 重放及重复调用目标。references、多配置和缺声明产物仍待补齐。

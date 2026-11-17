@@ -2,8 +2,10 @@ package engine
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -270,5 +272,98 @@ func TestProductStateIsOutsideTheCompilerViewAndNewGenerationsDoNotInvalidateInp
 	}
 	if _, ok := observed.ReadFile(filepath.Join(state, "private.ts")); ok || observed.Check() == nil {
 		t.Fatal("explicit private state read accepted")
+	}
+}
+
+// Each case uses the real resolver and then removes every observed file before
+// checking bindings again. node_modules content is never flattened or mocked.
+func TestResolutionClosureUsesCompilerOptionsAndReplaysWithoutLiveFiles(t *testing.T) {
+	var cases []struct {
+		Name   string            `json:"name"`
+		Files  map[string]string `json:"files"`
+		Links  map[string]string `json:"links"`
+		Target string            `json:"target"`
+	}
+	data, err := os.ReadFile("testdata/resolution.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(data, &cases); err != nil {
+		t.Fatal(err)
+	}
+	if len(cases) != 4 {
+		t.Fatal("resolution matrix incomplete", len(cases))
+	}
+
+	for _, test := range cases {
+		t.Run(test.Name, func(t *testing.T) {
+			request, meter := preparationFixture(t)
+			request.AllowedRoots = []string{request.ProjectRoot}
+			for name, text := range test.Files {
+				destination := filepath.Join(request.ProjectRoot, name)
+				if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(destination, []byte(text), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			for name, target := range test.Links {
+				if err := os.Symlink(target, filepath.Join(request.ProjectRoot, name)); err != nil {
+					t.Fatal(err)
+				}
+			}
+			project, err := DiscoverProject(context.Background(), request, meter)
+			if err != nil {
+				t.Fatal(err)
+			}
+			repeated, err := DiscoverProject(context.Background(), request, meter)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !proto.Equal(project, repeated) {
+				t.Fatal("unchanged resolver closure changed identity")
+			}
+			found := false
+			for _, file := range project.Files {
+				if strings.HasSuffix(file.File.Path, "/runtime.js") || strings.HasSuffix(file.File.Path, "/runtime.cjs") {
+					t.Fatal("runtime condition selected instead of types", file.File.Path)
+				}
+				if file.File.Path == request.ProjectRoot+test.Target {
+					found = true
+				}
+				if strings.Contains(file.File.Path, "/node_modules/") && file.File.Role != pb.FileRole_AUXILIARY && file.File.Language != pb.SourceLanguage_SOURCE_LANGUAGE_UNSPECIFIED {
+					t.Fatal("dependency became a published source", file.File)
+				}
+			}
+			if !found {
+				t.Fatal("expected resolution target absent", test.Target)
+			}
+			if len(test.Links) > 0 && len(project.Context.Links) == 0 {
+				t.Fatal("pnpm symlink chain not captured")
+			}
+			for _, file := range project.Files {
+				if err := os.Remove(file.File.Path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			program, err := OpenProgram(project, meter)
+			if err != nil {
+				t.Fatal(err)
+			}
+			count := 0
+			if err := program.WalkCallBindings(context.Background(), func(call CallBinding) error {
+				if !call.Resolved || call.TargetName != "greet" || call.TargetFile != request.ProjectRoot+test.Target {
+					t.Fatal(call)
+				}
+				count++
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			if count != 2 {
+				t.Fatal("lost repeated call sites", count)
+			}
+		})
 	}
 }
