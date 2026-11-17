@@ -51,6 +51,7 @@ impl QueryService {
                     )
                 );
                 let raw_reader = FilesReader(Revision {
+                    unit_ownership: None,
                     id: format!("snapshot:{sid}"),
                     target: String::new(),
                     project: project.clone(),

@@ -15,7 +15,7 @@ pub struct PreparedJava {
     pub backend: &'static str,
     pub config: w::JavaConfig,
     pub disk_budget: DiskBudget,
-    _scratch: tempfile::TempDir,
+    pub(super) scratch: std::sync::Arc<tempfile::TempDir>,
     toolchain: Vec<(PathBuf, String)>,
 }
 impl PreparedJava {
@@ -205,7 +205,7 @@ pub fn prepare(c: &Capture, user: &UserConfig, user_home: &Path) -> Result<Prepa
         backend: bundle.backend,
         config,
         disk_budget: inputs.disk_budget,
-        _scratch: inputs.scratch,
+        scratch: std::sync::Arc::new(inputs.scratch),
         toolchain: toolchain.inputs,
     })
 }
@@ -273,7 +273,12 @@ fn prepare_captured_inputs(c: &Capture, user: &UserConfig) -> Result<PreparedInp
     disk_budget.check()?;
     let input = scratch.path().join("input");
     std::fs::create_dir(&input)?;
+    let mut copied = std::collections::BTreeMap::new();
     for unit in &c.manifest.files {
+        if let Some(previous) = copied.insert(&unit.path, &unit.hash) {
+            ensure!(previous == &unit.hash, "CAPTURE_CONTENT_CONFLICT");
+            continue;
+        }
         ensure!(
             safe_path(&unit.path),
             codeana_model::DomainError::new(codeana_model::ErrorCode::UnsafeCapturePath, "")
@@ -506,7 +511,7 @@ fn prepare_toolchain(
 }
 fn prerequisite_modules(c: &Capture) -> std::collections::BTreeSet<String> {
     let mut prerequisites = std::collections::BTreeSet::new();
-    if let Some(inputs) = &c.effective.java_inputs {
+    if let Some(inputs) = &c.effective.java_inputs() {
         let mut pending = Vec::new();
         for module in inputs.modules.iter().filter(|m| m.selected) {
             let xml_enabled = c.effective.config.modules.iter().any(|configured| {
@@ -559,7 +564,7 @@ fn prepare_contexts(
     let prerequisites = prerequisite_modules(c);
     let mut contexts = Vec::new();
     for module in modules {
-        let selected = !c.effective.java_inputs.as_ref().is_some_and(|inputs| {
+        let selected = !c.effective.java_inputs().is_some_and(|inputs| {
             inputs
                 .modules
                 .iter()
@@ -569,7 +574,7 @@ fn prepare_contexts(
         // when the receipt provides its classpath or a validated source-only topology.
         let upstream = !selected
             && prerequisites.contains(&module.id)
-            && c.effective.java_inputs.as_ref().is_some_and(|inputs| {
+            && c.effective.java_inputs().is_some_and(|inputs| {
                 inputs.modules.iter().any(|m| {
                     m.id == module.id && (m.resolved_classpath || !inputs.resolved_classpath)
                 })
@@ -606,7 +611,7 @@ fn prepare_contexts(
             );
             let mut dependencies = std::collections::BTreeSet::new();
             dependencies.insert(module.id.clone());
-            if let Some(metadata) = &c.effective.java_inputs {
+            if let Some(metadata) = &c.effective.java_inputs() {
                 let m = metadata
                     .modules
                     .iter()
@@ -672,7 +677,7 @@ fn prepare_contexts(
             let mut classpath = Vec::new();
             let mut classpath_identity = Vec::new();
             if module.analysis.classpath.as_deref() != Some("none")
-                && let Some(metadata) = &c.effective.java_inputs
+                && let Some(metadata) = &c.effective.java_inputs()
             {
                 let m = metadata
                     .modules
@@ -719,8 +724,7 @@ fn prepare_contexts(
                 digest: digest(&(
                     &units,
                     c.effective
-                        .java_inputs
-                        .as_ref()
+                        .java_inputs()
                         .map(|inputs| inputs.dependency_mode),
                     classpath_identity,
                     resource_identity,
@@ -804,13 +808,11 @@ fn prepare_config(
         bridge: bundle.join(bridge_name).to_string_lossy().into_owned(),
         scratch: scratch.path().to_string_lossy().into_owned(),
         semantic_identity: digest(&(
-            &c.effective.java_inputs,
-            &c.effective.config.resources.index,
+            c.effective.java_inputs().map(|i| i.semantic_digest()),
             hash(std::fs::read(library)?),
             hash(std::fs::read(bundle.join(bridge_name))?),
             &host_identity,
             toolchain.release,
-            home,
             &toolchain.digest,
         )),
         parallelism: compiler_parallelism(
@@ -878,7 +880,7 @@ fn prepare_config(
             .index
             .java_compiler_heap_bytes
             .unwrap_or(128 * 1024 * 1024),
-        dependency_mode: c.effective.java_inputs.as_ref().map_or(
+        dependency_mode: c.effective.java_inputs().map_or(
             w::JavaDependencyMode::Resolved,
             |inputs| match inputs.dependency_mode {
                 codeana_config::java_inputs::DependencyMode::Resolved => {
@@ -894,8 +896,7 @@ fn prepare_config(
         ) as i32,
         dependency_failure: c
             .effective
-            .java_inputs
-            .as_ref()
+            .java_inputs()
             .and_then(|inputs| inputs.dependency_failure.as_ref())
             .map(|f| w::MavenDependencyFailure {
                 module: f.module.clone(),

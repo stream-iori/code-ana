@@ -155,8 +155,16 @@ impl HistoryService {
             } else {
                 let root = root.to_path_buf();
                 let request = req.clone();
-                tokio::task::spawn_blocking(move || codeana_config::capture(&root, &request))
-                    .await??
+                let cancellation = cancel.clone();
+                tokio::task::spawn_blocking(move || {
+                    codeana_config::capture_controlled(
+                        &root,
+                        &request,
+                        None,
+                        std::sync::Arc::new(move || cancellation.is_cancelled()),
+                    )
+                })
+                .await??
             }
         } else {
             let root = root.to_path_buf();
@@ -234,7 +242,12 @@ impl HistoryService {
                         )?)?;
                         std::fs::write(target, bytes)?;
                     }
-                    let mut c = codeana_config::capture(temp.path(), &request)?;
+                    let mut c = codeana_config::capture_controlled(
+                        temp.path(),
+                        &request,
+                        None,
+                        std::sync::Arc::new(move || cancellation.is_cancelled()),
+                    )?;
                     c.root = root;
                     c.project = project.clone();
                     c.checkout = key("historical_checkout", &[&project, &commit]);

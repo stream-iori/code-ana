@@ -10,8 +10,12 @@ pub const QUEUE_BYTES: usize = 8 << 20;
 pub const BATCH_ROWS: usize = 64;
 pub const BATCH_BYTES: usize = 256 << 10;
 pub enum GraphStreamEvent {
+    Begin {
+        mode: String,
+        replacements: Vec<codeana_model::Owner>,
+    },
     Batch(Vec<crate::graph::Row>),
-    VerifiedEnd,
+    VerifiedEnd(crate::delivery::VerifiedEnd),
 }
 #[derive(Clone, Default)]
 pub struct StreamMetrics(Arc<Counters>);
@@ -66,6 +70,7 @@ pub struct GraphStream {
     pending: std::vec::IntoIter<crate::graph::Row>,
     lease: Option<Lease>,
     ended: bool,
+    count: u64,
     metrics: StreamMetrics,
 }
 /// Allocation estimate includes decoded row/cell capacities, not only wire bytes.
@@ -95,7 +100,20 @@ impl SinkSender {
         let started = std::time::Instant::now();
         let bytes = match &event {
             GraphStreamEvent::Batch(rows) => batch_bytes(rows),
-            _ => 0,
+            GraphStreamEvent::Begin { mode, replacements } => {
+                mode.capacity()
+                    + replacements.capacity() * std::mem::size_of::<codeana_model::Owner>()
+                    + replacements
+                        .iter()
+                        .map(|o| {
+                            o.world.retained_bytes()
+                                + o.producer.capacity()
+                                + o.kind.capacity()
+                                + o.id.capacity()
+                        })
+                        .sum::<usize>()
+            }
+            GraphStreamEvent::VerifiedEnd(summary) => summary.checksum.capacity(),
         };
         // An oversized legal batch acquires the entire budget and runs alone.
         let lease = if bytes > 0 {
@@ -151,6 +169,7 @@ impl GraphStream {
                 pending: Vec::new().into_iter(),
                 lease: None,
                 ended: false,
+                count: 0,
                 metrics,
             },
         )
@@ -170,6 +189,7 @@ impl Iterator for GraphStream {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(row) = self.pending.next() {
+                self.count += 1;
                 return Some(Ok(row));
             }
             self.lease = None;
@@ -191,11 +211,21 @@ impl Iterator for GraphStream {
                     self.lease = _lease;
                 }
                 Some(StreamItem {
-                    event: GraphStreamEvent::VerifiedEnd,
+                    event: GraphStreamEvent::VerifiedEnd(summary),
                     ..
                 }) => {
                     self.ended = true;
+                    if self.count != summary.count {
+                        return Some(Err(anyhow!("GRAPH_STREAM_COUNT_MISMATCH")));
+                    }
                     return None;
+                }
+                Some(StreamItem {
+                    event: GraphStreamEvent::Begin { .. },
+                    ..
+                }) => {
+                    self.ended = true;
+                    return Some(Err(anyhow!("UNEXPECTED_GRAPH_BEGIN")));
                 }
                 None => {
                     self.ended = true;
@@ -221,13 +251,60 @@ mod tests {
                 .unwrap()
         );
         let (tx, mut records) = GraphStream::channel();
-        tx.send(GraphStreamEvent::VerifiedEnd).await.unwrap();
+        tx.send(GraphStreamEvent::VerifiedEnd(
+            crate::delivery::VerifiedEnd {
+                chunks: 0,
+                count: 0,
+                checksum: String::new(),
+            },
+        ))
+        .await
+        .unwrap();
         drop(tx);
         assert!(
             tokio::task::spawn_blocking(move || records.next().is_none())
                 .await
                 .unwrap()
         );
+    }
+    #[tokio::test]
+    async fn begin_owner_capacity_is_charged_until_the_item_is_released() {
+        let (tx, mut stream) = GraphStream::channel();
+        let mut world = String::with_capacity(QUEUE_BYTES + 1);
+        world.push_str("world");
+        tx.send(GraphStreamEvent::Begin {
+            mode: "full".into(),
+            replacements: vec![codeana_model::Owner {
+                world: world.into(),
+                producer: "test".into(),
+                kind: "source".into(),
+                id: "owner".into(),
+            }],
+        })
+        .await
+        .unwrap();
+        let item = stream.recv().await.unwrap();
+        assert!(tx.metrics.summary().peak_bytes > QUEUE_BYTES as u64);
+        assert!(
+            tokio::time::timeout(
+                std::time::Duration::from_millis(20),
+                tx.send(GraphStreamEvent::Batch(vec![crate::graph::Row {
+                    table: 1,
+                    world: "w".into(),
+                    cells: vec![]
+                }]))
+            )
+            .await
+            .is_err()
+        );
+        drop(item);
+        tx.send(GraphStreamEvent::Batch(vec![crate::graph::Row {
+            table: 1,
+            world: "w".into(),
+            cells: vec![],
+        }]))
+        .await
+        .unwrap();
     }
     #[tokio::test]
     async fn oversized_batch_is_exclusive_and_closed_receiver_unblocks_sender() {

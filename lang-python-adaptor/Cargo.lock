@@ -528,8 +528,6 @@ dependencies = [
  "prost",
  "serde",
  "serde_json",
- "sha2",
- "tempfile",
  "tokio",
  "tonic",
  "tonic-prost",
@@ -547,6 +545,21 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+]
+
+[[package]]
+name = "codeana-graph-io"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "codeana-contracts",
+ "codeana-model",
+ "libc",
+ "prost",
+ "serde",
+ "sha2",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -593,9 +606,10 @@ dependencies = [
  "anyhow",
  "clap",
  "codeana-contracts",
+ "codeana-graph-io",
  "codeana-model",
  "codeana-python-adaptor",
- "prost",
+ "codeana-worker-runtime",
  "serde_json",
  "tokio",
 ]
@@ -621,6 +635,7 @@ dependencies = [
  "codeana-comment-search",
  "codeana-contracts",
  "codeana-derived-cache",
+ "codeana-graph-io",
  "codeana-model",
  "libc",
  "rusqlite",
@@ -629,6 +644,18 @@ dependencies = [
  "sha2",
  "tempfile",
  "uuid",
+]
+
+[[package]]
+name = "codeana-worker-runtime"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "codeana-contracts",
+ "codeana-graph-io",
+ "codeana-model",
+ "prost",
+ "tokio",
 ]
 
 [[package]]

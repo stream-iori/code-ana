@@ -3,6 +3,9 @@
 import contextlib, json, os, sqlite3, unittest, subprocess, zipfile, sys
 from product_support import JavaProductHarness, ROOT, BIN, JDK, MAVEN
 
+sys.path.insert(0, str(ROOT / 'scripts'))
+from sdk_manifest import java
+
 TABLES=('nodes','edges','annotations','annotation_meta_owned',
         'file_dependencies','symbol_dependencies','analysis_coverage','index_diagnostics','index_providers')
 
@@ -254,7 +257,7 @@ enabled=false
         # The explicit Serial backend rounds an 8 MiB request up to 16 MiB.
         # Exercise exhaustion after the heap identity guard, keeping the G1 fixture unchanged.
         manifest = json.loads((BIN / '../lib/java/native/manifest.json').read_text())
-        heap_bytes = 16777216 if manifest['native_gc'] == 'serial' else 8388608
+        heap_bytes = 16777216 if java(manifest, 'native')['runtime']['gc'] == 'serial' else 8388608
         config.write_text(previous+f'\n[resources.index]\njava_native_heap_bytes={heap_bytes}\n')
         source.write_text('package p; class App {' + ''.join(
             'int m%d(){return %d;}'%(i,i) for i in range(5000)) + '}')

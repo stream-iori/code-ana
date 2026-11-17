@@ -1,5 +1,7 @@
 # Python worker
 
+> worker 25 正在迁移：Discover 使用互斥配置并在解码前拒绝重复变体。此前 worker 24 的产品、Native 与分发回执不代表本次协议验收；当前进度见 [当前实现](../current-state.md)。
+
 现行 adapter 为 `pyrefly-1.4.0-codeana-v5-comments`：统一 `index --prepare` 默认静态检查各入口 pyproject，支持隔离/共享环境与显式模块依赖，输出并仅接受 schema 3。独立导出器同样输出 schema 3、必须显式 --pyproject 才读取元数据。配置与行为见 [统一输入准备](inputs.md)；下文独立导出示例继续有效。
 
 
@@ -19,7 +21,7 @@ Python 通过独立 Rust worker 接入固定的 Pyrefly 内核。验收范围及
 | 构建 | `lang-python-adaptor/` 是独立 Cargo workspace，worker 位于其 `worker/`；保留两个锁文件 |
 | 分析线程 | 固定 10 MiB 栈，与上游默认一致；单个 blocking 分析任务，不读取 PYREFLY_STACK_SIZE |
 | 原因 | Pyrefly 要求 unicode-ident ≥1.0.25；现有 Rust 适配器固定 1.0.24，不能合并解析依赖或静默更换 Unicode 版本 |
-| 协议 | worker 24、graph model 6、物理 schema 13 / 逻辑 schema 36；Java ABI 4、analysis 12；ABI保持4 |
+| 协议 | worker 25、graph model 6、物理 schema 13 / 逻辑 schema 36；Java ABI 4、analysis 13；ABI保持4 |
 | 环境 | 首轮目标 Python 3.12 / darwin；冻结的有序源码根和辅助依赖根，标准库随固定后端封装 |
 | 执行 | 不执行目标模块、解释器探测、构建、安装、editable hook 或 `.pth` |
 | 来源 | UTF-8（含 BOM）及 ASCII；其他编码明确拒绝；声明使用 UTF-8 字节范围，图列坐标为一基 UTF-16 |
@@ -109,10 +111,10 @@ Python 普通、Python/Rust 组合及 prepared 多实例入口下发静态 grant
 
 重试沿用同一 grant、计数和单调截止时间；Failure / End 携带累计回执，断连用量未知保留 Unknown。预算异常中止整次发布，输入修复后的新任务可恢复。Pyrefly 内部 solver 仍由进程内存与 supervisor 截止时间约束，不能把 adaptor 自有遍历的计数当成其内部每一步的精确计数。
 
-当前严格worker24/Java12，缺失grant和终态回执拒绝；Discover/未变复用共用累计账本。本机fixture混合/分发已通过，正式容量/语义/来源范围另列。
+当前严格worker25/Java13，缺失grant和终态回执拒绝；Discover/未变复用共用累计账本。混合/分发按当前实现中的实际产物回执判定，正式容量/语义/来源范围另列。
 
 
-Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker24；本机fixture混合/分发已通过，正式边界见当前实现。
+Discover现在先校验生产grant及剩余截止时间，为配置文件读取/解码预留累计额度；BuildContext携带核实水位，Analyze接续同一账户。普通/混合/prepared入口在启动时绑定对应语言与实例，未变复用通过Reuse/Reused记录Discover消耗并结束账户。该接入严格使用worker25；混合/分发按当前实现中的实际产物回执判定，正式边界见当前实现。
 
 业务 IPC 共用 contracts 分配前准入：小型 Hello 初始化账本，随后 Discover/Analyze 在分配/解码前检查额度；有界堆控制通道支持超限后的失败回执，取消保留半帧进度并流式丢弃业务字节。实现与证据见 contracts.md 和当前 frame-admission 回执；语言内部投影/完整分发仍按各自未关闭项验收。
 
@@ -129,3 +131,5 @@ INDENT/DEDENT 和 AST suite 共同确定作用域，行首缩进校验排除已�
 冻结目录路径在生成公开 comment ID 前统一还原为逻辑路径。每个已发布源码/world 独立交付 COMMENTS 覆盖；类型绑定缺口继续独立。变化后沿用 Python 全量重算，注释/关联/FTS 与代码原子发布。`tests/python_comment_e2e.py` 和 `tests/comment_mixed_e2e.py` 属于常规与受影响分发门禁；阶段结果以 current-state/C3 回执为准。
 
 注释候选按词法字符做保守预检；没有 # 或引号的文件不创建注释 token/scope 集合。存在候选时，每文件只建立一次 token/物理行边界、AST suite 身份及平衡范围索引；查找按实际区间计费，避免每个函数重复扫描或重复预付整文件。1,000 个带注释函数和 10,000 个无注释函数有固定工作预算回归；这不代替整体容量认证。
+
+公共 BuildContext 已使用稳定 unit、显式 source_languages、modules/worlds、semantic_digest 与类型化 Python 详情。工具链/目标及 adapter 身份不再伪装成公共 source_version/classpath 或图能力字符串；daemon 在创建和会话绑定时核对实例、后端、producer、world 与摘要。报告 schema 4 的 contexts 保留各实例；旧单一 context 不回填。

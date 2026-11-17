@@ -15,9 +15,59 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## 多语言重构与 TS 接入准备（2026-11-16，尚未完成）
+
+准备证据：`target/typescript-c-abi/run-20261116-r0/receipt.json`；当前 T0 探针门禁见 `target/typescript-c-abi/probe-20261116-fresh/receipt.json`，Java 基线见 `target/typescript-c-abi/baseline-20261116-probe/receipt.json`。T0 已通过，不代表生产 TS ABI、公共重构或产品验收通过。
+
+R1 身份/Discover 子阶段证据：`target/typescript-c-abi/r1-identity-wire25/receipt.json`，状态仍为进行中；worker 25 Java 基线及 JVM 产品回执分别位于 `r1-java-worker25/`、`r1-jvm-product25-retry/`。原失败及补验日志见回执映射，不覆盖原失败。
+
+SDK schema 4 子阶段证据：`target/typescript-c-abi/r1-sdk4/receipt.json`。Native 与 JVM 已重建/安装当前格式；Native 为 `build-only` 开发 SDK，不签正式放行。完整 R1 仍未完成。
+
+| 项目 | 本轮结果 |
+|---|---|
+| Java 基线 | `just test-java` 在显式 JDK 8/17/25 与 Homebrew Python 环境下通过；原默认系统 Python 不支持 `str \| None` 的失败保留于 `java.log`，通过日志为 `java-python313.log` |
+| 来源 | `lang-typescript-adaptor/upstream.lock.json` 固定 typescript-go `89d5d5b2849a0db0957065889ca58536fa6d2e4a`，核对 TypeScript gitlink `5848bc5157b22ff7f4e3369f4645a514a433b15f`；Go 1.26.2 下载包已核对官方 SHA |
+| 标准库 | 固定子模块上使用 `GOTOOLCHAIN=local` 执行 `go generate ./internal/bundled` 成功；来源锁记录生成文件及标准库逐文件 SHA |
+| 基线工具 | 新增 `scripts/multilang-baseline.py --evidence target/NEW_DIRECTORY`，使用 Python 3.10+，显式选择 Rust 1.96.0；成功/失败/超时回执及旧目录拒绝测试通过 |
+| T0 探针 | 独立 Rust workspace 调用 Go c-shared 的 ABI 1；双文件人工 expected 验证别名、两个相同调用现场、UTF-8 字节与 UTF-16 列、中文/emoji、CRLF 和无末尾换行；捕获后改删原文件、输入缓冲覆盖、坏句柄、缓冲 canary、分块/EOF/关闭检查通过 |
+| T0 可重放入口 | Python 3.12+ 执行 `scripts/test-typescript-probe.py`；默认自行准备固定源码、Go 和标准库并运行 Java 基线。可显式复用同 HEAD/源码/输入/日志 SHA 核对过的基线。已有源码模式与自行下载模式均通过；后者仅复用已核对的 Java 基线 |
+| T0 构建/退出 | 同模块 overlay、header 编译、导出符号/动态依赖、Rust fmt/clippy、空 PATH 主/工作线程调用、runtime 初始化后 SIGINT/SIGTERM 退出均通过；锁定来源及 SDK，不修改上游 tracked 文件 |
+| R1 身份/协议 | 已拆 `SourceLanguage` / `AnalysisBackend`，JS/TS 共用后端；计划单元使用稳定 `AnalysisUnitId`，拒绝空/重复 ID。worker 升到 25：Discover 使用 oneof，缺失、重复/混合变体、错后端及同后端错实例拒绝。四后端预算守恒通过；尚未注册 TS 产品执行器 |
+| R1 当前验证 | 聚焦 171 项测试及另补的同后端错实例测试通过。Rust 门禁的架构/DDL/fmt、workspace、图/CLI/Rust 产品与工具测试通过，末尾 clippy 的两处冗余默认值已修正并补验；原失败保留，不能把原 `just test-rust` 的退出码 101 改为 0 |
+| worker 25 真实链路 | Java fixture/当前 JVM bundle 重建通过；JVM graph 产品门禁 23 项通过。Python 核心及独立 workspace clippy、产品 7 项、注释 4 项通过；prepared 8 项通过，Native 专项 1 项按入口要求跳过。Native/G1、实际分发及完整组合矩阵仍待本轮验收 |
+| 原失败 | oneof 的 prost boxing 路径、四后端预算仍限三份、两处测试结构的冗余默认值均已定位并修正；JVM 第一次安装因同批 prepared 活进程被保护门禁拒绝，保留日志，等待退出后新目录重跑通过。未绕过活进程安装保护 |
+| R1 剩余 | 公共上下文及启动/重绑定实例校验已迁移；完整单元可用性与普通/prepared 计划归一、TS 原生输入类型仍待完成；统一执行随 R4 继续；SDK 公共格式/校验和公共运行设施已迁移；运行时就绪/启动装配随 R4 归一。本轮身份/oneof/SDK 格式验证不代表 R1—R5 完成。worker 24 SDK 与 worker 25 不混装，需按对应阶段重建和验收 |
+| R1 配置归一子阶段 | ProjectConfig 公共策略拆为共享 TaskConfig，输入改为类型化 UnitInput；prepared 单元保存扁平 ResolvedContext，移除递归 EffectiveUnit。公共清单 schema 2 的原生配置只含 discovery/languages/modules，不允许注入公共扫描或资源策略；旧 schema 1 要求重新 prepare |
+| R1 配置阶段验证 | 配置/应用聚焦 93 项、完整 Rust 门禁、Python 独立 workspace/core/clippy、普通 Python 产品 7 项及注释 4 项通过；真实三语言 prepared 10 项、Native 图/资源/注释 24 项通过，无该 prepared 入口的 Native 跳过。最终已解析配置入口的补验与源码/日志摘要见 `target/typescript-c-abi/r1-config-unit2/receipt.json`；早期编译借用错误和最终无用导出 lint 失败均保留 |
+| R1 公共上下文 | BuildContext 必需稳定 unit、源码语言、模块/world、语义摘要和类型化后端详情。Java JDK/桥、Rust toolchain/adapter、Python 目标/adapter/后端提交及 TS 编译器/提交分开；Discover 实例须匹配 grant，daemon 启动与 Java 池重绑定核对身份/producer/world/摘要，旧字段和重复详情/实例拒绝 |
+| R1 报告 | schema 4 的 contexts 按实际已发现实例列出后端和发布语言；普通混合与 prepared 均保留所有运行单元，不再伪造 multi 上下文；Markdown 同源增加实例表。FilesOnly 仍在全局输入状态中披露；上下文就绪不等于已发布语义 |
+| R1 上下文验证 | 聚焦 model/contracts/application 共 176 项通过（含四后端/JS+TS、错实例/world/producer、摘要、重复/旧 wire 字段）。真实 Native graph 24、显式 JVM graph 23 通过且无产物漂移；最终公共门禁和 prepared/Python 补验见 `target/typescript-c-abi/r1-context/receipt.json`。保留大 enum clippy、Python 独立 workspace 字段补齐及测试断言迁移错误的原日志；不表示 R1—R5/TS 生产与正式分发完成 |
+| R2 graph-io 子阶段 | 新增 graph-io，迁出 contracts 的 GRA1 IO/队列/生产器并删除 Java 独立 delivery。三语言共用 Encoder，daemon 共用 Verifier；仅成功编码/校验路径生成不可在 crate 外构造的 VerifiedEnd。Java JSON envelope 保留在 Java worker，纯 Descriptor/OutputLimits 位于 contracts::graph_delivery |
+| R2 归档与队列 | 原字节 count/size/SHA/EOF 校验与 IPC 规范编码摘要分开；任务根 FD/openat 禁止内部 symlink、父级逃逸、非普通文件及路径放大，消费前核对 inode/dev，替换路径不误删。晚到 SHA 错误/预算/取消不发 VerifiedEnd；Begin owners 与 Row/Cell/String 容量进入同一 8 MiB 队列配额，批次统一 64 行/256 KiB |
+| R2 架构门禁 | 扫描所有成员生产源码的嵌套模块与 Python 独立 workspace，解析 Cargo 依赖别名并检查传递路径；测试模块后的生产代码仍被检查。11 项反例测试通过；共享层禁止编译器依赖，graph-io 禁止 SDK/IPC/进程和语言 envelope |
+| R2 当前验证 | graph-io 16 项、Java worker 9 项（默认 G1 专项忽略 1，未重标旧实际验收）、应用 52 项聚焦通过；最终完整 Rust 门禁、Python core/独立 clippy、Python 产品 7/注释 4、真实 prepared 10、Native graph 24/JVM graph 23 全部通过。源码/产物/原失败见 `target/typescript-c-abi/r2-graphio/receipt.json`；Native 仍为 build-only，不作正式分发放行 |
+| R2 worker-runtime | IPC 帧进度、三语言请求状态、daemon 接收状态、终态回执、FFI owner/通知和唯一账本交接凭证已接入；Java 内部 EngineRequest/EngineAnalysisReceipt 迁入 Java worker。contracts 仅保留 wire/纯 DTO 准入，无兼容导出。EngineOwned/Unknown 禁止 Rust 修改累计账户；可信回执才能归还，缺失/非法回执保留最后核实水位 |
+| R2 运行阶段验证 | worker-runtime 38、模型 56、Java worker 9（默认 G1 忽略 1，另以真实库执行 1 项通过）、应用 52 项聚焦通过；完整 Rust、Python core/独立 clippy/构建通过；prepared 10、Python 产品 7/注释 4 通过。当前稳定产物 Native graph 24/JVM graph 23、Native 生命周期 10 和真实 SIGSEGV/SDK 恢复再索引通过；最终产品门禁无产物漂移。首轮 Reused/Cancel 失败及首轮 JVM 产物漂移原回执保留；原失败未改为通过。详见 `target/typescript-c-abi/r2-runtime/receipt.json` |
+| R2 阶段边界 | graph-io、worker-runtime、三语言交付/会话/账本交接与 Java 内部 codec 已迁移并完成本机阶段回归。Native 仍为 build-only 开发 SDK，未签正式分发放行。完整单元可用性/启动装配随 R3/R4 归一；R3/R4/R5 与 TS T2—T8 继续实施，不能以 R2 替代完整计划 |
+| SDK 公共格式 | schema 4 必需公共协议/平台/摘要及类型化后端身份，取消旧 manifest 默认值与扁平 Java 字段；Java Native/JVM 身份与 TS Go/上游/标准库身份分开。启动、安装、doctor、打包及测试工具已迁移；TS 只验证契约，不表示生产 SDK 已接入 |
+| SDK 拒绝与诊断 | 缺字段、旧格式、未知字段、重复键（含开放元数据/文件摘要映射）拒绝；SDK JSON 有字节/节点/深度上限。doctor 区分 missing/invalid/present_unverified，不把元数据有效写成文件摘要已核实；两项诊断测试通过 |
+| SDK 当前实际验证 | `r1-sdk4-java-baseline` Java fixture 通过；schema 4 JVM graph 23、Native graph 24、Native C ABI lifecycle 10、真实 G1 teardown 后禁止重建 1、真实 SIGSEGV 保旧 head/Unknown/回收/恢复通过。真实三语言 prepared 9 项全部通过，无该入口的 Native 跳过 |
+| R3 进行中 | 三语言内容/来源登记接入 capture/registry；相同内容共用只读 spool，同文件多 world 保留各自辅助/发布角色，矛盾内容/归属拒绝。prepared 语义摘要排除 generation/日志/artifact 定位及 Maven receipt；业务来源与 PREPARATION 完整性文件分开比较。新增真实重复 prepare 用例通过：跨 generation 的 profile/语义稳定并取得 Reused，源变化后拒绝旧清单、重新准备后重算。本子阶段最终完整 Rust/Python core/独立 clippy、prepared 11（含三语言重复 prepare）、Python 产品 7/注释 4、Native graph 24/JVM graph 23 通过，最终产品门禁无产物漂移。真实 Native SDK 搬迁取得 Reused，随后实际全量的 profile/图库保持一致；可重放入口为 `just test-java-native-relocation`。原 Native 堆池身份、FILES 降级及 clippy 失败保留，修正后补验通过；见 `target/typescript-c-abi/r3-registry-semantic/receipt.json`。一次读取/实例视图/文件系统观察仍待 R3 后续完成 |
+| R3 捕获读取子阶段 | 已接入目录 FD/逐级 NOFOLLOW、显式外部根/单文件权限、捕获阶段单次 live copy（含 hardlink 复用）、分块取消与截止检查、文件/目录/缺失查找/root realpath 观察和封存复核。Java 同 SHA 的各声明路径仍逐一核实。配置 52/应用 53 项聚焦、完整 Rust、Python core/clippy 已通过；外部 Maven 身份控制只流式验 SHA、不保存内容的回归通过。当前产物 prepared 11、Python 产品 7/注释 4、Native graph 24/JVM graph 23 通过，最终产品无产物漂移；回执见 `target/typescript-c-abi/r3-reader/receipt.json`。静态配置解析读取尚未合并；声明链接映射和实例视图仍待 R3 后续，Native 仍不是正式放行 |
+| R3 解析/捕获单次读取子阶段 | 创建 CaptureReader 后再解析配置；根配置、prepared catalog/artifact、Java/Rust/Python 清单与控制验证通过 InputReader 共用捕获缓存。新增测试验证解析/捕获只读一次、解析后改写导致封存失败，以及独立诊断对 FIFO/目录/链接/超限输入的拒绝。配置 55/应用 53 项聚焦、完整 Rust、Python core/clippy/构建通过；当前产物 prepared 11、Python 产品 7/注释 4、Native graph 24/JVM graph 23 通过，无产物漂移。Java 源码 SHA 与既有已验证基线相同，本轮未重跑 Java fixture 或重建 SDK；Native 仍为 build-only。见 `target/typescript-c-abi/r3-resolution-reader/receipt.json`；实例独立视图和声明链接映射仍待完成，不代表完整 R3/TS 接入通过 |
+| R3 prepared 实例视图子阶段 | config 按稳定实例构造 FrozenUnitView，隔离 manifest、blob 引用与观察索引；解析和捕获操作均记录实例路径。公共扫描先保留 FILES，占位资源可提升为控制；各实例独立登记辅助/发布角色。允许不同模块/world 的独立上下文共享物理根，重复模块身份和归属/内容冲突仍拒绝。删除 application 的全局 scope 筛选函数；Java 依赖保留在自己的视图。真实同根双 Maven 上下文验证索引、重复 prepare 复用、双 world 注释与删除其中一个后保留另一归属；Native/JVM 各执行专项通过。发现并修正私有候选对未填写 world 的 Java 行只按路径取首个来源的问题，现按行 module/scope 匹配，显式 world 不放宽。当前配置 60/应用 53/存储 43、完整 Rust、prepared 12、Native graph 24/JVM graph 23 通过，无产物漂移。见 `target/typescript-c-abi/r3-unit-views/receipt.json`；普通入口视图归一、声明链接映射、R4/R5/TS 生产仍未完成，Native SDK 未重建或正式放行 |
+| R3 普通视图 / R4 运行单元基础 | 普通与 prepared 共用 unit_plans/capture_units；CaptureScope 区分 Task/Unit，后端上下文仅构造自身语言/模块/输入并共享 TaskConfig，原生解析观察也按实例登记。语言准备拒绝跨后端视图；Java Analyze/Discover 使用同一单元清单，候选绑定全项目清单。保守/prepared 使用 Vec<RunningUnit> 直接拥有会话状态、描述符/输入守卫、manifest 与捕获引用；删除 One/Pair/Sessions、平行数组和 Deref。计划/启动统一按后端、稳定实例 ID 排序。新增真实中途 JDK 准备失败用例：前序单元已有 Discover 消耗，失败保旧 head、无残留 worker，修复后恢复；Native/JVM 均通过。XML 根资源遗漏曾导致两组图门禁失败，保留原回执；修正 Java 根 XML 选择并补视图测试后，当前配置 61/应用 55/存储 43、完整 Rust、prepared 13、Python 产品 7/注释 4、Native graph 24/JVM graph 23 通过，无产物漂移。见 `target/typescript-c-abi/r4-owned-units/receipt.json`。声明链接映射、完整 PlannedUnit/更新策略与归属账本、单 Java/Rust 增量流程的公共执行、R5/TS 生产仍未完成；不签正式 Native/分发放行 |
+| SDK 公共门禁 | 完整 `just test-rust`、`just test-python-core` 通过；SDK codec、安装保护/回滚、稳定路径及升级工具单测通过。追加开放映射 JSON 重复键预检后，聚焦 SDK 3 项、Python SDK 4 项、workspace clippy、当前实际 SDK runtime-info 补验通过 |
+| SDK 原失败/未覆盖 | 保留 serde JVM 单元变体忽略额外字段、旧安装 fixture/导入路径、fmt 空行、误用 G1 exact 过滤导致 0 项执行的原日志；已逐项修正并实际补跑。未重标旧回执；Java 8/17/macOS ARM64 范围以本轮实际产物解释，正式 Native、跨平台、性能与分发仍未放行 |
+| R3 声明链接组件 | 公共 InputCaptureReader/DeclaredLink/SealedInputs 已提供按单元隔离、允许根约束、精确 readlink 目标、循环/跳数/路径上限与封存复核。缓存命中不借用其他单元链接权限；同路径链接与内容观察均保留，外部目标根权限进入所属单元视图；相对目标和中途 `..` 按物理目录处理。配置 63 项与公开端口文件系统集成 13 项聚焦通过，覆盖改写、缺失查找、目录变化、身份只读、取消和重复缓存访问。本轮完整 Rust、真实 Native prepared 与 Python 产品/注释门禁结果见 `target/typescript-c-abi/r3-declared-links-stable/receipt.json`；审查期间的早期日志与源码漂移回执另保留在 `r3-declared-links`。既有三语言清单仍拒绝源链接，尚无产品清单传入声明映射；pnpm/TS 闭包须由 T3 验证，不作正式 Native/分发放行 |
+| R4 基线与来源边界 | 主机元数据清单升级 v2：完整单元输入/辅助角色和声明 scope，v1/缺清单增量明确要求全量重建。一次固定 head，元数据租约贯穿索引且阻止 GC，后续策略不重新选择基线；旧图可通过显式全量迁移。Receiver 对 replacement producer/world/path 和图行 source/world/module/scope/语言做实例边界校验，错误后无 VerifiedEnd。原失败与定向测试记录于 `target/typescript-c-abi/r4-baseline-scope/`；真实回归发现 Java 基线夹带 FILES owner、Python 汇总 coverage 原生模块漏登记，已修正。修正后完整 Rust/clippy、Python 核心/clippy、prepared 17、Python 产品 7/注释 4、Native 图 24/JVM 图 23、真实 Native SIGSEGV/SDK 恢复再索引均通过，源码/16 项产物在门禁中无漂移，见 `target/typescript-c-abi/r4-baseline-scope-final/receipt.json`。Java 660 文件源码摘要保持，沿用匹配 build-only SDK，不作正式分发放行。无来源字典归属、存储按 world 精确替换、统一结果混合及 TS 生产继续待办 |
+| R4 单元归属与可用性 | 新 revision 持久化 unit_ownership v1，记录稳定实例、后端/语言、非辅助发布范围、零输出来源与独立语义/输入身份；旧基线缺清单时要求 index --full，storage 创建候选前校验，随同一次 CAS 提交。PlannedUnit 保留 Ready/FilesOnly/Removed，普通/prepared 共用静态实例分片，非执行份额封为可信零用量且不可借出/重领；移除全部单元不启动 Java 兜底，首次无语言索引仍拒绝。真实旧清单重建/保旧 head 和禁用全部单元两项聚焦已通过；本轮完整门禁见 `target/typescript-c-abi/r4-unit-ledger/receipt.json`。单 Java/Rust 独立策略、任意 Full/Delta/Reuse 混合、LaunchSpec/公共 supervisor、无法确认停止时的输入保留及 R5/TS 生产仍未完成；Native SDK 未重建或正式放行 |
+| R4 输入租约 / 回收监督 | 所有现行普通/混合/prepared 启动迁入携带 InputLease 的 LaunchSpec。Process 在 Hello/Discover 前取得捕获 spool 与 Java/Rust/Python scratch 共享所有权；独立回收登记在停止失败、future 丢弃及任务 runtime 关闭后继续固定输入。先 kill 所属组，确认无非僵尸成员后回收 leader；停止两秒超时仍保留输入并继续回收。可信 Acked 才清除任务租约/scratch 观察，错误 ACK 保留；旧磁盘检查持有旧租约且不影响下一任务。新增 5 项真实进程边界与有效/错误 ACK 测试，应用 62 项聚焦通过；macOS 瞬态 EPERM 原失败日志保留。完整 Rust、Native/prepared/Python/JVM 与真实 SIGSEGV 恢复结果见 `target/typescript-c-abi/r4-input-supervisor/receipt.json`。完整后端装配/公共监控、固定计划基线、发布范围证明与任意混合执行仍待 R4；R5/TS 生产与正式放行未完成 |
+| 未完成 | R1—R5 公共重构、T2—T8 生产 ABI、产品与分发均未完成；完整单元策略、混合结果、公共执行/后端装配与监控仍待 R4，TS 产品链接输入仍待 T3。T0 同步诊断 ABI 不作生产复用。没有性能或正式放行结论 |
+
 ## 删除产品旧格式兼容（2026-11-09，本机验证完成）
 
-当前 daemon 7、公开投影 3、报告 schema 3。页、Record、任务事件、报告、资源回执、语言配置及输入仅保留当前路径；删除清单见 [单一当前格式](../design/legacy-removal.md)。原协议 6 的验收记录保留于下节，不作为本轮产物验证。
+当前 daemon 7、公开投影 3、报告 schema 4。页、Record、任务事件、报告、资源回执、语言配置及输入仅保留当前路径；删除清单见 [单一当前格式](../design/legacy-removal.md)。原协议 6 的验收记录保留于下节，不作为本轮产物验证。
 
 本轮证据：`target/legacy-removal/receipt.json`，仅以该回执列出的最终日志为依据。
 

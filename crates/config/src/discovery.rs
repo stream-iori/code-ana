@@ -5,6 +5,7 @@ pub(super) fn discover_java(
     root: &Path,
     c: &mut ProjectConfig,
     language_required: bool,
+    reader: &dyn InputReader,
 ) -> Result<Option<JavaInputs>> {
     Ok(if language_required {
         if let Some(java) = &c.languages.java {
@@ -16,7 +17,7 @@ pub(super) fn discover_java(
                 if !root.join(path).is_file() {
                     return Err(java_inputs::missing_inputs(root, path, suggestions));
                 }
-                let inputs = JavaInputs::read(root, path)?;
+                let inputs = JavaInputs::read_using(root, path, reader)?;
                 if !c.modules.iter().any(|m| m.language == "java") {
                     c.modules.extend(
                         inputs
@@ -30,9 +31,9 @@ pub(super) fn discover_java(
                                     .source_roots
                                     .iter()
                                     .filter(|r| {
-                                        c.scan.scopes.contains(&r.scope)
+                                        c.task.scan.scopes.contains(&r.scope)
                                             || (r.scope == "MAIN"
-                                                && c.scan.scopes.iter().any(|s| s == "TEST"))
+                                                && c.task.scan.scopes.iter().any(|s| s == "TEST"))
                                     })
                                     .map(|r| SourceRoot {
                                         path: r.path.clone(),
@@ -66,6 +67,7 @@ pub(super) fn discover_rust(
     c: &mut ProjectConfig,
     language_required: bool,
     rust_policy: Option<&String>,
+    reader: &dyn InputReader,
 ) -> Result<Option<codeana_model::rust::Inputs>> {
     Ok(
         if language_required
@@ -81,7 +83,7 @@ pub(super) fn discover_rust(
                 .and_then(|r| r.discovery.inputs_manifest.as_deref())
                 .unwrap_or(".code-ana/rust-inputs.json")
                 .to_owned();
-            let inputs = rust_inputs::read(root, &path)?;
+            let inputs = rust_inputs::read_using(root, &path, reader)?;
             ensure!(
                 Some(&inputs.policy) == rust_policy,
                 "RUST_INPUTS_STALE: selection policy changed; re-export Rust inputs"
@@ -260,10 +262,10 @@ pub(super) fn resolve_modules(
                 );
             }
             ensure!(
-                c.scan.scopes.contains(&s.scope)
+                c.task.scan.scopes.contains(&s.scope)
                     || (m.language == "java"
                         && s.scope == "MAIN"
-                        && c.scan.scopes.iter().any(|scope| scope == "TEST")),
+                        && c.task.scan.scopes.iter().any(|scope| scope == "TEST")),
                 codeana_model::DomainError::new(codeana_model::ErrorCode::SourceScopeExcluded, "")
             );
             if let Some(label) = &s.label {

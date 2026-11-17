@@ -2,7 +2,7 @@
 use super::*;
 
 pub(super) fn capture(
-    root: &Path,
+    reader: &std::cell::RefCell<capture::CaptureReader>,
     manifest: &mut Manifest,
     blobs: &mut BTreeMap<String, CapturedBlob>,
     total: &mut usize,
@@ -10,6 +10,8 @@ pub(super) fn capture(
     excludes: &globset::GlobSet,
     timing: (std::time::Instant, std::time::Duration),
 ) -> Result<()> {
+    let project = reader.borrow().project_root().to_path_buf();
+    let root = project.as_path();
     let mut directories = BTreeSet::new();
     for source in manifest.files.iter().filter(|s| s.language == "java") {
         let mut directory = Path::new(&source.path).parent();
@@ -47,7 +49,7 @@ pub(super) fn capture(
             ))?
             .to_owned();
         let physical = root.join(&path);
-        if physical.try_exists()? {
+        if reader.borrow_mut().exists(&physical)? {
             ensure!(
                 !excludes.is_match(&relative),
                 codeana_model::DomainError::new(codeana_model::ErrorCode::LombokConfigExcluded, "")
@@ -61,7 +63,8 @@ pub(super) fn capture(
             codeana_model::DomainError::new(codeana_model::ErrorCode::LombokConfigDepthBudget, "")
         );
         let physical = directory.join("lombok.config");
-        if physical.try_exists()? {
+        reader.borrow_mut().allow_file(&physical)?;
+        if reader.borrow_mut().exists(&physical)? {
             // Depth 1 is the immediate project parent. Workers only receive sealed bytes.
             files.push((
                 format!(".code-ana/lombok-ancestors/{:06}/lombok.config", index + 1),
@@ -79,7 +82,7 @@ pub(super) fn capture(
             timing.0.elapsed() < timing.1,
             codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureTimeout, "")
         );
-        let bytes = bounded_read(&physical, 1024 * 1024)?;
+        let bytes = reader.borrow_mut().read(&physical, 1024 * 1024)?;
         configuration_bytes += bytes.len();
         ensure!(
             configuration_bytes <= 8 * 1024 * 1024,

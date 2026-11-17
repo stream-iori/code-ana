@@ -33,18 +33,10 @@ fn claim_isolate(gc: &str, history: &AtomicU8) -> Result<()> {
 }
 
 fn manifest_gc(manifest: &codeana_contracts::bundle::BundleManifest) -> Result<&str> {
-    let gc = manifest
-        .native_gc
-        .as_deref()
-        .context(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::BundleGcRequired,
-            "",
-        ))?;
-    ensure!(
-        matches!(gc, "serial" | "G1"),
-        codeana_model::DomainError::new(codeana_model::ErrorCode::BundleGcUnsupported, "")
-    );
-    Ok(gc)
+    match &manifest.java()?.runtime {
+        codeana_contracts::java::sdk::Runtime::Native { gc, .. } => Ok(gc.as_str()),
+        codeana_contracts::java::sdk::Runtime::Jvm { .. } => anyhow::bail!("BUNDLE_GC_REQUIRED"),
+    }
 }
 
 // graal_isolate.h v5. The build-JDK header's layout is verified by the native acceptance probe.
@@ -96,7 +88,7 @@ impl Native {
             codeana_model::DomainError::new(codeana_model::ErrorCode::NativeLibraryMissing, "")
         );
         let manifest: codeana_contracts::bundle::BundleManifest =
-            serde_json::from_slice(&std::fs::read(
+            codeana_contracts::bundle::BundleManifest::parse(&std::fs::read(
                 path.parent()
                     .context(codeana_model::DomainError::new(
                         codeana_model::ErrorCode::BundlePath,
@@ -354,44 +346,14 @@ pub fn verify_bundle(path: &Path) -> Result<std::path::PathBuf> {
         "",
     ))?;
     let manifest: codeana_contracts::bundle::BundleManifest =
-        serde_json::from_slice(&std::fs::read(parent.join("manifest.json"))?)?;
+        codeana_contracts::bundle::BundleManifest::parse(&std::fs::read(
+            parent.join("manifest.json"),
+        )?)?;
+    codeana_contracts::java::sdk::validate_identity(&manifest, "native").context(
+        codeana_model::DomainError::new(codeana_model::ErrorCode::BundleVersionMismatch, ""),
+    )?;
     ensure!(
-        manifest.version == 3
-            && manifest.backend == "native"
-            && manifest.worker_protocol == codeana_model::WORKER_PROTOCOL_VERSION
-            && manifest.fact_ir == codeana_model::VERSION
-            && manifest.abi == 4
-            && manifest.analysis_request == codeana_model::JAVA_ANALYSIS_VERSION
-            && manifest.compiler_protocol == 2
-            && manifest.compiler_batch_protocol == 2
-            && manifest.adapter == "anatomist-4a903272-codeana-graph6-resource2-analysis"
-            && manifest.java_model == "javac-model-v51"
-            && manifest.graph_schema == 36
-            && manifest.target_java == [8, 17]
-            && manifest.compiler_bridges.len() == 2
-            && manifest
-                .compiler_bridges
-                .get("8")
-                .is_some_and(|name| name == "compiler-bridge.jar")
-            && manifest
-                .compiler_bridges
-                .get("17")
-                .is_some_and(|name| name == "compiler-bridge17.jar")
-            && manifest.graph_encoding == "GRA1-protobuf-row-v1",
-        codeana_model::DomainError::new(codeana_model::ErrorCode::BundleVersionMismatch, "")
-    );
-    let os = if cfg!(target_os = "macos") {
-        "Darwin"
-    } else {
-        "Linux"
-    };
-    let arch = if cfg!(target_arch = "aarch64") {
-        "arm64"
-    } else {
-        "x86_64"
-    };
-    ensure!(
-        manifest.os == os && manifest.arch == arch,
+        manifest.platform_matches(),
         codeana_model::DomainError::new(codeana_model::ErrorCode::BundlePlatformMismatch, "")
     );
     manifest_gc(&manifest)?;

@@ -40,6 +40,25 @@ pub struct Store {
     blob_io: Arc<blobs::IoLimit>,
 }
 pub type CancellationCheck = dyn Fn() -> bool + Send + Sync;
+/// Pins immutable revision files without retaining a SQLite connection across async work.
+pub struct RevisionPin {
+    id: String,
+    coord: Arc<Mutex<Coordination>>,
+}
+impl Drop for RevisionPin {
+    fn drop(&mut self) {
+        unpin_revision(&self.coord, &self.id);
+    }
+}
+fn unpin_revision(coord: &Mutex<Coordination>, id: &str) {
+    let mut c = coord.lock().unwrap();
+    if let Some(n) = c.readers.get_mut(id) {
+        *n -= 1;
+        if *n == 0 {
+            c.readers.remove(id);
+        }
+    }
+}
 pub struct ReadContext {
     comment_sort_key_bytes: u64,
     cancellation: Option<Arc<CancellationCheck>>,
@@ -52,13 +71,7 @@ pub struct ReadContext {
 }
 impl Drop for ReadContext {
     fn drop(&mut self) {
-        let mut c = self.coord.lock().unwrap();
-        if let Some(n) = c.readers.get_mut(&self.revision.id) {
-            *n -= 1;
-            if *n == 0 {
-                c.readers.remove(&self.revision.id);
-            }
-        }
+        unpin_revision(&self.coord, &self.revision.id);
     }
 }
 fn json<T: Serialize>(x: &T) -> Result<String> {
@@ -207,7 +220,46 @@ impl Store {
     fn revision_unlocked(&self, id: &str) -> Result<Revision> {
         self.revision_metered(id, None)
     }
+    /// Metadata-only access permits an explicit full rebuild of an older graph schema.
+    pub fn revision_metadata(&self, id: &str) -> Result<Revision> {
+        self.revision_metered(id, None)
+    }
     fn revision_metered(&self, id: &str, budget: Option<&ResourceBudget>) -> Result<Revision> {
+        self.revision_admitted(id, |bytes| {
+            if let Some(b) = budget {
+                b.charge(1, bytes as u64)?;
+            }
+            Ok(())
+        })
+    }
+    pub fn pin_revision(
+        &self,
+        id: &str,
+        budget: Option<&AnalysisContext>,
+    ) -> Result<(Revision, RevisionPin)> {
+        let mut coordination = self.coord.lock().unwrap();
+        let revision = self.revision_admitted(id, |bytes| {
+            if let Some(budget) = budget {
+                budget
+                    .charge(1, 1, (bytes as u64).saturating_mul(8))
+                    .map_err(DomainError::analysis)?;
+            }
+            Ok(())
+        })?;
+        *coordination.readers.entry(id.into()).or_default() += 1;
+        Ok((
+            revision,
+            RevisionPin {
+                id: id.into(),
+                coord: self.coord.clone(),
+            },
+        ))
+    }
+    fn revision_admitted(
+        &self,
+        id: &str,
+        admit: impl FnOnce(usize) -> Result<()>,
+    ) -> Result<Revision> {
         let connection = self.catalog()?;
         let mut statement = connection.prepare("SELECT body FROM revisions WHERE id=?")?;
         let mut rows = statement.query([id])?;
@@ -215,9 +267,7 @@ impl Store {
             .next()?
             .context(DomainError::new(ErrorCode::RevisionNotFound, ""))?;
         let body = row.get_ref(0)?.as_str()?;
-        if let Some(b) = budget {
-            b.charge(1, body.len() as u64)?;
-        }
+        admit(body.len())?;
         Ok(serde_json::from_str(body)?)
     }
     pub fn read(&self, id: &str) -> Result<ReadContext> {
@@ -799,6 +849,7 @@ mod tests {
     }
     pub(super) fn revision() -> Revision {
         Revision {
+            unit_ownership: None,
             id: String::new(),
             target: "t".into(),
             project: "p".into(),
@@ -808,6 +859,100 @@ mod tests {
             producer: "mock".into(),
             created: 0,
         }
+    }
+    #[test]
+    fn metadata_pin_survives_head_change_and_gc_without_opening_an_old_graph_schema() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let first = store.publish(revision(), &result(), "", "first").unwrap();
+        let (metadata, pin) = store.pin_revision(&first.id, None).unwrap();
+        assert_eq!(metadata.id, first.id);
+        let second = store
+            .publish(revision(), &result(), &first.id, "second")
+            .unwrap();
+        let gc = store.clone();
+        std::thread::spawn(move || gc.gc(true).unwrap())
+            .join()
+            .unwrap();
+        assert!(store.home.join("revisions").join(&first.id).is_dir());
+        let graph = Connection::open(
+            store
+                .home
+                .join("revisions")
+                .join(&first.id)
+                .join("facts.db"),
+        )
+        .unwrap();
+        graph.pragma_update(None, "user_version", 0).unwrap();
+        drop(graph);
+        assert!(store.read(&first.id).is_err());
+        let (_, another_pin) = store.pin_revision(&first.id, None).unwrap();
+        drop(another_pin);
+        drop(pin);
+        store.gc(true).unwrap();
+        assert!(!store.home.join("revisions").join(&first.id).exists());
+        assert_eq!(store.head("t").unwrap(), second.id);
+    }
+    #[test]
+    fn denied_metadata_admission_does_not_leave_a_revision_pin() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let first = store.publish(revision(), &result(), "", "first").unwrap();
+        let budget = AnalysisContext::new(
+            AnalysisLimits {
+                max_payload_bytes: 1,
+                ..Default::default()
+            },
+            None,
+        )
+        .unwrap();
+        assert!(store.pin_revision(&first.id, Some(&budget)).is_err());
+        assert!(budget.checkpoint().is_err());
+        assert!(!store.coord.lock().unwrap().readers.contains_key(&first.id));
+    }
+    #[test]
+    fn ownership_is_published_even_for_zero_output_units_and_invalid_ledgers_retain_head() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let mut candidate = revision();
+        candidate.unit_ownership = Some(UnitOwnershipLedger {
+            version: UNIT_OWNERSHIP_VERSION,
+            units: vec![UnitOwnership {
+                inputs: vec![],
+                scopes: vec!["MAIN".into()],
+                unit: "empty-module".into(),
+                backend: AnalysisBackend::Java,
+                availability: UnitAvailability::Ready,
+                source_languages: vec![SourceLanguage::Java],
+                modules: vec!["empty-module".into()],
+                worlds: vec![],
+                producer: "javac-v3".into(),
+                semantic_profile: hash("profile"),
+                input_digest: hash("input"),
+                sources: vec![],
+            }],
+        });
+        let published = store
+            .publish(candidate.clone(), &result(), "", "first")
+            .unwrap();
+        assert_eq!(
+            store
+                .revision_metadata(&published.id)
+                .unwrap()
+                .unit_ownership,
+            candidate.unit_ownership
+        );
+        assert_eq!(
+            store.read(&published.id).unwrap().revision.unit_ownership,
+            candidate.unit_ownership
+        );
+        candidate.unit_ownership.as_mut().unwrap().version = 0;
+        assert!(
+            store
+                .publish(candidate, &result(), &published.id, "invalid")
+                .is_err()
+        );
+        assert_eq!(store.head("t").unwrap(), published.id);
     }
     #[test]
     fn recovery_retries_recorded_cleanup() {

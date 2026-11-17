@@ -66,7 +66,7 @@ def facts(main):
     for path in ['src/App.java','src/Greeting.java','src/Service.java']:fs.append(fact('coverage_'+path,'coverage',path,status='complete'))
     return fs
 states=[]
-for name,text,behavior in [('base',A,''),('edited',B,''),('replan',B+'// replan\n','replan'),('partial',A+'// incomplete semantics\n',''),('advice',A+'// missing generated input\n',''),('crash',A+'// crash\n','crash'),('hang',A+'// hang\n','hang'),('wrong-sequence',A+'// sequence\n','wrong-sequence'),('bad-checksum',A+'// checksum\n','bad-checksum'),('missing-end',A+'// missing end\n','missing-end'),('oversize',A+'// frame limit\n','oversize')]:
+for name,text,behavior in [('base',A,''),('edited',B,''),('replan',B+'// replan\n','replan'),('partial',A+'// incomplete semantics\n',''),('advice',A+'// missing generated input\n',''),('crash',A+'// crash\n','crash'),('hang',A+'// hang\n','hang'),('wrong-sequence',A+'// sequence\n','wrong-sequence'),('bad-checksum',A+'// checksum\n','bad-checksum'),('missing-end',A+'// missing end\n','missing-end'),('oversize',A+'// frame limit\n','oversize'),('foreign-owner',A+'// foreign owner\n','foreign-owner'),('foreign-row',A+'// foreign row\n','foreign-row')]:
     path=ROOT/'java'/name
     files={'.code-ana/config.toml':CONFIG,'src/App.java':text,'src/Greeting.java':I,'src/Service.java':IMPL}
     for p,data in files.items():
@@ -75,7 +75,7 @@ for name,text,behavior in [('base',A,''),('edited',B,''),('replan',B+'// replan\
     if name=='partial':
         for f in fs:
             if f['kind']=='coverage' and f['source']=='src/App.java':f['status']='partial';f['evidence_complete']=False
-    state=dict(name=name,content_digest=sha(compact({p:sha(data.encode())for p,data in files.items()})),context=dict(language='java',modules=['fixture'],source_version='17',classpath=[],producer='mock-fixture-v1',capabilities=['declarations','calls','relations','coverage','java-facets']),facts=fs,behavior=behavior,delay_ms=0)
+    state=dict(name=name,content_digest=sha(compact({p:sha(data.encode())for p,data in files.items()})),context=dict(unit='java',source_languages=['java'],worlds=[],semantic_digest='',details=dict(backend='java',source_version='17',classpath=[],toolchain=dict(digest='mock-jdk17',home='mock',version='17',aliases=[],compiler_bridge='mock',adapter='mock-fixture-v1')),modules=['fixture'],producer='mock-fixture-v1',capabilities=['declarations','calls','relations','coverage','java-facets']),facts=fs,behavior=behavior,delay_ms=0)
     if name=='advice':state['advice']=dict(missing=['target/generated-sources/Example.java'],cwd='.',argv=[],purpose='prepare generated sources outside code-ana',expected=['target/generated-sources/Example.java'],impact='Java semantic coverage is incomplete',retry='start a new index task after preparing the input')
     states.append(state)
 (ROOT/'mock.json').write_text(json.dumps(dict(schema_version=1,states=states),indent=2,ensure_ascii=False)+'\n')

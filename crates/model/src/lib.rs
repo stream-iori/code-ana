@@ -3,6 +3,10 @@ mod analysis_grants;
 pub use analysis_grants::*;
 mod analysis_allocation;
 pub use analysis_allocation::*;
+mod analysis_identity;
+pub use analysis_identity::*;
+mod unit_ownership;
+pub use unit_ownership::*;
 mod analysis_resources;
 pub use analysis_resources::*;
 mod resources;
@@ -43,7 +47,7 @@ use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
 pub const VERSION: u32 = 6;
-pub const WORKER_PROTOCOL_VERSION: u32 = 24;
+pub const WORKER_PROTOCOL_VERSION: u32 = 25;
 pub const JAVA_ANALYSIS_VERSION: u32 = 13;
 pub const DAEMON_PROTOCOL_VERSION: u32 = 7;
 pub const MAX_FRAME: usize = 8 * 1024 * 1024;
@@ -226,16 +230,8 @@ impl Manifest {
         )
     }
 }
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct BuildContext {
-    pub language: String,
-    pub modules: Vec<String>,
-    pub source_version: String,
-    pub classpath: Vec<String>,
-    pub producer: String,
-    pub capabilities: Vec<String>,
-}
+mod build_context;
+pub use build_context::*;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildAdvice {
@@ -790,6 +786,9 @@ impl TaskResult {
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Revision {
+    /// Absent only for legacy revisions and synthetic FILES/query fixtures.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unit_ownership: Option<UnitOwnershipLedger>,
     pub id: String,
     pub target: String,
     pub project: String,

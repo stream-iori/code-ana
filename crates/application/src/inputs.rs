@@ -110,7 +110,7 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
     let generation = state.join(codeana_model::new_id("generation"));
     fs::create_dir(&generation)?;
     let mut catalog = InputCatalog {
-        schema_version: 1,
+        schema_version: 2,
         config_sha256: before.clone(),
         units: vec![],
     };
@@ -437,7 +437,7 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                     _ => unreachable!(),
                 }
                 let path = directory.join("config.toml");
-                fs::write(&path, toml_text(&child)?)?;
+                fs::write(&path, unit_config_text(&child)?)?;
                 if !plain {
                     artifacts.push(artifact(&project, &raw)?);
                     artifacts.push(artifact(&project, &normalized)?);
@@ -481,18 +481,22 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
         let temporary = generation.join("catalog.json");
         write_json(&temporary, &catalog)?;
         // Validate normalized views before making any generation active.
+        let parent = resolve_task_configuration(&project, config.clone())?;
         let mut module_ids = BTreeSet::new();
-        let mut module_roots = BTreeSet::new();
         for unit in &catalog.units {
             if let Some(config) = &unit.config {
                 let bytes = read_artifact(&project, config)?;
-                let effective = validate_configuration(&project, std::str::from_utf8(&bytes)?)?;
+                let effective = resolve_unit(
+                    &project,
+                    &Default::default(),
+                    &parent.context,
+                    std::str::from_utf8(&bytes)?,
+                )?;
                 for module in &effective.config.modules {
                     ensure!(
-                        module_ids.insert(module.id.clone())
-                            && module_roots.insert((module.language.clone(), module.root.clone())),
-                        "INPUT_OVERLAPPING_NATIVE_WORKSPACE: {}",
-                        module.root
+                        module_ids.insert(module.id.clone()),
+                        "INPUT_DUPLICATE_MODULE: {}",
+                        module.id
                     );
                 }
             }

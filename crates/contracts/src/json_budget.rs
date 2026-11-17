@@ -69,8 +69,23 @@ impl<'a, 'b> ser::Serializer for &'a mut Admission<'b> {
     type SerializeMap = Self;
     type SerializeStruct = Self;
     type SerializeStructVariant = Self;
-    scalar!(serialize_bool(v:bool),serialize_i8(v:i8),serialize_i16(v:i16),serialize_i32(v:i32),serialize_i64(v:i64),serialize_i128(v:i128),
-        serialize_u8(v:u8),serialize_u16(v:u16),serialize_u32(v:u32),serialize_u64(v:u64),serialize_u128(v:u128),serialize_f32(v:f32),serialize_f64(v:f64),serialize_char(v:char),serialize_str(v:&str));
+    scalar!(
+        serialize_bool(v: bool),
+        serialize_i8(v: i8),
+        serialize_i16(v: i16),
+        serialize_i32(v: i32),
+        serialize_i64(v: i64),
+        serialize_i128(v: i128),
+        serialize_u8(v: u8),
+        serialize_u16(v: u16),
+        serialize_u32(v: u32),
+        serialize_u64(v: u64),
+        serialize_u128(v: u128),
+        serialize_f32(v: f32),
+        serialize_f64(v: f64),
+        serialize_char(v: char),
+        serialize_str(v: &str)
+    );
     fn serialize_bytes(self, v: &[u8]) -> Result<(), Error> {
         self.take(1 + v.len() as u64)
     }

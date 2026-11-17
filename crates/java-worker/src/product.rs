@@ -1,11 +1,10 @@
 use crate::backend::{Backend, ProductEngine, verify_bundle};
 use anyhow::{Context, Result, bail, ensure};
 use codeana_contracts::performance::{Metric, measure};
-use codeana_contracts::{
-    envelope, map, worker as w, worker::envelope::Body, write_frame, write_frame_with_budget,
-};
+use codeana_contracts::{envelope, map, worker as w, worker::envelope::Body};
 use codeana_derived_cache::{DerivedCacheLimits, DerivedCacheSession};
 use codeana_model::*;
+use codeana_worker_runtime::{write_frame, write_frame_with_budget};
 
 use std::{
     os::fd::FromRawFd,
@@ -39,10 +38,10 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
     let mut active_phase = String::from("input_decode");
     let mut ffi_usage_known = true;
     let mut active_analysis: Option<(Option<AnalysisGrant>, AnalysisContext)> = None;
-    let mut hello = false;
-    let mut session_attempt: Option<String> = None;
-    let mut awaiting_ack = false;
-    let mut frame_reader = codeana_contracts::FrameReader::default();
+    let mut control_state = codeana_worker_runtime::session::Session::new(
+        codeana_worker_runtime::session::ReusePolicy::HealthyReuse,
+    );
+    let mut frame_reader = codeana_worker_runtime::FrameReader::default();
     loop {
         let read = if let Some((_, budget)) = task_meter.active() {
             frame_reader.next_with_budget(&mut ipc, &budget).await
@@ -53,7 +52,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
             Ok(frame) => frame,
             Err(error) => {
                 if let Some((grant, budget)) = task_meter.active() {
-                    let failure = codeana_contracts::analysis_budget::failure_receipt(
+                    let failure = codeana_worker_runtime::analysis::failure_receipt(
                         &error,
                         &grant,
                         &budget,
@@ -65,7 +64,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                             frame_reader
                                 .pending_attempt()
                                 .as_deref()
-                                .or(session_attempt.as_deref())
+                                .or(control_state.attempt())
                                 .unwrap_or("invalid"),
                             Body::Failure(failure),
                         ),
@@ -75,30 +74,28 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                 return Err(error);
             }
         };
+        let was_awaiting_ack = control_state.awaiting_ack();
+        control_state.admit(&frame)?;
         let attempt = frame.attempt;
         let mut cancelled = false;
         let outcome: Result<()> = async {
-            match &frame.body {
-                Some(Body::Hello(_) | Body::Discover(_) | Body::Analyze(_))=>session_attempt=Some(attempt.clone()),
-                _=>ensure!(session_attempt.as_ref()==Some(&attempt),"ATTEMPT_MISMATCH"),
-            }
             match frame.body.context(codeana_model::DomainError::new(codeana_model::ErrorCode::EmptyFrame, ""))? {
                 Body::Hello(h) => {
-                    ensure!(task_meter.active().is_none() && config.is_none() && !awaiting_ack && h.protocol==WORKER_PROTOCOL_VERSION && h.fact_ir==VERSION, codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerVersionMismatch, ""));
-                    let initialized=codeana_contracts::analysis_budget::begin_hello(&mut task_meter,&h,AnalysisLanguage::Java);
+                    ensure!(task_meter.active().is_none() && config.is_none() && h.protocol==WORKER_PROTOCOL_VERSION && h.fact_ir==VERSION, codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerVersionMismatch, ""));
+                    let initialized=codeana_worker_runtime::analysis::begin_hello(&mut task_meter,&h,AnalysisBackend::Java);
                     active_analysis=task_meter.active(); active_phase="discover".into(); ffi_usage_known=true;
                     let (grant,budget)=initialized?;
-                    hello = true;
                     write_frame(&mut ipc,&envelope(&attempt,Body::Hello(w::Hello {protocol:WORKER_PROTOCOL_VERSION,fact_ir:VERSION,producer:"javac-v3".into(),analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"discover")),..Default::default()}))).await?;
                 }
                 Body::Discover(d) => {
-                    let initialized=codeana_contracts::analysis_budget::begin_discovery(&mut task_meter,&d,AnalysisLanguage::Java);
+                    let initialized=codeana_worker_runtime::analysis::begin_discovery(&mut task_meter,&d,AnalysisBackend::Java);
                     active_analysis=task_meter.active();
                     active_phase="discover".into();
                     let (grant,budget)=initialized?;
-                    ensure!(d.rust.is_none() && d.python.is_none(), "JAVA_DISCOVERY_CONFIG");
-                    ensure!(hello && config.is_none() && !awaiting_ack, codeana_model::DomainError::new(codeana_model::ErrorCode::DiscoverState, ""));
-                    let c = d.java.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaConfigRequired, ""))?;
+
+                    let context_languages = codeana_contracts::build_context::discovery(&d,AnalysisBackend::Java)?;
+                    let Some(w::discover::Config::Java(c)) = d.config else { bail!("JAVA_DISCOVERY_CONFIG"); };
+                    let c = *c;
                     codeana_contracts::java::validate(&c)?;
                     let expected_bridge = if c.target_java == 8 { bridge.clone() } else { bridge.with_file_name("compiler-bridge17.jar") };
                     ensure!(Path::new(&c.bridge).canonicalize()?==expected_bridge, codeana_model::DomainError::new(codeana_model::ErrorCode::BridgeBundleMismatch, ""));
@@ -111,17 +108,28 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                             ensure!(units.get(unit.path.as_str()).is_some_and(|captured| *captured==unit), codeana_model::DomainError::new(codeana_model::ErrorCode::JavaUncapturedInputTable, ""));
                         }
                     }
-                    let context = w::BuildContext {analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"discover")),language:"java".into(),modules:c.contexts.iter().map(|m|m.id.clone()).collect(),source_version:c.target_java.to_string(),classpath:vec![],producer:"javac-v3".into(),capabilities:vec!["analysis-resources-v1".into(),"declarations".into(),"calls".into(),"references".into(),"relations".into(),format!("toolchain:{}",c.toolchain_digest),format!("target-java:{}",c.target_java),format!("java-version:{}",c.actual_java_version),format!("toolchain-aliases:{}",c.toolchain_aliases.join(",")),format!("java-home:{}",c.java_home),format!("compiler-bridge:{}",codeana_model::hash_file(Path::new(&c.bridge))?),format!("adapter:{}",c.semantic_identity)]};
-                    codeana_contracts::java::OutputLimits::from_config(&c)?;
+                    let manifest: Manifest = map(d.manifest.as_ref().context("MANIFEST_REQUIRED")?)?;
+                    let mut context = codeana_model::BuildContext {
+                        unit:d.unit.into(), source_languages:context_languages,
+                        worlds:codeana_model::BuildContext::worlds_for(&manifest,AnalysisBackend::Java),
+                        modules:c.contexts.iter().map(|m|m.id.clone()).collect(),
+                        semantic_digest:String::new(), producer:"javac-v3".into(),
+                        details:codeana_model::BackendContext::Java {source_version:c.target_java.to_string(),classpath:vec![],toolchain:codeana_model::JavaToolchainContext {digest:c.toolchain_digest.clone(),home:c.java_home.clone(),version:c.actual_java_version.clone(),aliases:c.toolchain_aliases.clone(),compiler_bridge:codeana_model::hash_file(Path::new(&c.bridge))?,adapter:c.semantic_identity.clone()}},
+                        capabilities:vec!["analysis-resources-v1".into(),"declarations".into(),"calls".into(),"references".into(),"relations".into()],
+                    };
+                    context.seal();
+                    let mut context:w::BuildContext = map(&context)?;
+                    context.analysis_usage=grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"discover"));
+                    codeana_contracts::java::output_limits(&c)?;
                     config=Some(c);
                     write_frame_with_budget(&mut ipc,&envelope(&attempt,Body::Context(context)),Some(&budget)).await?;
+                    control_state.discovered()?;
                 }
                 Body::Analyze(a) => {
-                    ensure!(!awaiting_ack, codeana_model::DomainError::new(codeana_model::ErrorCode::BaselineNotSealed, ""));
                     let c=config.as_ref().context(codeana_model::DomainError::new(codeana_model::ErrorCode::DiscoverRequired, ""))?;
                     let manifest: Manifest=map(a.manifest.as_ref().context(codeana_model::DomainError::new(codeana_model::ErrorCode::ManifestRequired, ""))?)?;
-                    let limits=codeana_contracts::java::OutputLimits::from_config(c)?;
-                    let grant=Some(codeana_contracts::analysis_budget::required_grant(a.analysis_grant.as_ref(),AnalysisLanguage::Java)?);
+                    let limits=codeana_contracts::java::output_limits(c)?;
+                    let grant=Some(codeana_contracts::analysis_budget::required_grant(a.analysis_grant.as_ref(),AnalysisBackend::Java)?);
                     let budget=task_meter.resume(&grant,a.deadline_ms.ok_or(AnalysisFailure::InvalidUsage)?).map_err(DomainError::analysis)?;
                     active_analysis=Some((grant.clone(),budget.clone()));
                     ffi_usage_known=true;
@@ -139,7 +147,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     let dto_bytes=prost::Message::encoded_len(c).saturating_add(prost::Message::encoded_len(&a)) as u64;
                     budget.charge(1,0,dto_bytes.saturating_mul(32).saturating_add(8192)).map_err(DomainError::analysis)?;
                     codeana_contracts::json_budget::admit_owned_copy(c,&budget)?;
-                    let mut request=codeana_contracts::engine_request::EngineRequest::new(c,&a,cache_root,&budget)?;
+                    let mut request=crate::engine_request::EngineRequest::new(c,&a,cache_root,&budget)?;
                     let heap=if c.native_heap_bytes==0 {256*1024*1024} else {c.native_heap_bytes};
                     let mut timings=crate::timings::PerformanceTimings::start(Path::new(&c.scratch))?;
                     let capture=timings.as_ref().map(|t|t.capture.clone()).unwrap_or_default();
@@ -150,13 +158,15 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     if native.is_none() {
                         let loaded = tokio::select! {
                             biased;
-                            frame=&mut control => { codeana_contracts::analysis_budget::expect_cancel(frame?,&attempt)?; cancelled=true; return Ok(()); },
+                            frame=&mut control => { codeana_worker_runtime::analysis::expect_cancel(frame?,&attempt)?; cancelled=true; return Ok(()); },
                             loaded=ProductEngine::load(library,heap,backend,capture.clone()) => loaded?,
                         };
                         native=Some(loaded);
                     }
                     let lib=native.as_mut().context(codeana_model::DomainError::new(codeana_model::ErrorCode::NativeRequired, ""))?;
                     lib.set_capture(capture.clone());
+                    let mut handoff=None;
+                    let mut receipt_nodes=0;
                     let computation = async {
                         ensure!(lib.heap_bytes().await?==heap, codeana_model::DomainError::new(codeana_model::ErrorCode::WarmNativeHeapMismatch, ""));
                         // Reserve serialization before allocating the request buffer. The seed
@@ -167,13 +177,17 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                         // cancellation/receipt-probe lane before forwarding the seed.
                         // No Rust task debit may race Java's cumulative account.
                         budget.charge(1,0,counter.0.saturating_mul(32).saturating_add(64*1024)).map_err(DomainError::analysis)?;
-                        codeana_contracts::json_budget::admit_serialization(&request,&budget,16,1000000)?;
+                        let request_nodes=codeana_contracts::json_budget::admit_serialization(&request,&budget,16,1000000)?;
+                        receipt_nodes=request_nodes.saturating_mul(16).saturating_add(1024);
+                        budget.charge(receipt_nodes,128,256*1024).map_err(DomainError::analysis)?;
                         request.analysis_usage=Some(budget.usage());
                         request.deadline_ms=budget.remaining_millis().map_err(DomainError::analysis)?.unwrap_or(0);
                         evidence=crate::diagnostics::ReplayEvidence::start(&request,Path::new(&c.scratch),library)?;
                         budget.checkpoint().map_err(DomainError::analysis)?;
+                        let encoded_request=serde_json::to_vec(&request)?;
+                        handoff=Some(codeana_worker_runtime::ffi::BudgetHandoff::begin(&budget,request.analysis_usage.as_ref().context("ANALYSIS_SEED_REQUIRED")?)?);
                         ffi_usage_known=false;
-                        lib.start(serde_json::to_vec(&request)?).await.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaEngineStart, ""))?;
+                        lib.start(encoded_request).await.context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaEngineStart, ""))?;
                         if let Some(e)=evidence.as_mut() {e.phase(backend.started_phase());}
                         if let Some(t)=timings.as_mut() {t.phase(backend.started_phase());}
                         let state = lib.ready().await?;
@@ -187,16 +201,16 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                         result=computation => Wake::Finished(result),
                     };
                     let (state,output)= match completed {
-                        Wake::Control(frame) => { codeana_contracts::analysis_budget::expect_cancel((*frame)?,&attempt)?; lib.cancel()?; cancelled=true; return Ok(()); },
+                        Wake::Control(frame) => { codeana_worker_runtime::analysis::expect_cancel((*frame)?,&attempt)?; lib.cancel()?; cancelled=true; return Ok(()); },
                         Wake::Finished(result) => result?,
                     };
                     measure(Metric::DescriptorBytes, output.as_file().metadata()?.len(), true, || ());
                     if let Some(e)=evidence.as_mut() {e.phase(backend.finished_phase());}
                     if let Some(t)=timings.as_mut() {t.phase(backend.finished_phase());}
                     if let Some(grant)=&grant {
-                        if let Some(receipt)=crate::result::analysis_receipt(std::io::BufReader::new(output.reopen()?))? {
+                        if let Some(receipt)=crate::result::analysis_receipt(std::io::BufReader::new(output.reopen()?),receipt_nodes)? {
                             active_phase=receipt.phase.clone();
-                            receipt.reconcile(grant,&budget)?;
+                            receipt.reconcile(grant,handoff.as_mut().context("FFI_HANDOFF_REQUIRED")?)?;
                             ffi_usage_known=true;
                             if let Some(failure)=budget.usage().failure { return Err(DomainError::analysis(failure).into()); }
                         } else {
@@ -210,7 +224,7 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     }
                     active_phase="archive".into();
                     if let Some(e)=evidence.as_ref() {e.sealed_descriptor(output.path())?;}
-                    let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+                    let (tx, mut rx) = codeana_graph_io::stream::GraphStream::channel();
                     let root = PathBuf::from(&c.scratch);
                     let cancelled = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
                     let reader_cancel = cancelled.clone();
@@ -218,16 +232,16 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                     let reader_budget=budget.clone();
                     let reader = tokio::task::spawn_blocking(move || {
                         capture_reader.sync(|| {
-                            let mut encoder = crate::delivery::Encoder::with_budget(tx.clone(), limits, reader_budget.clone())?;
+                            let mut encoder = codeana_graph_io::delivery::Encoder::new(tx.clone(), limits, Some(reader_budget.clone()));
                             reader_budget.charge(1,0,output.as_file().metadata()?.len().saturating_mul(2)).map_err(DomainError::analysis)?;
                             crate::result::read_owned_stream_with_budget(std::io::BufReader::new(output.reopen().context(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaDescriptorReopen, ""))?),
                                 limits, &root, &reader_budget,
-                                |mode, replacements| tx.blocking_send(crate::delivery::Event::Begin {
+                                |mode, replacements| tx.blocking_send(codeana_graph_io::stream::GraphStreamEvent::Begin {
                                     mode: mode.into(), replacements: replacements.to_vec(),
                                 }).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DeliveryCancelled, "")),
                                 |fact| encoder.push(fact),
                                 || { reader_budget.checkpoint().map_err(DomainError::analysis)?; ensure!(!reader_cancel.load(std::sync::atomic::Ordering::Relaxed), codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")); Ok(()) })?;
-                            encoder.finish()
+                            encoder.finish().map(|_| ())
                         })
                     });
                     let mut delivery_seq = 0u64;
@@ -238,14 +252,14 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                             let event = tokio::select! {
                                 biased;
                                 frame = &mut control => {
-                                    codeana_contracts::analysis_budget::expect_cancel(frame?,&attempt)?;
+                                    codeana_worker_runtime::analysis::expect_cancel(frame?,&attempt)?;
                                     lib.cancel()?; cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
                                     anyhow::bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""));
                                 },
                                 event = rx.recv() => match event { Some(event) => event, None => break },
                             };
-                            let body = match event {
-                                crate::delivery::Event::Begin { mode, replacements } => {
+                            let body = match event.event {
+                                codeana_graph_io::stream::GraphStreamEvent::Begin { mode, replacements } => {
                                     ensure!(!begun, codeana_model::DomainError::new(codeana_model::ErrorCode::DuplicateResultBegin, "")); begun = true;
                                     let r = AnalysisHeader { mode:mode.parse()?, baseline: a.baseline.clone(), manifest: manifest.id(),
                                         profile: a.profile.clone(), producer: "javac-v3".into(), replacements };
@@ -254,12 +268,13 @@ pub async fn serve(library: &Path, fd: i32, backend: Backend) -> Result<()> {
                                         profile:r.profile, producer:r.producer,
                                         replacements:r.replacements.iter().map(map).collect::<Result<_>>()? })
                                 },
-                                crate::delivery::Event::Chunk(facts) => {
+                                codeana_graph_io::stream::GraphStreamEvent::Batch(facts) => {
                                     ensure!(begun && !verified, codeana_model::DomainError::new(codeana_model::ErrorCode::DeliveryState, ""));
                                     // Sequence is counted here as messages are sent.
                                     Body::Chunk(w::Chunk { seq: delivery_seq,  rows:facts })
                                 },
-                                crate::delivery::Event::End { chunks, count, checksum } => {
+                                codeana_graph_io::stream::GraphStreamEvent::VerifiedEnd(end) => {
+                                    let (chunks,count,checksum)=end.into_parts();
                                     ensure!(begun && !verified && chunks == delivery_seq, codeana_model::DomainError::new(codeana_model::ErrorCode::DeliveryState, ""));
                                     verified = true;
                                     if let Some(e)=evidence.as_mut() {e.phase("archive_validated_and_deduplicated");}
@@ -274,7 +289,7 @@ analysis_usage: grant.as_ref().map(|g| codeana_contracts::analysis_budget::recei
                             tokio::select! {
                                 biased;
                                 request = &mut control => {
-                                    codeana_contracts::analysis_budget::expect_cancel(request?,&attempt)?;
+                                    codeana_worker_runtime::analysis::expect_cancel(request?,&attempt)?;
                                     lib.cancel()?; anyhow::bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, ""));
                                 },
                                 written = write_frame_with_budget(&mut outgoing, &frame, Some(&budget)) => written?,
@@ -289,14 +304,14 @@ analysis_usage: grant.as_ref().map(|g| codeana_contracts::analysis_budget::recei
                     drop(rx); drop(outgoing);
                     let read_result = reader.await?;
                     read_result?; outcome?;
-                    awaiting_ack=true;
+                    control_state.completed()?;
                     if let Some(e)=evidence.as_mut() {e.phase("result_end_sent");}
                     if let Some(t)=timings.as_mut() {t.phase("result_end_sent");}
                     Ok(())
                     }).await?;
                 }
                 Body::Ack(ack)=> {
-                    ensure!(awaiting_ack && !ack.revision.is_empty(), codeana_model::DomainError::new(codeana_model::ErrorCode::PublishAckState, ""));
+                    ensure!(!ack.revision.is_empty(), codeana_model::DomainError::new(codeana_model::ErrorCode::PublishAckState, ""));
                     let lib=native.as_mut().context(codeana_model::DomainError::new(codeana_model::ErrorCode::NativeRequired, ""))?;
                     lib.ack().await?;
                     lib.finish().await?;
@@ -309,20 +324,19 @@ analysis_usage: grant.as_ref().map(|g| codeana_contracts::analysis_budget::recei
                     config=None;
                     task_meter=AnalysisTaskMeter::default();
                     active_analysis=None;
-                    awaiting_ack=false;
+                    control_state.acked()?;
                     write_frame(&mut ipc,&envelope(&attempt,Body::Acked(w::Acked{revision:ack.revision}))).await?;
                 }
                 Body::Reuse(_) => {
-                    ensure!(config.is_some() && !awaiting_ack,"ANALYSIS_REUSE_STATE");
                     let (grant,budget)=active_analysis.as_ref().context("DISCOVER_REQUIRED")?;
                     budget.checkpoint()?;
                     write_frame(&mut ipc,&envelope(&attempt,Body::Reused(w::Reused {
                         analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"reused")),
                     }))).await?;
-                    config=None;active_analysis=None;task_meter=AnalysisTaskMeter::default();
+                    config=None;active_analysis=None;task_meter=AnalysisTaskMeter::default();control_state.reused()?;
                 }
                 Body::Cancel(_)=> {
-                    if awaiting_ack && let Some(lib)=&native { lib.cancel()?; }
+                    if was_awaiting_ack && let Some(lib)=&native { lib.cancel()?; }
                     cancelled = true;
                     return Ok(());
                 }
@@ -364,7 +378,7 @@ analysis_usage: grant.as_ref().map(|g| codeana_contracts::analysis_budget::recei
         }
         if cancelled {
             if let Some((grant, budget)) = &active_analysis {
-                let failure = codeana_contracts::analysis_budget::cancelled_receipt(
+                let failure = codeana_worker_runtime::analysis::cancelled_receipt(
                     grant,
                     budget,
                     &active_phase,

@@ -25,6 +25,8 @@ struct DoctorRecord<'a> {
     java_adapter: &'a str,
     java_backend: Option<&'a str>,
     java_bundle: &'a Option<codeana_contracts::bundle::BundleManifest>,
+    java_sdk_state: SdkMetadataState,
+    java_sdk_error: Option<String>,
     java_toolchain: Option<java::ToolchainEvidence>,
     java_toolchain_error: Option<String>,
     worker_memory_enforcement: &'a str,
@@ -41,6 +43,56 @@ struct PreparationReadiness<'a> {
     native_expansion: &'a str,
     execution: &'a str,
     readiness: &'a str,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum SdkMetadataState {
+    Missing,
+    Invalid,
+    PresentUnverified,
+}
+
+struct SdkInspection {
+    bundle: Option<codeana_contracts::bundle::BundleManifest>,
+    state: SdkMetadataState,
+    error: Option<String>,
+}
+
+fn inspect_java_sdk(
+    library: Option<&Path>,
+    runtime: Option<&str>,
+    locator_error: Option<String>,
+) -> SdkInspection {
+    let Some(path) = library else {
+        return SdkInspection {
+            bundle: None,
+            state: SdkMetadataState::Missing,
+            error: locator_error,
+        };
+    };
+    let parsed = (|| -> Result<codeana_contracts::bundle::BundleManifest> {
+        let parent = path.parent().context("SDK_MANIFEST_PATH")?;
+        let bytes = codeana_config::bounded_read(&parent.join("manifest.json"), 1 << 20)?;
+        let manifest = codeana_contracts::bundle::BundleManifest::parse(&bytes)?;
+        codeana_contracts::java::sdk::validate_identity(
+            &manifest,
+            runtime.context("SDK_BACKEND_REQUIRED")?,
+        )?;
+        ensure!(manifest.platform_matches(), "SDK_PLATFORM_MISMATCH");
+        Ok(manifest)
+    })();
+    match parsed {
+        Ok(bundle) => SdkInspection {
+            bundle: Some(bundle),
+            state: SdkMetadataState::PresentUnverified,
+            error: None,
+        },
+        Err(error) => SdkInspection {
+            bundle: None,
+            state: SdkMetadataState::Invalid,
+            error: Some(format!("{error:#}")),
+        },
+    }
 }
 #[derive(Clone)]
 pub(super) struct DoctorService {
@@ -82,7 +134,10 @@ impl DoctorService {
             (None, None)
         };
         let discovery = effective.config.discovery.mode == "explicit";
-        let library = java::installed_library().ok();
+        let (library, java_sdk_error) = match java::installed_library() {
+            Ok(path) => (Some(path), None),
+            Err(error) => (None, Some(format!("{error:#}"))),
+        };
         let backend = library.as_ref().map(|path| {
             if path.extension().is_some_and(|s| s == "jar") {
                 "jvm"
@@ -90,13 +145,10 @@ impl DoctorService {
                 "native"
             }
         });
-        let bundle = library
-            .as_ref()
-            .and_then(|path| path.parent())
-            .and_then(|root| std::fs::read(root.join("manifest.json")).ok())
-            .and_then(|bytes| {
-                serde_json::from_slice::<codeana_contracts::bundle::BundleManifest>(&bytes).ok()
-            });
+        let inspection = inspect_java_sdk(library.as_deref(), backend, java_sdk_error);
+        let bundle = inspection.bundle;
+        let java_sdk_state = inspection.state;
+        let java_sdk_error = inspection.error;
         let adapter = bundle
             .as_ref()
             .map(|value| value.adapter.as_str())
@@ -161,6 +213,8 @@ impl DoctorService {
                 },
                 java_backend: backend,
                 java_bundle: &bundle,
+                java_sdk_state,
+                java_sdk_error,
                 java_toolchain,
                 java_toolchain_error,
                 python_worker: serde_json::json!({
@@ -200,5 +254,59 @@ impl DoctorService {
             evidence: Evidence::complete(),
             ..Default::default()
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn metadata_inspection_never_certifies_unverified_sdk_file_bytes() {
+        let directory = tempfile::tempdir().unwrap();
+        let library = directory.path().join("library.dylib");
+        std::fs::write(&library, "different from the advertised SHA").unwrap();
+        let manifest = json!({"version":4, "worker_protocol":WORKER_PROTOCOL_VERSION,
+            "fact_ir":VERSION, "graph_schema":36, "graph_encoding":"GRA1-protobuf-row-v1",
+            "os":if cfg!(target_os="macos") {"Darwin"} else {"Linux"},
+            "arch":if cfg!(target_arch="aarch64") {"arm64"} else {"x86_64"},
+            "adapter":"anatomist-4a903272-codeana-graph6-resource2-analysis",
+            "files":{"native/library.dylib":"0".repeat(64)},
+            "backend":{"kind":"java", "analysis_request":JAVA_ANALYSIS_VERSION,
+                "compiler_batch_protocol":2, "java_model":"javac-model-v51", "target_java":[8,17],
+                "compiler_bridges":{"8":"compiler-bridge.jar", "17":"compiler-bridge17.jar"},
+                "runtime":{"kind":"native", "abi":4, "gc":"G1", "build_mode":"fixture"}}});
+        std::fs::write(
+            directory.path().join("manifest.json"),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        let inspected = inspect_java_sdk(Some(&library), Some("native"), None);
+        assert_eq!(inspected.state, SdkMetadataState::PresentUnverified);
+        assert!(inspected.bundle.is_some());
+        assert!(inspected.error.is_none());
+        assert_eq!(
+            inspect_java_sdk(Some(&library), Some("jvm"), None).state,
+            SdkMetadataState::Invalid
+        );
+    }
+
+    #[test]
+    fn missing_and_retired_sdk_metadata_remain_distinct_and_keep_errors() {
+        let inspected = inspect_java_sdk(None, None, Some("locator failure".into()));
+        assert_eq!(inspected.state, SdkMetadataState::Missing);
+        assert_eq!(inspected.error.as_deref(), Some("locator failure"));
+        let directory = tempfile::tempdir().unwrap();
+        let library = directory.path().join("library.dylib");
+        std::fs::write(
+            directory.path().join("manifest.json"),
+            br#"{"version":3,"backend":"native"}"#,
+        )
+        .unwrap();
+        let inspected = inspect_java_sdk(Some(&library), Some("native"), None);
+        assert_eq!(inspected.state, SdkMetadataState::Invalid);
+        assert!(inspected.bundle.is_none());
+        assert!(inspected.error.unwrap().contains("rebuild SDK"));
     }
 }

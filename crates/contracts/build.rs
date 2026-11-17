@@ -2,8 +2,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let files =
         ["hello", "task", "worker", "graph"].map(|s| format!("../../proto/codeana/v1/{s}.proto"));
     tonic_prost_build::configure()
-        .boxed("codeana.worker.v1.Discover.rust")
-        .boxed("codeana.worker.v1.Discover.python")
+        .boxed("codeana.worker.v1.BuildContext.details.java")
+        .boxed("codeana.worker.v1.Discover.config.java")
+        .boxed("codeana.worker.v1.Discover.config.rust")
+        .boxed("codeana.worker.v1.Discover.config.python")
+        .boxed("codeana.worker.v1.Discover.config.typescript")
         .boxed("codeana.worker.v1.Discover.analysis_grant")
         .type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]")
         .field_attribute(

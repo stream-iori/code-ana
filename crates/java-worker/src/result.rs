@@ -1,25 +1,16 @@
 //! Consume sealed Anatomist protobuf rows; no Fact IR conversion or global dedup database.
-use anyhow::{Context, Result, ensure};
-use codeana_contracts::graph_archive::Descriptor;
+use anyhow::{Result, ensure};
+use codeana_contracts::graph_delivery::Descriptor;
+use codeana_contracts::{graph::Row, graph_delivery::OutputLimits};
+use codeana_graph_io::archive::Builder;
 #[cfg(test)]
-use codeana_contracts::graph_archive::GraphArchive;
-use codeana_contracts::{
-    graph::Row,
-    graph_archive::{self, Builder},
-    java::OutputLimits,
-};
+use codeana_graph_io::archive::GraphArchive;
 #[cfg(test)]
 use codeana_model::Manifest;
 use codeana_model::Owner;
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::{
-    fmt,
-    io::{BufReader, Read},
-    os::unix::fs::OpenOptionsExt,
-    path::Path,
-};
+use std::{fmt, io::Read, path::Path};
 struct Envelope {
     mode: String,
     replacements: Vec<Owner>,
@@ -114,66 +105,22 @@ fn load_into(
     consume: bool,
     budget: Option<&codeana_model::AnalysisContext>,
     mut begin: impl FnMut(&str, &[Owner]) -> Result<()>,
-    mut emit: impl FnMut(Row) -> Result<()>,
+    emit: impl FnMut(Row) -> Result<()>,
     check: impl Fn() -> Result<()>,
 ) -> Result<(String, Vec<Owner>)> {
     let mut decoder = serde_json::Deserializer::from_reader(input.take(64 << 20));
     let envelope = EnvelopeSeed(limits, budget).deserialize(&mut decoder)?;
     decoder.end()?;
-    let d = envelope.archive;
-    ensure!(
-        d.format == "GRA1" && d.count <= limits.facts && d.bytes >= 4 && d.bytes <= limits.bytes,
-        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveBudget, "")
-    );
-    let root = root.canonicalize()?;
-    ensure!(
-        d.path.is_absolute() && d.path.canonicalize()?.starts_with(&root),
-        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchivePath, "")
-    );
-    let file = std::fs::OpenOptions::new()
-        .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
-        .open(&d.path)?;
-    ensure!(
-        file.metadata()?.is_file() && file.metadata()?.len() == d.bytes,
-        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveSize, "")
-    );
-    let mut reader = BufReader::new(file);
-    let mut magic = [0; 4];
-    reader.read_exact(&mut magic)?;
-    ensure!(
-        magic == graph_archive::MAGIC,
-        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveFormat, "")
-    );
-    let mut digest = Sha256::new();
-    digest.update(magic);
-    begin(&envelope.mode, &envelope.replacements)?;
-    for position in 0..d.count {
-        if position % 256 == 0 {
-            check()?;
-        }
-        let row = graph_archive::read_row_with_budget(&mut reader, &mut digest, budget)?.context(
-            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveTruncated, ""),
-        )?;
-        emit(row)?;
-    }
-    let mut trailing = [0; 1];
-    ensure!(
-        reader.read(&mut trailing)? == 0,
-        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveEof, "")
-    );
-    ensure!(
-        format!("{:x}", digest.finalize()) == d.sha256,
-        codeana_model::DomainError::new(codeana_model::ErrorCode::NativeArchiveIdentity, "")
-    );
-    check()?;
-    drop(reader);
-    if consume {
-        std::fs::remove_file(d.path).context(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::NativeArchiveRelease,
-            "",
-        ))?;
-    }
+    codeana_graph_io::reader::read_descriptor(
+        &envelope.archive,
+        limits,
+        root,
+        consume,
+        budget,
+        || begin(&envelope.mode, &envelope.replacements),
+        emit,
+        check,
+    )?;
     Ok((envelope.mode, envelope.replacements))
 }
 pub fn read_owned_stream_with_budget(
@@ -194,7 +141,7 @@ pub fn read_owned(
     _manifest: &Manifest,
     limits: OutputLimits,
     root: &Path,
-) -> Result<graph_archive::GraphArchive> {
+) -> Result<GraphArchive> {
     let mut archive = Builder::new(Some(root), limits.bytes, limits.facts)?;
     load_into(
         input,
@@ -254,14 +201,18 @@ pub fn probe_archive(
 /// The normal reader still validates the complete descriptor and archive afterward.
 pub fn analysis_receipt(
     input: impl Read,
-) -> Result<Option<codeana_contracts::engine_request::EngineAnalysisReceipt>> {
+    max_nodes: u64,
+) -> Result<Option<crate::engine_request::EngineAnalysisReceipt>> {
     #[derive(serde::Deserialize)]
     struct Probe {
         version: u32,
         usage_known: bool,
-        analysis_usage: Option<codeana_contracts::engine_request::EngineAnalysisReceipt>,
+        analysis_usage: Option<crate::engine_request::EngineAnalysisReceipt>,
     }
-    let probe = serde_json::from_reader::<_, Probe>(input.take(64 << 20))?;
+    let probe = serde_json::from_reader::<_, Probe>(crate::receipt_reader::ReceiptReader::new(
+        input.take(64 << 20),
+        max_nodes,
+    ))?;
     ensure!(
         probe.version == codeana_model::JAVA_ANALYSIS_VERSION,
         "ABI_RESULT_VERSION"
@@ -285,14 +236,17 @@ mod tests {
             serde_json::json!({"version":version}),
             serde_json::json!({"version":version,"usage_known":true}),
         ] {
-            assert!(analysis_receipt(serde_json::to_vec(&payload).unwrap().as_slice()).is_err());
+            assert!(
+                analysis_receipt(serde_json::to_vec(&payload).unwrap().as_slice(), 2048).is_err()
+            );
         }
         assert!(
             analysis_receipt(
                 serde_json::to_vec(&serde_json::json!({"version":version,
             "usage_known":false,"error":"NATIVE_HEAP_EXHAUSTED"}))
                 .unwrap()
-                .as_slice()
+                .as_slice(),
+                2048
             )
             .unwrap()
             .is_none()

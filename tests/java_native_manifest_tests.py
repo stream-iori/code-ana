@@ -40,14 +40,14 @@ class NativeManifest(unittest.TestCase):
         return subprocess.run([str(ROOT / 'target/debug/codeana-java-worker'), str(self.library), '--runtime-info'], capture_output=True, text=True, timeout=10)
 
     def test_default_gc_is_g1_and_serial_override_is_preserved(self):
-        self.assertEqual(self.manifest['native_gc'], 'G1')
+        self.assertEqual(self.manifest['backend']['runtime']['gc'], 'G1')
         subprocess.run([sys.executable, str(ROOT / 'scripts/java-adaptor-manifest.py'), str(self.target)],
                        env=dict(self.environment, CODEANA_NATIVE_GC='serial'), check=True)
-        self.assertEqual(json.loads(self.manifest_path.read_text())['native_gc'], 'serial')
+        self.assertEqual(json.loads(self.manifest_path.read_text())['backend']['runtime']['gc'], 'serial')
         self.assertEqual(self.probe().returncode, 0)
 
     def test_shared_bridge_identity_and_all_distribution_resources(self):
-        self.assertEqual(self.manifest['backend'], 'native')
+        self.assertEqual(self.manifest['backend']['runtime']['kind'], 'native')
         self.assertEqual(self.manifest['adapter'], 'anatomist-4a903272-codeana-graph6-resource2-analysis')
         self.assertEqual(self.manifest['graph_schema'], 36)
         self.assertEqual(set(self.manifest['files']), {str(self.library.relative_to(self.target)), 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'})
@@ -60,15 +60,15 @@ class NativeManifest(unittest.TestCase):
     def test_missing_or_unknown_gc_is_rejected_before_loading(self):
         for value in (None, 'unknown'):
             with self.subTest(gc=value):
-                changed = dict(self.manifest)
+                changed = json.loads(json.dumps(self.manifest))
                 if value is None:
-                    changed.pop('native_gc')
+                    changed['backend']['runtime'].pop('gc')
                 else:
-                    changed['native_gc'] = value
+                    changed['backend']['runtime']['gc'] = value
                 self.manifest_path.write_text(json.dumps(changed))
                 result = self.probe()
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn('BUNDLE_GC_', result.stderr)
+                self.assertIn('SDK_MANIFEST_INVALID', result.stderr)
 
     def test_old_worker_policy_is_rejected_before_native_loading(self):
         self.manifest['worker_protocol'] -= 1
@@ -78,7 +78,7 @@ class NativeManifest(unittest.TestCase):
         self.assertIn('BUNDLE_VERSION_MISMATCH', result.stderr)
 
     def test_java17_bridge_is_required_and_content_checked(self):
-        self.assertEqual(self.manifest['compiler_bridges'], {'8':'compiler-bridge.jar','17':'compiler-bridge17.jar'})
+        self.assertEqual(self.manifest['backend']['compiler_bridges'], {'8':'compiler-bridge.jar','17':'compiler-bridge17.jar'})
         (self.target / 'compiler-bridge17.jar').write_bytes(b'changed')
         result = self.probe()
         self.assertNotEqual(result.returncode, 0)

@@ -42,6 +42,7 @@ test-rust:
   python3 tests/rust_dogfood_tests.py
   python3 tests/sdkman_java_tests.py
   python3 tests/java_bundle_manifest_tests.py
+  python3 tests/sdk_manifest_tests.py
   python3 tests/java_package_tests.py
   python3 tests/java_reference_tests.py
   python3 tests/java_compact_single_tests.py
@@ -126,6 +127,10 @@ test-java-native-lifecycle evidence:
   cargo build --workspace --locked
   python3 scripts/install-java-native.py
   python3 tests/java_jvm_product_gate.py --backend native --group lifecycle --evidence "{{evidence}}"
+
+# Check an installed Native SDK at another location without replacing active files.
+test-java-native-relocation evidence:
+  python3 scripts/test-java-sdk-relocation.py --evidence "{{evidence}}"
 
 test-java-e2e:
   cargo build --workspace --locked

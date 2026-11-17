@@ -56,28 +56,119 @@ impl From<&worker::Owner> for m::Owner {
 
 impl From<&m::BuildContext> for worker::BuildContext {
     fn from(value: &m::BuildContext) -> Self {
+        use worker::build_context::Details as D;
+        let details = match &value.details {
+            m::BackendContext::Java {
+                source_version,
+                classpath,
+                toolchain,
+            } => D::Java(Box::new(worker::JavaBuildContext {
+                source_version: source_version.clone(),
+                classpath: classpath.clone(),
+                toolchain_digest: toolchain.digest.clone(),
+                java_home: toolchain.home.clone(),
+                actual_java_version: toolchain.version.clone(),
+                toolchain_aliases: toolchain.aliases.clone(),
+                compiler_bridge: toolchain.compiler_bridge.clone(),
+                adapter: toolchain.adapter.clone(),
+            })),
+            m::BackendContext::Rust { toolchain, adapter } => D::Rust(worker::RustBuildContext {
+                toolchain: toolchain.clone(),
+                adapter: adapter.clone(),
+            }),
+            m::BackendContext::Python {
+                python_version,
+                platform,
+                adapter,
+                backend_commit,
+            } => D::Python(worker::PythonBuildContext {
+                python_version: python_version.clone(),
+                platform: platform.clone(),
+                adapter: adapter.clone(),
+                backend_commit: backend_commit.clone(),
+            }),
+            m::BackendContext::TypeScript {
+                compiler_version,
+                upstream_commit,
+                adapter,
+            } => D::Typescript(worker::TypeScriptBuildContext {
+                compiler_version: compiler_version.clone(),
+                upstream_commit: upstream_commit.clone(),
+                adapter: adapter.clone(),
+            }),
+        };
         Self {
-            analysis_usage: None,
-            language: value.language.clone(),
+            unit: value.unit.to_string(),
+            source_languages: value
+                .source_languages
+                .iter()
+                .map(|l| l.as_str().to_owned())
+                .collect(),
             modules: value.modules.clone(),
-            source_version: value.source_version.clone(),
-            classpath: value.classpath.clone(),
+            worlds: value.worlds.clone(),
+            semantic_digest: value.semantic_digest.clone(),
             producer: value.producer.clone(),
             capabilities: value.capabilities.clone(),
+            details: Some(details),
+            analysis_usage: None,
         }
     }
 }
-
-impl From<&worker::BuildContext> for m::BuildContext {
-    fn from(value: &worker::BuildContext) -> Self {
-        Self {
-            language: value.language.clone(),
+impl TryFrom<&worker::BuildContext> for m::BuildContext {
+    type Error = m::DomainError;
+    fn try_from(value: &worker::BuildContext) -> Result<Self, Self::Error> {
+        use worker::build_context::Details as D;
+        let invalid = || {
+            m::DomainError::new(
+                m::ErrorCode::WorkerLanguageMismatch,
+                "invalid build context",
+            )
+        };
+        let details = match value.details.as_ref().ok_or_else(invalid)? {
+            D::Java(v) => m::BackendContext::Java {
+                source_version: v.source_version.clone(),
+                classpath: v.classpath.clone(),
+                toolchain: m::JavaToolchainContext {
+                    digest: v.toolchain_digest.clone(),
+                    home: v.java_home.clone(),
+                    version: v.actual_java_version.clone(),
+                    aliases: v.toolchain_aliases.clone(),
+                    compiler_bridge: v.compiler_bridge.clone(),
+                    adapter: v.adapter.clone(),
+                },
+            },
+            D::Rust(v) => m::BackendContext::Rust {
+                toolchain: v.toolchain.clone(),
+                adapter: v.adapter.clone(),
+            },
+            D::Python(v) => m::BackendContext::Python {
+                python_version: v.python_version.clone(),
+                platform: v.platform.clone(),
+                adapter: v.adapter.clone(),
+                backend_commit: v.backend_commit.clone(),
+            },
+            D::Typescript(v) => m::BackendContext::TypeScript {
+                compiler_version: v.compiler_version.clone(),
+                upstream_commit: v.upstream_commit.clone(),
+                adapter: v.adapter.clone(),
+            },
+        };
+        let context = Self {
+            unit: value.unit.clone().into(),
+            source_languages: value
+                .source_languages
+                .iter()
+                .map(|s| m::SourceLanguage::lookup(s).ok_or_else(invalid))
+                .collect::<Result<_, _>>()?,
             modules: value.modules.clone(),
-            source_version: value.source_version.clone(),
-            classpath: value.classpath.clone(),
+            worlds: value.worlds.clone(),
+            semantic_digest: value.semantic_digest.clone(),
             producer: value.producer.clone(),
             capabilities: value.capabilities.clone(),
-        }
+            details,
+        };
+        crate::build_context::validate(&context)?;
+        Ok(context)
     }
 }
 

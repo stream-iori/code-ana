@@ -822,14 +822,23 @@ impl ReadContext {
             ..Default::default()
         })
     }
-    pub fn baseline_summary_for(&self, next: &Manifest) -> Result<BaselineSummary> {
-        let before: BTreeMap<_, _> = self
-            .revision
-            .manifest
-            .files
-            .iter()
-            .map(|s| (&s.path, s))
-            .collect();
+    pub fn baseline_summary_for(
+        &self,
+        next: &Manifest,
+        unit: &AnalysisUnitId,
+    ) -> Result<BaselineSummary> {
+        let previous = match &self.revision.unit_ownership {
+            Some(ledger) => {
+                &ledger
+                    .units
+                    .iter()
+                    .find(|u| &u.unit == unit)
+                    .context("UNIT_OWNERSHIP_BASELINE_UNIT")?
+                    .inputs
+            }
+            None => &self.revision.manifest.files,
+        };
+        let before: BTreeMap<_, _> = previous.iter().map(|s| (&s.path, s)).collect();
         let after: BTreeMap<_, _> = next.files.iter().map(|s| (&s.path, s)).collect();
         let mut changed: BTreeSet<String> = before
             .keys()
@@ -882,6 +891,10 @@ impl ReadContext {
             }
         }
         let mut summary = self.baseline_summary()?;
+        let owners: BTreeSet<_> = previous.iter().map(|s| (&s.world, &s.path)).collect();
+        summary
+            .files
+            .retain(|s| owners.contains(&(&s.world, &s.path)));
         summary.changed_sources = Some(changed);
         Ok(summary)
     }

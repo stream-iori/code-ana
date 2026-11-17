@@ -20,11 +20,13 @@ pub fn update_digest(digest: &mut Sha256, bytes: &[u8]) {
     digest.update(bytes);
 }
 pub fn write_row(writer: &mut impl Write, row: &Row, digest: &mut Sha256) -> Result<usize> {
-    let bytes = row.encode_to_vec();
+    let size = row.encoded_len();
     ensure!(
-        !bytes.is_empty() && bytes.len() <= RECORD_LIMIT,
+        size > 0 && size <= RECORD_LIMIT,
         codeana_model::DomainError::new(codeana_model::ErrorCode::GraphRecordBudget, "")
     );
+    let bytes = row.encode_to_vec();
+    codeana_contracts::validate_graph_row_wire(&bytes)?;
     writer.write_all(&(bytes.len() as u32).to_be_bytes())?;
     writer.write_all(&bytes)?;
     update_digest(digest, &bytes);
@@ -73,7 +75,7 @@ pub fn read_row_with_budget(
             codeana_model::ErrorCode::GraphTruncatedRecord,
             "",
         ))?;
-    crate::validate_graph_row_wire(&bytes)?;
+    codeana_contracts::validate_graph_row_wire(&bytes)?;
     let row = Row::decode(bytes.as_slice())?;
     ensure!(
         row.table != 0,
@@ -100,6 +102,7 @@ pub struct Builder {
 }
 impl Builder {
     pub fn new(root: Option<&Path>, max_bytes: u64, max_rows: u64) -> Result<Self> {
+        ensure!(max_bytes >= 4, "GRAPH_ARCHIVE_BUDGET");
         let directory = Arc::new(match root {
             Some(p) => tempfile::Builder::new()
                 .prefix("codeana-rows-")
@@ -129,7 +132,7 @@ impl Builder {
         let size = row.encoded_len() + 4;
         ensure!(
             self.archive.count < self.max_rows
-                && self.archive.bytes + size as u64 <= self.max_bytes,
+                && size as u64 <= self.max_bytes.saturating_sub(self.archive.bytes),
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveBudget, "")
         );
         write_row(&mut self.writer, row, &mut self.digest)?;
@@ -270,30 +273,5 @@ mod tests {
         }
         assert!(read_row(&mut [].as_slice(), &mut Sha256::new())?.is_none());
         Ok(())
-    }
-}
-
-/// Sealed graph descriptor shared by result admission and diagnostic copies.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct Descriptor {
-    pub format: String,
-    pub path: PathBuf,
-    pub count: u64,
-    pub bytes: u64,
-    pub sha256: String,
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct OutputLimits {
-    pub bytes: u64,
-    pub facts: u64,
-}
-impl Default for OutputLimits {
-    fn default() -> Self {
-        Self {
-            bytes: codeana_model::MAX_RESULT as u64,
-            facts: codeana_model::MAX_FACTS as u64,
-        }
     }
 }

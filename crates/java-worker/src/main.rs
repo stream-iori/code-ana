@@ -1,10 +1,11 @@
 mod actor;
 mod backend;
-mod delivery;
 mod diagnostics;
+mod engine_request;
 mod jvm;
 mod native;
 mod product;
+mod receipt_reader;
 mod result;
 mod state;
 mod timings;
@@ -41,7 +42,7 @@ async fn main() -> Result<()> {
     if args.runtime_info {
         backend::verify_bundle(&args.library, args.backend)?;
         let manifest: codeana_contracts::bundle::BundleManifest =
-            serde_json::from_slice(&std::fs::read(
+            codeana_contracts::bundle::BundleManifest::parse(&std::fs::read(
                 args.library
                     .parent()
                     .ok_or_else(|| {
@@ -58,9 +59,9 @@ async fn main() -> Result<()> {
                 "worker_protocol": codeana_model::WORKER_PROTOCOL_VERSION,
                 "fact_ir": codeana_model::VERSION,
                 "adapter": manifest.adapter,
-                "analysis_request": manifest.analysis_request,
-                "abi": manifest.abi,
-                "backend": manifest.backend,
+                "analysis_request": manifest.java()?.analysis_request,
+                "abi": manifest.java()?.runtime.abi(),
+                "backend": manifest.java()?.runtime.kind(),
             })
         );
         return Ok(());
@@ -85,7 +86,7 @@ async fn main() -> Result<()> {
     }
     if let Some(request) = args.probe {
         let request_bytes = std::fs::read(request)?;
-        let request_value: codeana_contracts::engine_request::EngineRequest =
+        let request_value: crate::engine_request::EngineRequest =
             serde_json::from_slice(&request_bytes)?;
         let scratch = request_value.scratch.as_path();
         library.start(&request_bytes)?;
@@ -116,7 +117,7 @@ async fn main() -> Result<()> {
             String::from_utf8_lossy(&result)
         );
         if let Some(destination) = args.probe_archive {
-            let limits = codeana_contracts::java::OutputLimits {
+            let limits = codeana_contracts::graph_delivery::OutputLimits {
                 bytes: if request_value.result_bytes == 0 {
                     codeana_model::MAX_RESULT as u64
                 } else {

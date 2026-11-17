@@ -108,7 +108,7 @@ pub(super) struct ReportDocument {
     pub summary: ReportSummary,
     pub result: TaskResult,
     pub effective: ReportConfig,
-    pub context: BuildContext,
+    pub contexts: Vec<BuildContext>,
     pub diagnostics: Vec<Fact>,
     pub global: GlobalReport,
 }
@@ -191,7 +191,7 @@ impl ReportService {
         persisted.report = id.into();
         let report = ReportDocument {
             analysis_resources,
-            schema_version: 3,
+            schema_version: 4,
             id: id.into(),
             created: now(),
             revision: revision.clone(),
@@ -228,14 +228,7 @@ impl ReportService {
                 config_digest,
                 origins: BTreeMap::new(),
             },
-            context: BuildContext {
-                language: String::new(),
-                modules: vec![],
-                source_version: String::new(),
-                classpath: vec![],
-                producer: result.output.producer.clone(),
-                capabilities: vec![],
-            },
+            contexts: vec![],
             diagnostics: vec![],
             global,
         };
@@ -255,12 +248,12 @@ impl ReportService {
     }
     pub(super) fn report(&self, req: &Request, project: &str) -> Result<Output> {
         let value: ReportDocument = self.store.object("report", &req.selector, project)?;
-        ensure!(value.schema_version == 3, "REPORT_SCHEMA_UNSUPPORTED");
+        ensure!(value.schema_version == 4, "REPORT_SCHEMA_UNSUPPORTED");
         let record = if req.base.is_empty() {
             Record::display(&value)?
         } else {
             let base: ReportDocument = self.store.object("report", &req.base, project)?;
-            ensure!(base.schema_version == 3, "REPORT_SCHEMA_UNSUPPORTED");
+            ensure!(base.schema_version == 4, "REPORT_SCHEMA_UNSUPPORTED");
             let a = &base.summary;
             let b = &value.summary;
             ensure!(
@@ -341,7 +334,7 @@ impl ReportService {
 /// Presentation only; machine consumers continue reading the same JSON document.
 pub fn report_markdown(value: serde_json::Value) -> Result<String> {
     let report: ReportDocument = serde_json::from_value(value)?;
-    ensure!(report.schema_version == 3, "REPORT_SCHEMA_UNSUPPORTED");
+    ensure!(report.schema_version == 4, "REPORT_SCHEMA_UNSUPPORTED");
     let clean = |text: &str| text.replace(['\n', '\r', '|'], " ");
     let mut out = format!(
         "# Index report {}\n\n| Execution | Quality | Gate | Publication | Revision |\n|---|---|---|---|---|\n| {} | {} | {} | {} | {} |\n\n",
@@ -356,6 +349,24 @@ pub fn report_markdown(value: serde_json::Value) -> Result<String> {
             &report.revision
         }
     );
+    if !report.contexts.is_empty() {
+        out.push_str("| Instance | Backend | Source languages | Worlds |\n|---|---|---|---|\n");
+        for context in &report.contexts {
+            out.push_str(&format!(
+                "| {} | {} | {} | {} |\n",
+                clean(context.unit.as_str()),
+                context.backend().as_str(),
+                context
+                    .source_languages
+                    .iter()
+                    .map(|l| l.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                context.worlds.len()
+            ));
+        }
+        out.push_str("\nDiscovered contexts do not certify published semantics.\n\n");
+    }
     if let Some(resources) = &report.analysis_resources {
         out.push_str(&analysis_resources_markdown(resources));
     }
@@ -485,7 +496,7 @@ mod analysis_presentation_tests {
             "task",
             AnalysisLimits::default(),
             Default::default(),
-            &[AnalysisLanguage::Python],
+            &[AnalysisBackend::Python],
             None,
         )
         .unwrap();
@@ -498,7 +509,7 @@ mod analysis_presentation_tests {
         let reserved = analysis_resources_markdown(&make_report(&coordinator));
         assert!(reserved.contains("unreported /"));
         assert!(reserved.contains("Usage is incomplete"));
-        let grant = coordinator.issue(AnalysisLanguage::Python).unwrap();
+        let grant = coordinator.issue(AnalysisBackend::Python).unwrap();
         coordinator
             .reconcile(
                 &grant,

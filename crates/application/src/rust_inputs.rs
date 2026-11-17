@@ -14,7 +14,7 @@ struct InputSummary {
 }
 
 pub(super) struct RustInput {
-    pub(super) scratch: tempfile::TempDir,
+    pub(super) scratch: Arc<tempfile::TempDir>,
     pub(super) config: AnalysisConfig,
     pub(super) descriptor: RustConfig,
     pub(super) manifest: Manifest,
@@ -26,13 +26,15 @@ impl IndexTask {
         id: &str,
         capture: &Capture,
     ) -> Result<RustInput> {
+        let selected = capture.backend_capture(AnalysisBackend::Rust)?;
+        let capture = &selected;
         let scratch = tempfile::Builder::new()
             .prefix("rust-index-")
             .tempdir_in(self.index.home())?;
         let inputs = capture
             .effective
-            .rust_inputs
-            .clone()
+            .rust_inputs()
+            .cloned()
             .context("RUST_INPUTS_REQUIRED")?;
         let mut files = BTreeMap::<String, FrozenFile>::new();
         for source in capture
@@ -150,7 +152,7 @@ impl IndexTask {
                 .collect(),
         };
         Ok(RustInput {
-            scratch,
+            scratch: Arc::new(scratch),
             config,
             descriptor,
             manifest,

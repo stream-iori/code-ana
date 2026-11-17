@@ -150,7 +150,26 @@ pub fn root_path(module: &str, path: &str) -> Result<PathBuf> {
     Ok(result)
 }
 impl JavaInputs {
+    /// Receipts authenticate a preparation run; dependency order and content define semantics.
+    pub fn semantic_digest(&self) -> String {
+        let mut normalized = self.clone();
+        normalized.receipt = None;
+        for module in &mut normalized.modules {
+            for artifact in module.classpath.values_mut().flatten() {
+                artifact.path = format!("sha256:{}", artifact.sha256);
+            }
+            for dependency in module.dependency_order.values_mut().flatten() {
+                if let DependencyInput::External { path, sha256, .. } = dependency {
+                    *path = format!("sha256:{sha256}");
+                }
+            }
+        }
+        digest(&normalized)
+    }
     pub fn read(root: &Path, path: &str) -> Result<Self> {
+        Self::read_using(root, path, &LiveInputs)
+    }
+    pub(crate) fn read_using(root: &Path, path: &str, reader: &dyn InputReader) -> Result<Self> {
         let canonical_root = root.canonicalize()?;
         let root = canonical_root.as_path();
         ensure!(
@@ -162,7 +181,7 @@ impl JavaInputs {
             codeana_model::DomainError::new(codeana_model::ErrorCode::JavaMetadataPathEscape, "")
         );
         let raw: serde_json::Value =
-            serde_json::from_slice(&bounded_read(&root.join(path), 32 * 1024 * 1024)?)?;
+            serde_json::from_slice(&reader.read(&root.join(path), 32 * 1024 * 1024)?)?;
         ensure!(
             raw.get("schema_version").and_then(|v| v.as_u64()) == Some(4),
             codeana_model::DomainError::new(
@@ -285,7 +304,7 @@ impl JavaInputs {
                 codeana_model::DomainError::new(codeana_model::ErrorCode::JavaControlPath, "")
             );
             ensure!(
-                hash(bounded_read(&root.join(path), MAX_FRAME)?) == *expected,
+                hash(reader.read(&root.join(path), MAX_FRAME)?) == *expected,
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::JavaMetadataStale,
                     path.to_string()
@@ -303,7 +322,7 @@ impl JavaInputs {
                 )
             );
             ensure!(
-                hash(bounded_read(Path::new(path), MAX_FRAME)?) == *expected,
+                reader.identity(Path::new(path), MAX_FRAME)? == *expected,
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::JavaMetadataStale,
                     path.to_string()
@@ -343,7 +362,7 @@ impl JavaInputs {
                 );
                 for (p, h) in &r.generated_from {
                     ensure!(
-                        safe_path(p) && hash(bounded_read(&root.join(p), MAX_FRAME)?) == *h,
+                        safe_path(p) && hash(reader.read(&root.join(p), MAX_FRAME)?) == *h,
                         codeana_model::DomainError::new(
                             codeana_model::ErrorCode::GeneratedInputStale,
                             ""
@@ -545,6 +564,55 @@ mod tests {
     fn input(root: &Path) -> serde_json::Value {
         std::fs::write(root.join("pom.xml"), b"<project/>").unwrap();
         serde_json::json!({"schema_version":4,"resolved_classpath":true,"dependency_mode":"resolved","controls":{"pom.xml":hash(b"<project/>")},"effective_model_sha256":hash(b"effective"),"active_profiles_sha256":hash(b"profiles"),"modules":[{"id":"app","root":".","source_version":"8","source_roots":[{"path":"src","scope":"MAIN"}]}]})
+    }
+    #[test]
+    fn semantic_identity_ignores_export_nonce_and_jar_location_but_preserves_classpath_order() {
+        let root = tempfile::tempdir().unwrap();
+        let mut inputs: JavaInputs = serde_json::from_value(input(root.path())).unwrap();
+        inputs.modules[0].classpath.insert(
+            "MAIN".into(),
+            vec![
+                Artifact {
+                    path: "/cache/a.jar".into(),
+                    sha256: hash(b"a"),
+                    coordinate: "g:a:1".into(),
+                    classifier: String::new(),
+                    extension: "jar".into(),
+                },
+                Artifact {
+                    path: "/cache/b.jar".into(),
+                    sha256: hash(b"b"),
+                    coordinate: "g:b:1".into(),
+                    classifier: String::new(),
+                    extension: "jar".into(),
+                },
+            ],
+        );
+        let original = inputs.semantic_digest();
+        inputs.receipt = Some(ExportReceipt {
+            nonce: "new preparation".into(),
+            metadata_sha256: hash(b"metadata"),
+            inputs_sha256: hash(b"receipt"),
+            extension_sha256: hash(b"extension"),
+            maven_processes: 1,
+            prerequisite_classpath_rounds: 0,
+            dependency_failure_sha256: None,
+        });
+        inputs.modules[0].classpath.get_mut("MAIN").unwrap()[0].path = "/relocated/a.jar".into();
+        assert_eq!(original, inputs.semantic_digest());
+        inputs.modules[0]
+            .classpath
+            .get_mut("MAIN")
+            .unwrap()
+            .reverse();
+        assert_ne!(original, inputs.semantic_digest());
+        inputs.modules[0]
+            .classpath
+            .get_mut("MAIN")
+            .unwrap()
+            .reverse();
+        inputs.modules[0].classpath.get_mut("MAIN").unwrap()[0].sha256 = hash(b"edited");
+        assert_ne!(original, inputs.semantic_digest());
     }
     #[test]
     fn source_only_state_rejects_partial_jars_and_requires_failure_receipt() {

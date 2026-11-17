@@ -1,5 +1,7 @@
 # 总体架构
 
+> worker 25 正在迁移：Discover 使用互斥配置并在解码前拒绝重复变体。此前 worker 24 的产品、Native 与分发回执不代表本次协议验收；当前进度见 [当前实现](current-state.md)。
+
 对齐 2026-11-01。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
@@ -35,7 +37,9 @@ CLI
 |---|---|---|
 | crates/model | 公共身份、查询实体、诊断和版本常量 | 不依赖 SQL/进程；查询 Fact 形状不是持久化格式 |
 | crates/contracts、proto/codeana/v1 | gRPC、worker、GRA1 与 Java 控制契约 | .proto、ABI、compiler 协议分别版本化 |
-| crates/config | resolution 解析校验、discovery 输入发现、capture 源码捕获、execution 执行预算 | worker 不重新读配置 |
+| crates/graph-io | GRA1 文件读写、原字节校验、有界行队列、公共 Encoder/Verifier 与 VerifiedEnd | 依赖 model/contracts；不解释语言 envelope、SDK 或进程，storage 可依赖 |
+| crates/worker-runtime | IPC 帧进度、会话状态、终态回执、FFI owner/通知和累计账本交接 | 依赖 model/contracts/graph-io；不依赖 application/storage、SDK 或编译器 |
+| crates/config | resolution 解析校验、discovery 输入发现、capture 源码捕获、execution 执行预算 | TaskConfig 共享公共策略；UnitInput 保存类型化后端输入，worker 不重新读配置 |
 | crates/application | 调度、监督、索引、版本和运维编排 | 不解析 AST；不自动执行目标构建 |
 | crates/storage | catalog、blob、候选/发布、紧凑图与只读投影 | SQL/整数引用封装在存储层 |
 | crates/derived-cache | 有界派生缓存、校验、锁、配额和任务副本 | storage 与 Java worker 共用，不依赖图库 |
@@ -78,7 +82,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 `Fact.id`、所属 world和 expected revision 使用各自身份 newtype。封闭选项通过 `TryFrom` / `FromStr` 拒绝非法值；producer 状态使用 `FactStatus::Other(String)` 保留未来扩展。Rust 声明种类、可见性、关系、解析状态和分析模式使用封闭枚举。Rust/fixture 通过具名行结构构造 GRA1，Java 原始 protobuf 行继续按原契约验证和交付。
 
-配置解析校验、语言输入发现、源码捕获和执行预算分别由 config 内部模块负责，公开 TOML 与入口保持。Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。IndexPlan 从冻结输入选择执行策略、资源参与语言和 prepared 实例；index_execution 负责跨语言调度，语言输入模块不启动其他语言。未变基线复用、单语言记录流与混合语言归档合并保留；各策略通过同一质量门禁、PublicationFence 和发布入口提交。
+配置解析校验、语言输入发现、源码捕获和执行预算分别由 config 内部模块负责，公开 TOML 与入口保持。一次捕获先创建 CaptureReader，再通过 InputReader 解析根配置/prepared/原生清单，后续内容捕获共用其缓存和封存检查；独立诊断使用 LiveInputs，公共端口不解释语言语义。Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。IndexPlan 从冻结输入选择执行策略、资源参与语言和 prepared 实例；index_execution 负责跨语言调度，语言输入模块不启动其他语言。未变基线复用、单语言记录流与混合语言归档合并保留；各策略通过同一质量门禁、PublicationFence 和发布入口提交。普通/prepared 捕获在 config 内逐实例登记 FrozenUnitView；语言准备只接收该实例的 manifest/blob/观察索引。不同上下文可共享物理根和只读内容，但不共享未声明的控制或依赖；PlannedUnit 保留 Ready/FilesOnly/Removed 和静态预算；revision 持久化 unit_ownership v2，按稳定实例记录完整输入、声明 scope、发布范围、零输出来源及语义身份。旧元数据缺清单或仅有 v1 时增量要求 index --full；清单随同一次 CAS 发布，已有公开 ID/图 schema 不变。启动经过公共 LaunchSpec/supervisor；执行策略、任意结果混合仍待 R4 归一。
 
 语言模型原始 wire arena 继续有界验证；类型图通过节点句柄及 `SingleEdge` / `ManyEdge` 遍历，不展开循环。
 
@@ -162,7 +166,7 @@ adapter v2 可在导出阶段显式读取 pyproject 静态元数据；没有该�
 
 Java/Rust/Python worker 共用 model::AnalysisTaskMeter 管理进程内任务账本，worker 仅适配协议。父任务将一个截止时间贯穿排队、host、worker 和发布准入；worker 重试不能重置账本或续期。Python 的 frozen/context、AST/type/QName 提取和输出预留复用 AnalysisContext；prepared 多实例沿语言池静态拆分，host 分片共享，实例之间不借用。
 
-Java主要入口已接入共享任务上下文、局部作用域和累计FFI回执；三语言在Discover前签发grant，BuildContext回传核实水位，未变复用通过Reuse/Reused结束账户。当前严格 worker 24 / Java analysis 13，必填回执及已知/未知水位共用host策略；帧/codec与内部DTO分配前准入、混合/分发门禁已完成本机fixture验证；正式跨平台和容量/性能范围另列。实际验证范围见当前实现文档，不以单语言回执替代全计划验收。
+Java主要入口已接入共享任务上下文、局部作用域和累计FFI回执；三语言在Discover前签发grant，BuildContext回传核实水位，未变复用通过Reuse/Reused结束账户。当前严格 worker 25 / Java analysis 13，必填回执及已知/未知水位共用host策略；帧/codec与内部DTO继续实行分配前准入，worker 25 混合/分发门禁按本轮产物验收；正式跨平台和容量/性能范围另列。实际验证范围见当前实现文档，不以单语言回执替代全计划验收。
 
 Java 在 Rust worker 的同一账户上顺序执行：请求携带已经消耗的水位，Java显式上下文穿过捕获、javac模型解码、模型/语法索引、扩展事实集合、语义JSON入口、XML及归档，返回累计回执后由Rust继续处理输出。失败前已接受的消耗保留，崩溃或无可信回执时标Unknown。javac内核自身运算仍由进程树内存、原编译器超时和supervisor截止时间约束，不把自有模型遍历计费冒充其内部每一步的精确计数。
 
@@ -181,3 +185,7 @@ Lombok与扩展不可变元数据复制前沿用同一账户；内部DTO通过co
 `just check-architecture` 检查 Cargo 传递依赖、Engine/索引/服务状态访问、语言单元编排、Java 编译器源集、Lombok 模块与 Maven 依赖方向，以及生产扩展预算入口。`just test-rust` 自动执行该门禁；7 个违规反例验证检查能拒绝边界回归。行为验收继续验证公开查询、发布和预算；静态检查不代替产品回归。
 
 CLI 交互边界（daemon 协议 6）：命令输入契约由应用层组合查询能力字段；OperationRouter 组合查询、历史、维护、就绪与报告服务。类型化 Record/TaskResult 先持久化，再由 presentation/output 编码和计量，CLI 使用有界观察编码及原子不覆盖导出。投影/编码与原发布事务分离；交付失败或 strict 拒绝不能重判分析门禁与提交事实。
+
+公共上下文由 unit、source_languages、modules/worlds、semantic_digest、producer/图能力及类型化后端详情组成；Discover 同时携带稳定实例和显式源码语言，启动和 Java 池重绑定均校验。报告 schema 4 逐实例保存 contexts，JSON/Markdown 共同展示后端与发布语言，删除伪 multi 上下文。公共交付设施和执行流程仍按当前实现中标记的后续阶段迁移。
+
+公共图交付已迁入 graph-io：Java/Rust/Python 共用按解码占用计量的队列和同一个行编码器，daemon 共用接收 verifier；contracts 只保留图 DTO 和 wire 准入。归档输入以任务根 FD 为锚逐级 openat，拒绝中间/末端 symlink、父级逃逸和非普通文件，校验失败不删除原文件。worker-runtime 承担 IPC 进度、三语言请求状态与 daemon 结果状态、公共终态及 FFI owner/通知/账本交接；Java EngineRequest/EngineAnalysisReceipt 已迁入 Java worker，无旧路径兼容导出。运行设施的实际验证范围见当前实现。

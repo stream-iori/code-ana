@@ -2,22 +2,28 @@
 mod capture;
 mod discovery;
 mod execution;
+mod input_reader;
 pub mod inputs;
 pub mod java_inputs;
 mod lombok;
+use input_reader::{InputReader, LiveInputs};
 pub mod python_inputs;
 mod resolution;
 pub mod rust_inputs;
 mod schema;
+mod semantic;
 use anyhow::{Context, Result, ensure};
 use capture::add_captured;
 #[cfg(test)]
 use capture::source_ownership;
-pub use capture::{CapturedBlob, capture, capture_query, identity, require_java};
+pub use capture::{
+    CaptureCancellation, CapturedBlob, DeclaredLink, FileIdentity, FrozenUnitView, ObservationSet,
+    ResolutionObservation, capture, capture_controlled, capture_query, identity, require_java,
+};
+pub use capture::{CaptureReader as InputCaptureReader, SealedCapture as SealedInputs};
 use codeana_model::*;
 pub use execution::{analysis_limits, query_limits};
 use java_inputs::JavaInputs;
-pub(crate) use resolution::resolve_text;
 pub use resolution::{load_user, resolve, resolve_files};
 pub use schema::*;
 use serde::{Deserialize, Serialize};
@@ -37,23 +43,132 @@ const MAX_CAPTURE_BYTES: usize = 2 * 1024 * 1024 * 1024;
 const MAX_ARTIFACT_BYTES: usize = 256 * 1024 * 1024;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Effective {
+    #[serde(flatten)]
+    pub context: ResolvedContext,
+    pub input_units: Vec<inputs::ResolvedUnit>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedContext {
     pub config: ProjectConfig,
     pub origins: BTreeMap<String, String>,
     pub config_digest: String,
     pub input_hash: String,
     pub semantic_digest: String,
     pub capture_digest: String,
-    #[serde(default)]
-    pub java_inputs: Option<JavaInputs>,
-    #[serde(default)]
-    pub rust_inputs: Option<codeana_model::rust::Inputs>,
-    #[serde(default)]
-    pub python_inputs: Option<codeana_model::python::Inputs>,
-    #[serde(default)]
-    pub input_units: Vec<inputs::EffectiveUnit>,
+    pub inputs: Vec<UnitInput>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "backend", rename_all = "lowercase")]
+pub enum UnitInput {
+    Java {
+        metadata: Option<std::sync::Arc<JavaInputs>>,
+    },
+    Rust {
+        metadata: std::sync::Arc<codeana_model::rust::Inputs>,
+    },
+    Python {
+        metadata: std::sync::Arc<codeana_model::python::Inputs>,
+    },
+}
+impl UnitInput {
+    pub const fn backend(&self) -> AnalysisBackend {
+        match self {
+            Self::Java { .. } => AnalysisBackend::Java,
+            Self::Rust { .. } => AnalysisBackend::Rust,
+            Self::Python { .. } => AnalysisBackend::Python,
+        }
+    }
+}
+impl ResolvedContext {
+    pub(crate) fn for_backend(&self, backend: AnalysisBackend) -> Result<Self> {
+        let input = self
+            .inputs
+            .iter()
+            .find(|i| i.backend() == backend)
+            .context("CAPTURE_UNIT_BACKEND_MISSING")?;
+        let mut languages = Languages::default();
+        match input {
+            UnitInput::Java { .. } => languages.java = self.config.languages.java.clone(),
+            UnitInput::Rust { .. } => languages.rust = self.config.languages.rust.clone(),
+            UnitInput::Python { .. } => languages.python = self.config.languages.python.clone(),
+        }
+        let mut context = Self {
+            config: ProjectConfig {
+                task: self.config.task.clone(),
+                discovery: self.config.discovery.clone(),
+                languages,
+                modules: self
+                    .config
+                    .modules
+                    .iter()
+                    .filter(|m| {
+                        SourceLanguage::lookup(&m.language).is_some_and(|l| l.backend() == backend)
+                    })
+                    .cloned()
+                    .collect(),
+                inputs: None,
+            },
+            origins: self.origins.clone(),
+            config_digest: String::new(),
+            input_hash: self.input_hash.clone(),
+            semantic_digest: String::new(),
+            capture_digest: self.capture_digest.clone(),
+            inputs: vec![input.clone()],
+        };
+        context.config_digest = digest(&context.config);
+        context.semantic_digest = semantic::context(&context.config, &context.inputs);
+        Ok(context)
+    }
+    pub fn java_inputs(&self) -> Option<&JavaInputs> {
+        self.inputs.iter().find_map(|i| match i {
+            UnitInput::Java { metadata } => metadata.as_deref(),
+            _ => None,
+        })
+    }
+    pub fn rust_inputs(&self) -> Option<&codeana_model::rust::Inputs> {
+        self.inputs.iter().find_map(|i| match i {
+            UnitInput::Rust { metadata } => Some(metadata.as_ref()),
+            _ => None,
+        })
+    }
+    pub fn python_inputs(&self) -> Option<&codeana_model::python::Inputs> {
+        self.inputs.iter().find_map(|i| match i {
+            UnitInput::Python { metadata } => Some(metadata.as_ref()),
+            _ => None,
+        })
+    }
+}
+impl Effective {
+    pub fn from_context(context: ResolvedContext) -> Self {
+        Self {
+            context,
+            input_units: vec![],
+        }
+    }
+    pub fn set_worker_memory_limit(&mut self, memory: u64) {
+        self.config.resources.index.worker_memory_bytes = Some(memory);
+        let task = self.config.task.clone();
+        for unit in &mut self.input_units {
+            if let Some(context) = &mut unit.context {
+                context.config.task = task.clone();
+            }
+        }
+    }
+}
+impl std::ops::Deref for Effective {
+    type Target = ResolvedContext;
+    fn deref(&self) -> &ResolvedContext {
+        &self.context
+    }
+}
+impl std::ops::DerefMut for Effective {
+    fn deref_mut(&mut self) -> &mut ResolvedContext {
+        &mut self.context
+    }
 }
 #[derive(Debug, Clone)]
 pub struct Capture {
+    pub scope: CaptureScope,
     pub root: PathBuf,
     pub project: String,
     pub checkout: String,
@@ -61,6 +176,14 @@ pub struct Capture {
     pub effective: Effective,
     pub manifest: Manifest,
     pub blobs: BTreeMap<String, CapturedBlob>,
+    pub observations: ObservationSet,
+    pub unit_views: BTreeMap<AnalysisUnitId, FrozenUnitView>,
+}
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum CaptureScope {
+    #[default]
+    Task,
+    Unit(AnalysisUnitId),
 }
 fn glob(patterns: &[String]) -> Result<globset::GlobSet> {
     let mut b = globset::GlobSetBuilder::new();
@@ -74,21 +197,82 @@ fn relative(p: &str) -> bool {
 }
 pub fn bounded_read(path: &Path, limit: usize) -> Result<Vec<u8>> {
     use std::io::Read;
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
     ensure!(
         !std::fs::symlink_metadata(path)?.file_type().is_symlink(),
         codeana_model::DomainError::new(codeana_model::ErrorCode::SymlinkInputUnsupported, "")
     );
-    let file = std::fs::File::open(path)?;
+    let file = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC)
+        .open(path)?;
+    let before = file.metadata()?;
+    ensure!(before.is_file(), "INPUT_NOT_REGULAR_FILE");
+    ensure!(
+        before.len() <= limit as u64,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::InputByteBudget, "")
+    );
     let mut bytes = Vec::new();
-    file.take(limit as u64 + 1).read_to_end(&mut bytes)?;
+    (&file).take(before.len() + 1).read_to_end(&mut bytes)?;
+    let after = file.metadata()?;
     ensure!(
         bytes.len() <= limit,
         codeana_model::DomainError::new(codeana_model::ErrorCode::InputByteBudget, "")
+    );
+    let identity = |m: &std::fs::Metadata| {
+        (
+            m.dev(),
+            m.ino(),
+            m.len(),
+            m.mtime(),
+            m.mtime_nsec(),
+            m.ctime(),
+            m.ctime_nsec(),
+        )
+    };
+    ensure!(
+        bytes.len() as u64 == before.len() && identity(&before) == identity(&after),
+        "INPUT_CHANGED_DURING_READ"
     );
     Ok(bytes)
 }
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn diagnostic_reads_reject_special_files_links_and_oversize_inputs() -> anyhow::Result<()> {
+        use std::os::unix::ffi::OsStrExt;
+        let root = tempfile::tempdir()?;
+        let regular = root.path().join("regular");
+        std::fs::write(&regular, b"bounded")?;
+        assert_eq!(super::bounded_read(&regular, 7)?, b"bounded");
+        assert!(
+            super::bounded_read(&regular, 6)
+                .unwrap_err()
+                .to_string()
+                .contains("INPUT_BYTE_BUDGET")
+        );
+        assert!(
+            super::bounded_read(root.path(), 100)
+                .unwrap_err()
+                .to_string()
+                .contains("INPUT_NOT_REGULAR_FILE")
+        );
+        let link = root.path().join("link");
+        std::os::unix::fs::symlink(&regular, &link)?;
+        assert!(super::bounded_read(&link, 100).is_err());
+        let fifo = root.path().join("fifo");
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes())?;
+        // SAFETY: the path is NUL-terminated and remains live through mkfifo.
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        // There is deliberately no writer: a blocking open would hang this test.
+        assert!(
+            super::bounded_read(&fifo, 100)
+                .unwrap_err()
+                .to_string()
+                .contains("INPUT_NOT_REGULAR_FILE")
+        );
+        Ok(())
+    }
     #[test]
     fn external_exclusions_inherit_and_explicit_empty_overrides() {
         let dir = tempfile::tempdir().unwrap();
@@ -437,7 +621,16 @@ source_roots=[{path="src",scope="MAIN",label="api"},{path="bridge",scope="MAIN",
             .set_len(MAX_ARTIFACT_BYTES as u64 + 1)
             .unwrap();
         let spool = std::sync::Arc::new(tempfile::tempdir().unwrap());
-        assert!(CapturedBlob::file(&spool, &source, MAX_ARTIFACT_BYTES).is_err());
+        let mut reader = capture::CaptureReader::new(
+            root.path(),
+            spool.clone(),
+            std::time::Instant::now(),
+            std::time::Duration::from_secs(10),
+            None,
+            None,
+        )
+        .unwrap();
+        assert!(reader.file(&source, MAX_ARTIFACT_BYTES).is_err());
         assert_eq!(std::fs::read_dir(spool.path()).unwrap().count(), 0);
     }
     #[test]

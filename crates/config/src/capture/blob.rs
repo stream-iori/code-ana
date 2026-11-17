@@ -20,36 +20,34 @@ impl CapturedBlob {
         if !path.exists() {
             std::fs::write(&path, bytes)?;
         }
+        let mut permissions = std::fs::metadata(&path)?.permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&path, permissions)?;
         Ok(Self {
             path,
             _spool: spool.clone(),
         })
     }
-    pub(crate) fn file(
+    pub(crate) fn reader(
         spool: &std::sync::Arc<tempfile::TempDir>,
-        source: &Path,
+        source: impl std::io::Read,
         limit: usize,
     ) -> Result<(Self, String, usize)> {
-        use std::io::Read;
-        ensure!(
-            source.metadata()?.len() <= limit as u64,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaArtifactByteBudget, "")
-        );
         let temporary = tempfile::NamedTempFile::new_in(spool.path())?;
         let mut output = temporary.reopen()?;
-        let size = std::io::copy(
-            &mut std::fs::File::open(source)?.take(limit as u64 + 1),
-            &mut output,
-        )?;
+        let size = std::io::copy(&mut source.take(limit as u64 + 1), &mut output)?;
         ensure!(
             size <= limit as u64,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaArtifactByteBudget, "")
+            codeana_model::DomainError::new(codeana_model::ErrorCode::InputByteBudget, "")
         );
         let digest = hash_file(temporary.path())?;
         let path = spool.path().join(&digest);
         if !path.exists() {
             temporary.persist(&path)?;
         }
+        let mut permissions = std::fs::metadata(&path)?.permissions();
+        permissions.set_readonly(true);
+        std::fs::set_permissions(&path, permissions)?;
         Ok((
             Self {
                 path,

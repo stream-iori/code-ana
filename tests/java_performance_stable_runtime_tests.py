@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import sys
+from sdk_fixtures import java_sdk, versions
 from pathlib import Path
 import tempfile
 from types import SimpleNamespace
@@ -7,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 spec=importlib.util.spec_from_file_location('stable',ROOT/'scripts/java-performance-stable-runtime.py')
 stable=importlib.util.module_from_spec(spec);spec.loader.exec_module(stable)
 
@@ -25,10 +28,10 @@ class StableRuntimeTests(unittest.TestCase):
             for name in (runtime,'compiler-bridge.jar','compiler-bridge17.jar','maven-input-worker.jar'):
                 p=source/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(backend+name);files[name]=stable.sha256(p)
             manifest=source/('manifest.json' if backend=='jvm' else 'native/manifest.json')
-            manifest.write_text(json.dumps(dict(files=files,worker_protocol=22,adapter='test',abi=4 if backend=='native' else None,fact_ir=4,analysis_request=11,native_gc='G1' if backend=='native' else None)))
+            manifest.write_text(json.dumps(java_sdk(files, backend, adapter='test')))
         def probe(command,**kwargs):
             backend=command[command.index('--backend')+1]
-            info=dict(backend=backend,worker_protocol=22,fact_ir=4,adapter='test',analysis_request=11)
+            info=dict(versions(),backend=backend,adapter='test')
             info['abi']=4 if backend=='native' else None
             self.assertEqual(Path(command[0]),self.bins/'codeana-java-worker')
             return SimpleNamespace(returncode=0,stdout=json.dumps(info),stderr='')

@@ -246,6 +246,7 @@ fn mixed_archive_preserves_java_on_rust_delta_and_rejects_partial_publication() 
     let first = records::records(&config, &analysis, None)?;
     rows.extend(first.archive.records()?.collect::<Result<Vec<_>>>()?);
     let mut revision = Revision {
+        unit_ownership: None,
         id: String::new(),
         target: "mixed-target".into(),
         project: "mixed".into(),

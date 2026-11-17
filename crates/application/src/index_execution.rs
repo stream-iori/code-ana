@@ -3,14 +3,22 @@ use super::*;
 use crate::indexing::PublishedIndex;
 use crate::ports::RustBaselineReader;
 use crate::rust_inputs::RustInput;
-use codeana_config::inputs::InputMode;
 use codeana_contracts::graph_rows::{CoverageRow, GraphRow, ProjectMetaRow};
 
 /// Use only after the complete semantic profile matches. The root config is a
 /// FILES capture too; its presentation bytes must not force a semantic rerun.
 fn same_sources_for_profile(before: &Manifest, after: &Manifest) -> bool {
-    before.files.len() == after.files.len()
-        && before.files.iter().zip(&after.files).all(|(old, new)| {
+    fn files(manifest: &Manifest) -> impl Iterator<Item = &SourceUnit> {
+        manifest.files.iter().filter(|source| {
+            !(source.scope == "PREPARATION"
+                && source.world == "files"
+                && source.module.is_empty()
+                && source.language.is_empty()
+                && !source.auxiliary)
+        })
+    }
+    files(before).count() == files(after).count()
+        && files(before).zip(files(after)).all(|(old, new)| {
             old == new
                 || old.path == ".code-ana/config.toml"
                     && new.path == old.path
@@ -45,10 +53,11 @@ struct RustAttempt {
 
 impl IndexTask {
     async fn shutdown_rust_workers(&self, id: &str, workers: &mut RustWorkers) {
-        if let Some(warning) = crate::analysis_unit::shutdown(crate::analysis_unit::Units::Pair(
-            Some(&mut workers.rust),
-            workers.java.as_mut(),
-        ))
+        if let Some(warning) = crate::analysis_unit::shutdown(
+            std::iter::once(&mut workers.rust)
+                .chain(workers.java.iter_mut())
+                .collect(),
+        )
         .await
         {
             let _ = self.task.event(
@@ -64,11 +73,7 @@ impl IndexTask {
         units: &mut crate::analysis_unit::RunningUnits,
         result: Result<TaskResult>,
     ) -> Result<TaskResult> {
-        if let Some(warning) = crate::analysis_unit::shutdown(
-            crate::analysis_unit::Units::Sessions(units.sessions.iter_mut()),
-        )
-        .await
-        {
+        if let Some(warning) = crate::analysis_unit::shutdown(units.workers_mut()).await {
             let _ = self.task.event(
                 &TaskId::from(id),
                 &Event::Progress(format!("worker_cleanup_warning {warning}")),
@@ -78,7 +83,9 @@ impl IndexTask {
     }
 
     pub(super) async fn prepare_java_unit(&self, captured: Capture) -> Result<java::PreparedJava> {
-        self.workers.prepare_java(captured).await
+        self.workers
+            .prepare_java(captured.backend_capture(AnalysisBackend::Java)?)
+            .await
     }
 
     async fn prepare_analysis_unit(
@@ -88,14 +95,15 @@ impl IndexTask {
         use crate::analysis_unit::PreparedInput;
         self.reserve_owned_input(request.task, request.language, request.instance)?;
         Ok(match request.language {
-            AnalysisLanguage::Java => PreparedInput::Java(Box::new(
+            AnalysisBackend::TypeScript => bail!("TYPESCRIPT_INPUT_NOT_READY"),
+            AnalysisBackend::Java => PreparedInput::Java(Box::new(
                 self.prepare_java_unit(request.capture.clone()).await?,
             )),
-            AnalysisLanguage::Rust => PreparedInput::Rust(Box::new(
+            AnalysisBackend::Rust => PreparedInput::Rust(Box::new(
                 self.prepare_rust_inputs(request.task, request.capture)
                     .await?,
             )),
-            AnalysisLanguage::Python => {
+            AnalysisBackend::Python => {
                 let captured = request.capture.clone();
                 let directory = request.python_directory.to_path_buf();
                 let mode = request.python_mode;
@@ -103,7 +111,7 @@ impl IndexTask {
                     crate::python_inputs::prepare_inputs(&captured, &directory, mode)
                 })
                 .await??;
-                PreparedInput::Python(input.descriptor)
+                PreparedInput::Python(input.descriptor, request.python_guard.clone())
             }
         })
     }
@@ -111,7 +119,7 @@ impl IndexTask {
     fn reserve_owned_input(
         &self,
         id: &str,
-        language: AnalysisLanguage,
+        language: AnalysisBackend,
         instance: &str,
     ) -> Result<()> {
         if let Some(binding) = self.analysis_binding(id, language, instance) {
@@ -122,9 +130,10 @@ impl IndexTask {
                 .host(language)
                 .map_err(DomainError::analysis)?;
             let bytes = match language {
-                AnalysisLanguage::Java => std::mem::size_of::<java::PreparedJava>(),
-                AnalysisLanguage::Rust => std::mem::size_of::<RustInput>(),
-                AnalysisLanguage::Python => 0,
+                AnalysisBackend::Java => std::mem::size_of::<java::PreparedJava>(),
+                AnalysisBackend::Rust => std::mem::size_of::<RustInput>(),
+                AnalysisBackend::Python => 0,
+                AnalysisBackend::TypeScript => bail!("TYPESCRIPT_INPUT_NOT_READY"),
             };
             host.charge(1, 0, bytes as u64)
                 .map_err(DomainError::analysis)?;
@@ -142,9 +151,7 @@ impl IndexTask {
     ) -> Result<TaskResult> {
         let started = Instant::now();
         ensure!(!self.workers.is_mock(), "RUST_REAL_WORKER_REQUIRED");
-        let expected = self
-            .index
-            .head(&IndexTarget::from(capture.target.clone()))?;
+        let expected = plan.baseline.clone();
         ensure!(
             req.expected_revision.is_empty() || expected == req.expected_revision.as_str(),
             DomainError::new(ErrorCode::HeadConflict, "")
@@ -155,8 +162,9 @@ impl IndexTask {
                 id,
                 &input,
                 &capture,
-                plan.executes(AnalysisLanguage::Java),
+                plan.executes(AnalysisBackend::Java),
                 cancel,
+                plan,
             )
             .await?;
         let baseline_result = self
@@ -204,14 +212,15 @@ impl IndexTask {
                 .await?
             {
                 crate::indexing::CandidateOutcome::Committed { revision, started } => {
-                    (revision, started)
+                    (*revision, started)
                 }
                 crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
             };
-            let units = crate::analysis_unit::Units::Pair(
-                (!attempt.baseline.unchanged).then_some(&mut attempt.workers.rust),
-                attempt.workers.java.as_mut(),
-            );
+            let units = (!attempt.baseline.unchanged)
+                .then_some(&mut attempt.workers.rust)
+                .into_iter()
+                .chain(attempt.workers.java.iter_mut())
+                .collect();
             let ack = crate::analysis_unit::acknowledge(units, &revision.id).await;
             if let Ok(memory) = serde_json::to_string(&attempt.workers.rust.memory_usage()) {
                 let _ = self.task.event(
@@ -228,7 +237,10 @@ impl IndexTask {
                     summary,
                     evidence,
                     ack,
-                    worker_context: attempt.workers.rust.context.clone(),
+                    worker_contexts: std::iter::once(&attempt.workers.rust)
+                        .chain(attempt.workers.java.iter())
+                        .map(|worker| worker.context.clone())
+                        .collect(),
                     analyze_ms,
                     publish_ms: publishing.elapsed().as_millis() as u64,
                     index_elapsed_ms: started.elapsed().as_millis() as u64,
@@ -247,6 +259,7 @@ impl IndexTask {
         capture: &Capture,
         java_enabled: bool,
         cancel: &CancellationToken,
+        plan: &crate::index_plan::IndexPlan,
     ) -> Result<RustWorkers> {
         let descriptor = &input.descriptor;
         let rust_manifest = &input.manifest;
@@ -256,13 +269,21 @@ impl IndexTask {
             input.memory
         };
         let rust_worker = worker::Worker::start_language(
-            None,
-            worker::Language::Rust(descriptor),
-            &capture.root,
-            rust_manifest,
+            worker::LaunchSpec {
+                fixtures: None,
+                language: worker::Language::Rust(descriptor),
+                checkout: &capture.root,
+                manifest: rust_manifest,
+                inputs: crate::supervisor::InputLease::new(capture, vec![input.scratch.clone()]),
+                publication: crate::analysis_unit::publication(
+                    capture,
+                    AnalysisBackend::Rust,
+                    plan.previous_sources("rust"),
+                ),
+            },
             cancel,
             memory,
-            self.analysis_binding(id, AnalysisLanguage::Rust, ""),
+            self.analysis_binding(id, AnalysisBackend::Rust, ""),
         )
         .await?;
         let mut workers = RustWorkers {
@@ -273,20 +294,11 @@ impl IndexTask {
         };
         let started: Result<()> = async {
             ensure!(
-                workers.rust.context.language == "rust",
+                workers.rust.context.backend() == AnalysisBackend::Rust,
                 "WORKER_LANGUAGE_MISMATCH"
             );
             workers.java_capture = if java_enabled {
-                let mut c = capture.clone();
-                c.manifest.files.retain(|s| s.language != "rust");
-                let hashes = c
-                    .manifest
-                    .files
-                    .iter()
-                    .map(|s| s.hash.clone())
-                    .collect::<std::collections::BTreeSet<_>>();
-                c.blobs.retain(|hash, _| hashes.contains(hash));
-                Some(c)
+                Some(capture.backend_capture(AnalysisBackend::Java)?)
             } else {
                 None
             };
@@ -297,14 +309,25 @@ impl IndexTask {
             };
             workers.java = if let Some(c) = &workers.java_capture {
                 Some(
-                    worker::Worker::start(
-                        None,
-                        workers.prepared.as_ref(),
-                        &c.root,
-                        &c.manifest,
+                    worker::Worker::start_language(
+                        worker::LaunchSpec {
+                            fixtures: None,
+                            language: worker::Language::Java(workers.prepared.as_ref()),
+                            checkout: &c.root,
+                            manifest: &c.manifest,
+                            inputs: crate::supervisor::InputLease::new(
+                                c,
+                                workers.prepared.iter().map(|p| p.scratch.clone()).collect(),
+                            ),
+                            publication: crate::analysis_unit::publication(
+                                c,
+                                AnalysisBackend::Java,
+                                plan.previous_sources("java"),
+                            ),
+                        },
                         cancel,
                         memory,
-                        self.analysis_binding(id, AnalysisLanguage::Java, ""),
+                        self.analysis_binding(id, AnalysisBackend::Java, ""),
                     )
                     .await?,
                 )
@@ -354,8 +377,8 @@ impl IndexTask {
             dependency_inputs,
             &capture.effective.semantic_digest,
             config.inputs.semantic_digest(),
-            &rust_worker.context,
-            java_worker.as_ref().map(|w| &w.context),
+            &rust_worker.context.semantic_digest,
+            java_worker.as_ref().map(|w| &w.context.semantic_digest),
             "graph6-schema13",
         ));
         let mut full =
@@ -423,6 +446,12 @@ impl IndexTask {
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
         let revision = Revision {
+            unit_ownership: self.ownership(
+                capture,
+                &std::iter::once(&attempt.workers.rust.context)
+                    .chain(attempt.workers.java.iter().map(|w| &w.context))
+                    .collect::<Vec<_>>(),
+            )?,
             id: String::new(),
             target: capture.target.clone(),
             project: capture.project.clone(),
@@ -456,7 +485,7 @@ impl IndexTask {
     ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
         let rust_worker = &mut attempt.workers.rust;
         let expected = attempt.baseline.expected.clone();
-        crate::analysis_unit::retire(crate::analysis_unit::Units::One(Some(rust_worker))).await?;
+        crate::analysis_unit::retire(vec![rust_worker]).await?;
         self.task.event(
             &TaskId::from(id),
             &Event::Progress("rust_analyze_unchanged".into()),
@@ -634,9 +663,7 @@ impl IndexTask {
         let started = Instant::now();
         ensure!(!self.workers.is_mock(), "PYTHON_REAL_WORKER_REQUIRED");
 
-        let expected = self
-            .index
-            .head(&IndexTarget::from(capture.target.clone()))?;
+        let expected = plan.baseline.clone();
         ensure!(
             req.expected_revision.is_empty() || req.expected_revision == expected.as_str(),
             DomainError::new(ErrorCode::HeadConflict, "")
@@ -669,20 +696,17 @@ impl IndexTask {
             memory > 0 && memory <= self.workers.memory_cap(),
             DomainError::new(ErrorCode::ProjectWorkerMemoryLimit, "")
         );
-        let rust_input = if plan.executes(AnalysisLanguage::Rust) {
+        let rust_input = if plan.executes(AnalysisBackend::Rust) {
             Some(self.prepare_rust_inputs(id, &capture).await?)
         } else {
             None
         };
-        let java_enabled = plan.executes(AnalysisLanguage::Java);
+        let java_enabled = plan.executes(AnalysisBackend::Java);
         let memory = memory / (1 + u64::from(rust_input.is_some()) + u64::from(java_enabled));
         ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
-        let java_capture = if plan.executes(AnalysisLanguage::Java) {
-            let mut c = capture.clone();
-            c.effective.config.resources.index.worker_memory_bytes = Some(memory);
-            c.manifest
-                .files
-                .retain(|s| s.language == "java" || s.scope == "CONTROL");
+        let java_capture = if plan.executes(AnalysisBackend::Java) {
+            let mut c = capture.backend_capture(AnalysisBackend::Java)?;
+            c.effective.set_worker_memory_limit(memory);
             Some(c)
         } else {
             None
@@ -695,84 +719,63 @@ impl IndexTask {
         // Admit ownership storage while inputs are still outside the running worker scope.
         // A rejected reservation must not drop an input underneath an already started worker.
         if rust_input.is_some() {
-            self.reserve_owned_input(id, AnalysisLanguage::Rust, "")?;
+            self.reserve_owned_input(id, AnalysisBackend::Rust, "")?;
         }
         if prepared.is_some() {
-            self.reserve_owned_input(id, AnalysisLanguage::Java, "")?;
+            self.reserve_owned_input(id, AnalysisBackend::Java, "")?;
         }
-        let python_manifest = Manifest {
-            files: capture
-                .manifest
-                .files
-                .iter()
-                .filter(|s| s.language == "python" || s.scope == "CONTROL")
-                .cloned()
-                .collect(),
-        };
-        let worker = worker::Worker::start_language(
-            None,
-            worker::Language::Python(&descriptor),
-            &capture.root,
-            &python_manifest,
-            cancel,
-            memory,
-            self.analysis_binding(id, AnalysisLanguage::Python, ""),
-        )
-        .await?;
+        let python_capture = capture.backend_capture(AnalysisBackend::Python)?;
+        let python_manifest = python_capture.manifest.clone();
         let merged_bytes = scratch_bytes - source_bytes - descriptor.bytes;
         let mut sessions = crate::analysis_unit::RunningUnits {
-            sessions: vec![(worker, python_manifest)],
-            inputs: vec![crate::analysis_unit::PreparedInput::Python(descriptor)],
-            scratch,
+            units: vec![],
+            scratch: Arc::new(scratch),
         };
+        sessions
+            .units
+            .push(crate::analysis_unit::RunningUnit::prepared(
+                crate::analysis_unit::PreparedInput::Python(descriptor, sessions.scratch.clone()),
+                python_capture,
+                python_manifest,
+            )?);
         if let Some(input) = rust_input {
+            let manifest = input.manifest.clone();
             sessions
-                .inputs
-                .push(crate::analysis_unit::PreparedInput::Rust(Box::new(input)));
+                .units
+                .push(crate::analysis_unit::RunningUnit::prepared(
+                    crate::analysis_unit::PreparedInput::Rust(Box::new(input)),
+                    capture.backend_capture(AnalysisBackend::Rust)?,
+                    manifest,
+                )?);
         }
-        if let Some(input) = prepared {
+        if let (Some(input), Some(c)) = (prepared, java_capture) {
+            let manifest = c.manifest.clone();
             sessions
-                .inputs
-                .push(crate::analysis_unit::PreparedInput::Java(Box::new(input)));
+                .units
+                .push(crate::analysis_unit::RunningUnit::prepared(
+                    crate::analysis_unit::PreparedInput::Java(Box::new(input)),
+                    c,
+                    manifest,
+                )?);
         }
+        sessions
+            .units
+            .sort_by(|a, b| (a.backend(), a.unit.as_str()).cmp(&(b.backend(), b.unit.as_str())));
         let result: Result<TaskResult> = async {
-            if let Some(input) = sessions.inputs.iter().find_map(|input| match input {
-                crate::analysis_unit::PreparedInput::Rust(input) => Some(input.as_ref()),
-                _ => None,
-            }) {
-                let worker = worker::Worker::start_language(
-                    None,
-                    worker::Language::Rust(&input.descriptor),
-                    &capture.root,
-                    &input.manifest,
+            for unit in &mut sessions.units {
+                unit.start(
                     cancel,
                     memory,
-                    self.analysis_binding(id, AnalysisLanguage::Rust, ""),
+                    self.analysis_binding(id, unit.backend(), ""),
+                    plan.previous_sources(&unit.unit),
                 )
                 .await?;
-                let manifest = input.manifest.clone();
-                sessions.push((worker, manifest));
             }
-            if let (Some(prepared), Some(c)) = (
-                sessions.inputs.iter().find_map(|input| match input {
-                    crate::analysis_unit::PreparedInput::Java(input) => Some(input.as_ref()),
-                    _ => None,
-                }),
-                &java_capture,
-            ) {
-                let worker = worker::Worker::start(
-                    None,
-                    Some(prepared),
-                    &capture.root,
-                    &c.manifest,
-                    cancel,
-                    memory,
-                    self.analysis_binding(id, AnalysisLanguage::Java, ""),
-                )
-                .await?;
-                sessions.push((worker, c.manifest.clone()));
-            }
-            let contexts = sessions.iter().map(|(w, _)| &w.context).collect::<Vec<_>>();
+            let contexts = sessions
+                .units
+                .iter()
+                .map(|u| Ok(u.worker()?.context.semantic_digest.clone()))
+                .collect::<Result<Vec<_>>>()?;
             let profile = digest(&(
                 codeana_comment_search::identity(),
                 &capture.effective.semantic_digest,
@@ -780,12 +783,20 @@ impl IndexTask {
                 contexts,
                 python::ADAPTER_VERSION,
             ));
-            let producer = if sessions.len() == 1 {
+            let producer = if sessions.units.len() == 1 {
                 python::PRODUCER.to_owned()
             } else {
                 "codeana-multi-language".into()
             };
             let revision = Revision {
+                unit_ownership: self.ownership(
+                    &capture,
+                    &sessions
+                        .units
+                        .iter()
+                        .map(|u| u.worker().map(|w| &w.context))
+                        .collect::<Result<Vec<_>>>()?,
+                )?,
                 id: String::new(),
                 target: capture.target.clone(),
                 project: capture.project.clone(),
@@ -805,10 +816,7 @@ impl IndexTask {
                 };
             let analyzing = Instant::now();
             let (result_mode, candidate) = if unchanged {
-                crate::analysis_unit::retire(crate::analysis_unit::Units::Sessions(
-                    sessions.iter_mut(),
-                ))
-                .await?;
+                crate::analysis_unit::retire(sessions.workers_mut()).await?;
                 self.stage_reused_revision(id, revision, expected.clone(), producer.clone(), cancel)
                     .await?
             } else {
@@ -816,8 +824,8 @@ impl IndexTask {
                     &TaskId::from(id),
                     &Event::Progress("python_analyze_full: input_or_environment_changed".into()),
                 )?;
-                if sessions.len() == 1 {
-                    let (worker, manifest) = &mut sessions[0];
+                if sessions.units.len() == 1 {
+                    let (worker, manifest) = sessions.units[0].stream()?;
                     self.stage_language_stream(
                         id,
                         worker,
@@ -834,11 +842,11 @@ impl IndexTask {
                 } else {
                     self.stage_full_languages(
                         id,
-                        &mut sessions.sessions,
+                        &mut sessions.units,
                         revision,
                         &expected,
                         sessions.scratch.path(),
-                        codeana_contracts::graph_archive::OutputLimits {
+                        codeana_contracts::graph_delivery::OutputLimits {
                             bytes: merged_bytes,
                             facts: 6_000_000,
                         },
@@ -847,16 +855,17 @@ impl IndexTask {
                     .await?
                 }
             };
-            for input in &sessions.inputs {
-                input.verify()?;
+            for unit in &sessions.units {
+                unit.input.verify()?;
             }
             let analyze_ms = analyzing.elapsed().as_millis() as u64;
-            for (worker, _) in &sessions.sessions {
+            for unit in &sessions.units {
+                let worker = unit.worker()?;
                 self.task.event(
                     &TaskId::from(id),
                     &Event::Progress(format!(
                         "{}_worker_memory {}",
-                        worker.context.language,
+                        worker.context.backend().as_str(),
                         serde_json::to_string(&worker.memory_usage())?
                     )),
                 )?;
@@ -878,7 +887,7 @@ impl IndexTask {
                 .await?
             {
                 crate::indexing::CandidateOutcome::Committed { revision, started } => {
-                    (revision, started)
+                    (*revision, started)
                 }
                 crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
             };
@@ -886,11 +895,7 @@ impl IndexTask {
             let ack = if unchanged {
                 None
             } else {
-                crate::analysis_unit::acknowledge(
-                    crate::analysis_unit::Units::Sessions(sessions.iter_mut()),
-                    &revision.id,
-                )
-                .await
+                crate::analysis_unit::acknowledge(sessions.workers_mut(), &revision.id).await
             };
             self.finish_index(
                 id,
@@ -901,7 +906,7 @@ impl IndexTask {
                     summary,
                     evidence,
                     ack,
-                    worker_context: sessions[0].0.context.clone(),
+                    worker_contexts: sessions.contexts()?,
                     analyze_ms,
                     publish_ms,
                     index_elapsed_ms: started.elapsed().as_millis() as u64,
@@ -912,32 +917,6 @@ impl IndexTask {
         .await;
         self.finish_running_units(id, &mut sessions, result).await
     }
-}
-
-fn unit_capture(capture: &Capture, effective: &codeana_config::Effective) -> Capture {
-    let worlds = if let Some(inputs) = &effective.python_inputs {
-        inputs
-            .contexts
-            .iter()
-            .map(|c| c.world(&inputs.roots))
-            .collect::<std::collections::BTreeSet<_>>()
-    } else if let Some(inputs) = &effective.rust_inputs {
-        inputs.crates.iter().map(|c| c.world.clone()).collect()
-    } else {
-        effective
-            .config
-            .modules
-            .iter()
-            .flat_map(|m| ["MAIN", "TEST", "GENERATED"].map(|scope| key("world", &[&m.id, scope])))
-            .collect()
-    };
-    let mut result = capture.clone();
-    result.effective = effective.clone();
-    result
-        .manifest
-        .files
-        .retain(|s| s.scope == "CONTROL" || worlds.contains(&s.world));
-    result
 }
 
 impl IndexTask {
@@ -951,9 +930,7 @@ impl IndexTask {
     ) -> Result<TaskResult> {
         ensure!(!self.workers.is_mock(), "PREPARED_REAL_WORKER_REQUIRED");
         let started = Instant::now();
-        let expected = self
-            .index
-            .head(&IndexTarget::from(capture.target.clone()))?;
+        let expected = plan.baseline.clone();
         ensure!(
             req.expected_revision.is_empty() || req.expected_revision == expected.as_str(),
             DomainError::new(ErrorCode::HeadConflict, "")
@@ -961,7 +938,12 @@ impl IndexTask {
         let scratch = tempfile::Builder::new()
             .prefix("prepared-index-")
             .tempdir_in(self.index.home())?;
-        let count = plan.units.len().max(1) as u64;
+        let count = plan
+            .units
+            .iter()
+            .filter(|u| u.availability == UnitAvailability::Ready)
+            .count()
+            .max(1) as u64;
         let memory = capture
             .effective
             .config
@@ -975,50 +957,71 @@ impl IndexTask {
         );
         let memory = memory / count;
         ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
-        let analysis = self.task.analysis.coordinator.lock().unwrap().clone();
-        if let Some(coordinator) = &analysis {
-            for language in [
-                AnalysisLanguage::Rust,
-                AnalysisLanguage::Python,
-                AnalysisLanguage::Java,
-            ] {
-                let mut ids = Vec::new();
-                for unit in plan.units.iter().filter(|unit| unit.language == language) {
-                    let instance = &capture.effective.input_units
-                        [unit.prepared_index.context("PREPARED_UNIT_INDEX")?]
-                    .prepared
-                    .id;
-                    let host = coordinator
-                        .lock()
-                        .unwrap()
-                        .host(language)
-                        .map_err(DomainError::analysis)?;
-                    host.charge(
-                        1,
-                        0,
-                        (instance.len() + 2 * std::mem::size_of::<String>()) as u64,
-                    )
-                    .map_err(DomainError::analysis)?;
-                    ids.push(instance.clone());
-                }
-                if !ids.is_empty() {
-                    coordinator
-                        .lock()
-                        .unwrap()
-                        .configure_instances(language, &ids)
-                        .map_err(DomainError::analysis)?;
-                }
-            }
-        }
+        capture.effective.set_worker_memory_limit(memory);
         let mut sessions = crate::analysis_unit::RunningUnits {
-            sessions: vec![],
-            inputs: vec![],
-            scratch,
+            units: vec![],
+            scratch: Arc::new(scratch),
         };
         let result: Result<TaskResult> = async {
             let mut additional = vec![];
-            let mut planned_units = plan.units.iter();
-            for (index, unit) in capture.effective.input_units.iter().enumerate() {
+            for unit in plan.units.iter().filter(|u| {
+                u.availability == UnitAvailability::FilesOnly && u.prepared_index.is_none()
+            }) {
+                let modules = capture
+                    .effective
+                    .config
+                    .modules
+                    .iter()
+                    .filter(|m| crate::index_plan::language(&m.language) == Some(unit.language))
+                    .map(|m| m.id.as_str())
+                    .collect::<Vec<_>>();
+                for module in if modules.is_empty() {
+                    vec![unit.id.as_str()]
+                } else {
+                    modules
+                } {
+                    for scope in &capture.effective.config.scan.scopes {
+                        additional.push(
+                            CoverageRow {
+                                source_file: Some("*".into()),
+                                module: Some(module.into()),
+                                scope: Some(scope.clone()),
+                                language: Some(unit.language.as_str().into()),
+                                provider_id: Some("codeana-inputs".into()),
+                                capability: Some("AGGREGATE".into()),
+                                status: Some("partial".into()),
+                                occurrences: Some(1),
+                                groups_count: Some(1),
+                                codes: Some("[\"INPUT_CONTEXT_UNAVAILABLE\"]".into()),
+                                code_counts: Some("{\"INPUT_CONTEXT_UNAVAILABLE\":1}".into()),
+                                details_truncated: Some(0),
+                            }
+                            .into_row(&key("input-availability", &[module])),
+                        );
+                    }
+                }
+            }
+            let mut planned_units = plan
+                .units
+                .iter()
+                .filter(|u| u.availability == UnitAvailability::Ready);
+            let mut ordered = capture
+                .effective
+                .input_units
+                .iter()
+                .enumerate()
+                .collect::<Vec<_>>();
+            ordered.sort_by(|(_, a), (_, b)| {
+                (
+                    crate::index_plan::language(&a.prepared.language),
+                    a.prepared.id.as_str(),
+                )
+                    .cmp(&(
+                        crate::index_plan::language(&b.prepared.language),
+                        b.prepared.id.as_str(),
+                    ))
+            });
+            for (index, unit) in ordered {
                 self.task.event(
                     &TaskId::from(id),
                     &Event::Progress(format!(
@@ -1033,7 +1036,7 @@ impl IndexTask {
                     }
                     .into_row(""),
                 );
-                let Some(effective) = &unit.effective else {
+                let Some(_) = &unit.context else {
                     let modules = if unit.prepared.modules.is_empty() {
                         &unit.prepared.entries
                     } else {
@@ -1062,8 +1065,8 @@ impl IndexTask {
                     }
                     continue;
                 };
-                let mut child = unit_capture(&capture, effective);
-                child.effective.config.resources.index.worker_memory_bytes = Some(memory);
+                let child =
+                    capture.unit_capture(&AnalysisUnitId::from(unit.prepared.id.clone()))?;
                 let directory = sessions.scratch.path().join(&unit.prepared.id);
                 std::fs::create_dir(&directory)?;
                 let planned = planned_units.next().context("PREPARED_UNIT_MISSING")?;
@@ -1080,23 +1083,33 @@ impl IndexTask {
                         language,
                         capture: &child,
                         python_directory: &directory,
+                        python_guard: sessions.scratch.clone(),
                         python_mode: crate::python_inputs::InputMode::Prepared,
                     })
                     .await?;
-                let worker = worker::Worker::start_language(
-                    None,
-                    input.language(),
-                    &capture.root,
-                    &child.manifest,
-                    cancel,
-                    memory,
-                    binding,
-                )
-                .await?;
-                sessions.inputs.push(input);
-                sessions.push((worker, child.manifest));
+                let manifest = child.manifest.clone();
+                sessions
+                    .units
+                    .push(crate::analysis_unit::RunningUnit::prepared(
+                        input, child, manifest,
+                    )?);
+                sessions
+                    .units
+                    .last_mut()
+                    .context("PREPARED_UNIT_MISSING")?
+                    .start(
+                        cancel,
+                        memory,
+                        binding,
+                        plan.previous_sources(&unit.prepared.id),
+                    )
+                    .await?;
             }
-            let contexts = sessions.iter().map(|(w, _)| &w.context).collect::<Vec<_>>();
+            let contexts = sessions
+                .units
+                .iter()
+                .map(|u| Ok(u.worker()?.context.semantic_digest.clone()))
+                .collect::<Result<Vec<_>>>()?;
             let profile = digest(&(
                 codeana_comment_search::identity(),
                 &capture.effective.semantic_digest,
@@ -1105,6 +1118,14 @@ impl IndexTask {
             ));
             let producer = "codeana-prepared-inputs".to_owned();
             let revision = Revision {
+                unit_ownership: self.ownership(
+                    &capture,
+                    &sessions
+                        .units
+                        .iter()
+                        .map(|u| u.worker().map(|w| &w.context))
+                        .collect::<Result<Vec<_>>>()?,
+                )?,
                 id: String::new(),
                 target: capture.target.clone(),
                 project: capture.project.clone(),
@@ -1124,14 +1145,11 @@ impl IndexTask {
                 };
             let analyzing = Instant::now();
             let (result_mode, candidate) = if unchanged {
-                crate::analysis_unit::retire(crate::analysis_unit::Units::Sessions(
-                    sessions.iter_mut(),
-                ))
-                .await?;
+                crate::analysis_unit::retire(sessions.workers_mut()).await?;
                 self.stage_reused_revision(id, revision, expected.clone(), producer.clone(), cancel)
                     .await?
-            } else if sessions.len() == 1 {
-                let (worker, manifest) = &mut sessions[0];
+            } else if sessions.units.len() == 1 {
+                let (worker, manifest) = sessions.units[0].stream()?;
                 self.stage_language_stream_rows(
                     id,
                     worker,
@@ -1156,11 +1174,11 @@ impl IndexTask {
                     .unwrap_or(2 << 30);
                 self.stage_full_language_rows(
                     id,
-                    &mut sessions.sessions,
+                    &mut sessions.units,
                     revision,
                     &expected,
                     sessions.scratch.path(),
-                    codeana_contracts::graph_archive::OutputLimits {
+                    codeana_contracts::graph_delivery::OutputLimits {
                         bytes,
                         facts: 6_000_000,
                     },
@@ -1169,8 +1187,8 @@ impl IndexTask {
                 )
                 .await?
             };
-            for input in &sessions.inputs {
-                input.verify()?;
+            for unit in &sessions.units {
+                unit.input.verify()?;
             }
             let analyze_ms = analyzing.elapsed().as_millis() as u64;
             let summary = self.index.summary(&candidate).clone();
@@ -1190,7 +1208,7 @@ impl IndexTask {
                 .await?
             {
                 crate::indexing::CandidateOutcome::Committed { revision, started } => {
-                    (revision, started)
+                    (*revision, started)
                 }
                 crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
             };
@@ -1198,38 +1216,7 @@ impl IndexTask {
             let ack = if unchanged {
                 None
             } else {
-                crate::analysis_unit::acknowledge(
-                    crate::analysis_unit::Units::Sessions(sessions.iter_mut()),
-                    &revision.id,
-                )
-                .await
-            };
-            let context = BuildContext {
-                language: "multi".into(),
-                modules: capture
-                    .effective
-                    .config
-                    .modules
-                    .iter()
-                    .map(|m| m.id.clone())
-                    .collect(),
-                source_version: String::new(),
-                classpath: vec![],
-                producer,
-                capabilities: vec![
-                    "prepared-inputs-v1".into(),
-                    if capture
-                        .effective
-                        .input_units
-                        .iter()
-                        .any(|u| u.prepared.mode == InputMode::FilesOnly)
-                    {
-                        "semantic-inputs-partial"
-                    } else {
-                        "semantic-inputs-available"
-                    }
-                    .into(),
-                ],
+                crate::analysis_unit::acknowledge(sessions.workers_mut(), &revision.id).await
             };
             self.finish_index(
                 id,
@@ -1240,7 +1227,7 @@ impl IndexTask {
                     summary,
                     evidence,
                     ack,
-                    worker_context: context,
+                    worker_contexts: sessions.contexts()?,
                     analyze_ms,
                     publish_ms,
                     index_elapsed_ms: started.elapsed().as_millis() as u64,
@@ -1295,6 +1282,47 @@ mod reuse_source_tests {
         assert!(!same_sources_for_profile(&before, &after));
         after = before.clone();
         after.files.remove(0);
+        assert!(!same_sources_for_profile(&before, &after));
+    }
+    #[test]
+    fn preparation_artifacts_can_move_but_cannot_hide_semantic_or_owned_input_changes() {
+        let before = Manifest {
+            files: vec![SourceUnit {
+                path: "app.py".into(),
+                hash: hash(b"source"),
+                size: 6,
+                module: "app".into(),
+                world: "python-world".into(),
+                scope: "MAIN".into(),
+                language: "python".into(),
+                auxiliary: false,
+            }],
+        };
+        let mut after = before.clone();
+        after.files.push(SourceUnit {
+            path: ".code-ana/inputs/new-generation/inputs.json".into(),
+            hash: hash(b"receipt"),
+            size: 7,
+            module: String::new(),
+            world: "files".into(),
+            scope: "PREPARATION".into(),
+            language: String::new(),
+            auxiliary: false,
+        });
+        assert!(same_sources_for_profile(&before, &after));
+        for field in ["language", "world", "module", "scope", "auxiliary"] {
+            let mut forged = after.clone();
+            let input = forged.files.last_mut().unwrap();
+            match field {
+                "language" => input.language = "python".into(),
+                "world" => input.world = "owned-world".into(),
+                "module" => input.module = "app".into(),
+                "scope" => input.scope = "CONTROL".into(),
+                _ => input.auxiliary = true,
+            }
+            assert!(!same_sources_for_profile(&before, &forged));
+        }
+        after.files[0].hash = hash(b"changed");
         assert!(!same_sources_for_profile(&before, &after));
     }
 }

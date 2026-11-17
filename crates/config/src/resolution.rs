@@ -49,20 +49,30 @@ pub fn resolve_files(root: &Path, request: &Request) -> Result<Effective> {
     resolve_for(root, request, false)
 }
 fn resolve_for(root: &Path, request: &Request, language_required: bool) -> Result<Effective> {
+    resolve_using(root, request, language_required, &LiveInputs)
+}
+pub(crate) fn resolve_using(
+    root: &Path,
+    request: &Request,
+    language_required: bool,
+    reader: &dyn InputReader,
+) -> Result<Effective> {
     let path = root.join(".code-ana/config.toml");
     ensure!(
         path.canonicalize()?.starts_with(root),
         codeana_model::DomainError::new(codeana_model::ErrorCode::ConfigPathEscape, "")
     );
-    let config_bytes = bounded_read(&path, 1024 * 1024)
+    let config_bytes = reader
+        .read(&path, 1024 * 1024)
         .context("PROJECT_CONFIG_REQUIRED: .code-ana/config.toml")?;
     let text = std::str::from_utf8(&config_bytes).context(codeana_model::DomainError::new(
         codeana_model::ErrorCode::InvalidProjectConfigEncoding,
         "",
     ))?;
-    resolve_text(root, request, language_required, text, true)
+    resolve_text_using(root, request, language_required, text, true, reader)
 }
 
+#[cfg(test)]
 pub(crate) fn resolve_text(
     root: &Path,
     request: &Request,
@@ -70,13 +80,53 @@ pub(crate) fn resolve_text(
     text: &str,
     catalog: bool,
 ) -> Result<Effective> {
-    let mut c: ProjectConfig = parse_project(text).context(codeana_model::DomainError::new(
+    resolve_text_using(root, request, language_required, text, catalog, &LiveInputs)
+}
+fn resolve_text_using(
+    root: &Path,
+    request: &Request,
+    language_required: bool,
+    text: &str,
+    catalog: bool,
+    reader: &dyn InputReader,
+) -> Result<Effective> {
+    let c: ProjectConfig = parse_project(text).context(codeana_model::DomainError::new(
         codeana_model::ErrorCode::InvalidProjectConfig,
         "",
     ))?;
     if catalog && c.inputs.is_some() {
-        return inputs::resolve(root, request, language_required, c, text);
+        return inputs::resolve_using(root, request, language_required, c, text, reader);
     }
+    resolve_config_using(root, request, language_required, c, text, None, reader)
+}
+
+pub(crate) fn resolve_config(
+    root: &Path,
+    request: &Request,
+    language_required: bool,
+    c: ProjectConfig,
+    text: &str,
+    task_origins: Option<&BTreeMap<String, String>>,
+) -> Result<Effective> {
+    resolve_config_using(
+        root,
+        request,
+        language_required,
+        c,
+        text,
+        task_origins,
+        &LiveInputs,
+    )
+}
+pub(crate) fn resolve_config_using(
+    root: &Path,
+    request: &Request,
+    language_required: bool,
+    mut c: ProjectConfig,
+    text: &str,
+    task_origins: Option<&BTreeMap<String, String>>,
+    reader: &dyn InputReader,
+) -> Result<Effective> {
     let rust_policy = c
         .languages
         .rust
@@ -91,52 +141,87 @@ pub(crate) fn resolve_text(
     if c.languages.rust.is_some() {
         rust_inputs::InputFilter::new(&c)?;
     }
-    let mut origins = BTreeMap::new();
+    let mut origins = task_origins.cloned().unwrap_or_default();
     let value: toml::Value = toml::from_str(text)?;
-
     origins_walk(&value, String::new(), &mut origins);
-    resolve_common(&mut c, &mut origins)?;
-    validate_index_resources(&c.resources.index)?;
+    resolve_discovery(&mut c, &mut origins)?;
+    if task_origins.is_none() {
+        resolve_common(&mut c)?;
+        validate_index_resources(&c.resources.index)?;
+        glob(&c.scan.include)?;
+        glob(&c.scan.exclude)?;
+        glob(&c.scan.text_only)?;
+        glob(&c.search.text.include)?;
+        if let Some(v) = request.suggestions {
+            c.build.suggestions = Some(v);
+            origins.insert("build.suggestions".into(), "CLI".into());
+        }
+        c.build.suggestions.get_or_insert(true);
+        if c.index.mode.is_empty() {
+            c.index.mode = "auto".into();
+        }
+        if c.observability.mode.is_empty() {
+            c.observability.mode = "basic".into();
+        }
+        if c.query.scopes.is_empty() {
+            c.query.scopes.push("ALL".into());
+        }
+        validate_query_resources(&c.resources.query)?;
+    }
     resolve_languages(&mut c, request, &mut origins, language_required)?;
-    let java_inputs = discover_java(root, &mut c, language_required)?;
-    let rust_inputs = discover_rust(root, &mut c, language_required, rust_policy.as_ref())?;
-    let python_inputs = python_inputs::discover(root, &c, language_required)?;
+    let java_inputs = input_reader::in_backend(reader, AnalysisBackend::Java, || {
+        discover_java(root, &mut c, language_required, reader)
+    })?;
+    let rust_inputs = input_reader::in_backend(reader, AnalysisBackend::Rust, || {
+        discover_rust(
+            root,
+            &mut c,
+            language_required,
+            rust_policy.as_ref(),
+            reader,
+        )
+    })?;
+    let python_inputs = input_reader::in_backend(reader, AnalysisBackend::Python, || {
+        python_inputs::discover_using(root, &c, language_required, reader)
+    })?;
     resolve_modules(&mut c, request, java_inputs.is_some())?;
-    glob(&c.scan.include)?;
-    glob(&c.scan.exclude)?;
-    glob(&c.scan.text_only)?;
-    glob(&c.search.text.include)?;
-    c.build.suggestions.get_or_insert(true);
-    if c.index.mode.is_empty() {
-        c.index.mode = "auto".into();
-    }
-    if c.observability.mode.is_empty() {
-        c.observability.mode = "basic".into();
-    }
-    if c.query.scopes.is_empty() {
-        c.query.scopes.push("ALL".into());
-    }
     // Sources for defaulted scalar fields are materialized for doctor.
 
     default_origins(&serde_json::to_value(&c)?, String::new(), &mut origins);
-    validate_query_resources(&c.resources.query)?;
-    let semantic_digest = digest(&(&c.languages, &c.modules));
     let capture_digest = digest(&(&c.scan, &c.versions.capture));
     let config_digest = digest(&c);
-    Ok(Effective {
+    let mut inputs = Vec::new();
+    if c.languages
+        .java
+        .as_ref()
+        .is_some_and(|l| l.enabled == Some(true))
+    {
+        inputs.push(UnitInput::Java {
+            metadata: java_inputs.map(std::sync::Arc::new),
+        });
+    }
+    if let Some(metadata) = rust_inputs {
+        inputs.push(UnitInput::Rust {
+            metadata: std::sync::Arc::new(metadata),
+        });
+    }
+    if let Some(metadata) = python_inputs {
+        inputs.push(UnitInput::Python {
+            metadata: std::sync::Arc::new(metadata),
+        });
+    }
+    let semantic_digest = semantic::context(&c, &inputs);
+    Ok(Effective::from_context(ResolvedContext {
         config: c,
         origins,
         config_digest,
         input_hash: hash(text.as_bytes()),
         semantic_digest,
         capture_digest,
-        java_inputs,
-        rust_inputs,
-        python_inputs,
-        input_units: vec![],
-    })
+        inputs,
+    }))
 }
-fn resolve_common(c: &mut ProjectConfig, origins: &mut BTreeMap<String, String>) -> Result<()> {
+fn resolve_discovery(c: &mut ProjectConfig, origins: &mut BTreeMap<String, String>) -> Result<()> {
     if c.discovery.mode.is_empty() {
         c.discovery.mode = "explicit".into();
         origins.insert("discovery.mode".into(), "builtin".into());
@@ -145,6 +230,9 @@ fn resolve_common(c: &mut ProjectConfig, origins: &mut BTreeMap<String, String>)
         matches!(c.discovery.mode.as_str(), "explicit" | "auto"),
         codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDiscoveryMode, "")
     );
+    Ok(())
+}
+fn resolve_common(c: &mut ProjectConfig) -> Result<()> {
     if c.scan.scopes.is_empty() {
         c.scan.scopes = vec!["MAIN".into()];
     }
@@ -258,12 +346,11 @@ fn resolve_languages(
     origins: &mut BTreeMap<String, String>,
     language_required: bool,
 ) -> Result<()> {
-    if let Some(v) = request.suggestions {
-        c.build.suggestions = Some(v);
-        origins.insert("build.suggestions".into(), "CLI".into());
-    }
     ensure!(
         !language_required
+            // The host may need to remove previously published units after all
+            // languages are disabled. It must verify a baseline before executing.
+            || request.operation == codeana_model::Operation::Index
             || c.languages
                 .java
                 .as_ref()

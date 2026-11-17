@@ -12,6 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'tests'))
 from acceptance_support import sha256
+from sdk_manifest import load_manifest, java
 
 
 def atomic_copy(source, destination):
@@ -37,8 +38,9 @@ def upgrade(binaries, bundle, backend, archive, previous_manifest_sha256):
     manifest_target = target / manifest_relative
     metadata = stable / ('runtime-' + backend + '.json')
     old = json.loads(metadata.read_text())
-    manifest = json.loads(manifest_source.read_text())
-    current = json.loads(manifest_target.read_text())
+    manifest = load_manifest(manifest_source)
+    identity = java(manifest, backend)
+    current = load_manifest(manifest_target)
     if sha256(manifest_target) != previous_manifest_sha256:
         raise ValueError('EXPLICIT_PREVIOUS_RUNTIME_IDENTITY_REQUIRED')
     if set(current['files']) != set(manifest['files']):
@@ -65,7 +67,7 @@ def upgrade(binaries, bundle, backend, archive, previous_manifest_sha256):
         raise ValueError('NEW_RUNTIME_PROBE_FAILED: ' + probe.stderr)
     versions = json.loads(probe.stdout)
     expected = dict(backend=backend, worker_protocol=manifest['worker_protocol'], fact_ir=manifest['fact_ir'],
-                    adapter=manifest['adapter'], analysis_request=manifest['analysis_request'], abi=manifest['abi'] if backend == 'native' else None)
+                    adapter=manifest['adapter'], analysis_request=identity['analysis_request'], abi=identity['runtime']['abi'] if backend == 'native' else None)
     if versions != expected:
         raise ValueError('NEW_RUNTIME_PROTOCOL_MISMATCH')
     # Archive old bytes before touching any live path. No application is copied.

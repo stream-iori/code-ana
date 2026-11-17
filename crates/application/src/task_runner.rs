@@ -123,10 +123,14 @@ impl TaskRunner {
                 Err(error)
             } else if job.control.token.is_cancelled() {
                 Err(DomainError::new(ErrorCode::Cancelled, "").into())
-            } else if let Some(budget) = &job.query_budget {
-                codeana_config::capture_query(&root, &req, budget)
             } else {
-                codeana_config::capture(&root, &req)
+                let token = job.control.token.clone();
+                codeana_config::capture_controlled(
+                    &root,
+                    &req,
+                    job.query_budget.as_ref(),
+                    Arc::new(move || token.is_cancelled()),
+                )
             })
         } else {
             None
@@ -316,6 +320,7 @@ impl TaskRunner {
                                 &c.effective.config.search.text.include,
                             ));
                             let reader = FilesReader(Revision {
+                                unit_ownership: None,
                                 id: key("worktree_text", &[&c.manifest.id(), &profile]),
                                 target: c.target,
                                 project: c.project.clone(),

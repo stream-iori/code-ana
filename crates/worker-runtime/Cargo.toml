@@ -1,0 +1,13 @@
+[package]
+name = "codeana-worker-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+codeana-model = { path = "../model" }
+codeana-contracts = { path = "../contracts" }
+codeana-graph-io = { path = "../graph-io" }
+anyhow.workspace = true
+prost.workspace = true
+tokio.workspace = true

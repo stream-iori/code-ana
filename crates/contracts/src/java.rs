@@ -1,4 +1,5 @@
 //! Shared sealed input descriptions; contexts retain ordered indices and publication roles.
+pub mod sdk;
 use crate::worker as w;
 use anyhow::{Context, Result, ensure};
 use std::collections::{BTreeMap, BTreeSet};
@@ -116,35 +117,33 @@ pub fn compact(config: &mut w::JavaConfig) -> Result<()> {
     validate(config)
 }
 
-pub use crate::graph_archive::OutputLimits;
-impl OutputLimits {
-    pub fn from_config(config: &w::JavaConfig) -> Result<Self> {
-        let defaults = Self::default();
-        let limits = Self {
-            bytes: if config.result_bytes == 0 {
-                defaults.bytes
-            } else {
-                config.result_bytes
-            },
-            facts: if config.fact_limit == 0 {
-                defaults.facts
-            } else {
-                u64::from(config.fact_limit)
-            },
-        };
-        ensure!(
-            (64 * 1024..=codeana_model::MAX_JAVA_RESULT_BYTES).contains(&limits.bytes),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaResultBytesRange, "")
-        );
-        ensure!(
-            (1..=5000000).contains(&limits.facts),
-            codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFactLimitRange, "")
-        );
-        Ok(limits)
-    }
+use crate::graph_delivery::OutputLimits;
+pub fn output_limits(config: &w::JavaConfig) -> Result<OutputLimits> {
+    let defaults = OutputLimits::default();
+    let limits = OutputLimits {
+        bytes: if config.result_bytes == 0 {
+            defaults.bytes
+        } else {
+            config.result_bytes
+        },
+        facts: if config.fact_limit == 0 {
+            defaults.facts
+        } else {
+            u64::from(config.fact_limit)
+        },
+    };
+    ensure!(
+        (64 * 1024..=codeana_model::MAX_JAVA_RESULT_BYTES).contains(&limits.bytes),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaResultBytesRange, "")
+    );
+    ensure!(
+        (1..=5000000).contains(&limits.facts),
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaFactLimitRange, "")
+    );
+    Ok(limits)
 }
 pub fn validate(config: &w::JavaConfig) -> Result<()> {
-    OutputLimits::from_config(config)?;
+    output_limits(config)?;
     ensure!(
         matches!(config.target_java, 8 | 17),
         "JAVA_TARGET_REQUIRED: expected 8 or 17"
@@ -523,12 +522,12 @@ mod tests {
         let frame = crate::envelope(
             "a",
             w::envelope::Body::Discover(w::Discover {
+                unit: "java".into(),
+                source_languages: vec!["java".into()],
                 deadline_ms: Some(0),
                 analysis_grant: None,
 
-                python: None,
-                rust: None,
-                java: Some(config),
+                config: Some(w::discover::Config::Java(Box::new(config))),
                 manifest: None,
             }),
         );

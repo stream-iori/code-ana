@@ -437,3 +437,5 @@ max_depth = 256
 注释检索不再读取或输出源码窗口。删除 `[query.comments]`、`--context-before` 和 `--context-after`；旧配置／参数报错，通用文本检索的 `--context` 保持。检索后以 symbol 和同一 revision 调用 source 读取完整声明。prepared 输入只接受原始 config_sha256 精确匹配，配置字节变化后需重新 index --prepare。
 
 内部配置按 `JavaLanguage` / `RustLanguage` 分开；Rust 的分析视图只暴露 edition，不提供 javac/Lombok/框架字段。私有 wire 编解码保留原 TOML 形状和摘要：原有拒绝规则照常执行，原来允许但不使用的兼容字段只用于原字节语义的序列化。内部语言配置拆分仍保持字段边界；本轮删除注释展示参数及其 prepared 指纹例外，旧图库要求全量重建。
+
+已有语义基线上禁用全部语言并移除对应 inputs 入口后，`index` 可清除旧单元并保留当前 FILES；不启动兜底 worker。首次语义索引仍须显式启用语言。缺少 unit_ownership v2 的旧基线（含 v1）须先 `index --full`，新 revision 成功才切 head。

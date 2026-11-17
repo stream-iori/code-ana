@@ -1,14 +1,10 @@
 //! Process-isolated Pyrefly worker. Only captured inputs enter the backend.
 use anyhow::{Context, Result, bail, ensure};
 use clap::Parser;
-use codeana_contracts::{
-    FrameReader, envelope, map,
-    stream::{GraphStream, GraphStreamEvent},
-    worker as w,
-    worker::envelope::Body,
-    write_frame,
-};
+use codeana_contracts::{envelope, map, worker as w, worker::envelope::Body};
+use codeana_graph_io::stream::{GraphStream, GraphStreamEvent};
 use codeana_model::*;
+use codeana_worker_runtime::{FrameReader, write_frame};
 use std::{
     io::Read,
     os::fd::FromRawFd,
@@ -66,7 +62,7 @@ async fn analyze(
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    codeana_contracts::write_frame_with_budget(
+    codeana_worker_runtime::write_frame_with_budget(
         writer,
         &envelope(
             attempt,
@@ -100,7 +96,7 @@ async fn analyze(
             codeana_python_adaptor::frozen::analyze_with_context(&config, &check, &meter)?;
         eprintln!("codeana-python-phase=records");
         *phase.lock().unwrap() = "records";
-        codeana_contracts::worker_rows::produce_with_budget(
+        codeana_graph_io::producer::produce_with_budget(
             &sender,
             config.result_bytes,
             config.fact_limit,
@@ -123,14 +119,16 @@ async fn analyze(
             GraphStreamEvent::Batch(rows) => {
                 let frame = envelope(attempt, Body::Chunk(w::Chunk { seq, rows }));
 
-                codeana_contracts::write_frame_with_budget(writer, &frame, Some(&budget)).await?;
+                codeana_worker_runtime::write_frame_with_budget(writer, &frame, Some(&budget))
+                    .await?;
                 seq += 1;
             }
-            GraphStreamEvent::VerifiedEnd => break,
+            GraphStreamEvent::VerifiedEnd(_) => break,
+            GraphStreamEvent::Begin { .. } => anyhow::bail!("UNEXPECTED_GRAPH_BEGIN"),
         }
     }
     let (count, checksum) = work.await??;
-    codeana_contracts::write_frame_with_budget(
+    codeana_worker_runtime::write_frame_with_budget(
         writer,
         &envelope(
             attempt,
@@ -154,8 +152,9 @@ async fn session(socket: UnixStream) -> Result<()> {
     let mut frames = FrameReader::default();
     let mut selected: Option<(python::AnalysisConfig, Manifest)> = None;
     let mut task_meter = AnalysisTaskMeter::default();
-    let mut pending_ack = false;
-    let mut session_attempt: Option<String> = None;
+    let mut control = codeana_worker_runtime::session::Session::new(
+        codeana_worker_runtime::session::ReusePolicy::FreshProcess,
+    );
     loop {
         let read = if let Some((_, budget)) = task_meter.active() {
             frames.next_with_budget(&mut input, &budget).await
@@ -166,7 +165,7 @@ async fn session(socket: UnixStream) -> Result<()> {
             Ok(frame) => frame,
             Err(error) => {
                 if let Some((grant, budget)) = task_meter.active() {
-                    let failure = codeana_contracts::analysis_budget::failure_receipt(
+                    let failure = codeana_worker_runtime::analysis::failure_receipt(
                         &error,
                         &grant,
                         &budget,
@@ -178,7 +177,7 @@ async fn session(socket: UnixStream) -> Result<()> {
                             frames
                                 .pending_attempt()
                                 .as_deref()
-                                .or(session_attempt.as_deref())
+                                .or(control.attempt())
                                 .unwrap_or("invalid"),
                             Body::Failure(failure),
                         ),
@@ -188,31 +187,18 @@ async fn session(socket: UnixStream) -> Result<()> {
                 return Err(error);
             }
         };
+        control.admit(&frame)?;
         let attempt = frame.attempt;
-        // Discover and Analyze are separate attempts in the supervisor contract.
-        if matches!(frame.body, Some(Body::Analyze(_))) && selected.is_some() && !pending_ack {
-            session_attempt = Some(attempt.clone());
-        }
-        if let Some(expected) = &session_attempt {
-            ensure!(expected == &attempt, "ATTEMPT_MISMATCH");
-            ensure!(
-                !matches!(frame.body, Some(Body::Hello(_))),
-                "DUPLICATE_HELLO"
-            );
-        } else {
-            ensure!(matches!(frame.body, Some(Body::Hello(_))), "HELLO_REQUIRED");
-            session_attempt = Some(attempt.clone());
-        }
         match frame.body {
             Some(Body::Hello(h)) => {
                 ensure!(
                     h.protocol == WORKER_PROTOCOL_VERSION && h.fact_ir == VERSION,
                     "UNSUPPORTED_PROTOCOL"
                 );
-                let initialized = codeana_contracts::analysis_budget::begin_hello(
+                let initialized = codeana_worker_runtime::analysis::begin_hello(
                     &mut task_meter,
                     &h,
-                    AnalysisLanguage::Python,
+                    AnalysisBackend::Python,
                 );
                 let (hello_grant, hello_budget) = match initialized {
                     Ok(v) => v,
@@ -223,7 +209,7 @@ async fn session(socket: UnixStream) -> Result<()> {
                                 &envelope(
                                     &attempt,
                                     Body::Failure(
-                                        codeana_contracts::analysis_budget::failure_receipt(
+                                        codeana_worker_runtime::analysis::failure_receipt(
                                             &error, &g, &b, "discover",
                                         ),
                                     ),
@@ -256,10 +242,10 @@ async fn session(socket: UnixStream) -> Result<()> {
                 .await?;
             }
             Some(Body::Discover(d)) => {
-                let initialized = codeana_contracts::analysis_budget::begin_discovery(
+                let initialized = codeana_worker_runtime::analysis::begin_discovery(
                     &mut task_meter,
                     &d,
-                    AnalysisLanguage::Python,
+                    AnalysisBackend::Python,
                 );
                 let (grant, budget) = match initialized {
                     Ok(active) => active,
@@ -270,7 +256,7 @@ async fn session(socket: UnixStream) -> Result<()> {
                                 &envelope(
                                     &attempt,
                                     Body::Failure(
-                                        codeana_contracts::analysis_budget::failure_receipt(
+                                        codeana_worker_runtime::analysis::failure_receipt(
                                             &error, &grant, &budget, "discover",
                                         ),
                                     ),
@@ -283,11 +269,11 @@ async fn session(socket: UnixStream) -> Result<()> {
                     }
                 };
                 let discovered: Result<()> = async {
-                    ensure!(
-                        d.java.is_none() && d.rust.is_none() && !pending_ack && selected.is_none(),
-                        "PYTHON_DISCOVERY_CONFIG"
-                    );
-                    let descriptor = d.python.context("PYTHON_DISCOVERY_REQUIRED")?;
+                    let context_languages =
+                        codeana_contracts::build_context::discovery(&d, AnalysisBackend::Python)?;
+                    let Some(w::discover::Config::Python(descriptor)) = d.config else {
+                        bail!("PYTHON_DISCOVERY_CONFIG");
+                    };
                     budget.charge(
                         1,
                         1,
@@ -327,27 +313,33 @@ async fn session(socket: UnixStream) -> Result<()> {
                         config.inputs.contexts.len() as u64,
                         128 * config.inputs.contexts.len() as u64,
                     )?;
-                    let context = BuildContext {
-                        language: "python".into(),
+                    let mut context = BuildContext {
+                        unit: d.unit.clone().into(),
+                        source_languages: context_languages,
+                        worlds: BuildContext::worlds_for(&manifest, AnalysisBackend::Python),
+                        semantic_digest: String::new(),
                         modules: config
                             .inputs
                             .contexts
                             .iter()
                             .map(|c| c.module.clone())
                             .collect(),
-                        source_version: "3.12".into(),
-                        classpath: vec![],
+                        details: BackendContext::Python {
+                            python_version: "3.12".into(),
+                            platform: "darwin".into(),
+                            adapter: python::ADAPTER_VERSION.into(),
+                            backend_commit: codeana_python_adaptor::BACKEND_COMMIT.into(),
+                        },
                         producer: python::PRODUCER.into(),
                         capabilities: vec![
                             "analysis-resources-v1".into(),
-                            python::ADAPTER_VERSION.into(),
                             "declarations".into(),
                             "references".into(),
                             "calls".into(),
-                            format!("pyrefly-{}", codeana_python_adaptor::BACKEND_COMMIT),
                         ],
                     };
-                    codeana_contracts::write_frame_with_budget(
+                    context.seal();
+                    codeana_worker_runtime::write_frame_with_budget(
                         &mut writer,
                         &envelope(
                             &attempt,
@@ -367,6 +359,7 @@ async fn session(socket: UnixStream) -> Result<()> {
                     )
                     .await?;
                     selected = Some((config, manifest));
+                    control.discovered()?;
 
                     Ok(())
                 }
@@ -376,7 +369,7 @@ async fn session(socket: UnixStream) -> Result<()> {
                         &mut writer,
                         &envelope(
                             &attempt,
-                            Body::Failure(codeana_contracts::analysis_budget::failure_receipt(
+                            Body::Failure(codeana_worker_runtime::analysis::failure_receipt(
                                 &error, &grant, &budget, "discover",
                             )),
                         ),
@@ -386,14 +379,13 @@ async fn session(socket: UnixStream) -> Result<()> {
                 }
             }
             Some(Body::Analyze(request)) => {
-                ensure!(!pending_ack, "PUBLISH_ACK_REQUIRED");
                 let (config, captured) = selected.as_ref().context("DISCOVER_REQUIRED")?;
                 let manifest: Manifest =
                     map(request.manifest.as_ref().context("MANIFEST_REQUIRED")?)?;
                 ensure!(manifest.id() == captured.id(), "INPUT_DRIFT");
                 let grant = Some(codeana_contracts::analysis_budget::required_grant(
                     request.analysis_grant.as_ref(),
-                    AnalysisLanguage::Python,
+                    AnalysisBackend::Python,
                 )?);
                 let budget = task_meter.resume(
                     &grant,
@@ -404,9 +396,9 @@ async fn session(socket: UnixStream) -> Result<()> {
                     biased;
                     incoming = frames.next_cancel(&mut input) => {
                         let frame = incoming?;
-                        codeana_contracts::analysis_budget::expect_cancel(frame,&attempt)?;
+                        codeana_worker_runtime::analysis::expect_cancel(frame,&attempt)?;
                         let cancelled_phase=*phase.lock().unwrap();
-                        let _=tokio::time::timeout(std::time::Duration::from_millis(50),write_frame(&mut writer,&envelope(&attempt,Body::Failure(codeana_contracts::analysis_budget::cancelled_receipt(&grant,&budget,cancelled_phase,false))))).await;
+                        let _=tokio::time::timeout(std::time::Duration::from_millis(50),write_frame(&mut writer,&envelope(&attempt,Body::Failure(codeana_worker_runtime::analysis::cancelled_receipt(&grant,&budget,cancelled_phase,false))))).await;
                         return Ok(());
                     }
                     result = async {
@@ -439,10 +431,9 @@ async fn session(socket: UnixStream) -> Result<()> {
                     .await?;
                     return Ok(());
                 }
-                pending_ack = true;
+                control.completed()?;
             }
             Some(Body::Ack(ack)) => {
-                ensure!(pending_ack, "UNEXPECTED_ACK");
                 write_frame(
                     &mut writer,
                     &envelope(
@@ -453,10 +444,10 @@ async fn session(socket: UnixStream) -> Result<()> {
                     ),
                 )
                 .await?;
+                control.acked()?;
                 return Ok(());
             }
             Some(Body::Reuse(_)) => {
-                ensure!(selected.is_some() && !pending_ack, "ANALYSIS_REUSE_STATE");
                 let (grant, budget) = task_meter.active().context("DISCOVER_REQUIRED")?;
                 budget.checkpoint()?;
                 write_frame(
@@ -475,6 +466,7 @@ async fn session(socket: UnixStream) -> Result<()> {
                     ),
                 )
                 .await?;
+                control.reused()?;
                 selected = None;
             }
             Some(Body::Cancel(_)) => return Ok(()),

@@ -1,5 +1,7 @@
 import importlib.util
 import json
+import sys
+from sdk_fixtures import java_sdk, versions
 from pathlib import Path
 import subprocess
 import tempfile
@@ -7,6 +9,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
 spec = importlib.util.spec_from_file_location('upgrade_runtime', ROOT / 'scripts/java-performance-upgrade-runtime.py')
 upgrade = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(upgrade)
@@ -33,10 +36,10 @@ class UpgradeTests(unittest.TestCase):
             (self.source / name).write_text('new-' + name)
             (self.installed / name).write_text('old-' + name)
         for directory in (self.source, self.installed):
-            manifest = dict(worker_protocol=22, fact_ir=4, analysis_request=11, abi=None, adapter='example', files={name: upgrade.sha256(directory / name) for name in files})
+            manifest = java_sdk({name: upgrade.sha256(directory / name) for name in files}, 'jvm', adapter='example')
             (directory / 'manifest.json').write_text(json.dumps(manifest))
         self.previous = upgrade.sha256(self.installed / 'manifest.json')
-        self.versions = dict(backend='jvm', worker_protocol=22, fact_ir=4, adapter='example', analysis_request=11, abi=None)
+        self.versions = dict(versions(),backend='jvm',adapter='example',abi=None)
         self.metadata = self.stable / 'runtime-jvm.json'
         value = dict(binary_directory=str(self.binaries), versions=self.versions, stable_runtime=str(self.stable), relocated_binaries=False,
                      installed_files={str(self.installed / name): upgrade.sha256(self.installed / name) for name in (*files, 'manifest.json')})

@@ -16,44 +16,15 @@ pub fn verify_bundle(runner: &Path) -> Result<PathBuf> {
         ))?
         .canonicalize()?;
     let manifest: codeana_contracts::bundle::BundleManifest =
-        serde_json::from_slice(&std::fs::read(root.join("manifest.json"))?)?;
-    ensure!(
-        manifest.version == 2
-            && manifest.backend == "jvm"
-            && manifest.analysis_request == codeana_model::JAVA_ANALYSIS_VERSION
-            && manifest.worker_protocol == codeana_model::WORKER_PROTOCOL_VERSION
-            && manifest.fact_ir == codeana_model::VERSION
-            && manifest.adapter == "anatomist-4a903272-codeana-graph6-resource2-analysis"
-            && manifest.compiler_batch_protocol == 2
-            && manifest.java_model == "javac-model-v51"
-            && manifest.target_java == [8, 17]
-            && manifest.compiler_bridges.len() == 2
-            && manifest
-                .compiler_bridges
-                .get("8")
-                .is_some_and(|name| name == "compiler-bridge.jar")
-            && manifest
-                .compiler_bridges
-                .get("17")
-                .is_some_and(|name| name == "compiler-bridge17.jar"),
-        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleVersionMismatch, "")
-    );
+        codeana_contracts::bundle::BundleManifest::parse(&std::fs::read(
+            root.join("manifest.json"),
+        )?)?;
+    codeana_contracts::java::sdk::validate_identity(&manifest, "jvm").context(
+        codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundleVersionMismatch, ""),
+    )?;
     let files = &manifest.files;
     ensure!(
-        manifest.os
-            == if cfg!(target_os = "macos") {
-                "Darwin"
-            } else if cfg!(target_os = "linux") {
-                "Linux"
-            } else {
-                "unsupported"
-            }
-            && manifest.arch
-                == if cfg!(target_arch = "aarch64") {
-                    "arm64"
-                } else {
-                    "x86_64"
-                },
+        manifest.platform_matches(),
         codeana_model::DomainError::new(codeana_model::ErrorCode::JvmBundlePlatformMismatch, "")
     );
     ensure!(
@@ -117,8 +88,7 @@ impl Jvm {
             self.task.is_none() && request.len() <= codeana_model::MAX_RESULT,
             codeana_model::DomainError::new(codeana_model::ErrorCode::JvmTaskState, "")
         );
-        let mut value: codeana_contracts::engine_request::EngineRequest =
-            serde_json::from_slice(request)?;
+        let mut value: crate::engine_request::EngineRequest = serde_json::from_slice(request)?;
         let scratch = value.scratch.clone();
         let task = tempfile::Builder::new()
             .prefix("jvm-host-")

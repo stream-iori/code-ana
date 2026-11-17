@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+codeana-graph-io = { path = "../graph-io" }
 codeana-derived-cache = { path = "../derived-cache" }
 codeana-comment-search = { path = "../comment-search" }
 serde.workspace = true

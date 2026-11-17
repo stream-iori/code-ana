@@ -4,7 +4,22 @@ package codeana.worker.v1;
 message Owner { string world = 1; string producer = 2; string kind = 3; string id = 4; }
 message SourceUnit { string path = 1; string hash = 2; uint64 size = 3; string module = 4; string world = 5; string scope = 6; string language = 7; bool auxiliary = 8; }
 message Manifest { repeated SourceUnit files = 1; }
-message BuildContext { string language = 1; repeated string modules = 2; string source_version = 3; repeated string classpath = 4; string producer = 5; repeated string capabilities = 6; AnalysisBudgetReceipt analysis_usage = 7; }
+message JavaBuildContext { string source_version = 1; repeated string classpath = 2; string toolchain_digest = 3; string java_home = 4; string actual_java_version = 5; repeated string toolchain_aliases = 6; string compiler_bridge = 7; string adapter = 8; }
+message RustBuildContext { string toolchain = 1; string adapter = 2; }
+message PythonBuildContext { string python_version = 1; string platform = 2; string adapter = 3; string backend_commit = 4; }
+message TypeScriptBuildContext { string compiler_version = 1; string upstream_commit = 2; string adapter = 3; }
+message BuildContext {
+ string unit = 1; repeated string modules = 2; reserved 3, 4;
+ string producer = 5; repeated string capabilities = 6; AnalysisBudgetReceipt analysis_usage = 7;
+ repeated string worlds = 8; string semantic_digest = 9;
+ oneof details {
+  JavaBuildContext java = 10;
+  RustBuildContext rust = 11;
+  PythonBuildContext python = 12;
+  TypeScriptBuildContext typescript = 13;
+ }
+ repeated string source_languages = 14;
+}
 message BuildAdvice { repeated string missing = 1; string cwd = 2; repeated string argv = 3; string purpose = 4; repeated string expected = 5; string impact = 6; string retry = 7; string capture = 8; string module = 9; string world = 10; }
 message Hello { uint32 protocol = 1; uint32 fact_ir = 2; string producer = 3; AnalysisBudgetGrant analysis_grant = 4; optional uint64 deadline_ms = 5; AnalysisBudgetReceipt analysis_usage = 6; }
 message JavaSource { SourceUnit unit = 1; string input = 2; bool publish = 3; }
@@ -45,13 +60,26 @@ message JavaConfig {
 }
 message RustConfig { string input = 1; string sha256 = 2; uint64 bytes = 3; uint64 result_bytes = 4; uint64 fact_limit = 5; }
 message PythonConfig { string input = 1; string sha256 = 2; uint64 bytes = 3; uint64 result_bytes = 4; uint64 fact_limit = 5; uint64 scratch_bytes = 6; }
+message TypeScriptConfig { string input = 1; string sha256 = 2; uint64 bytes = 3; uint64 result_bytes = 4; uint64 fact_limit = 5; uint64 scratch_bytes = 6; }
 // Protocol 22 analysis budget contract. Grants are reservations, usage is cumulative.
 message AnalysisBudgetLimits { uint64 max_work = 1; uint64 max_nodes = 2; uint64 max_payload_bytes = 3; uint32 max_depth = 4; }
 message AnalysisBudgetGrant { string id = 1; string language = 2; AnalysisBudgetLimits limits = 3; }
 message AnalysisBudgetFailure { string code = 1; string resource = 2; uint64 limit = 3; uint64 used = 4; uint64 requested = 5; }
 message AnalysisBudgetUsage { uint64 work = 1; uint64 nodes = 2; uint64 payload_bytes = 3; uint32 max_depth = 4; AnalysisBudgetFailure failure = 5; }
 message AnalysisBudgetReceipt { string grant_id = 1; AnalysisBudgetUsage usage = 2; string phase = 3; optional bool usage_known = 4; }
-message Discover { Manifest manifest = 1; JavaConfig java = 2; RustConfig rust = 3; PythonConfig python = 4; AnalysisBudgetGrant analysis_grant = 5; optional uint64 deadline_ms = 6; }
+message Discover {
+ Manifest manifest = 1;
+ oneof config {
+  JavaConfig java = 2;
+  RustConfig rust = 3;
+  PythonConfig python = 4;
+  TypeScriptConfig typescript = 7;
+ }
+ AnalysisBudgetGrant analysis_grant = 5;
+ optional uint64 deadline_ms = 6;
+ string unit = 8;
+ repeated string source_languages = 9;
+}
 message Analyze { Manifest manifest = 1; string profile = 2; string baseline = 3; bool full = 4; reserved 5; bytes baseline_summary_json = 6; AnalysisBudgetGrant analysis_grant = 7; optional uint64 deadline_ms = 8; }
 // Protocol 19: Begin/Chunk are provisional. Only a verified End permits candidate finalization.
 message Begin { string mode = 1; string baseline = 2; string manifest = 3; string profile = 4; string producer = 5; repeated Owner replacements = 6; }

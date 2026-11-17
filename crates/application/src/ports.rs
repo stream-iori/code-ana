@@ -53,7 +53,11 @@ pub trait TaskRepository: Send + Sync {
     fn events(&self, id: &TaskId, after: u64) -> Result<Vec<(u64, Event)>>;
 }
 pub trait IndexBaselineReader: SourceContext {
-    fn baseline_summary_for(&self, next: &Manifest) -> Result<BaselineSummary>;
+    fn baseline_summary_for(
+        &self,
+        next: &Manifest,
+        unit: &AnalysisUnitId,
+    ) -> Result<BaselineSummary>;
 }
 /// Rust's dependency and source-state baseline is not a generic index capability.
 pub trait RustBaselineReader: SourceContext {
@@ -62,10 +66,16 @@ pub trait RustBaselineReader: SourceContext {
 pub trait IndexRepository: Clone + Send + Sync + 'static {
     type Candidate: Send + 'static;
     type Baseline: IndexBaselineReader;
+    type BaselineLease: Send;
     fn home(&self) -> &Path;
     fn head(&self, target: &IndexTarget) -> Result<RevisionId>;
     fn write_baseline(&self, path: &Path, bytes: &[u8]) -> Result<()>;
     fn read(&self, id: &str) -> Result<Self::Baseline>;
+    fn pin_baseline(
+        &self,
+        id: &str,
+        budget: Option<&AnalysisContext>,
+    ) -> Result<(Revision, Self::BaselineLease)>;
     fn summary(candidate: &Self::Candidate) -> &IndexSummary;
     fn stage(
         &self,
@@ -116,6 +126,13 @@ impl<R: IndexRepository> IndexService<R> {
     }
     pub fn read(&self, id: &str) -> Result<R::Baseline> {
         self.repository.read(id)
+    }
+    pub fn pin_baseline(
+        &self,
+        id: &str,
+        budget: Option<&AnalysisContext>,
+    ) -> Result<(Revision, R::BaselineLease)> {
+        self.repository.pin_baseline(id, budget)
     }
     pub fn summary<'a>(&self, candidate: &'a R::Candidate) -> &'a IndexSummary {
         R::summary(candidate)
@@ -170,6 +187,7 @@ pub(super) mod storage {
     impl IndexRepository for IndexAdapter {
         type Candidate = StagedCandidate;
         type Baseline = ReadContext;
+        type BaselineLease = codeana_storage::RevisionPin;
         fn home(&self) -> &Path {
             &self.0.home
         }
@@ -181,6 +199,13 @@ pub(super) mod storage {
         }
         fn read(&self, id: &str) -> Result<ReadContext> {
             self.0.read(id)
+        }
+        fn pin_baseline(
+            &self,
+            id: &str,
+            budget: Option<&AnalysisContext>,
+        ) -> Result<(Revision, Self::BaselineLease)> {
+            self.0.pin_revision(id, budget)
         }
         fn summary(candidate: &StagedCandidate) -> &IndexSummary {
             &candidate.summary
@@ -223,8 +248,12 @@ pub(super) mod storage {
         }
     }
     impl IndexBaselineReader for ReadContext {
-        fn baseline_summary_for(&self, next: &Manifest) -> Result<BaselineSummary> {
-            ReadContext::baseline_summary_for(self, next)
+        fn baseline_summary_for(
+            &self,
+            next: &Manifest,
+            unit: &AnalysisUnitId,
+        ) -> Result<BaselineSummary> {
+            ReadContext::baseline_summary_for(self, next, unit)
         }
     }
     impl RustBaselineReader for ReadContext {
@@ -305,7 +334,11 @@ mod tests {
         }
     }
     impl IndexBaselineReader for Baseline {
-        fn baseline_summary_for(&self, _: &Manifest) -> Result<BaselineSummary> {
+        fn baseline_summary_for(
+            &self,
+            _: &Manifest,
+            _: &AnalysisUnitId,
+        ) -> Result<BaselineSummary> {
             Ok(BaselineSummary::default())
         }
     }
@@ -317,6 +350,10 @@ mod tests {
     impl IndexRepository for Repository {
         type Candidate = Candidate;
         type Baseline = Baseline;
+        type BaselineLease = ();
+        fn pin_baseline(&self, _: &str, _: Option<&AnalysisContext>) -> Result<(Revision, ())> {
+            anyhow::bail!("fixture has no baseline")
+        }
         fn write_baseline(&self, path: &Path, bytes: &[u8]) -> Result<()> {
             Ok(std::fs::write(path, bytes)?)
         }
@@ -353,6 +390,7 @@ mod tests {
             );
             self.publications.fetch_add(1, Ordering::SeqCst);
             Ok(Revision {
+                unit_ownership: None,
                 id: "new".into(),
                 target: "t".into(),
                 project: "p".into(),

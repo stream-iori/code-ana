@@ -21,7 +21,7 @@ pub(super) fn capture_java_metadata(
         spool,
         ..
     } = accumulator;
-    if !files_only && let Some(inputs) = &effective.java_inputs {
+    if !files_only && let Some(inputs) = &effective.java_inputs() {
         let metadata_path = c
             .languages
             .java
@@ -31,7 +31,10 @@ pub(super) fn capture_java_metadata(
                 codeana_model::ErrorCode::JavaMetadataPath,
                 "",
             ))?;
-        let metadata = bounded_read(&root.join(metadata_path), 32 * 1024 * 1024)?;
+        let metadata = policy
+            .reader
+            .borrow_mut()
+            .read(&root.join(metadata_path), 32 * 1024 * 1024)?;
         let reparsed: JavaInputs = serde_json::from_slice(&metadata)?;
         ensure!(
             digest(&reparsed) == digest(inputs),
@@ -59,7 +62,10 @@ pub(super) fn capture_java_metadata(
                 !excludes.is_match(path),
                 codeana_model::DomainError::new(codeana_model::ErrorCode::JavaControlExcluded, "")
             );
-            let bytes = bounded_read(&root.join(path), MAX_FRAME)?;
+            let bytes = policy
+                .reader
+                .borrow_mut()
+                .read(&root.join(path), MAX_FRAME)?;
             ensure!(
                 hash(&bytes) == *expected,
                 codeana_model::DomainError::new(codeana_model::ErrorCode::JavaMetadataStale, "")
@@ -82,12 +88,14 @@ pub(super) fn capture_java_metadata(
         // External settings and Maven executable are identities, not captured source blobs.
         // Recheck them at capture time so an export cannot race a settings edit.
         for (path, expected) in &inputs.external_controls {
+            policy.reader.borrow_mut().allow_file(Path::new(path))?;
             ensure!(
-                hash(&bounded_read(Path::new(path), MAX_FRAME)?) == *expected,
-                codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::JavaMetadataStale,
-                    path.to_string()
-                )
+                policy
+                    .reader
+                    .borrow_mut()
+                    .digest(Path::new(path), MAX_FRAME)?
+                    == *expected,
+                DomainError::new(ErrorCode::JavaMetadataStale, path)
             );
         }
         for m in &inputs.modules {
@@ -132,7 +140,10 @@ pub(super) fn capture_java_metadata(
                             ""
                         )
                     );
-                    let bytes = bounded_read(&root.join(proof), MAX_FRAME)?;
+                    let bytes = policy
+                        .reader
+                        .borrow_mut()
+                        .read(&root.join(proof), MAX_FRAME)?;
                     ensure!(
                         hash(&bytes) == *expected,
                         codeana_model::DomainError::new(
@@ -175,6 +186,9 @@ pub(super) fn capture_java_metadata(
                 );
                 for entry in walkdir::WalkDir::new(&dir).follow_links(false) {
                     let entry = entry?;
+                    if entry.file_type().is_dir() {
+                        policy.reader.borrow_mut().directory(entry.path())?;
+                    }
                     ensure!(
                         started.elapsed() < deadline,
                         codeana_model::DomainError::new(
@@ -244,7 +258,7 @@ pub(super) fn capture_java_metadata(
                         total,
                         spool,
                         path,
-                        bounded_read(entry.path(), MAX_FRAME)?,
+                        policy.reader.borrow_mut().read(entry.path(), MAX_FRAME)?,
                         ownership,
                     )?;
                 }
@@ -265,10 +279,11 @@ pub(super) fn capture_java_metadata(
                 // Large dependency archives are captured through a bounded file spool;
                 // their size is independent of the IPC frame and semantic-result budgets.
                 let captured_path = format!(".code-ana/inputs/{}.jar", artifact.sha256);
-                if manifest.files.iter().any(|s| s.path == captured_path) {
-                    continue;
-                }
-                let (blob, h, size) = CapturedBlob::file(spool, &path, MAX_ARTIFACT_BYTES)
+                policy.reader.borrow_mut().allow_file(&path)?;
+                let (blob, h, size) = policy
+                    .reader
+                    .borrow_mut()
+                    .file(&path, MAX_ARTIFACT_BYTES)
                     .context("BUILD_INPUT_REQUIRED: dependency artifact")?;
                 ensure!(
                     h == artifact.sha256,
@@ -277,25 +292,20 @@ pub(super) fn capture_java_metadata(
                         ""
                     )
                 );
-                *total += size;
-                ensure!(
-                    *total <= MAX_CAPTURE_BYTES && manifest.files.len() < 10000,
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::JavaCaptureBudget,
-                        ""
-                    )
-                );
-                manifest.files.push(SourceUnit {
-                    auxiliary: false,
-                    path: captured_path,
-                    hash: h.clone(),
-                    size: size as u64,
-                    module: String::new(),
-                    world: "files".into(),
-                    scope: "DEPENDENCY".into(),
-                    language: String::new(),
-                });
-                blobs.insert(h, blob);
+                registry::retain_blob(blobs, total, h.clone(), blob, size)?;
+                registry::register(
+                    manifest,
+                    SourceUnit {
+                        auxiliary: false,
+                        path: captured_path,
+                        hash: h.clone(),
+                        size: size as u64,
+                        module: String::new(),
+                        world: "files".into(),
+                        scope: "DEPENDENCY".into(),
+                        language: String::new(),
+                    },
+                )?;
             }
         }
     }

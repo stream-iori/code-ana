@@ -16,6 +16,14 @@ pub fn source_path(root: &InputRoot, relative: &str) -> String {
 }
 
 pub fn discover(project: &Path, config: &ProjectConfig, semantic: bool) -> Result<Option<Inputs>> {
+    discover_using(project, config, semantic, &LiveInputs)
+}
+pub(crate) fn discover_using(
+    project: &Path,
+    config: &ProjectConfig,
+    semantic: bool,
+    reader: &dyn InputReader,
+) -> Result<Option<Inputs>> {
     let Some(python) = config
         .languages
         .python
@@ -38,20 +46,21 @@ pub fn discover(project: &Path, config: &ProjectConfig, semantic: bool) -> Resul
         !file.is_symlink() && file.canonicalize()?.starts_with(project),
         "PYTHON_MANIFEST_PATH"
     );
-    let inputs: Inputs = serde_json::from_slice(&bounded_read(&file, 32 << 20)?)?;
+    let inputs: Inputs = serde_json::from_slice(&reader.read(&file, 32 << 20)?)?;
     inputs.validate().map_err(anyhow::Error::msg)?;
     Ok(Some(inputs))
 }
 
 pub(super) fn capture(
     project: &Path,
-    effective: &Effective,
+    effective: &ResolvedContext,
     manifest: &mut Manifest,
     blobs: &mut BTreeMap<String, CapturedBlob>,
     total: &mut usize,
     spool: &Arc<tempfile::TempDir>,
+    reader: &std::cell::RefCell<capture::CaptureReader>,
 ) -> Result<()> {
-    let Some(inputs) = &effective.python_inputs else {
+    let Some(inputs) = &effective.python_inputs() else {
         return Ok(());
     };
     let config = &effective.config;
@@ -83,7 +92,9 @@ pub(super) fn capture(
         .inputs_manifest
         .as_ref()
         .unwrap();
-    let bytes = bounded_read(&project.join(inventory), 32 << 20)?;
+    let bytes = reader
+        .borrow_mut()
+        .read(&project.join(inventory), 32 << 20)?;
     let current: Inputs = serde_json::from_slice(&bytes)?;
     ensure!(
         digest(&current) == digest(inputs),
@@ -119,7 +130,7 @@ pub(super) fn capture(
             path.canonicalize()?.starts_with(project),
             "PYTHON_CONTROL_ESCAPE"
         );
-        let bytes = bounded_read(&path, 8 << 20)?;
+        let bytes = reader.borrow_mut().read(&path, 8 << 20)?;
         ensure!(
             bytes.len() as u64 == control.bytes && hash(&bytes) == control.sha256,
             "PYTHON_CONTROL_STALE: {}",
@@ -153,6 +164,7 @@ pub(super) fn capture(
         let directory = project.join(&input_root.path);
         ensure!(!directory.is_symlink(), "PYTHON_ROOT_SYMLINK");
         let directory = directory.canonicalize()?;
+        reader.borrow_mut().allow_directory(&directory)?;
         ensure!(
             !input_root.publish || directory.starts_with(project),
             "PYTHON_ROOT_ESCAPE"
@@ -169,7 +181,7 @@ pub(super) fn capture(
                 live.canonicalize()?.starts_with(&directory),
                 "PYTHON_SOURCE_ESCAPE"
             );
-            let bytes = bounded_read(&live, MAX_FRAME)?;
+            let bytes = reader.borrow_mut().read(&live, MAX_FRAME)?;
             ensure!(
                 bytes.len() as u64 == file.bytes && hash(&bytes) == file.sha256,
                 "PYTHON_INPUTS_STALE: {}",
@@ -191,14 +203,7 @@ pub(super) fn capture(
                             && !exclude.is_match(&source)
                             && !text_only.is_match(&source)
                     });
-            if !blobs.contains_key(&file.sha256) {
-                *total += bytes.len();
-                ensure!(*total <= MAX_CAPTURE_BYTES, "PYTHON_CAPTURE_BUDGET");
-                blobs.insert(file.sha256.clone(), CapturedBlob::bytes(spool, &bytes)?);
-            }
-            manifest
-                .files
-                .retain(|f| f.path != source || f.language == "python");
+            capture::registry::store(blobs, total, spool, &bytes)?;
             for context in inputs
                 .contexts
                 .iter()
@@ -227,18 +232,7 @@ pub(super) fn capture(
                             })
                         || file.path.ends_with("py.typed"),
                 };
-                if let Some(existing) = manifest
-                    .files
-                    .iter()
-                    .find(|f| f.path == unit.path && f.world == unit.world)
-                {
-                    ensure!(
-                        existing.hash == unit.hash && existing.auxiliary == unit.auxiliary,
-                        "PYTHON_SOURCE_IDENTITY_CONFLICT"
-                    );
-                } else {
-                    manifest.files.push(unit);
-                }
+                capture::registry::register(manifest, unit)?;
             }
         }
     }

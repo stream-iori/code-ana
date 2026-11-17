@@ -1,10 +1,9 @@
 //! Explicit fixture-only worker. It never parses or guesses facts from Java text.
-use anyhow::{Result, bail, ensure};
+use anyhow::{Context, Result, bail, ensure};
 use clap::Parser;
-use codeana_contracts::{
-    envelope, map, read_frame, worker as w, worker::envelope::Body, write_frame,
-};
+use codeana_contracts::{envelope, map, worker as w, worker::envelope::Body};
 use codeana_model::*;
+use codeana_worker_runtime::{read_frame, write_frame};
 use std::{collections::BTreeSet, os::fd::FromRawFd, path::PathBuf};
 use tokio::net::UnixStream;
 #[derive(Parser)]
@@ -63,8 +62,14 @@ async fn main() -> Result<()> {
                 .await?;
             }
             Some(Body::Discover(d)) => {
-                ensure!(d.python.is_none(), "MOCK_PYTHON_UNSUPPORTED");
-                let manifest: Manifest = map(&d.manifest.ok_or_else(|| {
+                ensure!(
+                    matches!(
+                        d.config,
+                        Some(w::discover::Config::Java(_) | w::discover::Config::Rust(_))
+                    ),
+                    "MOCK_BACKEND_UNSUPPORTED"
+                );
+                let manifest: Manifest = map(d.manifest.as_ref().ok_or_else(|| {
                     anyhow::anyhow!(codeana_model::DomainError::new(
                         codeana_model::ErrorCode::ManifestRequired,
                         ""
@@ -75,7 +80,7 @@ async fn main() -> Result<()> {
                     .iter()
                     .find(|s| s.content_digest == manifest.content_digest())
                     .cloned();
-                if let Some(s) = &selected {
+                if let Some(s) = &mut selected {
                     if let Some(advice) = &s.advice {
                         write_frame(&mut ipc, &envelope(&attempt, Body::Advice(map(advice)?)))
                             .await?;
@@ -88,6 +93,11 @@ async fn main() -> Result<()> {
                             ""
                         )
                     );
+                    s.context.unit = d.unit.clone().into();
+                    s.context.source_languages =
+                        codeana_contracts::build_context::discovery(&d, s.context.backend())?;
+                    s.context.worlds = BuildContext::worlds_for(&manifest, s.context.backend());
+                    s.context.seal();
                     write_frame(
                         &mut ipc,
                         &envelope(&attempt, Body::Context(map(&s.context)?)),
@@ -177,6 +187,14 @@ async fn main() -> Result<()> {
                         });
                     }
                 }
+                if s.behavior == "foreign-owner" {
+                    replacements.insert(Owner {
+                        world: "foreign-world".into(),
+                        producer: s.context.producer.clone(),
+                        kind: "source".into(),
+                        id: "src/App.java".into(),
+                    });
+                }
                 let begin = w::Begin {
                     mode: if a.full { "full" } else { "delta" }.into(),
                     baseline: a.baseline,
@@ -191,8 +209,15 @@ async fn main() -> Result<()> {
                     ipc.write_u32((MAX_FRAME + 1) as u32).await?;
                     return Ok(());
                 }
-                let graph_rows = codeana_contracts::fixture_graph::rows(&manifest, &s.facts);
-                let mut spool = codeana_contracts::graph_archive::Builder::new(
+                let mut graph_rows = codeana_contracts::fixture_graph::rows(&manifest, &s.facts);
+                if s.behavior == "foreign-row" {
+                    let row = graph_rows.iter_mut().find(|r| {
+                        r.table == codeana_contracts::graph::Table::Node as i32
+                            && matches!(r.cells.get(12).and_then(|c| c.value.as_ref()), Some(codeana_contracts::graph::cell::Value::Text(p)) if !p.is_empty())
+                    }).context("fixture has no source node")?;
+                    row.world = "foreign-world".into();
+                }
+                let mut spool = codeana_graph_io::archive::Builder::new(
                     None,
                     MAX_RESULT as u64,
                     MAX_FACTS as u64,

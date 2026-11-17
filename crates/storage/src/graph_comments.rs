@@ -33,11 +33,11 @@ fn range(row: &Row, at: usize) -> Result<CommentRange> {
         end_column: coordinate(at + 5)?,
     })
 }
-fn language(name: &str) -> Result<AnalysisLanguage> {
+fn language(name: &str) -> Result<AnalysisBackend> {
     match name {
-        "java" => Ok(AnalysisLanguage::Java),
-        "rust" => Ok(AnalysisLanguage::Rust),
-        "python" => Ok(AnalysisLanguage::Python),
+        "java" => Ok(AnalysisBackend::Java),
+        "rust" => Ok(AnalysisBackend::Rust),
+        "python" => Ok(AnalysisBackend::Python),
         _ => Err(invalid("language")),
     }
 }
@@ -94,7 +94,7 @@ pub(crate) fn stage(
     let admit = |work, bytes| budget.charge(work, 0, bytes).map_err(DomainError::analysis);
     admit(
         1,
-        (codeana_contracts::stream::row_bytes(row) as u64).saturating_mul(2),
+        (codeana_graph_io::stream::row_bytes(row) as u64).saturating_mul(2),
     )?;
     if cache
         .value
@@ -398,7 +398,7 @@ mod tests {
         let bytes = source.as_bytes().to_vec();
         let context = GraphStagingContext {
             hosts: BTreeMap::from([(
-                AnalysisLanguage::Java,
+                AnalysisBackend::Java,
                 AnalysisContext::new(Default::default(), None).unwrap(),
             )]),
             source: Arc::new(move |_, _| Ok(bytes.clone())),
@@ -837,7 +837,7 @@ mod tests {
         let bytes = source.into_bytes();
         let context = GraphStagingContext {
             hosts: BTreeMap::from([(
-                AnalysisLanguage::Java,
+                AnalysisBackend::Java,
                 AnalysisContext::new(
                     AnalysisLimits {
                         max_payload_bytes: 256 << 20,

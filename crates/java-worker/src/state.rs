@@ -15,7 +15,7 @@ impl TryFrom<i32> for RunState {
             1 => Ok(Self::Complete),
             -1 => Ok(Self::Failed),
             _ => Err(DomainError::new(
-                ErrorCode::NativeNotificationProtocol,
+                ErrorCode::FfiNotificationProtocol,
                 format!("unknown engine state {value}"),
             )),
         }

@@ -1,4 +1,4 @@
-//! Compile frozen language inputs into host-owned execution and budget participants.
+//! Frozen unit availability and static reservations, including units that do not execute.
 use super::*;
 use std::collections::BTreeSet;
 
@@ -11,148 +11,283 @@ pub(super) enum ExecutionPolicy {
 }
 
 #[derive(Debug)]
-pub(super) struct AnalysisUnit {
-    pub language: AnalysisLanguage,
-    pub execute: bool,
-    // Reference the frozen configuration instead of cloning IDs before host admission.
+pub(super) struct PlannedUnit {
+    pub id: AnalysisUnitId,
+    pub language: AnalysisBackend,
+    pub availability: UnitAvailability,
     pub prepared_index: Option<usize>,
+    pub previous: Option<UnitOwnership>,
 }
-
 pub(super) struct IndexPlan {
+    pub baseline: RevisionId,
+    pub fixture_sources: Vec<SourceUnit>,
     pub policy: ExecutionPolicy,
-    pub participants: Vec<AnalysisLanguage>,
-    pub units: Vec<AnalysisUnit>,
+    pub participants: Vec<AnalysisBackend>,
+    pub units: Vec<PlannedUnit>,
 }
-
-// Compile-time registration only. No target-controlled plugins or parser fallback.
-pub(super) fn language(name: &str) -> Option<AnalysisLanguage> {
-    match name {
-        "java" => Some(AnalysisLanguage::Java),
-        "rust" => Some(AnalysisLanguage::Rust),
-        "python" => Some(AnalysisLanguage::Python),
-        _ => None,
-    }
+pub(super) fn language(name: &str) -> Option<AnalysisBackend> {
+    SourceLanguage::lookup(name).map(SourceLanguage::backend)
 }
-
 impl IndexPlan {
-    pub fn executes(&self, language: AnalysisLanguage) -> bool {
+    pub fn previous_sources(&self, unit: &str) -> &[SourceUnit] {
         self.units
             .iter()
-            .any(|unit| unit.language == language && unit.execute)
+            .find(|u| u.id == unit)
+            .and_then(|u| u.previous.as_ref())
+            .map(|u| u.inputs.as_slice())
+            .unwrap_or(&self.fixture_sources)
     }
-    pub fn build(capture: &Capture, budget: Option<&AnalysisContext>) -> Result<Self> {
-        let effective = &capture.effective;
-        // Preserve empty/deleted modules in the static resource split.
-        let mut participants: BTreeSet<_> = capture
-            .manifest
-            .files
+    pub fn executes(&self, backend: AnalysisBackend) -> bool {
+        self.units
             .iter()
-            .map(|file| file.language.as_str())
-            .chain(
-                effective
-                    .config
-                    .modules
-                    .iter()
-                    .map(|module| module.language.as_str()),
-            )
-            .filter_map(language)
-            .collect();
-        for (present, language) in [
-            (effective.java_inputs.is_some(), AnalysisLanguage::Java),
-            (effective.rust_inputs.is_some(), AnalysisLanguage::Rust),
-            (effective.python_inputs.is_some(), AnalysisLanguage::Python),
-        ] {
-            if present {
-                participants.insert(language);
-            }
+            .any(|u| u.language == backend && u.availability == UnitAvailability::Ready)
+    }
+    pub fn removed(&self) -> impl Iterator<Item = &UnitOwnership> {
+        self.units
+            .iter()
+            .filter(|u| u.availability == UnitAvailability::Removed)
+            .filter_map(|u| u.previous.as_ref())
+    }
+    pub fn configure(&self, coordinator: &mut AnalysisCoordinator) -> Result<()> {
+        for backend in &self.participants {
+            let ids = self
+                .units
+                .iter()
+                .filter(|u| u.language == *backend)
+                .map(|u| u.id.to_string())
+                .collect::<Vec<_>>();
+            coordinator
+                .configure_instances(*backend, &ids)
+                .map_err(DomainError::analysis)?;
         }
+        for unit in self
+            .units
+            .iter()
+            .filter(|u| u.availability != UnitAvailability::Ready)
+        {
+            coordinator
+                .retire_reserved(unit.language, &unit.id)
+                .map_err(DomainError::analysis)?;
+        }
+        Ok(())
+    }
+    #[cfg(test)]
+    pub fn build(capture: &Capture, budget: Option<&AnalysisContext>) -> Result<Self> {
+        Self::with_baseline(capture, None, budget)
+    }
+    pub fn with_baseline(
+        capture: &Capture,
+        baseline: Option<&UnitOwnershipLedger>,
+        budget: Option<&AnalysisContext>,
+    ) -> Result<Self> {
+        let effective = &capture.effective;
         let policy = if !effective.input_units.is_empty() {
             ExecutionPolicy::Prepared
-        } else if effective.python_inputs.is_some() {
+        } else if effective.python_inputs().is_some() {
             ExecutionPolicy::Conservative
-        } else if effective.rust_inputs.is_some() {
+        } else if effective.rust_inputs().is_some() {
             ExecutionPolicy::RustIncremental
         } else {
             ExecutionPolicy::Java
         };
-        let count = if policy == ExecutionPolicy::Prepared {
-            effective
-                .input_units
-                .iter()
-                .filter(|unit| unit.effective.is_some())
-                .count()
-        } else {
-            participants.len()
+        let admit = |id: &str, bytes: usize| -> Result<()> {
+            ensure!(
+                !id.is_empty() && id.len() <= 256,
+                "ANALYSIS_UNIT_ID_REQUIRED"
+            );
+            if let Some(budget) = budget {
+                budget
+                    .charge(
+                        1,
+                        0,
+                        (std::mem::size_of::<PlannedUnit>() + id.len() + bytes) as u64,
+                    )
+                    .map_err(DomainError::analysis)?;
+            }
+            Ok(())
         };
-        if let Some(budget) = budget {
-            budget
-                .charge(1, 0, (count * std::mem::size_of::<AnalysisUnit>()) as u64)
-                .map_err(DomainError::analysis)?;
-        }
-        let mut units = Vec::with_capacity(count);
+        let mut units: Vec<PlannedUnit> = Vec::new();
         if policy == ExecutionPolicy::Prepared {
             for (index, unit) in effective.input_units.iter().enumerate() {
-                if unit.effective.is_some() {
-                    units.push(AnalysisUnit {
-                        language: language(&unit.prepared.language).context("INPUT_LANGUAGE")?,
-                        execute: true,
-                        prepared_index: Some(index),
-                    });
-                }
+                admit(&unit.prepared.id, 0)?;
+                ensure!(
+                    !units.iter().any(|u| u.id == unit.prepared.id),
+                    "ANALYSIS_UNIT_ID_DUPLICATE"
+                );
+                units.push(PlannedUnit {
+                    id: unit.prepared.id.as_str().into(),
+                    language: language(&unit.prepared.language).context("INPUT_LANGUAGE")?,
+                    availability: if unit.context.is_some() {
+                        UnitAvailability::Ready
+                    } else {
+                        UnitAvailability::FilesOnly
+                    },
+                    prepared_index: Some(index),
+                    previous: None,
+                });
             }
         } else {
-            for language in &participants {
-                units.push(AnalysisUnit {
-                    language: *language,
-                    execute: match language {
-                        AnalysisLanguage::Java => {
-                            policy == ExecutionPolicy::Java
-                                || effective
-                                    .config
-                                    .modules
-                                    .iter()
-                                    .any(|m| m.language == "java")
-                        }
-                        AnalysisLanguage::Rust => effective.rust_inputs.is_some(),
-                        AnalysisLanguage::Python => effective.python_inputs.is_some(),
+            let mut backends: BTreeSet<_> = capture
+                .manifest
+                .files
+                .iter()
+                .map(|s| s.language.as_str())
+                .chain(effective.config.modules.iter().map(|m| m.language.as_str()))
+                .filter_map(language)
+                .collect();
+            backends.extend(effective.inputs.iter().map(|i| i.backend()));
+            for backend in backends {
+                admit(backend.as_str(), 0)?;
+                let ready = effective.inputs.iter().any(|i| i.backend() == backend);
+                units.push(PlannedUnit {
+                    id: backend.as_str().into(),
+                    language: backend,
+                    availability: if ready {
+                        UnitAvailability::Ready
+                    } else {
+                        UnitAvailability::FilesOnly
                     },
                     prepared_index: None,
+                    previous: None,
                 });
             }
         }
+        if let Some(baseline) = baseline {
+            for old in &baseline.units {
+                if let Some(current) = units.iter_mut().find(|u| u.id == old.unit) {
+                    ensure!(
+                        current.language == old.backend,
+                        "ANALYSIS_UNIT_BACKEND_CHANGED"
+                    );
+                    admit(&old.unit, codeana_model::retained_size(old)? as usize)?;
+                    current.previous = Some(old.clone());
+                    continue;
+                }
+                admit(&old.unit, codeana_model::retained_size(old)? as usize)?;
+                units.push(PlannedUnit {
+                    id: old.unit.clone(),
+                    language: old.backend,
+                    availability: UnitAvailability::Removed,
+                    prepared_index: None,
+                    previous: Some(old.clone()),
+                });
+            }
+        }
+        units.sort_by(|a, b| (a.language, &a.id).cmp(&(b.language, &b.id)));
+        let participants = units
+            .iter()
+            .map(|u| u.language)
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect();
         Ok(Self {
+            baseline: RevisionId::default(),
+            fixture_sources: vec![],
             policy,
-            participants: participants.into_iter().collect(),
+            participants,
             units,
         })
     }
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codeana_config::inputs::{EffectiveUnit, InputMode, PreparedUnit};
+    use codeana_config::inputs::{InputMode, PreparedUnit, ResolvedUnit};
+
+    #[test]
+    fn removed_and_files_only_units_reserve_static_shares_without_execution() {
+        let mut c = capture();
+        c.effective.input_units = vec![
+            unit("ready", "python", Some(c.effective.clone())),
+            unit("missing", "python", None),
+        ];
+        let old = UnitOwnership {
+            inputs: vec![],
+            scopes: vec!["MAIN".into()],
+            unit: "deleted".into(),
+            backend: AnalysisBackend::Java,
+            availability: UnitAvailability::Ready,
+            source_languages: vec![SourceLanguage::Java],
+            modules: vec!["zero-output-module".into()],
+            worlds: vec![],
+            producer: "javac-v3".into(),
+            semantic_profile: hash("profile"),
+            input_digest: hash("input"),
+            sources: vec![],
+        };
+        let ledger = UnitOwnershipLedger {
+            version: UNIT_OWNERSHIP_VERSION,
+            units: vec![old.clone()],
+        };
+        let plan = IndexPlan::with_baseline(&c, Some(&ledger), None).unwrap();
+        assert_eq!(
+            plan.units
+                .iter()
+                .map(|u| u.availability)
+                .collect::<Vec<_>>(),
+            [
+                UnitAvailability::Removed,
+                UnitAvailability::FilesOnly,
+                UnitAvailability::Ready
+            ]
+        );
+        assert_eq!(plan.removed().next(), Some(&old));
+        assert_eq!(
+            plan.participants,
+            [AnalysisBackend::Java, AnalysisBackend::Python]
+        );
+        let mut coordinator = AnalysisCoordinator::new(
+            "task",
+            AnalysisLimits::default(),
+            AnalysisUsage::default(),
+            &plan.participants,
+            None,
+        )
+        .unwrap();
+        plan.configure(&mut coordinator).unwrap();
+        assert!(
+            coordinator
+                .issue_instance(AnalysisBackend::Java, "deleted")
+                .is_err()
+        );
+        assert!(
+            coordinator
+                .issue_instance(AnalysisBackend::Python, "missing")
+                .is_err()
+        );
+        coordinator
+            .issue_instance(AnalysisBackend::Python, "ready")
+            .unwrap();
+        assert_eq!(
+            coordinator.snapshot().languages[0].workers[0]
+                .usage
+                .as_ref()
+                .unwrap()
+                .work,
+            0
+        );
+    }
 
     fn capture() -> Capture {
         Capture {
+            scope: codeana_config::CaptureScope::Task,
             root: PathBuf::new(),
             project: String::new(),
             checkout: String::new(),
             target: String::new(),
             manifest: Manifest::default(),
             blobs: BTreeMap::new(),
-            effective: codeana_config::Effective {
+            observations: Default::default(),
+            unit_views: Default::default(),
+            effective: codeana_config::Effective::from_context(codeana_config::ResolvedContext {
                 config: Default::default(),
                 origins: BTreeMap::new(),
                 config_digest: String::new(),
                 input_hash: String::new(),
                 semantic_digest: String::new(),
                 capture_digest: String::new(),
-                java_inputs: None,
-                rust_inputs: None,
-                python_inputs: None,
-                input_units: vec![],
-            },
+                inputs: vec![],
+            }),
         }
     }
 
@@ -160,8 +295,8 @@ mod tests {
         id: &str,
         language: &str,
         effective: Option<codeana_config::Effective>,
-    ) -> EffectiveUnit {
-        EffectiveUnit {
+    ) -> ResolvedUnit {
+        ResolvedUnit {
             prepared: PreparedUnit {
                 id: id.into(),
                 language: language.into(),
@@ -178,7 +313,7 @@ mod tests {
                 config: None,
                 artifacts: vec![],
             },
-            effective: effective.map(Box::new),
+            context: effective.map(|value| value.context),
         }
     }
 
@@ -194,15 +329,15 @@ mod tests {
         let plan = IndexPlan::build(&c, None).unwrap();
         assert_eq!(plan.participants.len(), 3);
         assert_eq!(plan.units.len(), 3);
-        assert!(plan.executes(AnalysisLanguage::Java));
-        assert!(!plan.executes(AnalysisLanguage::Rust));
-        assert!(!plan.executes(AnalysisLanguage::Python));
+        assert!(!plan.executes(AnalysisBackend::Java));
+        assert!(!plan.executes(AnalysisBackend::Rust));
+        assert!(!plan.executes(AnalysisBackend::Python));
         assert!(plan.units.iter().all(|unit| unit.prepared_index.is_none()));
         assert_eq!(plan.policy, ExecutionPolicy::Java);
     }
 
     #[test]
-    fn prepared_units_preserve_instance_order_and_omit_unavailable_contexts() {
+    fn prepared_units_keep_unavailable_contexts_in_static_backend_and_instance_order() {
         let mut c = capture();
         c.effective.input_units = vec![
             unit("python-b", "python", Some(c.effective.clone())),
@@ -215,16 +350,37 @@ mod tests {
         assert_eq!(
             plan.units
                 .iter()
-                .map(|unit| c.effective.input_units[unit.prepared_index.unwrap()]
-                    .prepared
-                    .id
-                    .as_str())
+                .map(|unit| unit.id.as_str())
                 .collect::<Vec<_>>(),
-            ["python-b", "rust-a", "python-a"]
+            ["missing", "rust-a", "python-a", "python-b"]
         );
-        assert!(plan.units.iter().all(|unit| unit.execute));
-        assert_eq!(plan.units[0].language, AnalysisLanguage::Python);
-        assert_eq!(plan.units[1].language, AnalysisLanguage::Rust);
+        assert_eq!(plan.units[0].availability, UnitAvailability::FilesOnly);
+        assert!(
+            plan.units[1..]
+                .iter()
+                .all(|unit| unit.availability == UnitAvailability::Ready)
+        );
+        assert_eq!(plan.units[1].language, AnalysisBackend::Rust);
+        assert_eq!(plan.units[2].language, AnalysisBackend::Python);
+        assert_eq!(plan.units[1].prepared_index, Some(2));
+    }
+
+    #[test]
+    fn planned_unit_ids_ignore_contents_and_locations_but_reject_collisions() {
+        let mut c = capture();
+        c.effective.input_units = vec![unit("stable-entry", "python", Some(c.effective.clone()))];
+        let first = IndexPlan::build(&c, None).unwrap();
+        c.root = "/a/new/scratch".into();
+        c.effective.semantic_digest = "new-source-content".into();
+        let second = IndexPlan::build(&c, None).unwrap();
+        assert_eq!(first.units[0].id, second.units[0].id);
+        c.effective
+            .input_units
+            .push(unit("stable-entry", "java", Some(c.effective.clone())));
+        assert!(IndexPlan::build(&c, None).is_err());
+        c.effective.input_units.truncate(1);
+        c.effective.input_units[0].prepared.id.clear();
+        assert!(IndexPlan::build(&c, None).is_err());
     }
 
     #[test]
@@ -238,8 +394,12 @@ mod tests {
                 .to_string()
                 .contains("INPUT_LANGUAGE")
         );
-        c.effective.input_units[0].effective = None;
-        assert!(IndexPlan::build(&c, None).unwrap().units.is_empty());
+        c.effective.input_units[0].context = None;
+        assert!(IndexPlan::build(&c, None).is_err());
+        c.effective.input_units[0].prepared.language = "python".into();
+        let plan = IndexPlan::build(&c, None).unwrap();
+        assert_eq!(plan.units[0].availability, UnitAvailability::FilesOnly);
+        assert!(!plan.executes(AnalysisBackend::Python));
     }
     #[test]
     fn plan_allocation_uses_the_existing_sticky_task_account() {

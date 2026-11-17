@@ -10,6 +10,8 @@ import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+from sdk_manifest import load_manifest, java
 
 
 def sha(path):
@@ -22,7 +24,8 @@ def inventory(root):
 
 def install_jvm(root, source, archive):
     """Replace a verified JVM bundle, preserving the old SDK and executable paths."""
-    manifest = json.loads((source/'manifest.json').read_text())
+    manifest = load_manifest(source/'manifest.json')
+    java(manifest, 'jvm')
     names = [*manifest['files'], 'manifest.json']
     for name, digest in manifest['files'].items():
         path = source/name
@@ -59,8 +62,8 @@ def prepare(root, destination, backend=None, stable_paths=False):
     backend=backend or os.environ.get('CODEANA_JAVA_BACKEND','native')
     if backend=='jvm':
         source=root/'lang-java-adaptor/target/jvm'
-        manifest=json.loads((source/'manifest.json').read_text())
-        if manifest.get('backend')!='jvm': raise ValueError('JVM_RUNTIME_MANIFEST_REQUIRED')
+        manifest=load_manifest(source/'manifest.json')
+        java(manifest, 'jvm')
         for relative,expected in manifest['files'].items():
             path=source/relative
             if not path.resolve().is_relative_to(source.resolve()) or sha(path)!=expected: raise ValueError('JAVA_RUNTIME_BUILD_CHECKSUM: '+relative)
@@ -95,7 +98,8 @@ def prepare(root, destination, backend=None, stable_paths=False):
         return result
     if backend!='native':raise ValueError('JAVA_RUNTIME_BACKEND')
     source = root / 'lang-java-adaptor/target'
-    manifest = json.loads((source / 'native/manifest.json').read_text())
+    manifest = load_manifest(source / 'native/manifest.json')
+    java(manifest, 'native')
     suffix = 'dylib' if sys.platform == 'darwin' else 'so'
     library = 'native/libcodeana_java.' + suffix
     required = {library, 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'}

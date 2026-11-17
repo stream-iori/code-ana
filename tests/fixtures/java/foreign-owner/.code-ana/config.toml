@@ -1,0 +1,23 @@
+schema_version = 1
+kind = "project"
+[discovery]
+mode = "explicit"
+[scan]
+scopes = ["MAIN"]
+[languages.java]
+enabled = true
+mode = "semantic"
+[languages.java.discovery]
+build_system = "plain"
+[languages.java.analysis]
+source_version = "17"
+toolchain = "mock-jdk17"
+classpath = "none"
+vm_classpath = true
+[[modules]]
+id = "fixture"
+language = "java"
+root = "."
+[[modules.source_roots]]
+path = "src"
+scope = "MAIN"

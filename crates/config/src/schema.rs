@@ -1,24 +1,43 @@
 //! Strict, explicit project and user configuration schemas.
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::sync::Arc;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ProjectConfig {
+    #[serde(flatten)]
+    pub task: Arc<TaskConfig>,
+    pub discovery: Discovery,
+    pub languages: Languages,
+    pub modules: Vec<Module>,
+    pub inputs: Option<crate::inputs::InputPreparation>,
+}
+/// Shared task policy. Per-native-context settings stay outside this object.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TaskConfig {
     pub schema_version: u32,
     pub kind: String,
     pub project: Project,
-    pub discovery: Discovery,
     pub scan: Scan,
     pub build: Build,
     pub index: Index,
     pub resources: Resources,
     pub query: Query,
     pub observability: Observability,
-    pub languages: Languages,
-    pub modules: Vec<Module>,
-    pub inputs: Option<crate::inputs::InputPreparation>,
     pub versions: Versions,
     pub search: Search,
+}
+impl std::ops::Deref for ProjectConfig {
+    type Target = TaskConfig;
+    fn deref(&self) -> &TaskConfig {
+        &self.task
+    }
+}
+impl std::ops::DerefMut for ProjectConfig {
+    fn deref_mut(&mut self) -> &mut TaskConfig {
+        Arc::make_mut(&mut self.task)
+    }
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]

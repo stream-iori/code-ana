@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+codeana-graph-io = { path = "../crates/graph-io" }
 # RA lexer 0.166 uses Unicode 17, matching unicode-properties 0.1.4.
 unicode-ident = "=1.0.24"
 # ra_ap_span uses Salsa internals, including the 0.28.2 intern signature.

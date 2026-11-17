@@ -310,6 +310,7 @@ fn dependency_diagnostics_are_published_without_poisoning_unrelated_files() -> a
         .collect::<anyhow::Result<BTreeMap<_, _>>>()?;
     store.put_blobs(&blobs)?;
     let revision = Revision {
+        unit_ownership: None,
         id: String::new(),
         target: "target".into(),
         project: "project".into(),

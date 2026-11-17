@@ -1,0 +1,88 @@
+{
+  "declarations": [
+    {
+      "name": "greet",
+      "location": {
+        "file": "/src/a.ts",
+        "start": {
+          "offset": 16,
+          "line": 1,
+          "column": 17
+        },
+        "end": {
+          "offset": 21,
+          "line": 1,
+          "column": 22
+        }
+      }
+    }
+  ],
+  "calls": [
+    {
+      "location": {
+        "file": "/src/b.ts",
+        "start": {
+          "offset": 62,
+          "line": 3,
+          "column": 7
+        },
+        "end": {
+          "offset": 70,
+          "line": 3,
+          "column": 15
+        }
+      },
+      "symbol": "hello",
+      "signature": "(value: number): number",
+      "target": {
+        "name": "greet",
+        "location": {
+          "file": "/src/a.ts",
+          "start": {
+            "offset": 16,
+            "line": 1,
+            "column": 17
+          },
+          "end": {
+            "offset": 21,
+            "line": 1,
+            "column": 22
+          }
+        }
+      }
+    },
+    {
+      "location": {
+        "file": "/src/b.ts",
+        "start": {
+          "offset": 73,
+          "line": 4,
+          "column": 1
+        },
+        "end": {
+          "offset": 81,
+          "line": 4,
+          "column": 9
+        }
+      },
+      "symbol": "hello",
+      "signature": "(value: number): number",
+      "target": {
+        "name": "greet",
+        "location": {
+          "file": "/src/a.ts",
+          "start": {
+            "offset": 16,
+            "line": 1,
+            "column": 17
+          },
+          "end": {
+            "offset": 21,
+            "line": 1,
+            "column": 22
+          }
+        }
+      }
+    }
+  ]
+}

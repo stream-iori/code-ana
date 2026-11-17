@@ -3,7 +3,12 @@ use super::*;
 mod blob;
 pub use blob::CapturedBlob;
 mod java;
+mod reader;
+pub use reader::{CaptureReader, DeclaredLink, FileIdentity, ResolutionObservation, SealedCapture};
+pub(super) mod registry;
+mod views;
 use java::capture_java_metadata;
+pub use views::{FrozenUnitView, ObservationSet};
 
 fn git(root: &Path, args: &[&str]) -> Option<String> {
     use std::io::Read;
@@ -105,61 +110,45 @@ pub(super) fn add_captured(
     bytes: Vec<u8>,
     ownership: (String, String, String, String),
 ) -> Result<()> {
-    let (module, scope, language, physical_module) = ownership;
-    if let Some(existing) = manifest.files.iter_mut().find(|s| s.path == path) {
-        ensure!(
-            existing.hash == hash(&bytes),
-            codeana_model::DomainError::new(
-                codeana_model::ErrorCode::JavaInputChangedDuringCapture,
-                ""
-            )
-        );
-        if !module.is_empty() {
-            ensure!(
-                existing.module.is_empty()
-                    || (existing.module == module
-                        && existing.scope == scope
-                        && existing.world == key("world", &[&physical_module, &scope])),
-                codeana_model::DomainError::new(codeana_model::ErrorCode::AmbiguousSourceOwner, "")
-            );
-            existing.world = key("world", &[&physical_module, &scope]);
-            existing.module = module;
-            existing.scope = scope;
-            existing.language = language;
-        }
-        return Ok(());
-    }
-    *total += bytes.len();
-    ensure!(
-        *total <= MAX_CAPTURE_BYTES
-            && bytes.len() <= 32 * 1024 * 1024
-            && manifest.files.len() < 10000,
-        codeana_model::DomainError::new(codeana_model::ErrorCode::JavaCaptureBudget, "")
-    );
-    let h = hash(&bytes);
+    let (module, mut scope, language, physical_module) = ownership;
+    ensure!(bytes.len() <= 32 * 1024 * 1024, "CAPTURE_FILE_BUDGET");
+    let h = registry::store(blobs, total, spool, &bytes)?;
     let world = if module.is_empty() {
         "files".into()
     } else {
         key("world", &[&physical_module, &scope])
     };
-    manifest.files.push(SourceUnit {
-        auxiliary: false,
-        path,
-        hash: h.clone(),
-        size: bytes.len() as u64,
-        module,
-        world,
-        scope,
-        language,
-    });
-    blobs.insert(h, CapturedBlob::bytes(spool, &bytes)?);
-    Ok(())
+    if module.is_empty()
+        && let Some(previous) = manifest
+            .files
+            .iter()
+            .find(|s| s.path == path && s.world == world && s.language.is_empty())
+    {
+        // Dedicated control readers may promote the generic scan's role after
+        // registration; do not silently replace an already established role here.
+        scope = previous.scope.clone();
+    }
+    registry::register(
+        manifest,
+        SourceUnit {
+            auxiliary: false,
+            path,
+            hash: h,
+            size: bytes.len() as u64,
+            module,
+            world,
+            scope,
+            language,
+        },
+    )
 }
 
 struct CaptureSelection<'a> {
+    reader: &'a std::cell::RefCell<CaptureReader>,
     budget: Option<&'a ResourceBudget>,
     root: &'a Path,
-    effective: &'a Effective,
+    effective: &'a ResolvedContext,
+    defer_ownership: bool,
     includes: globset::GlobSet,
     excludes: globset::GlobSet,
     text_only: globset::GlobSet,
@@ -245,6 +234,7 @@ fn capture_workspace(
         );
         let entry = entry?;
         if entry.depth() == 0 || entry.file_type().is_dir() {
+            policy.reader.borrow_mut().directory(entry.path())?;
             continue;
         }
         if let Some(b) = policy.budget {
@@ -275,11 +265,11 @@ fn capture_workspace(
         {
             continue;
         }
-        if !files_only && effective.rust_inputs.is_some() && p.ends_with(".rs") {
+        if !files_only && effective.rust_inputs().is_some() && p.ends_with(".rs") {
             continue; // Rust capture applies its filters before reading any source bytes.
         }
         if !files_only
-            && effective.python_inputs.is_some()
+            && effective.python_inputs().is_some()
             && (p.ends_with(".py") || p.ends_with(".pyi") || p.ends_with("py.typed"))
         {
             continue;
@@ -294,65 +284,75 @@ fn capture_workspace(
         if !entry.file_type().is_file() {
             continue;
         }
-        let (module, scope, language, physical_module) = source_ownership(&c.modules, &p)?
-            .unwrap_or((
-                String::new(),
-                "RESOURCE".into(),
-                String::new(),
-                String::new(),
-            ));
+        // A prepared unit supplies Rust's actual world/roles later. Keep the
+        // workspace scan as an unowned FILES placeholder until then.
+        let ownership = if !files_only && (policy.defer_ownership || p.ends_with(".rs")) {
+            None
+        } else {
+            source_ownership(&c.modules, &p)?
+        };
+        let (module, scope, language, physical_module) = ownership.unwrap_or((
+            String::new(),
+            "RESOURCE".into(),
+            String::new(),
+            String::new(),
+        ));
         ensure!(
             entry.metadata()?.len() <= MAX_FRAME as u64,
             codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureFileBudget, "")
         );
         let size = entry.metadata()?.len();
-        if let Some(b) = policy.budget {
-            b.charge(1, size)?;
-        }
-        let bytes = bounded_read(
+        let bytes = policy.reader.borrow_mut().read(
             entry.path(),
             usize::try_from(size).unwrap_or(usize::MAX).min(MAX_FRAME),
         )?;
-        *total += bytes.len();
-        ensure!(
-            bytes.len() <= MAX_FRAME && *total <= MAX_CAPTURE_BYTES,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureBudget, "")
-        );
-        ensure!(
-            manifest.files.len() < 10_000,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureFileBudget, "")
-        );
-        let h = hash(&bytes);
+        let h = registry::store(blobs, total, spool, &bytes)?;
         let world = if module.is_empty() {
             "files".into()
         } else {
             key("world", &[&physical_module, &scope])
         };
-        manifest.files.push(SourceUnit {
-            auxiliary: false,
-            path: p,
-            hash: h.clone(),
-            size: bytes.len() as u64,
-            module,
-            world,
-            scope,
-            language,
-        });
-        blobs.insert(h, CapturedBlob::bytes(spool, &bytes)?);
+        registry::register(
+            manifest,
+            SourceUnit {
+                auxiliary: false,
+                path: p,
+                hash: h,
+                size: bytes.len() as u64,
+                module,
+                world,
+                scope,
+                language,
+            },
+        )?;
     }
     Ok(())
 }
+pub type CaptureCancellation = std::sync::Arc<dyn Fn() -> bool + Send + Sync>;
+
 pub fn capture(root: &Path, request: &Request) -> Result<Capture> {
-    capture_metered(root, request, None)
+    capture_metered(root, request, None, None)
 }
 pub fn capture_query(root: &Path, request: &Request, budget: &ResourceBudget) -> Result<Capture> {
-    capture_metered(root, request, Some(budget))
+    capture_metered(root, request, Some(budget), None)
+}
+pub fn capture_controlled(
+    root: &Path,
+    request: &Request,
+    budget: Option<&ResourceBudget>,
+    cancelled: CaptureCancellation,
+) -> Result<Capture> {
+    capture_metered(root, request, budget, Some(cancelled))
 }
 fn capture_metered(
     root: &Path,
     request: &Request,
     budget: Option<&ResourceBudget>,
+    cancelled: Option<CaptureCancellation>,
 ) -> Result<Capture> {
+    if let Some(cancelled) = &cancelled {
+        ensure!(!cancelled(), DomainError::new(ErrorCode::Cancelled, ""));
+    }
     let started = std::time::Instant::now();
     let deadline = std::time::Duration::from_secs(if request.deadline_seconds == 0 {
         120
@@ -363,10 +363,23 @@ fn capture_metered(
     let text_search = request.operation == codeana_model::Operation::SearchText;
     let files_only = text_search
         || (request.operation == codeana_model::Operation::Snapshot && request.name != "analysis");
+    let spool = std::sync::Arc::new(
+        tempfile::Builder::new()
+            .prefix("codeana-capture-")
+            .tempdir()?,
+    );
+    let reader = std::cell::RefCell::new(CaptureReader::new(
+        &root,
+        spool.clone(),
+        started,
+        deadline,
+        budget.cloned(),
+        cancelled,
+    )?);
     let effective = if files_only {
-        resolve_files(&root, request)?
+        resolution::resolve_using(&root, request, false, &reader)?
     } else {
-        resolve(&root, request)?
+        resolution::resolve_using(&root, request, true, &reader)?
     };
     let c = &effective.config;
     let includes = glob(&c.scan.include)?;
@@ -375,16 +388,13 @@ fn capture_metered(
     let text_include = glob(&c.search.text.include)?;
     let manifest = Manifest::default();
     let blobs = BTreeMap::new();
-    let spool = std::sync::Arc::new(
-        tempfile::Builder::new()
-            .prefix("codeana-capture-")
-            .tempdir()?,
-    );
     let total = 0;
     let policy = CaptureSelection {
+        reader: &reader,
         budget,
         root: &root,
         effective: &effective,
+        defer_ownership: !files_only,
         includes,
         excludes,
         text_only,
@@ -402,25 +412,16 @@ fn capture_metered(
         spool,
     };
     capture_workspace(&policy, &mut accumulator)?;
-    capture_java_metadata(&policy, &mut accumulator)?;
-    for unit in &effective.input_units {
-        if let Some(child) = &unit.effective {
-            let child_policy = CaptureSelection {
-                budget,
-                effective: child,
-                root: &root,
-                includes: policy.includes.clone(),
-                excludes: policy.excludes.clone(),
-                text_only: policy.text_only.clone(),
-                text_include: policy.text_include.clone(),
-                text_search,
-                files_only,
-                started,
-                deadline,
-            };
-            capture_java_metadata(&child_policy, &mut accumulator)?;
-        }
-    }
+    let plans = if !files_only {
+        views::unit_plans(&effective)?
+    } else {
+        vec![]
+    };
+    let unit_manifests = if !files_only {
+        views::capture_units(&policy, &mut accumulator, &plans)?
+    } else {
+        BTreeMap::new()
+    };
     let CaptureAccumulator {
         mut manifest,
         mut blobs,
@@ -429,192 +430,167 @@ fn capture_metered(
         ..
     } = accumulator;
     let excludes = &policy.excludes;
-    if !files_only
-        && !text_search
-        && c.modules
-            .iter()
-            .any(|m| m.language == "java" && m.lombok.mode.as_deref() == Some("model"))
-    {
-        lombok::capture(
-            &root,
-            &mut manifest,
-            &mut blobs,
-            &mut total,
-            &spool,
-            excludes,
-            (started, deadline),
-        )?;
-    }
     // Validate the control input on every capture. Persist it for FILES/analysis;
     // current text search only exposes paths selected by its own include policy.
     ensure!(
         !excludes.is_match(".code-ana/config.toml"),
         codeana_model::DomainError::new(codeana_model::ErrorCode::ControlInputExcluded, "")
     );
-    let bytes = bounded_read(&root.join(".code-ana/config.toml"), 1024 * 1024)?;
+    let bytes = reader
+        .borrow_mut()
+        .read(&root.join(".code-ana/config.toml"), 1024 * 1024)?;
     let h = hash(&bytes);
     ensure!(
         h == effective.input_hash,
         codeana_model::DomainError::new(codeana_model::ErrorCode::ConfigChangedDuringCapture, "")
     );
     if !text_search {
-        total += bytes.len();
-        ensure!(
-            total <= MAX_CAPTURE_BYTES,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::CaptureBudget, "")
-        );
-        manifest.files.push(SourceUnit {
-            auxiliary: false,
-            path: ".code-ana/config.toml".into(),
-            hash: h.clone(),
-            size: bytes.len() as u64,
-            module: String::new(),
-            world: "files".into(),
-            scope: "CONTROL".into(),
-            language: String::new(),
-        });
-        blobs.insert(h, CapturedBlob::bytes(&spool, &bytes)?);
-    }
-    // Keep compiler prerequisites in the sealed capture, with an explicit publication role.
-    // Their real language/world/hash stay available for dependency invalidation and FILES.
-    if !files_only {
-        for source in manifest.files.iter_mut().filter(|s| s.language == "java") {
-            let physical = c
-                .modules
-                .iter()
-                .find(|m| source.world == key("world", &[&m.id, &source.scope]));
-            // Capture owns bytes and publication roles. The Java adapter diagnoses
-            // malformed source text per owner while retaining healthy semantic inputs.
-            source.auxiliary = physical.is_none_or(|module| {
-                !c.scan.scopes.contains(&source.scope)
-                    || (!module.scan.scopes.is_empty()
-                        && !module.scan.scopes.contains(&source.scope))
-                    || effective
-                        .java_inputs
-                        .as_ref()
-                        .or_else(|| {
-                            effective
-                                .input_units
-                                .iter()
-                                .filter_map(|u| u.effective.as_ref())
-                                .filter_map(|e| e.java_inputs.as_ref())
-                                .find(|inputs| inputs.modules.iter().any(|m| m.id == module.id))
-                        })
-                        .is_some_and(|inputs| {
-                            inputs
-                                .modules
-                                .iter()
-                                .any(|m| m.id == module.id && !m.selected)
-                        })
-            });
-        }
-    }
-    if !files_only {
-        rust_inputs::capture(
-            &root,
-            &effective,
+        let h = registry::store(&mut blobs, &mut total, &spool, &bytes)?;
+        registry::register(
             &mut manifest,
-            &mut blobs,
-            &mut total,
-            &spool,
+            SourceUnit {
+                auxiliary: false,
+                path: ".code-ana/config.toml".into(),
+                hash: h,
+                size: bytes.len() as u64,
+                module: String::new(),
+                world: "files".into(),
+                scope: "CONTROL".into(),
+                language: String::new(),
+            },
         )?;
-        python_inputs::capture(
-            &root,
-            &effective,
+    }
+    if !files_only && let Some(preparation) = &c.inputs {
+        let path = &preparation.manifest;
+        ensure!(!excludes.is_match(path), "CONTROL_INPUT_EXCLUDED: {path}");
+        let bytes = reader.borrow_mut().read(&root.join(path), 32 << 20)?;
+        let catalog: inputs::InputCatalog = serde_json::from_slice(&bytes)?;
+        ensure!(
+            catalog.units.len() == effective.input_units.len()
+                && catalog
+                    .units
+                    .iter()
+                    .zip(&effective.input_units)
+                    .all(|(a, b)| digest(a) == digest(&b.prepared)),
+            "INPUT_CATALOG_CHANGED"
+        );
+        add_captured(
             &mut manifest,
             &mut blobs,
             &mut total,
             &spool,
+            path.clone(),
+            bytes,
+            (
+                String::new(),
+                "PREPARATION".into(),
+                String::new(),
+                String::new(),
+            ),
         )?;
         for unit in &effective.input_units {
-            if let Some(child) = &unit.effective {
-                if child
-                    .config
-                    .modules
-                    .iter()
-                    .any(|m| m.language == "java" && m.lombok.mode.as_deref() == Some("model"))
-                {
-                    lombok::capture(
-                        &root,
-                        &mut manifest,
-                        &mut blobs,
-                        &mut total,
-                        &spool,
-                        excludes,
-                        (started, deadline),
-                    )?;
-                }
-                rust_inputs::capture(&root, child, &mut manifest, &mut blobs, &mut total, &spool)?;
-                python_inputs::capture(
-                    &root,
-                    child,
+            for artifact in unit.prepared.config.iter().chain(&unit.prepared.artifacts) {
+                ensure!(
+                    !excludes.is_match(&artifact.path),
+                    "CONTROL_INPUT_EXCLUDED: {}",
+                    artifact.path
+                );
+                let bytes = reader
+                    .borrow_mut()
+                    .read(&root.join(&artifact.path), 32 << 20)?;
+                ensure!(
+                    bytes.len() as u64 == artifact.bytes && hash(&bytes) == artifact.sha256,
+                    "INPUT_ARTIFACT_STALE"
+                );
+                add_captured(
                     &mut manifest,
                     &mut blobs,
                     &mut total,
                     &spool,
+                    artifact.path.clone(),
+                    bytes,
+                    (
+                        String::new(),
+                        "CONTROL".into(),
+                        String::new(),
+                        String::new(),
+                    ),
                 )?;
             }
         }
-        if let Some(preparation) = &c.inputs {
-            let path = &preparation.manifest;
-            ensure!(!excludes.is_match(path), "CONTROL_INPUT_EXCLUDED: {path}");
-            let bytes = bounded_read(&root.join(path), 32 << 20)?;
-            let catalog: inputs::InputCatalog = serde_json::from_slice(&bytes)?;
-            ensure!(
-                catalog.units.len() == effective.input_units.len()
-                    && catalog
-                        .units
-                        .iter()
-                        .zip(&effective.input_units)
-                        .all(|(a, b)| digest(a) == digest(&b.prepared)),
-                "INPUT_CATALOG_CHANGED"
-            );
-            add_captured(
-                &mut manifest,
-                &mut blobs,
-                &mut total,
-                &spool,
-                path.clone(),
-                bytes,
-                (
-                    String::new(),
-                    "CONTROL".into(),
-                    String::new(),
-                    String::new(),
-                ),
-            )?;
-            for unit in &effective.input_units {
-                for artifact in unit.prepared.config.iter().chain(&unit.prepared.artifacts) {
-                    ensure!(
-                        !excludes.is_match(&artifact.path),
-                        "CONTROL_INPUT_EXCLUDED: {}",
-                        artifact.path
-                    );
-                    let bytes = inputs::read_artifact(&root, artifact)?;
-                    add_captured(
-                        &mut manifest,
-                        &mut blobs,
-                        &mut total,
-                        &spool,
-                        artifact.path.clone(),
-                        bytes,
-                        (
-                            String::new(),
-                            "CONTROL".into(),
-                            String::new(),
-                            String::new(),
-                        ),
-                    )?;
-                }
+    }
+    // These bytes authenticate preparation, not compiler semantics. Parsed native
+    // metadata and every real control/source remain in the semantic profile/view.
+    if !files_only && let Some(preparation) = &c.inputs {
+        let integrity_paths = std::iter::once(preparation.manifest.as_str())
+            .chain(effective.input_units.iter().flat_map(|unit| {
+                unit.prepared
+                    .config
+                    .iter()
+                    .chain(&unit.prepared.artifacts)
+                    .map(|a| a.path.as_str())
+            }))
+            .collect::<BTreeSet<_>>();
+        for source in &mut manifest.files {
+            if integrity_paths.contains(source.path.as_str())
+                && source.module.is_empty()
+                && source.language.is_empty()
+            {
+                source.scope = "PREPARATION".into();
             }
         }
     }
     manifest
         .files
         .sort_by(|a, b| (&a.path, &a.world).cmp(&(&b.path, &b.world)));
+    let sealed = reader.into_inner().seal()?;
+    for (digest, blob, size) in sealed.blobs {
+        registry::retain_blob(&mut blobs, &mut total, digest, blob, size)?;
+    }
+    let observation_index = views::ObservationIndex::new(sealed.observations);
+    let mut unit_views = BTreeMap::new();
+    for (unit, mut manifest) in unit_manifests {
+        manifest
+            .files
+            .sort_by(|a, b| (&a.path, &a.world).cmp(&(&b.path, &b.world)));
+        let unit_blobs = manifest
+            .files
+            .iter()
+            .map(|s| {
+                Ok((
+                    s.hash.clone(),
+                    blobs.get(&s.hash).context("CAPTURE_BLOB_MISSING")?.clone(),
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        let context = plans
+            .iter()
+            .find(|p| p.unit == unit)
+            .context("CAPTURE_UNIT_CONTEXT_MISSING")?
+            .context
+            .as_ref();
+        let paths = sealed
+            .unit_paths
+            .get(&unit)
+            .context("CAPTURE_UNIT_OBSERVATIONS_MISSING")?;
+        let observations = observation_index.select(paths);
+        unit_views.insert(
+            unit.clone(),
+            FrozenUnitView {
+                unit,
+                backend: context.inputs[0].backend(),
+                semantic_digest: context.semantic_digest.clone(),
+                manifest,
+                blobs: unit_blobs,
+                observations,
+            },
+        );
+    }
+    let observations = observation_index.all();
     let (project, checkout) = identity(&root);
     let target = key("target", &[&project, &checkout, &effective.capture_digest]);
     Ok(Capture {
+        scope: CaptureScope::Task,
         root,
         project,
         checkout,
@@ -622,11 +598,13 @@ fn capture_metered(
         effective,
         manifest,
         blobs,
+        observations,
+        unit_views,
     })
 }
 pub fn require_java(c: &Capture) -> Result<()> {
     ensure!(
-        c.effective.config.discovery.mode == "explicit" || c.effective.java_inputs.is_some(),
+        c.effective.config.discovery.mode == "explicit" || c.effective.java_inputs().is_some(),
         codeana_model::DomainError::new(
             codeana_model::ErrorCode::UnsupportedDiscoveryMode,
             "auto requires an adapter discovery provider".to_string()

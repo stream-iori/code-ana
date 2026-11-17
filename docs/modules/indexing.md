@@ -14,7 +14,7 @@
 
 Rust 路径先准备输入、启动 worker、固定基线，再分别执行未变复用、单语言流或混合语言归档阶段。Java 准备分别持有 bundle、捕获输入与工具链；Maven 外部导出分为准备、发现、组装和落盘。临时目录、会话与候选的生命周期覆盖其最终消费者，阶段拆分不提前释放资源。
 
-普通、混合、prepared 入口先生成内部 IndexPlan：参与语言包含删除/零输出模块，prepared 实例保留配置顺序及原实例身份。计划自身的单元数组在分配前接续任务账本，不提前复制实例 ID。跨语言 worker 的准备、执行与输入生命周期由公共 index_execution 持有；Rust/Python 输入模块只构造自身描述符。单语言流式、混合归档、Java 健康 worker 复用及 Python 保守全量策略保持。
+普通、混合、prepared 入口先生成内部 IndexPlan：参与语言包含删除/零输出模块，普通/prepared 实例均按后端、稳定 ID 排序并保留原实例身份。计划自身的单元数组在分配前接续任务账本，不提前复制实例 ID。跨语言 worker 的准备、执行与输入生命周期由公共 index_execution 持有；Rust/Python 输入模块只构造自身描述符。单语言流式、混合归档、Java 健康 worker 复用及 Python 保守全量策略保持。
 
 所有路径使用 publish_candidate 的统一质量门禁和发布入口；strict 拒绝在消费 capture blobs 前返回。发布确认仍在 durable commit 后执行，确认失败只记录 warning。
 
@@ -142,7 +142,7 @@ daemon 不自行实现 Java 名称求解或 Rust 宏失效。adapter 负责解�
 
 ## 当前交付与存储边界
 
-Java 封存 GRA1/protobuf rows，worker 24 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 13，查询以逻辑 schema 36 读取；不再经过 CAF1 / Fact JSON 去重数据库。
+Java 封存 GRA1/protobuf rows，worker 25 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 13，查询以逻辑 schema 36 读取；不再经过 CAF1 / Fact JSON 去重数据库。
 
 增量对兼容基线使用 SQLite backup，保持未变节点整数主键并重映射新暂存引用，封存时回收孤立字典/元注解定义并重建索引/FTS。旧格式 delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 只固定旧 head 的 CAS 身份，建新库成功后切入口。G1 worker 复用健康 isolate，失败恢复换进程。
 
@@ -154,9 +154,13 @@ Python 只读取显式清单并验证全部来源哈希。完全相同的 manife
 
 未变复用的空 delta 候选构建由 stage_reused_revision 共用，普通 Python、prepared 和 Rust 各入口先完成 worker Reused 回执，再调用同一暂存逻辑。基线/profile 校验、取消及后续质量门禁与 CAS 保持。
 
-worker 终态由公共 analysis_unit 处理：单实例、会话列表和 Rust/Java 双实例使用同一迭代入口；Reused 失败仍中止暂存，PublishAck 失败只保存 warning 并继续确认其余实例，不改变已发布 revision。该迭代不复制 worker 或另建预算账户。
+worker 终态由公共 analysis_unit 的同一 worker 引用集合入口处理，删除 One/Pair/Sessions 类型；Reused 失败仍中止暂存，PublishAck 失败只保存 warning 并继续确认其余实例，不改变已发布 revision。该迭代不复制 worker 或另建预算账户。
 
-prepared 入口以计划中的可用单元确定内存分片和启动语言，保留配置顺序及降级 coverage。RunningUnits 同时持有会话、Java/Rust 输入和共享 scratch，按会话、输入、scratch 的字段顺序释放；输入装箱的内存预留接续既有 host 账户。普通 Python/混合入口也使用此集合持有输入；Rust 增量策略保留其自身输入所有权结构。
+prepared 入口以计划中的 Ready 单元确定内存分片和启动语言，按后端和稳定实例 ID 顺序准备/启动，保留降级 coverage。保守与 prepared 集合使用 Vec<RunningUnit>：每个单元直接持有 Prepared/Running 会话状态、输入守卫、manifest 和 Unit Capture，集合最后释放共享 scratch；删除平行 sessions/inputs 数组及其 Deref 入口。构造时核对单元捕获、后端和 manifest 子集，启动时核对 grant 实例，未启动状态不能提供流或上下文。输入装箱的预留接续既有 host 账户；单 Java 健康池及 Rust 增量策略仍保留其自身生命周期结构，R4 统一执行尚未完成。
+
+PlannedUnit 明确 Ready/FilesOnly/Removed。FilesOnly 和从基线归属清单发现的 Removed 均保留静态后端/实例份额，主机封存零 worker 用量，不能重领或借给 Ready；进程内存只按 Ready 数量分片。普通单元和 prepared 一样使用稳定实例 ID。全部单元禁用/删除时发布空语义及当前 FILES，不启动 Java 兜底；无基线且未启用语言仍报 NO_ENABLED_LANGUAGE。
+
+每个新 revision 持久化 unit_ownership v2。Ready 记录发布语言、模块/world/scope、语义/输入身份、完整输入及各自辅助角色和完整非辅助发布来源，包括零输出；FilesOnly 没有语义发布来源。辅助依赖不取得发布 world。清单与图经同一候选/CAS 提交；删除依据取自旧清单。缺清单或仅有 v1 的旧基线需要 index --full，失败保旧 head。该元数据不改变图物理 schema 或已有公开 ID；任意单元 Full/Delta/Reuse 混合仍待公共执行器接管。
 
 计划分别表达资源参与和实际执行：删除/空模块仍保留预算份额，缺少冻结 Rust/Python 输入时不因此启动对应 worker；实际混合参与语言由计划确定。
 
@@ -165,3 +169,20 @@ Java 输入准备统一经 prepare_java_unit 进入受限 blocking 工作，使�
 运行结束和失败清理增加显式异步回收：普通/混合/prepared 执行的输入 guard 保留在 fallible 执行体之外，结束后等待所属 worker 进程退出，再释放输入。Hello/Discover 启动校验失败、Java warm rediscover 失败、Rust 基线准备失败也等待回收；已确认且符合条件的 Java worker 继续进入健康池。清理 warning 独立于原执行错误和已提交 revision。
 
 A5 服务边界：索引策略实现于 `IndexTask`，只拿本任务状态、IndexService、WorkerService、ReportService 与发布后维护能力；不读取全局 jobs，也不持有原始 Store。健康 Java 池与 60 秒回收由 WorkerService 拥有；报告与 GC 的异步 join 错误边界、发布后失败结果和原确认顺序保留。
+
+普通、混合及 prepared 的语言输入均使用 config 构造的单元视图；Java setup 保留自己的 Unit Capture，Analyze 与 Discover 使用同一 manifest。结果先经单元身份/终态验证，存储候选 header 再绑定全项目 revision 清单。原有增量/保守策略和单一发布门禁继续保留，尚未实现同一任务内任意 Full/Delta/Reuse 的统一执行。
+
+
+## worker 输入租约与回收
+
+所有现行启动入口使用 LaunchSpec 携带冻结入口和 InputLease；Java/Rust 的 prepared scratch、Python 共享 scratch 改为共享拥有，租约同时固定捕获内容的 spool。进程在 Hello/Discover 前取得租约，初始化失败、执行 future 被丢弃也不会先删除输入。
+
+application/supervisor 的 Process 统一保有 child 与租约。显式关闭和 Drop 都先终止所属进程组；独立回收线程保有待回收 child，按有界 OS 快照确认组内无非僵尸成员后才 try_wait 回收 leader、释放租约。leader 未回收前不复用其数值 PGID。任务 runtime 关闭不销毁回收登记。显式停止最多等待两秒；失败/超时独立报告并保留输入，后台继续回收。未确认记录达到 1024 时拒绝新增启动；该阈值不是业务预算的可借额度。
+
+只有验证过 attempt/revision 的 Acked 才解除健康 worker 的任务租约与 scratch 观察；错误 ACK 保留输入并由调用方关闭。正在进行的磁盘检查也持有旧租约，过期检查不能杀死下一任务的 worker。Java 健康池策略与 RSS 监控仍在既有模块；完整后端装配、公共监控策略、固定基线及混合 Full/Delta/Reuse 执行仍待 R4。
+
+索引捕获后只读取一次 head，并通过元数据租约持有该 revision，覆盖规划、worker、候选及发布后的处理。后续策略使用计划中的相同 baseline，提交仍做 CAS；GC 在租约释放前保留基线。元数据租约不打开旧 facts.db，因此显式全量可从旧图 schema 迁移；读取前先为元数据解码预留预算。
+
+每个 worker 的 Receiver 在 Begin 时核对 replacement producer 与当前/历史完整输入的精确 world/path，在 Chunk 时核对当前实例冻结来源、模块/scope 和允许语言，失败后不能生成 VerifiedEnd。历史辅助输入只授权删除旧 owner，不授权发布新语义。fixture 允许其显式测试语言标签，仍须遵守来源/world 范围。无来源的公共字典/metadata 的单元归属、存储按 world 精确替换及任意 Full/Delta/Reuse 组合仍待后续完成。
+
+Java 的增量基线文件列表从该单元历史 inputs 取得，不将项目 FILES 清单传给引擎用于生成删除 owner；显式 fixture 的旧基线保持其测试输入。Python 的汇总 coverage 模块还包括冻结输入描述符中的原生上下文模块，与具体源文件的模块归属分别校验。

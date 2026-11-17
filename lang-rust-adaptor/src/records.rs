@@ -1,11 +1,8 @@
 //! Translate Rust facts into the shared typed graph archive contract.
 use crate::{Analysis, incremental};
 use anyhow::Result;
-use codeana_contracts::{
-    graph::Row,
-    graph_archive::{Builder, GraphArchive},
-    graph_rows::*,
-};
+use codeana_contracts::{graph::Row, graph_rows::*};
+use codeana_graph_io::archive::{Builder, GraphArchive};
 use codeana_model::rust::{AnalysisConfig, PRODUCER, SourceState};
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};

@@ -1,148 +1,25 @@
-//! Admit business wire buffers and decoded records before allocation. The small fixed
-//! control lane is independent of a failed task ledger so failures/cancel can terminate.
-use crate::{
-    decode_frame, graph as g, packed_count, validate_envelope_wire, wire_fields, worker as w,
-};
+//! Persistent frame IO; cancelled reads retain exactly their existing progress/admission.
 use anyhow::{Result, ensure};
+use codeana_contracts::frame_admission::*;
+use codeana_contracts::performance;
+use codeana_contracts::{validate_envelope_wire, wire_fields, worker as w};
 use codeana_model::{AnalysisContext, DomainError, ErrorCode};
 use prost::Message;
-use std::mem::size_of;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-
-pub const CONTROL_BYTES: usize = 16 * 1024;
-pub const BOOTSTRAP_BYTES: usize = 4096;
-pub const CANCEL_BYTES: usize = 1024;
-
-fn control_tag(tag: u64) -> bool {
-    matches!(tag, 2 | 8 | 9 | 10 | 11 | 12 | 16 | 17 | 18)
+fn decode_frame(bytes: &[u8]) -> Result<w::Envelope> {
+    performance::measure(
+        performance::Metric::FrameValidate,
+        bytes.len() as u64,
+        false,
+        || validate_envelope_wire(bytes),
+    )?;
+    Ok(performance::measure(
+        performance::Metric::FrameDecode,
+        bytes.len() as u64,
+        false,
+        || w::Envelope::decode(bytes),
+    )?)
 }
-fn is_control(frame: &w::Envelope) -> bool {
-    use w::envelope::Body;
-    matches!(
-        frame.body,
-        Some(
-            Body::Hello(_)
-                | Body::End(_)
-                | Body::Replan(_)
-                | Body::Cancel(_)
-                | Body::Ack(_)
-                | Body::Failure(_)
-                | Body::Acked(_)
-                | Body::Reuse(_)
-                | Body::Reused(_)
-        )
-    )
-}
-fn body_tag(bytes: &[u8]) -> Result<u64> {
-    let mut body = 0;
-    wire_fields(bytes, |tag, _| {
-        if tag != 1 {
-            body = tag;
-        }
-        Ok(())
-    })?;
-    Ok(body)
-}
-
-#[derive(Default, Debug)]
-struct Allocation {
-    work: u64,
-    nodes: u64,
-    bytes: u64,
-}
-impl Allocation {
-    fn record<T>(&mut self) {
-        self.work += 1;
-        self.nodes += 1;
-        self.bytes += 4 * size_of::<T>() as u64;
-    }
-    fn slots<T>(&mut self, count: usize) {
-        self.work += count as u64;
-        self.bytes += 4 * (size_of::<T>() as u64) * (count as u64);
-    }
-    fn source(&mut self, bytes: &[u8]) -> Result<()> {
-        self.record::<w::JavaSource>();
-        wire_fields(bytes, |tag, _| {
-            if tag == 1 {
-                self.record::<w::SourceUnit>();
-            }
-            Ok(())
-        })
-    }
-    fn manifest(&mut self, bytes: &[u8]) -> Result<()> {
-        wire_fields(bytes, |tag, _| {
-            if tag == 1 {
-                self.record::<w::SourceUnit>();
-            }
-            Ok(())
-        })
-    }
-    fn context(&mut self, bytes: &[u8]) -> Result<()> {
-        self.record::<w::JavaContext>();
-        wire_fields(bytes, |tag, value| {
-            match tag {
-                5 | 12 => self.source(value)?,
-                6 | 21 | 22 | 23 => self.slots::<String>(1),
-                14..=17 => self.slots::<u32>(if value.is_empty() {
-                    1
-                } else {
-                    packed_count(value)?
-                }),
-                _ => {}
-            }
-            Ok(())
-        })
-    }
-    fn java(&mut self, bytes: &[u8]) -> Result<()> {
-        self.record::<w::JavaConfig>();
-        wire_fields(bytes, |tag, value| {
-            match tag {
-                5 => self.context(value)?,
-                11 => self.source(value)?,
-                12 => self.slots::<String>(1),
-                _ => {}
-            }
-            Ok(())
-        })
-    }
-}
-fn allocation(bytes: &[u8]) -> Result<Allocation> {
-    let mut cost = Allocation {
-        work: 1,
-        nodes: 1,
-        bytes: 2 * bytes.len() as u64 + size_of::<w::Envelope>() as u64 + 256,
-    };
-    wire_fields(bytes, |body, value| {
-        if body == 1 {
-            return Ok(());
-        }
-        wire_fields(value, |field, nested| {
-            match (body, field) {
-                (3 | 5, 1) => cost.manifest(nested)?,
-                (3, 2) => cost.java(nested)?,
-                (3, 3) => cost.record::<w::RustConfig>(),
-                (3, 4) => cost.record::<w::PythonConfig>(),
-                (4, 2 | 4 | 6) => cost.slots::<String>(1),
-                (6, 6) => cost.record::<w::Owner>(),
-                (7, 3) => {
-                    cost.record::<g::Row>();
-                    wire_fields(nested, |tag, _| {
-                        if tag == 2 {
-                            cost.slots::<g::Cell>(1);
-                        }
-                        Ok(())
-                    })?;
-                }
-                (13, 1 | 3 | 5) => cost.slots::<String>(1),
-                _ => {}
-            }
-            Ok(())
-        })?;
-        Ok(())
-    })?;
-    Ok(cost)
-}
-
 /// Prefix and fixed-body progress survive dropped read futures. A metered large
 /// body is charged once before resize; no cancellation can renew its allowance.
 pub struct FrameReader {
@@ -229,8 +106,7 @@ impl FrameReader {
         maximum: usize,
         required: Option<u64>,
     ) -> Result<w::Envelope> {
-        let _wait =
-            crate::performance::Timer::start(crate::performance::Metric::FrameReadWait, 0, false);
+        let _wait = performance::Timer::start(performance::Metric::FrameReadWait, 0, false);
         while self.prefix_read < 4 {
             let n = input.read(&mut self.prefix[self.prefix_read..]).await?;
             ensure!(n != 0, DomainError::new(ErrorCode::ControlFrameEof, ""));
@@ -365,39 +241,40 @@ pub async fn write_frame_with_budget<W: AsyncWrite + Unpin>(
     if is_control(frame) {
         ensure!(length <= CONTROL_BYTES, "CONTROL_FRAME_BUDGET");
         let mut fixed = vec![0u8; length].into_boxed_slice();
-        crate::performance::measure(
-            crate::performance::Metric::FrameEncode,
+        performance::measure(
+            performance::Metric::FrameEncode,
             length as u64,
             true,
             || frame.encode(&mut &mut fixed[..length]),
         )?;
-        let _write = crate::performance::Timer::start(
-            crate::performance::Metric::FrameWriteWait,
-            length as u64,
-            false,
-        );
+        let _write =
+            performance::Timer::start(performance::Metric::FrameWriteWait, length as u64, false);
         output.write_u32(length as u32).await?;
         output.write_all(&fixed[..length]).await?;
     } else {
         if let Some(budget) = budget {
             budget.charge(1, 0, length as u64 + 4)?;
         }
-        let bytes = crate::performance::measure(
-            crate::performance::Metric::FrameEncode,
+        let bytes = performance::measure(
+            performance::Metric::FrameEncode,
             length as u64,
             true,
             || frame.encode_to_vec(),
         );
-        let _write = crate::performance::Timer::start(
-            crate::performance::Metric::FrameWriteWait,
-            length as u64,
-            false,
-        );
+        let _write =
+            performance::Timer::start(performance::Metric::FrameWriteWait, length as u64, false);
         output.write_u32(length as u32).await?;
         output.write_all(&bytes).await?;
     }
     output.flush().await?;
     Ok(())
+}
+
+pub async fn write_frame<W: AsyncWrite + Unpin>(output: &mut W, frame: &w::Envelope) -> Result<()> {
+    write_frame_with_budget(output, frame, None).await
+}
+pub async fn read_frame<R: AsyncRead + Unpin>(input: &mut R) -> Result<w::Envelope> {
+    read_frame_with_budget(input, None).await
 }
 
 #[cfg(test)]
@@ -418,9 +295,12 @@ mod tests {
         .unwrap()
     }
     fn discover(count: usize, path: &str) -> w::Envelope {
-        crate::envelope(
+        codeana_contracts::envelope(
             "a",
             w::envelope::Body::Discover(w::Discover {
+                unit: "rust".into(),
+                source_languages: vec!["rust".into()],
+                config: Some(w::discover::Config::Rust(Box::default())),
                 manifest: Some(w::Manifest {
                     files: (0..count)
                         .map(|_| w::SourceUnit {
@@ -503,15 +383,15 @@ mod tests {
         assert!(budget.charge(0, 0, 2).is_err());
         let grant = codeana_model::AnalysisGrant {
             id: "g".into(),
-            language: codeana_model::AnalysisLanguage::Rust,
+            language: codeana_model::AnalysisBackend::Rust,
             limits: AnalysisLimits::default(),
         };
-        let frame = crate::envelope(
+        let frame = codeana_contracts::envelope(
             "a",
             w::envelope::Body::Failure(w::Failure {
                 code: "ANALYSIS_RESOURCE_LIMIT".into(),
                 message: "limit".into(),
-                analysis_usage: Some(crate::analysis_budget::receipt(
+                analysis_usage: Some(codeana_contracts::analysis_budget::receipt(
                     &grant,
                     &budget.usage(),
                     "input_decode",
@@ -595,7 +475,7 @@ mod tests {
             .is_err()
         );
         sender.write_all(&bytes[13..]).await.unwrap();
-        let terminal = crate::envelope("a", w::envelope::Body::Cancel(w::Cancel {}));
+        let terminal = codeana_contracts::envelope("a", w::envelope::Body::Cancel(w::Cancel {}));
         sender.write_all(&wire(&terminal)).await.unwrap();
         assert!(
             reader
@@ -624,7 +504,7 @@ mod tests {
     #[test]
     fn error_formatting_stops_at_utf8_boundary() {
         let error = anyhow::anyhow!("{}", "字".repeat(20000));
-        let text = crate::analysis_budget::bounded_error(&error);
+        let text = codeana_contracts::analysis_budget::bounded_error(&error);
         assert_eq!(text.len(), 8190);
     }
     #[tokio::test]
@@ -639,3 +519,7 @@ mod tests {
         assert_eq!(reader.body.capacity(), 0);
     }
 }
+
+#[cfg(test)]
+#[path = "ipc_compat_tests.rs"]
+mod compat_tests;

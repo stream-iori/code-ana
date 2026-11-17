@@ -57,6 +57,19 @@ class GraphProduct(product_support.MockProductHarness):
         self.assertEqual(first['revision'], second['revision'])
         self.cli('index', '--request-id', 'repeat', '--full', code=1)
 
+    def test_unit_scope_failure_preserves_the_published_head_and_history(self):
+        revision = self.cli('index')[1]['revision']
+        expected = self.canonical(revision)
+        for state in ['foreign-owner', 'foreign-row']:
+            with self.subTest(state=state):
+                self.state(state)
+                _, failure = self.cli('index', code=1)
+                self.assertEqual(failure['code'], 'ANALYSIS_UNIT_SCOPE')
+                self.assertEqual(self.cli('overview')[1]['revision'], revision)
+                self.assertEqual(self.canonical(revision), expected)
+        self.state('base')
+        self.assertTrue(self.cli('index')[1]['revision'])
+
     def test_historical_text_search_is_independent_of_active_workspace(self):
         revision = self.cli('index')[1]['revision']
         snapshot_revision = self.cli('snapshot', 'before', '--kind', 'analysis')[1]['revision']

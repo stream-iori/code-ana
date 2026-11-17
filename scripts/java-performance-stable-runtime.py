@@ -9,6 +9,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT/'tests'))
 from acceptance_support import sha256
+from sdk_manifest import load_manifest, java
 
 
 def install_file(source, destination):
@@ -46,7 +47,8 @@ def prepare(root, destination, backend):
         runtime_file = 'runner.jar'
     else:
         raise ValueError('JAVA_RUNTIME_BACKEND')
-    manifest = json.loads(manifest_path.read_text())
+    manifest = load_manifest(manifest_path)
+    identity = java(manifest, backend)
     required = {runtime_file, 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'}
     if not required.issubset(manifest['files']):
         raise ValueError('JAVA_RUNTIME_MANIFEST_INCOMPLETE')
@@ -70,8 +72,8 @@ def prepare(root, destination, backend):
         raise ValueError('STABLE_RUNTIME_PROBE_FAILED: '+probe.stderr)
     versions = json.loads(probe.stdout)
     expected = dict(backend=backend, worker_protocol=manifest['worker_protocol'],
-                    fact_ir=manifest['fact_ir'], adapter=manifest['adapter'], analysis_request=manifest['analysis_request'])
-    expected['abi']=manifest['abi'] if backend=='native' else None
+                    fact_ir=manifest['fact_ir'], adapter=manifest['adapter'], analysis_request=identity['analysis_request'])
+    expected['abi']=identity['runtime']['abi'] if backend=='native' else None
     if versions != expected:
         raise ValueError('JAVA_RUNTIME_PROTOCOL_MISMATCH')
     result = dict(binary_directory=str(binaries), versions=versions,

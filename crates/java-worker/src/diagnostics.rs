@@ -14,7 +14,7 @@ pub struct ReplayEvidence {
 }
 impl ReplayEvidence {
     pub fn start(
-        request: &codeana_contracts::engine_request::EngineRequest,
+        request: &crate::engine_request::EngineRequest,
         scratch: &Path,
         library: &Path,
     ) -> Result<Option<Self>> {
@@ -50,8 +50,8 @@ impl ReplayEvidence {
         )?;
         let manifest_path = library.parent().unwrap().join("manifest.json");
         let manifest: codeana_contracts::bundle::BundleManifest =
-            serde_json::from_slice(&std::fs::read(&manifest_path)?)?;
-        let jvm = manifest.backend == "jvm";
+            codeana_contracts::bundle::BundleManifest::parse(&std::fs::read(&manifest_path)?)?;
+        let jvm = manifest.java()?.runtime.kind() == "jvm";
         let manifest_name = if jvm {
             "jvm-manifest.json"
         } else {
@@ -118,7 +118,7 @@ impl ReplayEvidence {
             version: u32,
             mode: codeana_model::AnalysisMode,
             replacements: Vec<codeana_model::Owner>,
-            graph_archive: codeana_contracts::graph_archive::Descriptor,
+            graph_archive: codeana_contracts::graph_delivery::Descriptor,
         }
         let mut descriptor: SealedResult = serde_json::from_slice(&std::fs::read(path)?)?;
         let archive = &mut descriptor.graph_archive;
@@ -198,7 +198,7 @@ mod tests {
         let destination = temporary.path().join("snapshot");
         let external = temporary.path().join("external.jar");
         std::fs::write(&external, "external").unwrap();
-        let mut request = codeana_contracts::engine_request::EngineRequest {
+        let mut request = crate::engine_request::EngineRequest {
             input_table: vec![
                 alias.join("A.java"),
                 source.join("A.java"),

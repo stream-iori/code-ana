@@ -17,23 +17,17 @@ pub mod protobuf {
 pub use protobuf::{graph::v1 as graph, worker::v1 as worker};
 pub mod analysis_budget;
 pub mod bundle;
-pub mod engine_request;
 pub mod fixture_graph;
-pub mod frame_budget;
-pub mod graph_archive;
+pub mod frame_admission;
+pub mod graph_delivery;
 pub mod graph_rows;
 pub mod java;
 pub mod json_budget;
 mod mapping;
 pub mod performance;
-pub mod stream;
-pub mod worker_rows;
 use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;
-#[cfg(test)]
-use tokio::io::AsyncWriteExt;
-use tokio::io::{AsyncRead, AsyncWrite};
 /// Only explicitly implemented domain/protobuf conversions are accepted.
 pub fn map<'a, A, B>(value: &'a A) -> Result<B>
 where
@@ -162,29 +156,14 @@ pub fn task_result(value: &v1::Terminal) -> Result<m::TaskResult> {
         },
     })
 }
-pub use frame_budget::{FrameReader, read_frame_with_budget, write_frame_with_budget};
-pub async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, e: &worker::Envelope) -> Result<()> {
-    write_frame_with_budget(w, e, None).await
-}
-pub async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<worker::Envelope> {
-    read_frame_with_budget(r, None).await
-}
-fn decode_frame(b: &[u8]) -> Result<worker::Envelope> {
-    let n = b.len();
-    performance::measure(performance::Metric::FrameValidate, n as u64, false, || {
-        validate_envelope_wire(b)
-    })?;
-    Ok(performance::measure(
-        performance::Metric::FrameDecode,
-        n as u64,
-        false,
-        || worker::Envelope::decode(b),
-    )?)
+pub fn decode_frame(bytes: &[u8]) -> Result<worker::Envelope> {
+    validate_envelope_wire(bytes)?;
+    Ok(worker::Envelope::decode(bytes)?)
 }
 
 // Count repeated messages before prost allocation; a small frame must not expand
 // into millions of empty Fact/Owner structs or hide multiple oneof deliveries.
-pub(crate) fn wire_fields(
+pub fn wire_fields(
     mut bytes: &[u8],
     mut visit: impl FnMut(u64, &[u8]) -> Result<()>,
 ) -> Result<()> {
@@ -255,7 +234,7 @@ pub(crate) fn wire_fields(
     }
     Ok(())
 }
-pub(crate) fn packed_count(bytes: &[u8]) -> Result<usize> {
+pub fn packed_count(bytes: &[u8]) -> Result<usize> {
     // Empty payload also represents a scalar (unpacked) varint in wire_fields.
     if bytes.is_empty() {
         return Ok(1);
@@ -337,7 +316,7 @@ fn validate_java_config(bytes: &[u8]) -> Result<()> {
         Ok(())
     })
 }
-pub(crate) fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
+pub fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
     let mut columns = 0;
     let mut tables = 0;
     let mut worlds = 0;
@@ -402,7 +381,7 @@ pub(crate) fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
     );
     Ok(())
 }
-pub(crate) fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
+pub fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
     let mut bodies = 0;
     let mut attempts = 0;
     wire_fields(bytes, |tag, body| {
@@ -411,7 +390,45 @@ pub(crate) fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
         } else if (2..=13).contains(&tag) || (16..=18).contains(&tag) {
             bodies += 1;
             let mut repeated = 0;
+            let mut discovery_configs = 0;
+            let mut unit_fields = 0;
+            let mut context_details = 0;
+            let mut source_languages = 0;
             wire_fields(body, |field, value| {
+                if matches!((tag, field), (3, 8) | (4, 1)) {
+                    unit_fields += 1;
+                    ensure!(
+                        unit_fields == 1
+                            && std::str::from_utf8(value).is_ok_and(build_context::valid_unit),
+                        "CONTEXT_UNIT_AMBIGUOUS_OR_INVALID"
+                    );
+                }
+                if matches!((tag, field), (3, 9) | (4, 14)) {
+                    source_languages += 1;
+                    ensure!(source_languages <= 2, "CONTEXT_SOURCE_LANGUAGE_BUDGET");
+                }
+                if tag == 4 && (10..=13).contains(&field) {
+                    context_details += 1;
+                    ensure!(context_details == 1, "CONTEXT_DETAILS_AMBIGUOUS");
+                    if field == 10 {
+                        let mut classpath = 0;
+                        wire_fields(value, |field, _| {
+                            if matches!(field, 2 | 6) {
+                                classpath += 1;
+                                ensure!(classpath <= 10000, "CONTEXT_CLASSPATH_BUDGET");
+                            }
+                            Ok(())
+                        })?;
+                    }
+                }
+                ensure!(
+                    !matches!((tag, field), (4, 3) | (4, 4)),
+                    "LEGACY_BUILD_CONTEXT_REJECTED"
+                );
+                if tag == 3 && matches!(field, 2 | 3 | 4 | 7) {
+                    discovery_configs += 1;
+                    ensure!(discovery_configs == 1, "DISCOVER_CONFIG_AMBIGUOUS");
+                }
                 ensure!(
                     !matches!((tag, field), (5, 5) | (7, 2)),
                     codeana_model::DomainError::new(
@@ -430,7 +447,7 @@ pub(crate) fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
                     (13, 1) | (13, 3) | (13, 5) => 1000,
 
                     (6, 6) => m::MAX_FACTS,
-                    (4, 2) | (4, 4) | (4, 6) => 10000,
+                    (4, 2) | (4, 6) | (4, 8) => 10000,
                     _ => 0,
                 };
                 if limit > 0 {
@@ -450,6 +467,18 @@ pub(crate) fn validate_envelope_wire(bytes: &[u8]) -> Result<()> {
                 }
                 Ok(())
             })?;
+            if tag == 3 {
+                ensure!(discovery_configs == 1, "DISCOVER_CONFIG_REQUIRED");
+            }
+            if tag == 3 || tag == 4 {
+                ensure!(
+                    unit_fields == 1 && source_languages > 0,
+                    "CONTEXT_IDENTITY_REQUIRED"
+                );
+            }
+            if tag == 4 {
+                ensure!(context_details == 1, "CONTEXT_DETAILS_REQUIRED");
+            }
         } else {
             bail!(codeana_model::DomainError::new(
                 codeana_model::ErrorCode::UnsupportedEnvelopeField,
@@ -475,65 +504,6 @@ pub fn envelope(attempt: &str, body: worker::envelope::Body) -> worker::Envelope
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[tokio::test]
-    async fn persistent_reader_resumes_prefix_and_body_after_cancelled_waits() {
-        let expected = envelope(
-            "fragmented",
-            worker::envelope::Body::Cancel(worker::Cancel::default()),
-        );
-        let body = expected.encode_to_vec();
-        let bytes = [
-            (body.len() as u32).to_be_bytes().as_slice(),
-            body.as_slice(),
-        ]
-        .concat();
-        let (mut writer, mut input) = tokio::io::duplex(128);
-        let mut reader = FrameReader::default();
-        let mut offset = 0;
-        for end in [1, 3, 4, 5, bytes.len() - 1] {
-            writer.write_all(&bytes[offset..end]).await.unwrap();
-            assert!(
-                tokio::time::timeout(std::time::Duration::from_millis(1), reader.next(&mut input))
-                    .await
-                    .is_err()
-            );
-            offset = end;
-        }
-        writer.write_all(&bytes[offset..]).await.unwrap();
-        assert_eq!(reader.next(&mut input).await.unwrap(), expected);
-        write_frame(&mut writer, &expected).await.unwrap();
-        assert_eq!(reader.next(&mut input).await.unwrap(), expected);
-        drop(writer);
-        assert!(
-            reader
-                .next(&mut input)
-                .await
-                .unwrap_err()
-                .to_string()
-                .contains("CONTROL_FRAME_EOF")
-        );
-    }
-    #[tokio::test]
-    async fn oversized_frame_rejected_before_allocation() {
-        let (mut a, mut b) = tokio::io::duplex(32);
-        a.write_u32((m::MAX_FRAME + 1) as u32).await.unwrap();
-        assert!(read_frame(&mut b).await.is_err());
-    }
-    #[tokio::test]
-    async fn excessive_advice_fields_rejected_before_decode() {
-        let (mut writer, mut reader) = tokio::io::duplex(16384);
-        let advice = worker::BuildAdvice {
-            missing: vec![String::new(); 1001],
-            ..Default::default()
-        };
-        write_frame(
-            &mut writer,
-            &envelope("attempt", worker::envelope::Body::Advice(advice)),
-        )
-        .await
-        .unwrap();
-        assert!(read_frame(&mut reader).await.is_err());
-    }
     #[test]
     fn comment_query_wire_preserves_operation_and_rejects_unknown_search_mode() {
         let request = m::Request {
@@ -588,13 +558,13 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                unit: "java".into(),
+                source_languages: vec!["java".into()],
                 deadline_ms: Some(0),
                 analysis_grant: None,
 
-                python: None,
-                rust: None,
                 manifest: None,
-                java: Some(config),
+                config: Some(worker::discover::Config::Java(Box::new(config))),
             }),
         );
         assert!(
@@ -616,19 +586,89 @@ mod java_protocol_tests {
         let frame = envelope(
             "a",
             worker::envelope::Body::Discover(worker::Discover {
+                unit: "java".into(),
+                source_languages: vec!["java".into()],
                 deadline_ms: Some(0),
                 analysis_grant: None,
 
-                python: None,
-                rust: None,
                 manifest: None,
-                java: Some(java),
+                config: Some(worker::discover::Config::Java(Box::new(java))),
             }),
         );
         assert!(validate_envelope_wire(&frame.encode_to_vec()).is_err());
         // Reserved legacy payloads are rejected before protobuf can ignore them.
         let legacy = [0x0a, 1, b'a', 0x72, 0];
         assert!(validate_envelope_wire(&legacy).is_err());
+    }
+}
+
+#[cfg(test)]
+mod discovery_protocol_tests {
+    use super::*;
+
+    #[test]
+    fn raw_duplicate_and_mixed_discover_variants_are_rejected_before_prost() {
+        // Prost alone accepts these by merging or keeping the final oneof value.
+        for body in [
+            &[0x12, 0, 0x1a, 0][..],
+            &[0x1a, 0, 0x1a, 0],
+            &[0x3a, 0, 0x22, 0],
+        ] {
+            let mut raw = vec![0x0a, 1, b'a', 0x1a, body.len() as u8];
+            raw.extend_from_slice(body);
+            assert!(worker::Envelope::decode(raw.as_slice()).is_ok());
+            assert!(
+                decode_frame(&raw)
+                    .unwrap_err()
+                    .to_string()
+                    .contains("DISCOVER_CONFIG_AMBIGUOUS")
+            );
+        }
+        let absent = [0x0a, 1, b'a', 0x1a, 0];
+        assert!(
+            decode_frame(&absent)
+                .unwrap_err()
+                .to_string()
+                .contains("DISCOVER_CONFIG_REQUIRED")
+        );
+    }
+
+    #[test]
+    fn descriptor_backend_and_grant_must_match_before_discovery() {
+        use worker::discover::Config;
+        for (config, backend) in [
+            (Config::Java(Box::default()), m::AnalysisBackend::Java),
+            (Config::Rust(Box::default()), m::AnalysisBackend::Rust),
+            (Config::Python(Box::default()), m::AnalysisBackend::Python),
+            (
+                Config::Typescript(Box::default()),
+                m::AnalysisBackend::TypeScript,
+            ),
+        ] {
+            let grant = m::AnalysisGrant {
+                id: "task/backend/worker".into(),
+                language: backend,
+                limits: Default::default(),
+            };
+            let discovery = worker::Discover {
+                unit: backend.as_str().into(),
+                source_languages: vec![backend.as_str().into()],
+                config: Some(config),
+                analysis_grant: Some(Box::new(analysis_budget::encode_grant(&grant))),
+                deadline_ms: Some(0),
+                ..Default::default()
+            };
+            let frame = envelope(
+                "attempt",
+                worker::envelope::Body::Discover(discovery.clone()),
+            );
+            assert!(decode_frame(&frame.encode_to_vec()).is_ok());
+            assert_eq!(
+                analysis_budget::discovery_backend(&discovery).unwrap(),
+                backend
+            );
+            build_context::discovery(&discovery, backend).unwrap();
+        }
     }
 }
 
@@ -707,3 +747,5 @@ pub fn read_error(error: anyhow::Error) -> m::DomainError {
         .unwrap_or(m::ErrorCode::Failed);
     m::DomainError::new(code, format!("{error:#}"))
 }
+
+pub mod build_context;

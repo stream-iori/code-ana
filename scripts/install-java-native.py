@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from sdk_manifest import load_manifest, java
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -33,9 +34,8 @@ def install(root, archive):
     source = root / 'lang-java-adaptor/target'
     target = root / 'target/lib/java'
     binaries = (root / 'target/debug').resolve()
-    manifest = json.loads((source / 'native/manifest.json').read_text())
-    if manifest.get('native_gc') not in ('G1', 'serial'):
-        raise ValueError('NATIVE_GC_REQUIRED')
+    manifest = load_manifest(source / 'native/manifest.json')
+    identity = java(manifest, 'native')
     library = 'native/libcodeana_java.' + ('dylib' if os.uname().sysname == 'Darwin' else 'so')
     required = {library, 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'}
     if not required.issubset(manifest['files']):
@@ -53,7 +53,7 @@ def install(root, archive):
                            capture_output=True, text=True, check=True, timeout=15)
     versions = json.loads(probe.stdout)
     expected = dict(backend='native', worker_protocol=manifest['worker_protocol'], fact_ir=manifest['fact_ir'],
-                    adapter=manifest['adapter'], analysis_request=manifest['analysis_request'], abi=manifest['abi'])
+                    adapter=manifest['adapter'], analysis_request=identity['analysis_request'], abi=identity['runtime']['abi'])
     if versions != expected:
         raise ValueError('NATIVE_INSTALL_WORKER_VERSION')
     names = [*manifest['files'], 'native/manifest.json']
@@ -87,7 +87,7 @@ def install(root, archive):
             else:
                 path.unlink(missing_ok=True)
         raise
-    result = dict(status='passed', gc=manifest['native_gc'], application_paths_preserved=True,
+    result = dict(status='passed', gc=identity['runtime']['gc'], application_paths_preserved=True,
                   archive=str(archive), installed_files=installed, versions=versions,
                   native_accepted=False)
     (archive / 'receipt.json').write_text(json.dumps(result, indent=2) + '\n')

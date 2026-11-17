@@ -1,5 +1,7 @@
 # Java 适配器与 worker
 
+> worker 25 正在迁移：Discover 使用互斥配置并在解码前拒绝重复变体。此前 worker 24 的产品、Native 与分发回执不代表本次协议验收；当前进度见 [当前实现](../current-state.md)。
+
 对齐 2026-10-14。默认 Native/G1，javac 唯一后端，目标 Java 8／17；版本见 [当前实现](../current-state.md)，接口见 [公共契约](../contracts.md)。
 
 ```text
@@ -19,7 +21,7 @@ C1 当前已接通内部注释模型：主 javac 扫描器记录原始 comment t
 
 请求在现有累计账户中预付有界词法范围；流式保守扫描估算可能的注释区间，任何 Unicode 转义按整文件上界处理。无可能注释的源文件不创建录制器，大文件的短文档头不为整文件预付正文映射。子进程只消费已分配范围，宿主解码沿用原预算；NoCode 依赖视图不携带正文，普通扩展及 Lombok overlay 保留原注释。声明契约仍忽略普通注释，源码 hash 随注释变化。
 
-JavaCommentEvidence 在模型关闭前将位置与正文映射冻结为原始 UTF-8 范围，交付独立 GRA1 注释/关联行；图库 schema 13/逻辑 36 和公开查询已接通。匹配的 v51 G1 开发 Native SDK 与 JVM SDK 已安装。C1/C2 产品回归已通过；正式分发与综合验收仍属 C4。
+JavaCommentEvidence 在模型关闭前将位置与正文映射冻结为原始 UTF-8 范围，交付独立 GRA1 注释/关联行；图库 schema 13/逻辑 36 和公开查询已接通。此前 v51 G1 开发 Native SDK 与 JVM SDK 的 C1/C2 回执按其原产物解释；当前 SDK schema 4 的重建和实际验证见 current-state，不继承旧 SDK 的通过状态。
 
 FFI 整数状态在边界解码为 `RunState`。Java engine request、bundle manifest、baseline 和 graph descriptor 使用明确 DTO；JVM 重定位只修改已知路径字段，外部输入保持原路径。Maven export 直接构造 `JavaInputs`，计时使用 `PhaseTiming`。sealed descriptor 的诊断副本读取当前 `graph_archive` / GRA1 并复制为 `graph.rows`。
 
@@ -84,7 +86,7 @@ worker 进程 A：create isolate（仅一次） → task 1 → task 2 → ...
 supervisor：启动 worker 进程 B → 创建新的 isolate
 ```
 
-本机 Oracle GraalVM G1 共享库不能在同进程创建第二个 isolate，首次 teardown 后也不行。Rust 根据已校验 manifest 记录进程级历史；二次创建在进入 Graal 前返回 `G1_ISOLATE_PROCESS_RESTART_REQUIRED`。Serial 可显式构建，生命周期测试按 manifest 区分：G1 的独立 ABI 用例使用独立进程，同 isolate 多任务与线程 attach/detach 仍验证。
+本机 Oracle GraalVM G1 共享库不能在同进程创建第二个 isolate，首次 teardown 后也不行。Rust 根据已校验 schema 4 manifest 的 backend.runtime.gc 记录进程级历史；二次创建在进入 Graal 前返回 `G1_ISOLATE_PROCESS_RESTART_REQUIRED`。Serial 可显式构建，生命周期测试按 manifest 区分：G1 的独立 ABI 用例使用独立进程，同 isolate 多任务与线程 attach/detach 仍验证。
 
 isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任务 start 前注册非阻塞 Unix socket，库复制 CLOEXEC FD；finally 先发布终态，再写 `0x01` 并关闭。Rust 异步等待通知，再读取一次终态。控制帧持久 FrameReader 保存半帧进度，取消优先；取消与退出共用 2 秒期限，超时回收所属进程组。异常/无终态/通知损坏实例不复用。
 
@@ -103,7 +105,7 @@ isolate 由固定 OS 线程拥有，Tokio 通过有界命令队列操作。任�
 
 最新正确性、单轮 iopengw 和未完成验收见 [当前实现](../current-state.md)。过期 raw transport 测试及入口已删除，完整来源覆盖与正式放行仍需新的当前版本证据。
 
-Maven 源码模式通过 worker 24 / analysis request 13 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
+Maven 源码模式通过 worker 25 / analysis request 13 传入；`CapturedProject` 将外部依赖模式与已捕获的完整模块拓扑分开。必要的未选中模块可提供 MAIN 签名/源码，不独立发布。失败模式为参与上下文输出 `CLASSPATH_UNAVAILABLE`，质量证据跨增量和复用保留；主动源码模式不伪造依赖失败。
 
 ## 任务内协作与类型边界（2026-10-16）
 
@@ -125,7 +127,7 @@ Spring XML 继续使用 JDK SAX；每文件解析与提取共享 `XmlResourceBud
 
 | 边界 | 当前行为 |
 |---|---|
-| 身份 | anatomist-4a903272-codeana-graph6-resource2-analysis；worker24、request/result12；旧bundle/请求/结果拒绝 |
+| 身份 | anatomist-4a903272-codeana-graph6-resource2-analysis；worker25、request/result13；旧bundle/请求/结果拒绝 |
 | 传递 | 显式 AnalysisContext，不使用全局或ThreadLocal账本；普通、混合、prepared实例下发静态grant |
 | 同账户 | Rust请求编码后发送累计水位；Java接续计费并回传；Rust拒绝错身份/超额/倒退，再为归档解码、重编码及IPC计费 |
 | 计费入口 | 捕获副本/上下文、模型解码、语法与声明索引、自有事实保留、扩展批次、语义JSON、XML解析/提取和归档输出；签名缓存冷暖读取、哈希缓冲、源码校验及行坐标数组也传递任务上下文 |
@@ -170,6 +172,8 @@ Java 8 保留原固定安装默认值，也通过同一选择器验证。
 
 共享 worker 源码分别由 JDK 8、17 编译为 `javac-worker.jar`（字节码 52）和
 `javac-worker17.jar`（字节码 61），两版独立输出，合并包检查逐字节核对桥资源及字节码版本。
-GraalVM 构建 JDK 25 保持独立。产品请求显式冻结 target_java=8/17、实际版本、别名、规范化路径及内容摘要；Java 17 额外覆盖 modules、ct.sym 与全部 jmods。下游按冻结目标选择对应桥，不自行选择 JDK。SDK manifest 显式登记版本到桥文件的映射及文件摘要。doctor 披露工具链选择证据与失败原因，索引报告的 BuildContext 记录实际版本、路径、别名、桥和工具链摘要。
+GraalVM 构建 JDK 25 保持独立。产品请求显式冻结 target_java=8/17、实际版本、别名、规范化路径及内容摘要；Java 17 额外覆盖 modules、ct.sym 与全部 jmods。下游按冻结目标选择对应桥，不自行选择 JDK。SDK manifest 显式登记版本到桥文件的映射及文件摘要。doctor 披露工具链选择证据与失败原因，报告 schema 4 的 contexts[].details.toolchain 记录实际版本、路径、别名、桥和工具链摘要；公共 BuildContext 只携带实例、发布语言、模块/world、语义摘要和图能力。
 
 worker 复用和语义缓存身份包含目标、工具链和桥身份；变化要求重新分析。普通 source 校验当前文件，显式 revision 读历史 blob；Java 的含末字符坐标转换为半开 UTF-8 范围后交付完整声明。验证范围见 current-state。
+
+公共 IPC/请求状态、FFI owner/通知和累计账本交接已迁入 [worker-runtime](worker-runtime.md)；Java actor 只负责 Native/G1 生命周期及具体 ABI 调用，内部 EngineRequest/EngineAnalysisReceipt 位于本 worker 的 engine_request。回执探测预付成本后受 16 KiB 字符串、32 层深度及显式节点额度约束；可信累计回执归还唯一凭证后才继续业务解码与 GRA1 消费。

@@ -11,6 +11,8 @@ toml.workspace = true
 globset.workspace = true
 walkdir.workspace = true
 anyhow.workspace = true
+libc.workspace = true
+sha2.workspace = true
 codeana-model = { path = "../model" }
 tempfile.workspace = true
 

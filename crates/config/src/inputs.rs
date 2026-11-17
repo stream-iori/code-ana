@@ -128,10 +128,72 @@ pub struct InputCatalog {
     pub config_sha256: String,
     pub units: Vec<PreparedUnit>,
 }
+/// Prepared native view: task policy is inherited exclusively from the project.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EffectiveUnit {
+#[serde(deny_unknown_fields)]
+pub struct UnitConfig {
+    pub discovery: Discovery,
+    pub languages: Languages,
+    pub modules: Vec<Module>,
+}
+impl UnitConfig {
+    pub fn from_project(config: &ProjectConfig) -> Self {
+        Self {
+            discovery: config.discovery.clone(),
+            languages: config.languages.clone(),
+            modules: config.modules.clone(),
+        }
+    }
+    fn with_task(self, task: std::sync::Arc<TaskConfig>) -> ProjectConfig {
+        ProjectConfig {
+            task,
+            discovery: self.discovery,
+            languages: self.languages,
+            modules: self.modules,
+            inputs: None,
+        }
+    }
+}
+pub fn unit_config_text(config: &ProjectConfig) -> Result<String> {
+    Ok(toml::to_string(&UnitConfig::from_project(config))?)
+}
+/// The supplied parent must have already resolved common task policy.
+pub fn resolve_unit(
+    project: &Path,
+    request: &Request,
+    parent: &ResolvedContext,
+    text: &str,
+) -> Result<ResolvedContext> {
+    resolve_unit_using(project, request, parent, text, &LiveInputs)
+}
+fn resolve_unit_using(
+    project: &Path,
+    request: &Request,
+    parent: &ResolvedContext,
+    text: &str,
+    reader: &dyn InputReader,
+) -> Result<ResolvedContext> {
+    let native: UnitConfig = toml::from_str(text)?;
+    let child = super::resolution::resolve_config_using(
+        project,
+        request,
+        true,
+        native.with_task(parent.config.task.clone()),
+        text,
+        Some(&parent.origins),
+        reader,
+    )?;
+    ensure!(
+        std::sync::Arc::ptr_eq(&child.config.task, &parent.config.task),
+        "INPUT_UNIT_TASK_POLICY_MUTATION"
+    );
+    ensure!(child.inputs.len() == 1, "INPUT_UNIT_BACKEND_REQUIRED");
+    Ok(child.context)
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResolvedUnit {
     pub prepared: PreparedUnit,
-    pub effective: Option<Box<Effective>>,
+    pub context: Option<ResolvedContext>,
 }
 
 /// Prepared inputs require the exact configuration bytes they were exported from.
@@ -150,8 +212,9 @@ pub fn load(project: &Path) -> Result<ProjectConfig> {
 pub fn config_text(config: &ProjectConfig) -> Result<String> {
     Ok(toml::to_string(config)?)
 }
-pub fn validate_configuration(project: &Path, text: &str) -> Result<Effective> {
-    super::resolve_text(project, &Request::default(), true, text, false)
+pub fn resolve_task_configuration(project: &Path, config: ProjectConfig) -> Result<Effective> {
+    let text = config_text(&config)?;
+    super::resolution::resolve_config(project, &Request::default(), false, config, &text, None)
 }
 pub fn validate(project: &Path, config: &ProjectConfig) -> Result<()> {
     ensure!(
@@ -169,7 +232,6 @@ pub fn validate(project: &Path, config: &ProjectConfig) -> Result<()> {
         "INPUT_PREPARATION_CONFIG"
     );
     let mut ids = BTreeSet::new();
-    let mut roots = BTreeSet::new();
     for entry in &preparation.entries {
         ensure!(
             !entry.id.is_empty()
@@ -183,10 +245,6 @@ pub fn validate(project: &Path, config: &ProjectConfig) -> Result<()> {
         );
         ensure!(relative(&entry.root), "INPUT_ENTRY_ROOT");
         checked_path(project, &entry.root)?;
-        ensure!(
-            roots.insert((&entry.language, &entry.root, &entry.manifest)),
-            "INPUT_DUPLICATE_ENTRY"
-        );
         let enabled =
             match entry.language.as_str() {
                 "java" => config.languages.java.as_ref().is_some_and(|v| {
@@ -275,9 +333,16 @@ pub fn checked_path(project: &Path, path: &str) -> Result<PathBuf> {
     Ok(current)
 }
 pub fn read_artifact(project: &Path, artifact: &InputArtifact) -> Result<Vec<u8>> {
+    read_artifact_using(project, artifact, &LiveInputs)
+}
+fn read_artifact_using(
+    project: &Path,
+    artifact: &InputArtifact,
+    reader: &dyn InputReader,
+) -> Result<Vec<u8>> {
     let path = checked_path(project, &artifact.path)?;
     ensure!(artifact.bytes <= 32 << 20, "INPUT_ARTIFACT_BUDGET");
-    let bytes = bounded_read(&path, 32 << 20)?;
+    let bytes = reader.read(&path, 32 << 20)?;
     ensure!(
         bytes.len() as u64 == artifact.bytes && hash(&bytes) == artifact.sha256,
         "INPUT_ARTIFACT_STALE: {}",
@@ -285,6 +350,7 @@ pub fn read_artifact(project: &Path, artifact: &InputArtifact) -> Result<Vec<u8>
     );
     Ok(bytes)
 }
+#[cfg(test)]
 pub(super) fn resolve(
     project: &Path,
     request: &Request,
@@ -292,25 +358,36 @@ pub(super) fn resolve(
     config: ProjectConfig,
     text: &str,
 ) -> Result<Effective> {
+    resolve_using(project, request, semantic, config, text, &LiveInputs)
+}
+pub(super) fn resolve_using(
+    project: &Path,
+    request: &Request,
+    semantic: bool,
+    config: ProjectConfig,
+    text: &str,
+    reader: &dyn InputReader,
+) -> Result<Effective> {
     validate(project, &config)?;
     let mut basic = config.clone();
     basic.inputs = None;
     // Preparation metadata must not affect FILES/text policy or force native inputs.
-    let mut effective =
-        super::resolve_text(project, request, false, &toml::to_string(&basic)?, false)?;
+    let mut effective = super::resolution::resolve_config_using(
+        project, request, false, basic, text, None, reader,
+    )?;
     effective.config.inputs = config.inputs.clone();
     effective.input_hash = hash(text.as_bytes());
     effective.config_digest = digest(&config);
-    effective.semantic_digest = digest(&(&config.languages, &config.modules, &config.inputs));
+    effective.semantic_digest = semantic::configuration(&config);
     if !semantic {
         return Ok(effective);
     }
     let preparation = config.inputs.as_ref().unwrap();
     let path = checked_path(project, &preparation.manifest)
         .context("INPUT_PREPARATION_REQUIRED: run index --prepare")?;
-    let catalog: InputCatalog = serde_json::from_slice(&bounded_read(&path, 32 << 20)?)?;
+    let catalog: InputCatalog = serde_json::from_slice(&reader.read(&path, 32 << 20)?)?;
     ensure!(
-        catalog.schema_version == 1
+        catalog.schema_version == 2
             && matches_configuration(&catalog, &config, &effective.input_hash)
             && !catalog.units.is_empty()
             && catalog.units.len() <= 256,
@@ -319,6 +396,7 @@ pub(super) fn resolve(
     let mut seen = BTreeSet::new();
     effective.config.modules.clear();
     for unit in catalog.units {
+        reader.enter_unit(&AnalysisUnitId::from(unit.id.clone()))?;
         ensure!(
             seen.insert(unit.id.clone()) && !unit.entries.is_empty(),
             "INPUT_CATALOG_DUPLICATE_UNIT"
@@ -337,19 +415,30 @@ pub(super) fn resolve(
             "INPUT_CATALOG_UNIT_IDENTITY"
         );
         for artifact in &unit.artifacts {
-            read_artifact(project, artifact)?;
+            read_artifact_using(project, artifact, reader)?;
         }
         let child = if let Some(artifact) = &unit.config {
             ensure!(unit.mode != InputMode::FilesOnly, "INPUT_UNIT_MODE");
-            let bytes = read_artifact(project, artifact)?;
-            let child =
-                super::resolve_text(project, request, true, std::str::from_utf8(&bytes)?, false)?;
-            ensure!(child.config.inputs.is_none(), "INPUT_RECURSIVE_CATALOG");
+            let bytes = read_artifact_using(project, artifact, reader)?;
+            let child = resolve_unit_using(
+                project,
+                request,
+                &effective.context,
+                std::str::from_utf8(&bytes)?,
+                reader,
+            )?;
+            ensure!(
+                child.inputs[0].backend()
+                    == SourceLanguage::lookup(&unit.language)
+                        .context("INPUT_LANGUAGE")?
+                        .backend(),
+                "INPUT_UNIT_BACKEND_MISMATCH"
+            );
             effective
                 .config
                 .modules
                 .extend(child.config.modules.clone());
-            Some(Box::new(child))
+            Some(child)
         } else {
             ensure!(
                 unit.mode == InputMode::FilesOnly && unit.reason.is_some(),
@@ -357,23 +446,18 @@ pub(super) fn resolve(
             );
             None
         };
-        effective.input_units.push(EffectiveUnit {
+        effective.input_units.push(ResolvedUnit {
             prepared: unit,
-            effective: child,
+            context: child,
         });
+        reader.leave_unit();
     }
     let mut ids = BTreeSet::new();
-    let mut roots = BTreeSet::new();
     for module in &effective.config.modules {
         ensure!(
             ids.insert(&module.id),
             "INPUT_DUPLICATE_MODULE: {}",
             module.id
-        );
-        ensure!(
-            roots.insert((&module.language, &module.root)),
-            "INPUT_OVERLAPPING_NATIVE_WORKSPACE: {}",
-            module.root
         );
     }
     let entries = effective
@@ -392,7 +476,7 @@ pub(super) fn resolve(
             && preparation.entries.iter().all(|e| entries.contains(&e.id)),
         "INPUT_CATALOG_ENTRY_COVERAGE"
     );
-    effective.semantic_digest = digest(&(&effective.semantic_digest, &effective.input_units));
+    effective.semantic_digest = semantic::prepared(&effective);
     Ok(effective)
 }
 
@@ -438,6 +522,74 @@ mod tests {
         assert!(validate(temp.path(), &config).is_err());
     }
     #[test]
+    fn native_views_inherit_task_policy_and_reject_policy_injection() {
+        let directory = tempfile::tempdir().unwrap();
+        let text = "schema_version=1\nkind='project'\n[languages.java]\nenabled=true\n[[modules]]\nid='app'\nroot='.'\nlanguage='java'\nsource_roots=[{path='src',scope='MAIN'}]\n";
+        let request = Request {
+            suggestions: Some(false),
+            ..Default::default()
+        };
+        let mut parent =
+            super::super::resolution::resolve_text(directory.path(), &request, false, text, false)
+                .unwrap();
+        let native = unit_config_text(&parent.config).unwrap();
+        assert!(!native.contains("schema_version"));
+        assert!(!native.contains("[scan]"));
+        let first = resolve_unit(directory.path(), &request, &parent.context, &native).unwrap();
+        let second = resolve_unit(directory.path(), &request, &parent.context, &native).unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &first.config.task,
+            &second.config.task
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &first.config.task,
+            &parent.config.task
+        ));
+        assert_eq!(first.config.build.suggestions, Some(false));
+        assert_eq!(first.config.scan.scopes, ["MAIN"]);
+        for injected in [
+            "\n[scan]\nscopes=['TEST']\n",
+            "\n[resources.index]\nworker_memory_bytes=16777216\n",
+        ] {
+            assert!(
+                resolve_unit(
+                    directory.path(),
+                    &request,
+                    &parent.context,
+                    &format!("{native}{injected}")
+                )
+                .is_err()
+            );
+        }
+        parent.input_units = vec![ResolvedUnit {
+            prepared: PreparedUnit {
+                id: "app".into(),
+                language: "java".into(),
+                entries: vec!["app".into()],
+                modules: vec!["app".into()],
+                roots: vec![".".into()],
+                mode: InputMode::Semantic,
+                reason: None,
+                log: None,
+                config: None,
+                artifacts: vec![],
+            },
+            context: Some(first),
+        }];
+        parent.set_worker_memory_limit(128 << 20);
+        let child = parent.input_units[0].context.as_ref().unwrap();
+        assert!(std::sync::Arc::ptr_eq(
+            &child.config.task,
+            &parent.config.task
+        ));
+        assert_eq!(
+            child.config.resources.index.worker_memory_bytes,
+            Some(128 << 20)
+        );
+        assert_eq!(second.config.resources.index.worker_memory_bytes, None);
+    }
+
+    #[test]
     fn artifact_bytes_and_every_symlink_component_are_verified() {
         let (temp, _) = project();
         let root = temp.path().canonicalize().unwrap();
@@ -463,7 +615,7 @@ mod strict_config_tests {
     fn prepared_configuration_requires_original_bytes() {
         let original = hash(b"original TOML");
         let catalog = InputCatalog {
-            schema_version: 1,
+            schema_version: 2,
             config_sha256: original.clone(),
             units: vec![],
         };

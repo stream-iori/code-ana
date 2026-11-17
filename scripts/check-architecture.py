@@ -16,7 +16,19 @@ def scrub(source):
 
 
 def production(source):
-    return re.split(r'#\[cfg\(test\)\]\s*mod\s+\w+\s*\{', source, maxsplit=1)[0]
+    # Blank only the test module itself. Production code placed after it must still be checked.
+    masked = re.sub(r'"""[\s\S]*?"""|"(?:\\.|[^"\\])*"|//[^\n]*|/\*[\s\S]*?\*/', lambda match: ' '*len(match.group()), source)
+    output = list(masked)
+    pattern = r'#\[\s*cfg\s*\(\s*test\s*\)\s*\]\s*(?:#\[[^\]]*\]\s*)*(?:pub(?:\([^)]*\))?\s+)?mod\s+\w+\s*([;{])'
+    for match in re.finditer(pattern, masked):
+        end = match.end()
+        if match.group(1) == '{':
+            depth = 1
+            while end < len(masked) and depth:
+                depth += (masked[end] == '{') - (masked[end] == '}')
+                end += 1
+        output[match.start():end] = ' '*(end-match.start())
+    return ''.join(output)
 
 
 def dependency_path(graph, start, forbidden):
@@ -33,13 +45,19 @@ def dependency_path(graph, start, forbidden):
     return None
 
 
-def dependency_graph(root):
+def workspace_manifests(root):
     workspace = tomllib.loads((root/'Cargo.toml').read_text())['workspace']
     manifests = set()
     for pattern in workspace['members']:
         for member in root.glob(pattern):
             manifests.add(member/'Cargo.toml')
     manifests |= {root/'lang-python-adaptor/Cargo.toml', root/'lang-python-adaptor/worker/Cargo.toml'}
+    return manifests
+
+
+def dependency_graph(root):
+    workspace = tomllib.loads((root/'Cargo.toml').read_text())['workspace']
+    manifests = workspace_manifests(root)
     data = {p: tomllib.loads(p.read_text()) for p in sorted(manifests)}
     graph = {}
     def sections(value):
@@ -123,24 +141,76 @@ def maven_dependencies(path):
     return {item.findtext('p:artifactId', namespaces=ns) for item in pom.findall('./p:dependencies/p:dependency', ns)}
 
 
-def check(root):
+def dependency_violations(graph):
     failures = []
-    graph, manifest_count = dependency_graph(root)
+    compilers = {name for names in graph.values() for name in names
+                 if name.startswith(('ra_ap_', 'ra-ap-', 'pyrefly'))}
+    compilers |= {'codeana-java-worker', 'codeana-rust-worker', 'codeana-python-worker',
+                  'codeana-typescript-worker', 'codeana-rust-adaptor', 'codeana-python-adaptor',
+                  'jni', 'jni-sys'}
     constraints = {
-        'codeana-query': {'codeana-storage', 'codeana-application', 'rusqlite', 'sqlx', 'diesel'},
+        'codeana-query': {'codeana-storage', 'codeana-application', 'rusqlite', 'sqlx', 'diesel'} | compilers,
         'codeana-java-worker': {'codeana-storage', 'codeana-rust-adaptor', 'codeana-python-adaptor', 'jni', 'jni-sys'},
-        'codeana-model': {'codeana-storage', 'codeana-application', 'codeana-query', 'codeana-contracts'},
+        'codeana-model': {'codeana-storage', 'codeana-application', 'codeana-query', 'codeana-contracts', 'codeana-graph-io', 'codeana-worker-runtime'} | compilers,
+        'codeana-contracts': {'codeana-storage', 'codeana-application', 'codeana-query', 'codeana-graph-io', 'codeana-worker-runtime', 'rusqlite', 'sqlx', 'diesel', 'libloading'} | compilers,
+        'codeana-graph-io': {'codeana-storage', 'codeana-application', 'codeana-worker-runtime', 'rusqlite', 'sqlx', 'diesel', 'libloading'} | compilers,
+        'codeana-config': {'codeana-storage', 'codeana-application', 'codeana-contracts', 'codeana-graph-io', 'codeana-worker-runtime'} | compilers,
+        'codeana-application': compilers | {'libloading'},
+        'codeana-storage': {'codeana-worker-runtime'} | compilers,
         'codeana-rust-worker': {'codeana-java-worker', 'codeana-python-adaptor'},
         'codeana-python-worker': {'codeana-java-worker', 'codeana-rust-adaptor'},
     }
+    if 'codeana-worker-runtime' in graph:
+        constraints['codeana-worker-runtime'] = {'codeana-application', 'codeana-storage', 'libloading'} | compilers
     for missing in sorted(constraints.keys()-graph.keys()):
         failures.append('Missing boundary package: '+missing)
     for start, forbidden in constraints.items():
         path = dependency_path(graph, start, forbidden)
         if path:
             failures.append('Cargo dependency boundary: '+' -> '.join(path))
-    for path in sorted((root/'crates/application/src').glob('*.rs')):
-        failures.extend(f'{path.relative_to(root)}: {message}' for message in rust_violations(path, path.read_text()))
+    return failures
+
+
+def shared_rust_violations(package, source):
+    code = scrub(production(source))
+    failures = []
+    if package in {'codeana-application', 'codeana-contracts', 'codeana-graph-io', 'codeana-worker-runtime', 'codeana-config', 'codeana-model', 'codeana-storage', 'codeana-query'}:
+        if re.search(r'\b(?:ra_ap_\w*|pyrefly\w*|codeana_(?:rust|python)_adaptor|codeana_(?:java|rust|python|typescript)_worker)\b', code):
+            failures.append('compiler implementation belongs in its independent worker')
+    if package == 'codeana-contracts' and re.search(r'\b(?:mpsc|Semaphore|Condvar)\b', code):
+        failures.append('contracts cannot own runtime queues')
+    if package == 'codeana-contracts' and re.search(r'\b(?:FrameReader|AsyncRead|AsyncWrite|EngineRequest|EngineContext|EngineSource|EngineResource|EngineAnalysisReceipt)\b', code):
+        failures.append('contracts cannot own IPC progress or Java engine JSON DTOs')
+    if package == 'codeana-graph-io':
+        if re.search(r'\b(?:JavaConfig|RustConfig|PythonConfig|TypeScriptConfig|JavaContext|EngineRequest)\b|\bcodeana_contracts\s*::\s*(?:java|engine_request)\b', code):
+            failures.append('graph IO cannot interpret backend envelopes or configurations')
+        if re.search(r'\b(?:Command|Child|UnixStream|TcpStream|Library|dlopen|dlsym|dlclose|LoadLibrary|fork|execve|posix_spawn|waitpid|waitid|kill)\b', code):
+            failures.append('graph IO cannot launch processes, own IPC or load SDKs')
+    return failures
+
+
+def check_rust_sources(root, graph):
+    failures = []
+    # Every production source subtree is scanned; file moves and nested modules cannot evade policy.
+    manifests = workspace_manifests(root)
+    for manifest in manifests:
+        if not manifest.is_file():
+            continue
+        package = tomllib.loads(manifest.read_text()).get('package', {}).get('name')
+        if package not in graph:
+            continue
+        for path in sorted((manifest.parent/'src').rglob('*.rs')):
+            source = path.read_text()
+            messages = shared_rust_violations(package, source)
+            if package == 'codeana-application':
+                messages += rust_violations(path.relative_to(root), source)
+            failures.extend(f'{path.relative_to(root)}: {message}' for message in messages)
+    return failures
+
+
+def check(root):
+    graph, manifest_count = dependency_graph(root)
+    failures = dependency_violations(graph) + check_rust_sources(root, graph)
     java_files = list((root/'lang-java-adaptor').glob('*/src/main/java/**/*.java'))
     for path in sorted(java_files):
         failures.extend(f'{path.relative_to(root)}: {message}' for message in java_violations(path.relative_to(root), path.read_text()))

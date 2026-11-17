@@ -51,4 +51,4 @@ Maven 项目先由用户显式准备 metadata：
 
 构建脚本通过 SDKMAN 匹配 Java 17，忽略 current 并合并指向同一安装的别名；多个不同安装需设置 CODEANA_JAVA17_HOME（SDKMAN 别名或绝对路径）。源码仓库中可用 `python3 scripts/resolve-sdkman-java.py 17` 查看已核验的真实路径。
 
-产品仍要求在用户配置的 toolchains 中显式登记该路径，在项目 languages.java.analysis 中设置 source_version="17" 和对应 toolchain 别名；实际主版本不匹配会在分析前拒绝。Java 8 的配置保持可用，混合目标版本拒绝。Native 3 / JVM 2 SDK 同时包含 8／17 桥及摘要，缺桥、旧协议、摘要错误或混装包拒绝；Rust 和三语言 worker 应成套更新，旧图库使用 index --full。
+产品仍要求在用户配置的 toolchains 中显式登记该路径，在项目 languages.java.analysis 中设置 source_version="17" 和对应 toolchain 别名；实际主版本不匹配会在分析前拒绝。Java 8 的配置保持可用，混合目标版本拒绝。schema 4 SDK 的 Java 后端身份同时登记 8／17 桥及摘要，Native 的 ABI/GC/build_mode 位于 backend.runtime，缺桥、旧协议、摘要错误或混装包拒绝；Rust 和三语言 worker 应成套更新，旧图库使用 index --full。

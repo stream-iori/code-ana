@@ -7,7 +7,7 @@
 | 页 | 投影 3、原请求与当前摘要 | legacy_options、注释专用旧格式开关、旧页默认值 |
 | 记录 | 带 record_type 的 Record | 无标签 Display 推断、双解码器 |
 | 任务 | Progress / Record / Result | Output、持久 protobuf Terminal、旧正文回放 |
-| 报告 | schema 3 的全局摘要 | schema 1/2、Full/Basic 兼容枚举 |
+| 报告 | schema 4 全局摘要与逐实例 contexts | schema 1/2/3、单一 multi/context、Full/Basic 兼容枚举 |
 | 资源 | workers 列表 | worker 首项别名与缺列表回退 |
 | 配置 | Java/Rust 直接序列化 | LanguageWire 及 legacy 字段 |
 | Python | 两种导出入口均输出 schema 3 | schema 1/2 读取 |

@@ -1,19 +1,12 @@
 //! Deterministic allocation policy. Construct after frozen-input admission.
 //! An allocation is not consumption; the task coordinator must own and settle grants.
-use crate::{AnalysisFailure, AnalysisLimits, AnalysisUsage};
+use crate::{AnalysisBackend, AnalysisFailure, AnalysisLimits, AnalysisUsage};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AnalysisLanguage {
-    Java,
-    Rust,
-    Python,
-}
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnalysisAllocation {
-    pub language: AnalysisLanguage,
+    pub language: AnalysisBackend,
     pub total: AnalysisLimits,
     pub host: AnalysisLimits,
     pub worker: AnalysisLimits,
@@ -22,7 +15,7 @@ pub struct AnalysisAllocation {
 pub fn allocate_analysis(
     limits: AnalysisLimits,
     admission: &AnalysisUsage,
-    languages: &[AnalysisLanguage],
+    languages: &[AnalysisBackend],
 ) -> Result<Vec<AnalysisAllocation>, AnalysisFailure> {
     limits.validate()?;
     if let Some(failure) = &admission.failure {
@@ -106,6 +99,42 @@ pub fn allocate_analysis(
 mod tests {
     use super::*;
     #[test]
+    fn source_tags_share_one_typescript_budget_in_fixed_backend_order() {
+        use crate::SourceLanguage;
+        let backends = [
+            SourceLanguage::TypeScript,
+            SourceLanguage::JavaScript,
+            SourceLanguage::Python,
+            SourceLanguage::Rust,
+            SourceLanguage::Java,
+        ]
+        .into_iter()
+        .map(SourceLanguage::backend)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+        let plan = allocate_analysis(Default::default(), &Default::default(), &backends).unwrap();
+        assert_eq!(
+            plan.iter().map(|p| p.language).collect::<Vec<_>>(),
+            [
+                AnalysisBackend::Java,
+                AnalysisBackend::Rust,
+                AnalysisBackend::Python,
+                AnalysisBackend::TypeScript
+            ]
+        );
+        assert_eq!(
+            plan.iter().map(|p| p.total.max_work).sum::<u64>(),
+            crate::AnalysisLimits::default().max_work
+        );
+        assert_eq!(
+            plan.iter()
+                .filter(|p| p.language == AnalysisBackend::TypeScript)
+                .count(),
+            1
+        );
+    }
+    #[test]
     fn admission_is_subtracted_and_all_splits_conserve_capacity() {
         let limits = AnalysisLimits {
             max_work: 103,
@@ -123,9 +152,9 @@ mod tests {
             limits,
             &used,
             &[
-                AnalysisLanguage::Python,
-                AnalysisLanguage::Java,
-                AnalysisLanguage::Rust,
+                AnalysisBackend::Python,
+                AnalysisBackend::Java,
+                AnalysisBackend::Rust,
             ],
         )
         .unwrap();
@@ -138,9 +167,9 @@ mod tests {
         assert_eq!(
             plan.iter().map(|p| p.language).collect::<Vec<_>>(),
             vec![
-                AnalysisLanguage::Java,
-                AnalysisLanguage::Rust,
-                AnalysisLanguage::Python
+                AnalysisBackend::Java,
+                AnalysisBackend::Rust,
+                AnalysisBackend::Python
             ]
         );
         assert_eq!(
@@ -166,7 +195,7 @@ mod tests {
             allocate_analysis(
                 limits,
                 &Default::default(),
-                &[AnalysisLanguage::Rust, AnalysisLanguage::Rust]
+                &[AnalysisBackend::Rust, AnalysisBackend::Rust]
             )
             .is_err()
         );
@@ -177,7 +206,7 @@ mod tests {
                     work: u64::MAX,
                     ..Default::default()
                 },
-                &[AnalysisLanguage::Rust]
+                &[AnalysisBackend::Rust]
             ),
             Err(AnalysisFailure::InvalidUsage)
         );
@@ -188,7 +217,7 @@ mod tests {
                     ..limits
                 },
                 &Default::default(),
-                &[AnalysisLanguage::Rust]
+                &[AnalysisBackend::Rust]
             )
             .is_err()
         );
@@ -200,7 +229,7 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            allocate_analysis(Default::default(), &used, &[AnalysisLanguage::Rust]),
+            allocate_analysis(Default::default(), &used, &[AnalysisBackend::Rust]),
             Err(AnalysisFailure::Cancelled)
         );
     }

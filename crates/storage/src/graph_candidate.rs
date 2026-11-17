@@ -36,6 +36,11 @@ impl Store {
         check_directory: impl Fn(&Path) -> Result<()>,
         context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
+        if let Some(ledger) = &revision.unit_ownership {
+            ledger
+                .validate(&revision.manifest)
+                .map_err(anyhow::Error::msg)?;
+        }
         header
             .validate(&revision.manifest)
             .map_err(anyhow::Error::msg)?;
@@ -408,21 +413,7 @@ fn validate_record(
             )),
         }
     };
-    let columns = match table {
-        Table::Node => Some((12, Some((19, 20)))),
-        Table::Declaration => Some((17, Some((23, 24)))),
-        Table::Edge => Some((16, Some((26, 27)))),
-        Table::Annotation => Some((10, Some((16, 17)))),
-        Table::UnresolvedCall => Some((1, Some((13, 14)))),
-        Table::Coverage => Some((0, Some((1, 2)))),
-        Table::Diagnostic => Some((3, Some((4, 5)))),
-        Table::FileCache => Some((1, None)),
-        Table::SourceState | Table::AnalysisDependency => Some((0, None)),
-        Table::AnnotationMeta => Some((7, None)),
-        Table::Comment => Some((1, Some((3, 4)))),
-        Table::CommentLink => Some((3, Some((4, 5)))),
-        _ => None,
-    };
+    let columns = codeana_graph_io::scope::source_columns(table).map(|c| (c.source, c.identity));
     if let Some((source, identity)) = columns
         && let Some(path) = text(source)?.filter(|p| !p.is_empty() && *p != "*")
     {
@@ -430,15 +421,43 @@ fn validate_record(
             safe_path(path),
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphSourceUnsafe, "")
         );
+        let wanted = identity
+            .map(|(module, scope)| -> Result<_> { Ok((text(module)?, text(scope)?)) })
+            .transpose()?;
+        let module_matches = |module: &str, unit: &SourceUnit| {
+            module == unit.module
+                || unit.module.is_empty() && unit.language.is_empty()
+                || module == "*" && matches!(table, Table::Diagnostic | Table::Coverage)
+        };
+        let scope_matches = |scope: &str, unit: &SourceUnit| {
+            scope == unit.scope
+                || scope == "*" && matches!(table, Table::Diagnostic | Table::Coverage)
+                || unit.scope == "RESOURCE" && matches!(scope, "MAIN" | "TEST")
+        };
         let unit = sources
             .get(&(path, row.world.as_str()))
             .copied()
             .or_else(|| {
                 if row.world.is_empty() {
-                    sources
-                        .iter()
-                        .find(|((p, _), _)| *p == path)
-                        .map(|(_, unit)| *unit)
+                    let mut candidates = sources
+                        .range((path, "")..)
+                        .take_while(|((p, _), _)| *p == path)
+                        .map(|(_, unit)| *unit);
+                    let first = candidates.next()?;
+                    // Java's existing wire rows may omit world. Match their
+                    // explicit owner rather than an arbitrary source at this path.
+                    // If no owner matches, keep the established precise error below.
+                    let mut matching_module = None;
+                    for unit in std::iter::once(first).chain(candidates) {
+                        let (module, scope) = wanted.unwrap_or((None, None));
+                        if module.is_none_or(|m| module_matches(m, unit)) {
+                            matching_module.get_or_insert(unit);
+                            if scope.is_none_or(|s| scope_matches(s, unit)) {
+                                return Some(unit);
+                            }
+                        }
+                    }
+                    matching_module.or(Some(first))
                 } else {
                     None
                 }
@@ -450,9 +469,7 @@ fn validate_record(
         if let Some((module, scope)) = identity {
             if let Some(module) = text(module)? {
                 ensure!(
-                    module == unit.module
-                        || unit.module.is_empty() && unit.language.is_empty()
-                        || module == "*" && matches!(table, Table::Diagnostic | Table::Coverage),
+                    module_matches(module, unit),
                     codeana_model::DomainError::new(
                         codeana_model::ErrorCode::GraphModuleMismatch,
                         format!(
@@ -465,9 +482,7 @@ fn validate_record(
             // Resource records inherit the owning compilation scope.
             if let Some(scope) = text(scope)? {
                 ensure!(
-                    scope == unit.scope
-                        || scope == "*" && matches!(table, Table::Diagnostic | Table::Coverage)
-                        || unit.scope == "RESOURCE" && matches!(scope, "MAIN" | "TEST"),
+                    scope_matches(scope, unit),
                     codeana_model::DomainError::new(
                         codeana_model::ErrorCode::GraphScopeMismatch,
                         ""
@@ -641,6 +656,58 @@ mod tests {
         fixture_graph,
         graph::{Cell, Table, cell},
     };
+    #[test]
+    fn worldless_java_rows_match_their_explicit_owner_at_a_shared_path() -> Result<()> {
+        let source = |module: &str, scope: &str, world: &str| SourceUnit {
+            path: "Shared.java".into(),
+            hash: hash(b"shared"),
+            size: 6,
+            module: module.into(),
+            scope: scope.into(),
+            world: world.into(),
+            language: "java".into(),
+            auxiliary: false,
+        };
+        let first = source("first", "MAIN", "a");
+        let second = source("second", "TEST", "b");
+        let sources = BTreeMap::from([
+            (("Shared.java", "a"), &first),
+            (("Shared.java", "b"), &second),
+        ]);
+        let row = |module: &str, scope: &str, world: &str| {
+            let mut cells = vec![Cell { value: None }; 28];
+            for (index, value) in [(16, "Shared.java"), (26, module), (27, scope)] {
+                cells[index].value = Some(cell::Value::Text(value.into()));
+            }
+            Row {
+                table: Table::Edge as i32,
+                cells,
+                world: world.into(),
+            }
+        };
+        for (module, scope) in [("first", "MAIN"), ("second", "TEST")] {
+            validate_record(&row(module, scope, ""), &sources, &BTreeSet::new(), false)?;
+        }
+        for (module, scope, world, code) in [
+            ("other", "MAIN", "", "GRAPH_MODULE_MISMATCH"),
+            ("second", "MAIN", "", "GRAPH_SCOPE_MISMATCH"),
+            ("second", "TEST", "a", "GRAPH_MODULE_MISMATCH"),
+            ("second", "TEST", "missing", "GRAPH_SOURCE_NOT_CAPTURED"),
+        ] {
+            assert!(
+                validate_record(
+                    &row(module, scope, world),
+                    &sources,
+                    &BTreeSet::new(),
+                    false
+                )
+                .unwrap_err()
+                .to_string()
+                .contains(code)
+            );
+        }
+        Ok(())
+    }
     fn captured(store: &Store) -> (Revision, AnalysisHeader, Vec<Row>) {
         let bytes = b"class A {}".to_vec();
         let digest = hash(&bytes);

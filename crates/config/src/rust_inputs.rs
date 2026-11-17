@@ -142,6 +142,9 @@ impl InputFilter {
 }
 
 pub fn read(root: &Path, path: &str) -> Result<Inputs> {
+    read_using(root, path, &LiveInputs)
+}
+pub(crate) fn read_using(root: &Path, path: &str, reader: &dyn InputReader) -> Result<Inputs> {
     ensure!(safe_path(path), "RUST_INPUT_PATH");
     let location = root.join(path);
     if !location.is_file() {
@@ -155,7 +158,7 @@ pub fn read(root: &Path, path: &str) -> Result<Inputs> {
         location.canonicalize()?.starts_with(root),
         "RUST_INPUT_PATH"
     );
-    let bytes = bounded_read(&location, 32 << 20)?;
+    let bytes = reader.read(&location, 32 << 20)?;
     #[derive(Deserialize)]
     struct Schema {
         schema_version: u32,
@@ -174,7 +177,7 @@ pub fn read(root: &Path, path: &str) -> Result<Inputs> {
             "RUST_INPUT_PATH"
         );
         ensure!(
-            hash(bounded_read(&file, 32 << 20)?) == *expected,
+            hash(reader.read(&file, 32 << 20)?) == *expected,
             "RUST_INPUTS_STALE: {path}; re-export Rust inputs"
         );
     }
@@ -201,13 +204,14 @@ pub fn discover(config: &mut ProjectConfig, inputs: &Inputs) {
 
 pub(super) fn capture(
     root: &Path,
-    effective: &Effective,
+    effective: &ResolvedContext,
     manifest: &mut Manifest,
     blobs: &mut BTreeMap<String, CapturedBlob>,
     total: &mut usize,
     spool: &std::sync::Arc<tempfile::TempDir>,
+    reader: &std::cell::RefCell<capture::CaptureReader>,
 ) -> Result<()> {
-    let Some(inputs) = &effective.rust_inputs else {
+    let Some(inputs) = &effective.rust_inputs() else {
         return Ok(());
     };
     let config = &effective.config;
@@ -217,7 +221,7 @@ pub(super) fn capture(
         .as_ref()
         .and_then(|r| r.discovery.inputs_manifest.as_deref())
         .context("RUST_INPUT_PATH")?;
-    let bytes = bounded_read(&root.join(path), 32 << 20)?;
+    let bytes = reader.borrow_mut().read(&root.join(path), 32 << 20)?;
     ensure!(
         digest(&serde_json::from_slice::<Inputs>(&bytes)?) == digest(inputs),
         "RUST_INPUTS_CHANGED"
@@ -244,6 +248,9 @@ pub(super) fn capture(
                 })
             {
                 let entry = entry?;
+                if entry.file_type().is_dir() {
+                    reader.borrow_mut().directory(entry.path())?;
+                }
                 if entry.path().extension().is_none_or(|v| v != "rs") || entry.file_type().is_dir()
                 {
                     continue;
@@ -298,30 +305,27 @@ pub(super) fn capture(
             !file.is_symlink() && file.canonicalize()?.starts_with(root),
             "RUST_INPUT_PATH"
         );
-        let bytes = bounded_read(&file, 8 << 20)?;
-        let digest = hash(&bytes);
-        if !blobs.contains_key(&digest) {
-            *total += bytes.len();
-            blobs.insert(digest.clone(), CapturedBlob::bytes(spool, &bytes)?);
-        }
-        ensure!(*total <= MAX_CAPTURE_BYTES, "RUST_CAPTURE_BUDGET");
-        manifest.files.retain(|f| f.path != path);
+        let bytes = reader.borrow_mut().read(&file, 8 << 20)?;
+        let digest = capture::registry::store(blobs, total, spool, &bytes)?;
         for index in owners {
             let owner = &inputs.crates[index];
-            manifest.files.push(SourceUnit {
-                path: path.clone(),
-                hash: digest.clone(),
-                size: bytes.len() as u64,
-                module: owner.module.clone(),
-                world: owner.world.clone(),
-                scope: owner.scope.clone(),
-                language: "rust".into(),
-                auxiliary: !owner.publish,
-            });
+            capture::registry::register(
+                manifest,
+                SourceUnit {
+                    path: path.clone(),
+                    hash: digest.clone(),
+                    size: bytes.len() as u64,
+                    module: owner.module.clone(),
+                    world: owner.world.clone(),
+                    scope: owner.scope.clone(),
+                    language: "rust".into(),
+                    auxiliary: !owner.publish,
+                },
+            )?;
         }
     }
     for control in std::iter::once(path.to_owned()).chain(inputs.controls.keys().cloned()) {
-        let bytes = bounded_read(&root.join(&control), 32 << 20)?;
+        let bytes = reader.borrow_mut().read(&root.join(&control), 32 << 20)?;
         if let Some(expected) = inputs.controls.get(&control) {
             ensure!(hash(&bytes) == *expected, "RUST_INPUTS_STALE");
         }

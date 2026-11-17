@@ -35,10 +35,10 @@ impl AnalysisLimits {
         }
         Ok(())
     }
-    /// Stable caller order is Java, Rust, Python. Unused shares are never borrowed.
+    /// Stable caller order is Java, Rust, Python, TypeScript. Shares are never borrowed.
     pub fn partition(self, languages: usize) -> Result<Vec<Self>, AnalysisFailure> {
         self.validate()?;
-        if !(1..=3).contains(&languages) {
+        if !(1..=crate::AnalysisBackend::ALL.len()).contains(&languages) {
             return Err(AnalysisFailure::InvalidLimits);
         }
         let n = languages as u64;
@@ -87,7 +87,14 @@ struct Scope {
     limits: AnalysisLimits,
     usage: AnalysisUsage,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountingOwner {
+    HostOwned,
+    EngineOwned,
+    Unknown,
+}
 struct State {
+    owner: AccountingOwner,
     scopes: Vec<Scope>,
     usage: AnalysisUsage,
     cancelled: bool,
@@ -105,6 +112,7 @@ impl AnalysisContext {
         Ok(Self {
             limits,
             state: Arc::new(Mutex::new(State {
+                owner: AccountingOwner::HostOwned,
                 usage: AnalysisUsage::default(),
                 cancelled: false,
                 scopes: Vec::new(),
@@ -138,7 +146,7 @@ impl AnalysisContext {
     /// Preserve the first coordinator or backend failure on the root task.
     pub fn fail(&self, failure: AnalysisFailure) {
         let mut state = self.state.lock().unwrap();
-        if state.usage.failure.is_none() {
+        if state.owner == AccountingOwner::HostOwned && state.usage.failure.is_none() {
             state.usage.failure = Some(failure);
         }
     }
@@ -157,7 +165,9 @@ impl AnalysisContext {
             None
         };
         if let Some(f) = failure {
-            state.usage.failure = Some(f.clone());
+            if state.owner == AccountingOwner::HostOwned {
+                state.usage.failure = Some(f.clone());
+            }
             return Err(f);
         }
         Ok(())
@@ -167,6 +177,9 @@ impl AnalysisContext {
     }
     pub fn charge(&self, work: u64, nodes: u64, payload_bytes: u64) -> Result<(), AnalysisFailure> {
         let mut state = self.state.lock().unwrap();
+        if state.owner != AccountingOwner::HostOwned {
+            return Err(AnalysisFailure::InvalidUsage);
+        }
         self.check(&mut state)?;
         let candidates = std::iter::once((self.limits, &state.usage)).chain(
             self.ancestors.iter().map(|&index| {
@@ -212,28 +225,37 @@ impl AnalysisContext {
         }
         Ok(())
     }
-    /// Resume one sequential FFI producer in this same root account. A receipt
-    /// cannot reset counters; failed validation leaves the ledger unchanged.
-    pub fn reconcile_cumulative(&self, next: AnalysisUsage) -> Result<(), AnalysisFailure> {
+    pub fn accounting_owner(&self) -> AccountingOwner {
+        self.state.lock().unwrap().owner
+    }
+    /// All clones share this ownership bit. A seed is captured only after prepaid host work.
+    pub fn transfer_to_engine(
+        &self,
+        expected: &AnalysisUsage,
+    ) -> Result<EngineAccountingLease, AnalysisFailure> {
         if !self.ancestors.is_empty() {
             return Err(AnalysisFailure::InvalidUsage);
         }
-        crate::analysis_grants::validate_usage(&next, self.limits)?;
         let mut state = self.state.lock().unwrap();
-        if !state.scopes.is_empty() {
-            return Err(AnalysisFailure::InvalidUsage);
-        }
-        let old = &state.usage;
-        if next.work < old.work
-            || next.nodes < old.nodes
-            || next.payload_bytes < old.payload_bytes
-            || next.max_depth < old.max_depth
-            || old.failure.is_some() && old.failure != next.failure
+        if state.owner != AccountingOwner::HostOwned
+            || !state.scopes.is_empty()
+            || &state.usage != expected
         {
             return Err(AnalysisFailure::InvalidUsage);
         }
-        state.usage = next;
-        Ok(())
+        self.check(&mut state)?;
+        state.owner = AccountingOwner::EngineOwned;
+        Ok(EngineAccountingLease {
+            context: self.clone(),
+            active: true,
+        })
+    }
+    /// No trustworthy receipt: retain the last verified seed and permanently deny new debits.
+    fn engine_usage_unknown(&self) {
+        let mut state = self.state.lock().unwrap();
+        if state.owner == AccountingOwner::EngineOwned {
+            state.owner = AccountingOwner::Unknown;
+        }
     }
     /// Local caps are additional restrictions, never replacement task limits.
     pub fn child_scope(&self, mut limits: AnalysisLimits) -> Result<Self, AnalysisFailure> {
@@ -246,6 +268,9 @@ impl AnalysisContext {
                 + (self.ancestors.len() + 1) * std::mem::size_of::<usize>()) as u64,
         )?;
         let mut state = self.state.lock().unwrap();
+        if state.owner != AccountingOwner::HostOwned {
+            return Err(AnalysisFailure::InvalidUsage);
+        }
         self.check(&mut state)?;
         let parent = self
             .ancestors
@@ -280,6 +305,9 @@ impl AnalysisContext {
     /// Check an explicit-stack traversal's current depth without allocating a path key.
     pub fn observe_depth(&self, depth: u32) -> Result<(), AnalysisFailure> {
         let mut state = self.state.lock().unwrap();
+        if state.owner != AccountingOwner::HostOwned {
+            return Err(AnalysisFailure::InvalidUsage);
+        }
         self.check(&mut state)?;
         let limit = self
             .ancestors
@@ -309,6 +337,44 @@ impl AnalysisContext {
         }
     }
 }
+/// Unique authority to return a transferred account. Other AnalysisContext clones cannot return it.
+pub struct EngineAccountingLease {
+    context: AnalysisContext,
+    active: bool,
+}
+impl EngineAccountingLease {
+    pub fn complete_usage(&mut self, next: AnalysisUsage) -> Result<(), AnalysisFailure> {
+        if !self.active || !self.context.ancestors.is_empty() {
+            return Err(AnalysisFailure::InvalidUsage);
+        }
+        crate::analysis_grants::validate_usage(&next, self.context.limits)?;
+        let mut state = self.context.state.lock().unwrap();
+        if state.owner != AccountingOwner::EngineOwned || !state.scopes.is_empty() {
+            return Err(AnalysisFailure::InvalidUsage);
+        }
+        let old = &state.usage;
+        if next.work < old.work
+            || next.nodes < old.nodes
+            || next.payload_bytes < old.payload_bytes
+            || next.max_depth < old.max_depth
+            || old.failure.is_some() && old.failure != next.failure
+        {
+            return Err(AnalysisFailure::InvalidUsage);
+        }
+        state.usage = next;
+        state.owner = AccountingOwner::HostOwned;
+        self.active = false;
+        Ok(())
+    }
+}
+impl Drop for EngineAccountingLease {
+    fn drop(&mut self) {
+        if self.active {
+            self.context.engine_usage_unknown();
+        }
+    }
+}
+
 /// One guard per traversal, not per task: shared subtrees are legal after exit.
 pub struct TraversalGuard {
     context: AnalysisContext,
@@ -338,6 +404,9 @@ impl TraversalGuard {
         };
         if depth > depth_limit as u64 {
             let mut state = self.context.state.lock().unwrap();
+            if state.owner != AccountingOwner::HostOwned {
+                return Err(AnalysisFailure::InvalidUsage);
+            }
             self.context.check(&mut state)?;
             let failure = AnalysisFailure::Limit {
                 resource: "depth".into(),
@@ -357,6 +426,9 @@ impl TraversalGuard {
         )?;
         {
             let mut state = self.context.state.lock().unwrap();
+            if state.owner != AccountingOwner::HostOwned {
+                return Err(AnalysisFailure::InvalidUsage);
+            }
             state.usage.max_depth = state.usage.max_depth.max(depth as u32);
             for &index in &self.context.ancestors {
                 state.scopes[index].usage.max_depth =
@@ -607,8 +679,9 @@ mod cross_implementation_tests {
     fn cumulative_ffi_receipt_is_monotonic_and_cannot_refund_or_reset_failure() {
         let context = AnalysisContext::new(Default::default(), None).unwrap();
         context.charge(3, 2, 1).unwrap();
-        context
-            .reconcile_cumulative(AnalysisUsage {
+        let mut lease = context.transfer_to_engine(&context.usage()).unwrap();
+        lease
+            .complete_usage(AnalysisUsage {
                 work: 7,
                 nodes: 3,
                 payload_bytes: 4,
@@ -616,19 +689,21 @@ mod cross_implementation_tests {
                 failure: None,
             })
             .unwrap();
+        let mut lease = context.transfer_to_engine(&context.usage()).unwrap();
         assert!(
-            context
-                .reconcile_cumulative(AnalysisUsage {
+            lease
+                .complete_usage(AnalysisUsage {
                     work: 6,
                     ..context.usage()
                 })
                 .is_err()
         );
         assert_eq!(context.usage().work, 7);
+        lease.complete_usage(context.usage()).unwrap();
         context.fail(AnalysisFailure::Deadline);
         assert!(
-            context
-                .reconcile_cumulative(AnalysisUsage {
+            lease
+                .complete_usage(AnalysisUsage {
                     failure: None,
                     ..context.usage()
                 })

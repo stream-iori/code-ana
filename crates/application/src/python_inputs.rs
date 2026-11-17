@@ -20,10 +20,12 @@ pub(super) fn prepare_inputs(
     scratch: &Path,
     mode: InputMode,
 ) -> Result<PreparedPython> {
+    let selected = capture.backend_capture(AnalysisBackend::Python)?;
+    let capture = &selected;
     let inputs = capture
         .effective
-        .python_inputs
-        .clone()
+        .python_inputs()
+        .cloned()
         .context("PYTHON_INPUTS_REQUIRED")?;
     let mut files = Vec::new();
     for root in &inputs.roots {
@@ -113,10 +115,10 @@ pub(super) fn prepare_inputs(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use super::*;
 
-    fn capture() -> (tempfile::TempDir, Capture) {
+    pub(crate) fn capture() -> (tempfile::TempDir, Capture) {
         let project = tempfile::tempdir().unwrap();
         let root = project.path().canonicalize().unwrap();
         std::fs::create_dir(root.join(".code-ana")).unwrap();
@@ -180,6 +182,7 @@ mod tests {
     #[test]
     fn both_entry_points_reject_missing_captured_sources() {
         let (_project, mut capture) = capture();
+        capture = capture.backend_capture(AnalysisBackend::Python).unwrap();
         capture.blobs.clear();
         let scratch = tempfile::tempdir().unwrap();
         for mode in [InputMode::Standard, InputMode::Prepared] {

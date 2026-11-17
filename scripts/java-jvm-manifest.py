@@ -7,6 +7,7 @@ import platform
 import re
 import shutil
 import sys
+from sdk_manifest import VERSION, validate_manifest
 
 project = pathlib.Path(sys.argv[1]).resolve()
 output = project / 'target/jvm'
@@ -24,11 +25,14 @@ protocol_source = (project.parent / 'crates/model/src/lib.rs').read_text()
 protocol = int(re.search(r'WORKER_PROTOCOL_VERSION: u32 = (\d+)', protocol_source)[1])
 graph_model=int(re.search(r'pub const VERSION: u32 = (\d+)',protocol_source)[1])
 analysis = int(re.search(r'JAVA_ANALYSIS_VERSION: u32 = (\d+)', protocol_source)[1])
-manifest = dict(version=2, backend='jvm', analysis_request=analysis, worker_protocol=protocol, fact_ir=graph_model,
+manifest = dict(version=VERSION, worker_protocol=protocol, fact_ir=graph_model,
                 adapter=re.search(r'IDENTITY\s*=\s*"([^"]+)"', adapter.read_text())[1],
-                compiler_batch_protocol=2, java_model='javac-model-v51', target_java=[8,17], compiler_bridges={"8":"compiler-bridge.jar","17":"compiler-bridge17.jar"},
+                graph_schema=36, graph_encoding='GRA1-protobuf-row-v1',
+                backend=dict(kind='java',analysis_request=analysis,compiler_batch_protocol=2,java_model='javac-model-v51',
+                    target_java=[8,17],compiler_bridges={"8":"compiler-bridge.jar","17":"compiler-bridge17.jar"},runtime=dict(kind='jvm')),
                 os=platform.system(), arch={'aarch64':'arm64', 'AMD64':'x86_64'}.get(platform.machine(), platform.machine()),
                 files={name: hashlib.sha256((output / name).read_bytes()).hexdigest()
                        for name in ['runner.jar', 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar']})
+validate_manifest(manifest)
 (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
 print(json.dumps(manifest))

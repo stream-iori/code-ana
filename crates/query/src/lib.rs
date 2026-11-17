@@ -1794,6 +1794,7 @@ mod tests {
         };
         MemoryReader {
             revision: Revision {
+                unit_ownership: None,
                 id: "r".into(),
                 target: "t".into(),
                 project: "p".into(),
@@ -2301,6 +2302,7 @@ mod tests {
         })).unwrap()).collect();
         let reader = MemoryReader {
             revision: Revision {
+                unit_ownership: None,
                 id: "r".into(),
                 target: "t".into(),
                 project: "p".into(),
@@ -2359,6 +2361,7 @@ mod tests {
         })).unwrap();
         let reader = MemoryReader {
             revision: Revision {
+                unit_ownership: None,
                 id: "rev".into(),
                 target: "t".into(),
                 project: "p".into(),
@@ -2470,6 +2473,7 @@ mod tests {
         };
         let reader = MemoryReader {
             revision: Revision {
+                unit_ownership: None,
                 id: "rev".into(),
                 target: "t".into(),
                 project: "p".into(),
@@ -2520,6 +2524,7 @@ mod tests {
         };
         let mut reader = MemoryReader {
             revision: Revision {
+                unit_ownership: None,
                 id: "rev".into(),
                 target: "t".into(),
                 project: "p".into(),
@@ -2635,6 +2640,7 @@ mod tests {
             fact
         };
         let revision = Revision {
+            unit_ownership: None,
             id: "rev".into(),
             target: "t".into(),
             project: "p".into(),

@@ -1,6 +1,6 @@
 //! JSON DTO for the Java engine. Domain/protobuf control data is mapped explicitly.
-use crate::{java::OutputLimits, worker as w};
 use anyhow::{Context, Result};
+use codeana_contracts::worker as w;
 use codeana_model::{BaselineInput, DomainError, ErrorCode};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -99,12 +99,12 @@ impl EngineRequest {
         budget: &codeana_model::AnalysisContext,
     ) -> Result<Self> {
         anyhow::ensure!(analyze.analysis_grant.is_some(), "ANALYSIS_GRANT_REQUIRED");
-        let limits = OutputLimits::from_config(config)?;
+        let limits = codeana_contracts::java::output_limits(config)?;
         Ok(Self {
             version: codeana_model::JAVA_ANALYSIS_VERSION,
-            analysis_grant: Some(crate::analysis_budget::required_grant(
+            analysis_grant: Some(codeana_contracts::analysis_budget::required_grant(
                 analyze.analysis_grant.as_ref(),
-                codeana_model::AnalysisLanguage::Java,
+                codeana_model::AnalysisBackend::Java,
             )?),
             analysis_usage: None,
             deadline_ms: analyze.deadline_ms.context("ANALYSIS_DEADLINE_REQUIRED")?,
@@ -126,7 +126,10 @@ impl EngineRequest {
             baseline_summary: if analyze.baseline_summary_json.is_empty() {
                 BaselineInput::default()
             } else {
-                crate::json_budget::decode_with_budget(&analyze.baseline_summary_json, budget)?
+                codeana_contracts::json_budget::decode_with_budget(
+                    &analyze.baseline_summary_json,
+                    budget,
+                )?
             },
             profile: analyze.profile.clone(),
             signature_cache: cache_root.is_some(),
@@ -279,15 +282,13 @@ impl EngineAnalysisReceipt {
     pub fn reconcile(
         &self,
         grant: &codeana_model::AnalysisGrant,
-        context: &codeana_model::AnalysisContext,
+        handoff: &mut codeana_worker_runtime::ffi::BudgetHandoff,
     ) -> Result<()> {
         anyhow::ensure!(
             self.grant_id == grant.id && codeana_model::valid_analysis_phase(&self.phase),
             DomainError::analysis(codeana_model::AnalysisFailure::InvalidUsage)
         );
-        context
-            .reconcile_cumulative(self.usage.clone())
-            .map_err(DomainError::analysis)?;
+        handoff.complete(self.usage.clone())?;
         Ok(())
     }
 }

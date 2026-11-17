@@ -26,7 +26,9 @@ fi
 python3 - "$repo_root/lang-java-adaptor/target" <<'VERIFY'
 import hashlib,json,pathlib,subprocess,sys
 root=pathlib.Path(sys.argv[1]).resolve()
-manifest=json.loads((root/'native/manifest.json').read_text())
+from scripts.sdk_manifest import load_manifest, java
+manifest=load_manifest(root/'native/manifest.json')
+identity=java(manifest, 'native')
 for name in ('native/libcodeana_java.dylib','compiler-bridge.jar','compiler-bridge17.jar','maven-input-worker.jar'):
     path=root/name
     assert path.resolve().is_relative_to(root), 'NATIVE_ARTIFACT_PATH'
@@ -35,7 +37,7 @@ worker=root.parent.parent/'target/release/codeana-java-worker'
 versions=json.loads(subprocess.check_output([str(worker),str(root/'native/libcodeana_java.dylib'),
                                             '--runtime-info'],text=True,timeout=15))
 assert versions==dict(worker_protocol=manifest['worker_protocol'],fact_ir=manifest['fact_ir'],adapter=manifest['adapter'],
-                      analysis_request=13,abi=4,backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
+                      analysis_request=identity['analysis_request'],abi=identity['runtime']['abi'],backend='native'), 'PACKAGE_WORKER_PROTOCOL_MISMATCH'
 VERIFY
 if [[ "$custom_output" == true && -e "$package_dir" ]]; then
   echo "Package output already exists: $package_dir" >&2; exit 2
@@ -66,10 +68,12 @@ cp -R lang-java-adaptor/fixtures/comment-indexing "$package_dir/fixtures/"
 python3 - "$package_dir" <<'PY'
 import hashlib,json,pathlib,sys
 root=pathlib.Path(sys.argv[1])
-native=json.loads((root/'lib/java/native/manifest.json').read_text())
-metadata={key:native[key] for key in ('abi','analysis_request','compiler_protocol','java_model',
-    'graph_schema','graph_encoding','native_gc','native_build_mode','target_java','compiler_bridges')}
-metadata.update(package='codeana-java',worker_protocol=native['worker_protocol'],fact_ir=native['fact_ir'],backend='native',
+from scripts.sdk_manifest import load_manifest, java
+native=load_manifest(root/'lib/java/native/manifest.json')
+java(native, 'native')
+metadata=dict(package='codeana-java',sdk_schema=native['version'],sdk_manifest='lib/java/native/manifest.json',
+    worker_protocol=native['worker_protocol'],fact_ir=native['fact_ir'],backend=native['backend'],
+    graph_schema=native['graph_schema'],graph_encoding=native['graph_encoding'],
     toolchain='externally registered SDKMAN Java 8/17')
 (root/'manifest.json').write_text(json.dumps(metadata,indent=2)+'\n')
 files=sorted(p for p in root.rglob('*') if p.is_file() and p.name!='SHA256SUMS')

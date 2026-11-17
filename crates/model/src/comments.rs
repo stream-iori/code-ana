@@ -6,7 +6,7 @@ pub type CapturedSourceReader = dyn Fn(&str, u64) -> Result<Vec<u8>, DomainError
 /// Task-owned accounts and captured bytes; staging never creates a replacement ledger.
 #[derive(Clone)]
 pub struct GraphStagingContext {
-    pub hosts: std::collections::BTreeMap<crate::AnalysisLanguage, crate::AnalysisContext>,
+    pub hosts: std::collections::BTreeMap<crate::AnalysisBackend, crate::AnalysisContext>,
     pub source: std::sync::Arc<CapturedSourceReader>,
 }
 

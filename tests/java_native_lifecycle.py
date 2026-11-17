@@ -14,6 +14,8 @@ import time
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / 'scripts'))
+from sdk_manifest import load_manifest, java
 
 
 def bundle_path():
@@ -29,7 +31,7 @@ class NativeLifecycle(unittest.TestCase):
     def run(self, result=None):
         # Cover module discovery, class/method selectors, and receipt runners alike.
         # Only the child process may enter the actual G1 C ABI test.
-        gc = json.loads((bundle_path() / 'manifest.json').read_text())['native_gc']
+        gc = java(load_manifest(bundle_path() / 'manifest.json'), 'native')['runtime']['gc']
         if gc == 'G1' and os.environ.get('CODEANA_NATIVE_LIFECYCLE_CHILD') != '1':
             return ProcessLifecycle(self._testMethodName).run(result)
         return super().run(result)
@@ -40,10 +42,10 @@ class NativeLifecycle(unittest.TestCase):
         self.root = pathlib.Path(self.temp.name)
         bundle = bundle_path()
         manifest = json.loads((bundle / 'manifest.json').read_text())
-        self.gc = manifest['native_gc']
-        self.assertEqual(manifest['backend'], 'native')
-        self.assertEqual(manifest['abi'], 4)
-        self.assertEqual(manifest['analysis_request'], 13)
+        self.gc = java(manifest, 'native')['runtime']['gc']
+        self.assertEqual(java(manifest)['runtime']['kind'], 'native')
+        self.assertEqual(java(manifest, 'native')['runtime']['abi'], 4)
+        self.assertEqual(java(manifest)['analysis_request'], 13)
         for name, expected in manifest['files'].items():
             path = bundle.parent / name
             self.assertTrue(path.resolve().is_relative_to(bundle.parent))

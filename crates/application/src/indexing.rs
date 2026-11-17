@@ -8,6 +8,7 @@ pub(super) type StagedCandidate =
 struct IndexSetup {
     worker: worker::Worker,
     prepared: Option<java::PreparedJava>,
+    view: Capture,
     expected: RevisionId,
     pool_key: Option<String>,
     profile: String,
@@ -41,7 +42,7 @@ pub(super) struct PublishedIndex {
     pub(super) summary: IndexSummary,
     pub(super) evidence: Evidence,
     pub(super) ack: Option<String>,
-    pub(super) worker_context: BuildContext,
+    pub(super) worker_contexts: Vec<BuildContext>,
     pub(super) analyze_ms: u64,
     pub(super) publish_ms: u64,
     pub(super) index_elapsed_ms: u64,
@@ -53,7 +54,7 @@ pub(super) struct CandidatePublication<'a> {
 }
 pub(super) enum CandidateOutcome {
     Committed {
-        revision: Revision,
+        revision: Box<Revision>,
         started: Instant,
     },
     Rejected(Box<TaskResult>),
@@ -177,13 +178,16 @@ impl IndexTask {
                 self.publication_fence(id)?,
             )
             .await?;
-        Ok(CandidateOutcome::Committed { revision, started })
+        Ok(CandidateOutcome::Committed {
+            revision: Box::new(revision),
+            started,
+        })
     }
 
     pub(super) fn analysis_binding(
         &self,
         _id: &str,
-        language: AnalysisLanguage,
+        language: AnalysisBackend,
         instance: &str,
     ) -> Option<worker::AnalysisBinding> {
         self.task
@@ -195,7 +199,11 @@ impl IndexTask {
             .map(|coordinator| worker::AnalysisBinding {
                 coordinator,
                 language,
-                instance: instance.into(),
+                instance: if instance.is_empty() {
+                    language.as_str().into()
+                } else {
+                    instance.into()
+                },
             })
     }
 
@@ -248,17 +256,78 @@ impl IndexTask {
             }
             *self.task.analysis.staging_sources.lock().unwrap() = Some(Arc::new(c.blobs.clone()));
         }
-        let plan = {
+        let baseline_head = self.index.head(&IndexTarget::from(c.target.clone()))?;
+        ensure!(
+            req.expected_revision.is_empty() || req.expected_revision == baseline_head.as_str(),
+            DomainError::new(ErrorCode::HeadConflict, "")
+        );
+        let (baseline, _baseline_pin) = if baseline_head.is_empty() {
+            (None, None)
+        } else {
             let admission = self.task.analysis.admission.lock().unwrap().clone();
-            crate::index_plan::IndexPlan::build(&c, admission.as_ref().map(|(_, budget)| budget))?
+            let (revision, pin) = self
+                .index
+                .pin_baseline(&baseline_head, admission.as_ref().map(|(_, b)| b))?;
+            (Some(revision), Some(pin))
         };
+        if let Some(old) = baseline.as_ref().filter(|_| !self.workers.is_mock()) {
+            match &old.unit_ownership {
+                Some(ledger) if ledger.version == UNIT_OWNERSHIP_VERSION => {
+                    ledger.validate(&old.manifest).map_err(anyhow::Error::msg)?
+                }
+                _ => ensure!(
+                    req.full || c.effective.config.index.mode == "full",
+                    DomainError::new(ErrorCode::UnitOwnershipRebuildRequired, "run index --full")
+                ),
+            }
+        }
+        let mut plan = {
+            let admission = self.task.analysis.admission.lock().unwrap().clone();
+            crate::index_plan::IndexPlan::with_baseline(
+                &c,
+                baseline
+                    .as_ref()
+                    .and_then(|r| r.unit_ownership.as_ref())
+                    .filter(|l| l.version == UNIT_OWNERSHIP_VERSION),
+                admission.as_ref().map(|(_, budget)| budget),
+            )?
+        };
+        plan.baseline = baseline_head;
+        if self.workers.is_mock()
+            && let Some(old) = &baseline
+        {
+            plan.fixture_sources = old.manifest.files.clone();
+        }
+        ensure!(
+            self.workers.is_mock()
+                || plan
+                    .units
+                    .iter()
+                    .any(|u| u.availability == UnitAvailability::Ready)
+                || !c.effective.input_units.is_empty()
+                || baseline.is_some(),
+            DomainError::new(
+                ErrorCode::NoEnabledLanguage,
+                "semantic indexing requires an enabled language; existing units can be removed without workers"
+            )
+        );
+        for removed in plan.removed() {
+            self.task.event(
+                &TaskId::from(id),
+                &Event::Progress(format!(
+                    "unit_removed {} sources={}",
+                    removed.unit,
+                    removed.sources.len()
+                )),
+            )?;
+        }
         if !self.workers.is_mock() {
             let participants = &plan.participants;
             if !participants.is_empty() {
                 {
                     let admission = self.task.analysis.admission.lock().unwrap();
                     if let Some((limits, budget)) = admission.as_ref() {
-                        let coordinator = AnalysisCoordinator::new(
+                        let mut coordinator = AnalysisCoordinator::new(
                             id,
                             *limits,
                             budget.usage(),
@@ -269,6 +338,7 @@ impl IndexTask {
                             budget.fail(failure.clone());
                             DomainError::analysis(failure)
                         })?;
+                        plan.configure(&mut coordinator)?;
                         *self.task.analysis.coordinator.lock().unwrap() =
                             Some(Arc::new(Mutex::new(coordinator)));
                     }
@@ -276,6 +346,14 @@ impl IndexTask {
             }
         }
         use crate::index_plan::ExecutionPolicy;
+        if !self.workers.is_mock()
+            && !plan
+                .units
+                .iter()
+                .any(|u| u.availability == UnitAvailability::Ready)
+        {
+            return self.index_prepared(id, req, c, &plan, cancel).await;
+        }
         match plan.policy {
             ExecutionPolicy::Prepared => {
                 return self.index_prepared(id, req, c, &plan, cancel).await;
@@ -290,7 +368,9 @@ impl IndexTask {
         }
         let started = Instant::now();
         let mut timings = timings::IndexTimings::start(id);
-        let mut setup = self.setup_index(id, req, &c, cancel, &mut timings).await?;
+        let mut setup = self
+            .setup_index(id, req, &c, &plan, cancel, &mut timings)
+            .await?;
         let AnalyzedCandidate {
             result_mode,
             candidate,
@@ -308,6 +388,7 @@ impl IndexTask {
             }
         };
         let IndexSetup {
+            view: _view,
             prepared,
             expected: _,
             worker,
@@ -322,7 +403,7 @@ impl IndexTask {
             let worker = worker_slot.as_mut().context("INDEX_WORKER_REQUIRED")?;
             let limits = prepared
                 .as_ref()
-                .map(|p| codeana_contracts::java::OutputLimits::from_config(&p.config))
+                .map(|p| codeana_contracts::java::output_limits(&p.config))
                 .transpose()?
                 .unwrap_or_default();
             ensure!(
@@ -351,7 +432,7 @@ impl IndexTask {
                 )
                 .await?
             {
-                CandidateOutcome::Committed { revision, started } => (revision, started),
+                CandidateOutcome::Committed { revision, started } => (*revision, started),
                 CandidateOutcome::Rejected(result) => return Ok(*result),
             };
             let publish_ms = publishing.elapsed().as_millis() as u64;
@@ -362,13 +443,9 @@ impl IndexTask {
             let ack = if unchanged {
                 None
             } else {
-                crate::analysis_unit::acknowledge(
-                    crate::analysis_unit::Units::One(Some(&mut *worker)),
-                    &revision.id,
-                )
-                .await
+                crate::analysis_unit::acknowledge(vec![&mut *worker], &revision.id).await
             };
-            let worker_context = worker.context.clone();
+            let worker_contexts = vec![worker.context.clone()];
             if let Some(timings) = &mut timings {
                 timings.phase("ack_finished");
             }
@@ -392,7 +469,7 @@ impl IndexTask {
                     summary,
                     evidence,
                     ack,
-                    worker_context,
+                    worker_contexts,
                     analyze_ms,
                     publish_ms,
                     index_elapsed_ms: started.elapsed().as_millis() as u64,
@@ -413,10 +490,13 @@ impl IndexTask {
         id: &str,
         req: &IndexCommand,
         c: &Capture,
+        plan: &crate::index_plan::IndexPlan,
         cancel: &CancellationToken,
         timings: &mut Option<timings::IndexTimings>,
     ) -> Result<IndexSetup> {
         codeana_config::require_java(c)?;
+        let selected = c.backend_capture(AnalysisBackend::Java)?;
+        let c = &selected;
         let prepared = if !self.workers.is_mock() {
             Some(self.prepare_java_unit(c.clone()).await?)
         } else {
@@ -425,7 +505,7 @@ impl IndexTask {
         if let Some(timings) = timings {
             timings.phase("prepared");
         }
-        let expected = self.index.head(&IndexTarget::from(c.target.clone()))?;
+        let expected = plan.baseline.clone();
         if !req.expected_revision.is_empty() {
             ensure!(
                 expected == req.expected_revision.as_str(),
@@ -450,6 +530,7 @@ impl IndexTask {
                 &p.library,
                 &p.config.toolchain_digest,
                 &p.config.semantic_identity,
+                p.config.native_heap_bytes,
                 memory,
             ))
         });
@@ -468,7 +549,13 @@ impl IndexTask {
                             prepared,
                             &c.manifest,
                             cancel,
-                            self.analysis_binding(id, AnalysisLanguage::Java, ""),
+                            self.analysis_binding(id, AnalysisBackend::Java, ""),
+                            crate::supervisor::InputLease::new(c, vec![prepared.scratch.clone()]),
+                            crate::analysis_unit::publication(
+                                c,
+                                AnalysisBackend::Java,
+                                plan.previous_sources("java"),
+                            ),
                         )
                         .await;
                     if let Err(error) = discovered {
@@ -486,20 +573,31 @@ impl IndexTask {
         let mut worker = if let Some(worker) = reused {
             worker
         } else {
-            worker::Worker::start(
-                self.workers.mock_fixtures(),
-                prepared.as_ref(),
-                &c.root,
-                &c.manifest,
+            worker::Worker::start_language(
+                worker::LaunchSpec {
+                    fixtures: self.workers.mock_fixtures(),
+                    language: worker::Language::Java(prepared.as_ref()),
+                    checkout: &c.root,
+                    manifest: &c.manifest,
+                    inputs: crate::supervisor::InputLease::new(
+                        c,
+                        prepared.iter().map(|p| p.scratch.clone()).collect(),
+                    ),
+                    publication: crate::analysis_unit::publication(
+                        c,
+                        AnalysisBackend::Java,
+                        plan.previous_sources("java"),
+                    ),
+                },
                 cancel,
                 memory,
-                self.analysis_binding(id, AnalysisLanguage::Java, ""),
+                self.analysis_binding(id, AnalysisBackend::Java, ""),
             )
             .await?
         };
         let validated: Result<_> = async {
             ensure!(
-                worker.context.language == "java",
+                worker.context.backend() == AnalysisBackend::Java,
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::WorkerLanguageMismatch,
                     ""
@@ -509,7 +607,12 @@ impl IndexTask {
                 if module.language == "java" {
                     if let Some(version) = &module.analysis.source_version {
                         ensure!(
-                            version == "auto" || version == &worker.context.source_version,
+                            version == "auto"
+                                || version
+                                    == worker
+                                        .context
+                                        .java_source_version()
+                                        .context("JAVA_CONTEXT_REQUIRED")?,
                             codeana_model::DomainError::new(
                                 codeana_model::ErrorCode::SourceVersionUnsupported,
                                 ""
@@ -522,7 +625,13 @@ impl IndexTask {
                         ensure!(
                             toolchain == "auto"
                                 || toolchain
-                                    == &format!("mock-jdk{}", worker.context.source_version),
+                                    == &format!(
+                                        "mock-jdk{}",
+                                        worker
+                                            .context
+                                            .java_source_version()
+                                            .context("JAVA_CONTEXT_REQUIRED")?
+                                    ),
                             codeana_model::DomainError::new(
                                 codeana_model::ErrorCode::MockToolchainUnsupported,
                                 ""
@@ -534,7 +643,7 @@ impl IndexTask {
             let profile = digest(&(
                 codeana_comment_search::identity(),
                 &c.effective.semantic_digest,
-                &worker.context,
+                &worker.context.semantic_digest,
                 "anatomist-schema32-graph1",
             ));
             if let Some(timings) = timings {
@@ -567,7 +676,10 @@ impl IndexTask {
                         let summary = if profile != desired_profile || same {
                             None
                         } else {
-                            let summary = reader.baseline_summary_for(&desired_files)?;
+                            let summary = reader.baseline_summary_for(
+                                &desired_files,
+                                &AnalysisUnitId::from("java"),
+                            )?;
                             if let Some(root) = summary_root {
                                 let path = root.join("baseline-summary.json");
                                 let bytes = serde_json::to_vec(&summary)?;
@@ -613,6 +725,7 @@ impl IndexTask {
             }
         };
         Ok(IndexSetup {
+            view: selected,
             prepared,
             expected,
             worker,
@@ -632,6 +745,7 @@ impl IndexTask {
         setup: &mut IndexSetup,
     ) -> Result<AnalyzedCandidate> {
         let prepared = &setup.prepared;
+        let unit_manifest = &setup.view.manifest;
         let expected = setup.expected.clone();
         let worker = &mut setup.worker;
         let profile = setup.profile.clone();
@@ -644,6 +758,7 @@ impl IndexTask {
         let (result_mode, candidate) = if streaming {
             let store = self.index.clone().with_context(self.staging_context(id));
             let revision = Revision {
+                unit_ownership: self.ownership(c, &[&worker.context])?,
                 id: String::new(),
                 target: c.target.clone(),
                 project: c.project.clone(),
@@ -659,17 +774,18 @@ impl IndexTask {
             let mut candidate_task = None;
             let header = worker
                 .analyze_into(
-                    &c.manifest,
+                    unit_manifest,
                     &profile,
                     &expected,
                     old.as_ref(),
                     full,
                     cancel,
                     |header| {
-                        let (sender, records) = codeana_contracts::stream::GraphStream::channel();
+                        let (sender, records) = codeana_graph_io::stream::GraphStream::channel();
                         let store = store.clone();
                         let revision = revision.clone();
-                        let header = header.clone();
+                        let mut header = header.clone();
+                        header.manifest = revision.manifest.id();
                         let baseline_id = baseline_id.clone();
                         let staging_cancel = staging_cancel.clone();
                         let candidate_disk = candidate_disk.clone();
@@ -725,17 +841,16 @@ impl IndexTask {
                 ))??,
             )
         } else {
-            let result = if unchanged {
+            let mut result = if unchanged {
                 // The captured manifest and semantic profile include adapter/toolchain identity.
                 // Keep baseline export validation/budgets and normal candidate validation/publication,
                 // but avoid sending unchanged facts through Java just to discover zero dirty owners.
-                crate::analysis_unit::retire(crate::analysis_unit::Units::One(Some(&mut *worker)))
-                    .await?;
+                crate::analysis_unit::retire(vec![&mut *worker]).await?;
                 let prepared = prepared.as_ref().context(codeana_model::DomainError::new(
                     codeana_model::ErrorCode::JavaRequired,
                     "",
                 ))?;
-                let limits = codeana_contracts::java::OutputLimits::from_config(&prepared.config)?;
+                let limits = codeana_contracts::java::output_limits(&prepared.config)?;
                 SpooledAnalysis {
                     header: AnalysisHeader {
                         mode: codeana_model::AnalysisMode::Delta,
@@ -754,7 +869,14 @@ impl IndexTask {
                 }
             } else {
                 worker
-                    .analyze(&c.manifest, &profile, &expected, old.as_ref(), full, cancel)
+                    .analyze(
+                        unit_manifest,
+                        &profile,
+                        &expected,
+                        old.as_ref(),
+                        full,
+                        cancel,
+                    )
                     .await?
             };
 
@@ -767,6 +889,7 @@ impl IndexTask {
             }
             let result_mode = result.header.mode;
             let revision = Revision {
+                unit_ownership: self.ownership(c, &[&worker.context])?,
                 id: String::new(),
                 target: c.target.clone(),
                 project: c.project.clone(),
@@ -780,6 +903,7 @@ impl IndexTask {
             let baseline_id = expected.clone();
             let staging_cancel = cancel.clone();
             let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
+            result.header.manifest = revision.manifest.id();
             let candidate = tokio::task::spawn_blocking(move || {
                 let diagnostics = codeana_contracts::performance::Report::new("storage-detail");
                 diagnostics.capture.sync(|| {
@@ -828,7 +952,7 @@ impl IndexTask {
             summary,
             evidence,
             ack,
-            worker_context,
+            worker_contexts,
             analyze_ms,
             publish_ms,
             index_elapsed_ms,
@@ -892,7 +1016,7 @@ impl IndexTask {
             );
             let report = ReportDocument {
                 analysis_resources: self.analysis_admission_report(id),
-                schema_version: 3,
+                schema_version: 4,
                 global: crate::reports::GlobalReport::from_capture(c, true),
                 id: id.into(),
                 created: now(),
@@ -904,7 +1028,7 @@ impl IndexTask {
                     config_digest: c.effective.config_digest.clone(),
                     origins: BTreeMap::new(),
                 },
-                context: worker_context,
+                contexts: worker_contexts,
                 diagnostics: vec![],
             };
             let saved = self
@@ -973,7 +1097,7 @@ impl IndexTask {
                 request.full,
                 cancel,
                 |header| {
-                    let (sender, records) = codeana_contracts::stream::GraphStream::channel();
+                    let (sender, records) = codeana_graph_io::stream::GraphStream::channel();
                     metrics = Some(sender.metrics.clone());
                     let store = self.index.clone().with_context(self.staging_context(id));
                     let revision = request.revision.clone();
@@ -1027,7 +1151,7 @@ impl IndexTask {
                 &TaskId::from(id),
                 &Event::Progress(format!(
                     "{}_stream {}",
-                    worker.context.language,
+                    worker.context.backend().as_str(),
                     serde_json::to_string(&metrics.summary())?
                 )),
             )?;
@@ -1043,11 +1167,11 @@ impl IndexTask {
     pub(super) async fn stage_full_languages(
         &self,
         id: &str,
-        sessions: &mut [(worker::Worker, Manifest)],
+        sessions: &mut [crate::analysis_unit::RunningUnit],
         revision: Revision,
         expected: &RevisionId,
         scratch: &Path,
-        limits: codeana_contracts::graph_archive::OutputLimits,
+        limits: codeana_contracts::graph_delivery::OutputLimits,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, StagedCandidate)> {
         self.stage_full_language_rows(
@@ -1066,17 +1190,18 @@ impl IndexTask {
     pub(super) async fn stage_full_language_rows(
         &self,
         id: &str,
-        sessions: &mut [(worker::Worker, Manifest)],
+        sessions: &mut [crate::analysis_unit::RunningUnit],
         revision: Revision,
         expected: &RevisionId,
         scratch: &Path,
-        limits: codeana_contracts::graph_archive::OutputLimits,
+        limits: codeana_contracts::graph_delivery::OutputLimits,
         additional_rows: Vec<codeana_contracts::graph::Row>,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, StagedCandidate)> {
         let mut archives = Vec::new();
         let mut replacements = Vec::new();
-        for (worker, manifest) in sessions {
+        for unit in sessions {
+            let (worker, manifest) = unit.stream()?;
             let result = worker
                 .analyze(manifest, &revision.profile, expected, None, true, cancel)
                 .await?;

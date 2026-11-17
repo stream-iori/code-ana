@@ -1,6 +1,7 @@
 """SDK installation preserves executable bytes and rolls back failed replacement."""
 import importlib.util
 import json
+from sdk_fixtures import java_sdk, versions
 from pathlib import Path
 import subprocess
 import tempfile
@@ -27,11 +28,11 @@ class NativeInstallation(unittest.TestCase):
             (self.bin/name).write_bytes(b'original application')
         library = 'native/libcodeana_java.' + ('dylib' if install.os.uname().sysname=='Darwin' else 'so')
         self.names = [library,'compiler-bridge.jar','compiler-bridge17.jar','maven-input-worker.jar']
-        self.versions = dict(backend='native',worker_protocol=22,fact_ir=4,adapter='fixture',analysis_request=11,abi=4)
+        self.versions = dict(versions(),backend='native',adapter='fixture',abi=4)
         for directory, prefix, gc in ((self.source,'new-','G1'),(self.target,'old-','serial')):
             for name in self.names:
                 p=directory/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(prefix+name)
-            manifest=dict(self.versions,native_gc=gc,files={name:install.sha(directory/name) for name in self.names})
+            manifest=java_sdk({name:install.sha(directory/name) for name in self.names}, 'native', gc=gc)
             (directory/'native/manifest.json').write_text(json.dumps(manifest))
         self.before = {p:p.read_bytes() for p in self.target.rglob('*') if p.is_file()}
         self.apps = {p:p.read_bytes() for p in self.bin.iterdir()}
@@ -78,8 +79,8 @@ class JvmInstallation(unittest.TestCase):
         self.source.mkdir(parents=True)
         self.target.mkdir(parents=True)
         (self.source/'runner.jar').write_bytes(b'new JVM')
-        (self.source/'manifest.json').write_text(json.dumps(dict(
-            backend='jvm', files={'runner.jar': sha(self.source/'runner.jar')})))
+        (self.source/'manifest.json').write_text(json.dumps(java_sdk(
+            {'runner.jar': sha(self.source/'runner.jar')}, 'jvm')))
         (self.target/'runner.jar').write_bytes(b'old JVM')
         self.bin = self.root/'target/debug'
         self.bin.mkdir()

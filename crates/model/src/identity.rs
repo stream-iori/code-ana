@@ -6,7 +6,7 @@ macro_rules! identity {
         #[derive(Debug,Clone,Default,PartialEq,Eq,PartialOrd,Ord,Hash,Serialize,Deserialize)]
         #[serde(transparent)]
         pub struct $name(String);
-        impl $name { pub fn as_str(&self)->&str {&self.0} pub fn clear(&mut self) {self.0.clear();} }
+        impl $name { pub fn as_str(&self)->&str {&self.0} pub fn retained_bytes(&self)->usize {self.0.capacity()} pub fn clear(&mut self) {self.0.clear();} }
         impl From<String> for $name {fn from(value:String)->Self {Self(value)}}
         impl From<&str> for $name {fn from(value:&str)->Self {Self(value.into())}}
         impl From<$name> for String {fn from(value:$name)->Self {value.0}}
@@ -30,5 +30,6 @@ identity!(
     RevisionId,
     FactId,
     CommentId,
+    AnalysisUnitId,
     WorldId
 );

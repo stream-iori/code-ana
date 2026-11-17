@@ -1,6 +1,6 @@
 //! Coordinator-owned static reservations and cumulative remote-usage reconciliation.
 use crate::{
-    AnalysisAllocation, AnalysisContext, AnalysisFailure, AnalysisLanguage, AnalysisLimits,
+    AnalysisAllocation, AnalysisBackend, AnalysisContext, AnalysisFailure, AnalysisLimits,
     AnalysisUsage, allocate_analysis,
 };
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, time::Instant};
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct AnalysisGrant {
     pub id: String,
-    pub language: AnalysisLanguage,
+    pub language: AnalysisBackend,
     pub limits: AnalysisLimits,
 }
 /// One worker task, including retries. A new attempt cannot replace its grant,
@@ -81,18 +81,18 @@ struct LanguageReservation {
 pub struct AnalysisCoordinator {
     limits: AnalysisLimits,
     admission: AnalysisUsage,
-    languages: BTreeMap<AnalysisLanguage, LanguageReservation>,
+    languages: BTreeMap<AnalysisBackend, LanguageReservation>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisCoordinatorSnapshot {
     pub limits: AnalysisLimits,
     pub admission: AnalysisUsage,
     pub known_usage: AnalysisUsage,
-    pub languages: Vec<AnalysisLanguageSnapshot>,
+    pub languages: Vec<AnalysisBackendSnapshot>,
     pub complete: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AnalysisLanguageSnapshot {
+pub struct AnalysisBackendSnapshot {
     pub allocation: AnalysisAllocation,
     pub host_usage: AnalysisUsage,
     pub workers: Vec<AnalysisGrantSnapshot>,
@@ -102,7 +102,7 @@ impl AnalysisCoordinator {
         task_id: &str,
         limits: AnalysisLimits,
         admission: AnalysisUsage,
-        languages: &[AnalysisLanguage],
+        languages: &[AnalysisBackend],
         deadline: Option<Instant>,
     ) -> Result<Self, AnalysisFailure> {
         if task_id.is_empty() {
@@ -141,14 +141,14 @@ impl AnalysisCoordinator {
             languages: slots,
         })
     }
-    pub fn host(&self, language: AnalysisLanguage) -> Result<AnalysisContext, AnalysisFailure> {
+    pub fn host(&self, language: AnalysisBackend) -> Result<AnalysisContext, AnalysisFailure> {
         self.languages
             .get(&language)
             .map(|s| s.host.clone())
             .ok_or(AnalysisFailure::InvalidUsage)
     }
     /// Existing cumulative host accounts, including their cancellation/deadline state.
-    pub fn hosts(&self) -> BTreeMap<AnalysisLanguage, AnalysisContext> {
+    pub fn hosts(&self) -> BTreeMap<AnalysisBackend, AnalysisContext> {
         self.languages
             .iter()
             .map(|(language, slot)| (*language, slot.host.clone()))
@@ -157,7 +157,7 @@ impl AnalysisCoordinator {
     /// Freeze all concurrent instances before any quota is issued.
     pub fn configure_instances(
         &mut self,
-        language: AnalysisLanguage,
+        language: AnalysisBackend,
         ids: &[String],
     ) -> Result<(), AnalysisFailure> {
         let slot = self
@@ -230,12 +230,31 @@ impl AnalysisCoordinator {
         slot.workers = workers;
         Ok(())
     }
-    pub fn issue(&mut self, language: AnalysisLanguage) -> Result<AnalysisGrant, AnalysisFailure> {
+    pub fn issue(&mut self, language: AnalysisBackend) -> Result<AnalysisGrant, AnalysisFailure> {
         self.issue_instance(language, "")
+    }
+    /// A host-proven nonexecuting unit consumes no worker usage and never releases
+    /// its static share to another unit or a later attempt.
+    pub fn retire_reserved(
+        &mut self,
+        language: AnalysisBackend,
+        instance: &str,
+    ) -> Result<(), AnalysisFailure> {
+        let remote = self
+            .languages
+            .get_mut(&language)
+            .and_then(|s| s.workers.get_mut(instance))
+            .ok_or(AnalysisFailure::InvalidUsage)?;
+        if remote.state != GrantState::Reserved {
+            return Err(AnalysisFailure::InvalidUsage);
+        }
+        remote.state = GrantState::Complete;
+        remote.usage = Some(AnalysisUsage::default());
+        Ok(())
     }
     pub fn issue_instance(
         &mut self,
-        language: AnalysisLanguage,
+        language: AnalysisBackend,
         instance: &str,
     ) -> Result<AnalysisGrant, AnalysisFailure> {
         let slot = self
@@ -334,7 +353,7 @@ impl AnalysisCoordinator {
         remote.phase = Some(phase.into());
         Ok(())
     }
-    pub fn lost(&mut self, language: AnalysisLanguage) -> Result<(), AnalysisFailure> {
+    pub fn lost(&mut self, language: AnalysisBackend) -> Result<(), AnalysisFailure> {
         let grant = self
             .languages
             .get(&language)
@@ -374,7 +393,7 @@ impl AnalysisCoordinator {
                 complete &= worker.state == GrantState::Complete;
             }
             complete &= host.failure.is_none();
-            languages.push(AnalysisLanguageSnapshot {
+            languages.push(AnalysisBackendSnapshot {
                 allocation: slot.allocation.clone(),
                 host_usage: host,
                 workers,
@@ -461,23 +480,66 @@ mod tests {
                 work: 7,
                 ..Default::default()
             },
-            &[AnalysisLanguage::Rust],
+            &[AnalysisBackend::Rust],
             None,
         )
         .unwrap()
     }
     #[test]
+    fn retired_units_keep_their_share_and_cannot_be_issued_or_retired_twice() {
+        let mut coordinator = coordinator();
+        coordinator
+            .configure_instances(AnalysisBackend::Rust, &["removed".into(), "ready".into()])
+            .unwrap();
+        let before = coordinator.snapshot();
+        coordinator
+            .retire_reserved(AnalysisBackend::Rust, "removed")
+            .unwrap();
+        assert!(
+            coordinator
+                .issue_instance(AnalysisBackend::Rust, "removed")
+                .is_err()
+        );
+        assert!(
+            coordinator
+                .retire_reserved(AnalysisBackend::Rust, "removed")
+                .is_err()
+        );
+        let ready = coordinator
+            .issue_instance(AnalysisBackend::Rust, "ready")
+            .unwrap();
+        let slot = &before.languages[0];
+        assert_eq!(
+            ready.limits,
+            slot.workers
+                .iter()
+                .find(|w| w.grant.id.ends_with("/ready"))
+                .unwrap()
+                .grant
+                .limits
+        );
+        let after = coordinator.snapshot();
+        let retired = after.languages[0]
+            .workers
+            .iter()
+            .find(|w| w.grant.id.ends_with("/removed"))
+            .unwrap();
+        assert_eq!(retired.state, GrantState::Complete);
+        assert_eq!(retired.usage.as_ref().unwrap().work, 0);
+        assert_eq!(after.known_usage.work, before.known_usage.work);
+    }
+    #[test]
     fn issue_once_and_do_not_count_reservations_as_consumption() {
         let mut c = coordinator();
         assert_eq!(c.snapshot().known_usage.work, 7);
-        c.issue(AnalysisLanguage::Rust).unwrap();
-        assert!(c.issue(AnalysisLanguage::Rust).is_err());
+        c.issue(AnalysisBackend::Rust).unwrap();
+        assert!(c.issue(AnalysisBackend::Rust).is_err());
         assert!(!c.snapshot().complete);
     }
     #[test]
     fn cumulative_reports_and_exact_terminal_replay_do_not_double_charge() {
         let mut c = coordinator();
-        let grant = c.issue(AnalysisLanguage::Rust).unwrap();
+        let grant = c.issue(AnalysisBackend::Rust).unwrap();
         c.reconcile(
             &grant,
             AnalysisUsage {
@@ -499,7 +561,7 @@ mod tests {
     #[test]
     fn wrong_identity_overuse_and_regression_cannot_mutate_ledger() {
         let mut c = coordinator();
-        let grant = c.issue(AnalysisLanguage::Rust).unwrap();
+        let grant = c.issue(AnalysisBackend::Rust).unwrap();
         let mut other = grant.clone();
         other.id.push('x');
         assert!(c.reconcile(&other, Default::default(), false).is_err());
@@ -539,7 +601,7 @@ mod tests {
     #[test]
     fn crash_keeps_last_watermark_and_never_reissues_unknown_capacity() {
         let mut c = coordinator();
-        let grant = c.issue(AnalysisLanguage::Rust).unwrap();
+        let grant = c.issue(AnalysisBackend::Rust).unwrap();
         c.reconcile(
             &grant,
             AnalysisUsage {
@@ -549,8 +611,8 @@ mod tests {
             false,
         )
         .unwrap();
-        c.lost(AnalysisLanguage::Rust).unwrap();
-        assert!(c.issue(AnalysisLanguage::Rust).is_err());
+        c.lost(AnalysisBackend::Rust).unwrap();
+        assert!(c.issue(AnalysisBackend::Rust).is_err());
         assert!(c.reconcile(&grant, Default::default(), true).is_err());
         let s = c.snapshot();
         assert_eq!(s.known_usage.nodes, 3);
@@ -560,8 +622,8 @@ mod tests {
     #[test]
     fn host_and_worker_reservations_are_independent() {
         let mut c = coordinator();
-        let host = c.host(AnalysisLanguage::Rust).unwrap();
-        let grant = c.issue(AnalysisLanguage::Rust).unwrap();
+        let host = c.host(AnalysisBackend::Rust).unwrap();
+        let grant = c.issue(AnalysisBackend::Rust).unwrap();
         host.charge(5, 0, 0).unwrap();
         c.reconcile(
             &grant,
@@ -577,7 +639,7 @@ mod tests {
     #[test]
     fn non_resource_failure_cannot_certify_completion() {
         let mut c = coordinator();
-        let grant = c.issue(AnalysisLanguage::Rust).unwrap();
+        let grant = c.issue(AnalysisBackend::Rust).unwrap();
         let usage = AnalysisUsage {
             work: 3,
             ..Default::default()
@@ -592,20 +654,20 @@ mod tests {
     #[test]
     fn instances_share_one_worker_pool_without_duplicate_consumption() {
         let mut c = coordinator();
-        c.configure_instances(AnalysisLanguage::Rust, &["b".into(), "a".into()])
+        c.configure_instances(AnalysisBackend::Rust, &["b".into(), "a".into()])
             .unwrap();
-        let a = c.issue_instance(AnalysisLanguage::Rust, "a").unwrap();
-        let b = c.issue_instance(AnalysisLanguage::Rust, "b").unwrap();
+        let a = c.issue_instance(AnalysisBackend::Rust, "a").unwrap();
+        let b = c.issue_instance(AnalysisBackend::Rust, "b").unwrap();
         assert_ne!(a.id, b.id);
         let snapshot = c.snapshot();
         assert_eq!(
             a.limits.max_work + b.limits.max_work,
             snapshot.languages[0].allocation.worker.max_work
         );
-        assert!(c.issue(AnalysisLanguage::Rust).is_err());
-        assert!(c.issue_instance(AnalysisLanguage::Rust, "a").is_err());
+        assert!(c.issue(AnalysisBackend::Rust).is_err());
+        assert!(c.issue_instance(AnalysisBackend::Rust, "a").is_err());
         assert!(
-            c.configure_instances(AnalysisLanguage::Rust, &["renew".into()])
+            c.configure_instances(AnalysisBackend::Rust, &["renew".into()])
                 .is_err()
         );
         c.reconcile(
@@ -634,10 +696,10 @@ mod tests {
     #[test]
     fn losing_one_instance_preserves_other_watermarks_and_blocks_reissue() {
         let mut c = coordinator();
-        c.configure_instances(AnalysisLanguage::Rust, &["a".into(), "b".into()])
+        c.configure_instances(AnalysisBackend::Rust, &["a".into(), "b".into()])
             .unwrap();
-        let a = c.issue_instance(AnalysisLanguage::Rust, "a").unwrap();
-        let b = c.issue_instance(AnalysisLanguage::Rust, "b").unwrap();
+        let a = c.issue_instance(AnalysisBackend::Rust, "a").unwrap();
+        let b = c.issue_instance(AnalysisBackend::Rust, "b").unwrap();
         c.reconcile(
             &a,
             AnalysisUsage {
@@ -657,7 +719,7 @@ mod tests {
         )
         .unwrap();
         c.lost_grant(&b).unwrap();
-        assert!(c.issue_instance(AnalysisLanguage::Rust, "b").is_err());
+        assert!(c.issue_instance(AnalysisBackend::Rust, "b").is_err());
         let snapshot = c.snapshot();
         assert!(!snapshot.complete);
         assert_eq!(snapshot.known_usage.work, 16);
@@ -673,21 +735,21 @@ mod tests {
                 ..Default::default()
             },
             Default::default(),
-            &[AnalysisLanguage::Rust],
+            &[AnalysisBackend::Rust],
             None,
         )
         .unwrap();
-        let before = c.host(AnalysisLanguage::Rust).unwrap().usage();
+        let before = c.host(AnalysisBackend::Rust).unwrap().usage();
         assert!(matches!(
-            c.configure_instances(AnalysisLanguage::Rust, &["a".into(), "b".into()]),
+            c.configure_instances(AnalysisBackend::Rust, &["a".into(), "b".into()]),
             Err(AnalysisFailure::Limit { resource, .. }) if resource == "payload_bytes"
         ));
-        let after = c.host(AnalysisLanguage::Rust).unwrap().usage();
+        let after = c.host(AnalysisBackend::Rust).unwrap().usage();
         assert_eq!(
             (before.work, before.nodes, before.payload_bytes),
             (after.work, after.nodes, after.payload_bytes)
         );
-        assert!(c.issue(AnalysisLanguage::Rust).is_err());
+        assert!(c.issue(AnalysisBackend::Rust).is_err());
     }
 
     #[test]
@@ -699,17 +761,17 @@ mod tests {
                 ..Default::default()
             },
             Default::default(),
-            &[AnalysisLanguage::Rust],
+            &[AnalysisBackend::Rust],
             None,
         )
         .unwrap();
         let failure = c
-            .configure_instances(AnalysisLanguage::Rust, &["a".into(), "b".into()])
+            .configure_instances(AnalysisBackend::Rust, &["a".into(), "b".into()])
             .unwrap_err();
         assert!(
             matches!(failure,AnalysisFailure::Limit { ref resource,limit:1,requested:2,.. } if resource=="work")
         );
         assert_eq!(c.snapshot().known_usage.failure, Some(failure));
-        assert!(c.issue(AnalysisLanguage::Rust).is_err());
+        assert!(c.issue(AnalysisBackend::Rust).is_err());
     }
 }

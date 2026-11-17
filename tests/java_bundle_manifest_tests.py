@@ -32,9 +32,9 @@ class BundleVersions(unittest.TestCase):
             for script,argument,manifest in [('java-jvm-manifest.py',project,output/'jvm/manifest.json'),('java-adaptor-manifest.py',output,output/'native/manifest.json')]:
                 subprocess.run([sys.executable,str(ROOT/'scripts'/script),str(argument)],check=True,capture_output=True)
                 body=json.loads(manifest.read_text())
-                self.assertEqual((body['worker_protocol'],body['fact_ir'],body['analysis_request']),(99,37,73))
+                self.assertEqual((body['worker_protocol'],body['fact_ir'],body['backend']['analysis_request']),(99,37,73))
                 for name,digest in body['files'].items():
-                    self.assertEqual(digest,hashlib.sha256(((output/'jvm' if body['backend']=='jvm' else output)/name).read_bytes()).hexdigest())
+                    self.assertEqual(digest,hashlib.sha256(((output/'jvm' if body['backend']['runtime']['kind']=='jvm' else output)/name).read_bytes()).hexdigest())
 
 if __name__=='__main__':
     unittest.main()

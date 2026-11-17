@@ -71,6 +71,7 @@ fn inferred_graph_survives_storage_and_unknowns_keep_python_identity() -> anyhow
         },
     )?;
     let revision = Revision {
+        unit_ownership: None,
         id: String::new(),
         target: "target".into(),
         project: "project".into(),

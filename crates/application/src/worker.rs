@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, bail, ensure};
-use codeana_contracts::graph_archive::{Builder as GraphArchiveBuilder, GraphArchive};
+use codeana_graph_io::archive::{Builder as GraphArchiveBuilder, GraphArchive};
 pub struct SpooledAnalysis {
     pub header: AnalysisHeader,
     pub records: GraphArchive,
@@ -9,15 +9,47 @@ pub enum Language<'a> {
     Rust(&'a w::RustConfig),
     Python(&'a w::PythonConfig),
 }
-use codeana_contracts::{
-    envelope, map, worker as w, worker::envelope::Body, write_frame_with_budget,
-};
+pub(super) struct LaunchSpec<'a> {
+    pub fixtures: Option<&'a Path>,
+    pub language: Language<'a>,
+    pub checkout: &'a Path,
+    pub manifest: &'a Manifest,
+    pub inputs: crate::supervisor::InputLease,
+    pub publication: Publication<'a>,
+}
+pub(super) struct Publication<'a> {
+    pub previous: &'a [SourceUnit],
+    pub modules: Vec<String>,
+}
+impl Publication<'_> {
+    fn admit(&self, budget: Option<&AnalysisContext>) -> Result<()> {
+        if let Some(budget) = budget {
+            budget
+                .charge(
+                    1,
+                    0,
+                    2 * retained_size(&self.previous)?
+                        + self
+                            .modules
+                            .iter()
+                            .map(|m| m.len() as u64 + 128)
+                            .sum::<u64>(),
+                )
+                .map_err(DomainError::analysis)?;
+        }
+        Ok(())
+    }
+}
+#[derive(Clone)]
+struct ScratchLease {
+    budget: super::resources::DiskBudget,
+    _inputs: std::sync::Arc<crate::supervisor::InputLease>,
+}
+use codeana_contracts::{envelope, map, worker as w, worker::envelope::Body};
 use codeana_model::*;
+use codeana_worker_runtime::write_frame_with_budget;
 use std::{os::fd::AsRawFd, path::Path, time::Duration};
-use tokio::{
-    net::UnixStream,
-    process::{Child, Command},
-};
+use tokio::{net::UnixStream, process::Command};
 use tokio_util::sync::CancellationToken;
 // A Java Ack also releases the native task and atomically persists bounded derived
 // artifacts. The cache lock alone may wait five seconds; the old two-second IPC
@@ -32,7 +64,7 @@ pub(super) struct MemoryUsage {
     stage: String,
     process_group: u32,
     phase_ms: std::collections::BTreeMap<String, u64>,
-    stream: Option<codeana_contracts::stream::StreamSummary>,
+    stream: Option<codeana_graph_io::stream::StreamSummary>,
 }
 impl MemoryUsage {
     fn sample(&mut self, rss: u64) -> bool {
@@ -85,7 +117,7 @@ async fn receive_ack(
     revision: &str,
     timeout: Duration,
 ) -> Result<()> {
-    let mut reader = codeana_contracts::FrameReader::default();
+    let mut reader = codeana_worker_runtime::FrameReader::default();
     let frame = tokio::time::timeout(timeout, reader.next_control(ipc)).await??;
     ensure!(
         frame.attempt == attempt,
@@ -108,21 +140,24 @@ async fn receive_ack(
 }
 pub struct AnalysisBinding {
     pub coordinator: std::sync::Arc<std::sync::Mutex<AnalysisCoordinator>>,
-    pub language: AnalysisLanguage,
+    pub language: AnalysisBackend,
     pub instance: String,
 }
 
 pub struct Worker {
+    previous_sources: Vec<SourceUnit>,
+    publication_modules: Vec<String>,
+    fixture: bool,
     analysis: Option<(
         AnalysisGrant,
         std::sync::Arc<std::sync::Mutex<AnalysisCoordinator>>,
     )>,
-    child: Child,
+    child: crate::supervisor::Process,
     stopped: bool,
     process_group: u32,
     command: String,
     ipc: UnixStream,
-    frame_reader: codeana_contracts::FrameReader,
+    frame_reader: codeana_worker_runtime::FrameReader,
     logs: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
     log_task: tokio::task::JoinHandle<()>,
     monitor: Option<tokio::task::JoinHandle<()>>,
@@ -131,12 +166,13 @@ pub struct Worker {
     memory: std::sync::Arc<std::sync::Mutex<MemoryUsage>>,
     pub attempt: String,
     pub context: BuildContext,
-    output_limits: codeana_contracts::graph_archive::OutputLimits,
-    scratch: std::sync::Arc<std::sync::Mutex<Option<super::resources::DiskBudget>>>,
+    output_limits: codeana_contracts::graph_delivery::OutputLimits,
+    scratch: std::sync::Arc<std::sync::Mutex<Option<ScratchLease>>>,
     scratch_exceeded: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
+#[cfg(test)]
 async fn terminate_group(
-    child: &mut Child,
+    child: &mut tokio::process::Child,
     process_group: u32,
 ) -> std::io::Result<std::process::ExitStatus> {
     // SAFETY: this group is the group assigned to the supervised child at launch.
@@ -158,7 +194,7 @@ async fn terminate_group(
 }
 
 /// Observe an owned child's exit without releasing the PID before descendant cleanup.
-fn exited_without_reaping(pid: u32) -> std::io::Result<bool> {
+pub(super) fn exited_without_reaping(pid: u32) -> std::io::Result<bool> {
     // SAFETY: waitid initializes siginfo; WNOHANG makes this a nonblocking observation,
     // WNOWAIT leaves the owned child waitable by Tokio after its group is terminated.
     let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
@@ -202,20 +238,14 @@ impl Drop for Worker {
         if let Some(monitor) = &self.monitor {
             monitor.abort();
         }
-        // SAFETY: this group was created exclusively for the owned worker. Reap only after
-        // terminating descendants, including when the leader exited unexpectedly.
-        if !self.stopped {
-            unsafe {
-                libc::kill(-(self.process_group as i32), libc::SIGKILL);
-            }
-            let _ = self.child.try_wait();
-        }
     }
 }
 impl Worker {
     fn observed_exit(&mut self) {
         // Once reaped, the old PID/PGID can be reused. Never signal or monitor it again.
         self.stopped = true;
+        self.scratch.lock().unwrap().take();
+        self.child.release_inputs();
         *self.group_signals.lock().unwrap() = false;
         self.log_task.abort();
         if let Some(monitor) = &self.monitor {
@@ -240,7 +270,7 @@ impl Worker {
             return Ok(());
         }
         self.log_task.abort();
-        terminate_group(&mut self.child, self.process_group).await?;
+        self.child.shutdown().await?;
         self.observed_exit();
         Ok(())
     }
@@ -277,7 +307,7 @@ impl Worker {
         failed: bool,
     ) -> Result<()> {
         if let Some((grant, coordinator)) = &self.analysis {
-            codeana_contracts::analysis_budget::reconcile_receipt(
+            codeana_worker_runtime::analysis::reconcile_receipt(
                 &mut coordinator.lock().unwrap(),
                 grant,
                 receipt,
@@ -288,35 +318,27 @@ impl Worker {
         Ok(())
     }
 
-    pub async fn start(
-        fixtures: Option<&Path>,
-        java: Option<&super::java::PreparedJava>,
-        checkout: &Path,
-        manifest: &Manifest,
+    pub(super) async fn start_language(
+        spec: LaunchSpec<'_>,
         cancel: &CancellationToken,
         memory_limit: u64,
         analysis: Option<AnalysisBinding>,
     ) -> Result<Self> {
-        Self::start_language(
+        let LaunchSpec {
             fixtures,
-            Language::Java(java),
+            language,
             checkout,
             manifest,
-            cancel,
-            memory_limit,
-            analysis,
-        )
-        .await
-    }
-    pub async fn start_language(
-        fixtures: Option<&Path>,
-        language: Language<'_>,
-        checkout: &Path,
-        manifest: &Manifest,
-        cancel: &CancellationToken,
-        memory_limit: u64,
-        analysis: Option<AnalysisBinding>,
-    ) -> Result<Self> {
+            inputs,
+            publication,
+        } = spec;
+        crate::supervisor::admit_launch()?;
+        let host = analysis
+            .as_ref()
+            .map(|b| b.coordinator.lock().unwrap().host(b.language))
+            .transpose()
+            .map_err(DomainError::analysis)?;
+        publication.admit(host.as_ref())?;
         ensure!(
             fixtures.is_some() || analysis.is_some(),
             "ANALYSIS_GRANT_REQUIRED"
@@ -326,6 +348,30 @@ impl Worker {
             Language::Rust(rust) => (None, Some(rust), None),
             Language::Python(python) => (None, None, Some(python)),
         };
+        let backend = if rust.is_some() {
+            AnalysisBackend::Rust
+        } else if python.is_some() {
+            AnalysisBackend::Python
+        } else {
+            AnalysisBackend::Java
+        };
+        let expected_producer = if fixtures.is_some() {
+            "mock-fixture-v1"
+        } else {
+            match backend {
+                AnalysisBackend::Java => "javac-v3",
+                AnalysisBackend::Rust => codeana_model::rust::PRODUCER,
+                AnalysisBackend::Python => codeana_model::python::PRODUCER,
+                AnalysisBackend::TypeScript => unreachable!(),
+            }
+        };
+        let unit = analysis
+            .as_ref()
+            .filter(|b| !b.instance.is_empty())
+            .map(|b| b.instance.clone())
+            .unwrap_or_else(|| backend.as_str().into());
+        let source_languages =
+            vec![SourceLanguage::lookup(backend.as_str()).expect("registered source")];
         let (a, b) = std::os::unix::net::UnixStream::pair()?;
         a.set_nonblocking(true)?;
         let fd = b.as_raw_fd();
@@ -370,26 +416,32 @@ impl Worker {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
         )?;
+        let output_limits = java
+            .map(|j| codeana_contracts::java::output_limits(&j.config))
+            .transpose()?
+            .unwrap_or_default();
+        let ipc = UnixStream::from_std(a)?;
         let mut child = cmd.spawn().context(codeana_model::DomainError::new(
             codeana_model::ErrorCode::WorkerNotInstalled,
             "",
         ))?;
+        let pid = child.id().context("WORKER_PID_REQUIRED")?;
+        let inputs = std::sync::Arc::new(inputs);
+        let stderr = child.stderr.take();
+        let child = crate::supervisor::Process::new(child, pid, inputs.clone());
         let memory = std::sync::Arc::new(std::sync::Mutex::new(MemoryUsage {
             limit_bytes: memory_limit,
             rss_bytes: 0,
             peak_rss_bytes: 0,
             stage: "starting".into(),
-            process_group: child.id().context("WORKER_PID_REQUIRED")?,
+            process_group: pid,
             phase_ms: Default::default(),
             stream: None,
         }));
-        let mut stderr = child
-            .stderr
-            .take()
-            .context(codeana_model::DomainError::new(
-                codeana_model::ErrorCode::WorkerStderr,
-                "",
-            ))?;
+        let mut stderr = stderr.context(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::WorkerStderr,
+            "",
+        ))?;
         let logs = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let captured = logs.clone();
         let phase_memory = memory.clone();
@@ -407,14 +459,12 @@ impl Worker {
                 phase_memory.lock().unwrap().observe_phase(&tail);
             }
         });
-        let pid = child.id().context(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::WorkerPidRequired,
-            "",
-        ))?;
         let memory_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let exceeded = memory_exceeded.clone();
-        let scratch =
-            std::sync::Arc::new(std::sync::Mutex::new(java.map(|j| j.disk_budget.clone())));
+        let scratch = std::sync::Arc::new(std::sync::Mutex::new(java.map(|j| ScratchLease {
+            budget: j.disk_budget.clone(),
+            _inputs: inputs.clone(),
+        })));
         let monitored_scratch = scratch.clone();
         let scratch_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let disk_exceeded = scratch_exceeded.clone();
@@ -428,11 +478,23 @@ impl Worker {
                 interval.tick().await;
                 let budget = monitored_scratch.lock().unwrap().clone();
                 if let Some(budget) = budget {
-                    let check = tokio::task::spawn_blocking(move || budget.check()).await;
+                    let checked_root = budget.budget.root.clone();
+                    let check = tokio::task::spawn_blocking(move || {
+                        let result = budget.budget.check();
+                        drop(budget);
+                        result
+                    })
+                    .await;
                     if !matches!(check, Ok(Ok(()))) {
-                        disk_exceeded.store(true, std::sync::atomic::Ordering::SeqCst);
-                        signal_monitored_group(pid, &monitor_signals);
-                        break;
+                        let active = monitored_scratch.lock().unwrap();
+                        if active
+                            .as_ref()
+                            .is_some_and(|b| b.budget.root == checked_root)
+                        {
+                            disk_exceeded.store(true, std::sync::atomic::Ordering::SeqCst);
+                            signal_monitored_group(pid, &monitor_signals);
+                            break;
+                        }
                     }
                 }
                 let sample = tokio::time::timeout(
@@ -463,11 +525,11 @@ impl Worker {
         });
         drop(b);
         let mut worker = Self {
+            previous_sources: publication.previous.to_vec(),
+            publication_modules: publication.modules,
+            fixture: fixtures.is_some(),
             analysis: None,
-            output_limits: java
-                .map(|j| codeana_contracts::graph_archive::OutputLimits::from_config(&j.config))
-                .transpose()?
-                .unwrap_or_default(),
+            output_limits,
             scratch,
             scratch_exceeded,
             monitor: Some(monitor),
@@ -480,17 +542,17 @@ impl Worker {
             command,
             logs,
             log_task,
-            ipc: UnixStream::from_std(a)?,
-            frame_reader: codeana_contracts::FrameReader::default(),
+            ipc,
+            frame_reader: codeana_worker_runtime::FrameReader::default(),
             attempt: new_id("attempt"),
-            context: BuildContext {
-                language: String::new(),
-                modules: vec![],
-                source_version: String::new(),
-                classpath: vec![],
-                producer: String::new(),
-                capabilities: vec![],
-            },
+            context: BuildContext::new(
+                &unit,
+                BackendContext::Java {
+                    source_version: String::new(),
+                    classpath: vec![],
+                    toolchain: Default::default(),
+                },
+            ),
         };
         let initialized: Result<()> = async {
             if let Some(config) = rust {
@@ -499,7 +561,7 @@ impl Worker {
                         && (1..=2000000).contains(&config.fact_limit),
                     "RUST_OUTPUT_LIMIT_RANGE"
                 );
-                worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
+                worker.output_limits = codeana_contracts::graph_delivery::OutputLimits {
                     bytes: config.result_bytes,
                     facts: config.fact_limit,
                 };
@@ -510,7 +572,7 @@ impl Worker {
                         && (1..=2000000).contains(&config.fact_limit),
                     "PYTHON_OUTPUT_LIMIT_RANGE"
                 );
-                worker.output_limits = codeana_contracts::graph_archive::OutputLimits {
+                worker.output_limits = codeana_contracts::graph_delivery::OutputLimits {
                     bytes: config.result_bytes,
                     facts: config.fact_limit,
                 };
@@ -562,15 +624,32 @@ impl Worker {
             let deadline_ms = worker.analysis_deadline_ms()?;
             worker
                 .send(Body::Discover(w::Discover {
+                    unit: unit.clone(),
+                    source_languages: source_languages
+                        .iter()
+                        .map(|l| l.as_str().to_owned())
+                        .collect(),
                     deadline_ms: Some(deadline_ms),
                     analysis_grant: worker.analysis.as_ref().map(|(grant, _)| {
                         Box::new(codeana_contracts::analysis_budget::encode_grant(grant))
                     }),
 
-                    python: python.cloned().map(Box::new),
-                    rust: rust.cloned().map(Box::new),
+                    config: match (java, rust, python) {
+                        (Some(j), None, None) => {
+                            Some(w::discover::Config::Java(Box::new(j.config.clone())))
+                        }
+                        (None, Some(r), None) => {
+                            Some(w::discover::Config::Rust(Box::new(r.clone())))
+                        }
+                        (None, None, Some(p)) => {
+                            Some(w::discover::Config::Python(Box::new(p.clone())))
+                        }
+                        (None, None, None) if fixtures.is_some() => {
+                            Some(w::discover::Config::Java(Box::default()))
+                        }
+                        _ => bail!("DISCOVER_CONFIG_REQUIRED"),
+                    },
                     manifest: Some(map(manifest)?),
-                    java: java.map(|j| j.config.clone()),
                 }))
                 .await?;
             worker.context = match worker.receive(cancel).await? {
@@ -628,6 +707,14 @@ impl Worker {
                     ""
                 )),
             };
+            codeana_contracts::build_context::accept(
+                &worker.context,
+                &unit,
+                backend,
+                &source_languages,
+                expected_producer,
+                manifest,
+            )?;
             ensure!(
                 fixtures.is_none() || worker.context.producer.starts_with("mock-"),
                 codeana_model::DomainError::new(
@@ -699,7 +786,7 @@ impl Worker {
                     tokio::task::yield_now().await;
                     let logs=String::from_utf8_lossy(&self.logs.lock().unwrap()).into_owned();
                     self.stop_monitor().await;
-                    let status=tokio::time::timeout(Duration::from_millis(100),terminate_group(&mut self.child,self.process_group)).await;
+                    let status=tokio::time::timeout(Duration::from_millis(100),self.child.shutdown()).await;
                     if matches!(&status,Ok(Ok(_))) { self.observed_exit(); }
                     if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaScratchBudget, ""));}
                     if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerMemoryBudget, serde_json::to_string(&self.memory_usage())?));}
@@ -758,12 +845,12 @@ impl Worker {
             .lock()
             .unwrap()
             .as_ref()
-            .map(|b| b.root.clone());
+            .map(|b| b.budget.root.clone());
         let limits = self.output_limits;
         let mut archive_task = None;
         let header = self
             .analyze_into(manifest, profile, baseline, old, full, cancel, |_| {
-                let (sender, records) = codeana_contracts::stream::GraphStream::channel();
+                let (sender, records) = codeana_graph_io::stream::GraphStream::channel();
                 let root = root.clone();
                 archive_task = Some(tokio::task::spawn_blocking(move || -> Result<_> {
                     let mut archive =
@@ -795,7 +882,7 @@ impl Worker {
         old: Option<&BaselineInput>,
         full: bool,
         cancel: &CancellationToken,
-        mut begin_sink: impl FnMut(&AnalysisHeader) -> Result<codeana_contracts::stream::SinkSender>,
+        mut begin_sink: impl FnMut(&AnalysisHeader) -> Result<codeana_graph_io::stream::SinkSender>,
     ) -> Result<AnalysisHeader> {
         let diagnostics = codeana_contracts::performance::Report::new("transport");
         diagnostics
@@ -825,60 +912,29 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
                         }
                         _ => bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::ExpectedResultBegin, "")),
                     };
-                    ensure!(
-                        begin.manifest == manifest.id()
-                            && begin.profile == profile
-                            && begin.baseline == baseline
-                            && begin.producer == self.context.producer, codeana_model::DomainError::new(codeana_model::ErrorCode::ResultIdentityMismatch, ""));
-                    ensure!(!full || begin.mode == "full", codeana_model::DomainError::new(codeana_model::ErrorCode::ExpectedFullResult, ""));
-                    let r = AnalysisHeader {
-                        mode: begin.mode.parse()?, baseline: begin.baseline, manifest: begin.manifest,
-                        profile: begin.profile, producer: begin.producer,
-                        replacements: begin.replacements.iter().map(map).collect::<Result<_>>()?,
-                    };
-                    r.validate(manifest).map_err(anyhow::Error::msg)?;
-                    let sink = begin_sink(&r)?;
-                    let mut checksum = sha2::Sha256::new();
-                    use sha2::Digest;
-                    checksum.update(codeana_contracts::graph_archive::MAGIC);
-                    let mut count = 0u64;
-                    let mut bytes = 4u64;
-                    let mut seq = 0;
+                    let host_budget=self.analysis.as_ref().map(|(grant,coordinator)|coordinator.lock().unwrap().host(grant.language)).transpose().map_err(DomainError::analysis)?;
+                    let scope=codeana_graph_io::scope::Scope::new(&self.context.unit,manifest,&self.previous_sources,&self.publication_modules,&self.context.source_languages,if self.fixture {codeana_graph_io::scope::Mode::Fixture} else {codeana_graph_io::scope::Mode::Compiler},host_budget.as_ref())?;
+                    let mut delivery=codeana_worker_runtime::delivery::Receiver::new(codeana_worker_runtime::delivery::RequestBinding {manifest,profile,baseline,producer:self.context.producer.clone(),full,scope},self.output_limits,host_budget);
+                    let r=delivery.begin(begin)?;
+                    let sink=begin_sink(&r)?;
                     loop {
                         match self.receive(cancel).await? {
                             Body::Chunk(chunk) => {
-                                ensure!(!chunk.rows.is_empty() && chunk.rows.len() <= 64, codeana_model::DomainError::new(codeana_model::ErrorCode::FactChunkBudget, ""));
-                                ensure!(chunk.seq == seq, codeana_model::DomainError::new(codeana_model::ErrorCode::ChunkSequenceMismatch, ""));
-                                seq += 1;
-                                let mut batch = Vec::new();
-                                for record in chunk.rows {
-                                    use prost::Message;
-                                    let size=record.encoded_len();
-                                    if let Some((grant,coordinator))=&self.analysis {
-                                        let host=coordinator.lock().unwrap().host(grant.language)?;
-                                        host.charge(1,1,(size as u64).saturating_add(codeana_contracts::stream::row_bytes(&record) as u64).saturating_add((2*std::mem::size_of::<codeana_contracts::graph::Row>()) as u64))
-                                            .map_err(DomainError::analysis)?;
-                                    }
-                                    let encoded=record.encode_to_vec();
-                                    ensure!(count<self.output_limits.facts && bytes+size as u64+4<=self.output_limits.bytes, codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveBudget, ""));
-                                    codeana_contracts::graph_archive::update_digest(&mut checksum,&encoded);count+=1;bytes+=size as u64+4;
-                                    batch.push(record);
-                                }
+                                let batch=delivery.chunk(chunk)?;
                                 if !batch.is_empty() {
                                     tokio::select! {
                                         _ = cancel.cancelled() => bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled, "")),
-                                        sent = sink.send(codeana_contracts::stream::GraphStreamEvent::Batch(batch)) => sent.map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed, "")))?,
+                                        sent = sink.send(codeana_graph_io::stream::GraphStreamEvent::Batch(batch)) => sent.map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed, "")))?,
                                     }
                                 }
                             }
                             Body::End(end) => {
-                                ensure!(end.chunks == seq && end.count == count, codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
-                                ensure!(end.checksum == format!("{:x}", checksum.finalize()), codeana_model::DomainError::new(codeana_model::ErrorCode::ResultChecksumMismatch, ""));
+                                let verified=delivery.end(&end)?;
                                 self.accept_analysis_receipt(end.analysis_usage.as_ref(),true,false)?;
                                 tokio::select! {
                                     biased;
                                     _=cancel.cancelled()=>bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::Cancelled,"")),
-                                    sent=sink.send(codeana_contracts::stream::GraphStreamEvent::VerifiedEnd)=>sent.map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed,"")))?,
+                                    sent=sink.send(codeana_graph_io::stream::GraphStreamEvent::VerifiedEnd(verified))=>sent.map_err(|_| anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::CandidateStreamClosed,"")))?,
                                 }
                                 eprintln!("codeana-stream {}",serde_json::to_string(&sink.metrics.summary())?);
                                 return Ok(r);
@@ -915,7 +971,8 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
         }
         self.send(Body::Cancel(w::Cancel {})).await?;
         self.stop_monitor().await;
-        let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
+        let status =
+            tokio::time::timeout(Duration::from_secs(2), self.child.wait_closed()).await??;
         self.observed_exit();
         ensure!(
             status.success(),
@@ -934,7 +991,8 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
         .await?;
         if self.context.producer.starts_with("mock-") {
             self.stop_monitor().await;
-            let status = tokio::time::timeout(Duration::from_secs(2), self.child.wait()).await??;
+            let status =
+                tokio::time::timeout(Duration::from_secs(2), self.child.wait_closed()).await??;
             self.observed_exit();
             ensure!(
                 status.success(),
@@ -943,6 +1001,8 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
         } else {
             receive_ack(&mut self.ipc, &self.attempt, revision, JAVA_ACK_TIMEOUT).await?;
             self.analysis = None;
+            self.scratch.lock().unwrap().take();
+            self.child.release_inputs();
         }
         Ok(())
     }
@@ -970,19 +1030,40 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
         manifest: &Manifest,
         cancel: &CancellationToken,
         analysis: Option<AnalysisBinding>,
+        inputs: crate::supervisor::InputLease,
+        publication: Publication<'_>,
     ) -> Result<()> {
         ensure!(
             self.alive()?,
             codeana_model::DomainError::new(codeana_model::ErrorCode::WarmWorkerExited, "")
         );
         ensure!(analysis.is_some(), "ANALYSIS_GRANT_REQUIRED");
-        *self.scratch.lock().unwrap() = Some(java.disk_budget.clone());
-        self.output_limits =
-            codeana_contracts::graph_archive::OutputLimits::from_config(&java.config)?;
+        let unit = analysis
+            .as_ref()
+            .filter(|b| !b.instance.is_empty())
+            .map(|b| b.instance.clone())
+            .unwrap_or_else(|| "java".into());
+        let source_languages = vec![SourceLanguage::Java];
+        let inputs = std::sync::Arc::new(inputs);
+        self.child.replace_inputs(inputs.clone())?;
+        *self.scratch.lock().unwrap() = Some(ScratchLease {
+            budget: java.disk_budget.clone(),
+            _inputs: inputs,
+        });
+        self.output_limits = codeana_contracts::java::output_limits(&java.config)?;
         self.attempt = new_id("attempt");
         if let Some(binding) = analysis {
             self.attach_analysis(binding)?;
         }
+        let host = self
+            .analysis
+            .as_ref()
+            .map(|(g, c)| c.lock().unwrap().host(g.language))
+            .transpose()
+            .map_err(DomainError::analysis)?;
+        publication.admit(host.as_ref())?;
+        self.previous_sources = publication.previous.to_vec();
+        self.publication_modules = publication.modules;
         let deadline_ms = self.analysis_deadline_ms()?;
         self.send(Body::Hello(w::Hello {
             protocol: WORKER_PROTOCOL_VERSION,
@@ -999,7 +1080,9 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
         match self.receive(cancel).await? {
             Body::Hello(h) => {
                 ensure!(
-                    h.protocol == WORKER_PROTOCOL_VERSION && h.fact_ir == VERSION,
+                    h.protocol == WORKER_PROTOCOL_VERSION
+                        && h.fact_ir == VERSION
+                        && h.producer == "javac-v3",
                     "WORKER_VERSION_MISMATCH"
                 );
                 self.accept_analysis_receipt(h.analysis_usage.as_ref(), false, false)?;
@@ -1007,15 +1090,15 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
             _ => bail!("EXPECTED_HELLO"),
         }
         self.send(Body::Discover(w::Discover {
+            unit: unit.clone(),
+            source_languages: vec!["java".into()],
             deadline_ms: Some(deadline_ms),
             analysis_grant: self.analysis.as_ref().map(|(grant, _)| {
                 Box::new(codeana_contracts::analysis_budget::encode_grant(grant))
             }),
 
-            python: None,
-            rust: None,
             manifest: Some(map(manifest)?),
-            java: Some(java.config.clone()),
+            config: Some(w::discover::Config::Java(Box::new(java.config.clone()))),
         }))
         .await?;
         self.context = match self.receive(cancel).await? {
@@ -1028,8 +1111,16 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
                 ""
             )),
         };
+        codeana_contracts::build_context::accept(
+            &self.context,
+            &unit,
+            AnalysisBackend::Java,
+            &source_languages,
+            "javac-v3",
+            manifest,
+        )?;
         ensure!(
-            self.context.language == "java",
+            self.context.backend() == AnalysisBackend::Java,
             codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerLanguageMismatch, "")
         );
         Ok(())
@@ -1038,16 +1129,10 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
 
 fn validate_python_context(context: &BuildContext) -> Result<()> {
     ensure!(
-        context.language == "python"
-            && context.producer == codeana_model::python::PRODUCER
-            && context
-                .capabilities
-                .iter()
-                .any(|c| c == codeana_model::python::ADAPTER_VERSION)
-            && context
-                .capabilities
-                .iter()
-                .any(|c| c == &format!("pyrefly-{}", codeana_model::python::BACKEND_COMMIT)),
+        context.producer == codeana_model::python::PRODUCER
+            && matches!(&context.details,
+        BackendContext::Python {python_version,platform,adapter,backend_commit}
+        if python_version == "3.12" && platform == "darwin" && adapter == codeana_model::python::ADAPTER_VERSION && backend_commit == codeana_model::python::BACKEND_COMMIT),
         "PYTHON_WORKER_VERSION_MISMATCH"
     );
     Ok(())
@@ -1056,7 +1141,105 @@ fn validate_python_context(context: &BuildContext) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use codeana_contracts::write_frame;
+    use codeana_worker_runtime::write_frame;
+    #[tokio::test]
+    async fn only_a_valid_ack_releases_live_worker_inputs_and_scratch_watch() -> Result<()> {
+        for valid in [false, true] {
+            let directory = std::sync::Arc::new(tempfile::tempdir()?);
+            let path = directory.path().to_owned();
+            let inputs =
+                std::sync::Arc::new(crate::supervisor::InputLease::directory(directory.clone()));
+            let child = Command::new("/bin/sleep")
+                .arg("60")
+                .process_group(0)
+                .kill_on_drop(true)
+                .spawn()?;
+            let group = child.id().unwrap();
+            let (mut worker, mut peer) = test_worker(child, group, inputs.clone());
+            *worker.scratch.lock().unwrap() = Some(ScratchLease {
+                budget: crate::resources::DiskBudget::new(path.clone(), 1 << 20, 0, 0, "test"),
+                _inputs: inputs.clone(),
+            });
+            drop(inputs);
+            drop(directory);
+            let server = tokio::spawn(async move {
+                let mut reader = codeana_worker_runtime::FrameReader::default();
+                let frame = reader.next_control(&mut peer).await?;
+                ensure!(matches!(frame.body, Some(Body::Ack(_))), "expected ack");
+                write_frame(
+                    &mut peer,
+                    &envelope(
+                        "test",
+                        Body::Acked(w::Acked {
+                            revision: if valid { "revision" } else { "wrong" }.into(),
+                        }),
+                    ),
+                )
+                .await
+            });
+            let result = worker.ack("revision").await;
+            server.await??;
+            assert_eq!(result.is_ok(), valid);
+            assert_eq!(path.exists(), !valid);
+            assert_eq!(worker.scratch.lock().unwrap().is_none(), valid);
+            assert!(worker.alive()?);
+            worker.shutdown().await?;
+            assert!(!path.exists());
+        }
+        Ok(())
+    }
+    fn test_worker(
+        child: tokio::process::Child,
+        group: u32,
+        inputs: std::sync::Arc<crate::supervisor::InputLease>,
+    ) -> (Worker, UnixStream) {
+        let (ipc, peer) = UnixStream::pair().unwrap();
+        let worker = Worker {
+            previous_sources: vec![],
+            publication_modules: vec![],
+            fixture: true,
+            analysis: None,
+            child: crate::supervisor::Process::new(child, group, inputs),
+            stopped: false,
+            process_group: group,
+            command: "test".into(),
+            ipc,
+            frame_reader: Default::default(),
+            logs: Default::default(),
+            log_task: tokio::spawn(std::future::pending::<()>()),
+            monitor: Some(tokio::spawn(std::future::pending::<()>())),
+            group_signals: std::sync::Arc::new(std::sync::Mutex::new(true)),
+            memory_exceeded: Default::default(),
+            scratch_exceeded: Default::default(),
+            memory: std::sync::Arc::new(std::sync::Mutex::new(MemoryUsage {
+                limit_bytes: 1,
+                rss_bytes: 0,
+                peak_rss_bytes: 0,
+                stage: "test".into(),
+                process_group: group,
+                phase_ms: Default::default(),
+                stream: None,
+            })),
+            attempt: "test".into(),
+            context: BuildContext {
+                unit: "java".into(),
+                source_languages: vec![SourceLanguage::Java],
+                worlds: vec![],
+                semantic_digest: String::new(),
+                producer: "javac-v3".into(),
+                modules: vec![],
+                details: BackendContext::Java {
+                    source_version: "8".into(),
+                    classpath: vec![],
+                    toolchain: Default::default(),
+                },
+                capabilities: vec![],
+            },
+            output_limits: Default::default(),
+            scratch: Default::default(),
+        };
+        (worker, peer)
+    }
     #[tokio::test]
     async fn liveness_observation_leaves_exit_status_for_group_cleanup() {
         let mut child = Command::new("/usr/bin/true")
@@ -1111,42 +1294,7 @@ mod tests {
             .spawn()
             .unwrap();
         let group = sentinel.id().unwrap();
-        let (ipc, _peer) = UnixStream::pair().unwrap();
-        let mut worker = Worker {
-            analysis: None,
-            child,
-            stopped: false,
-            process_group: group,
-            command: "test".into(),
-            ipc,
-            frame_reader: Default::default(),
-            logs: Default::default(),
-            log_task: tokio::spawn(std::future::pending::<()>()),
-            monitor: Some(tokio::spawn(std::future::pending::<()>())),
-            group_signals: std::sync::Arc::new(std::sync::Mutex::new(true)),
-            memory_exceeded: Default::default(),
-            scratch_exceeded: Default::default(),
-            memory: std::sync::Arc::new(std::sync::Mutex::new(MemoryUsage {
-                limit_bytes: 1,
-                rss_bytes: 0,
-                peak_rss_bytes: 0,
-                stage: "test".into(),
-                process_group: group,
-                phase_ms: Default::default(),
-                stream: None,
-            })),
-            attempt: "test".into(),
-            context: BuildContext {
-                language: "test".into(),
-                producer: "test".into(),
-                modules: vec![],
-                source_version: "8".into(),
-                classpath: vec![],
-                capabilities: vec![],
-            },
-            output_limits: Default::default(),
-            scratch: Default::default(),
-        };
+        let (mut worker, _peer) = test_worker(child, group, std::sync::Arc::default());
         let monitor_signals = worker.group_signals.clone();
         assert!(!worker.alive().unwrap());
         worker.shutdown().await.unwrap();
@@ -1163,20 +1311,28 @@ mod tests {
     #[test]
     fn python_worker_requires_current_adapter_and_pinned_backend() {
         let mut context = BuildContext {
-            language: "python".into(),
+            unit: "python".into(),
+            source_languages: vec![SourceLanguage::Python],
+            worlds: vec![],
+            semantic_digest: String::new(),
             producer: codeana_model::python::PRODUCER.into(),
             modules: vec![],
-            source_version: "3.12".into(),
-            classpath: vec![],
+            details: BackendContext::Python {
+                python_version: "3.12".into(),
+                platform: "darwin".into(),
+                adapter: "old-adapter".into(),
+                backend_commit: codeana_model::python::BACKEND_COMMIT.into(),
+            },
             capabilities: vec!["pyrefly-1.4.0-codeana-v1".into()],
         };
         assert!(validate_python_context(&context).is_err());
-        context.capabilities = vec![
-            codeana_model::python::ADAPTER_VERSION.into(),
-            format!("pyrefly-{}", codeana_model::python::BACKEND_COMMIT),
-        ];
+        if let BackendContext::Python { adapter, .. } = &mut context.details {
+            *adapter = codeana_model::python::ADAPTER_VERSION.into();
+        }
         validate_python_context(&context).unwrap();
-        context.capabilities[1] = "pyrefly-wrong-commit".into();
+        if let BackendContext::Python { backend_commit, .. } = &mut context.details {
+            *backend_commit = "wrong-commit".into();
+        }
         assert!(validate_python_context(&context).is_err());
     }
 

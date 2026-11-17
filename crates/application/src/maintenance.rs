@@ -18,7 +18,8 @@ impl MaintenanceService {
                 let policy = codeana_config::resolve(Path::new(&req.project), req)?
                     .config
                     .versions
-                    .gc;
+                    .gc
+                    .clone();
                 Record::display(&self.store.gc_policy(
                     req.execute,
                     Some(project),
