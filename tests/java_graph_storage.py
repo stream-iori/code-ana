@@ -98,6 +98,7 @@ enabled=false
         _,fresh=self.cli('index','--full',timeout=180)
         self.assertEqual(self.canonical(delta['revision']),self.canonical(fresh['revision']))
         records,unchanged=self.cli('index',timeout=180)
+        self.assertEqual(self.canonical(fresh['revision']),self.canonical(unchanged['revision']))
         self.assertEqual(records[0]['analysis_mode'],'source_only')
         self.assertFalse(unchanged['evidence']['semantic'])
         jar.write_bytes(original);export()
@@ -152,7 +153,7 @@ enabled=false
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(db.execute('PRAGMA page_size').fetchone()[0],4096)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],13)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],14)
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name LIKE '%semantic_annotations%'").fetchall())
             self.assertEqual(db.execute("SELECT value FROM project_meta WHERE key='schema_version'").fetchone()[0],'36')
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='facts'").fetchall())
@@ -243,8 +244,11 @@ enabled=false
 
     def test_unchanged_index_preserves_graph_and_fts(self):
         _,first=self.cli('index','--full',timeout=180);before=self.canonical(first['revision'])
-        _,next=self.cli('index',timeout=180)
-        self.assertEqual(before,self.canonical(next['revision']))
+        worker=self.java_worker_pid();self.assertIsNotNone(worker)
+        for _ in range(2):
+            _,next=self.cli('index',timeout=180)
+            self.assertEqual(before,self.canonical(next['revision']))
+            self.assertEqual(worker,self.java_worker_pid())
         rows,_=self.cli('resolve','p.Service');self.assertTrue(rows)
 
     def test_native_heap_exhaustion_preserves_head_and_restarts_worker(self):

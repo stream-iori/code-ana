@@ -214,6 +214,8 @@ codes! {
     UnitOwnershipRebuildRequired = "UNIT_OWNERSHIP_REBUILD_REQUIRED",
     AnalysisUnitScope = "ANALYSIS_UNIT_SCOPE",
     GraphScopeMismatch = "GRAPH_SCOPE_MISMATCH",
+    GraphWorldOwnershipConflict = "GRAPH_WORLD_OWNERSHIP_CONFLICT",
+    GraphSourceWorldRequired = "GRAPH_SOURCE_WORLD_REQUIRED",
     GraphSourceNotCaptured = "GRAPH_SOURCE_NOT_CAPTURED",
     GraphSourceNotReplaced = "GRAPH_SOURCE_NOT_REPLACED",
     GraphSourceUnsafe = "GRAPH_SOURCE_UNSAFE",

@@ -38,3 +38,5 @@ Java 内部 EngineRequest/EngineAnalysisReceipt 和 JSON 解码位于 java-worke
 application/supervisor 持有真实 child 与输入租约；回收线程独立于任务 runtime，未确认停止保留输入。worker-runtime 继续只管协议/FFI 机制，不拥有进程或 scratch。
 
 Receiver 的 RequestBinding 包含单元 Scope；Begin 校验 replacement，Chunk 在交给临时候选前逐行校验范围。任一范围错误进入 Failed，忽略错误后继续发送正确 Chunk/End 也不能恢复成功。范围不替代候选的列形状、引用、coverage 或发布 CAS 校验。
+
+Receiver 同时持有原始 Verifier 和主机 Projection：范围校验取自本单元冻结输入；原始行先参与原 SHA，唯一隐式 world 的填入再参与投影 SHA。发送给候选的行和 VerifiedEnd 属于同一投影，原始坏 SHA 仍失败，不能凭主机投影校验替代 worker End。投影的解码/编码/字符串分配继续原 host 预算，输出上限分别约束原流和投影。

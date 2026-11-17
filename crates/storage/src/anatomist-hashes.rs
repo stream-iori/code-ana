@@ -10,7 +10,7 @@ pub const NODE_HASH: &str=r#"SELECT n.seq,n.id,n.symbol_id,n.domain,n.language,n
                 FROM stage_nodes n LEFT JOIN stage_declarations d
                   ON d.provider_id=n.provider_id AND d.symbol_id=n.symbol_id
                  AND d.module=n.module AND d.scope=n.scope AND d.source_file=n.source_file
-                 AND d.producer_id=n.producer_id
+                 AND d.producer_id=n.producer_id AND d.world=n.world
                 WHERE n.seq>? AND n.fact_hash IS NULL ORDER BY n.seq LIMIT ?"#;
 pub const EDGE_HASH: &str=r#"SELECT seq,resolved_source,resolved_target,external_target_fqn,external_target_symbol,
                        external_target_language,external_target_provider_id,relation,semantic,mechanism,

@@ -97,6 +97,26 @@ impl IndexTask {
             }),
         })
     }
+    fn revision_for_contexts(
+        &self,
+        capture: &Capture,
+        contexts: &[&BuildContext],
+        profile: &str,
+        producer: &str,
+    ) -> Result<Revision> {
+        Ok(Revision {
+            unit_ownership: self.ownership(capture, contexts)?,
+            id: String::new(),
+            target: capture.target.clone(),
+            project: capture.project.clone(),
+            checkout: capture.checkout.clone(),
+            manifest: capture.manifest.clone(),
+            profile: profile.into(),
+            producer: producer.into(),
+            created: 0,
+        })
+    }
+
     /// Reuse still creates a private candidate and follows the normal publication fence.
     /// Workers must finish their Reused receipt before this method is called.
     pub(super) async fn stage_reused_revision(
@@ -105,23 +125,18 @@ impl IndexTask {
         revision: Revision,
         expected: RevisionId,
         producer: String,
+        disk: Option<crate::resources::DiskBudget>,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, StagedCandidate)> {
-        let header = AnalysisHeader {
-            mode: AnalysisMode::Delta,
-            baseline: expected.to_string(),
-            manifest: revision.manifest.id(),
-            profile: revision.profile.clone(),
-            producer,
-            replacements: vec![],
-        };
+        ensure!(
+            revision.producer == producer,
+            DomainError::new(ErrorCode::ResultIdentityMismatch, "reuse producer")
+        );
         let store = self.index.clone().with_context(self.staging_context(id));
         let cancellation = cancel.clone();
         let candidate = tokio::task::spawn_blocking(move || {
-            store.stage_graph_records(
+            store.stage_reused_graph(
                 revision,
-                &header,
-                std::iter::empty(),
                 &expected,
                 || {
                     ensure!(
@@ -130,7 +145,12 @@ impl IndexTask {
                     );
                     Ok(())
                 },
-                |_| Ok(()),
+                |path| {
+                    if let Some(disk) = &disk {
+                        disk.check_candidate(Some(path))?;
+                    }
+                    Ok(())
+                },
             )
         })
         .await??;
@@ -449,8 +469,7 @@ impl IndexTask {
             if let Some(timings) = &mut timings {
                 timings.phase("ack_finished");
             }
-            if !unchanged
-                && ack.is_none()
+            if ack.is_none()
                 && self.workers.can_keep_java()
                 && let Some(key) = pool_key
             {
@@ -657,7 +676,6 @@ impl IndexTask {
                 let store = self.index.clone().with_context(self.staging_context(id));
                 let baseline_id = expected.clone();
                 let desired_profile = profile.clone();
-                let desired_manifest = c.manifest.id();
                 let desired_files = c.manifest.clone();
                 let baseline_cancel = cancel.clone();
                 let summary_root = prepared.as_ref().map(|p| p.disk_budget.root.clone());
@@ -672,7 +690,17 @@ impl IndexTask {
                         );
                         let reader = store.read(&baseline_id)?;
                         let profile = reader.revision().profile.clone();
-                        let same = reader.revision().manifest.id() == desired_manifest;
+                        let previous =
+                            reader
+                                .revision()
+                                .unit_ownership
+                                .as_ref()
+                                .and_then(|ledger| {
+                                    ledger.units.iter().find(|unit| unit.unit == "java")
+                                });
+                        let same = previous.is_some_and(|unit| {
+                            codeana_model::same_semantic_sources(&unit.inputs, &desired_files.files)
+                        });
                         let summary = if profile != desired_profile || same {
                             None
                         } else {
@@ -757,17 +785,12 @@ impl IndexTask {
         let analyze_ms;
         let (result_mode, candidate) = if streaming {
             let store = self.index.clone().with_context(self.staging_context(id));
-            let revision = Revision {
-                unit_ownership: self.ownership(c, &[&worker.context])?,
-                id: String::new(),
-                target: c.target.clone(),
-                project: c.project.clone(),
-                checkout: c.checkout.clone(),
-                manifest: c.manifest.clone(),
-                profile: profile.clone(),
-                producer: worker.context.producer.clone(),
-                created: 0,
-            };
+            let revision = self.revision_for_contexts(
+                c,
+                &[&worker.context],
+                &profile,
+                &worker.context.producer,
+            )?;
             let baseline_id = expected.clone();
             let staging_cancel = cancel.clone();
             let candidate_disk = prepared.as_ref().map(|p| p.disk_budget.clone());
@@ -840,45 +863,41 @@ impl IndexTask {
                     "",
                 ))??,
             )
+        } else if unchanged {
+            worker.reuse_java().await?;
+            if let Some(prepared) = prepared {
+                prepared.verify()?;
+            }
+            let revision = self.revision_for_contexts(
+                c,
+                &[&worker.context],
+                &profile,
+                &worker.context.producer,
+            )?;
+            analyze_ms = analyzing.elapsed().as_millis() as u64;
+            if let Some(timings) = timings {
+                timings.phase("analyzed");
+            }
+            self.stage_reused_revision(
+                id,
+                revision,
+                expected.clone(),
+                worker.context.producer.clone(),
+                prepared.as_ref().map(|p| p.disk_budget.clone()),
+                cancel,
+            )
+            .await?
         } else {
-            let mut result = if unchanged {
-                // The captured manifest and semantic profile include adapter/toolchain identity.
-                // Keep baseline export validation/budgets and normal candidate validation/publication,
-                // but avoid sending unchanged facts through Java just to discover zero dirty owners.
-                crate::analysis_unit::retire(vec![&mut *worker]).await?;
-                let prepared = prepared.as_ref().context(codeana_model::DomainError::new(
-                    codeana_model::ErrorCode::JavaRequired,
-                    "",
-                ))?;
-                let limits = codeana_contracts::java::output_limits(&prepared.config)?;
-                SpooledAnalysis {
-                    header: AnalysisHeader {
-                        mode: codeana_model::AnalysisMode::Delta,
-                        baseline: expected.to_string(),
-                        manifest: c.manifest.id(),
-                        profile: profile.clone(),
-                        producer: worker.context.producer.clone(),
-                        replacements: vec![],
-                    },
-                    records: GraphArchiveBuilder::new(
-                        Some(&prepared.disk_budget.root),
-                        limits.bytes,
-                        limits.facts,
-                    )?
-                    .seal()?,
-                }
-            } else {
-                worker
-                    .analyze(
-                        unit_manifest,
-                        &profile,
-                        &expected,
-                        old.as_ref(),
-                        full,
-                        cancel,
-                    )
-                    .await?
-            };
+            let mut result = worker
+                .analyze(
+                    unit_manifest,
+                    &profile,
+                    &expected,
+                    old.as_ref(),
+                    full,
+                    cancel,
+                )
+                .await?;
 
             analyze_ms = analyzing.elapsed().as_millis() as u64;
             if let Some(timings) = timings {
@@ -888,17 +907,12 @@ impl IndexTask {
                 prepared.verify()?;
             }
             let result_mode = result.header.mode;
-            let revision = Revision {
-                unit_ownership: self.ownership(c, &[&worker.context])?,
-                id: String::new(),
-                target: c.target.clone(),
-                project: c.project.clone(),
-                checkout: c.checkout.clone(),
-                manifest: c.manifest.clone(),
-                profile: profile.clone(),
-                producer: result.header.producer.clone(),
-                created: 0,
-            };
+            let revision = self.revision_for_contexts(
+                c,
+                &[&worker.context],
+                &profile,
+                &result.header.producer,
+            )?;
             let store = self.index.clone().with_context(self.staging_context(id));
             let baseline_id = expected.clone();
             let staging_cancel = cancel.clone();

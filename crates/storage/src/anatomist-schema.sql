@@ -120,6 +120,7 @@ CREATE TABLE edges (
     producer_id TEXT NOT NULL DEFAULT 'java-core',
     fact_hash BLOB CHECK (fact_hash IS NULL OR length(fact_hash) = 16),
     fact_ordinal INTEGER NOT NULL DEFAULT 0,
+    world TEXT NOT NULL DEFAULT '',
     CHECK (
         (is_external = 0 AND target_id IS NOT NULL AND external_target_fqn IS NULL)
         OR
@@ -137,11 +138,14 @@ CREATE INDEX idx_edges_source_relation_external ON edges(source_id, relation, is
 CREATE INDEX idx_edges_producer_file ON edges(producer_id, source_file);
 -- Canonical source call sites. Targets are separate because one syntax site may
 -- have several static resolution candidates.
+CREATE UNIQUE INDEX idx_edges_public_identity ON edges(fact_hash,fact_ordinal) WHERE fact_hash IS NOT NULL;
+
 CREATE TABLE call_site_owners (
     owner_pk INTEGER PRIMARY KEY,
     caller_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     source_file TEXT NOT NULL,
-    UNIQUE (caller_id, source_file)
+    world TEXT NOT NULL DEFAULT '',
+    UNIQUE (caller_id, source_file,world)
 );
 
 CREATE INDEX idx_call_site_owners_source ON call_site_owners(source_file, caller_id);
@@ -170,6 +174,8 @@ CREATE TABLE call_sites (
 CREATE INDEX idx_call_sites_caller_order ON call_sites(
     owner_pk,begin_line,begin_column,ordinal
 );
+CREATE UNIQUE INDEX idx_call_sites_public_identity ON call_sites(stable_hash);
+
 CREATE TABLE call_site_targets (
     call_site_pk INTEGER NOT NULL REFERENCES call_sites(site_pk) ON DELETE CASCADE,
     target_id TEXT REFERENCES nodes(id) ON DELETE CASCADE,
@@ -208,9 +214,11 @@ CREATE TABLE annotations (
     end_column INTEGER,
     producer_id TEXT NOT NULL DEFAULT 'java-core',
     fact_hash BLOB CHECK (fact_hash IS NULL OR length(fact_hash) = 16),
-    fact_ordinal INTEGER NOT NULL DEFAULT 0
+    fact_ordinal INTEGER NOT NULL DEFAULT 0,
+    world TEXT NOT NULL DEFAULT ''
 );
 
+CREATE UNIQUE INDEX idx_annotations_public_identity ON annotations(fact_hash,fact_ordinal) WHERE fact_hash IS NOT NULL;
 CREATE INDEX idx_annotations_node_id ON annotations(node_id);
 CREATE INDEX idx_annotations_fqn ON annotations(annotation_fqn);
 CREATE INDEX idx_annotations_producer_file ON annotations(producer_id, source_file);
@@ -274,7 +282,8 @@ CREATE TABLE file_cache (
     file_size INTEGER NOT NULL DEFAULT -1,
     file_mtime_ns INTEGER NOT NULL DEFAULT -1,
     contract_hash TEXT NOT NULL DEFAULT '',
-    PRIMARY KEY (provider_id, source_file)
+    world TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (provider_id, source_file, world)
 );
 
 CREATE INDEX idx_file_cache_schema_version ON file_cache(schema_version);
@@ -345,7 +354,9 @@ CREATE TABLE file_dependencies (
     source_file TEXT NOT NULL,
     depends_on_provider_id TEXT NOT NULL DEFAULT 'java-core',
     depends_on_file TEXT NOT NULL,
-    PRIMARY KEY (source_provider_id, source_file, depends_on_provider_id, depends_on_file)
+    world TEXT NOT NULL DEFAULT '',
+    target_world TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (source_provider_id, source_file, depends_on_provider_id, depends_on_file, world,target_world)
 );
 
 CREATE INDEX idx_file_deps_target ON file_dependencies(depends_on_file);
@@ -355,7 +366,8 @@ CREATE INDEX idx_file_deps_target ON file_dependencies(depends_on_file);
 CREATE TABLE symbol_dependencies (
     target_key BLOB NOT NULL CHECK (length(target_key) = 8),
     source_file TEXT NOT NULL,
-    PRIMARY KEY (target_key, source_file)
+    world TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (target_key, source_file, world)
 ) WITHOUT ROWID;
 
 -- Persistent Rust invalidation inputs; independent of Java's derived dependencies.

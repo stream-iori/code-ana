@@ -62,7 +62,6 @@ use std::{
 };
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio_util::sync::CancellationToken;
-use worker::SpooledAnalysis;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct Endpoint {
     pub address: String,

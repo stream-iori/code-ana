@@ -1,7 +1,7 @@
 //! Host-side graph response state: envelope identity and phase complement graph-io's byte proof.
 use anyhow::{Result, bail, ensure};
 use codeana_contracts::{graph_delivery::OutputLimits, worker as w};
-use codeana_graph_io::delivery::{VerifiedEnd, Verifier};
+use codeana_graph_io::delivery::{Projection, VerifiedEnd, Verifier};
 use codeana_graph_io::scope::Scope;
 use codeana_model::{AnalysisContext, AnalysisHeader, DomainError, ErrorCode, Manifest};
 pub struct RequestBinding<'a> {
@@ -27,6 +27,8 @@ pub struct Receiver<'a> {
     full: bool,
     phase: Phase,
     verifier: Option<Verifier>,
+    projection: Option<Projection>,
+    budget: Option<AnalysisContext>,
     scope: Scope<'a>,
 }
 impl<'a> Receiver<'a> {
@@ -43,7 +45,9 @@ impl<'a> Receiver<'a> {
             full: binding.full,
             scope: binding.scope,
             phase: Phase::Begin,
-            verifier: Some(Verifier::new(limits, budget)),
+            verifier: Some(Verifier::new(limits, budget.clone())),
+            projection: Some(Projection::new(limits, budget.clone())),
+            budget,
         }
     }
     pub fn begin(&mut self, begin: w::Begin) -> Result<AnalysisHeader> {
@@ -85,7 +89,7 @@ impl<'a> Receiver<'a> {
         };
         result
     }
-    pub fn chunk(&mut self, chunk: w::Chunk) -> Result<Vec<codeana_contracts::graph::Row>> {
+    pub fn chunk(&mut self, mut chunk: w::Chunk) -> Result<Vec<codeana_contracts::graph::Row>> {
         let result = (|| {
             ensure!(self.phase == Phase::Rows, "GRAPH_DELIVERY_STATE");
             ensure!(
@@ -100,11 +104,27 @@ impl<'a> Receiver<'a> {
                 chunk.seq == verifier.chunks(),
                 DomainError::new(ErrorCode::ChunkSequenceMismatch, "")
             );
-            for row in &chunk.rows {
-                self.scope.row(row)?;
+            let projection = self
+                .projection
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("GRAPH_DELIVERY_CLOSED"))?;
+            for row in &mut chunk.rows {
+                let world = self.scope.source_world(row)?;
                 verifier.push(row)?;
+                if row.world.is_empty()
+                    && let Some(world) = world
+                {
+                    if let Some(budget) = &self.budget {
+                        budget
+                            .charge(1, 0, 64 + 3 * world.len() as u64)
+                            .map_err(DomainError::analysis)?;
+                    }
+                    row.world = world.into();
+                }
+                projection.push(row)?;
             }
             verifier.record_chunk();
+            projection.record_chunk();
             Ok(chunk.rows)
         })();
         if result.is_err() {
@@ -117,11 +137,17 @@ impl<'a> Receiver<'a> {
             self.phase = Phase::Failed;
             bail!("GRAPH_DELIVERY_STATE");
         }
-        let result = self
-            .verifier
-            .take()
-            .ok_or_else(|| anyhow::anyhow!("GRAPH_DELIVERY_CLOSED"))?
-            .verify_end(end.chunks, end.count, &end.checksum);
+        let result = (|| {
+            let source = self
+                .verifier
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("GRAPH_DELIVERY_CLOSED"))?
+                .verify_end(end.chunks, end.count, &end.checksum)?;
+            self.projection
+                .take()
+                .ok_or_else(|| anyhow::anyhow!("GRAPH_DELIVERY_CLOSED"))?
+                .finish(&source)
+        })();
         self.phase = if result.is_ok() {
             Phase::Ended
         } else {
@@ -186,6 +212,92 @@ mod tests {
                 71, 82, 65, 49, 0, 0, 0, 12, 8, 14, 18, 3, 10, 1, b'k', 18, 3, 10, 1, b'v',
             ]),
             analysis_usage: None,
+        }
+    }
+    #[test]
+    fn implicit_world_projection_keeps_the_original_sha_check_and_certifies_its_own_bytes() {
+        use codeana_contracts::graph_rows::{GraphRow, NodeRow};
+        use codeana_graph_io::archive::Builder;
+        for world in ["context-a", "context-b"] {
+            let manifest = Manifest {
+                files: vec![codeana_model::SourceUnit {
+                    path: "A.java".into(),
+                    hash: codeana_model::hash("source"),
+                    size: 6,
+                    module: "app".into(),
+                    scope: "MAIN".into(),
+                    language: "java".into(),
+                    world: world.into(),
+                    auxiliary: false,
+                }],
+            };
+            let row = NodeRow {
+                id: Some("node".into()),
+                source_file: Some("A.java".into()),
+                module: Some("app".into()),
+                scope: Some("MAIN".into()),
+                language: Some("java".into()),
+                ..Default::default()
+            }
+            .into_row("");
+            let mut original = Builder::new(None, 1 << 20, 10).unwrap();
+            original.push(&row).unwrap();
+            let original = original.seal().unwrap();
+            let end = w::End {
+                chunks: 1,
+                count: 1,
+                checksum: original.checksum.clone(),
+                analysis_usage: None,
+            };
+            let mut receiver = Receiver::new(binding(&manifest), OutputLimits::default(), None);
+            receiver.begin(begin(&manifest)).unwrap();
+            let projected = receiver
+                .chunk(w::Chunk {
+                    seq: 0,
+                    rows: vec![row.clone()],
+                })
+                .unwrap();
+            assert_eq!(projected[0].world, world);
+            let mut archive = Builder::new(None, 1 << 20, 10).unwrap();
+            archive.push(&projected[0]).unwrap();
+            let archive = archive.seal().unwrap();
+            assert_ne!(archive.checksum, original.checksum);
+            let proof = receiver.end(&end).unwrap();
+            assert_eq!(proof.checksum(), archive.checksum);
+            assert_eq!(
+                original.records().unwrap().next().unwrap().unwrap().world,
+                ""
+            );
+            let mut receiver = Receiver::new(binding(&manifest), OutputLimits::default(), None);
+            receiver.begin(begin(&manifest)).unwrap();
+            receiver
+                .chunk(w::Chunk {
+                    seq: 0,
+                    rows: vec![row.clone()],
+                })
+                .unwrap();
+            let mut wrong = end.clone();
+            wrong.checksum = archive.checksum;
+            assert!(receiver.end(&wrong).is_err());
+            assert!(receiver.end(&end).is_err());
+            let mut limited = Receiver::new(
+                binding(&manifest),
+                OutputLimits {
+                    bytes: original.bytes,
+                    facts: 10,
+                },
+                None,
+            );
+            limited.begin(begin(&manifest)).unwrap();
+            assert!(
+                limited
+                    .chunk(w::Chunk {
+                        seq: 0,
+                        rows: vec![row]
+                    })
+                    .is_err()
+            );
+            assert!(limited.end(&end).is_err());
         }
     }
     #[test]

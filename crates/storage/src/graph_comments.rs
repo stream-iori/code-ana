@@ -512,8 +512,8 @@ mod tests {
         header.mode = AnalysisMode::Delta;
         header.baseline = first.id.clone();
         header.manifest = rev.manifest.id();
-        // Existing file replacement is atomic across all instances of a shared path.
-        header.replacements = ["main", "test"]
+        // Deleting one owner preserves the other world's existing comment and FTS rows.
+        header.replacements = ["main"]
             .into_iter()
             .map(|world| Owner {
                 world: world.into(),
@@ -526,9 +526,7 @@ mod tests {
             store.stage_graph_records_with_context(
                 rev.clone(),
                 &header,
-                vec![test_row.clone(), test_link.clone()]
-                    .into_iter()
-                    .map(Ok),
+                std::iter::empty(),
                 &first.id,
                 || Ok(()),
                 |_| Ok(()),

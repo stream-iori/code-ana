@@ -104,7 +104,7 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::Relation,
-            world: "n.world",
+            world: "e.world",
             producer: "e.producer_id",
             from: "edges e JOIN nodes n ON n.id=e.source_id",
             id: "'edge:'||CASE WHEN e.fact_hash IS NOT NULL THEN lower(hex(e.fact_hash)) ELSE hex(e.source_id)||':'||hex(coalesce(e.target_id,e.external_target_fqn))||':'||hex(e.relation)||':'||hex(coalesce(e.source_location,'')) END||':'||e.fact_ordinal",
@@ -118,7 +118,7 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::CallSite,
-            world: "n.world",
+            world: "o.world",
             producer: "c.producer_id",
             from: "call_sites c JOIN call_site_owners o USING(owner_pk) JOIN nodes n ON n.id=o.caller_id",
             id: "'call-site:'||lower(hex(c.stable_hash))",
@@ -132,7 +132,7 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::CallTarget,
-            world: "n.world",
+            world: "o.world",
             producer: "c.producer_id",
             from: "call_site_targets t JOIN call_sites c ON c.site_pk=t.call_site_pk JOIN call_site_owners o USING(owner_pk) JOIN nodes n ON n.id=o.caller_id",
             id: "'call-target:'||lower(hex(c.stable_hash))||':'||hex(coalesce(t.target_id,''))||':'||hex(coalesce(t.external_target_provider_id,''))||':'||hex(coalesce(t.external_target_fqn,''))",
@@ -146,7 +146,7 @@ fn projections(filter: &FactFilter) -> Vec<Projection> {
         },
         Projection {
             kind: FactKind::Facet,
-            world: "n.world",
+            world: "a.world",
             producer: "a.producer_id",
             from: "annotations a JOIN nodes n ON n.id=a.node_id",
             id: "'annotation:'||lower(hex(a.fact_hash))||':'||a.fact_ordinal",
@@ -682,6 +682,20 @@ impl ReadContext {
         Ok(result)
     }
     pub fn baseline_summary(&self) -> Result<BaselineSummary> {
+        self.baseline_summary_selected(None)
+    }
+    fn baseline_summary_selected(&self, inputs: Option<&[SourceUnit]>) -> Result<BaselineSummary> {
+        let owners = inputs.map(|files| {
+            files
+                .iter()
+                .map(|s| (s.path.as_str(), s.world.as_str()))
+                .collect::<BTreeSet<_>>()
+        });
+        let owns = |path: &str, world: &str| {
+            owners
+                .as_ref()
+                .is_none_or(|owners| owners.contains(&(path, world)))
+        };
         let mut contexts = BTreeMap::new();
         let mut statement = self.connection.prepare(
             "SELECT substr(key,17),value FROM project_meta WHERE key LIKE 'codeana.context.%'",
@@ -690,11 +704,13 @@ impl ReadContext {
             statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
         {
             let (k, v) = row?;
-            contexts.insert(k, v);
+            if inputs.is_none_or(|files| files.iter().any(|s| s.world == k)) {
+                contexts.insert(k, v);
+            }
         }
         let mut nodes = Vec::new();
         let mut statement = self.connection.prepare(
-            "SELECT id,symbol_id,kind,module,scope,source_file,metadata FROM nodes ORDER BY id",
+            "SELECT id,symbol_id,kind,module,scope,source_file,metadata,world FROM nodes ORDER BY id",
         )?;
         for row in statement.query_map([], |r| {
             Ok((
@@ -705,9 +721,13 @@ impl ReadContext {
                 r.get::<_, String>(4)?,
                 r.get::<_, String>(5)?,
                 r.get::<_, Option<String>>(6)?,
+                r.get::<_, String>(7)?,
             ))
         })? {
-            let (id, symbol, kind, module, scope, source, metadata) = row?;
+            let (id, symbol, kind, module, scope, source, metadata, world) = row?;
+            if !owns(&source, &world) {
+                continue;
+            }
             let owner = self.owner_for(&source, &module, &scope);
             nodes.push(BaselineNode {
                 id,
@@ -717,20 +737,28 @@ impl ReadContext {
                 scope,
                 source_file: source,
                 metadata,
-                world: owner.world.to_string(),
+                world: if world.is_empty() {
+                    owner.world.to_string()
+                } else {
+                    world
+                },
             });
         }
         let mut relations = Vec::new();
-        let mut statement=self.connection.prepare("SELECT n.symbol_id,coalesce(t.symbol_id,e.external_target_fqn),e.relation,n.source_file FROM edges e JOIN nodes n ON n.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id WHERE e.relation IN('INHERITS','IMPLEMENTS') ORDER BY e.source_id,e.relation,e.target_id,e.external_target_fqn")?;
+        let mut statement=self.connection.prepare("SELECT n.symbol_id,coalesce(t.symbol_id,e.external_target_fqn),e.relation,n.source_file,n.world FROM edges e JOIN nodes n ON n.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id WHERE e.relation IN('INHERITS','IMPLEMENTS') ORDER BY e.source_id,e.relation,e.target_id,e.external_target_fqn")?;
         for row in statement.query_map([], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<String>>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
             ))
         })? {
-            let (source, target, relation, file) = row?;
+            let (source, target, relation, file, world) = row?;
+            if !owns(&file, &world) {
+                continue;
+            }
             if let Some(target) = target {
                 relations.push(BaselineRelation {
                     source_symbol: source,
@@ -740,13 +768,14 @@ impl ReadContext {
                 });
             }
         }
-        let rust_states = self.read_rust_states()?;
+        let mut rust_states = self.read_rust_states()?;
+        rust_states.retain(|state| owns(&state.file, &state.world));
         Ok(BaselineSummary {
             rust_states,
             contexts,
             nodes,
             type_relations: relations,
-            files: self.revision.manifest.files.clone(),
+            files: inputs.unwrap_or(&self.revision.manifest.files).to_vec(),
             changed_sources: None,
         })
     }
@@ -838,51 +867,66 @@ impl ReadContext {
             }
             None => &self.revision.manifest.files,
         };
-        let before: BTreeMap<_, _> = previous.iter().map(|s| (&s.path, s)).collect();
-        let after: BTreeMap<_, _> = next.files.iter().map(|s| (&s.path, s)).collect();
-        let mut changed: BTreeSet<String> = before
+        // Java's descriptor uses paths, but closure construction must retain worlds.
+        // Auxiliary inputs are included only when this unit declared them.
+        let before: BTreeMap<_, _> = previous
+            .iter()
+            .map(|s| ((s.path.clone(), s.world.clone()), s))
+            .collect();
+        let after: BTreeMap<_, _> = next
+            .files
+            .iter()
+            .map(|s| ((s.path.clone(), s.world.clone()), s))
+            .collect();
+        let mut changed: BTreeSet<(String, String)> = before
             .keys()
             .chain(after.keys())
-            .filter(|path| before.get(*path) != after.get(*path))
-            .map(|p| (*p).clone())
+            .filter(|owner| before.get(*owner) != after.get(*owner))
+            .cloned()
             .collect();
         let membership = before.keys().any(|p| !after.contains_key(p))
             || after.keys().any(|p| !before.contains_key(p));
         let controls = changed
             .iter()
-            .any(|p| p.ends_with("lombok.config") || p.ends_with("pom.xml"));
+            .any(|(p, _)| p.ends_with("lombok.config") || p.ends_with("pom.xml"));
         if membership || controls {
             changed.extend(
                 next.files
                     .iter()
                     .filter(|s| s.language == "java")
-                    .map(|s| s.path.clone()),
+                    .map(|s| (s.path.clone(), s.world.clone())),
             );
         } else {
             let mut pending = changed.clone();
-            let mut statement=self.connection.prepare("SELECT source_file FROM file_dependencies WHERE depends_on_file=? ORDER BY source_file")?;
-            let mut symbols = self
-                .connection
-                .prepare("SELECT id,symbol_id FROM nodes WHERE source_file=? ORDER BY id")?;
-            let mut dependencies=self.connection.prepare("SELECT source_file FROM symbol_dependencies WHERE target_key=? ORDER BY source_file")?;
-            while let Some(target) = pending.pop_first() {
-                for row in statement.query_map([&target], |r| r.get::<_, String>(0))? {
+            let mut statement=self.connection.prepare("SELECT source_file,world FROM file_dependencies WHERE depends_on_file=? AND target_world=? ORDER BY source_file,world")?;
+            let mut symbols = self.connection.prepare(
+                "SELECT id,symbol_id FROM nodes WHERE source_file=? AND world=? ORDER BY id",
+            )?;
+            let mut dependencies=self.connection.prepare("SELECT source_file,world FROM symbol_dependencies WHERE target_key=? ORDER BY source_file,world")?;
+            while let Some((target, world)) = pending.pop_first() {
+                for row in statement.query_map([&target, &world], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                })? {
                     let source = row?;
-                    if changed.insert(source.clone()) {
+                    if (before.contains_key(&source) || after.contains_key(&source))
+                        && changed.insert(source.clone())
+                    {
                         pending.insert(source);
                     }
                 }
-                for row in symbols.query_map([&target], |r| {
+                for row in symbols.query_map([&target, &world], |r| {
                     Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
                 })? {
                     let (id, symbol) = row?;
                     for value in [id, symbol] {
                         let hash = sha2::Sha256::digest(value.as_bytes());
-                        for row in
-                            dependencies.query_map([&hash[..8]], |r| r.get::<_, String>(0))?
-                        {
+                        for row in dependencies.query_map([&hash[..8]], |r| {
+                            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                        })? {
                             let source = row?;
-                            if changed.insert(source.clone()) {
+                            if (before.contains_key(&source) || after.contains_key(&source))
+                                && changed.insert(source.clone())
+                            {
                                 pending.insert(source);
                             }
                         }
@@ -890,12 +934,8 @@ impl ReadContext {
                 }
             }
         }
-        let mut summary = self.baseline_summary()?;
-        let owners: BTreeSet<_> = previous.iter().map(|s| (&s.world, &s.path)).collect();
-        summary
-            .files
-            .retain(|s| owners.contains(&(&s.world, &s.path)));
-        summary.changed_sources = Some(changed);
+        let mut summary = self.baseline_summary_selected(Some(previous))?;
+        summary.changed_sources = Some(changed.into_iter().map(|(path, _)| path).collect());
         Ok(summary)
     }
 }
@@ -1288,12 +1328,13 @@ impl DependencyReader for ReadContext {
             ensure!(targets.len()<=500 && (1..=1024).contains(&limit), codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDependencyBatch, ""));
             if targets.is_empty(){return Ok(vec![]);}
             let paths:Vec<_>=targets.iter().map(|t|&t.path).collect();
-            let sql=format!("SELECT source_file,depends_on_file FROM file_dependencies WHERE depends_on_file IN({}) ORDER BY source_file,depends_on_file",vec!["?";paths.len()].join(","));
+            let sql=format!("SELECT source_file,depends_on_file,world,target_world FROM file_dependencies WHERE depends_on_file IN({}) ORDER BY source_file,depends_on_file",vec!["?";paths.len()].join(","));
             let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(paths))?;let mut output=BTreeMap::new();
             while let Some(row)=rows.next()?{ self.charge_row(row)?;
                 let source:String=row.get(0)?;let target:String=row.get(1)?;
-                let source=self.revision.manifest.files.iter().find(|s|s.path==source).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencySourceNotCaptured, ""))?;
-                let target=self.revision.manifest.files.iter().find(|s|s.path==target).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencyTargetNotCaptured, ""))?;
+                let world:String=row.get(2)?;let target_world:String=row.get(3)?;
+                let source=self.revision.manifest.files.iter().find(|s|s.path==source && s.world==world).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencySourceNotCaptured, ""))?;
+                let target=self.revision.manifest.files.iter().find(|s|s.path==target && s.world==target_world).context(codeana_model::DomainError::new(codeana_model::ErrorCode::DependencyTargetNotCaptured, ""))?;
                 if source_world.is_some_and(|w|w!=source.world) || !targets.iter().any(|k|k.path==target.path && k.world==target.world){continue;}
                 let id=key("file-dependency",&[&source.world,&source.path,&target.world,&target.path]);
                 if id.as_str()>after{output.insert(id.clone(),FileDependency{id,source_world:source.world.clone(),source_file:source.path.clone(),target_world:target.world.clone(),target_file:target.path.clone()});}

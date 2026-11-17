@@ -107,6 +107,11 @@ impl<'a> Scope<'a> {
         Ok(())
     }
     pub fn row(&self, row: &Row) -> Result<()> {
+        self.source_world(row).map(|_| ())
+    }
+    /// Resolve only an implicit world against this unit's frozen inputs.
+    /// Raw bytes remain the transport verifier's responsibility.
+    pub fn source_world(&self, row: &Row) -> Result<Option<&str>> {
         let table = Table::try_from(row.table)?;
         check!(table != Table::Unspecified, "UNIT_ROW_TABLE_UNSPECIFIED");
         let text = |column: usize| -> Result<Option<&str>> {
@@ -148,7 +153,7 @@ impl<'a> Scope<'a> {
             check!(permitted, "UNIT_ROW_LANGUAGE: {} {language}", self.unit);
         }
         let Some(columns) = columns else {
-            return Ok(());
+            return Ok(None);
         };
         if path.is_empty() || path == "*" {
             check!(
@@ -166,7 +171,7 @@ impl<'a> Scope<'a> {
                     self.unit
                 );
             }
-            return Ok(());
+            return Ok(None);
         }
         check!(safe_path(path), "UNIT_ROW_SOURCE_UNSAFE: {}", self.unit);
         let module = columns
@@ -212,7 +217,7 @@ impl<'a> Scope<'a> {
                 | Table::Coverage
         );
         check!(
-            input_metadata || candidates.next().is_none(),
+            candidates.next().is_none(),
             "UNIT_ROW_AMBIGUOUS_SOURCE: {} {path}",
             self.unit
         );
@@ -238,7 +243,7 @@ impl<'a> Scope<'a> {
                 self.unit
             );
         }
-        Ok(())
+        Ok(Some(&source.world))
     }
 }
 
@@ -373,7 +378,10 @@ mod tests {
         let mut ambiguous = node("Shared.java", "", "app", "MAIN", "java");
         ambiguous.cells[20].value = None;
         assert!(scope.row(&ambiguous).is_err());
-        scope.row(&cache("Shared.java")).unwrap();
+        assert!(scope.row(&cache("Shared.java")).is_err());
+        let mut explicit = cache("Shared.java");
+        explicit.world = "main".into();
+        scope.row(&explicit).unwrap();
     }
     #[test]
     fn deletion_requires_the_previous_frozen_input_and_the_expected_producer() {

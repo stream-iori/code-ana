@@ -4,6 +4,53 @@ use crate::{graph_calls, graph_store};
 use codeana_contracts::graph::Row;
 use sha2::Digest;
 
+#[derive(Clone, Copy)]
+enum GraphSeed<'a> {
+    Analyze(&'a AnalysisHeader),
+    Reused(&'a AnalysisHeader),
+}
+impl GraphSeed<'_> {
+    fn header(&self) -> &AnalysisHeader {
+        match self {
+            Self::Analyze(h) | Self::Reused(h) => h,
+        }
+    }
+    fn is_reused(self) -> bool {
+        matches!(self, Self::Reused(_))
+    }
+}
+fn validate_reused_baseline(before: &Revision, after: &Revision) -> Result<()> {
+    let equal = match (&before.unit_ownership, &after.unit_ownership) {
+        (Some(before), Some(after)) => {
+            before.version == after.version
+                && before.units.len() == after.units.len()
+                && before.units.iter().zip(&after.units).all(|(a, b)| {
+                    a.unit == b.unit
+                        && a.backend == b.backend
+                        && a.availability == b.availability
+                        && a.source_languages == b.source_languages
+                        && a.modules == b.modules
+                        && a.worlds == b.worlds
+                        && a.scopes == b.scopes
+                        && a.producer == b.producer
+                        && a.semantic_profile == b.semantic_profile
+                        && a.input_digest == b.input_digest
+                        && a.sources == b.sources
+                        && same_semantic_sources(&a.inputs, &b.inputs)
+                })
+        }
+        (None, None) => before.manifest.files == after.manifest.files,
+        _ => false,
+    };
+    ensure!(
+        equal && before.profile == after.profile && before.producer == after.producer,
+        DomainError::new(
+            ErrorCode::ResultIdentityMismatch,
+            "reuse requires the same semantic inputs and ownership"
+        )
+    );
+    Ok(())
+}
 impl Store {
     pub fn stage_graph_records(
         &self,
@@ -28,7 +75,7 @@ impl Store {
     #[allow(clippy::too_many_arguments)]
     pub fn stage_graph_records_with_context(
         &self,
-        mut revision: Revision,
+        revision: Revision,
         header: &AnalysisHeader,
         records: impl Iterator<Item = Result<Row>>,
         expected: &str,
@@ -36,6 +83,54 @@ impl Store {
         check_directory: impl Fn(&Path) -> Result<()>,
         context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
+        self.stage_graph_records_inner(
+            revision,
+            GraphSeed::Analyze(header),
+            records,
+            expected,
+            cancellation,
+            check_directory,
+            context,
+        )
+    }
+    pub fn stage_reused_graph_with_context(
+        &self,
+        revision: Revision,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+        context: Option<&GraphStagingContext>,
+    ) -> Result<StagedCandidate> {
+        let header = AnalysisHeader {
+            mode: AnalysisMode::Delta,
+            baseline: expected.into(),
+            manifest: revision.manifest.id(),
+            profile: revision.profile.clone(),
+            producer: revision.producer.clone(),
+            replacements: vec![],
+        };
+        self.stage_graph_records_inner(
+            revision,
+            GraphSeed::Reused(&header),
+            std::iter::empty(),
+            expected,
+            cancellation,
+            check_directory,
+            context,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    fn stage_graph_records_inner(
+        &self,
+        mut revision: Revision,
+        seed: GraphSeed<'_>,
+        records: impl Iterator<Item = Result<Row>>,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+        context: Option<&GraphStagingContext>,
+    ) -> Result<StagedCandidate> {
+        let header = seed.header();
         if let Some(ledger) = &revision.unit_ownership {
             ledger
                 .validate(&revision.manifest)
@@ -62,6 +157,9 @@ impl Store {
                 r.revision.profile == revision.profile,
                 codeana_model::DomainError::new(codeana_model::ErrorCode::ProfileMismatch, "")
             );
+            if seed.is_reused() {
+                validate_reused_baseline(&r.revision, &revision)?;
+            }
             Some(r)
         } else {
             None
@@ -127,7 +225,7 @@ impl Store {
         // The retained baseline catalogue is available to reference resolution without
         // importing or materializing any serialized Fact IR.
         if baseline.is_some() {
-            seed_baseline(&stage, &db, header, &check)?;
+            seed_baseline(&stage, &db, seed, &check)?;
         }
         phase_ms.insert(
             "candidate_setup_backup".into(),
@@ -145,7 +243,7 @@ impl Store {
             .replacements
             .iter()
             .filter(|o| o.kind == "source")
-            .map(|o| o.id.as_str())
+            .map(|o| (o.id.as_str(), o.world.as_str()))
             .collect();
         let mut positions = 0;
         let mut comment_source = crate::graph_comments::SourceCache::default();
@@ -154,7 +252,7 @@ impl Store {
                 check()?;
             }
             let row = row?;
-            validate_record(&row, &sources, &replaced, header.mode == "delta")?;
+            let owner = validate_record(&row, &sources, &replaced, header.mode == "delta")?;
             if matches!(
                 codeana_contracts::graph::Table::try_from(row.table),
                 Ok(codeana_contracts::graph::Table::Comment
@@ -169,7 +267,11 @@ impl Store {
                     &check,
                 )?;
             } else {
-                graph_store::insert(&stage, &row)?;
+                graph_store::insert_with_world(
+                    &stage,
+                    &row,
+                    owner.map(|s| s.world.as_str()).unwrap_or(&row.world),
+                )?;
             }
             positions += 1;
             if positions % 10000 == 0 {
@@ -214,8 +316,8 @@ impl Store {
         } else {
             Vec::new()
         };
-        if let Some(files) = &affected {
-            replace_affected(&db, files)?;
+        if affected.is_some() {
+            replace_affected(&db, &header.replacements)?;
         }
         graph_store::promote(&db)?;
         crate::graph_comments::promote(&db, &revision.manifest, context, &check)?;
@@ -392,12 +494,12 @@ impl Store {
     }
 }
 
-fn validate_record(
+fn validate_record<'a>(
     row: &Row,
-    sources: &BTreeMap<(&str, &str), &SourceUnit>,
-    replaced: &BTreeSet<&str>,
+    sources: &BTreeMap<(&str, &str), &'a SourceUnit>,
+    replaced: &BTreeSet<(&str, &str)>,
     delta: bool,
-) -> Result<()> {
+) -> Result<Option<&'a SourceUnit>> {
     use codeana_contracts::graph::{Table, cell};
     let table = Table::try_from(row.table).context(codeana_model::DomainError::new(
         codeana_model::ErrorCode::GraphTableUnknown,
@@ -413,6 +515,7 @@ fn validate_record(
             )),
         }
     };
+    let mut captured_source = None;
     let columns = codeana_graph_io::scope::source_columns(table).map(|c| (c.source, c.identity));
     if let Some((source, identity)) = columns
         && let Some(path) = text(source)?.filter(|p| !p.is_empty() && *p != "*")
@@ -490,9 +593,35 @@ fn validate_record(
                 );
             }
         }
+        if row.world.is_empty() {
+            let compatible = sources
+                .range((path, "")..)
+                .take_while(|((p, _), _)| *p == path)
+                .filter(|(_, s)| {
+                    wanted.is_none_or(|(module, scope)| {
+                        module.is_none_or(|m| module_matches(m, s))
+                            && scope.is_none_or(|sc| scope_matches(sc, s))
+                    })
+                })
+                .count();
+            ensure!(
+                compatible == 1,
+                DomainError::new(ErrorCode::GraphSourceWorldRequired, path)
+            );
+        }
+        if matches!(table, Table::SourceState | Table::AnalysisDependency) {
+            ensure!(
+                unit.language == "rust" && text(1)? == Some(unit.world.as_str()),
+                DomainError::new(
+                    ErrorCode::GraphSourceWorldRequired,
+                    "Rust state/dependency owner mismatch"
+                )
+            );
+        }
+        captured_source = Some(unit);
         if delta {
             ensure!(
-                replaced.contains(path),
+                replaced.contains(&(path, unit.world.as_str())),
                 codeana_model::DomainError::new(
                     codeana_model::ErrorCode::GraphSourceNotReplaced,
                     ""
@@ -515,23 +644,26 @@ fn validate_record(
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphMetaReserved, "")
         );
     }
-    Ok(())
+    Ok(captured_source)
 }
 
-fn replace_affected(db: &Connection, files: &BTreeSet<String>) -> Result<()> {
-    db.execute_batch("CREATE TEMP TABLE graph_replaced(source_file TEXT PRIMARY KEY);")?;
-    for file in files {
-        db.execute("INSERT INTO graph_replaced VALUES(?)", [file])?;
+fn replace_affected(db: &Connection, owners: &[Owner]) -> Result<()> {
+    db.execute_batch("CREATE TEMP TABLE graph_replaced(source_file TEXT,world TEXT,PRIMARY KEY(source_file,world));")?;
+    for owner in owners {
+        db.execute(
+            "INSERT OR IGNORE INTO graph_replaced VALUES(?,?)",
+            params![owner.id, owner.world.as_str()],
+        )?;
     }
     // Retain matching hash/ordinal pairs exactly as Anatomist incremental promotion does.
-    db.execute_batch("DELETE FROM graph_comments WHERE source_file IN(SELECT file_pk FROM source_files WHERE path IN(SELECT source_file FROM graph_replaced)); DELETE FROM edges WHERE (edges.source_file IN(SELECT source_file FROM graph_replaced) OR edges.producer_id='derived-wiring') AND NOT EXISTS(SELECT 1 FROM staged.stage_edges s WHERE s.relation<>'CALLS' AND s.fact_hash=edges.fact_hash AND s.fact_ordinal=edges.fact_ordinal);
-      DELETE FROM annotations WHERE annotations.source_file IN(SELECT source_file FROM graph_replaced) AND NOT EXISTS(SELECT 1 FROM staged.stage_annotations s WHERE s.fact_hash=annotations.fact_hash AND s.fact_ordinal=annotations.fact_ordinal);
-      DELETE FROM annotation_meta_owned WHERE source_file IN(SELECT source_file FROM graph_replaced);
-      DELETE FROM nodes WHERE source_file IN(SELECT source_file FROM graph_replaced) AND id NOT IN(SELECT id FROM staged.stage_nodes);
-      DELETE FROM file_cache WHERE source_file IN(SELECT source_file FROM graph_replaced);
-      DELETE FROM graph_rust_analysis_dependencies WHERE source_file IN(SELECT file_pk FROM source_files WHERE path IN(SELECT source_file FROM graph_replaced));
-      DELETE FROM graph_rust_source_states WHERE source_file IN(SELECT file_pk FROM source_files WHERE path IN(SELECT source_file FROM graph_replaced));
-      DELETE FROM analysis_coverage WHERE source_file IN(SELECT source_file FROM graph_replaced);
+    db.execute_batch("DELETE FROM graph_comments WHERE EXISTS(SELECT 1 FROM source_files f JOIN graph_replaced r ON r.source_file=f.path WHERE f.file_pk=graph_comments.source_file AND r.world=graph_comments.world); DELETE FROM edges WHERE ((edges.source_file,edges.world) IN(SELECT source_file,world FROM graph_replaced) OR edges.producer_id='derived-wiring') AND NOT EXISTS(SELECT 1 FROM staged.stage_edges s WHERE s.relation<>'CALLS' AND s.fact_hash=edges.fact_hash AND s.fact_ordinal=edges.fact_ordinal AND s.world=edges.world);
+      DELETE FROM annotations WHERE (annotations.source_file,annotations.world) IN(SELECT source_file,world FROM graph_replaced) AND NOT EXISTS(SELECT 1 FROM staged.stage_annotations s WHERE s.fact_hash=annotations.fact_hash AND s.fact_ordinal=annotations.fact_ordinal AND s.world=annotations.world);
+      DELETE FROM annotation_meta_owned WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
+      DELETE FROM nodes WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced) AND id NOT IN(SELECT id FROM staged.stage_nodes);
+      DELETE FROM file_cache WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
+      DELETE FROM rust_analysis_dependencies WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
+      DELETE FROM rust_source_states WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
+      DELETE FROM analysis_coverage WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
       DELETE FROM analysis_coverage WHERE coalesce(source_file,'') IN ('','*') AND EXISTS(SELECT 1 FROM staged.stage_coverage s WHERE coalesce(s.source_file,'') IN ('','*') AND s.module IS analysis_coverage.module AND s.scope IS analysis_coverage.scope AND s.provider_id IS analysis_coverage.provider_id AND s.capability=analysis_coverage.capability);
       DELETE FROM index_diagnostics;
       DELETE FROM index_providers;
@@ -542,9 +674,10 @@ fn replace_affected(db: &Connection, files: &BTreeSet<String>) -> Result<()> {
 fn seed_baseline(
     stage: &Connection,
     db: &Connection,
-    header: &AnalysisHeader,
+    seed: GraphSeed<'_>,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<()> {
+    let header = seed.header();
     stage.execute(
         "ATTACH DATABASE ? AS baseline",
         [db.path().context(codeana_model::DomainError::new(
@@ -552,7 +685,10 @@ fn seed_baseline(
             "",
         ))?],
     )?;
-    stage.execute_batch("CREATE TEMP TABLE replaced(source_file TEXT PRIMARY KEY);")?;
+    stage.execute_batch(
+        "CREATE TEMP TABLE replaced(source_file TEXT,world TEXT,PRIMARY KEY(source_file,world)); CREATE TEMP TABLE baseline_policy(reused INTEGER NOT NULL);",
+    )?;
+    stage.execute("INSERT INTO baseline_policy VALUES(?)", [seed.is_reused()])?;
     for owner in &header.replacements {
         ensure!(
             owner.kind == "source",
@@ -561,26 +697,29 @@ fn seed_baseline(
                 ""
             )
         );
-        stage.execute("INSERT OR IGNORE INTO replaced VALUES(?)", [&owner.id])?;
+        stage.execute(
+            "INSERT OR IGNORE INTO replaced VALUES(?,?)",
+            params![owner.id, owner.world.as_str()],
+        )?;
     }
     check()?;
     stage.execute_batch("INSERT INTO stage_nodes(id,symbol_id,domain,language,provider_id,entity_kind,language_kind,label,kind,qualified_name,package,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,module,scope,metadata,producer_id,world)
-      SELECT id,symbol_id,domain,language,provider_id,entity_kind,language_kind,label,kind,qualified_name,package,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,module,scope,metadata,producer_id,world FROM baseline.nodes WHERE source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_declarations(symbol_id,domain,language,provider_id,entity_kind,language_kind,qualified_name,label,kind,declaration_kind,type_kind,visibility,modifiers,declared_modifiers,implicit_modifiers,declaring_type,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,module,scope,nesting_depth,direct_member,synthetic,binding_resolved,producer_id)
-      SELECT symbol_id,domain,language,provider_id,entity_kind,language_kind,qualified_name,label,kind,declaration_kind,type_kind,visibility,modifiers,declared_modifiers,implicit_modifiers,declaring_type,declaration_namespace,source_file,declaration_source_location,declaration_begin_line,declaration_begin_column,declaration_end_line,declaration_end_column,module,scope,nesting_depth,direct_member,synthetic,binding_resolved,producer_id FROM baseline.nodes WHERE declaration_kind IS NOT NULL AND source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_edges(source_ref,target_ref,external_target_fqn,external_target_symbol,external_target_language,external_target_provider_id,relation,semantic,mechanism,language,provider_id,call_kind,confidence,resolution,context,is_external,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,metadata,source_module,source_scope,source_is_key,target_is_key,resolved_source,resolved_target,producer_id)
-      SELECT e.source_id,e.target_id,e.external_target_fqn,e.external_target_symbol,e.external_target_language,e.external_target_provider_id,e.relation,e.semantic,e.mechanism,e.language,e.provider_id,e.call_kind,e.confidence,e.resolution,e.context,e.is_external,e.source_file,e.source_location,e.begin_line,e.begin_column,e.end_line,e.end_column,e.source_ordinal,e.syntax_target,e.receiver_static_type,e.metadata,n.module,n.scope,1,1,e.source_id,e.target_id,e.producer_id FROM baseline.edges e JOIN baseline.nodes n ON n.id=e.source_id WHERE e.producer_id<>'derived-wiring' AND e.source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_annotations(node_ref,annotation_fqn,raw_name,attributes,target_kind,target_path,language,provider_id,mechanism,resolution_status,source_file,source_location,begin_line,begin_column,end_line,end_column,source_module,source_scope,node_is_key,resolved_node,producer_id)
-      SELECT a.node_id,a.annotation_fqn,a.raw_name,a.attributes,a.target_kind,a.target_path,a.language,a.provider_id,a.mechanism,a.resolution_status,a.source_file,a.source_location,a.begin_line,a.begin_column,a.end_line,a.end_column,n.module,n.scope,1,a.node_id,a.producer_id FROM baseline.annotations a JOIN baseline.nodes n ON n.id=a.node_id WHERE a.source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_annotation_meta(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id) SELECT annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id FROM baseline.annotation_meta_owned WHERE source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_file_cache SELECT provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash FROM baseline.file_cache WHERE source_file NOT IN(SELECT source_file FROM replaced);
-      INSERT INTO stage_coverage SELECT * FROM baseline.analysis_coverage WHERE source_file NOT IN(SELECT source_file FROM replaced) AND NOT (coalesce(source_file,'') IN ('','*') AND codes LIKE '%CLASSPATH_UNAVAILABLE%');
-      INSERT INTO stage_diagnostics SELECT severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world FROM baseline.index_diagnostics WHERE code<>'CLASSPATH_UNAVAILABLE' AND source_file NOT IN(SELECT source_file FROM replaced);
+      SELECT id,symbol_id,domain,language,provider_id,entity_kind,language_kind,label,kind,qualified_name,package,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,module,scope,metadata,producer_id,world FROM baseline.nodes WHERE (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
+      INSERT INTO stage_declarations(symbol_id,domain,language,provider_id,entity_kind,language_kind,qualified_name,label,kind,declaration_kind,type_kind,visibility,modifiers,declared_modifiers,implicit_modifiers,declaring_type,namespace,source_file,source_location,begin_line,begin_column,end_line,end_column,module,scope,nesting_depth,direct_member,synthetic,binding_resolved,producer_id,world)
+      SELECT symbol_id,domain,language,provider_id,entity_kind,language_kind,qualified_name,label,kind,declaration_kind,type_kind,visibility,modifiers,declared_modifiers,implicit_modifiers,declaring_type,declaration_namespace,source_file,declaration_source_location,declaration_begin_line,declaration_begin_column,declaration_end_line,declaration_end_column,module,scope,nesting_depth,direct_member,synthetic,binding_resolved,producer_id,world FROM baseline.nodes WHERE declaration_kind IS NOT NULL AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
+      INSERT INTO stage_edges(source_ref,target_ref,external_target_fqn,external_target_symbol,external_target_language,external_target_provider_id,relation,semantic,mechanism,language,provider_id,call_kind,confidence,resolution,context,is_external,source_file,source_location,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,metadata,source_module,source_scope,source_is_key,target_is_key,resolved_source,resolved_target,producer_id,world)
+      SELECT e.source_id,e.target_id,e.external_target_fqn,e.external_target_symbol,e.external_target_language,e.external_target_provider_id,e.relation,e.semantic,e.mechanism,e.language,e.provider_id,e.call_kind,e.confidence,e.resolution,e.context,e.is_external,e.source_file,e.source_location,e.begin_line,e.begin_column,e.end_line,e.end_column,e.source_ordinal,e.syntax_target,e.receiver_static_type,e.metadata,n.module,n.scope,1,1,e.source_id,e.target_id,e.producer_id,e.world FROM baseline.edges e JOIN baseline.nodes n ON n.id=e.source_id WHERE e.producer_id<>'derived-wiring' AND (e.source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (e.source_file,e.world) NOT IN(SELECT source_file,world FROM replaced);
+      INSERT INTO stage_annotations(node_ref,annotation_fqn,raw_name,attributes,target_kind,target_path,language,provider_id,mechanism,resolution_status,source_file,source_location,begin_line,begin_column,end_line,end_column,source_module,source_scope,node_is_key,resolved_node,producer_id,world)
+      SELECT a.node_id,a.annotation_fqn,a.raw_name,a.attributes,a.target_kind,a.target_path,a.language,a.provider_id,a.mechanism,a.resolution_status,a.source_file,a.source_location,a.begin_line,a.begin_column,a.end_line,a.end_column,n.module,n.scope,1,a.node_id,a.producer_id,a.world FROM baseline.annotations a JOIN baseline.nodes n ON n.id=a.node_id WHERE (a.source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (a.source_file,a.world) NOT IN(SELECT source_file,world FROM replaced);
+      INSERT INTO stage_annotation_meta(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world) SELECT annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world FROM baseline.annotation_meta_owned WHERE (source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
+      INSERT INTO stage_file_cache SELECT provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash,world FROM baseline.file_cache WHERE (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
+      INSERT INTO stage_coverage SELECT * FROM baseline.analysis_coverage WHERE (source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced) AND ((SELECT reused FROM baseline_policy) OR NOT (coalesce(source_file,'') IN ('','*') AND codes LIKE '%CLASSPATH_UNAVAILABLE%'));
+      INSERT INTO stage_diagnostics SELECT severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world FROM baseline.index_diagnostics WHERE (code<>'CLASSPATH_UNAVAILABLE' OR (SELECT reused FROM baseline_policy)) AND (source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
       INSERT INTO stage_providers SELECT * FROM baseline.index_providers;")?;
     // Persisted call sites are the canonical source; seed their exact range and
     // targets, including unresolved sites, without manufacturing method CALLS.
-    stage.execute_batch("INSERT INTO stage_call_sites(source_ref,target_ref,external_target_fqn,external_target_symbol,external_target_language,external_target_provider_id,relation,language,provider_id,call_kind,confidence,is_external,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,context,metadata,source_module,source_scope,source_is_key,target_is_key,resolved_source,resolved_target,producer_id)
-      SELECT o.caller_id,t.target_id,t.external_target_fqn,t.external_target_symbol,t.external_target_language,t.external_target_provider_id,'CALLS',c.language,c.provider_id,c.dispatch_kind,t.confidence,t.target_id IS NULL,o.source_file,c.begin_line,c.begin_column,c.end_line,c.end_column,c.ordinal,c.syntax_target,c.receiver_static_type,c.context,c.metadata,n.module,n.scope,1,1,o.caller_id,t.target_id,c.producer_id FROM baseline.call_sites c JOIN baseline.call_site_owners o USING(owner_pk) JOIN baseline.nodes n ON n.id=o.caller_id LEFT JOIN baseline.call_site_targets t ON t.call_site_pk=c.site_pk WHERE o.source_file NOT IN(SELECT source_file FROM replaced);")?;
+    stage.execute_batch("INSERT INTO stage_call_sites(source_ref,target_ref,external_target_fqn,external_target_symbol,external_target_language,external_target_provider_id,relation,language,provider_id,call_kind,confidence,is_external,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,context,metadata,source_module,source_scope,source_is_key,target_is_key,resolved_source,resolved_target,producer_id,world)
+      SELECT o.caller_id,t.target_id,t.external_target_fqn,t.external_target_symbol,t.external_target_language,t.external_target_provider_id,'CALLS',c.language,c.provider_id,c.dispatch_kind,t.confidence,t.target_id IS NULL,o.source_file,c.begin_line,c.begin_column,c.end_line,c.end_column,c.ordinal,c.syntax_target,c.receiver_static_type,c.context,c.metadata,n.module,n.scope,1,1,o.caller_id,t.target_id,c.producer_id,o.world FROM baseline.call_sites c JOIN baseline.call_site_owners o USING(owner_pk) JOIN baseline.nodes n ON n.id=o.caller_id LEFT JOIN baseline.call_site_targets t ON t.call_site_pk=c.site_pk WHERE (o.source_file,o.world) NOT IN(SELECT source_file,world FROM replaced);")?;
     check()?;
     stage.execute_batch("DETACH DATABASE baseline;")?;
     Ok(())
@@ -593,7 +732,7 @@ fn rebuild_dependencies(db: &Connection, check: &dyn Fn() -> Result<()>) -> Resu
     let mut statement = db.prepare(include_str!("anatomist-symbol-dependencies.sql"))?;
     let mut rows = statement.query([])?;
     let mut insert = db.prepare_cached(
-        "INSERT OR IGNORE INTO symbol_dependencies(target_key,source_file) VALUES(?,?)",
+        "INSERT OR IGNORE INTO symbol_dependencies(target_key,source_file,world) VALUES(?,?,?)",
     )?;
     let mut count = 0usize;
     while let Some(row) = rows.next()? {
@@ -604,7 +743,8 @@ fn rebuild_dependencies(db: &Connection, check: &dyn Fn() -> Result<()>) -> Resu
         let value: String = row.get(2)?;
         let file: String = row.get(1)?;
         let key = sha2::Sha256::digest(value.as_bytes());
-        insert.execute(params![&key[..8], file])?;
+        let world: String = row.get(4)?;
+        insert.execute(params![&key[..8], file, world])?;
     }
     Ok(())
 }
@@ -618,7 +758,7 @@ fn rebuild_wiring(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()>
         implementations.entry(target).or_default().insert(source);
     }
     drop(statement);
-    let mut statement=db.prepare("SELECT source_id,target_id,source_file,source_location FROM edges WHERE relation='INJECTS' AND is_external=0 AND source_id IS NOT NULL AND target_id IS NOT NULL ORDER BY id")?;
+    let mut statement=db.prepare("SELECT source_id,target_id,source_file,source_location,world FROM edges WHERE relation='INJECTS' AND is_external=0 AND source_id IS NOT NULL AND target_id IS NOT NULL ORDER BY id")?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {
         check()?;
@@ -634,6 +774,7 @@ fn rebuild_wiring(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()>
         };
         let file: Option<String> = row.get(2)?;
         let location: Option<String> = row.get(3)?;
+        let world: String = row.get(4)?;
         let metadata = format!(
             "{{\"via\":\"injection\",\"source\":{},\"candidates\":{}}}",
             serde_json::to_string(&target)?,
@@ -642,7 +783,7 @@ fn rebuild_wiring(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()>
         for candidate in candidates {
             let exists:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM edges WHERE relation='WIRES' AND source_id=? AND target_id=? AND external_target_fqn IS NULL AND call_kind IS NULL AND source_location IS ?)",params![source,candidate,location],|r|r.get(0))?;
             if !exists {
-                db.execute("INSERT INTO edges(source_id,target_id,relation,confidence,is_external,source_file,source_location,metadata,producer_id) VALUES(?,?,'WIRES',?,0,?,?,?,'derived-wiring')",params![source,candidate,confidence,file,location,metadata])?;
+                db.execute("INSERT INTO edges(source_id,target_id,relation,confidence,is_external,source_file,source_location,metadata,producer_id,world) VALUES(?,?,'WIRES',?,0,?,?,?,'derived-wiring',?)",params![source,candidate,confidence,file,location,metadata,world])?;
             }
         }
     }
@@ -708,7 +849,7 @@ mod tests {
         }
         Ok(())
     }
-    fn captured(store: &Store) -> (Revision, AnalysisHeader, Vec<Row>) {
+    pub(super) fn captured(store: &Store) -> (Revision, AnalysisHeader, Vec<Row>) {
         let bytes = b"class A {}".to_vec();
         let digest = hash(&bytes);
         store
@@ -887,3 +1028,7 @@ mod tests {
         Ok(())
     }
 }
+
+#[cfg(test)]
+#[path = "graph_world_tests.rs"]
+mod world_tests;

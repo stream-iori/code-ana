@@ -91,10 +91,14 @@ pub trait IndexRepository: Clone + Send + Sync + 'static {
         fence: &PublicationFence,
     ) -> Result<Revision>;
 }
+pub enum StageInput<'a> {
+    Analysis(&'a AnalysisHeader),
+    Reused,
+}
 pub struct StageRequest<'a> {
     pub context: Option<&'a GraphStagingContext>,
     pub revision: Revision,
-    pub header: &'a AnalysisHeader,
+    pub input: StageInput<'a>,
     pub expected: &'a str,
     pub cancellation: &'a dyn Fn() -> Result<()>,
     pub check_directory: &'a dyn Fn(&Path) -> Result<()>,
@@ -150,12 +154,31 @@ impl<R: IndexRepository> IndexService<R> {
             StageRequest {
                 context: self.context.as_ref(),
                 revision,
-                header,
+                input: StageInput::Analysis(header),
                 expected,
                 cancellation: &cancellation,
                 check_directory: &check_directory,
             },
             records,
+        )
+    }
+    pub fn stage_reused_graph(
+        &self,
+        revision: Revision,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+    ) -> Result<R::Candidate> {
+        self.repository.stage(
+            StageRequest {
+                context: self.context.as_ref(),
+                revision,
+                input: StageInput::Reused,
+                expected,
+                cancellation: &cancellation,
+                check_directory: &check_directory,
+            },
+            std::iter::empty(),
         )
     }
     pub async fn publish(
@@ -215,15 +238,30 @@ pub(super) mod storage {
             request: StageRequest<'_>,
             records: impl Iterator<Item = Result<Row>>,
         ) -> Result<StagedCandidate> {
-            self.0.stage_graph_records_with_context(
-                request.revision,
-                request.header,
-                records,
-                request.expected,
-                request.cancellation,
-                request.check_directory,
-                request.context,
-            )
+            match request.input {
+                StageInput::Analysis(header) => self.0.stage_graph_records_with_context(
+                    request.revision,
+                    header,
+                    records,
+                    request.expected,
+                    request.cancellation,
+                    request.check_directory,
+                    request.context,
+                ),
+                StageInput::Reused => {
+                    ensure!(
+                        records.into_iter().next().is_none(),
+                        "REUSE_CANNOT_DELIVER_ROWS"
+                    );
+                    self.0.stage_reused_graph_with_context(
+                        request.revision,
+                        request.expected,
+                        request.cancellation,
+                        request.check_directory,
+                        request.context,
+                    )
+                }
+            }
         }
         fn persist_and_publish(
             &self,

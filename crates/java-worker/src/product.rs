@@ -330,10 +330,11 @@ analysis_usage: grant.as_ref().map(|g| codeana_contracts::analysis_budget::recei
                 Body::Reuse(_) => {
                     let (grant,budget)=active_analysis.as_ref().context("DISCOVER_REQUIRED")?;
                     budget.checkpoint()?;
-                    write_frame(&mut ipc,&envelope(&attempt,Body::Reused(w::Reused {
+                    let reused=w::Reused {
                         analysis_usage:grant.as_ref().map(|g|codeana_contracts::analysis_budget::receipt(g,&budget.usage(),"reused")),
-                    }))).await?;
+                    };
                     config=None;active_analysis=None;task_meter=AnalysisTaskMeter::default();control_state.reused()?;
+                    write_frame(&mut ipc,&envelope(&attempt,Body::Reused(reused))).await?;
                 }
                 Body::Cancel(_)=> {
                     if was_awaiting_ack && let Some(lib)=&native { lib.cancel()?; }

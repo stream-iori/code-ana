@@ -8,27 +8,7 @@ use codeana_contracts::graph_rows::{CoverageRow, GraphRow, ProjectMetaRow};
 /// Use only after the complete semantic profile matches. The root config is a
 /// FILES capture too; its presentation bytes must not force a semantic rerun.
 fn same_sources_for_profile(before: &Manifest, after: &Manifest) -> bool {
-    fn files(manifest: &Manifest) -> impl Iterator<Item = &SourceUnit> {
-        manifest.files.iter().filter(|source| {
-            !(source.scope == "PREPARATION"
-                && source.world == "files"
-                && source.module.is_empty()
-                && source.language.is_empty()
-                && !source.auxiliary)
-        })
-    }
-    files(before).count() == files(after).count()
-        && files(before).zip(files(after)).all(|(old, new)| {
-            old == new
-                || old.path == ".code-ana/config.toml"
-                    && new.path == old.path
-                    && old.language.is_empty()
-                    && new.language.is_empty()
-                    && old.world == new.world
-                    && old.module == new.module
-                    && old.scope == new.scope
-                    && old.auxiliary == new.auxiliary
-        })
+    codeana_model::same_semantic_sources(&before.files, &after.files)
 }
 
 struct RustWorkers {
@@ -490,7 +470,7 @@ impl IndexTask {
             &TaskId::from(id),
             &Event::Progress("rust_analyze_unchanged".into()),
         )?;
-        self.stage_reused_revision(id, revision, expected, "rust-core".into(), cancel)
+        self.stage_reused_revision(id, revision, expected, "rust-core".into(), None, cancel)
             .await
     }
     async fn stage_rust_stream(
@@ -817,8 +797,15 @@ impl IndexTask {
             let analyzing = Instant::now();
             let (result_mode, candidate) = if unchanged {
                 crate::analysis_unit::retire(sessions.workers_mut()).await?;
-                self.stage_reused_revision(id, revision, expected.clone(), producer.clone(), cancel)
-                    .await?
+                self.stage_reused_revision(
+                    id,
+                    revision,
+                    expected.clone(),
+                    producer.clone(),
+                    None,
+                    cancel,
+                )
+                .await?
             } else {
                 self.task.event(
                     &TaskId::from(id),
@@ -1146,8 +1133,15 @@ impl IndexTask {
             let analyzing = Instant::now();
             let (result_mode, candidate) = if unchanged {
                 crate::analysis_unit::retire(sessions.workers_mut()).await?;
-                self.stage_reused_revision(id, revision, expected.clone(), producer.clone(), cancel)
-                    .await?
+                self.stage_reused_revision(
+                    id,
+                    revision,
+                    expected.clone(),
+                    producer.clone(),
+                    None,
+                    cancel,
+                )
+                .await?
             } else if sessions.units.len() == 1 {
                 let (worker, manifest) = sessions.units[0].stream()?;
                 self.stage_language_stream_rows(

@@ -21,7 +21,7 @@ C1 当前已接通内部注释模型：主 javac 扫描器记录原始 comment t
 
 请求在现有累计账户中预付有界词法范围；流式保守扫描估算可能的注释区间，任何 Unicode 转义按整文件上界处理。无可能注释的源文件不创建录制器，大文件的短文档头不为整文件预付正文映射。子进程只消费已分配范围，宿主解码沿用原预算；NoCode 依赖视图不携带正文，普通扩展及 Lombok overlay 保留原注释。声明契约仍忽略普通注释，源码 hash 随注释变化。
 
-JavaCommentEvidence 在模型关闭前将位置与正文映射冻结为原始 UTF-8 范围，交付独立 GRA1 注释/关联行；图库 schema 13/逻辑 36 和公开查询已接通。此前 v51 G1 开发 Native SDK 与 JVM SDK 的 C1/C2 回执按其原产物解释；当前 SDK schema 4 的重建和实际验证见 current-state，不继承旧 SDK 的通过状态。
+JavaCommentEvidence 在模型关闭前将位置与正文映射冻结为原始 UTF-8 范围，交付独立 GRA1 注释/关联行；图库 schema 14/逻辑 36 和公开查询已接通。此前 v51 G1 开发 Native SDK 与 JVM SDK 的 C1/C2 回执按其原产物解释；当前 SDK schema 4 的重建和实际验证见 current-state，不继承旧 SDK 的通过状态。
 
 FFI 整数状态在边界解码为 `RunState`。Java engine request、bundle manifest、baseline 和 graph descriptor 使用明确 DTO；JVM 重定位只修改已知路径字段，外部输入保持原路径。Maven export 直接构造 `JavaInputs`，计时使用 `PhaseTiming`。sealed descriptor 的诊断副本读取当前 `graph_archive` / GRA1 并复制为 `graph.rows`。
 

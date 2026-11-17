@@ -947,8 +947,8 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
             })
             .await
     }
-    /// Retire a configured Java worker without starting an analysis or publication Ack.
-    pub async fn retire_unused(&mut self) -> Result<()> {
+    /// Seal the unused analysis account; the certified worker is then idle.
+    async fn seal_unused(&mut self) -> Result<()> {
         if self.analysis.is_some() {
             self.send(Body::Reuse(w::Reuse {})).await?;
             let frame = tokio::time::timeout(
@@ -969,6 +969,24 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
             }
             self.analysis = None;
         }
+        Ok(())
+    }
+
+    /// Java can return to its healthy process pool after an explicit Reused receipt.
+    pub async fn reuse_java(&mut self) -> Result<()> {
+        ensure!(
+            self.context.backend() == AnalysisBackend::Java && self.analysis.is_some(),
+            "JAVA_REUSE_ACCOUNT_REQUIRED"
+        );
+        self.seal_unused().await?;
+        self.scratch.lock().unwrap().take();
+        self.child.release_inputs();
+        Ok(())
+    }
+
+    /// Other backends retire their process after sealing the unused account.
+    pub async fn retire_unused(&mut self) -> Result<()> {
+        self.seal_unused().await?;
         self.send(Body::Cancel(w::Cancel {})).await?;
         self.stop_monitor().await;
         let status =
@@ -1188,6 +1206,80 @@ mod tests {
         }
         Ok(())
     }
+    #[tokio::test]
+    async fn only_a_verified_reuse_releases_inputs_and_keeps_java_alive() -> Result<()> {
+        for fault in ["none", "attempt", "grant", "unknown"] {
+            let directory = std::sync::Arc::new(tempfile::tempdir()?);
+            let path = directory.path().to_owned();
+            let inputs =
+                std::sync::Arc::new(crate::supervisor::InputLease::directory(directory.clone()));
+            let child = Command::new("/bin/sleep")
+                .arg("60")
+                .process_group(0)
+                .kill_on_drop(true)
+                .spawn()?;
+            let group = child.id().unwrap();
+            let (mut worker, mut peer) = test_worker(child, group, inputs.clone());
+            *worker.scratch.lock().unwrap() = Some(ScratchLease {
+                budget: crate::resources::DiskBudget::new(path.clone(), 1 << 20, 0, 0, "test"),
+                _inputs: inputs.clone(),
+            });
+            drop(inputs);
+            drop(directory);
+            let mut coordinator = AnalysisCoordinator::new(
+                "task",
+                AnalysisLimits::default(),
+                AnalysisUsage::default(),
+                &[AnalysisBackend::Java],
+                None,
+            )?;
+            coordinator.configure_instances(AnalysisBackend::Java, &["java".into()])?;
+            worker.attach_analysis(AnalysisBinding {
+                coordinator: std::sync::Arc::new(std::sync::Mutex::new(coordinator)),
+                language: AnalysisBackend::Java,
+                instance: "java".into(),
+            })?;
+            let grant = worker.analysis.as_ref().unwrap().0.clone();
+            let server = tokio::spawn(async move {
+                let mut reader = codeana_worker_runtime::FrameReader::default();
+                let frame = reader.next_control(&mut peer).await?;
+                ensure!(matches!(frame.body, Some(Body::Reuse(_))), "expected reuse");
+                let mut receipt = codeana_contracts::analysis_budget::receipt(
+                    &grant,
+                    &AnalysisUsage::default(),
+                    "reused",
+                );
+                if fault == "grant" {
+                    receipt.grant_id = "wrong".into();
+                }
+                if fault == "unknown" {
+                    receipt.usage_known = Some(false);
+                }
+                write_frame(
+                    &mut peer,
+                    &envelope(
+                        if fault == "attempt" { "wrong" } else { "test" },
+                        Body::Reused(w::Reused {
+                            analysis_usage: Some(receipt),
+                        }),
+                    ),
+                )
+                .await
+            });
+            let result = worker.reuse_java().await;
+            server.await??;
+            let valid = fault == "none";
+            assert_eq!(result.is_ok(), valid, "{fault}: {result:?}");
+            assert_eq!(path.exists(), !valid, "{fault}");
+            assert_eq!(worker.scratch.lock().unwrap().is_none(), valid);
+            assert_eq!(worker.analysis.is_none(), valid);
+            assert!(worker.alive()?);
+            worker.shutdown().await?;
+            assert!(!path.exists());
+        }
+        Ok(())
+    }
+
     fn test_worker(
         child: tokio::process::Child,
         group: u32,

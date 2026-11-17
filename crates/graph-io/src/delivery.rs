@@ -122,6 +122,32 @@ impl Verifier {
         Ok(end)
     }
 }
+/// A deterministic host projection has its own checksum. It cannot seal until
+/// the original transport stream has a valid End, including the original SHA.
+pub struct Projection {
+    verifier: Verifier,
+}
+impl Projection {
+    pub fn new(limits: OutputLimits, budget: Option<AnalysisContext>) -> Self {
+        Self {
+            verifier: Verifier::new(limits, budget),
+        }
+    }
+    pub fn push(&mut self, row: &Row) -> Result<()> {
+        self.verifier.push(row).map(|_| ())
+    }
+    pub fn record_chunk(&mut self) {
+        self.verifier.record_chunk();
+    }
+    pub fn finish(self, source: &VerifiedEnd) -> Result<VerifiedEnd> {
+        let projected = self.verifier.seal()?;
+        ensure!(
+            projected.count == source.count && projected.chunks == source.chunks,
+            DomainError::new(ErrorCode::ResultChecksumMismatch, "projection cardinality")
+        );
+        Ok(projected)
+    }
+}
 pub struct Encoder {
     sender: SinkSender,
     batch: Vec<Row>,
@@ -173,6 +199,22 @@ impl Encoder {
 mod tests {
     use super::*;
     use crate::stream::GraphStream;
+    #[test]
+    fn projection_cannot_seal_with_a_dropped_or_extra_row() {
+        let empty = codeana_model::hash(crate::archive::MAGIC);
+        let source = Verifier::new(OutputLimits::default(), None)
+            .verify_end(0, 0, &empty)
+            .unwrap();
+        let mut projection = Projection::new(OutputLimits::default(), None);
+        projection
+            .push(&Row {
+                table: crate::graph::Table::ProjectMeta as i32,
+                world: String::new(),
+                cells: vec![],
+            })
+            .unwrap();
+        assert!(projection.finish(&source).is_err());
+    }
     #[test]
     fn wrong_receipts_and_ignored_push_errors_never_produce_a_verified_end() {
         let row = Row {

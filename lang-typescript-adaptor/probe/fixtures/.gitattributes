@@ -1,1 +1,2 @@
-*.ts -text
+# Preserve the deliberate CRLF fixture bytes and check ordinary whitespace.
+*.ts -text whitespace=trailing-space,space-before-tab,cr-at-eol

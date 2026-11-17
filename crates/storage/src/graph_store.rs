@@ -16,7 +16,7 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 13;
+pub const SCHEMA_VERSION: i64 = 14;
 pub const SOURCE_SCHEMA_VERSION: i64 = 36;
 pub const PAGE_SIZE: i64 = 4096;
 
@@ -88,9 +88,9 @@ pub fn restore_bulk(
 pub fn initialize_stage(db: &Connection) -> Result<()> {
     db.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA foreign_keys=OFF; PRAGMA cache_size=-64000;")?;
     db.execute_batch(include_str!("anatomist-stage.sql"))?;
-    db.execute_batch("CREATE TABLE stage_file_cache(provider_id TEXT,source_file TEXT,hash TEXT,schema_version INTEGER,node_count INTEGER,edge_count INTEGER,file_size INTEGER,contract_hash TEXT);
-      CREATE TABLE stage_file_dependencies(source_provider_id TEXT,source_file TEXT,depends_on_provider_id TEXT,depends_on_file TEXT);
-      CREATE TABLE stage_symbol_dependencies(target_key BLOB,source_file TEXT);
+    db.execute_batch("CREATE TABLE stage_file_cache(provider_id TEXT,source_file TEXT,hash TEXT,schema_version INTEGER,node_count INTEGER,edge_count INTEGER,file_size INTEGER,contract_hash TEXT,world TEXT NOT NULL DEFAULT '');
+      CREATE TABLE stage_file_dependencies(source_provider_id TEXT,source_file TEXT,depends_on_provider_id TEXT,depends_on_file TEXT,world TEXT NOT NULL DEFAULT '');
+      CREATE TABLE stage_symbol_dependencies(target_key BLOB,source_file TEXT,world TEXT NOT NULL DEFAULT '');
       CREATE TABLE stage_diagnostics(severity TEXT,code TEXT,phase TEXT,source_file TEXT,module TEXT,scope TEXT,symbol TEXT,language TEXT,provider_id TEXT,provider_reason TEXT,reason_code TEXT,sample_details TEXT,occurrence_count INTEGER,sample TEXT,world TEXT NOT NULL DEFAULT '');
       CREATE TABLE stage_coverage(source_file TEXT,module TEXT,scope TEXT,language TEXT,provider_id TEXT,capability TEXT,status TEXT,occurrences INTEGER,groups_count INTEGER,codes TEXT,code_counts TEXT,details_truncated INTEGER,world TEXT NOT NULL DEFAULT '');
       CREATE TABLE stage_providers(provider_id TEXT,language TEXT,provider_version TEXT,operations TEXT,limitations TEXT,profile_hash TEXT);
@@ -103,6 +103,9 @@ pub fn initialize_stage(db: &Connection) -> Result<()> {
 }
 
 pub fn insert(db: &Connection, row: &Row) -> Result<()> {
+    insert_with_world(db, row, &row.world)
+}
+pub fn insert_with_world(db: &Connection, row: &Row, world: &str) -> Result<()> {
     let table = Table::try_from(row.table).context(codeana_model::DomainError::new(
         codeana_model::ErrorCode::GraphTableUnknown,
         "",
@@ -114,16 +117,16 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Table::Annotation => inserts::ANNOTATION_INSERT,
         Table::AnnotationMeta => inserts::ANNOTATION_META_INSERT,
         Table::UnresolvedCall => {
-            "INSERT INTO stage_call_sites(source_ref,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,call_kind,context,metadata,producer_id,source_module,source_scope,resolved_source,relation,language,provider_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'CALLS','java','java-core')"
+            "INSERT INTO stage_call_sites(source_ref,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,call_kind,context,metadata,producer_id,source_module,source_scope,resolved_source,relation,language,provider_id,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'CALLS','java','java-core',?)"
         }
-        Table::FileCache => "INSERT INTO stage_file_cache VALUES(?,?,?,?,?,?,?,?)",
-        Table::FileDependency => "INSERT INTO stage_file_dependencies VALUES(?,?,?,?)",
-        Table::SymbolDependency => "INSERT INTO stage_symbol_dependencies VALUES(?,?)",
+        Table::FileCache => "INSERT INTO stage_file_cache VALUES(?,?,?,?,?,?,?,?,?)",
+        Table::FileDependency => "INSERT INTO stage_file_dependencies VALUES(?,?,?,?,?)",
+        Table::SymbolDependency => "INSERT INTO stage_symbol_dependencies VALUES(?,?,?)",
         Table::Diagnostic => {
-            "INSERT INTO stage_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            "INSERT INTO stage_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
         Table::Coverage => {
-            "INSERT INTO stage_coverage(source_file,module,scope,language,provider_id,capability,status,occurrences,groups_count,codes,code_counts,details_truncated) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)"
+            "INSERT INTO stage_coverage(source_file,module,scope,language,provider_id,capability,status,occurrences,groups_count,codes,code_counts,details_truncated,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
         Table::Provider => "INSERT INTO stage_providers VALUES(?,?,?,?,?,?)",
         Table::SourceState => {
@@ -132,10 +135,10 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Table::AnalysisDependency => "INSERT INTO stage_rust_dependencies VALUES(?,?,?,?,?)",
         Table::ProjectMeta => "INSERT OR REPLACE INTO stage_meta VALUES(?,?)",
         Table::Comment => {
-            "INSERT INTO stage_comments(id,source_file,source_hash,module,scope,language,provider_id,producer_id,kind,byte_start,byte_end,begin_line,begin_column,end_line,end_column,body,body_map,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            "INSERT INTO stage_comments(id,source_file,source_hash,module,scope,language,provider_id,producer_id,kind,byte_start,byte_end,begin_line,begin_column,end_line,end_column,body,body_map,rule_version,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
         Table::CommentLink => {
-            "INSERT INTO stage_comment_links(comment_id,relation,declaration_id,source_file,module,scope,byte_start,byte_end,begin_line,begin_column,end_line,end_column,basis,rule_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            "INSERT INTO stage_comment_links(comment_id,relation,declaration_id,source_file,module,scope,byte_start,byte_end,begin_line,begin_column,end_line,end_column,basis,rule_version,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
         Table::Unspecified => anyhow::bail!(codeana_model::DomainError::new(
             codeana_model::ErrorCode::GraphTableRequired,
@@ -174,8 +177,10 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         }
     }
     let mut statement = db.prepare_cached(sql)?;
+    let owns_world = codeana_graph_io::scope::source_columns(table).is_some()
+        && !matches!(table, Table::SourceState | Table::AnalysisDependency);
     ensure!(
-        statement.parameter_count() == row.cells.len(),
+        statement.parameter_count() == row.cells.len() + usize::from(owns_world),
         codeana_model::DomainError::new(
             codeana_model::ErrorCode::GraphColumnCount,
             format!(
@@ -191,48 +196,13 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
         Some(cell::Value::Integer(n)) => Value::Integer(*n),
         Some(cell::Value::Blob(b)) => Value::Blob(b.clone()),
     });
-    statement.execute(params_from_iter(values))?;
-    if !row.world.is_empty() {
-        match table {
-            Table::Node => {
-                db.execute(
-                    "UPDATE stage_nodes SET world=? WHERE id=?",
-                    params![
-                        row.world,
-                        match &row.cells[0].value {
-                            Some(cell::Value::Text(id)) => id,
-                            _ => anyhow::bail!("RUST_NODE_ID"),
-                        }
-                    ],
-                )?;
-            }
-            Table::Coverage => {
-                db.execute(
-                    "UPDATE stage_coverage SET world=? WHERE rowid=last_insert_rowid()",
-                    [&row.world],
-                )?;
-            }
-            Table::Diagnostic => {
-                db.execute(
-                    "UPDATE stage_diagnostics SET world=? WHERE rowid=last_insert_rowid()",
-                    [&row.world],
-                )?;
-            }
-            Table::Comment => {
-                db.execute(
-                    "UPDATE stage_comments SET world=? WHERE rowid=last_insert_rowid()",
-                    [&row.world],
-                )?;
-            }
-            Table::CommentLink => {
-                db.execute(
-                    "UPDATE stage_comment_links SET world=? WHERE rowid=last_insert_rowid()",
-                    [&row.world],
-                )?;
-            }
-            _ => {}
-        }
-    }
+    statement.execute(params_from_iter(
+        values.chain(owns_world.then(|| Value::Text(world.to_owned()))),
+    )).map_err(|error| {
+        if matches!(&error, rusqlite::Error::SqliteFailure(_, Some(message)) if message == "NODE_WORLD_OWNERSHIP_CONFLICT") {
+            anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::GraphWorldOwnershipConflict, "node ID belongs to another world"))
+        } else { error.into() }
+    })?;
     Ok(())
 }
 
@@ -330,7 +300,7 @@ fn hash_rows(
     Ok(())
 }
 pub fn prepare_identities(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
-    ensure!(!db.prepare("SELECT d.symbol_id FROM stage_declarations d LEFT JOIN stage_nodes n ON n.provider_id=d.provider_id AND n.symbol_id=d.symbol_id AND n.module=d.module AND n.scope=d.scope AND n.source_file=d.source_file AND n.producer_id=d.producer_id GROUP BY d.seq HAVING count(n.id)<>1 LIMIT 1")?.exists([])?, codeana_model::DomainError::new(codeana_model::ErrorCode::DeclarationNodeMissing, ""));
+    ensure!(!db.prepare("SELECT d.symbol_id FROM stage_declarations d LEFT JOIN stage_nodes n ON n.provider_id=d.provider_id AND n.symbol_id=d.symbol_id AND n.module=d.module AND n.scope=d.scope AND n.source_file=d.source_file AND n.producer_id=d.producer_id AND n.world=d.world GROUP BY d.seq HAVING count(n.id)<>1 LIMIT 1")?.exists([])?, codeana_model::DomainError::new(codeana_model::ErrorCode::DeclarationNodeMissing, ""));
     hash_rows(db, "stage_nodes", hashes::NODE_HASH, check)?;
     hash_rows(db, "stage_edges", hashes::EDGE_HASH, check)?;
     hash_rows(db, "stage_annotations", hashes::ANNOTATION_HASH, check)?;
@@ -339,16 +309,28 @@ pub fn prepare_identities(db: &Connection, check: &dyn Fn() -> Result<()>) -> Re
         ("stage_annotations", "fact_hash IS NOT NULL"),
     ] {
         check()?;
-        db.execute_batch(&format!("WITH ranked AS(SELECT seq,row_number() OVER(PARTITION BY producer_id,coalesce(source_file,''),fact_hash ORDER BY seq)-1 AS ordinal FROM {table} WHERE {predicate}) UPDATE {table} SET fact_ordinal=(SELECT ordinal FROM ranked WHERE ranked.seq={table}.seq) WHERE {predicate}"))?;
+        db.execute_batch(&format!("WITH ranked AS(SELECT seq,row_number() OVER(PARTITION BY producer_id,coalesce(source_file,''),world,fact_hash ORDER BY seq)-1 AS ordinal FROM {table} WHERE {predicate}) UPDATE {table} SET fact_ordinal=(SELECT ordinal FROM ranked WHERE ranked.seq={table}.seq) WHERE {predicate}"))?;
     }
     db.execute_batch("CREATE INDEX stage_edges_fact ON stage_edges(fact_hash,fact_ordinal) WHERE relation<>'CALLS'; CREATE INDEX stage_annotations_fact ON stage_annotations(fact_hash,fact_ordinal);")?;
     Ok(())
 }
 
+pub(super) fn identity_error(error: rusqlite::Error) -> anyhow::Error {
+    if matches!(&error, rusqlite::Error::SqliteFailure(_, Some(message)) if message.contains("graph_edges.fact_hash") || message.contains("graph_annotations.fact_hash") || message.contains("graph_call_sites.stable_hash"))
+    {
+        anyhow::anyhow!(codeana_model::DomainError::new(
+            codeana_model::ErrorCode::GraphWorldOwnershipConflict,
+            "public identity collision"
+        ))
+    } else {
+        error.into()
+    }
+}
 pub fn promote(db: &Connection) -> Result<()> {
-    db.execute_batch(include_str!("anatomist-promote.sql"))?;
-    db.execute_batch("INSERT INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash) SELECT * FROM staged.stage_file_cache;
-      INSERT OR IGNORE INTO file_dependencies SELECT * FROM staged.stage_file_dependencies;
+    db.execute_batch(include_str!("anatomist-promote.sql"))
+        .map_err(identity_error)?;
+    db.execute_batch("INSERT INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash,world) SELECT * FROM staged.stage_file_cache;
+      INSERT OR IGNORE INTO file_dependencies(source_provider_id,source_file,depends_on_provider_id,depends_on_file,world) SELECT * FROM staged.stage_file_dependencies;
       INSERT OR IGNORE INTO symbol_dependencies SELECT * FROM staged.stage_symbol_dependencies;
       INSERT INTO index_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world) SELECT * FROM staged.stage_diagnostics;
       INSERT INTO analysis_coverage SELECT * FROM staged.stage_coverage;

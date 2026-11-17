@@ -2,6 +2,31 @@
 use crate::*;
 
 pub const UNIT_OWNERSHIP_VERSION: u32 = 2;
+/// Preparation generations and root-config presentation bytes do not change facts.
+/// Every semantic source and all role/world/module/scope fields still compare exactly.
+pub fn same_semantic_sources(before: &[SourceUnit], after: &[SourceUnit]) -> bool {
+    fn files(sources: &[SourceUnit]) -> impl Iterator<Item = &SourceUnit> {
+        sources.iter().filter(|source| {
+            !(source.scope == "PREPARATION"
+                && source.world == "files"
+                && source.module.is_empty()
+                && source.language.is_empty()
+                && !source.auxiliary)
+        })
+    }
+    files(before).count() == files(after).count()
+        && files(before).zip(files(after)).all(|(old, new)| {
+            old == new
+                || old.path == ".code-ana/config.toml"
+                    && new.path == old.path
+                    && old.language.is_empty()
+                    && new.language.is_empty()
+                    && old.world == new.world
+                    && old.module == new.module
+                    && old.scope == new.scope
+                    && old.auxiliary == new.auxiliary
+        })
+}
 pub fn publication_language(source: &SourceUnit) -> Option<SourceLanguage> {
     if source.auxiliary {
         return None;

@@ -142,7 +142,7 @@ daemon 不自行实现 Java 名称求解或 Rust 宏失效。adapter 负责解�
 
 ## 当前交付与存储边界
 
-Java 封存 GRA1/protobuf rows，worker 25 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 13，查询以逻辑 schema 36 读取；不再经过 CAF1 / Fact JSON 去重数据库。
+Java 封存 GRA1/protobuf rows，worker 25 的 Begin/Chunk 只能进入私有候选，完整 EOF/SHA/End 才允许封存。Rust 解析引用、hash/ordinal、调用点和派生 WIRES，最终写物理 schema 14，查询以逻辑 schema 36 读取；不再经过 CAF1 / Fact JSON 去重数据库。
 
 增量对兼容基线使用 SQLite backup，保持未变节点整数主键并重映射新暂存引用，封存时回收孤立字典/元注解定义并重建索引/FTS。旧格式 delta 返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 只固定旧 head 的 CAS 身份，建新库成功后切入口。G1 worker 复用健康 isolate，失败恢复换进程。
 
@@ -152,7 +152,7 @@ Maven manifest schema 4 记录外部依赖三态。自动源码降级仍通过�
 
 Python 只读取显式清单并验证全部来源哈希。完全相同的 manifest/profile 可复用；变更后全量重算。含 Python 的多语言任务在所有独立 worker 返回有效 End 后才构造统一候选，严格门禁后一次 CAS；ACK 失败只产生提交后的警告。Python 不写入 Rust 增量元数据表。源码和预算见 [Python worker](python-worker.md)，产品验收状态以该页和当前实现为准。
 
-未变复用的空 delta 候选构建由 stage_reused_revision 共用，普通 Python、prepared 和 Rust 各入口先完成 worker Reused 回执，再调用同一暂存逻辑。基线/profile 校验、取消及后续质量门禁与 CAS 保持。
+未变复用经 stage_reused_revision 和显式 StageInput::Reused 进入存储；单 Java、Rust、普通 Python 和 prepared 先完成 worker Reused 回执。存储独立核对相同 profile/producer、单元身份/语义范围及语义输入，只允许准备 generation 和根配置展示字节的既有例外。复用保留全局诊断、coverage 与字典元数据，不从空 delta 推测复用；取消、原候选磁盘检查、质量门禁与 CAS 保持。
 
 worker 终态由公共 analysis_unit 的同一 worker 引用集合入口处理，删除 One/Pair/Sessions 类型；Reused 失败仍中止暂存，PublishAck 失败只保存 warning 并继续确认其余实例，不改变已发布 revision。该迭代不复制 worker 或另建预算账户。
 
@@ -179,10 +179,10 @@ A5 服务边界：索引策略实现于 `IndexTask`，只拿本任务状态、In
 
 application/supervisor 的 Process 统一保有 child 与租约。显式关闭和 Drop 都先终止所属进程组；独立回收线程保有待回收 child，按有界 OS 快照确认组内无非僵尸成员后才 try_wait 回收 leader、释放租约。leader 未回收前不复用其数值 PGID。任务 runtime 关闭不销毁回收登记。显式停止最多等待两秒；失败/超时独立报告并保留输入，后台继续回收。未确认记录达到 1024 时拒绝新增启动；该阈值不是业务预算的可借额度。
 
-只有验证过 attempt/revision 的 Acked 才解除健康 worker 的任务租约与 scratch 观察；错误 ACK 保留输入并由调用方关闭。正在进行的磁盘检查也持有旧租约，过期检查不能杀死下一任务的 worker。Java 健康池策略与 RSS 监控仍在既有模块；完整后端装配、公共监控策略、固定基线及混合 Full/Delta/Reuse 执行仍待 R4。
+验证过 attempt/revision 的 Acked，或验证过 attempt/grant/可信用量的 Java Reused，才解除健康 worker 的任务租约与 scratch 观察；错误回执保留输入并由调用方关闭。正在进行的磁盘检查也持有旧租约，过期检查不能杀死下一任务的 worker。Java 健康池策略与 RSS 监控仍在既有模块；完整后端装配、公共监控策略、固定基线及混合 Full/Delta/Reuse 执行仍待 R4。
 
 索引捕获后只读取一次 head，并通过元数据租约持有该 revision，覆盖规划、worker、候选及发布后的处理。后续策略使用计划中的相同 baseline，提交仍做 CAS；GC 在租约释放前保留基线。元数据租约不打开旧 facts.db，因此显式全量可从旧图 schema 迁移；读取前先为元数据解码预留预算。
 
-每个 worker 的 Receiver 在 Begin 时核对 replacement producer 与当前/历史完整输入的精确 world/path，在 Chunk 时核对当前实例冻结来源、模块/scope 和允许语言，失败后不能生成 VerifiedEnd。历史辅助输入只授权删除旧 owner，不授权发布新语义。fixture 允许其显式测试语言标签，仍须遵守来源/world 范围。无来源的公共字典/metadata 的单元归属、存储按 world 精确替换及任意 Full/Delta/Reuse 组合仍待后续完成。
+每个 worker 的 Receiver 在 Begin 时核对 replacement producer 与当前/历史完整输入的精确 world/path，在 Chunk 时核对当前实例冻结来源、模块/scope 和允许语言，失败后不能生成 VerifiedEnd。历史辅助输入只授权删除旧 owner，不授权发布新语义。fixture 允许其显式测试语言标签，仍须遵守来源/world 范围。无来源的公共字典/metadata 的单元归属及任意 Full/Delta/Reuse 组合仍待后续完成。
 
-Java 的增量基线文件列表从该单元历史 inputs 取得，不将项目 FILES 清单传给引擎用于生成删除 owner；显式 fixture 的旧基线保持其测试输入。Python 的汇总 coverage 模块还包括冻结输入描述符中的原生上下文模块，与具体源文件的模块归属分别校验。
+Java 的未变判定比较该单元历史 inputs，避免将全项目 FILES 与单元视图直接比较。增量基线的文件、节点、上下文和类型关系仅取该单元声明输入（含辅助绑定）；变更闭包按 path/world 计算，反向依赖只回到该单元输入，不将项目 FILES 清单传给引擎用于生成删除 owner；显式 fixture 的旧基线保持其测试输入。Python 的汇总 coverage 模块还包括冻结输入描述符中的原生上下文模块，与具体源文件的模块归属分别校验。
