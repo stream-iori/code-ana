@@ -549,6 +549,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "codeana-typescript-worker"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "codeana-contracts",
+ "codeana-graph-io",
+ "codeana-model",
+ "codeana-worker-runtime",
+ "libc",
+ "libloading",
+ "prost",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "codeana-worker-runtime"
 version = "0.1.0"
 dependencies = [

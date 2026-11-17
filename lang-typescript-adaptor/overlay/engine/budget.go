@@ -29,10 +29,11 @@ type Meter struct {
 	grant   *w.AnalysisBudgetGrant
 	usage   *w.AnalysisBudgetUsage
 	failure error
+	phase   string
 }
 
 func NewMeter(ctx context.Context, grant *w.AnalysisBudgetGrant, seed *w.AnalysisBudgetUsage) (*Meter, error) {
-	if grant == nil || grant.Id == "" || grant.Language != "typescript" || grant.Limits == nil || seed == nil || seed.Failure != nil {
+	if grant == nil || grant.Id == "" || len(grant.Id) > 1024 || grant.Language != "typescript" || grant.Limits == nil || seed == nil || seed.Failure != nil {
 		return nil, invalid("explicit TypeScript grant and healthy cumulative seed required")
 	}
 	limits := grant.Limits
@@ -41,7 +42,7 @@ func NewMeter(ctx context.Context, grant *w.AnalysisBudgetGrant, seed *w.Analysi
 		seed.Work > limits.MaxWork || seed.Nodes > limits.MaxNodes || seed.PayloadBytes > limits.MaxPayloadBytes || seed.MaxDepth > limits.MaxDepth {
 		return nil, invalid("invalid grant limits or cumulative seed")
 	}
-	return &Meter{ctx: ctx, grant: grant, usage: proto.Clone(seed).(*w.AnalysisBudgetUsage)}, nil
+	return &Meter{ctx: ctx, grant: grant, usage: proto.Clone(seed).(*w.AnalysisBudgetUsage), phase: "input_decode"}, nil
 }
 
 func (m *Meter) Check() error {
@@ -105,5 +106,10 @@ func (m *Meter) Depth(depth uint32) error {
 }
 
 func (m *Meter) Receipt(phase string, known bool) *w.AnalysisBudgetReceipt {
+	switch phase {
+	case "input_decode", "backend", "extract", "records", "archive":
+	default:
+		panic("invalid analysis receipt phase")
+	}
 	return &w.AnalysisBudgetReceipt{GrantId: m.grant.Id, Usage: proto.Clone(m.usage).(*w.AnalysisBudgetUsage), Phase: phase, UsageKnown: &known}
 }

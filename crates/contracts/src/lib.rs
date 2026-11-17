@@ -30,6 +30,7 @@ pub mod java;
 pub mod json_budget;
 mod mapping;
 pub mod performance;
+pub mod typescript;
 use anyhow::{Result, bail, ensure};
 use codeana_model as m;
 use prost::Message;

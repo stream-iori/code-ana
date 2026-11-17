@@ -25,9 +25,9 @@ SDK manifest 使用公共 schema 4；Java Native 3 / JVM 2 等旧格式要求重
 | `backend.kind=java` | analysis_request、compiler_batch_protocol、java_model、target_java、compiler_bridges、runtime |
 | `backend.runtime.kind=native` | abi、gc、build_mode；缺 GC 不默认 Serial/G1 |
 | `backend.runtime.kind=jvm` | 不接受 Native 的 GC/ABI 字段 |
-| `backend.kind=typescript` | 独立 abi/analysis_request、upstream_commit、go_version、build_options、standard_library、header_sha256；不接受 Java 字段 |
+| `backend.kind=typescript` | 独立 abi/analysis_request、upstream_commit、typescript_commit、compiler_version、Go 与构建参数、标准库及 header/analysis proto/graph proto SHA；不接受 Java 字段 |
 
-已知身份缺字段、未知变体/字段、重复 JSON 键均拒绝，包括 files/标准库及开放元数据中的键。SDK JSON 最多 1 MiB、65536 个值/键节点、128 层；Rust 在构造类型化 SDK 对象前用 serde 流式预检。额外 producer 元数据只放 `producer_metadata`，不选择执行后端。TypeScript 目前仅有 SDK 契约测试，不表示生产 SDK 可用。doctor 的 `java_sdk_state` 区分 missing/invalid/present_unverified，后者只验证元数据，不把未核实文件摘要写成 SDK 已就绪；错误另列 `java_sdk_error`。
+已知身份缺字段、未知变体/字段、重复 JSON 键均拒绝，包括 files/标准库及开放元数据中的键。SDK JSON 最多 1 MiB、65536 个值/键节点、128 层；Rust 在构造类型化 SDK 对象前用 serde 流式预检。额外 producer 元数据只放 `producer_metadata`，不选择执行后端。TypeScript 已有本机组件 SDK 和真实 ABI 验证，尚未接入产品索引；组件产物不表示分发放行。doctor 的 `java_sdk_state` 区分 missing/invalid/present_unverified，后者只验证元数据，不把未核实文件摘要写成 SDK 已就绪；错误另列 `java_sdk_error`。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
 
@@ -302,3 +302,6 @@ PlannedUnit 保留 Ready/FilesOnly/Removed；Removed 取自旧清单，不从当
 候选及单元基线 SQL 接续原 host 账户：VM/I/O、连接/cache/排序工作区及派生集合须准入；单元基线计入自身后端，共享合并计入固定首个 host。工作区按同时存活对象预付，已计入 payload 的容量可在同一 scope 内复用，关闭不退还用量或重发 grant。磁盘检查接收匿名/已 unlink 文件及待增长字节，在 xWrite/xTruncate/shmMap 前拒绝超限；首次失败在嵌套映射、后续取消及清理中保持原身份。`host_scratch_bytes` 由宿主执行，不新增 worker/Java ABI 字段，也不改变 graph schema 或公开 ID。
 
 原生 Java/Rust/Python 描述符在普通和 prepared 捕获中统一登记为 PREPARATION；实际构建控制文件仍为 CONTROL。完整性 SHA 校验保持，规范化语义 profile 决定复用。显式原生视图与等价 prepared 输入不因描述符角色不同而重做全量。
+
+
+TypeScript 私有引擎协议 1 由 `proto/codeana/typescript/v1/analysis.proto` 同源生成 Go/Rust 绑定；C ABI 1 使用 `codeana_ts_` 前缀，与 Java ABI 4 分离。结果只有有界描述符/失败和累计回执，GRA1 仍由 graph-io 验原始字节。Rust 在 prost 解码前拒绝重复 outcome/receipt、未知字段及非法布尔认证；无可信回执不归还账户，保留 seed 并标 Unknown。fixture SDK 显式标记并默认拒绝，不作为产品/分发 SDK。当前组件只交付 partial 绑定诊断，真实 TS 声明/调用图和 worker 产品握手仍待后续接入。

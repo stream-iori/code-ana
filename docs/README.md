@@ -17,7 +17,7 @@
 | [CLI / daemon](modules/runtime.md) / [索引](modules/indexing.md) | 任务、调度、冻结输入和增量 |
 | [Java worker](modules/java-worker.md) / [Rust worker](modules/rust-worker.md) | Java 与 Rust 分析链路、能力限制 |
 | [Python worker](modules/python-worker.md) | 显式冻结输入、Pyrefly、两个 Cargo workspace、fixture、分发和真实项目验证边界 |
-| [TypeScript worker](modules/typescript-worker.md) | T2a 生产契约草案；生产 ABI/worker/输入/语义尚未实现 |
+| [TypeScript worker](modules/typescript-worker.md) | T2b 本机异步 ABI/worker 组件；输入闭包、公开语义与产品尚未接入 |
 | [worker 运行设施](modules/worker-runtime.md) | IPC 进度、请求状态、终态、FFI owner 与账本交接 |
 | [公共图交付](modules/graph-io.md) | GRA1 原始校验、公共行流、队列配额和 VerifiedEnd |
 | [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 17、逻辑 schema 36、只读投影和 pipeline |

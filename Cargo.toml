@@ -9,6 +9,7 @@ members = [
     "crates/daemon",
     "crates/java-worker",
     "crates/rust-worker",
+    "crates/typescript-worker",
     "crates/model",
     "crates/config",
     "crates/storage",

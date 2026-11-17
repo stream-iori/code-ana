@@ -1,6 +1,6 @@
 # TypeScript worker
 
-当前完成 T0 探针和 T2a 生产契约草案；生产共享库、worker、输入准备与图语义尚未实现。不能使用探针替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
+当前完成 T0、T2a 及本机 T2b 组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；输入准备、公开图语义与产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
 
 ```text
 Rust worker → Request protobuf → Go 独立会话 / goroutine
@@ -44,6 +44,21 @@ Rust worker → Request protobuf → Go 独立会话 / goroutine
 | `graph-io` | 验证 Go 原始归档的路径、EOF、count、SHA 和行准入；只有 VerifiedEnd 可进入公共交付 |
 | application supervisor | 自有进程组、RSS、硬截止时间与输入租约；确认 worker 停止后释放捕获及 scratch |
 
-T2b 仍需真实 Go 异步成功、失败、取消、panic、运行中关闭、句柄/FD/缓冲边界及 Rust 归档验证。T3—T8 的闭包、语义、产品、故障和实际分发不能由本页或 protobuf 编译通过代替。
+T3—T8 的闭包、公开语义、产品、任务故障和实际分发继续实施。当前 SDK 仅输出明确 partial 的组件绑定诊断，不发布 TS 声明/调用能力；正常 CLI 尚不能索引 JS/TS。
 
-T2b 基础代码已加入 `overlay/engine`：累计 Meter、反射驱动的 protobuf 预解码准入和 GRA1 写入。独立 production.lock 固定 protobuf 运行库/生成器与 protoc，构建脚本先克隆固定上游再生成 Go 绑定，不修改原 checkout。`--prepare-only` 只校验来源、生成绑定和执行 Go 核心测试；当前未建立 SDK、C ABI 组件或生产 worker，不能作为 T2b 出口。基础证据为 `target/typescript-c-abi/t2b-foundation-version/receipt.json`。
+T2b 基础代码已加入 `overlay/engine`：累计 Meter、反射驱动的 protobuf 预解码准入和 GRA1 写入。独立 production.lock 固定 protobuf 运行库/生成器与 protoc，构建脚本先克隆固定上游再生成 Go 绑定，不修改原 checkout。`--prepare-only` 只校验来源、生成绑定和执行 Go 核心测试；原基础轮次只做准备、不建立 SDK，不能替代后续组件出口；基础证据为 `target/typescript-c-abi/t2b-foundation-version/receipt.json`。
+
+
+## 本机 T2b 组件验证
+
+| 入口 / 证据 | 实际范围 |
+|---|---|
+| `scripts/build-typescript-native.py` | 克隆固定上游、生成标准库和同源 Go protobuf、Go 16 项核心/生命周期测试、c-shared、双 header 编译、符号/依赖与 SDK 文件 SHA |
+| `tests/typescript_abi_e2e.py --sdk /absolute/sdk --fixture-sdk /absolute/fixture-sdk --evidence /absolute/new/evidence` | 11 项组件场景及 20 项实际 ABI 边界；空 PATH，不借开发源码补运行依赖 |
+| `just test-typescript-core sdk fixture_sdk evidence` | Rust 聚焦单测、构建、clippy 与上述组件门禁；SDK 由显式构建入口提供 |
+
+实际组件包括：真实两个别名调用绑定与人工 UTF-8 范围、原始 GRA1 EOF/count/SHA、累计 seed 交接/归还、预算拒绝、非法请求、启动前取消，以及独立 fixture SDK 中的真实 Go goroutine panic 和运行中关闭。panic/无可信终态保持 Unknown；关闭 Pending 时句柄、输入与 EngineOwned 账户不释放，明确 barrier 放行后才结束。通知验证一次字节 1 后 EOF；canary、长度、坏/关闭句柄、重复操作、非阻塞 socket FD 及原 FD 所有权均有实际 ABI 检查。
+
+fixture SDK 只在显式 `--dev-abi-fixture` 构建时对本仓库 overlay 增加测试入口，adapter/构建选项明确标记；普通 worker 拒绝加载，不能混入分发包。不修改固定上游或正常 SDK，不执行目标代码。它不替代后续 Go fatal、真实任务取消/旧 head 和分发验证。
+
+最新证据：`target/typescript-c-abi/t2b-components-fixture-first/receipt.json`。正式 Native/分发和性能接受均为 false。SDK 内核版本来自 `internal/core.Version()`，固定为 `7.1.0-dev`；TypeScript 子模块包版本为 `6.0.0`，两者不能混用。

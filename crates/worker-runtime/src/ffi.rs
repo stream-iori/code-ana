@@ -129,6 +129,32 @@ impl Notification {
         );
         Ok(())
     }
+    /// Backends whose protocol closes its duplicate after the terminal token
+    /// additionally reject duplicate bytes and require EOF. Java keeps wait().
+    pub async fn wait_eof(mut self) -> Result<()> {
+        use tokio::io::AsyncReadExt;
+        let mut token = [0];
+        self.0
+            .read_exact(&mut token)
+            .await
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::FfiNotificationIncomplete,
+                "",
+            ))?;
+        ensure!(
+            token[0] == 1,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::FfiNotificationProtocol, "")
+        );
+        let count = self.0.read(&mut token).await?;
+        ensure!(
+            count == 0,
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::FfiNotificationProtocol,
+                "duplicate notification"
+            )
+        );
+        Ok(())
+    }
 }
 
 /// RAII transfer: dropping an active handoff records Unknown instead of pretending zero engine work.
@@ -285,5 +311,19 @@ mod handoff_tests {
         let (notification, writer) = Notification::pair().unwrap();
         drop(writer);
         assert!(notification.wait().await.is_err());
+    }
+    #[tokio::test]
+    async fn closing_notification_protocol_requires_one_token_then_eof() {
+        use std::io::Write;
+        for bytes in [&[][..], &[1][..], &[0][..], &[1, 1][..], &[1, 0][..]] {
+            let (notification, mut writer) = Notification::pair().unwrap();
+            writer.write_all(bytes).unwrap();
+            drop(writer);
+            let result =
+                tokio::time::timeout(std::time::Duration::from_secs(1), notification.wait_eof())
+                    .await
+                    .unwrap();
+            assert_eq!(result.is_ok(), bytes == [1]);
+        }
     }
 }

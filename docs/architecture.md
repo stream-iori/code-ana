@@ -191,3 +191,6 @@ CLI 交互边界（daemon 协议 6）：命令输入契约由应用层组合查�
 公共图交付已迁入 graph-io：Java/Rust/Python 共用按解码占用计量的队列和同一个行编码器，daemon 共用接收 verifier；contracts 只保留图 DTO 和 wire 准入。归档输入以任务根 FD 为锚逐级 openat，拒绝中间/末端 symlink、父级逃逸和非普通文件，校验失败不删除原文件。worker-runtime 承担 IPC 进度、三语言请求状态与 daemon 结果状态、公共终态及 FFI owner/通知/账本交接；Java EngineRequest/EngineAnalysisReceipt 已迁入 Java worker，无旧路径兼容导出。运行设施的实际验证范围见当前实现。
 
 候选及单元基线 SQL 连接由 storage 内任务 scope 管理，使用私有 VFS 和原 host 账户；共享合并使用固定顺序首个 host。应用只提供取消检查及带额外字节的磁盘准入回调。架构门禁递归拒绝候选通过新文件或连接别名绕过 scope；catalog、不可变读者、查询 spool 和文本搜索保留各自边界。详细计量及限制见 [存储](modules/storage.md#任务内-sql-与基线准入)。
+
+
+TypeScript 的 T2b 组件在 `crates/typescript-worker` 装载独立 Go SDK，Go runtime 只存在于该 worker 进程。共享 Owner 约束 Rust 控制入口，Go 自行管理 goroutine/取消/句柄，library 固定到进程退出；Java 通知保持单 token，Go 的关闭式通知额外要求 EOF。普通 Cargo 构建不调用 Go。当前只有显式组件入口、partial 绑定诊断与传输验证；CLI/daemon 的 TypeScript 工厂和公开图语义仍待接入，不能当作 TS 产品支持。

@@ -15,15 +15,21 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
-## TypeScript T2a 生产契约草案（2026-11-18）
+## TypeScript T2b 组件（2026-11-18，本机通过；产品仍未接入）
 
-C ABI 1 header、私有 analysis protobuf 1、状态/所有权和公共设施对接已定义；SDK 的 TypeScript 变体强制校验子模块提交、编译器版本及 analysis/graph proto SHA，Java 变体保持。Rust 绑定由同源 protobuf 构建生成，普通 workspace 构建无需 Go。契约 35 项、Python SDK 校验 4 项、contracts clippy 与 workspace 构建通过。证据：`target/typescript-c-abi/t2a/receipt.json`；详见 [TypeScript worker](modules/typescript-worker.md)。这只是 T2a，尚无生产 Go ABI、TS worker 或产品能力，不替代 T2b—T8。
+Go SDK 与独立 Rust worker 已接通共享 Owner/Notification/BudgetHandoff/graph-io。固定来源构建、同源 Go/Rust protobuf 与双 header 检查通过；Go 核心/会话 16 项、Rust contracts 37 / worker-runtime 41 / TS worker 1 项通过。实际组件门禁 11 项、ABI 边界 20 项通过，无源码/SDK/二进制漂移，见 `target/typescript-c-abi/t2b-components-fixture-first/receipt.json`。
 
-T2b 基础已增加 production.lock、固定来源克隆/生成工具、Go 累计账本、wire 预解码及 GRA1 写入。实际固定 Go/protoc 生成绑定后 8 项核心测试通过，Rust 契约 35 项补验通过；`target/typescript-c-abi/t2b-foundation-version/receipt.json` 状态为 prepared、sdk_created=false。真实异步 ABI、Checker 组件、worker 和产品仍未完成。
+组件验证覆盖真实 Checker 的两次别名调用、UTF-8 位置真值、5 行原始 GRA1、累计回执、预算失败、非法请求和取消；隔离 fixture SDK 在真实 Go goroutine 中触发 panic，并以 barrier 验证运行中关闭 Pending 时不释放所有权。普通 worker 拒绝 fixture SDK。当前图仅为显式 partial 的绑定诊断，不冒充声明/调用语义；无产品索引、正式分发或性能放行。本轮完整 `just test-rust`、Python 独立 workspace 核心/clippy 通过；Rust 既有 G1 重建专项按其入口 ignored，未当作当前 Native 放行。汇总证据为 `target/typescript-c-abi/t2b-sealed/receipt.json`。输入准备与冻结闭包（T3）、图语义（T4/T5）、产品及任务/分发（T6—T8）继续实施，详见 [TypeScript worker](modules/typescript-worker.md)。
+
+## TypeScript T2a 与基础准备（阶段历史，2026-11-18）
+
+C ABI 1 header、私有 analysis protobuf 1、状态/所有权和公共设施对接已定义；SDK 的 TypeScript 变体强制校验子模块提交、编译器版本及 analysis/graph proto SHA，Java 变体保持。Rust 绑定由同源 protobuf 构建生成，普通 workspace 构建无需 Go。契约 35 项、Python SDK 校验 4 项、contracts clippy 与 workspace 构建通过。证据：`target/typescript-c-abi/t2a/receipt.json`；详见 [TypeScript worker](modules/typescript-worker.md)。该回执仅表示当时的 T2a，不替代上方 T2b 或后续产品门禁。
+
+T2b 基础已增加 production.lock、固定来源克隆/生成工具、Go 累计账本、wire 预解码及 GRA1 写入。实际固定 Go/protoc 生成绑定后 8 项核心测试通过，Rust 契约 35 项补验通过；`target/typescript-c-abi/t2b-foundation-version/receipt.json` 状态为 prepared、sdk_created=false。该基础轮次当时未建立 ABI/Checker 组件；最新组件状态见上方 T2b，产品仍未接入。
 
 ## R5 既有三语言重构验证（2026-11-18，本机通过）
 
-普通与 prepared 已共用分析单元、冻结视图、预算、运行监督、图交付、候选合并和一次 CAS；Java/Rust 保留自身增量策略，Python 保守全量。旧组合执行器已删除。TypeScript 生产接入 T2—T8 继续实施，当前不能索引 JS/TS。
+普通与 prepared 已共用分析单元、冻结视图、预算、运行监督、图交付、候选合并和一次 CAS；Java/Rust 保留自身增量策略，Python 保守全量。旧组合执行器已删除。TypeScript T2b 组件已通过；T3—T8 继续实施，当前不能索引 JS/TS。
 
 | 当前证据 | 实际结果 |
 |---|---|

@@ -229,3 +229,13 @@ test-multilang:
   cargo build --workspace --locked
   ./scripts/build-python.sh
   CODEANA_JAVA_BACKEND=native CODEANA_TEST_REAL_JAVA=1 python3 tests/multilang_analysis_e2e.py --backends java,rust,python
+
+# Go SDK builds are explicit; normal Cargo builds never invoke Go.
+build-typescript-native source go_home output evidence:
+  python3 scripts/build-typescript-native.py --source '{{source}}' --go-home '{{go_home}}' --output '{{output}}' --evidence '{{evidence}}'
+
+test-typescript-core sdk fixture_sdk evidence:
+  cargo test -p codeana-contracts -p codeana-worker-runtime -p codeana-typescript-worker --locked
+  cargo build -p codeana-typescript-worker --locked
+  cargo clippy -p codeana-contracts -p codeana-worker-runtime -p codeana-typescript-worker --all-targets --locked -- -D warnings
+  python3 tests/typescript_abi_e2e.py --sdk '{{sdk}}' --fixture-sdk '{{fixture_sdk}}' --evidence '{{evidence}}'

@@ -33,6 +33,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True, help='New absolute SDK directory')
     parser.add_argument('--evidence', type=Path, required=True, help='New directory under target')
     parser.add_argument('--prepare-only', action='store_true', help='Validate sources, generate bindings and test Go packages; do not create an SDK')
+    parser.add_argument('--dev-abi-fixture',action='store_true',help='Build an isolated marked SDK with explicit Go panic/close barriers; never a distribution SDK')
     args = parser.parse_args()
     if not args.prepare_only and not (ADAPTOR/'overlay/bridge').is_dir():
         parser.error('production bridge is not present; --prepare-only validates the current component foundations')
@@ -44,6 +45,8 @@ def main():
     if not evidence.is_relative_to(ROOT/'target'):
         parser.error('evidence must be under target')
     output = args.output.resolve()
+    if args.dev_abi_fixture and not output.is_relative_to(ROOT/'target'):
+        parser.error('development fixture SDK must remain under target')
     for original in (args.source.resolve(), args.go_home.resolve()):
         if evidence.is_relative_to(original) or output.is_relative_to(original):
             parser.error('build destinations cannot modify the original source or Go toolchain')
@@ -54,7 +57,7 @@ def main():
                GOOS='darwin', GOARCH='arm64', CGO_CFLAGS='-O2 -g', CGO_LDFLAGS='-O2 -g')
     env['PATH'] = str(Path(sys.executable).parent)+os.pathsep+env['PATH']
     receipt = dict(stage='T2 production SDK build', status='failed', commands=[],
-                   native_accepted=False, complete_plan=False, performance_accepted=False)
+                   native_accepted=False, complete_plan=False, performance_accepted=False,dev_abi_fixture=args.dev_abi_fixture)
 
     def command(name, argv, cwd=ROOT, timeout=300):
         log = evidence/(name+'.log')
@@ -127,6 +130,11 @@ def main():
         command('generator-install', [go, 'install', generator['module']+'@'+generator['version']], source)
         overlay = source/'codeana'
         shutil.copytree(ADAPTOR/'overlay', overlay)
+        if args.dev_abi_fixture:
+            path=overlay/'bridge/session.go';source_text=path.read_text()
+            if source_text.count('execute: engine.Execute')!=1:raise ValueError('ABI_FIXTURE_OVERLAY_SHAPE')
+            path.write_text(source_text.replace('execute: engine.Execute','execute: fixtureExecute'))
+            shutil.copy2(ADAPTOR/'fixtures/abi/bridge.go',overlay/'bridge/fixture.go')
         mappings = production['generated_packages']
         command('generate-protobuf', [protoc, '-I'+str(ROOT/'proto'),
                 '--plugin=protoc-gen-go='+str(tools/'protoc-gen-go'), '--go_out='+str(source),
@@ -143,6 +151,7 @@ def main():
         stdlib_digest = hashlib.sha256(json.dumps(stdlib, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         compiler_version = re.search(r'var version = "([^"]+)"', (source/'internal/core/version.go').read_text())[1]
         adapter = f'typescript-go-{lock["commit"][:12]}-codeana-graph{graph_model}-tsabi1'
+        if args.dev_abi_fixture:adapter+='-abi-fixture'
         values = dict(Adapter=adapter, UpstreamCommit=lock['commit'], TypeScriptCommit=lock['typescript']['commit'],
                       StandardLibraryDigest=stdlib_digest,
                       AnalysisProtoSHA256=sha(ROOT/'proto/codeana/typescript/v1/analysis.proto'),
@@ -190,7 +199,7 @@ def main():
                             typescript_commit=lock['typescript']['commit'], compiler_version=compiler_version,
                             analysis_proto_sha256=values['AnalysisProtoSHA256'], graph_proto_sha256=values['GraphProtoSHA256'],
                             go_version=lock['go']['distribution']['version'],
-                            build_options=['-mod=readonly', '-trimpath', '-buildmode=c-shared', '-ldflags='+ldflags],
+                            build_options=['-mod=readonly', '-trimpath', '-buildmode=c-shared', '-ldflags='+ldflags]+(['codeana-abi-test-fixture'] if args.dev_abi_fixture else []),
                             standard_library=stdlib, header_sha256=sha(output/'codeana_ts.h')))
         validate_manifest(manifest)
         (output/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')

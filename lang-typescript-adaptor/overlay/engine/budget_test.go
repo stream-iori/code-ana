@@ -32,13 +32,13 @@ func TestSeedContinuesWithoutRefillAndFirstFailureSurvivesCancellation(t *testin
 	if meter.Check() != first || meter.Charge(0, 0, 0) != first {
 		t.Fatal("cancellation replaced the first quota refusal")
 	}
-	receipt := meter.Receipt("failed", true)
+	receipt := meter.Receipt("backend", true)
 	if receipt.Usage.Work != 7 || receipt.Usage.Nodes != 3 || receipt.Usage.PayloadBytes != 40 ||
 		receipt.Usage.Failure.Resource != "work" || receipt.Usage.Failure.Used != 7 || receipt.Usage.Failure.Requested != 2 {
 		t.Fatal(receipt)
 	}
 	receipt.Usage.Work = 0
-	if meter.Receipt("failed", true).Usage.Work != 7 {
+	if meter.Receipt("backend", true).Usage.Work != 7 {
 		t.Fatal("a receipt aliases the live account")
 	}
 }
@@ -52,11 +52,11 @@ func TestInstancesAreIndependentAndDepthUsesTheVerifiedHighWatermark(t *testing.
 	if err := second.Charge(8, 16, 128); err != nil {
 		t.Fatal(err)
 	}
-	raw := first.Receipt("failed", true).Usage
+	raw := first.Receipt("backend", true).Usage
 	if raw.MaxDepth != 2 || raw.Failure.Used != 2 || raw.Failure.Requested != 3 || raw.Failure.Limit != 4 {
 		t.Fatal(raw)
 	}
-	if second.Receipt("complete", true).Usage.Failure != nil {
+	if second.Receipt("archive", true).Usage.Failure != nil {
 		t.Fatal("sibling failure escaped its account")
 	}
 }
@@ -108,7 +108,7 @@ func TestCancellationAndDeadlineHaveDifferentWireFailures(t *testing.T) {
 		if deadline {
 			expected = "DEADLINE_EXCEEDED"
 		}
-		if actual := meter.Receipt("failed", true).Usage.Failure.Code; actual != expected {
+		if actual := meter.Receipt("backend", true).Usage.Failure.Code; actual != expected {
 			t.Fatal(actual, expected)
 		}
 	}
