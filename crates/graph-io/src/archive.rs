@@ -20,6 +20,7 @@ pub fn update_digest(digest: &mut Sha256, bytes: &[u8]) {
     digest.update(bytes);
 }
 pub fn write_row(writer: &mut impl Write, row: &Row, digest: &mut Sha256) -> Result<usize> {
+    codeana_contracts::validate_graph_row(row)?;
     let size = row.encoded_len();
     ensure!(
         size > 0 && size <= RECORD_LIMIT,
@@ -151,7 +152,9 @@ impl Builder {
     }
 }
 pub struct Records {
+    _directory: Arc<tempfile::TempDir>,
     reader: BufReader<File>,
+    budget: Option<codeana_model::AnalysisContext>,
     digest: Sha256,
     count: u64,
     expected_count: u64,
@@ -164,10 +167,19 @@ impl Iterator for Records {
         if self.ended {
             return None;
         }
-        match read_row(&mut self.reader, &mut self.digest) {
+        match read_row_with_budget(&mut self.reader, &mut self.digest, self.budget.as_ref()) {
             Ok(Some(row)) => {
                 self.count += 1;
-                Some(Ok(row))
+                if self.count > self.expected_count {
+                    self.ended = true;
+                    Some(Err(codeana_model::DomainError::new(
+                        codeana_model::ErrorCode::GraphArchiveChecksum,
+                        "record count exceeded",
+                    )
+                    .into()))
+                } else {
+                    Some(Ok(row))
+                }
             }
             Ok(None) => {
                 self.ended = true;
@@ -193,7 +205,26 @@ impl GraphArchive {
         &self.path
     }
     pub fn records(&self) -> Result<Records> {
+        self.records_with_budget(None)
+    }
+    pub fn records_with_budget(
+        &self,
+        budget: Option<codeana_model::AnalysisContext>,
+    ) -> Result<Records> {
+        if let Some(budget) = &budget {
+            budget
+                .charge(
+                    1,
+                    0,
+                    (8192 + std::mem::size_of::<Records>() + self.checksum.len()) as u64,
+                )
+                .map_err(codeana_model::DomainError::analysis)?;
+        }
         let mut reader = BufReader::new(File::open(&self.path)?);
+        ensure!(
+            reader.get_ref().metadata()?.len() == self.bytes,
+            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphArchiveSize, "")
+        );
         let mut magic = [0; 4];
         reader.read_exact(&mut magic)?;
         ensure!(
@@ -203,7 +234,9 @@ impl GraphArchive {
         let mut digest = Sha256::new();
         digest.update(MAGIC);
         Ok(Records {
+            _directory: self._directory.clone(),
             reader,
+            budget,
             digest,
             count: 0,
             expected_count: self.count,

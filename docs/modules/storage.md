@@ -113,3 +113,5 @@ CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage
 整项目复用使用显式入口并独立复核身份、归属与语义输入。Reused 与重新分析的空 delta 分开：复用须保留原全局诊断、CLASSPATH_UNAVAILABLE coverage 和无来源元数据；重新分析时旧汇总由新结果替换。准备 generation 和根配置展示字节的例外由 model 的 same_semantic_sources 共用，辅助绑定内容/角色变化不能借旧 input_digest 绕过检查。
 
 复用校验使用 model 的 `UnitMergePlan::all_reused`，同时核对 project/checkout/target、完整有效归属清单，以及 FilesOnly 单元没有增删或变更。生产入口通过 `all_reused_with_budget` 从原 host 账户预付校验映射和计划分配；共享 manifest 映射归固定顺序首个 host，单元成本归自身后端，额度失败保留资源错误身份。`UnitMergePlan::new` 已定义逐单元 Full/Delta/Reuse/Removed/FilesOnly 的合并意图：Full、Removed 和 FilesOnly 从新旧清单导出完整来源范围；Delta 必须覆盖变更、删除和新增来源，不能借其他单元或 world 的 owner；Reuse 不接受替换范围。辅助绑定输入的发布单元消失或身份变化时，其消费者必须重分析。这是来源范围与复用的前置校验，尚未开放任意单元混合的 SQL 合并，也不代替各 worker 的 VerifiedEnd。
+
+生产候选入口接收带主机来源的 `graph_io::records::Record`，再按 Ready 单元的完整输入、语言和观察模块校验。未知、FilesOnly 或跨单元的来源拒绝；共享辅助输入不能授权节点发布。Host 仅可写准备说明及 coverage，保留原行大小/列数/world 准入。旧无来源行接口仅供显式 fixture，应用架构门禁禁止回到该入口。当前标签已传到存储校验点，无来源节点和 metadata 的持久化单元归属仍待后续实现。

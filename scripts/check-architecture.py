@@ -87,6 +87,11 @@ def rust_violations(path, source):
     filename = pathlib.Path(path).name
     factory = pathlib.Path(path).as_posix() == 'crates/application/src/worker_service.rs'
     owner = pathlib.Path(path).as_posix() == 'crates/application/src/analysis_unit.rs'
+    application = pathlib.Path(path).as_posix().startswith('crates/application/src/')
+    if application and re.search(r'(?:::|\.)\s*stage_graph_records_with_context\b', code):
+        failures.append('production index delivery must preserve host-assigned record provenance')
+    if application and pathlib.Path(path).as_posix() != 'crates/application/src/worker.rs' and re.search(r'\bOrigin\s*::\s*(?:Fixture|Unit)\b', code):
+        failures.append('unit and fixture record origins come from the verified worker owner')
     if not factory and re.search(r'(?:::|\.)\s*(?:start_language|rediscover)\b', code):
         failures.append('worker launch and rediscovery belong in the unit factory')
     if not owner and re.search(r'(?:::|\.)\s*launch\b', code):

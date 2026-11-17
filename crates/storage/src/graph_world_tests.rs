@@ -6,6 +6,116 @@ use codeana_contracts::{
     graph::{Table, cell},
 };
 #[test]
+fn host_assigned_delivery_origin_cannot_borrow_a_peer_or_an_unavailable_unit() -> Result<()> {
+    use codeana_graph_io::records::Origin;
+    let directory = tempfile::tempdir()?;
+    let store = Store::open(directory.path())?;
+    let (mut revision, mut header, rows) = captured(&store);
+    let a = revision.manifest.files[0].clone();
+    let mut b = a.clone();
+    b.path = "B.java".into();
+    revision.manifest.files.push(b.clone());
+    let ownership = |id: &str, source: SourceUnit| UnitOwnership {
+        unit: id.into(),
+        backend: AnalysisBackend::Java,
+        availability: UnitAvailability::Ready,
+        source_languages: vec![SourceLanguage::Java],
+        modules: vec!["app".into()],
+        worlds: vec!["main".into()],
+        scopes: vec!["MAIN".into()],
+        producer: "mock".into(),
+        semantic_profile: hash("profile"),
+        input_digest: hash(id),
+        inputs: vec![source.clone()],
+        sources: vec![source],
+    };
+    revision.unit_ownership = Some(UnitOwnershipLedger {
+        version: UNIT_OWNERSHIP_VERSION,
+        units: vec![ownership("left", a.clone()), ownership("right", b)],
+    });
+    header.manifest = revision.manifest.id();
+    for origin in [
+        Origin::Unit(std::sync::Arc::new("right".into())),
+        Origin::Unit(std::sync::Arc::new("foreign".into())),
+        Origin::Host,
+    ] {
+        let failure = store
+            .stage_owned_graph_records_with_context(
+                revision.clone(),
+                &header,
+                rows.clone().into_iter().map(|row| Ok(origin.record(row))),
+                "",
+                || Ok(()),
+                |_| Ok(()),
+                None,
+            )
+            .err()
+            .context("foreign delivery origin accepted")?;
+        assert_eq!(
+            failure
+                .downcast_ref::<DomainError>()
+                .context(format!("{failure:#}"))?
+                .code,
+            ErrorCode::AnalysisUnitScope
+        );
+        assert_eq!(store.head("t")?, "");
+    }
+    // Shared auxiliary bytes are readable but never authorize publication.
+    let right = &mut revision.unit_ownership.as_mut().unwrap().units[1];
+    let mut auxiliary = a;
+    auxiliary.auxiliary = true;
+    right.inputs.push(auxiliary);
+    let origin = Origin::Unit(std::sync::Arc::new("right".into()));
+    assert!(
+        store
+            .stage_owned_graph_records_with_context(
+                revision.clone(),
+                &header,
+                rows.clone().into_iter().map(|row| Ok(origin.record(row))),
+                "",
+                || Ok(()),
+                |_| Ok(()),
+                None
+            )
+            .is_err()
+    );
+    right_unavailable(&mut revision);
+    assert!(
+        store
+            .stage_owned_graph_records_with_context(
+                revision.clone(),
+                &header,
+                std::iter::once(Ok(origin.record(rows[0].clone()))),
+                "",
+                || Ok(()),
+                |_| Ok(()),
+                None
+            )
+            .is_err()
+    );
+    let origin = Origin::Unit(std::sync::Arc::new("left".into()));
+    let candidate = store.stage_owned_graph_records_with_context(
+        revision,
+        &header,
+        rows.into_iter().map(|row| Ok(origin.record(row))),
+        "",
+        || Ok(()),
+        |_| Ok(()),
+        None,
+    )?;
+    store.publish_staged(candidate, "correct-unit-origin")?;
+    Ok(())
+}
+fn right_unavailable(revision: &mut Revision) {
+    let unit = &mut revision.unit_ownership.as_mut().unwrap().units[1];
+    unit.availability = UnitAvailability::FilesOnly;
+    unit.sources.clear();
+    unit.inputs.clear();
+    unit.producer.clear();
+    unit.semantic_profile.clear();
+    unit.input_digest.clear();
+}
+#[test]
 fn rust_state_and_lookup_dependencies_are_replaced_by_world_even_without_nodes() -> Result<()> {
     use codeana_contracts::graph_rows::{AnalysisDependencyRow, GraphRow, SourceStateRow};
     let directory = tempfile::tempdir()?;

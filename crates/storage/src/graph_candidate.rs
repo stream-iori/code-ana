@@ -2,6 +2,7 @@
 use super::*;
 use crate::{graph_calls, graph_store};
 use codeana_contracts::graph::Row;
+use codeana_graph_io::records::{Origin, Record as GraphRecord};
 use sha2::Digest;
 
 #[derive(Clone, Copy)]
@@ -77,6 +78,27 @@ impl Store {
         check_directory: impl Fn(&Path) -> Result<()>,
         context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
+        self.stage_owned_graph_records_with_context(
+            revision,
+            header,
+            records.map(|r| r.map(|row| Origin::Fixture.record(row))),
+            expected,
+            cancellation,
+            check_directory,
+            context,
+        )
+    }
+    #[allow(clippy::too_many_arguments)]
+    pub fn stage_owned_graph_records_with_context(
+        &self,
+        revision: Revision,
+        header: &AnalysisHeader,
+        records: impl Iterator<Item = Result<GraphRecord>>,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+        context: Option<&GraphStagingContext>,
+    ) -> Result<StagedCandidate> {
         self.stage_graph_records_inner(
             revision,
             GraphSeed::Analyze(header),
@@ -118,7 +140,7 @@ impl Store {
         &self,
         mut revision: Revision,
         seed: GraphSeed<'_>,
-        records: impl Iterator<Item = Result<Row>>,
+        records: impl Iterator<Item = Result<GraphRecord>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
         check_directory: impl Fn(&Path) -> Result<()>,
@@ -239,13 +261,53 @@ impl Store {
             .filter(|o| o.kind == "source")
             .map(|o| (o.id.as_str(), o.world.as_str()))
             .collect();
+        let unit_scopes = revision
+            .unit_ownership
+            .as_ref()
+            .map(|ledger| {
+                ledger
+                    .units
+                    .iter()
+                    .filter(|u| u.availability == UnitAvailability::Ready)
+                    .map(|unit| {
+                        let budget = context.and_then(|c| c.hosts.get(&unit.backend));
+                        let scope = codeana_graph_io::scope::Scope::from_sources(
+                            &unit.unit,
+                            &unit.inputs,
+                            &[],
+                            &unit.modules,
+                            &unit.source_languages,
+                            codeana_graph_io::scope::Mode::Compiler,
+                            budget,
+                        )?;
+                        Ok((&unit.unit, scope))
+                    })
+                    .collect::<Result<BTreeMap<_, _>>>()
+            })
+            .transpose()?
+            .unwrap_or_default();
         let mut positions = 0;
         let mut comment_source = crate::graph_comments::SourceCache::default();
         for row in records {
             if positions % 256 == 0 {
                 check()?;
             }
-            let row = row?;
+            let GraphRecord { origin, row } = row?;
+            match &origin {
+                Origin::Unit(unit) => {
+                    unit_scopes
+                        .get(unit.as_ref())
+                        .context(DomainError::new(
+                            ErrorCode::AnalysisUnitScope,
+                            "unknown or unavailable delivery unit",
+                        ))?
+                        .row(&row)?;
+                }
+                Origin::Host => {
+                    codeana_graph_io::records::validate_host_row(&row)?;
+                }
+                Origin::Fixture => {}
+            }
             let owner = validate_record(&row, &sources, &replaced, header.mode == "delta")?;
             if matches!(
                 codeana_contracts::graph::Table::try_from(row.table),

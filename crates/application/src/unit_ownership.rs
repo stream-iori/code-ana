@@ -62,7 +62,15 @@ pub(super) fn freeze(
                 .map(|m| 2 * m.id.len() + 256)
                 .sum(),
         };
-        admit(backend, module_bytes as u64)?;
+        admit(
+            backend,
+            module_bytes as u64
+                + context
+                    .modules
+                    .iter()
+                    .map(|m| m.len() as u64 + 256)
+                    .sum::<u64>(),
+        )?;
         let declared_modules = match prepared {
             Some(unit) => unit
                 .prepared
@@ -83,6 +91,7 @@ pub(super) fn freeze(
             .iter()
             .map(|s| s.module.clone())
             .chain(declared_modules.into_iter().map(str::to_owned))
+            .chain(context.modules.iter().cloned())
             .filter(|m| !m.is_empty())
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -131,7 +140,12 @@ pub(super) fn freeze(
             modules,
             worlds,
             producer: context.producer.clone(),
-            semantic_profile: digest(&(&semantic, &context.semantic_digest)),
+            semantic_profile: digest(&(
+                codeana_comment_search::identity(),
+                codeana_graph_io::records::POLICY_VERSION,
+                &semantic,
+                &context.semantic_digest,
+            )),
             input_digest: digest(&inputs),
             sources,
         });

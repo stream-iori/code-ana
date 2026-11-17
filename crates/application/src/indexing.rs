@@ -592,6 +592,7 @@ impl IndexTask {
             }
             let profile = digest(&(
                 codeana_comment_search::identity(),
+                codeana_graph_io::records::POLICY_VERSION,
                 &c.effective.semantic_digest,
                 &worker.context.semantic_digest,
                 "anatomist-schema32-graph1",
@@ -701,6 +702,7 @@ impl IndexTask {
         setup: &mut JavaAttempt,
     ) -> Result<AnalyzedCandidate> {
         let (worker, unit_manifest, input, _) = setup.unit.analysis()?;
+        let origin = worker.record_origin()?;
         let prepared = input.java();
         let expected = setup.expected.clone();
         let profile = setup.profile.clone();
@@ -739,6 +741,7 @@ impl IndexTask {
                         let baseline_id = baseline_id.clone();
                         let staging_cancel = staging_cancel.clone();
                         let candidate_disk = candidate_disk.clone();
+                        let origin = origin.clone();
                         candidate_task = Some(tokio::task::spawn_blocking(move || {
                             let diagnostics =
                                 codeana_contracts::performance::Report::new("storage-detail");
@@ -746,7 +749,7 @@ impl IndexTask {
                                 store.stage_graph_records(
                                     revision,
                                     &header,
-                                    records,
+                                    records.map(|r| r.map(|row| origin.record(row))),
                                     &baseline_id,
                                     || {
                                         ensure!(
@@ -851,7 +854,10 @@ impl IndexTask {
                     store.stage_graph_records(
                         revision,
                         &result.header,
-                        result.records.records()?,
+                        result
+                            .records
+                            .records()?
+                            .map(|r| r.map(|row| origin.record(row))),
                         &baseline_id,
                         || {
                             ensure!(
@@ -1029,6 +1035,7 @@ impl IndexTask {
         let mut staging = None;
         let mut metrics = None;
         let profile = request.revision.profile.clone();
+        let origin = worker.record_origin()?;
         let header = worker
             .analyze_into(
                 request.manifest,
@@ -1050,11 +1057,16 @@ impl IndexTask {
                     let additional = additional_rows.clone();
                     let baseline = request.expected.clone();
                     let cancellation = cancel.clone();
+                    let origin = origin.clone();
                     staging = Some(tokio::task::spawn_blocking(move || {
                         store.stage_graph_records(
                             revision,
                             &header,
-                            records.chain(additional.into_iter().map(Ok)),
+                            records.map(|r| r.map(|row| origin.record(row))).chain(
+                                additional.into_iter().map(|row| {
+                                    Ok(codeana_graph_io::records::Origin::Host.record(row))
+                                }),
+                            ),
                             &baseline,
                             || {
                                 ensure!(
@@ -1111,21 +1123,11 @@ impl IndexTask {
         sessions: &mut [crate::analysis_unit::RunningUnit],
         revision: Revision,
         expected: &RevisionId,
-        scratch: &Path,
         limits: codeana_contracts::graph_delivery::OutputLimits,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, StagedCandidate)> {
-        self.stage_full_language_rows(
-            id,
-            sessions,
-            revision,
-            expected,
-            scratch,
-            limits,
-            vec![],
-            cancel,
-        )
-        .await
+        self.stage_full_language_rows(id, sessions, revision, expected, limits, vec![], cancel)
+            .await
     }
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn stage_full_language_rows(
@@ -1134,15 +1136,20 @@ impl IndexTask {
         sessions: &mut [crate::analysis_unit::RunningUnit],
         revision: Revision,
         expected: &RevisionId,
-        scratch: &Path,
         limits: codeana_contracts::graph_delivery::OutputLimits,
         additional_rows: Vec<codeana_contracts::graph::Row>,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, StagedCandidate)> {
         let mut archives = Vec::new();
         let mut replacements = Vec::new();
+        let staging_context = self.staging_context(id);
         for unit in sessions {
             let (worker, manifest) = unit.stream()?;
+            let origin = worker.record_origin()?;
+            let budget = staging_context
+                .as_ref()
+                .and_then(|c| c.hosts.get(&worker.context.backend()))
+                .cloned();
             let result = worker
                 .analyze(manifest, &revision.profile, expected, None, true, cancel)
                 .await?;
@@ -1151,7 +1158,11 @@ impl IndexTask {
                 "FULL_ANALYSIS_REQUIRED"
             );
             replacements.extend(result.header.replacements);
-            archives.push(result.records);
+            archives.push(codeana_graph_io::records::ArchiveInput {
+                origin,
+                archive: result.records,
+                budget,
+            });
         }
         replacements.sort();
         replacements.dedup();
@@ -1163,30 +1174,16 @@ impl IndexTask {
             producer: revision.producer.clone(),
             replacements,
         };
-        let store = self.index.clone().with_context(self.staging_context(id));
+        let store = self.index.clone().with_context(staging_context);
         let expected = expected.clone();
         let cancel = cancel.clone();
-        let scratch = scratch.to_path_buf();
         let candidate = tokio::task::spawn_blocking(move || -> Result<_> {
-            // Worker output bounds have already been enforced independently.
-            let mut archive = GraphArchiveBuilder::new(Some(&scratch), limits.bytes, limits.facts)?;
-            for result in archives {
-                for row in result.records()? {
-                    ensure!(
-                        !cancel.is_cancelled(),
-                        DomainError::new(ErrorCode::Cancelled, "")
-                    );
-                    archive.push(&row?)?;
-                }
-            }
-            for row in additional_rows {
-                archive.push(&row)?;
-            }
-            let archive = archive.seal()?;
+            let records =
+                codeana_graph_io::records::Archives::new(archives, additional_rows, limits)?;
             store.stage_graph_records(
                 revision,
                 &header,
-                archive.records()?,
+                records,
                 &expected,
                 || {
                     ensure!(

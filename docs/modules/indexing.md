@@ -187,4 +187,6 @@ application/supervisor 的 Process 统一保有 child 与租约。显式关闭�
 
 Java 的未变判定比较该单元历史 inputs，避免将全项目 FILES 与单元视图直接比较。增量基线的文件、节点、上下文和类型关系仅取该单元声明输入（含辅助绑定）；变更闭包按 path/world 计算，反向依赖只回到该单元输入，不将项目 FILES 清单传给引擎用于生成删除 owner；显式 fixture 的旧基线保持其测试输入。Python 的汇总 coverage 模块还包括冻结输入描述符中的原生上下文模块，与具体源文件的模块归属分别校验。
 
+所有生产 staging 路径携带主机分配的 Unit/Host/Fixture 来源；普通 Java 流、Rust 增量/混合、Python 和 prepared 不再在存储端口丢弃单元身份。多单元结果逐份读取原主机归档，保留原 count/SHA/EOF 和目录租约，每次只打开一个文件；删除了 Rust 混合和保守/prepared 的二次合并归档。原总输出上限和 Host 尾部准入保留，解码接续原 host 账户。交付策略版本同时进入项目/单元 profile，单元 profile 也纳入注释规则身份；旧策略更新重新分析。持久化观察模块包含实际 BuildContext 模块，存储可据其复核全局 coverage。此阶段不代表任意单元混合 SQL 合并或全局执行器已完成。
+
 现行单 Java、Rust、普通保守及 prepared 启动统一为 RunningUnit → WorkerService::launch → LaunchSpec/supervisor；只有工厂可启动或 rediscover，架构反例覆盖关联函数别名、嵌套同名文件与绕过 owner 的调用。Java 池 key/基线匹配和错误后禁止重领 grant 的规则在工厂内；mock 是显式 Fixture 输入，须与该服务配置的 fixtures 路径相同。只有账户已结束、任务 scratch 已解除且进程健康时，单元才可移交健康池；移交后为 Released，不能再提供流、上下文或重启。单 Java 流式暂存与候选磁盘检查保持，工厂/装箱/新增 manifest 副本继续使用原 host 预算。

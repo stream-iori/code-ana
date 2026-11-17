@@ -9,6 +9,16 @@ spec=importlib.util.spec_from_file_location('architecture', pathlib.Path(__file_
 architecture=importlib.util.module_from_spec(spec);spec.loader.exec_module(architecture)
 
 class Boundaries(unittest.TestCase):
+    def test_production_delivery_cannot_drop_or_forge_unit_provenance(self):
+        path='crates/application/src/indexing.rs'
+        for source in ['store.stage_graph_records_with_context(request);',
+                       'let callback=Adapter::stage_graph_records_with_context;',
+                       'let origin=Origin::Unit(unit);', 'let origin=Origin::Fixture;']:
+            self.assertTrue(architecture.rust_violations(path,source),source)
+        self.assertFalse(architecture.rust_violations('crates/application/src/worker.rs','let origin=Origin::Unit(unit);'))
+        self.assertTrue(architecture.rust_violations('crates/application/src/nested/worker.rs','let origin=Origin::Fixture;'))
+        self.assertFalse(architecture.rust_violations(path,'let origin=worker.record_origin()?;'))
+
     def test_storage_dependency_is_detected_through_an_intermediate_crate_and_cycle(self):
         graph={'query':{'helper'},'helper':{'storage'},'storage':{'query'}}
         self.assertEqual(architecture.dependency_path(graph,'query',{'storage'}),['query','helper','storage'])

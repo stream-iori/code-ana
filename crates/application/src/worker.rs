@@ -241,6 +241,23 @@ impl Drop for Worker {
     }
 }
 impl Worker {
+    pub fn record_origin(&self) -> Result<codeana_graph_io::records::Origin> {
+        if self.fixture {
+            Ok(codeana_graph_io::records::Origin::Fixture)
+        } else {
+            if let Some((grant, coordinator)) = &self.analysis {
+                coordinator
+                    .lock()
+                    .unwrap()
+                    .host(grant.language)?
+                    .charge(1, 0, 512 + self.context.unit.len() as u64)
+                    .map_err(DomainError::analysis)?;
+            }
+            Ok(codeana_graph_io::records::Origin::Unit(
+                std::sync::Arc::new(self.context.unit.clone()),
+            ))
+        }
+    }
     fn observed_exit(&mut self) {
         // Once reaped, the old PID/PGID can be reused. Never signal or monitor it again.
         self.stopped = true;

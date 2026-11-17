@@ -2,7 +2,7 @@
 use crate::Event;
 use anyhow::{Result, ensure};
 use codeana_config::CapturedBlob;
-use codeana_contracts::graph::Row;
+use codeana_graph_io::records::Record as GraphRecord;
 use codeana_model::*;
 use std::{collections::BTreeMap, path::Path};
 use tokio_util::sync::CancellationToken;
@@ -80,7 +80,7 @@ pub trait IndexRepository: Clone + Send + Sync + 'static {
     fn stage(
         &self,
         request: StageRequest<'_>,
-        records: impl Iterator<Item = Result<Row>>,
+        records: impl Iterator<Item = Result<GraphRecord>>,
     ) -> Result<Self::Candidate>;
     fn persist_and_publish(
         &self,
@@ -145,7 +145,7 @@ impl<R: IndexRepository> IndexService<R> {
         &self,
         revision: Revision,
         header: &AnalysisHeader,
-        records: impl Iterator<Item = Result<Row>>,
+        records: impl Iterator<Item = Result<GraphRecord>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
         check_directory: impl Fn(&Path) -> Result<()>,
@@ -236,10 +236,10 @@ pub(super) mod storage {
         fn stage(
             &self,
             request: StageRequest<'_>,
-            records: impl Iterator<Item = Result<Row>>,
+            records: impl Iterator<Item = Result<GraphRecord>>,
         ) -> Result<StagedCandidate> {
             match request.input {
-                StageInput::Analysis(header) => self.0.stage_graph_records_with_context(
+                StageInput::Analysis(header) => self.0.stage_owned_graph_records_with_context(
                     request.revision,
                     header,
                     records,
@@ -410,7 +410,7 @@ mod tests {
         fn stage(
             &self,
             _: StageRequest<'_>,
-            _: impl Iterator<Item = Result<Row>>,
+            _: impl Iterator<Item = Result<GraphRecord>>,
         ) -> Result<Candidate> {
             Err(DomainError::new(ErrorCode::InvalidMode, "fixture has no rows").into())
         }

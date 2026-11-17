@@ -38,7 +38,6 @@ mod worker_service;
 use anyhow::{Context, Result, bail, ensure};
 use codeana_config::Capture;
 use codeana_contracts::{terminal, v1 as p};
-use codeana_graph_io::archive::Builder as GraphArchiveBuilder;
 use codeana_model::*;
 use codeana_storage::Store;
 use indexing::IndexTask;

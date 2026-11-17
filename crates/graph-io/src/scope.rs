@@ -62,8 +62,29 @@ impl<'a> Scope<'a> {
         mode: Mode,
         budget: Option<&AnalysisContext>,
     ) -> Result<Self> {
+        Self::from_sources(
+            unit,
+            &manifest.files,
+            previous,
+            modules,
+            languages,
+            mode,
+            budget,
+        )
+    }
+    pub fn from_sources(
+        unit: &str,
+        sources: &'a [SourceUnit],
+        previous: &[SourceUnit],
+        modules: &[String],
+        languages: &[SourceLanguage],
+        mode: Mode,
+        budget: Option<&AnalysisContext>,
+    ) -> Result<Self> {
         if let Some(budget) = budget {
-            let bytes = manifest.files.len().saturating_mul(256)
+            let bytes = 512
+                + std::mem::size_of::<Self>() * 2
+                + sources.len().saturating_mul(256)
                 + previous
                     .iter()
                     .map(|s| 2 * (s.path.len() + s.world.len()) + 256)
@@ -74,8 +95,7 @@ impl<'a> Scope<'a> {
         }
         Ok(Self {
             unit: unit.into(),
-            sources: manifest
-                .files
+            sources: sources
                 .iter()
                 .map(|s| ((s.path.as_str(), s.world.as_str()), s))
                 .collect(),

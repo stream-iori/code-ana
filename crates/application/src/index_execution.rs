@@ -336,6 +336,7 @@ impl IndexTask {
             .collect::<Vec<_>>();
         let profile = digest(&(
             codeana_comment_search::identity(),
+            codeana_graph_io::records::POLICY_VERSION,
             dependency_inputs,
             &capture.effective.semantic_digest,
             config.inputs.semantic_digest(),
@@ -489,14 +490,15 @@ impl IndexTask {
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
         let input = rust_input(&attempt.units)?;
-        let scratch = input.scratch.clone();
         let result_bytes = input.config.result_bytes;
         let fact_limit = input.config.fact_limit;
         let expected = attempt.baseline.expected.clone();
         let profile = attempt.baseline.profile.clone();
         let full = attempt.baseline.full;
-        let result = {
+        let staging_context = self.staging_context(id);
+        let (result, origin) = {
             let (worker, manifest) = attempt.units.unit_mut("rust")?.stream()?;
+            let origin = worker.record_origin()?;
             let result = worker
                 .analyze(
                     manifest,
@@ -514,9 +516,16 @@ impl IndexTask {
                     serde_json::to_string(&worker.memory_usage())?
                 )),
             )?;
-            result
+            (result, origin)
         };
-        let mut archive = result.records;
+        let mut archives = vec![codeana_graph_io::records::ArchiveInput {
+            origin,
+            archive: result.records,
+            budget: staging_context
+                .as_ref()
+                .and_then(|c| c.hosts.get(&AnalysisBackend::Rust))
+                .cloned(),
+        }];
         let mut replacements = result.header.replacements;
         if let Some(unit) = attempt
             .units
@@ -525,18 +534,18 @@ impl IndexTask {
             .find(|unit| unit.unit == "java")
         {
             let (worker, manifest) = unit.stream()?;
+            let origin = worker.record_origin()?;
             let result = worker
                 .analyze(manifest, &profile, &expected, None, true, cancel)
                 .await?;
-            let root = scratch.path().to_path_buf();
-            archive = tokio::task::spawn_blocking(move || -> Result<_> {
-                let mut combined = GraphArchiveBuilder::new(Some(&root), result_bytes, fact_limit)?;
-                for row in archive.records()?.chain(result.records.records()?) {
-                    combined.push(&row?)?;
-                }
-                combined.seal()
-            })
-            .await??;
+            archives.push(codeana_graph_io::records::ArchiveInput {
+                origin,
+                archive: result.records,
+                budget: staging_context
+                    .as_ref()
+                    .and_then(|c| c.hosts.get(&AnalysisBackend::Java))
+                    .cloned(),
+            });
             replacements.extend(
                 manifest
                     .files
@@ -593,13 +602,20 @@ impl IndexTask {
             &Event::Progress("rust_stage_graph".into()),
         )?;
         let result_mode = header.mode;
-        let store = self.index.clone().with_context(self.staging_context(id));
+        let store = self.index.clone().with_context(staging_context);
         let cancellation = cancel.clone();
         let candidate = tokio::task::spawn_blocking(move || {
             store.stage_graph_records(
                 revision,
                 &header,
-                archive.records()?,
+                codeana_graph_io::records::Archives::new(
+                    archives,
+                    vec![],
+                    codeana_contracts::graph_delivery::OutputLimits {
+                        bytes: result_bytes,
+                        facts: fact_limit,
+                    },
+                )?,
                 &expected,
                 || {
                     ensure!(
@@ -746,6 +762,7 @@ impl IndexTask {
                 .collect::<Result<Vec<_>>>()?;
             let profile = digest(&(
                 codeana_comment_search::identity(),
+                codeana_graph_io::records::POLICY_VERSION,
                 &capture.effective.semantic_digest,
                 &config.inputs,
                 contexts,
@@ -820,7 +837,6 @@ impl IndexTask {
                         &mut sessions.units,
                         revision,
                         &expected,
-                        sessions.scratch.path(),
                         codeana_contracts::graph_delivery::OutputLimits {
                             bytes: merged_bytes,
                             facts: 6_000_000,
@@ -1089,6 +1105,7 @@ impl IndexTask {
                 .collect::<Result<Vec<_>>>()?;
             let profile = digest(&(
                 codeana_comment_search::identity(),
+                codeana_graph_io::records::POLICY_VERSION,
                 &capture.effective.semantic_digest,
                 contexts,
                 "prepared-inputs-v1",
@@ -1161,7 +1178,6 @@ impl IndexTask {
                     &mut sessions.units,
                     revision,
                     &expected,
-                    sessions.scratch.path(),
                     codeana_contracts::graph_delivery::OutputLimits {
                         bytes,
                         facts: 6_000_000,

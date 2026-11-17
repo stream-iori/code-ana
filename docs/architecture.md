@@ -37,7 +37,7 @@ CLI
 |---|---|---|
 | crates/model | 公共身份、查询实体、诊断和版本常量 | 不依赖 SQL/进程；查询 Fact 形状不是持久化格式 |
 | crates/contracts、proto/codeana/v1 | gRPC、worker、GRA1 与 Java 控制契约 | .proto、ABI、compiler 协议分别版本化 |
-| crates/graph-io | GRA1 文件读写、原字节校验、有界行队列、公共 Encoder/Verifier 与 VerifiedEnd | 依赖 model/contracts；不解释语言 envelope、SDK 或进程，storage 可依赖 |
+| crates/graph-io | GRA1 文件读写、原字节校验、有界行队列、公共 Encoder/Verifier 与 VerifiedEnd；主机 Record 来源和逐份原归档读取 | 依赖 model/contracts；不解释语言 envelope、SDK 或进程，storage 可依赖；主机来源不进入 worker wire |
 | crates/worker-runtime | IPC 帧进度、会话状态、终态回执、FFI owner/通知和累计账本交接 | 依赖 model/contracts/graph-io；不依赖 application/storage、SDK 或编译器 |
 | crates/config | resolution 解析校验、discovery 输入发现、capture 源码捕获、execution 执行预算 | TaskConfig 共享公共策略；UnitInput 保存类型化后端输入，worker 不重新读配置 |
 | crates/application | 调度、监督、索引、版本和运维编排 | 不解析 AST；不自动执行目标构建 |

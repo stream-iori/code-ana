@@ -316,6 +316,20 @@ fn validate_java_config(bytes: &[u8]) -> Result<()> {
         Ok(())
     })
 }
+/// Admission for host-created typed rows. Rust's types already exclude unknown
+/// fields, duplicate singular fields, invalid UTF-8, and ambiguous cell oneofs.
+pub fn validate_graph_row(row: &graph::Row) -> Result<()> {
+    ensure!(
+        row.table != 0,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphTableRequired, "")
+    );
+    ensure!(
+        row.cells.len() <= 34,
+        codeana_model::DomainError::new(codeana_model::ErrorCode::GraphColumnBudget, "")
+    );
+    ensure!(row.world.len() <= 256, "GRAPH_WORLD_INVALID");
+    Ok(())
+}
 pub fn validate_graph_row_wire(bytes: &[u8]) -> Result<()> {
     let mut columns = 0;
     let mut tables = 0;
