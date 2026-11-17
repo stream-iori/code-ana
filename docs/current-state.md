@@ -15,7 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
-## TypeScript T2b 组件（2026-11-18，本机通过；产品仍未接入）
+## TypeScript T3 输入发现组件（2026-11-18；产品接入继续实施）
+
+| 已验证 | 证据 / 边界 |
+|---|---|
+| 同内核 prepare | 显式允许根、实际配置/模块解析、文件摘要、目录存在与完整枚举、链接、失败查找；只捕获编译器实际使用的内容，不复制整个依赖目录 |
+| 冻结重放 | 捕获后删除活输入仍得到两次真实调用绑定；大小写使用固定内核规则，保存原始拼写；目录矛盾、链接越界、未观察读取和写入尝试均拒绝 |
+| 本轮验证 | 两个新 SDK 各 25 项 Go 测试；Rust 聚焦 contracts 37 / runtime 41 / worker 1 与 clippy 通过；空 PATH 实际 ABI 组件 12 项、ABI 检查 20 项通过，产物无漂移 |
+| 待办 | 配置显式开关、类型化原生清单、公共 capture/provider、多配置、references/pnpm 真值与产品路径；当前不支持 CLI JS/TS 索引 |
+
+证据：`target/typescript-c-abi/t3-input-component-sealed/receipt.json`；实际组件回执为 `t3-components-prepare-first/receipt.json`。原 fixture SDK 构建在生成器版本列表请求遇到代理 504；失败日志保留。构建器改为使用同一已校验模块锁构建生成器，不再查询无关版本列表，两个 SDK 重建通过。本轮没有重跑完整 Rust/Python 或 Java 门禁，也不表示 T3 全部、正式分发或性能验收完成。
+
+## TypeScript T2b 组件（阶段历史，2026-11-18）
 
 Go SDK 与独立 Rust worker 已接通共享 Owner/Notification/BudgetHandoff/graph-io。固定来源构建、同源 Go/Rust protobuf 与双 header 检查通过；Go 核心/会话 16 项、Rust contracts 37 / worker-runtime 41 / TS worker 1 项通过。实际组件门禁 11 项、ABI 边界 20 项通过，无源码/SDK/二进制漂移，见 `target/typescript-c-abi/t2b-components-fixture-first/receipt.json`。
 

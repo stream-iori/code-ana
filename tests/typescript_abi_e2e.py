@@ -51,7 +51,7 @@ def main():
         conformance=json.loads(log.read_text());assert conformance['status']=='passed'
         assert len(conformance['case_ids'])==len(set(conformance['case_ids']))==conformance['checks']==20
         report['abi_cases']=conformance['case_ids']
-        for name,exit_code in [('success',0),('quota',1),('invalid',1),('cancel-before-start',130)]:
+        for name,exit_code in [('success',0),('prepare',0),('quota',1),('invalid',1),('cancel-before-start',130)]:
             evidence=output/name
             run(name,[binary,'--sdk',sdk,'--component',fixtures,'--evidence',evidence,'--case',name],exit_code)
             receipt=json.loads((evidence/'receipt.json').read_text())
@@ -62,6 +62,12 @@ def main():
                 samples=[cell['value']['Text'] for cell in receipt['binding_samples']]
                 assert samples==['b.ts:62..70 -> a.ts#greet:16..21','b.ts:73..81 -> a.ts#greet:16..21'],samples
                 assert receipt['analysis_usage']['failure'] is None
+            elif name=='prepare':
+                assert receipt['verified_graph'] is None and receipt['accounting_owner']=='HostOwned'
+                inventory=receipt['prepared_inventory']
+                assert len(inventory['files'])==3 and len(inventory['context']['root_files'])==2
+                assert len(inventory['context']['absent'])>0
+                assert sorted(file['path'].rsplit('/',1)[-1] for file in inventory['files'])==['a.ts','b.ts','tsconfig.json']
             else:
                 assert receipt['verified_graph'] is None
                 if name=='quota':
@@ -93,7 +99,7 @@ def main():
             assert expected in log.read_text(),log.read_text()
         after=identities(paths);report['artifact_drift']=[name for name in sorted(before.keys()|after.keys()) if before.get(name)!=after.get(name)]
         assert not report['artifact_drift']
-        report.update(status='passed',expected_count=11,executed_count=len(report['cases']),abi_check_count=20)
+        report.update(status='passed',expected_count=12,executed_count=len(report['cases']),abi_check_count=20)
         assert report['executed_count']==report['expected_count']
     except Exception as failure:
         report.update(failure=str(failure),failure_type=type(failure).__name__)

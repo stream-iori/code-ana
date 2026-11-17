@@ -109,8 +109,20 @@ func Execute(parent context.Context, created time.Time, input []byte, resultLimi
 					return Completion{Bytes: data, State: CompleteState}
 				}
 			}
-		} else {
-			err = &Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "live preparation is not implemented yet"}
+		} else if prepare := request.GetPrepare(); prepare != nil {
+			var archive *pb.Archive
+			archive, err = prepareInventory(ctx, prepare, meter)
+			if err == nil {
+				result := &pb.Result{Version: RequestVersion, RequestId: request.RequestId, Runtime: RuntimeIdentity(), Receipt: meter.Receipt("archive", true), Outcome: &pb.Result_Prepared{Prepared: &pb.PreparedResult{Inventory: archive}}}
+				data, encodeErr := proto.Marshal(result)
+				if encodeErr != nil {
+					err = encodeErr
+				} else if uint64(len(data)) > resultLimit {
+					err = &Fault{Code: pb.FailureCode_OUTPUT_LIMIT, Message: "preparation result descriptor byte limit"}
+				} else {
+					return Completion{Bytes: data, State: CompleteState}
+				}
+			}
 		}
 	}
 	code := pb.FailureCode_IO_FAILURE
@@ -187,7 +199,7 @@ func componentGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *
 	}
 	meter.phase = "extract"
 	err = program.WalkCallBindings(ctx, func(binding CallBinding) error {
-		identity := program.files[binding.File]
+		identity := program.files[program.frozen.resolve(binding.File)]
 		if err := meter.Charge(1, 15, uint64(len(binding.TargetName))*4+8192); err != nil {
 			return err
 		}

@@ -305,3 +305,5 @@ PlannedUnit 保留 Ready/FilesOnly/Removed；Removed 取自旧清单，不从当
 
 
 TypeScript 私有引擎协议 1 由 `proto/codeana/typescript/v1/analysis.proto` 同源生成 Go/Rust 绑定；C ABI 1 使用 `codeana_ts_` 前缀，与 Java ABI 4 分离。结果只有有界描述符/失败和累计回执，GRA1 仍由 graph-io 验原始字节。Rust 在 prost 解码前拒绝重复 outcome/receipt、未知字段及非法布尔认证；无可信回执不归还账户，保留 seed 并标 Unknown。fixture SDK 显式标记并默认拒绝，不作为产品/分发 SDK。当前组件只交付 partial 绑定诊断，真实 TS 声明/调用图和 worker 产品握手仍待后续接入。
+
+TypeScript 私有输入视图必须显式携带 case_sensitive；Directory 的 listing_complete 区分存在观察和完整枚举。旧组件 SDK 因 analysis proto SHA 不符而拒绝，需重建；版本 1 尚未发布为产品 SDK。Prepare 的 protobuf inventory 只交付身份和观察，不代替 Rust 公共 capture 的内容封存。

@@ -1,6 +1,6 @@
 # TypeScript worker
 
-当前完成 T0、T2a 及本机 T2b 组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；输入准备、公开图语义与产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
+当前完成 T0、T2a、本机 T2b 及 T3 输入发现组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；Go 显式准备入口已记录编译器输入，配置/公共 capture、公开图语义与产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
 
 ```text
 Rust worker → Request protobuf → Go 独立会话 / goroutine
@@ -62,3 +62,13 @@ T2b 基础代码已加入 `overlay/engine`：累计 Meter、反射驱动的 prot
 fixture SDK 只在显式 `--dev-abi-fixture` 构建时对本仓库 overlay 增加测试入口，adapter/构建选项明确标记；普通 worker 拒绝加载，不能混入分发包。不修改固定上游或正常 SDK，不执行目标代码。它不替代后续 Go fatal、真实任务取消/旧 head 和分发验证。
 
 最新证据：`target/typescript-c-abi/t2b-components-fixture-first/receipt.json`。正式 Native/分发和性能接受均为 false。SDK 内核版本来自 `internal/core.Version()`，固定为 `7.1.0-dev`；TypeScript 子模块包版本为 `6.0.0`，两者不能混用。
+
+## T3 输入发现组件
+
+`ObservedFS` 仅在显式 Prepare 中访问允许根，使用同一内核解析配置与模块，并记录实际文件、目录、链接和失败查找。正文件捕获摘要；目录存在与完整枚举分别记录，不能靠“目录存在”推断其子项不存在。Prepare 写入确定性 protobuf inventory，Rust 经真实 C ABI 校验文件大小、count 与原字节 SHA。组件探测实际任务目录所在卷的大小写规则，不借用可执行文件卷的规则。
+
+`FrozenFS` 强制显式 case_sensitive，使用内核 GetCanonicalFileName（保留特殊 Unicode 大小写规则）并返回捕获拼写。目录元数据复制后封存，正/负观察与完整枚举矛盾即拒绝；未观察访问、链接越界/循环、写入尝试均使任务失败。WalkDir 不跟随链接，支持文件 SkipDir 和 SkipAll。Checker 返回的大小写/链接路径映射回捕获身份。
+
+最新 `t3-components-prepare-first/receipt.json` 为 12 场景、20 ABI 检查；两个锁定 SDK 各 25 项 Go 测试，包含删除活输入后的真实重放和大小写路径绑定。汇总为 `target/typescript-c-abi/t3-input-component-sealed/receipt.json`。T2b 的 11/16 数量属于其历史回执。
+
+当前 Prepare 对 references 和 live WalkDir 明确拒绝；配置错误尚未输出产品诊断。尚未完成公共配置/provider/capture、依赖模式/多上下文真值，不能把本组件写成 T3 或 TS 产品全部完成。生成器现在从已校验 production.mod 构建，与 protobuf runtime 共用锁；原代理 504 构建失败继续保留。

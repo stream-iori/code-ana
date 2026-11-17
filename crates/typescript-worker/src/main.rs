@@ -77,7 +77,13 @@ async fn main() -> Result<()> {
     ensure!(
         matches!(
             args.case.as_str(),
-            "success" | "quota" | "invalid" | "cancel-before-start" | "panic" | "running-close"
+            "success"
+                | "prepare"
+                | "quota"
+                | "invalid"
+                | "cancel-before-start"
+                | "panic"
+                | "running-close"
         ),
         "UNKNOWN_COMPONENT_CASE"
     );
@@ -136,17 +142,20 @@ async fn main() -> Result<()> {
         operation: Some(p::request::Operation::Analyze(p::Analyze {
             project: Some(p::FrozenProject {
                 context: Some(p::ProjectContext {
+                    case_sensitive: Some(true),
                     unit: "fixture".into(),
                     root: "/src".into(),
                     config_path: "/src/tsconfig.json".into(),
                     publish_languages: vec![p::SourceLanguage::Typescript as i32],
                     directories: vec![
                         p::Directory {
+                            listing_complete: true,
                             path: "/".into(),
                             files: vec![],
                             directories: vec!["src".into()],
                         },
                         p::Directory {
+                            listing_complete: true,
                             path: "/src".into(),
                             files: vec!["a.ts".into(), "b.ts".into(), "tsconfig.json".into()],
                             directories: vec![],
@@ -166,14 +175,43 @@ async fn main() -> Result<()> {
             }),
         })),
     };
+    if args.case == "prepare" {
+        std::fs::write(live.join("tsconfig.json"), br#"{"compilerOptions":{"noLib":true,"module":"ESNext","moduleResolution":"bundler"},"files":["a.ts","b.ts"]}"#)?;
+        // Probe the actual task volume using the directory we just created;
+        // never infer path case rules from the worker executable's volume.
+        use std::os::unix::fs::MetadataExt;
+        let actual = std::fs::metadata(&live)?;
+        let case_sensitive = match std::fs::metadata(output.join("LIVE")) {
+            Ok(other) => actual.dev() != other.dev() || actual.ino() != other.ino(),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
+            Err(error) => return Err(error.into()),
+        };
+        request.operation = Some(p::request::Operation::Prepare(p::Prepare {
+            unit: "fixture".into(),
+            project_root: live.to_string_lossy().into_owned(),
+            config_path: live.join("tsconfig.json").to_string_lossy().into_owned(),
+            publish_languages: vec![p::SourceLanguage::Typescript as i32],
+            allowed_roots: vec!["/".into()],
+            module: "fixture".into(),
+            scope: "MAIN".into(),
+            world: "main".into(),
+            scratch: scratch.to_string_lossy().into_owned(),
+            inventory_bytes: 8 << 20,
+            file_limit: 1000,
+            scratch_bytes: 8 << 20,
+            case_sensitive: Some(case_sensitive),
+        }));
+    }
     // Fund encoding, copied Go input, decoded model and terminal reception before
     // handing over this same account. No Rust debit while it is EngineOwned.
     budget.charge(1, 16, (request.encoded_len() as u64 + 128) * 16 + (4 << 20))?;
     let seed = budget.usage();
     request.seed = Some(analysis_budget::encode_usage(&seed));
     let data = request.encode_to_vec();
-    std::fs::write(live.join("b.ts"), b"changed live file")?;
-    std::fs::remove_file(live.join("a.ts"))?;
+    if args.case != "prepare" {
+        std::fs::write(live.join("b.ts"), b"changed live file")?;
+        std::fs::remove_file(live.join("a.ts"))?;
+    }
     let (notification, writer) = Notification::pair()?;
     let mut handoff = BudgetHandoff::begin(&budget, &seed)?;
     let cancel = args.case == "cancel-before-start";
@@ -229,7 +267,59 @@ async fn main() -> Result<()> {
     drop(handoff);
     let mut samples = Vec::new();
     let mut verified = None;
-    let success = matches!(&result.outcome, Some(p::result::Outcome::Analysis(_)));
+    let success = matches!(
+        &result.outcome,
+        Some(p::result::Outcome::Analysis(_) | p::result::Outcome::Prepared(_))
+    );
+    let mut prepared = None;
+    if let Some(p::result::Outcome::Prepared(value)) = &result.outcome {
+        ensure!(
+            receipt.usage_known == Some(true) && budget.usage().failure.is_none(),
+            "TYPESCRIPT_PREPARATION_USAGE"
+        );
+        let archive = value
+            .inventory
+            .as_ref()
+            .context("TYPESCRIPT_INVENTORY_REQUIRED")?;
+        ensure!(
+            codeana_model::safe_path(&archive.path)
+                && archive.bytes <= 1 << 20
+                && archive.count <= 1000,
+            "TYPESCRIPT_INVENTORY_LIMIT"
+        );
+        let path = scratch.join(&archive.path);
+        let metadata = std::fs::symlink_metadata(&path)?;
+        ensure!(
+            metadata.is_file()
+                && !metadata.file_type().is_symlink()
+                && metadata.len() == archive.bytes,
+            "TYPESCRIPT_INVENTORY_FILE"
+        );
+        budget.charge(
+            archive.count + 1,
+            archive.bytes + 1,
+            archive.bytes * 128 + 4096,
+        )?;
+        let data = std::fs::read(path)?;
+        ensure!(
+            data.len() as u64 == archive.bytes && codeana_model::hash(&data) == archive.sha256,
+            "TYPESCRIPT_INVENTORY_SHA"
+        );
+        let inventory = p::PreparationInventory::decode(data.as_slice())?;
+        ensure!(
+            inventory.files.len() as u64 == archive.count,
+            "TYPESCRIPT_INVENTORY_COUNT"
+        );
+        let context = inventory
+            .context
+            .as_ref()
+            .context("TYPESCRIPT_INVENTORY_CONTEXT")?;
+        ensure!(
+            context.case_sensitive.is_some() && context.root_files.len() == 2,
+            "TYPESCRIPT_INVENTORY_CONTEXT"
+        );
+        prepared = Some(inventory);
+    }
     if let Some(p::result::Outcome::Analysis(analysis)) = &result.outcome {
         ensure!(
             receipt.usage_known == Some(true) && budget.usage().failure.is_none(),
@@ -277,7 +367,7 @@ async fn main() -> Result<()> {
     }
     owner.call(Native::close).await?;
     owner.shutdown().await?;
-    let report = serde_json::json!({"component_only":true,"semantic_partial":true,"complete_plan":false,"native_accepted":false,"runtime":runtime,"case":args.case,"outcome":result.outcome,"analysis_usage":budget.usage(),"accounting_owner":format!("{:?}",budget.accounting_owner()),"verified_graph":verified,"binding_samples":samples,"development_fixture":args.dev_abi_fixture,"running_close_pending_observed":running_close_pending_observed});
+    let report = serde_json::json!({"component_only":true,"semantic_partial":true,"complete_plan":false,"native_accepted":false,"runtime":runtime,"case":args.case,"outcome":result.outcome,"analysis_usage":budget.usage(),"accounting_owner":format!("{:?}",budget.accounting_owner()),"verified_graph":verified,"prepared_inventory":prepared,"binding_samples":samples,"development_fixture":args.dev_abi_fixture,"running_close_pending_observed":running_close_pending_observed});
     std::fs::write(
         output.join("receipt.json"),
         serde_json::to_vec_pretty(&report)?,

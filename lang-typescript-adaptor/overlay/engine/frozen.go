@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io/fs"
+	"maps"
 	"path"
 	"slices"
 	"strings"
@@ -13,18 +14,22 @@ import (
 
 	pb "github.com/microsoft/typescript-go/codeana/typescriptpb"
 	"github.com/microsoft/typescript-go/internal/bundled"
+	"github.com/microsoft/typescript-go/internal/tspath"
 	"github.com/microsoft/typescript-go/internal/vfs"
 )
 
 // FrozenFS has no backing OS filesystem. A missing observation fails the
 // computation instead of silently substituting an empty live directory.
 type FrozenFS struct {
-	files       map[string]string
-	directories map[string]*pb.Directory
-	links       map[string]*pb.SymbolicLink
-	absent      map[string]uint8
-	meter       *Meter
-	failure     error
+	files         map[string]string
+	directories   map[string]*pb.Directory
+	links         map[string]*pb.SymbolicLink
+	absent        map[string]uint8
+	meter         *Meter
+	failure       error
+	caseSensitive bool
+	spellings     map[string]string
+	entries       map[string]map[string]uint8
 }
 
 func absolute(name string) bool {
@@ -36,7 +41,7 @@ func beneath(name, root string) bool {
 }
 
 func NewFrozenFS(project *pb.FrozenProject, meter *Meter) (*FrozenFS, error) {
-	if project == nil || project.Context == nil || project.Context.Unit == "" || !absolute(project.Context.Root) {
+	if project == nil || project.Context == nil || project.Context.Unit == "" || project.Context.CaseSensitive == nil || !absolute(project.Context.Root) {
 		return nil, invalid("frozen project context required")
 	}
 	context := project.Context
@@ -54,7 +59,7 @@ func NewFrozenFS(project *pb.FrozenProject, meter *Meter) (*FrozenFS, error) {
 	if err := meter.Charge(count+1, count, count*256+512); err != nil {
 		return nil, err
 	}
-	frozen := &FrozenFS{files: make(map[string]string), directories: make(map[string]*pb.Directory), links: make(map[string]*pb.SymbolicLink), absent: make(map[string]uint8), meter: meter}
+	frozen := &FrozenFS{files: make(map[string]string), directories: make(map[string]*pb.Directory), links: make(map[string]*pb.SymbolicLink), absent: make(map[string]uint8), meter: meter, caseSensitive: *context.CaseSensitive, spellings: make(map[string]string), entries: make(map[string]map[string]uint8)}
 	for _, file := range project.Files {
 		if file == nil || file.File == nil || !absolute(file.File.Path) || beneath(file.File.Path, bundled.LibPath()) || file.File.Size != uint64(len(file.Content)) || !utf8.Valid(file.Content) {
 			return nil, invalid("invalid frozen file identity or text")
@@ -62,10 +67,10 @@ func NewFrozenFS(project *pb.FrozenProject, meter *Meter) (*FrozenFS, error) {
 		identity := file.File
 		if identity.Role < pb.FileRole_PUBLISH || identity.Role > pb.FileRole_CONTROL ||
 			(identity.Role != pb.FileRole_CONTROL && identity.Language != pb.SourceLanguage_TYPESCRIPT && identity.Language != pb.SourceLanguage_JAVASCRIPT) ||
-			(identity.Role == pb.FileRole_PUBLISH && (!languages[identity.Language] || !beneath(identity.Path, context.Root) || identity.Module == "" || identity.World == "" || (identity.Scope != "MAIN" && identity.Scope != "TEST"))) {
+			(identity.Role == pb.FileRole_PUBLISH && (!languages[identity.Language] || !beneath(frozen.key(identity.Path), frozen.key(context.Root)) || identity.Module == "" || identity.World == "" || (identity.Scope != "MAIN" && identity.Scope != "TEST"))) {
 			return nil, invalid("invalid frozen source role or publication ownership")
 		}
-		if _, exists := frozen.files[file.File.Path]; exists {
+		if _, exists := frozen.files[frozen.key(file.File.Path)]; exists {
 			return nil, invalid("duplicate frozen file")
 		}
 		if err := meter.Charge(1+uint64(len(file.Content))/4096, 0, uint64(len(file.Content))); err != nil {
@@ -75,14 +80,18 @@ func NewFrozenFS(project *pb.FrozenProject, meter *Meter) (*FrozenFS, error) {
 		if hex.EncodeToString(digest[:]) != file.File.Sha256 {
 			return nil, invalid("frozen content digest mismatch")
 		}
-		frozen.files[file.File.Path] = string(file.Content)
+		frozen.files[frozen.key(file.File.Path)] = string(file.Content)
+		frozen.spellings[frozen.key(file.File.Path)] = file.File.Path
 	}
 	for _, directory := range context.Directories {
-		if directory == nil || !absolute(directory.Path) || frozen.directories[directory.Path] != nil {
+		if directory == nil || !absolute(directory.Path) || frozen.directories[frozen.key(directory.Path)] != nil {
 			return nil, invalid("invalid or duplicate frozen directory")
 		}
-		if _, file := frozen.files[directory.Path]; file {
+		if _, file := frozen.files[frozen.key(directory.Path)]; file {
 			return nil, invalid("frozen file is also a directory")
+		}
+		if !directory.ListingComplete && (len(directory.Files) != 0 || len(directory.Directories) != 0) {
+			return nil, invalid("incomplete directory observation has entries")
 		}
 		seen := make(map[string]bool)
 		for _, entries := range [][]string{directory.Files, directory.Directories} {
@@ -90,50 +99,117 @@ func NewFrozenFS(project *pb.FrozenProject, meter *Meter) (*FrozenFS, error) {
 				return nil, err
 			}
 			for _, entry := range entries {
-				if entry == "" || entry == "." || entry == ".." || strings.ContainsAny(entry, "/\x00") || !utf8.ValidString(entry) || seen[entry] {
+				if entry == "" || entry == "." || entry == ".." || strings.ContainsAny(entry, "/\x00") || !utf8.ValidString(entry) || seen[frozen.key(entry)] {
 					return nil, invalid("invalid or conflicting directory entry")
 				}
-				seen[entry] = true
+				seen[frozen.key(entry)] = true
 			}
 		}
-		frozen.directories[directory.Path] = directory
+		// Copy metadata: callers cannot alter the sealed view afterwards.
+		copy := &pb.Directory{ListingComplete: directory.ListingComplete, Path: directory.Path, Files: slices.Clone(directory.Files), Directories: slices.Clone(directory.Directories)}
+		frozen.directories[frozen.key(directory.Path)] = copy
+		frozen.spellings[frozen.key(directory.Path)] = directory.Path
+		index := make(map[string]uint8, len(seen))
+		for _, entry := range directory.Files {
+			index[frozen.key(entry)] = 1
+		}
+		for _, entry := range directory.Directories {
+			index[frozen.key(entry)] = 2
+		}
+		if directory.ListingComplete {
+			frozen.entries[frozen.key(directory.Path)] = index
+		}
 	}
 	for _, link := range context.Links {
-		if link == nil || !absolute(link.Path) || !absolute(link.AllowedRoot) || link.Target == "" || strings.ContainsRune(link.Target, 0) || frozen.links[link.Path] != nil {
+		if link == nil || !absolute(link.Path) || !absolute(link.AllowedRoot) || link.Target == "" || strings.ContainsRune(link.Target, 0) || frozen.links[frozen.key(link.Path)] != nil {
 			return nil, invalid("invalid or duplicate frozen link")
 		}
 		target := link.Target
 		if !strings.HasPrefix(target, "/") {
 			target = path.Join(path.Dir(link.Path), target)
 		}
-		if !beneath(path.Clean(target), link.AllowedRoot) {
+		if !beneath(frozen.key(path.Clean(target)), frozen.key(link.AllowedRoot)) {
 			return nil, invalid("frozen link escapes its declared root")
 		}
-		frozen.links[link.Path] = link
+		key := frozen.key(link.Path)
+		if _, exists := frozen.files[key]; exists || frozen.directories[key] != nil {
+			return nil, invalid("link conflicts with a concrete frozen entry")
+		}
+		frozen.links[key] = &pb.SymbolicLink{Path: link.Path, Target: link.Target, AllowedRoot: link.AllowedRoot}
+		frozen.spellings[key] = link.Path
 	}
 	for _, absent := range context.Absent {
 		if absent == nil || !absolute(absent.Path) || (absent.Kind != pb.LookupKind_FILE && absent.Kind != pb.LookupKind_DIRECTORY) {
 			return nil, invalid("invalid missing lookup observation")
 		}
 		bit := uint8(1) << uint(absent.Kind)
-		if frozen.absent[absent.Path]&bit != 0 {
+		if frozen.absent[frozen.key(absent.Path)]&bit != 0 {
 			return nil, invalid("duplicate missing lookup observation")
 		}
-		if _, exists := frozen.files[absent.Path]; exists && absent.Kind == pb.LookupKind_FILE {
+		if _, exists := frozen.files[frozen.key(absent.Path)]; exists && absent.Kind == pb.LookupKind_FILE {
 			return nil, invalid("positive file conflicts with missing lookup")
 		}
-		if frozen.directories[absent.Path] != nil && absent.Kind == pb.LookupKind_DIRECTORY {
+		if frozen.directories[frozen.key(absent.Path)] != nil && absent.Kind == pb.LookupKind_DIRECTORY {
 			return nil, invalid("positive directory conflicts with missing lookup")
 		}
-		frozen.absent[absent.Path] |= bit
+		frozen.absent[frozen.key(absent.Path)] |= bit
 	}
-	for name := range frozen.links {
+	// Every complete parent listing must agree with positive observations.
+	for _, name := range slices.Sorted(maps.Keys(frozen.spellings)) {
+		if err := frozen.validateAncestors(name); err != nil {
+			return nil, err
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(frozen.absent)) {
+		bits := frozen.absent[name]
+		if listing := frozen.entries[path.Dir(name)]; listing != nil {
+			kind := listing[path.Base(name)]
+			if (kind == 1 && bits&(1<<uint(pb.LookupKind_FILE)) != 0) ||
+				(kind == 2 && bits&(1<<uint(pb.LookupKind_DIRECTORY)) != 0) {
+				return nil, invalid("directory entry conflicts with missing lookup")
+			}
+		}
+	}
+	for _, name := range slices.Sorted(maps.Keys(frozen.links)) {
 		frozen.resolve(name)
 		if frozen.failure != nil {
 			return nil, frozen.failure
 		}
 	}
 	return frozen, nil
+}
+
+func (f *FrozenFS) key(name string) string {
+	return tspath.GetCanonicalFileName(name, f.caseSensitive)
+}
+
+func (f *FrozenFS) validateAncestors(name string) error {
+	current := name
+	for current != "/" {
+		if err := f.meter.Charge(1, 0, 0); err != nil {
+			return err
+		}
+		parent := path.Dir(current)
+		if listing := f.entries[parent]; listing != nil {
+			kind := listing[path.Base(current)]
+			if kind == 0 || (current != name && kind != 2) {
+				return invalid("positive observation conflicts with complete directory listing")
+			}
+			if current == name && f.links[name] == nil {
+				if _, file := f.files[name]; file && kind != 1 {
+					return invalid("file conflicts with directory entry")
+				}
+				if f.directories[name] != nil && kind != 2 {
+					return invalid("directory conflicts with file entry")
+				}
+			}
+		}
+		if f.absent[parent]&(1<<uint(pb.LookupKind_DIRECTORY)) != 0 {
+			return invalid("positive observation has an absent parent")
+		}
+		current = parent
+	}
+	return nil
 }
 
 func (f *FrozenFS) fail(err error) {
@@ -154,7 +230,7 @@ func (f *FrozenFS) resolve(name string) string {
 		f.fail(err)
 		return ""
 	}
-	name = path.Clean(name)
+	name = f.key(path.Clean(name))
 	if !absolute(name) {
 		f.fail(invalid("compiler requested a nonabsolute VFS path"))
 		return ""
@@ -174,8 +250,8 @@ func (f *FrozenFS) resolve(name string) string {
 				if !strings.HasPrefix(target, "/") {
 					target = path.Join(path.Dir(prefix), target)
 				}
-				name = path.Clean(target + strings.TrimPrefix(name, prefix))
-				if !beneath(name, link.AllowedRoot) {
+				name = f.key(path.Clean(target + strings.TrimPrefix(name, prefix)))
+				if !beneath(name, f.key(link.AllowedRoot)) {
 					f.fail(invalid("resolved link escapes its declared root"))
 					return ""
 				}
@@ -212,9 +288,9 @@ func (f *FrozenFS) known(name string, directory bool) (bool, bool) {
 	current := name
 	for current != "/" {
 		parent := path.Dir(current)
-		if listing := f.directories[parent]; listing != nil {
-			file := slices.Contains(listing.Files, path.Base(current))
-			dir := slices.Contains(listing.Directories, path.Base(current))
+		if listing := f.directories[parent]; listing != nil && listing.ListingComplete {
+			kind := f.entries[parent][path.Base(current)]
+			file, dir := kind == 1, kind == 2
 			if current == name {
 				return (directory && dir) || (!directory && file), true
 			}
@@ -243,10 +319,16 @@ func (f *FrozenFS) exists(name string, directory bool) bool {
 	return result
 }
 
-func (f *FrozenFS) UseCaseSensitiveFileNames() bool  { return true }
+func (f *FrozenFS) UseCaseSensitiveFileNames() bool  { return f.caseSensitive }
 func (f *FrozenFS) FileExists(name string) bool      { return f.exists(name, false) }
 func (f *FrozenFS) DirectoryExists(name string) bool { return f.exists(name, true) }
-func (f *FrozenFS) Realpath(name string) string      { return f.resolve(name) }
+func (f *FrozenFS) Realpath(name string) string {
+	key := f.resolve(name)
+	if spelling, ok := f.spellings[key]; ok {
+		return spelling
+	}
+	return key
+}
 func (f *FrozenFS) ReadFile(name string) (string, bool) {
 	name = f.resolve(name)
 	if value, ok := f.files[name]; ok {
@@ -260,8 +342,8 @@ func (f *FrozenFS) ReadFile(name string) (string, bool) {
 
 func (f *FrozenFS) GetAccessibleEntries(name string) vfs.Entries {
 	name = f.resolve(name)
-	if directory := f.directories[name]; directory != nil {
-		if err := f.meter.Charge(1, 0, uint64(len(directory.Files)+len(directory.Directories))*32); err != nil {
+	if directory := f.directories[name]; directory != nil && directory.ListingComplete {
+		if err := f.meter.Charge(1+uint64(len(directory.Files)+len(directory.Directories))*16, 0, uint64(len(directory.Files)+len(directory.Directories))*128); err != nil {
 			f.fail(err)
 			return vfs.Entries{}
 		}
@@ -270,7 +352,7 @@ func (f *FrozenFS) GetAccessibleEntries(name string) vfs.Entries {
 		slices.Sort(dirs)
 		links := make(map[string]struct{})
 		for _, entry := range append(slices.Clone(files), dirs...) {
-			if f.links[path.Join(name, entry)] != nil {
+			if f.links[f.key(path.Join(name, entry))] != nil {
 				links[entry] = struct{}{}
 			}
 		}
@@ -286,11 +368,15 @@ type frozenInfo struct {
 	name string
 	size int64
 	dir  bool
+	link bool
 }
 
 func (i frozenInfo) Name() string { return path.Base(i.name) }
 func (i frozenInfo) Size() int64  { return i.size }
 func (i frozenInfo) Mode() fs.FileMode {
+	if i.link {
+		return fs.ModeSymlink | 0400
+	}
 	if i.dir {
 		return fs.ModeDir | 0500
 	}
@@ -319,7 +405,12 @@ func (f *FrozenFS) WalkDir(root string, callback vfs.WalkDirFunc) error {
 		if err := f.meter.Depth(depth); err != nil {
 			return err
 		}
-		info := f.Stat(name)
+		var info vfs.FileInfo
+		if link := f.links[f.key(path.Clean(name))]; link != nil {
+			info = frozenInfo{name: name, link: true}
+		} else {
+			info = f.Stat(name)
+		}
 		if err := f.Check(); err != nil {
 			return err
 		}
@@ -343,20 +434,27 @@ func (f *FrozenFS) WalkDir(root string, callback vfs.WalkDirFunc) error {
 		slices.Sort(children)
 		for _, child := range children {
 			if err := walk(path.Join(name, child), depth+1); err != nil {
+				if errors.Is(err, fs.SkipDir) {
+					break
+				}
 				return err
 			}
 		}
 		return nil
 	}
 	err := walk(root, 1)
-	if errors.Is(err, fs.SkipAll) {
+	if errors.Is(err, fs.SkipAll) || errors.Is(err, fs.SkipDir) {
 		return nil
 	}
 	return err
 }
-func (*FrozenFS) WriteFile(string, string) error             { return fs.ErrPermission }
-func (*FrozenFS) AppendFile(string, string) error            { return fs.ErrPermission }
-func (*FrozenFS) Remove(string) error                        { return fs.ErrPermission }
-func (*FrozenFS) Chtimes(string, time.Time, time.Time) error { return fs.ErrPermission }
+func (f *FrozenFS) denyWrite() error {
+	f.fail(invalid("compiler attempted to mutate the frozen view"))
+	return fs.ErrPermission
+}
+func (f *FrozenFS) WriteFile(string, string) error             { return f.denyWrite() }
+func (f *FrozenFS) AppendFile(string, string) error            { return f.denyWrite() }
+func (f *FrozenFS) Remove(string) error                        { return f.denyWrite() }
+func (f *FrozenFS) Chtimes(string, time.Time, time.Time) error { return f.denyWrite() }
 
 var _ vfs.FS = (*FrozenFS)(nil)

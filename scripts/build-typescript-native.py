@@ -127,7 +127,12 @@ def main():
         tools = evidence/'tools'
         env['GOBIN'] = str(tools)
         generator = production['generator']
-        command('generator-install', [go, 'install', generator['module']+'@'+generator['version']], source)
+        # Use the verified module file, without a latest/deprecation lookup.
+        generator_root = generator['module'].removesuffix('/cmd/protoc-gen-go')
+        if not any(item['module'] == generator_root and item['version'] == generator['version'] for item in production['dependencies']):
+            raise ValueError('GENERATOR_DEPENDENCY_IDENTITY')
+        tools.mkdir()
+        command('generator-build', [go, 'build', '-modfile='+str(module_file), '-mod=readonly', '-trimpath', '-o', tools/'protoc-gen-go', generator['module']], source)
         overlay = source/'codeana'
         shutil.copytree(ADAPTOR/'overlay', overlay)
         if args.dev_abi_fixture:

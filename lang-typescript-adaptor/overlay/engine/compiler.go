@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"strings"
 
 	pb "github.com/microsoft/typescript-go/codeana/typescriptpb"
 	"github.com/microsoft/typescript-go/internal/ast"
@@ -111,7 +112,7 @@ func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
 	}
 	files := make(map[string]*pb.FileIdentity, len(project.Files))
 	for _, file := range project.Files {
-		files[file.File.Path] = file.File
+		files[frozen.resolve(file.File.Path)] = file.File
 	}
 	return &Program{program: program, config: config, frozen: frozen, meter: meter, files: files}, nil
 }
@@ -131,7 +132,7 @@ func (p *Program) WalkCallBindings(ctx context.Context, emit func(CallBinding) e
 		if err := p.meter.Check(); err != nil {
 			return err
 		}
-		identity := p.files[name]
+		identity := p.files[p.frozen.resolve(name)]
 		if identity == nil {
 			return invalid("compiler root has no frozen identity")
 		}
@@ -163,7 +164,7 @@ func (p *Program) WalkCallBindings(ctx context.Context, emit func(CallBinding) e
 						failure = invalid("invalid call source range")
 						return true
 					}
-					binding := CallBinding{File: name, Start: uint64(start), End: uint64(end)}
+					binding := CallBinding{File: identity.Path, Start: uint64(start), End: uint64(end)}
 					signature := checker.GetResolvedSignature(node)
 					symbol := checker.GetSymbolAtLocation(node.AsCallExpression().Expression)
 					if signature != nil && signature.Declaration() != nil && symbol != nil {
@@ -175,6 +176,11 @@ func (p *Program) WalkCallBindings(ctx context.Context, emit func(CallBinding) e
 								if begin >= 0 && end >= begin && end <= len(source.Text()) {
 									binding.Resolved = true
 									binding.TargetFile = source.FileName()
+									if !strings.HasPrefix(source.FileName(), bundled.LibPath()+"/") {
+										if targetIdentity := p.files[p.frozen.resolve(source.FileName())]; targetIdentity != nil {
+											binding.TargetFile = targetIdentity.Path
+										}
+									}
 									binding.TargetName = source.Text()[begin:end]
 									binding.TargetStart = uint64(begin)
 									binding.TargetEnd = uint64(end)

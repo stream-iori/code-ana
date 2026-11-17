@@ -18,7 +18,7 @@ func compilerFixture(t *testing.T) (*pb.FrozenProject, *Meter) {
 	}
 	project.Context.ConfigPath = "/src/tsconfig.json"
 	project.Context.RootFiles = []string{"/src/a.ts", "/src/b.ts"}
-	project.Context.Directories = []*pb.Directory{{Path: "/", Directories: []string{"src"}}, {Path: "/src", Files: []string{"a.ts", "b.ts", "tsconfig.json"}}}
+	project.Context.Directories = []*pb.Directory{{ListingComplete: true, Path: "/", Directories: []string{"src"}}, {ListingComplete: true, Path: "/src", Files: []string{"a.ts", "b.ts", "tsconfig.json"}}}
 	meter, err := NewMeter(context.Background(), &w.AnalysisBudgetGrant{Id: "compiler", Language: "typescript", Limits: &w.AnalysisBudgetLimits{MaxWork: 5_000_000, MaxNodes: 1_000_000, MaxPayloadBytes: 1 << 30, MaxDepth: 256}}, &w.AnalysisBudgetUsage{})
 	if err != nil {
 		t.Fatal(err)
@@ -55,5 +55,29 @@ func TestCompilerCannotSilentlyRediscoverDifferentRootFiles(t *testing.T) {
 	project.Context.RootFiles = []string{"/src/b.ts", "/src/a.ts"}
 	if program, err := OpenProgram(project, meter); err == nil || program != nil {
 		t.Fatal("changed root order accepted")
+	}
+}
+
+func TestCheckerPathsMapToCapturedIdentityWithCaseInsensitiveRoots(t *testing.T) {
+	project, meter := compilerFixture(t)
+	project.Context.CaseSensitive = boolPointer(false)
+	project.Files[0].File.Path = "/src/A.ts"
+	project.Context.Directories[1].Files[0] = "A.ts"
+	program, err := OpenProgram(project, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	if err := program.WalkCallBindings(context.Background(), func(call CallBinding) error {
+		if !call.Resolved || call.TargetFile != "/src/A.ts" || call.TargetName != "greet" {
+			t.Fatal(call)
+		}
+		count++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatal(count)
 	}
 }

@@ -55,6 +55,8 @@ message Directory {
   string path = 1;
   repeated string files = 2;
   repeated string directories = 3;
+  // Existence alone cannot certify a complete directory enumeration.
+  bool listing_complete = 4;
 }
 message SymbolicLink {
   string path = 1;
@@ -81,7 +83,9 @@ message ProjectContext {
   repeated AbsentLookup absent = 8;
   repeated string root_files = 9;
   repeated string references = 10;
-  reserved 11 to 19;
+  // Presence is required: false is a captured case-insensitive filesystem.
+  optional bool case_sensitive = 11;
+  reserved 12 to 19;
 }
 message FrozenProject {
   ProjectContext context = 1;
@@ -107,6 +111,7 @@ message Prepare {
   uint64 inventory_bytes = 10;
   uint64 file_limit = 11;
   uint64 scratch_bytes = 12;
+  optional bool case_sensitive = 13;
 }
 message OutputLimits {
   uint64 archive_bytes = 1;
