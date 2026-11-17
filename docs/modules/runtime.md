@@ -137,3 +137,5 @@ Native 默认 G1。一个 worker 进程仅创建一次 isolate，健康任务复
 查询核心继续只依赖窄读取接口。任务、发布和引用保护使用既有端口/事务，不随投影改动图库或公开 ID。旧 OutputChunk 不反向解析；无法确认正文的断流不使用 GetTask 伪造完整结果。
 
 `daemon stop` 先取消并 drain，`restart` 先 drain；CLI 依据 PID 与进程启动身份等待原实例退出，再确认 restart 的新 generation。默认等待 10 秒；超时返回未确认退出事实和 124，不盲杀。`task cancel` 返回取消已请求和当前事实，已发布不会变成回滚。
+
+应用层的现行启动工厂为 WorkerService::launch：普通和 prepared 的每个 RunningUnit 先拥有冻结输入及 guard，再请求装配 LaunchSpec。Java 健康池 rediscover 也在该工厂内，失败直接返回且不另发 grant；其他后端启动新进程。mock 输入只允许显式 Fixture 且须匹配服务的 fixtures 配置。账户及 scratch 已结束、进程仍健康的 Java 单元可在提交后交给池，owner 随即进入 Released；错误回执或活跃任务不能移交。进程监督、输入租约和停止确认继续由 supervisor 负责。

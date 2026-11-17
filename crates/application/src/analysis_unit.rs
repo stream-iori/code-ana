@@ -76,6 +76,7 @@ pub(super) async fn shutdown(units: Vec<&mut Worker>) -> Option<String> {
 
 /// Task inputs are retained by the running collection, including failed/partial execution.
 pub(super) enum PreparedInput {
+    Fixture(std::path::PathBuf),
     Java(Box<crate::java::PreparedJava>),
     Rust(Box<crate::rust_inputs::RustInput>),
     Python(
@@ -86,16 +87,37 @@ pub(super) enum PreparedInput {
 impl PreparedInput {
     pub fn backend(&self) -> AnalysisBackend {
         match self {
-            Self::Java(_) => AnalysisBackend::Java,
+            Self::Fixture(_) | Self::Java(_) => AnalysisBackend::Java,
             Self::Rust(_) => AnalysisBackend::Rust,
             Self::Python(..) => AnalysisBackend::Python,
         }
     }
     pub fn language(&self) -> crate::worker::Language<'_> {
         match self {
+            Self::Fixture(_) => crate::worker::Language::Java(None),
             Self::Java(input) => crate::worker::Language::Java(Some(input)),
             Self::Rust(input) => crate::worker::Language::Rust(&input.descriptor),
             Self::Python(input, _) => crate::worker::Language::Python(input),
+        }
+    }
+    pub fn java(&self) -> Option<&crate::java::PreparedJava> {
+        match self {
+            Self::Java(input) => Some(input),
+            _ => None,
+        }
+    }
+    pub fn directories(&self) -> Vec<std::sync::Arc<tempfile::TempDir>> {
+        match self {
+            Self::Fixture(_) => vec![],
+            Self::Java(input) => vec![input.scratch.clone()],
+            Self::Rust(input) => vec![input.scratch.clone()],
+            Self::Python(_, scratch) => vec![scratch.clone()],
+        }
+    }
+    pub fn fixtures(&self) -> Option<&std::path::Path> {
+        match self {
+            Self::Fixture(path) => Some(path),
+            _ => None,
         }
     }
     pub fn verify(&self) -> Result<()> {
@@ -108,7 +130,8 @@ impl PreparedInput {
 
 enum Session {
     Prepared,
-    Running(Box<Worker>),
+    Running(Box<crate::worker_service::StartedUnit>),
+    Released,
 }
 
 /// One unit owns its process, descriptor/scratch guard, manifest and frozen input lease.
@@ -150,14 +173,22 @@ impl RunningUnit {
     }
     pub async fn start(
         &mut self,
+        service: &crate::worker_service::WorkerService,
         cancel: &CancellationToken,
         memory: u64,
         analysis: Option<crate::worker::AnalysisBinding>,
         previous: &[codeana_model::SourceUnit],
+        baseline: &str,
     ) -> Result<()> {
         ensure!(
             matches!(self.session, Session::Prepared),
             "ANALYSIS_UNIT_ALREADY_STARTED"
+        );
+        ensure!(
+            analysis
+                .as_ref()
+                .is_none_or(|binding| binding.language == self.backend()),
+            "ANALYSIS_UNIT_BACKEND_GRANT_MISMATCH"
         );
         let granted_unit = analysis
             .as_ref()
@@ -168,39 +199,77 @@ impl RunningUnit {
             granted_unit == self.unit.as_str(),
             "ANALYSIS_UNIT_GRANT_MISMATCH"
         );
-        let directory = match &self.input {
-            PreparedInput::Java(input) => input.scratch.clone(),
-            PreparedInput::Rust(input) => input.scratch.clone(),
-            PreparedInput::Python(_, scratch) => scratch.clone(),
-        };
-        let worker = Worker::start_language(
-            crate::worker::LaunchSpec {
-                fixtures: None,
-                language: self.input.language(),
-                checkout: &self.capture.root,
+        let started = service
+            .launch(crate::worker_service::UnitLaunch {
+                capture: &self.capture,
                 manifest: &self.manifest,
-                inputs: crate::supervisor::InputLease::new(&self.capture, vec![directory]),
-                publication: publication(&self.capture, self.backend(), previous),
-            },
-            cancel,
-            memory,
-            analysis,
-        )
-        .await?;
-        self.session = Session::Running(Box::new(worker));
+                input: &self.input,
+                cancel,
+                memory,
+                analysis,
+                previous,
+                baseline,
+            })
+            .await?;
+        self.session = Session::Running(Box::new(started));
         Ok(())
+    }
+    pub fn capture(&self) -> &Capture {
+        &self.capture
+    }
+    pub async fn shutdown(&mut self) -> Result<()> {
+        if let Session::Running(started) = &mut self.session {
+            started.worker.shutdown().await?;
+        }
+        Ok(())
+    }
+    /// Only the publication caller may park an acknowledged or certified reused unit.
+    pub fn park(&mut self, service: &crate::worker_service::WorkerService, revision: &str) {
+        let eligible = service.can_keep_java()
+            && match &mut self.session {
+                Session::Running(started) => {
+                    started.pool_key.is_some()
+                        && started.worker.reusable()
+                        && started.worker.alive().unwrap_or(false)
+                }
+                Session::Prepared | Session::Released => false,
+            };
+        if eligible
+            && let Session::Running(started) =
+                std::mem::replace(&mut self.session, Session::Released)
+        {
+            let started = *started;
+            service.keep_java(
+                started.pool_key.expect("checked pool key"),
+                revision.to_owned(),
+                started.worker,
+            );
+        }
     }
     pub fn worker(&self) -> Result<&Worker> {
         match &self.session {
-            Session::Running(worker) => Ok(worker),
-            Session::Prepared => Err(anyhow::anyhow!("ANALYSIS_UNIT_NOT_STARTED")),
+            Session::Running(started) => Ok(&started.worker),
+            Session::Prepared | Session::Released => {
+                Err(anyhow::anyhow!("ANALYSIS_UNIT_NOT_STARTED"))
+            }
+        }
+    }
+    pub fn analysis(&mut self) -> Result<(&mut Worker, &Manifest, &PreparedInput, &Capture)> {
+        match &mut self.session {
+            Session::Running(started) => Ok((
+                &mut started.worker,
+                &self.manifest,
+                &self.input,
+                &self.capture,
+            )),
+            Session::Prepared | Session::Released => {
+                Err(anyhow::anyhow!("ANALYSIS_UNIT_NOT_STARTED"))
+            }
         }
     }
     pub fn stream(&mut self) -> Result<(&mut Worker, &Manifest)> {
-        match &mut self.session {
-            Session::Running(worker) => Ok((worker, &self.manifest)),
-            Session::Prepared => Err(anyhow::anyhow!("ANALYSIS_UNIT_NOT_STARTED")),
-        }
+        self.analysis()
+            .map(|(worker, manifest, _, _)| (worker, manifest))
     }
 }
 
@@ -225,8 +294,8 @@ impl RunningUnits {
     pub fn workers_mut(&mut self) -> Vec<&mut Worker> {
         fn running(u: &mut RunningUnit) -> Option<&mut Worker> {
             match &mut u.session {
-                Session::Running(worker) => Some(worker.as_mut()),
-                Session::Prepared => None,
+                Session::Running(started) => Some(&mut started.worker),
+                Session::Prepared | Session::Released => None,
             }
         }
         self.units.iter_mut().filter_map(running).collect()
@@ -272,8 +341,14 @@ mod tests {
         drop(project);
         assert!(unit.worker().is_err());
         assert!(unit.stream().is_err());
+        let service = crate::worker_service::WorkerService::new(
+            std::env::temp_dir(),
+            None,
+            Default::default(),
+            64 << 20,
+        );
         let error = unit
-            .start(&CancellationToken::new(), 64 << 20, None, &[])
+            .start(&service, &CancellationToken::new(), 64 << 20, None, &[], "")
             .await
             .unwrap_err();
         assert!(error.to_string().contains("ANALYSIS_GRANT_REQUIRED"));
@@ -291,6 +366,59 @@ mod tests {
         );
         Ok(())
     }
+    #[tokio::test]
+    async fn a_foreign_backend_binding_is_rejected_before_issuing_its_grant() -> Result<()> {
+        use codeana_model::{AnalysisCoordinator, AnalysisLimits, AnalysisUsage};
+        let (_project, task) = crate::python_inputs::tests::capture();
+        let capture = task.backend_capture(AnalysisBackend::Python)?;
+        let manifest = capture.manifest.clone();
+        let mut unit = RunningUnit::prepared(descriptor(), capture, manifest)?;
+        let mut coordinator = AnalysisCoordinator::new(
+            "task",
+            AnalysisLimits::default(),
+            AnalysisUsage::default(),
+            &[AnalysisBackend::Rust],
+            None,
+        )?;
+        coordinator.configure_instances(AnalysisBackend::Rust, &["python".into()])?;
+        let coordinator = std::sync::Arc::new(std::sync::Mutex::new(coordinator));
+        let service = crate::worker_service::WorkerService::new(
+            std::env::temp_dir(),
+            None,
+            Default::default(),
+            64 << 20,
+        );
+        let error = unit
+            .start(
+                &service,
+                &CancellationToken::new(),
+                64 << 20,
+                Some(crate::worker::AnalysisBinding {
+                    coordinator: coordinator.clone(),
+                    language: AnalysisBackend::Rust,
+                    instance: "python".into(),
+                }),
+                &[],
+                "",
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("ANALYSIS_UNIT_BACKEND_GRANT_MISMATCH")
+        );
+        assert!(unit.worker().is_err());
+        assert!(
+            coordinator
+                .lock()
+                .unwrap()
+                .issue_instance(AnalysisBackend::Rust, "python")
+                .is_ok()
+        );
+        Ok(())
+    }
+
     #[test]
     fn runtime_ownership_rejects_a_task_capture_or_foreign_manifest() -> Result<()> {
         let (_project, task) = crate::python_inputs::tests::capture();

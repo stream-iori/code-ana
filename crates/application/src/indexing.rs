@@ -5,12 +5,9 @@ use crate::reports::{
 };
 pub(super) type StagedCandidate =
     <crate::ports::storage::IndexAdapter as IndexRepository>::Candidate;
-struct IndexSetup {
-    worker: worker::Worker,
-    prepared: Option<java::PreparedJava>,
-    view: Capture,
+struct JavaAttempt {
+    unit: crate::analysis_unit::RunningUnit,
     expected: RevisionId,
-    pool_key: Option<String>,
     profile: String,
     full: bool,
     old: Option<BaselineInput>,
@@ -389,38 +386,32 @@ impl IndexTask {
         let started = Instant::now();
         let mut timings = timings::IndexTimings::start(id);
         let mut setup = self
-            .setup_index(id, req, &c, &plan, cancel, &mut timings)
+            .prepare_java_attempt(id, req, &c, &plan, cancel, &mut timings)
             .await?;
         let AnalyzedCandidate {
             result_mode,
             candidate,
             analyze_ms,
         } = match self
-            .analyze_index(id, &c, cancel, &mut timings, &mut setup)
+            .analyze_java_attempt(id, &c, cancel, &mut timings, &mut setup)
             .await
         {
             Ok(analyzed) => analyzed,
             Err(error) => {
-                if let Err(cleanup) = setup.worker.shutdown().await {
+                if let Err(cleanup) = setup.unit.shutdown().await {
                     eprintln!("java_analysis_cleanup_warning: {cleanup:#}");
                 }
                 return Err(error);
             }
         };
-        let IndexSetup {
-            view: _view,
-            prepared,
-            expected: _,
-            worker,
-            pool_key,
-            profile: _,
-            full: _,
-            old: _,
+        let JavaAttempt {
+            mut unit,
             unchanged,
+            ..
         } = setup;
-        let mut worker_slot = Some(worker);
         let result: Result<TaskResult> = async {
-            let worker = worker_slot.as_mut().context("INDEX_WORKER_REQUIRED")?;
+            let (worker, _, input, _) = unit.analysis()?;
+            let prepared = input.java();
             let limits = prepared
                 .as_ref()
                 .map(|p| codeana_contracts::java::output_limits(&p.config))
@@ -469,15 +460,8 @@ impl IndexTask {
             if let Some(timings) = &mut timings {
                 timings.phase("ack_finished");
             }
-            if ack.is_none()
-                && self.workers.can_keep_java()
-                && let Some(key) = pool_key
-            {
-                self.workers.keep_java(
-                    key,
-                    revision.id.clone(),
-                    worker_slot.take().context("INDEX_WORKER_REQUIRED")?,
-                );
+            if ack.is_none() {
+                unit.park(&self.workers, &revision.id);
             }
             self.finish_index(
                 id,
@@ -497,14 +481,12 @@ impl IndexTask {
             .await
         }
         .await;
-        if let Some(worker) = worker_slot.as_mut()
-            && let Err(cleanup) = worker.shutdown().await
-        {
+        if let Err(cleanup) = unit.shutdown().await {
             eprintln!("java_index_cleanup_warning: {cleanup:#}");
         }
         result
     }
-    async fn setup_index(
+    async fn prepare_java_attempt(
         &self,
         id: &str,
         req: &IndexCommand,
@@ -512,15 +494,25 @@ impl IndexTask {
         plan: &crate::index_plan::IndexPlan,
         cancel: &CancellationToken,
         timings: &mut Option<timings::IndexTimings>,
-    ) -> Result<IndexSetup> {
+    ) -> Result<JavaAttempt> {
         codeana_config::require_java(c)?;
         let selected = c.backend_capture(AnalysisBackend::Java)?;
-        let c = &selected;
-        let prepared = if !self.workers.is_mock() {
-            Some(self.prepare_java_unit(c.clone()).await?)
+        let input = if !self.workers.is_mock() {
+            self.reserve_owned_input(id, AnalysisBackend::Java, "")?;
+            crate::analysis_unit::PreparedInput::Java(Box::new(
+                self.prepare_java_unit(selected.clone()).await?,
+            ))
         } else {
-            None
+            crate::analysis_unit::PreparedInput::Fixture(
+                self.workers
+                    .mock_fixtures()
+                    .context("MOCK_FIXTURES_REQUIRED")?
+                    .to_owned(),
+            )
         };
+        let manifest = self.own_unit_manifest(id, AnalysisBackend::Java, "", &selected.manifest)?;
+        let mut unit = crate::analysis_unit::RunningUnit::prepared(input, selected, manifest)?;
+        let c = unit.capture();
         if let Some(timings) = timings {
             timings.phase("prepared");
         }
@@ -542,78 +534,17 @@ impl IndexTask {
             memory > 0 && memory <= self.workers.memory_cap(),
             codeana_model::DomainError::new(codeana_model::ErrorCode::ProjectWorkerMemoryLimit, "")
         );
-        let pool_key = prepared.as_ref().map(|p| {
-            digest(&(
-                &c.target,
-                &c.effective.semantic_digest,
-                &p.library,
-                &p.config.toolchain_digest,
-                &p.config.semantic_identity,
-                p.config.native_heap_bytes,
-                memory,
-            ))
-        });
-        let mut reused = None;
-        if self.workers.can_keep_java() {
-            let idle = self.workers.take_java();
-            if let Some(mut idle) = idle {
-                if let (Some(prepared), Some(key)) = (prepared.as_ref(), pool_key.as_ref())
-                    && idle.key == *key
-                    && idle.revision == expected.as_str()
-                    && idle.worker.alive().unwrap_or(false)
-                {
-                    let discovered = idle
-                        .worker
-                        .rediscover(
-                            prepared,
-                            &c.manifest,
-                            cancel,
-                            self.analysis_binding(id, AnalysisBackend::Java, ""),
-                            crate::supervisor::InputLease::new(c, vec![prepared.scratch.clone()]),
-                            crate::analysis_unit::publication(
-                                c,
-                                AnalysisBackend::Java,
-                                plan.previous_sources("java"),
-                            ),
-                        )
-                        .await;
-                    if let Err(error) = discovered {
-                        if let Err(cleanup) = idle.worker.shutdown().await {
-                            eprintln!("java_rediscover_cleanup_warning: {cleanup:#}");
-                        }
-                        return Err(error);
-                    }
-                    reused = Some(idle.worker);
-                } else if let Err(cleanup) = idle.worker.shutdown().await {
-                    eprintln!("java_idle_cleanup_warning: {cleanup:#}");
-                }
-            }
-        }
-        let mut worker = if let Some(worker) = reused {
-            worker
-        } else {
-            worker::Worker::start_language(
-                worker::LaunchSpec {
-                    fixtures: self.workers.mock_fixtures(),
-                    language: worker::Language::Java(prepared.as_ref()),
-                    checkout: &c.root,
-                    manifest: &c.manifest,
-                    inputs: crate::supervisor::InputLease::new(
-                        c,
-                        prepared.iter().map(|p| p.scratch.clone()).collect(),
-                    ),
-                    publication: crate::analysis_unit::publication(
-                        c,
-                        AnalysisBackend::Java,
-                        plan.previous_sources("java"),
-                    ),
-                },
-                cancel,
-                memory,
-                self.analysis_binding(id, AnalysisBackend::Java, ""),
-            )
-            .await?
-        };
+        unit.start(
+            &self.workers,
+            cancel,
+            memory,
+            self.analysis_binding(id, AnalysisBackend::Java, ""),
+            plan.previous_sources("java"),
+            expected.as_str(),
+        )
+        .await?;
+        let (worker, _, input, c) = unit.analysis()?;
+        let prepared = input.java();
         let validated: Result<_> = async {
             ensure!(
                 worker.context.backend() == AnalysisBackend::Java,
@@ -746,36 +677,32 @@ impl IndexTask {
         let (profile, full, old, unchanged) = match validated {
             Ok(values) => values,
             Err(error) => {
-                if let Err(cleanup) = worker.shutdown().await {
+                if let Err(cleanup) = unit.shutdown().await {
                     eprintln!("java_setup_cleanup_warning: {cleanup:#}");
                 }
                 return Err(error);
             }
         };
-        Ok(IndexSetup {
-            view: selected,
-            prepared,
+        Ok(JavaAttempt {
+            unit,
             expected,
-            worker,
-            pool_key,
             profile,
             full,
             old,
             unchanged,
         })
     }
-    async fn analyze_index(
+    async fn analyze_java_attempt(
         &self,
         id: &str,
         c: &Capture,
         cancel: &CancellationToken,
         timings: &mut Option<timings::IndexTimings>,
-        setup: &mut IndexSetup,
+        setup: &mut JavaAttempt,
     ) -> Result<AnalyzedCandidate> {
-        let prepared = &setup.prepared;
-        let unit_manifest = &setup.view.manifest;
+        let (worker, unit_manifest, input, _) = setup.unit.analysis()?;
+        let prepared = input.java();
         let expected = setup.expected.clone();
-        let worker = &mut setup.worker;
         let profile = setup.profile.clone();
         let full = setup.full;
         let old = &setup.old;

@@ -1,0 +1,15 @@
+{
+  "case": "java-discovery-decoded-allocation-payload",
+  "max_payload_bytes": 650000,
+  "pattern_count": 4000,
+  "pattern": "fixture.never.*",
+  "reference": {
+    "admission_payload_bytes": 91640,
+    "host_payload_bytes": 103308,
+    "worker_grant_payload_bytes": 418770,
+    "worker_payload_used": 74243,
+    "worker_decode_requested": 537756
+  },
+  "reason": "Short repeated external-policy strings make the real Discover decoded container larger than its encoded frame. Host encoding must fit; worker predecode admission must reject allocation and return a trusted input_decode failure. The baseline catalog is already populated, so v2 input metadata admission is included.",
+  "evidence": "target/typescript-c-abi/r4-unit-factory/discovery-payload-patterns4000.json"
+}

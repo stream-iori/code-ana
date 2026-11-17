@@ -1025,6 +1025,11 @@ analysis_grant: self.analysis.as_ref().map(|(grant,_)| codeana_contracts::analys
         Ok(())
     }
 
+    /// An idle receipt must have ended the analysis account and released task inputs.
+    pub(super) fn reusable(&self) -> bool {
+        self.analysis.is_none() && self.scratch.lock().unwrap().is_none() && !self.stopped
+    }
+
     pub fn alive(&mut self) -> Result<bool> {
         if self.stopped {
             return Ok(false);
@@ -1200,6 +1205,7 @@ mod tests {
             assert_eq!(result.is_ok(), valid);
             assert_eq!(path.exists(), !valid);
             assert_eq!(worker.scratch.lock().unwrap().is_none(), valid);
+            assert_eq!(worker.reusable(), valid);
             assert!(worker.alive()?);
             worker.shutdown().await?;
             assert!(!path.exists());
@@ -1273,6 +1279,7 @@ mod tests {
             assert_eq!(path.exists(), !valid, "{fault}");
             assert_eq!(worker.scratch.lock().unwrap().is_none(), valid);
             assert_eq!(worker.analysis.is_none(), valid);
+            assert_eq!(worker.reusable(), valid);
             assert!(worker.alive()?);
             worker.shutdown().await?;
             assert!(!path.exists());

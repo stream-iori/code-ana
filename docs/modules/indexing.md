@@ -10,7 +10,7 @@
 
 当前使用固定基线、归属替换、私有 candidate 和 CAS；语言失效在 adapter，引用/交付/发布校验在 Rust，关联 D05/D07/D09/D11。
 
-索引核心只接收 `IndexCommand`。编排分为 setup、analysis、publication、post-processing；`IndexSetup`、`AnalyzedCandidate`、`PublishedIndex` 持有各阶段所需状态和 worker/candidate。任务事件/预算/发布控制通过本任务 `TaskContext`，公共基线通过 `IndexBaselineReader`、Rust 专用基线通过 `RustBaselineReader`，候选暂存、摘要和发布通过 `IndexRepository` / `IndexService<R>` 接入；关联类型保留各实现的候选与基线所有权。已发布结果与后处理分离，报告/确认失败不能撤销提交。
+索引核心只接收 `IndexCommand`。编排分为 setup、analysis、publication、post-processing；`JavaAttempt` 保留 Java 增量策略状态并持有公共 `RunningUnit`，`AnalyzedCandidate`、`PublishedIndex` 分别持有候选与已发布结果；旧 IndexSetup 的 worker/prepared/view 平行字段已删除。任务事件/预算/发布控制通过本任务 `TaskContext`，公共基线通过 `IndexBaselineReader`、Rust 专用基线通过 `RustBaselineReader`，候选暂存、摘要和发布通过 `IndexRepository` / `IndexService<R>` 接入；关联类型保留各实现的候选与基线所有权。已发布结果与后处理分离，报告/确认失败不能撤销提交。
 
 Rust 路径先准备输入、启动 worker、固定基线，再分别执行未变复用、单语言流或混合语言归档阶段。Java 准备分别持有 bundle、捕获输入与工具链；Maven 外部导出分为准备、发现、组装和落盘。临时目录、会话与候选的生命周期覆盖其最终消费者，阶段拆分不提前释放资源。
 
@@ -156,7 +156,7 @@ Python 只读取显式清单并验证全部来源哈希。完全相同的 manife
 
 worker 终态由公共 analysis_unit 的同一 worker 引用集合入口处理，删除 One/Pair/Sessions 类型；Reused 失败仍中止暂存，PublishAck 失败只保存 warning 并继续确认其余实例，不改变已发布 revision。该迭代不复制 worker 或另建预算账户。
 
-prepared 入口以计划中的 Ready 单元确定内存分片和启动语言，按后端和稳定实例 ID 顺序准备/启动，保留降级 coverage。Rust 普通/Java+Rust、保守与 prepared 集合使用 Vec<RunningUnit>：每个单元直接持有 Prepared/Running 会话状态、输入守卫、manifest 和 Unit Capture，集合最后释放共享 scratch；删除平行 sessions/inputs 数组及其 Deref 入口。构造时核对单元捕获、后端和 manifest 子集，启动时核对 grant 实例，未启动状态不能提供流或上下文。输入装箱的预留接续既有 host 账户；Rust 输入与 Java 输入直接归对应单元，删除 RustWorkers 和 RustAttempt 的平行输入字段，使用公共清理入口；新增 manifest 副本也先向原 host 账户预留。单 Java 健康池仍保留其自身生命周期结构，Rust 的失效/profile 策略与独立组合执行仍待统一，R4 执行器尚未完成。
+prepared 入口以计划中的 Ready 单元确定内存分片和启动语言，按后端和稳定实例 ID 顺序准备/启动，保留降级 coverage。Rust 普通/Java+Rust、保守与 prepared 集合使用 Vec<RunningUnit>：每个单元直接持有 Prepared/Running 会话状态、输入守卫、manifest 和 Unit Capture，集合最后释放共享 scratch；删除平行 sessions/inputs 数组及其 Deref 入口。构造时核对单元捕获、后端和 manifest 子集，启动时核对 grant 实例，未启动状态不能提供流或上下文。输入装箱的预留接续既有 host 账户；Rust 输入与 Java 输入直接归对应单元，删除 RustWorkers 和 RustAttempt 的平行输入字段，使用公共清理入口；新增 manifest 副本也先向原 host 账户预留。单 Java 也由 RunningUnit 持有输入与会话，策略保存在 JavaAttempt；Rust 的失效/profile 策略与独立组合执行仍待统一，R4 执行器尚未完成。
 
 PlannedUnit 明确 Ready/FilesOnly/Removed。FilesOnly 和从基线归属清单发现的 Removed 均保留静态后端/实例份额，主机封存零 worker 用量，不能重领或借给 Ready；进程内存只按 Ready 数量分片。普通单元和 prepared 一样使用稳定实例 ID。全部单元禁用/删除时发布空语义及当前 FILES，不启动 Java 兜底；无基线且未启用语言仍报 NO_ENABLED_LANGUAGE。
 
@@ -186,3 +186,5 @@ application/supervisor 的 Process 统一保有 child 与租约。显式关闭�
 每个 worker 的 Receiver 在 Begin 时核对 replacement producer 与当前/历史完整输入的精确 world/path，在 Chunk 时核对当前实例冻结来源、模块/scope 和允许语言，失败后不能生成 VerifiedEnd。历史辅助输入只授权删除旧 owner，不授权发布新语义。fixture 允许其显式测试语言标签，仍须遵守来源/world 范围。无来源的公共字典/metadata 的单元归属及任意 Full/Delta/Reuse 组合仍待后续完成。
 
 Java 的未变判定比较该单元历史 inputs，避免将全项目 FILES 与单元视图直接比较。增量基线的文件、节点、上下文和类型关系仅取该单元声明输入（含辅助绑定）；变更闭包按 path/world 计算，反向依赖只回到该单元输入，不将项目 FILES 清单传给引擎用于生成删除 owner；显式 fixture 的旧基线保持其测试输入。Python 的汇总 coverage 模块还包括冻结输入描述符中的原生上下文模块，与具体源文件的模块归属分别校验。
+
+现行单 Java、Rust、普通保守及 prepared 启动统一为 RunningUnit → WorkerService::launch → LaunchSpec/supervisor；只有工厂可启动或 rediscover，架构反例覆盖关联函数别名、嵌套同名文件与绕过 owner 的调用。Java 池 key/基线匹配和错误后禁止重领 grant 的规则在工厂内；mock 是显式 Fixture 输入，须与该服务配置的 fixtures 路径相同。只有账户已结束、任务 scratch 已解除且进程健康时，单元才可移交健康池；移交后为 Released，不能再提供流、上下文或重启。单 Java 流式暂存与候选磁盘检查保持，工厂/装箱/新增 manifest 副本继续使用原 host 预算。

@@ -1,0 +1,21 @@
+{
+  "case": "backend-work-after-host-admission",
+  "max_work": {
+    "java": 8192,
+    "rust": 16384,
+    "python_rust": 65536
+  },
+  "reference": {
+    "java_worker_grant": 6138,
+    "java_failure_used": 3445,
+    "java_failure_requested": 4912,
+    "rust_worker_grant": 12267,
+    "rust_full_failure_used": 12267,
+    "python_rust_worker_grant": 24563,
+    "rust_completed_work": 11914,
+    "python_failure_used": 22295,
+    "python_failure_requested": 90480
+  },
+  "reason": "Leave the measured host setup and Rust sibling enough work. A trusted worker receipt must exhaust work; host/admission failure is not this case. Both full and incremental requests retain the previous head.",
+  "evidence": "target/typescript-c-abi/r4-unit-factory/resource-report-recalibrated.json"
+}

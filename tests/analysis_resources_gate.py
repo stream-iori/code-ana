@@ -48,6 +48,7 @@ def main():
                    complete_group_suite=not args.case,inputs=before,complete_plan=False,
                    native_accepted=False,release_accepted=False,performance_accepted=False)
     (output/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
+    evidence.PROGRESS_FILE.write_text(json.dumps(dict(status=receipt['status'],cases=result.cases),indent=2)+'\n')
     print(json.dumps({key:receipt[key] for key in ['status','executed_count','expected_count','artifact_drift']}))
     return 0 if receipt['status']=='passed' else 1
 

@@ -14,6 +14,11 @@ import rust_language_e2e as rust
 import prepared_inputs_e2e as prepared
 
 
+def backend_work_limit(case):
+    vector=json.loads((java.ROOT/'tests/fixtures/analysis-resources/backend-work-budget.json').read_text())
+    return vector['max_work'][case]
+
+
 class BudgetCases:
     language = None
 
@@ -38,7 +43,12 @@ class BudgetCases:
         self.assertEqual(baseline['publication'], 'published')
         revision = baseline['revision']
         graph = self.graph(revision)
+        source = next(self.project.rglob('*.java')) if self.language == 'java' and field == 'max_depth' else None
+        saved_source = source.read_text() if source else None
         try:
+            # Depth limits apply to actual analysis; unchanged Java can legitimately reuse.
+            if source:
+                source.write_text(saved_source + '\n// changed input for depth budget\n')
             config.write_text(original + '\n[resources.index.analysis]\n' + field + '=1\n')
             for args in [('index', '--full'), ('index',)]:
                 _, failed = self.cli(*args, code=1, timeout=180)
@@ -53,6 +63,8 @@ class BudgetCases:
                     self.assertLessEqual(usage[used], report['analysis_resources']['limits'][limit])
         finally:
             config.write_text(original)
+            if source:
+                source.write_text(saved_source)
         _, recovered = self.cli('index', '--full', timeout=180)
         self.assertEqual(recovered['publication'], 'published')
         self.graph(recovered['revision'])
@@ -89,7 +101,14 @@ class BudgetCases:
     def test_unchanged_reuse_has_discovery_receipt(self):
         _, first = self.cli('index', '--full', timeout=180)
         before = self.graph(first['revision'])
-        _, reused = self.cli('index', timeout=180)
+        config=self.project/'.code-ana/config.toml'
+        original=config.read_text()
+        try:
+            if self.language == 'java':
+                config.write_text(original+'\n[resources.index.analysis]\nmax_depth=1\n')
+            _, reused = self.cli('index', timeout=180)
+        finally:
+            config.write_text(original)
         self.assertEqual(self.graph(reused['revision']), before)
         report = self.cli('report', reused['report'])[0][0]['analysis_resources']['coordinator']
         self.assertTrue(report['complete'])
@@ -121,16 +140,21 @@ class JavaBudget(BudgetCases, java.JavaProductHarness):
 
     def test_discovery_payload_failure_has_final_receipt_and_preserves_head(self):
         config = self.project / '.code-ana/config.toml'
+        vector=json.loads((java.ROOT/'tests/fixtures/analysis-resources/java-discovery-payload-budget.json').read_text())
+        config.write_text(config.read_text()+'\n[languages.java.external]\nexclude_patterns='+json.dumps([vector['pattern']]*vector['pattern_count'])+'\n')
         original = config.read_text()
         _, good = self.cli('index', '--full', timeout=180)
         baseline = self.graph(good['revision'])
         report = self.cli('report', good['report'])[0][0]['analysis_resources']['coordinator']
-        limit = report['admission']['payload_bytes'] + 8192
+        limit = vector['max_payload_bytes']
         try:
             config.write_text(original + '\n[resources.index.analysis]\nmax_payload_bytes=' + str(limit) + '\n')
             _, failed = self.cli('index', '--full', code=1, timeout=180)
             self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
             usage = self.cli('report', failed['report'])[0][0]['analysis_resources']['coordinator']
+            self.assertIsNone(usage['admission']['failure'])
+            self.assertIsNone(usage['languages'][0]['host_usage']['failure'])
+            self.assertEqual(len(usage['languages'][0]['workers']),1)
             worker = usage['languages'][0]['workers'][0]
             self.assertEqual(worker['phase'], 'input_decode')
             self.assertEqual(worker['state'], 'failed')
@@ -153,13 +177,15 @@ class JavaBudget(BudgetCases, java.JavaProductHarness):
         try:
             source = next(self.project.rglob('*.java'))
             source.write_text(source.read_text() + '\n// changed input for analysis budget\n')
-            config.write_text(original + '\n[resources.index.analysis]\nmax_work=128\n')
+            config.write_text(original + '\n[resources.index.analysis]\nmax_work='+str(backend_work_limit('java'))+'\n')
             for args in [('index', '--full'), ('index',)]:
                 _, failed = self.cli(*args, code=1, timeout=180)
                 self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
                 report = self.cli('report', failed['report'])[0][0]['analysis_resources']['coordinator']
                 self.assertIsNone(report['admission']['failure'])
-                worker = next(s for s in report['languages'] if s['allocation']['language'] == 'java')['workers'][0]
+                slot=next(s for s in report['languages'] if s['allocation']['language'] == 'java')
+                self.assertIsNone(slot['host_usage']['failure'])
+                worker=slot['workers'][0]
                 self.assertEqual(worker['state'], 'failed')
                 self.assertEqual(worker['usage']['failure']['Limit']['resource'], 'work')
                 self.assertEqual(self.cli('overview')[1]['revision'], old)
@@ -205,7 +231,7 @@ class RustBudget(BudgetCases, rust.RustHarness):
         old = baseline['revision']
         before = self.graph(old)
         try:
-            config.write_text(original + '\n[resources.index.analysis]\nmax_work=128\n')
+            config.write_text(original + '\n[resources.index.analysis]\nmax_work='+str(backend_work_limit('rust'))+'\n')
             source = self.project / 'app/src/main.rs'
             source.write_text(source.read_text() + '\nfn budget_changed_input() -> u32 { 1 }\n')
             for args in [('index', '--full'), ('index',)]:
@@ -213,6 +239,7 @@ class RustBudget(BudgetCases, rust.RustHarness):
                 self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
                 report = self.cli('report', failed['report'])[0][0]['analysis_resources']
                 self.assertIsNone(report['coordinator']['admission']['failure'])
+                self.assertIsNone(report['coordinator']['languages'][0]['host_usage']['failure'])
                 worker = report['coordinator']['languages'][0]['workers'][0]
                 self.assertEqual(worker['state'], 'failed')
                 self.assertEqual(worker['usage']['failure']['Limit']['resource'], 'work')
@@ -249,7 +276,7 @@ class PythonBudget(BudgetCases, python.PythonLanguage):
             source = self.project / 'main.py'
             source.write_text(source.read_text() + ('\ndef added_for_budget():\n' + '    pass\n' * 10000 if mixed else '\ndef added_for_budget():\n    return factory()\n'))
             self.export()
-            config.write_text(original + '\n[resources.index.analysis]\nmax_work=' + str(30000 if mixed else 128) + '\n')
+            config.write_text(original + '\n[resources.index.analysis]\nmax_work=' + str(backend_work_limit('python_rust') if mixed else 128) + '\n')
             for args in [('index', '--full'), ('index',)]:
                 _, failed = self.cli(*args, code=1, timeout=180)
                 self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
@@ -257,6 +284,10 @@ class PythonBudget(BudgetCases, python.PythonLanguage):
                 self.assertIsNone(report['admission']['failure'])
                 self.assertFalse(report['complete'])
                 slot = next(s for s in report['languages'] if s['allocation']['language'] == 'python')
+                self.assertIsNone(slot['host_usage']['failure'])
+                if mixed:
+                    sibling=next(s for s in report['languages'] if s['allocation']['language']=='rust')
+                    self.assertTrue(all(w['state']=='complete' for w in sibling['workers']))
                 worker = slot['workers'][0]
                 self.assertEqual(worker['state'], 'failed')
                 self.assertEqual(worker['usage']['failure']['Limit']['resource'], 'work')
@@ -364,11 +395,24 @@ class PreparedRustBudget(prepared.PreparedInputs):
                 vector=json.loads((java.ROOT/'tests/fixtures/analysis-resources/prepared-rust-budget.json').read_text())
                 self.config+='\n[resources.index.analysis]\nmax_work='+str(vector['max_work'])+'\n'
             self.write_config()
-        old=None
+        primary_home=self.home
         for name in ('unit-a','unit-b'):
-            select([name]);_,result=self.cli('index','--prepare','--full',timeout=180)
-            old=result['revision']
-            with self.db(old) as db:self.assertGreater(db.execute("SELECT count(*) FROM nodes WHERE language='rust'").fetchone()[0],0)
+            self.home=self.root/('standalone-'+name)
+            self.home.mkdir(mode=0o700)
+            (self.home/'config.toml').write_bytes((primary_home/'config.toml').read_bytes())
+            try:
+                select([name]);_,result=self.cli('index','--prepare','--full',timeout=180)
+                with self.db(result['revision']) as db:self.assertGreater(db.execute("SELECT count(*) FROM nodes WHERE language='rust'").fetchone()[0],0)
+                report=self.cli('report',result['report'])[0][0]['analysis_resources']['coordinator']
+                self.assertEqual(len(report['languages'][0]['workers']),1)
+            finally:
+                try:
+                    self.stop()
+                finally:
+                    self.home=primary_home
+        select(['unit-a','unit-b'],False)
+        _,baseline=self.cli('index','--prepare','--full',timeout=180)
+        old=baseline['revision']
         select(['unit-a','unit-b'])
         _,failed=self.cli('index','--prepare','--full',code=1,timeout=180)
         self.assertEqual(failed['code'],'ANALYSIS_RESOURCE_LIMIT')

@@ -85,6 +85,12 @@ def rust_violations(path, source):
     code = scrub(production(source))
     failures = []
     filename = pathlib.Path(path).name
+    factory = pathlib.Path(path).as_posix() == 'crates/application/src/worker_service.rs'
+    owner = pathlib.Path(path).as_posix() == 'crates/application/src/analysis_unit.rs'
+    if not factory and re.search(r'(?:::|\.)\s*(?:start_language|rediscover)\b', code):
+        failures.append('worker launch and rediscovery belong in the unit factory')
+    if not owner and re.search(r'(?:::|\.)\s*launch\b', code):
+        failures.append('the running unit must own factory launches')
     if filename != 'lib.rs' and re.search(r'\bimpl\s+Engine\s*\{', code):
         failures.append('service implementation cannot depend on Engine')
     if filename in ('indexing.rs', 'index_execution.rs', 'rust_inputs.rs'):

@@ -32,6 +32,16 @@ class Boundaries(unittest.TestCase):
         self.assertTrue(architecture.rust_violations('rust_inputs.rs','Worker::start(config);'))
         self.assertFalse(architecture.rust_violations('java.rs','prepare_captured_inputs(capture);'))
 
+    def test_only_the_real_factory_launches_workers_and_only_the_owner_calls_it(self):
+        for path in ['crates/application/src/index_execution.rs', 'crates/application/src/nested/worker_service.rs']:
+            for source in ['Alias::start_language(spec).await;', 'worker.rediscover(input).await;', 'let launch = Alias::start_language; launch(spec).await;']:
+                self.assertTrue(architecture.rust_violations(path,source), (path,source))
+        for source in ['Alias::start_language(spec).await;', 'worker.rediscover(input).await;', 'let launch = Alias::start_language; launch(spec).await;']:
+            self.assertFalse(architecture.rust_violations('crates/application/src/worker_service.rs',source))
+        self.assertTrue(architecture.rust_violations('crates/application/src/indexing.rs','service.launch(request).await;'))
+        self.assertFalse(architecture.rust_violations('crates/application/src/analysis_unit.rs','service.launch(request).await;'))
+        self.assertFalse(architecture.rust_violations('crates/application/src/indexing.rs','// Alias::start_language(spec);\n#[cfg(test)] mod tests { fn helper() { worker.rediscover(input); } }'))
+
     def test_compiler_types_stay_in_the_worker_source_set(self):
         main='lang-java-adaptor/analysis-core/src/main/java/Leak.java'
         for source in ['import com.sun.tools.javac.code.Type;', 'class Leak { javax.tools.JavaCompiler compiler; }']:

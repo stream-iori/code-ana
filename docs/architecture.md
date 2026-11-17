@@ -64,7 +64,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 | TaskService | 任务注册/事件、队列、调度、watcher、取消、截止时间、空闲退出；不持有查询/索引 Engine |
 | TaskExecution | 只组合单次操作；把 TaskContext 交给索引，把索引动作交给历史快照 |
 | IndexTask / IndexService | 本任务预算、捕获源码、发布屏障与窄索引端口；没有全局任务表或原始 Store |
-| WorkerService | worker 配置、内存上限和健康 Java 池；不依赖任务注册表或图库 |
+| WorkerService | 现行三语言公共启动工厂、配置、内存上限和健康 Java 池；由 RunningUnit 持有启动结果，不依赖任务注册表或图库 |
 | HistoryService | 历史快照、diff、冻结页及源码引用；分析快照接收显式索引动作 |
 | ReportService | 报告构造/持久化/读取；接收任务资源快照，不查全局任务表 |
 | QueryService / DoctorService | 固定 revision 查询路由与就绪投影；不访问任务调度或索引内部状态 |

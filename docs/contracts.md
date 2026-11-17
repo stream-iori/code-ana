@@ -286,14 +286,14 @@ R3 的语义 profile 使用核实后的上下文 semantic_digest，Java toolchai
 
 同一捕获路径有多个实例归属时，Java 既有未填写 world 的行按其显式 module/scope 选择来源，不取路径上的第一个 world。显式非空 world 仍必须精确匹配；无归属、错 module/scope 仍拒绝。仅调整私有候选的来源校验，不修改公开 ID、GRA1 列或物理 schema。
 
-主机 CaptureScope 显式区分 Task 与 Unit，单元上下文仅保留对应后端的输入/语言/模块并共享 TaskConfig；不加入 wire 或 profile 的文件系统观察。普通和 prepared 捕获共用单元构造入口。保守/prepared 的 RunningUnit 拥有输入守卫、捕获视图和会话状态，替代按数组位置配对；未启动/错后端/外部 manifest 拒绝，启动前核对实例 grant。计划和启动按 Java/Rust/Python/TypeScript 后端顺序、稳定实例 ID 排序。
+主机 CaptureScope 显式区分 Task 与 Unit，单元上下文仅保留对应后端的输入/语言/模块并共享 TaskConfig；不加入 wire 或 profile 的文件系统观察。普通和 prepared 捕获共用单元构造入口。各现行路径的 RunningUnit 拥有输入守卫、捕获视图和会话状态，替代按数组位置配对；未启动/错后端/外部 manifest 拒绝，启动前核对实例 grant。计划与保守/prepared 启动按后端、稳定实例 ID 排序；普通 Rust+Java 暂沿 Rust 优先的旧增量策略，待统一执行器迁移。
 
 revision 的主机元数据新增 `unit_ownership.version=2`：稳定实例、后端、Ready/FilesOnly、发布语言、模块/world/scope、producer、独立语义 profile/输入摘要、完整发布来源与完整输入及其辅助角色。范围从冻结输入取得，包含零输出单元/来源；辅助输入参与输入摘要，但不能取得发布归属。同一 world/path 的发布来源不能归两个单元。storage 在创建私有候选前校验清单，随 revision.json、catalog 和同一次 CAS 持久化；不改变公开 ID、GRA1 列、图库物理 schema 或 worker 协议。旧 revision 缺清单或只有 v1 仍可读取原事实，语义增量返回 `UNIT_OWNERSHIP_REBUILD_REQUIRED`，必须 `index --full` 建立新清单后切 head。
 
-PlannedUnit 保留 Ready/FilesOnly/Removed；Removed 取自旧清单，不从当前行或 producer 推导。所有单元先静态分片，FilesOnly/Removed 由主机将未发出的 grant 封为可信零用量；份额不借出、不再领取。普通单元也使用显式后端实例 ID。没有 Ready 单元时不启动兜底 Java；禁用全部语言可在已有基线上清除旧归属，首次语义索引仍要求显式语言。现行全量/增量策略仍由各入口执行，任意混合 Full/Delta/Reuse、完整后端启动装配与公共监控策略仍待 R4。
+PlannedUnit 保留 Ready/FilesOnly/Removed；Removed 取自旧清单，不从当前行或 producer 推导。所有单元先静态分片，FilesOnly/Removed 由主机将未发出的 grant 封为可信零用量；份额不借出、不再领取。普通单元也使用显式后端实例 ID。没有 Ready 单元时不启动兜底 Java；禁用全部语言可在已有基线上清除旧归属，首次语义索引仍要求显式语言。现行全量/增量策略仍由各入口执行，任意混合 Full/Delta/Reuse 与公共监控策略仍待 R4；TypeScript 启动工厂仍待生产接入。
 
 
-主机 LaunchSpec 必须携带任务 InputLease。Process 在启动协议前取得文件/spool/scratch 所有权，回收失败或任务 future/runtime 退出时由独立回收登记继续保有。停止确认包含所属进程组全部非僵尸成员退出及 leader 回收，不能仅以发送 SIGKILL 当作完成。有效 Acked 允许健康进程解除任务租约；错误 ACK 不解除。此为主机生命周期实现，不改变 worker 25 / Java ABI 4 或图 schema。SDK/producer/后端策略的完整 LaunchSpec 装配仍未归一。
+主机 LaunchSpec 必须携带任务 InputLease。Process 在启动协议前取得文件/spool/scratch 所有权，回收失败或任务 future/runtime 退出时由独立回收登记继续保有。停止确认包含所属进程组全部非僵尸成员退出及 leader 回收，不能仅以发送 SIGKILL 当作完成。有效 Acked 允许健康进程解除任务租约；错误 ACK 不解除。此为主机生命周期实现，不改变 worker 25 / Java ABI 4 或图 schema。现行三语言的 LaunchSpec 装配和 Java rediscover 已集中到 WorkerService 工厂，只能由公共单元 owner 调用；TypeScript 执行装配、公共监控和任意单元结果合并仍待完成。
 
 主机按任务固定一次 baseline 并持有 GC 元数据租约；显式全量迁移无需打开旧图。Receiver 绑定单元冻结 manifest 和 v2 的历史输入：替换 owner 的 kind、producer、world/path 必须匹配，图行的 source、world、module/scope 和语言必须落在当前单元范围内。越界返回 `ANALYSIS_UNIT_SCOPE`，接收状态粘性失败，不能获得 VerifiedEnd；原始传输 SHA 先按原行验证；主机随后只将唯一绑定的隐式 world 显式化，投影另算 SHA，只有原始 End 校验成功且投影计数一致才给出投影的 VerifiedEnd。旧 v1 缺少完整历史输入，必须全量重建，不能推测缺失的辅助来源。
 

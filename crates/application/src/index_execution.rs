@@ -84,7 +84,7 @@ impl IndexTask {
         })
     }
 
-    fn own_unit_manifest(
+    pub(super) fn own_unit_manifest(
         &self,
         id: &str,
         backend: AnalysisBackend,
@@ -104,7 +104,7 @@ impl IndexTask {
         }
     }
 
-    fn reserve_owned_input(
+    pub(super) fn reserve_owned_input(
         &self,
         id: &str,
         language: AnalysisBackend,
@@ -260,10 +260,12 @@ impl IndexTask {
             units
                 .unit_mut("rust")?
                 .start(
+                    &self.workers,
                     cancel,
                     memory,
                     self.analysis_binding(id, AnalysisBackend::Rust, ""),
                     plan.previous_sources("rust"),
+                    plan.baseline.as_str(),
                 )
                 .await?;
             if java_enabled {
@@ -280,10 +282,12 @@ impl IndexTask {
                 units
                     .unit_mut("java")?
                     .start(
+                        &self.workers,
                         cancel,
                         memory,
                         self.analysis_binding(id, AnalysisBackend::Java, ""),
                         plan.previous_sources("java"),
+                        plan.baseline.as_str(),
                     )
                     .await?;
             }
@@ -726,10 +730,12 @@ impl IndexTask {
         let result: Result<TaskResult> = async {
             for unit in &mut sessions.units {
                 unit.start(
+                    &self.workers,
                     cancel,
                     memory,
                     self.analysis_binding(id, unit.backend(), ""),
                     plan.previous_sources(&unit.unit),
+                    plan.baseline.as_str(),
                 )
                 .await?;
             }
@@ -1067,10 +1073,12 @@ impl IndexTask {
                     .last_mut()
                     .context("PREPARED_UNIT_MISSING")?
                     .start(
+                        &self.workers,
                         cancel,
                         memory,
                         binding,
                         plan.previous_sources(&unit.prepared.id),
+                        plan.baseline.as_str(),
                     )
                     .await?;
             }

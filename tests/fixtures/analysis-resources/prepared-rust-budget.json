@@ -2,12 +2,15 @@
   "case": "two-independent-cargo-workspaces-cumulative-work",
   "max_work": 5000,
   "reference": {
-    "single_admission_work": 20,
-    "combined_admission_work": 23,
-    "single_host_work": 174,
-    "combined_host_work": 348,
-    "single_worker_work": 3337,
-    "combined_each_worker_required_work": 3337
+    "single_admission_work": 37,
+    "combined_admission_work": 47,
+    "single_host_work": 211,
+    "combined_host_work": 422,
+    "single_worker_work": 3457,
+    "combined_each_worker_required_work": 3457,
+    "single_worker_grant": 3722,
+    "combined_worker_grant": 1857
   },
-  "reason": "JSON config decode and DTO clone admission are now counted. Each standalone worker needs about 3337 work and receives more than 3700. The combined static language pool gives each instance less than 1900, so neither may borrow the unused host or sibling quota. Reject atomically and retain the old graph."
+  "reason": "Use independent catalog homes for standalone runs: a Removed unit still keeps its static reservation. Each actual standalone worker needs 3457 work and receives 3722. With both units present each grant is 1857, so the first worker fails without borrowing its sibling or host share. Preserve the previously published two-unit graph.",
+  "evidence": "target/typescript-c-abi/r4-unit-factory/resource-report-recalibrated.json"
 }
