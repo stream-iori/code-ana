@@ -926,6 +926,41 @@ fn reuse_ledger_ignores_only_integrity_generation_and_config_presentation_bytes(
         canonical(&store.read(&first.id)?.connection)?,
         canonical(&store.read(&reused.id)?.connection)?
     );
+    let host = AnalysisContext::new(
+        AnalysisLimits {
+            max_work: 1,
+            ..AnalysisLimits::default()
+        },
+        None,
+    )
+    .map_err(DomainError::analysis)?;
+    let limited = GraphStagingContext {
+        hosts: BTreeMap::from([(AnalysisBackend::Java, host.clone())]),
+        source: std::sync::Arc::new(|_, _| panic!("reuse validation must not read source bodies")),
+    };
+    let failure = store
+        .stage_reused_graph_with_context(
+            changed.clone(),
+            &reused.id,
+            || Ok(()),
+            |_| Ok(()),
+            Some(&limited),
+        )
+        .err()
+        .context("reuse bypassed its host budget")?;
+    assert_eq!(
+        failure
+            .downcast_ref::<DomainError>()
+            .context(format!("{failure:#}"))?
+            .code,
+        ErrorCode::AnalysisResourceLimit
+    );
+    assert!(host.usage().failure.is_some());
+    assert_eq!(store.head("t")?, reused.id);
+    assert_eq!(
+        canonical(&store.read(&reused.id)?.connection)?,
+        canonical(&store.read(&first.id)?.connection)?
+    );
     for field in [
         "binding-bytes",
         "binding-role",

@@ -7,6 +7,8 @@ mod analysis_identity;
 pub use analysis_identity::*;
 mod unit_ownership;
 pub use unit_ownership::*;
+mod unit_merge;
+pub use unit_merge::*;
 mod analysis_resources;
 pub use analysis_resources::*;
 mod resources;

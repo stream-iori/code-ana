@@ -19,25 +19,19 @@ impl GraphSeed<'_> {
         matches!(self, Self::Reused(_))
     }
 }
-fn validate_reused_baseline(before: &Revision, after: &Revision) -> Result<()> {
+fn validate_reused_baseline(
+    before: &Revision,
+    after: &Revision,
+    context: Option<&GraphStagingContext>,
+) -> Result<()> {
     let equal = match (&before.unit_ownership, &after.unit_ownership) {
-        (Some(before), Some(after)) => {
-            before.version == after.version
-                && before.units.len() == after.units.len()
-                && before.units.iter().zip(&after.units).all(|(a, b)| {
-                    a.unit == b.unit
-                        && a.backend == b.backend
-                        && a.availability == b.availability
-                        && a.source_languages == b.source_languages
-                        && a.modules == b.modules
-                        && a.worlds == b.worlds
-                        && a.scopes == b.scopes
-                        && a.producer == b.producer
-                        && a.semantic_profile == b.semantic_profile
-                        && a.input_digest == b.input_digest
-                        && a.sources == b.sources
-                        && same_semantic_sources(&a.inputs, &b.inputs)
-                })
+        (Some(_), Some(_)) => {
+            if let Some(context) = context {
+                UnitMergePlan::all_reused_with_budget(before, after, &context.hosts)?;
+                true
+            } else {
+                UnitMergePlan::all_reused(before, after).is_ok()
+            }
         }
         (None, None) => before.manifest.files == after.manifest.files,
         _ => false,
@@ -158,7 +152,7 @@ impl Store {
                 codeana_model::DomainError::new(codeana_model::ErrorCode::ProfileMismatch, "")
             );
             if seed.is_reused() {
-                validate_reused_baseline(&r.revision, &revision)?;
+                validate_reused_baseline(&r.revision, &revision, context)?;
             }
             Some(r)
         } else {

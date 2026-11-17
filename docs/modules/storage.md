@@ -111,3 +111,5 @@ CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage
 公开节点 ID 不允许跨 world 覆盖，公开关系/注解的 hash+ordinal 与调用点 stable_hash 有物理唯一约束。producer 的身份不满足隔离要求时返回 GRAPH_WORLD_OWNERSHIP_CONFLICT，不能靠改名或静默合并生成假精确结果；失败保留旧 head。
 
 整项目复用使用显式入口并独立复核身份、归属与语义输入。Reused 与重新分析的空 delta 分开：复用须保留原全局诊断、CLASSPATH_UNAVAILABLE coverage 和无来源元数据；重新分析时旧汇总由新结果替换。准备 generation 和根配置展示字节的例外由 model 的 same_semantic_sources 共用，辅助绑定内容/角色变化不能借旧 input_digest 绕过检查。
+
+复用校验使用 model 的 `UnitMergePlan::all_reused`，同时核对 project/checkout/target、完整有效归属清单，以及 FilesOnly 单元没有增删或变更。生产入口通过 `all_reused_with_budget` 从原 host 账户预付校验映射和计划分配；共享 manifest 映射归固定顺序首个 host，单元成本归自身后端，额度失败保留资源错误身份。`UnitMergePlan::new` 已定义逐单元 Full/Delta/Reuse/Removed/FilesOnly 的合并意图：Full、Removed 和 FilesOnly 从新旧清单导出完整来源范围；Delta 必须覆盖变更、删除和新增来源，不能借其他单元或 world 的 owner；Reuse 不接受替换范围。辅助绑定输入的发布单元消失或身份变化时，其消费者必须重分析。这是来源范围与复用的前置校验，尚未开放任意单元混合的 SQL 合并，也不代替各 worker 的 VerifiedEnd。
