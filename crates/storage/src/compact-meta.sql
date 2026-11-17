@@ -1,4 +1,11 @@
 -- Anatomist schema 33 definitions and lossless file-owned observations.
+-- Public projections keep their original columns; ownership stays private.
+CREATE TABLE unit_project_meta(unit_pk INTEGER NOT NULL REFERENCES unit_catalog(unit_pk),
+ key TEXT NOT NULL,value TEXT,PRIMARY KEY(unit_pk,key)) WITHOUT ROWID;
+CREATE TABLE unit_providers(unit_pk INTEGER NOT NULL DEFAULT 0 REFERENCES unit_catalog(unit_pk),
+ provider_id TEXT NOT NULL,language TEXT NOT NULL,provider_version TEXT NOT NULL,
+ operations TEXT NOT NULL,limitations TEXT NOT NULL,profile_hash TEXT NOT NULL,
+ PRIMARY KEY(unit_pk,provider_id)) WITHOUT ROWID;
 CREATE TABLE annotation_meta_relations(id INTEGER PRIMARY KEY,
  annotation_fqn TEXT NOT NULL,meta_annotation_fqn TEXT,raw_name TEXT NOT NULL,
  language TEXT NOT NULL,provider_id TEXT NOT NULL DEFAULT 'java-core',

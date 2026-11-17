@@ -231,18 +231,23 @@ impl Store {
             }
         }
         graph_store::initialize(&db)?;
-        db.execute_batch("PRAGMA journal_mode=OFF;PRAGMA synchronous=OFF;PRAGMA locking_mode=EXCLUSIVE;PRAGMA cache_size=-64000;PRAGMA temp_store=FILE;PRAGMA foreign_keys=ON;")?;
+        db.execute_batch("PRAGMA journal_mode=OFF;PRAGMA synchronous=OFF;PRAGMA cache_size=-64000;PRAGMA temp_store=FILE;PRAGMA foreign_keys=ON;")?;
         if baseline.is_some() {
             crate::graph_comments::validate_baseline(&db)?;
         }
         let stage_path = directory.path().join("stage.db");
         let stage = Connection::open(&stage_path)?;
         graph_store::initialize_stage(&stage)?;
+        let unit_pks =
+            graph_store::unit_metadata::setup(&db, &stage, &revision, context, !seed.is_reused())?;
         // The retained baseline catalogue is available to reference resolution without
         // importing or materializing any serialized Fact IR.
         if baseline.is_some() {
             seed_baseline(&stage, &db, seed, &check)?;
         }
+        // Unit registration writes the private copy. Acquire its exclusive lock
+        // only after the separate staging connection has detached that copy.
+        db.pragma_update(None, "locking_mode", "EXCLUSIVE")?;
         phase_ms.insert(
             "candidate_setup_backup".into(),
             started.elapsed().as_millis() as u64,
@@ -293,7 +298,7 @@ impl Store {
                 check()?;
             }
             let GraphRecord { origin, row } = row?;
-            match &origin {
+            let unit_pk = match &origin {
                 Origin::Unit(unit) => {
                     unit_scopes
                         .get(unit.as_ref())
@@ -302,12 +307,17 @@ impl Store {
                             "unknown or unavailable delivery unit",
                         ))?
                         .row(&row)?;
+                    *unit_pks.get(unit.as_ref()).context(DomainError::new(
+                        ErrorCode::AnalysisUnitScope,
+                        "unit catalog entry missing",
+                    ))?
                 }
                 Origin::Host => {
                     codeana_graph_io::records::validate_host_row(&row)?;
+                    0
                 }
-                Origin::Fixture => {}
-            }
+                Origin::Fixture => 0,
+            };
             let owner = validate_record(&row, &sources, &replaced, header.mode == "delta")?;
             if matches!(
                 codeana_contracts::graph::Table::try_from(row.table),
@@ -323,10 +333,11 @@ impl Store {
                     &check,
                 )?;
             } else {
-                graph_store::insert_with_world(
+                graph_store::insert_owned_with_world(
                     &stage,
                     &row,
                     owner.map(|s| s.world.as_str()).unwrap_or(&row.world),
+                    unit_pk,
                 )?;
             }
             positions += 1;
@@ -375,7 +386,8 @@ impl Store {
         if affected.is_some() {
             replace_affected(&db, &header.replacements)?;
         }
-        graph_store::promote(&db)?;
+        graph_store::unit_metadata::replace_active(&db)?;
+        graph_store::promote_with_context(&db, context)?;
         crate::graph_comments::promote(&db, &revision.manifest, context, &check)?;
         db.execute(
             "INSERT OR REPLACE INTO project_meta VALUES('schema_version',?)",
@@ -719,11 +731,7 @@ fn replace_affected(db: &Connection, owners: &[Owner]) -> Result<()> {
       DELETE FROM file_cache WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
       DELETE FROM rust_analysis_dependencies WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
       DELETE FROM rust_source_states WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
-      DELETE FROM analysis_coverage WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
-      DELETE FROM analysis_coverage WHERE coalesce(source_file,'') IN ('','*') AND EXISTS(SELECT 1 FROM staged.stage_coverage s WHERE coalesce(s.source_file,'') IN ('','*') AND s.module IS analysis_coverage.module AND s.scope IS analysis_coverage.scope AND s.provider_id IS analysis_coverage.provider_id AND s.capability=analysis_coverage.capability);
-      DELETE FROM index_diagnostics;
-      DELETE FROM index_providers;
-      DELETE FROM project_meta WHERE key LIKE 'codeana.context.%' AND EXISTS(SELECT 1 FROM staged.stage_meta WHERE key LIKE 'codeana.context.%') AND key NOT IN(SELECT key FROM staged.stage_meta);")?;
+")?;
     Ok(())
 }
 
@@ -769,9 +777,12 @@ fn seed_baseline(
       SELECT a.node_id,a.annotation_fqn,a.raw_name,a.attributes,a.target_kind,a.target_path,a.language,a.provider_id,a.mechanism,a.resolution_status,a.source_file,a.source_location,a.begin_line,a.begin_column,a.end_line,a.end_column,n.module,n.scope,1,a.node_id,a.producer_id,a.world FROM baseline.annotations a JOIN baseline.nodes n ON n.id=a.node_id WHERE (a.source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (a.source_file,a.world) NOT IN(SELECT source_file,world FROM replaced);
       INSERT INTO stage_annotation_meta(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world) SELECT annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world FROM baseline.annotation_meta_owned WHERE (source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
       INSERT INTO stage_file_cache SELECT provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash,world FROM baseline.file_cache WHERE (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
-      INSERT INTO stage_coverage SELECT * FROM baseline.analysis_coverage WHERE (source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced) AND ((SELECT reused FROM baseline_policy) OR NOT (coalesce(source_file,'') IN ('','*') AND codes LIKE '%CLASSPATH_UNAVAILABLE%'));
-      INSERT INTO stage_diagnostics SELECT severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world FROM baseline.index_diagnostics WHERE (code<>'CLASSPATH_UNAVAILABLE' OR (SELECT reused FROM baseline_policy)) AND (source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
-      INSERT INTO stage_providers SELECT * FROM baseline.index_providers;")?;
+      INSERT INTO stage_coverage SELECT f.path,c.module,c.scope,c.language,c.provider_id,c.capability,c.status,c.occurrences,c.groups_count,c.codes,c.code_counts,c.details_truncated,c.world,c.unit_pk
+      FROM baseline.graph_analysis_coverage c JOIN baseline.source_files f ON f.file_pk=c.source_file
+      WHERE c.unit_pk IN(SELECT unit_pk FROM stage_active_units) AND coalesce(f.path,'') NOT IN('','*') AND (f.path,c.world) NOT IN(SELECT source_file,world FROM replaced);
+      INSERT INTO stage_diagnostics SELECT d.severity,d.code,d.phase,d.source_file,d.module,d.scope,d.symbol,d.language,d.provider_id,d.provider_reason,d.reason_code,d.sample_details,d.occurrence_count,d.sample,d.world,g.unit_pk
+      FROM baseline.index_diagnostics d JOIN baseline.graph_index_diagnostics g ON g.id=d.id
+      WHERE g.unit_pk IN(SELECT unit_pk FROM stage_active_units) AND d.code<>'CLASSPATH_UNAVAILABLE' AND coalesce(d.source_file,'') NOT IN ('','*') AND (d.source_file,d.world) NOT IN(SELECT source_file,world FROM replaced);")?;
     // Persisted call sites are the canonical source; seed their exact range and
     // targets, including unresolved sites, without manufacturing method CALLS.
     stage.execute_batch("INSERT INTO stage_call_sites(source_ref,target_ref,external_target_fqn,external_target_symbol,external_target_language,external_target_provider_id,relation,language,provider_id,call_kind,confidence,is_external,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,context,metadata,source_module,source_scope,source_is_key,target_is_key,resolved_source,resolved_target,producer_id,world)

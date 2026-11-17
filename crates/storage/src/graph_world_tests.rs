@@ -6,6 +6,194 @@ use codeana_contracts::{
     graph::{Table, cell},
 };
 #[test]
+fn unit_metadata_survives_real_candidates_delta_reuse_and_matches_full() -> Result<()> {
+    use codeana_contracts::graph_rows::{
+        CoverageRow, DiagnosticRow, GraphRow, ProjectMetaRow, ProviderRow,
+    };
+    use codeana_graph_io::records::{Origin, Record};
+    let directory = tempfile::tempdir()?;
+    let store = Store::open(directory.path())?;
+    let (mut revision, mut header, _) = captured(&store);
+    let source = revision.manifest.files[0].clone();
+    revision.unit_ownership = Some(UnitOwnershipLedger {
+        version: UNIT_OWNERSHIP_VERSION,
+        units: ["left", "right"]
+            .into_iter()
+            .map(|id| {
+                let sources = if id == "left" {
+                    vec![source.clone()]
+                } else {
+                    vec![]
+                };
+                UnitOwnership {
+                    unit: id.into(),
+                    backend: AnalysisBackend::Java,
+                    availability: UnitAvailability::Ready,
+                    source_languages: vec![SourceLanguage::Java],
+                    modules: vec!["app".into()],
+                    worlds: vec!["main".into()],
+                    scopes: vec!["MAIN".into()],
+                    producer: "mock".into(),
+                    semantic_profile: hash("profile"),
+                    input_digest: hash(id),
+                    inputs: sources.clone(),
+                    sources,
+                }
+            })
+            .collect(),
+    });
+    let records = |diagnostics: bool| -> Vec<Result<Record>> {
+        let mut records = Vec::new();
+        for id in ["left", "right"] {
+            let origin = Origin::Unit(std::sync::Arc::new(id.into()));
+            records.push(Ok(origin.record(
+                ProviderRow {
+                    provider_id: Some("java-core".into()),
+                    language: Some("java".into()),
+                    provider_version: Some("v1".into()),
+                    operations: Some("[]".into()),
+                    limitations: Some("{}".into()),
+                    profile_hash: Some(hash(id)),
+                }
+                .into_row(""),
+            )));
+            records.push(Ok(origin.record(
+                CoverageRow {
+                    source_file: Some("*".into()),
+                    module: Some("app".into()),
+                    scope: Some("MAIN".into()),
+                    language: Some("java".into()),
+                    provider_id: Some("java-core".into()),
+                    capability: Some("AGGREGATE".into()),
+                    status: Some("complete".into()),
+                    occurrences: Some(0),
+                    groups_count: Some(0),
+                    codes: Some("[]".into()),
+                    code_counts: Some("{}".into()),
+                    details_truncated: Some(0),
+                }
+                .into_row(""),
+            )));
+            records.push(Ok(origin.record(
+                ProjectMetaRow {
+                    key: Some("analysis_mode".into()),
+                    value: Some("semantic".into()),
+                }
+                .into_row(""),
+            )));
+            if diagnostics {
+                records.push(Ok(origin.record(
+                    DiagnosticRow {
+                        severity: Some("warning".into()),
+                        code: Some("GLOBAL".into()),
+                        phase: Some("analysis".into()),
+                        source_file: if id == "left" {
+                            Some(String::new())
+                        } else {
+                            None
+                        },
+                        module: Some("app".into()),
+                        scope: Some("MAIN".into()),
+                        language: Some("java".into()),
+                        provider_id: Some("java-core".into()),
+                        occurrence_count: Some(1),
+                        sample: Some(id.into()),
+                        ..Default::default()
+                    }
+                    .into_row(""),
+                )));
+            }
+        }
+        records
+    };
+    let first = store.publish_staged(
+        store.stage_owned_graph_records_with_context(
+            revision.clone(),
+            &header,
+            records(true).into_iter(),
+            "",
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-metadata-full",
+    )?;
+    let first_reader = store.read(&first.id)?;
+    assert_eq!(
+        first_reader.connection.query_row(
+            "SELECT count(DISTINCT unit_pk) FROM unit_providers",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        2
+    );
+    assert_eq!(
+        first_reader
+            .connection
+            .query_row("SELECT count(*) FROM index_providers", [], |r| r
+                .get::<_, i64>(0))?,
+        1
+    );
+    header.mode = AnalysisMode::Delta;
+    header.baseline = first.id.clone();
+    let delta = store.publish_staged(
+        store.stage_owned_graph_records_with_context(
+            revision.clone(),
+            &header,
+            records(false).into_iter(),
+            &first.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-metadata-delta",
+    )?;
+    assert_eq!(
+        store.read(&delta.id)?.connection.query_row(
+            "SELECT count(*) FROM index_diagnostics",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        0
+    );
+    let reused = store.publish_staged(
+        store.stage_reused_graph_with_context(
+            revision.clone(),
+            &delta.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-metadata-reuse",
+    )?;
+    let before = canonical(&store.read(&reused.id)?.connection)?;
+    assert_eq!(before, canonical(&store.read(&delta.id)?.connection)?);
+    header.mode = AnalysisMode::Full;
+    header.baseline = reused.id.clone();
+    let full = store.publish_staged(
+        store.stage_owned_graph_records_with_context(
+            revision,
+            &header,
+            records(false).into_iter(),
+            &reused.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-metadata-full-again",
+    )?;
+    assert_eq!(before, canonical(&store.read(&full.id)?.connection)?);
+    assert_eq!(
+        store.read(&first.id)?.connection.query_row(
+            "SELECT count(*) FROM index_diagnostics",
+            [],
+            |r| r.get::<_, i64>(0)
+        )?,
+        2
+    );
+    Ok(())
+}
+#[test]
 fn host_assigned_delivery_origin_cannot_borrow_a_peer_or_an_unavailable_unit() -> Result<()> {
     use codeana_graph_io::records::Origin;
     let directory = tempfile::tempdir()?;

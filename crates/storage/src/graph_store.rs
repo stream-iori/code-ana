@@ -8,6 +8,7 @@ use rusqlite::{
 use sha2::{Digest, Sha256};
 
 mod language_completion;
+pub(crate) mod unit_metadata;
 use language_completion::resolve_reference;
 
 mod inserts {
@@ -16,7 +17,7 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 14;
+pub const SCHEMA_VERSION: i64 = 15;
 pub const SOURCE_SCHEMA_VERSION: i64 = 36;
 pub const PAGE_SIZE: i64 = 4096;
 
@@ -88,13 +89,15 @@ pub fn restore_bulk(
 pub fn initialize_stage(db: &Connection) -> Result<()> {
     db.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA foreign_keys=OFF; PRAGMA cache_size=-64000;")?;
     db.execute_batch(include_str!("anatomist-stage.sql"))?;
+    db.execute_batch(include_str!("unit-catalog.sql"))?;
+    db.execute_batch("CREATE TABLE stage_active_units(unit_pk INTEGER PRIMARY KEY);")?;
     db.execute_batch("CREATE TABLE stage_file_cache(provider_id TEXT,source_file TEXT,hash TEXT,schema_version INTEGER,node_count INTEGER,edge_count INTEGER,file_size INTEGER,contract_hash TEXT,world TEXT NOT NULL DEFAULT '');
       CREATE TABLE stage_file_dependencies(source_provider_id TEXT,source_file TEXT,depends_on_provider_id TEXT,depends_on_file TEXT,world TEXT NOT NULL DEFAULT '');
       CREATE TABLE stage_symbol_dependencies(target_key BLOB,source_file TEXT,world TEXT NOT NULL DEFAULT '');
-      CREATE TABLE stage_diagnostics(severity TEXT,code TEXT,phase TEXT,source_file TEXT,module TEXT,scope TEXT,symbol TEXT,language TEXT,provider_id TEXT,provider_reason TEXT,reason_code TEXT,sample_details TEXT,occurrence_count INTEGER,sample TEXT,world TEXT NOT NULL DEFAULT '');
-      CREATE TABLE stage_coverage(source_file TEXT,module TEXT,scope TEXT,language TEXT,provider_id TEXT,capability TEXT,status TEXT,occurrences INTEGER,groups_count INTEGER,codes TEXT,code_counts TEXT,details_truncated INTEGER,world TEXT NOT NULL DEFAULT '');
-      CREATE TABLE stage_providers(provider_id TEXT,language TEXT,provider_version TEXT,operations TEXT,limitations TEXT,profile_hash TEXT);
-      CREATE TABLE stage_meta(key TEXT PRIMARY KEY,value TEXT);
+      CREATE TABLE stage_diagnostics(severity TEXT,code TEXT,phase TEXT,source_file TEXT,module TEXT,scope TEXT,symbol TEXT,language TEXT,provider_id TEXT,provider_reason TEXT,reason_code TEXT,sample_details TEXT,occurrence_count INTEGER,sample TEXT,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE stage_coverage(source_file TEXT,module TEXT,scope TEXT,language TEXT,provider_id TEXT,capability TEXT,status TEXT,occurrences INTEGER,groups_count INTEGER,codes TEXT,code_counts TEXT,details_truncated INTEGER,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE stage_providers(provider_id TEXT,language TEXT,provider_version TEXT,operations TEXT,limitations TEXT,profile_hash TEXT,unit_pk INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(unit_pk,provider_id));
+      CREATE TABLE stage_meta(key TEXT,value TEXT,unit_pk INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(unit_pk,key));
       CREATE TABLE stage_rust_source_states(source_file TEXT,world TEXT,state TEXT,PRIMARY KEY(source_file,world));
       CREATE TABLE stage_rust_dependencies(source_file TEXT,world TEXT,kind TEXT,target_world TEXT,target_key TEXT);")?;
     db.execute_batch("CREATE TABLE stage_comments(id TEXT PRIMARY KEY,source_file TEXT NOT NULL,source_hash TEXT NOT NULL,module TEXT NOT NULL,scope TEXT NOT NULL,language TEXT NOT NULL,provider_id TEXT NOT NULL,producer_id TEXT NOT NULL,kind TEXT NOT NULL,byte_start INTEGER NOT NULL,byte_end INTEGER NOT NULL,begin_line INTEGER NOT NULL,begin_column INTEGER NOT NULL,end_line INTEGER NOT NULL,end_column INTEGER NOT NULL,body TEXT NOT NULL,body_map TEXT NOT NULL,rule_version TEXT NOT NULL,world TEXT NOT NULL DEFAULT '',terms TEXT NOT NULL DEFAULT '');
@@ -106,6 +109,14 @@ pub fn insert(db: &Connection, row: &Row) -> Result<()> {
     insert_with_world(db, row, &row.world)
 }
 pub fn insert_with_world(db: &Connection, row: &Row, world: &str) -> Result<()> {
+    insert_owned_with_world(db, row, world, 0)
+}
+pub fn insert_owned_with_world(
+    db: &Connection,
+    row: &Row,
+    world: &str,
+    unit_pk: i64,
+) -> Result<()> {
     let table = Table::try_from(row.table).context(codeana_model::DomainError::new(
         codeana_model::ErrorCode::GraphTableUnknown,
         "",
@@ -123,17 +134,17 @@ pub fn insert_with_world(db: &Connection, row: &Row, world: &str) -> Result<()> 
         Table::FileDependency => "INSERT INTO stage_file_dependencies VALUES(?,?,?,?,?)",
         Table::SymbolDependency => "INSERT INTO stage_symbol_dependencies VALUES(?,?,?)",
         Table::Diagnostic => {
-            "INSERT INTO stage_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            "INSERT INTO stage_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world,unit_pk) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
         Table::Coverage => {
-            "INSERT INTO stage_coverage(source_file,module,scope,language,provider_id,capability,status,occurrences,groups_count,codes,code_counts,details_truncated,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)"
+            "INSERT INTO stage_coverage(source_file,module,scope,language,provider_id,capability,status,occurrences,groups_count,codes,code_counts,details_truncated,world,unit_pk) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
-        Table::Provider => "INSERT INTO stage_providers VALUES(?,?,?,?,?,?)",
+        Table::Provider => "INSERT OR REPLACE INTO stage_providers VALUES(?,?,?,?,?,?,?)",
         Table::SourceState => {
             "INSERT OR REPLACE INTO stage_rust_source_states VALUES(?,?,json_remove(?,'$.dependencies'))"
         }
         Table::AnalysisDependency => "INSERT INTO stage_rust_dependencies VALUES(?,?,?,?,?)",
-        Table::ProjectMeta => "INSERT OR REPLACE INTO stage_meta VALUES(?,?)",
+        Table::ProjectMeta => "INSERT OR REPLACE INTO stage_meta VALUES(?,?,?)",
         Table::Comment => {
             "INSERT INTO stage_comments(id,source_file,source_hash,module,scope,language,provider_id,producer_id,kind,byte_start,byte_end,begin_line,begin_column,end_line,end_column,body,body_map,rule_version,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
@@ -179,8 +190,13 @@ pub fn insert_with_world(db: &Connection, row: &Row, world: &str) -> Result<()> 
     let mut statement = db.prepare_cached(sql)?;
     let owns_world = codeana_graph_io::scope::source_columns(table).is_some()
         && !matches!(table, Table::SourceState | Table::AnalysisDependency);
+    let owns_unit = matches!(
+        table,
+        Table::Diagnostic | Table::Coverage | Table::Provider | Table::ProjectMeta
+    );
     ensure!(
-        statement.parameter_count() == row.cells.len() + usize::from(owns_world),
+        statement.parameter_count()
+            == row.cells.len() + usize::from(owns_world) + usize::from(owns_unit),
         codeana_model::DomainError::new(
             codeana_model::ErrorCode::GraphColumnCount,
             format!(
@@ -197,7 +213,8 @@ pub fn insert_with_world(db: &Connection, row: &Row, world: &str) -> Result<()> 
         Some(cell::Value::Blob(b)) => Value::Blob(b.clone()),
     });
     statement.execute(params_from_iter(
-        values.chain(owns_world.then(|| Value::Text(world.to_owned()))),
+        values.chain(owns_world.then(|| Value::Text(world.to_owned())))
+            .chain(owns_unit.then_some(Value::Integer(unit_pk))),
     )).map_err(|error| {
         if matches!(&error, rusqlite::Error::SqliteFailure(_, Some(message)) if message == "NODE_WORLD_OWNERSHIP_CONFLICT") {
             anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::GraphWorldOwnershipConflict, "node ID belongs to another world"))
@@ -327,18 +344,20 @@ pub(super) fn identity_error(error: rusqlite::Error) -> anyhow::Error {
     }
 }
 pub fn promote(db: &Connection) -> Result<()> {
+    promote_with_context(db, None)
+}
+pub fn promote_with_context(
+    db: &Connection,
+    context: Option<&codeana_model::GraphStagingContext>,
+) -> Result<()> {
     db.execute_batch(include_str!("anatomist-promote.sql"))
         .map_err(identity_error)?;
     db.execute_batch("INSERT INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash,world) SELECT * FROM staged.stage_file_cache;
       INSERT OR IGNORE INTO file_dependencies(source_provider_id,source_file,depends_on_provider_id,depends_on_file,world) SELECT * FROM staged.stage_file_dependencies;
       INSERT OR IGNORE INTO symbol_dependencies SELECT * FROM staged.stage_symbol_dependencies;
-      INSERT INTO index_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world) SELECT * FROM staged.stage_diagnostics;
-      INSERT INTO analysis_coverage SELECT * FROM staged.stage_coverage;
-      INSERT OR REPLACE INTO index_providers SELECT * FROM staged.stage_providers;
-      INSERT OR REPLACE INTO project_meta SELECT * FROM staged.stage_meta;
       INSERT INTO rust_source_states SELECT * FROM staged.stage_rust_source_states;
       INSERT INTO rust_analysis_dependencies SELECT * FROM staged.stage_rust_dependencies;")?;
-    Ok(())
+    unit_metadata::promote(db, context)
 }
 
 #[cfg(test)]
@@ -364,6 +383,17 @@ mod tests {
                 .unwrap_err()
                 .to_string()
                 .contains("run index --full")
+        );
+        db.pragma_update(None, "user_version", 14)?;
+        assert!(
+            initialize(&db)
+                .unwrap_err()
+                .to_string()
+                .contains("run index --full")
+        );
+        assert_eq!(
+            db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
+            14
         );
         db.pragma_update(None, "user_version", 0)?;
         initialize(&db)?;

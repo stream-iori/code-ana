@@ -1,6 +1,6 @@
 # 存储与原子发布
 
-对齐 2026-11-17：图库物理 `user_version=14`、Anatomist 逻辑 schema 36；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
+对齐 2026-11-17：图库物理 `user_version=15`、Anatomist 逻辑 schema 36；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
 
 Rust 存储按 blob、task、object、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。派生缓存位于独立 codeana-derived-cache crate，文本搜索与 Java worker 共享实现，原目录、锁、配额及持久化契约保持。对象使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
 
@@ -96,7 +96,7 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 
 ## 注释物理布局（C1 已交付）
 
-当前源码 schema 14 / 逻辑 36 保留 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。关联只接受 documents/enclosing_callable，basis 只接受 language_rule。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；三语言生命周期与实际分发已由 C2—C4 覆盖，A7 验证最终重构产物。
+当前源码 schema 15 / 逻辑 36 保留 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。关联只接受 documents/enclosing_callable，basis 只接受 language_rule。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；三语言生命周期与实际分发已由 C2—C4 覆盖，A7 验证最终重构产物。
 
 ### 显式语言补全
 
@@ -104,9 +104,9 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 
 CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage 投影为类型化注释输入缺口。JSON 及 scope/world 字符串先按存储长度准入，再解码/复制；SQL VM 与读取共用当前账户和取消 token。仅消费已冻结字段，不新增 schema 或修改历史库。
 
-物理 schema 14 将 source/world 联合用于替换和基线保留。边、注解、元注解来源、文件缓存及依赖保留 world；文件依赖同时保存目标 world，反查不再按路径挑第一个来源。声明匹配、重复事实 ordinal 和调用点来源/重建使用对应 world；注释/FTS 与 Rust 状态/依赖只删除指定来源实例。路径字典仍只代表字节路径，内部 file_pk 不充当语义来源身份。无 source 的汇总诊断沿用重新交付策略，NULL 不因复合 NOT IN 比较被额外保留。
+物理 schema 15 将 source/world 联合用于替换和基线保留。边、注解、元注解来源、文件缓存及依赖保留 world；文件依赖同时保存目标 world，反查不再按路径挑第一个来源。声明匹配、重复事实 ordinal 和调用点来源/重建使用对应 world；注释/FTS 与 Rust 状态/依赖只删除指定来源实例。路径字典仍只代表字节路径，内部 file_pk 不充当语义来源身份。无 source 的汇总诊断沿用重新交付策略，NULL 不因复合 NOT IN 比较被额外保留。
 
-所有写入仍在私有候选和同一次 CAS 内。旧 schema 13 及更早不原地升级，查询/增量返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 从冻结输入建立新库并切 head，旧文件按原保留策略处理。GRA1 逻辑列、worker 25、graph model 6、Java ABI 4 和上游逻辑 schema 36 不变；主机投影补足的 world 不改公开实体 ID 或 hash 算法。无来源字典的完整单元归属及任意单元 Full/Delta/Reuse 合并仍在 R4 后续范围。
+所有写入仍在私有候选和同一次 CAS 内。旧 schema 14 及更早不原地升级，查询/增量返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 从冻结输入建立新库并切 head，旧文件按原保留策略处理。GRA1 逻辑列、worker 25、graph model 6、Java ABI 4 和上游逻辑 schema 36 不变；主机投影补足的 world 不改公开实体 ID 或 hash 算法。无来源字典的完整单元归属及任意单元 Full/Delta/Reuse 合并仍在 R4 后续范围。
 
 公开节点 ID 不允许跨 world 覆盖，公开关系/注解的 hash+ordinal 与调用点 stable_hash 有物理唯一约束。producer 的身份不满足隔离要求时返回 GRAPH_WORLD_OWNERSHIP_CONFLICT，不能靠改名或静默合并生成假精确结果；失败保留旧 head。
 
@@ -114,4 +114,8 @@ CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage
 
 复用校验使用 model 的 `UnitMergePlan::all_reused`，同时核对 project/checkout/target、完整有效归属清单，以及 FilesOnly 单元没有增删或变更。生产入口通过 `all_reused_with_budget` 从原 host 账户预付校验映射和计划分配；共享 manifest 映射归固定顺序首个 host，单元成本归自身后端，额度失败保留资源错误身份。`UnitMergePlan::new` 已定义逐单元 Full/Delta/Reuse/Removed/FilesOnly 的合并意图：Full、Removed 和 FilesOnly 从新旧清单导出完整来源范围；Delta 必须覆盖变更、删除和新增来源，不能借其他单元或 world 的 owner；Reuse 不接受替换范围。辅助绑定输入的发布单元消失或身份变化时，其消费者必须重分析。这是来源范围与复用的前置校验，尚未开放任意单元混合的 SQL 合并，也不代替各 worker 的 VerifiedEnd。
 
-生产候选入口接收带主机来源的 `graph_io::records::Record`，再按 Ready 单元的完整输入、语言和观察模块校验。未知、FilesOnly 或跨单元的来源拒绝；共享辅助输入不能授权节点发布。Host 仅可写准备说明及 coverage，保留原行大小/列数/world 准入。旧无来源行接口仅供显式 fixture，应用架构门禁禁止回到该入口。当前标签已传到存储校验点，无来源节点和 metadata 的持久化单元归属仍待后续实现。
+生产候选入口接收带主机来源的 `graph_io::records::Record`，再按 Ready 单元的完整输入、语言和观察模块校验。未知、FilesOnly 或跨单元的来源拒绝；共享辅助输入不能授权节点发布。Host 仅可写准备说明及 coverage，保留原行大小/列数/world 准入。旧无来源行接口仅供显式 fixture，应用架构门禁禁止回到该入口。
+
+物理 schema 15 将 diagnostics、coverage、providers 与 project_meta 按主机来源持久化。unit_catalog 保存内部整数键与稳定单元 ID；0 仅为显式 Host/Fixture 桶。coverage 的物理唯一键含 unit_pk，公开视图列与业务 ID 保持；unit_providers、unit_project_meta 保存原始逐单元值，不存完整 Row/Fact 日志。活动集合来自执行计划的 Ready 单元，不能从输出推断；即使零输出也替换其全局观察，未活动单元保留。Delta 只继承活动单元未替换来源的文件观察；NULL、空串和 `*` 的全局观察均要求重新交付。显式整项目 Reused 不清除任何单元观察。当前活动集合仍由既有整项目执行路径提供，尚未开放任意单元混合。
+
+公开摘要由所有保留单元重新计算：任一 source_only／classpath unavailable／fallback 不会被其他正常单元覆盖。同一 provider 仍只有一条公开摘要；不同单元 profile 以稳定单元 ID 排序后生成聚合 hash，相同 profile 保持原值，运算能力取交集，不同限制按单元保留，版本或语言不同时明确显示 mixed／`*`。不相容的同 world 编译上下文拒绝发布。provider 读取/聚合在复制和 JSON 解码前从原 host 账户预付；SQL VM、临时文件与其余 staging 分配的完整计量仍待审计。无来源节点、元注解、缓存及依赖的完整单元归属仍待后续实现。

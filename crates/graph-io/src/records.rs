@@ -9,7 +9,7 @@ use prost::Message;
 use std::sync::Arc;
 
 /// Include in semantic profiles when changing host publication/provenance policy.
-pub const POLICY_VERSION: u32 = 1;
+pub const POLICY_VERSION: u32 = 2;
 
 pub fn validate_host_row(row: &Row) -> Result<()> {
     codeana_contracts::validate_graph_row(row)?;

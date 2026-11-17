@@ -168,7 +168,7 @@ enabled=false
             self.assertEqual(db.execute('PRAGMA integrity_check').fetchone()[0],'ok')
             self.assertEqual(db.execute('PRAGMA foreign_key_check').fetchall(),[])
             self.assertEqual(db.execute('PRAGMA page_size').fetchone()[0],4096)
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],14)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],15)
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name LIKE '%semantic_annotations%'").fetchall())
             self.assertEqual(db.execute("SELECT value FROM project_meta WHERE key='schema_version'").fetchone()[0],'36')
             self.assertFalse(db.execute("SELECT 1 FROM sqlite_master WHERE name='facts'").fetchall())
