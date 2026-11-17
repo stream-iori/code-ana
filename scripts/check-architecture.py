@@ -98,6 +98,8 @@ def rust_violations(path, source):
         failures.append('the running unit must own factory launches')
     if filename != 'lib.rs' and re.search(r'\bimpl\s+Engine\s*\{', code):
         failures.append('service implementation cannot depend on Engine')
+    if application and re.search(r'\b(?:ExecutionPolicy|index_rust|index_python|index_prepared|JavaAttempt|RustAttempt)\b', code):
+        failures.append('language combinations cannot select a separate index executor')
     if filename in ('indexing.rs', 'index_execution.rs', 'rust_inputs.rs'):
         if re.search(r'\b(?:Engine|Store|TaskRepository)\b|\.\s*jobs\b', code):
             failures.append('index receives task context and index ports, not the global runtime/store')

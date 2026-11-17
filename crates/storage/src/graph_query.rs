@@ -868,6 +868,26 @@ impl ReadContext {
             ..Default::default()
         })
     }
+    pub fn rust_baseline_summary_for(&self, unit: &AnalysisUnitId) -> Result<BaselineSummary> {
+        let owner = self
+            .revision
+            .unit_ownership
+            .as_ref()
+            .and_then(|ledger| ledger.units.iter().find(|u| &u.unit == unit))
+            .context("UNIT_OWNERSHIP_BASELINE_UNIT")?;
+        let sources: BTreeSet<_> = owner
+            .sources
+            .iter()
+            .map(|s| (s.path.as_str(), s.world.as_str()))
+            .collect();
+        let mut rust_states = self.read_rust_states()?;
+        rust_states.retain(|state| sources.contains(&(state.file.as_str(), state.world.as_str())));
+        Ok(BaselineSummary {
+            rust_states,
+            files: owner.inputs.clone(),
+            ..Default::default()
+        })
+    }
     pub fn baseline_summary_for(
         &self,
         next: &Manifest,

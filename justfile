@@ -169,6 +169,7 @@ test-python:
   python3 tests/python_language_e2e.py
   python3 tests/python_comment_e2e.py
   python3 tests/prepared_inputs_e2e.py
+  python3 tests/multilang_analysis_e2e.py
 
 package-python output:
   cargo build --release --workspace --locked
@@ -179,6 +180,7 @@ test-python-release package:
   cd '{{package}}' && shasum -a 256 -c SHA256SUMS
   CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/python_language_e2e.py
   CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/python_comment_e2e.py
+  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/multilang_analysis_e2e.py
   CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/prepared_inputs_e2e.py
 
 # Java combinations require the matching installed Native SDK.
@@ -227,3 +229,9 @@ comment-fixture-measure directory:
 test-java17:
   CODEANA_JAVA_BACKEND=jvm python3 tests/java17_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/java17_e2e.py
+
+# Real Rust/Python per-unit Full/Delta/Reuse/Removed/FilesOnly publication.
+test-multilang:
+  cargo build --workspace --locked
+  ./scripts/build-python.sh
+  python3 tests/multilang_analysis_e2e.py

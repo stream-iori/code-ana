@@ -4,6 +4,18 @@ pub struct SpooledAnalysis {
     pub header: AnalysisHeader,
     pub records: GraphArchive,
 }
+impl Worker {
+    pub(super) fn delivery_limits(&self) -> codeana_contracts::graph_delivery::OutputLimits {
+        self.output_limits
+    }
+    pub(super) fn candidate_disk(&self) -> Option<super::resources::DiskBudget> {
+        self.scratch
+            .lock()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.budget.clone())
+    }
+}
 pub enum Language<'a> {
     Java(Option<&'a super::java::PreparedJava>),
     Rust(&'a w::RustConfig),

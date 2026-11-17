@@ -3,10 +3,10 @@
 import contextlib,hashlib,json,os,sqlite3,subprocess,time,unittest
 from product_support import BIN,FIX
 import product_support
-from java_graph_storage import GraphStorage
+from graph_product_support import canonical_graph
 
 class GraphProduct(product_support.MockProductHarness):
-    canonical=GraphStorage.canonical
+    canonical=canonical_graph
     def test_typed_graph_delta_history_and_pagination(self):
         first=self.cli('index')[1]['revision'];before=self.canonical(first)
         with contextlib.closing(sqlite3.connect(self.home/'revisions'/first/'facts.db')) as db:

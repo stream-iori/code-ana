@@ -1,34 +1,12 @@
-//! Host execution policies for a compiled index plan. No language adaptor owns fan-out.
+//! One task executor: backend policy chooses each unit, then one candidate is published.
 use super::*;
+use crate::analysis_unit::{PreparedInput, RunningUnit, RunningUnits};
 use crate::indexing::PublishedIndex;
 use crate::ports::RustBaselineReader;
 use crate::rust_inputs::RustInput;
 use codeana_contracts::graph_rows::{CoverageRow, GraphRow, ProjectMetaRow};
-
-/// Use only after the complete semantic profile matches. The root config is a
-/// FILES capture too; its presentation bytes must not force a semantic rerun.
-fn same_sources_for_profile(before: &Manifest, after: &Manifest) -> bool {
-    codeana_model::same_semantic_sources(&before.files, &after.files)
-}
-
-fn rust_input(units: &crate::analysis_unit::RunningUnits) -> Result<&RustInput> {
-    let crate::analysis_unit::PreparedInput::Rust(input) = &units.unit("rust")?.input else {
-        bail!("RUST_UNIT_INPUT_REQUIRED");
-    };
-    Ok(input)
-}
-
-struct RustBaseline {
-    expected: RevisionId,
-    profile: String,
-    full: bool,
-    old: Option<BaselineInput>,
-    unchanged: bool,
-}
-struct RustAttempt {
-    units: crate::analysis_unit::RunningUnits,
-    baseline: RustBaseline,
-}
+use codeana_graph_io::records::{ArchiveInput, Archives, Origin};
+use std::collections::BTreeSet;
 
 impl IndexTask {
     async fn stop_running_units(&self, id: &str, units: &mut crate::analysis_unit::RunningUnits) {
@@ -79,7 +57,7 @@ impl IndexTask {
                     crate::python_inputs::prepare_inputs(&captured, &directory, mode)
                 })
                 .await??;
-                PreparedInput::Python(input.descriptor, request.python_guard.clone())
+                PreparedInput::Python(input, request.python_guard.clone())
             }
         })
     }
@@ -129,1070 +107,360 @@ impl IndexTask {
         Ok(())
     }
 
-    pub(super) async fn index_rust(
+    pub(super) async fn index_units(
         &self,
         id: &str,
         req: &IndexCommand,
         mut capture: Capture,
         plan: &crate::index_plan::IndexPlan,
+        baseline: Option<&Revision>,
         cancel: &CancellationToken,
     ) -> Result<TaskResult> {
         let started = Instant::now();
-        ensure!(!self.workers.is_mock(), "RUST_REAL_WORKER_REQUIRED");
-        let expected = plan.baseline.clone();
-        ensure!(
-            req.expected_revision.is_empty() || expected == req.expected_revision.as_str(),
-            DomainError::new(ErrorCode::HeadConflict, "")
+        let mut timings = timings::IndexTimings::start(id);
+        let scratch = Arc::new(
+            tempfile::Builder::new()
+                .prefix("analysis-index-")
+                .tempdir_in(self.index.home())?,
         );
-        let input = self.prepare_rust_inputs(id, &capture).await?;
-        let mut units = self
-            .start_rust_units(
-                id,
-                input,
-                &capture,
-                plan.executes(AnalysisBackend::Java),
-                cancel,
-                plan,
-            )
-            .await?;
-        let baseline_result = self
-            .resolve_rust_baseline(id, req, &capture, &units, expected)
-            .await;
-        let baseline = match baseline_result {
-            Ok(baseline) => baseline,
-            Err(error) => {
-                return self.finish_running_units(id, &mut units, Err(error)).await;
-            }
-        };
-        let mut attempt = RustAttempt { units, baseline };
-        let result: Result<TaskResult> = async {
-            let analyzing = Instant::now();
-            let (result_mode, candidate) = self
-                .analyze_rust_index(id, &capture, &mut attempt, cancel)
-                .await?;
-            let analyze_ms = analyzing.elapsed().as_millis() as u64;
-            self.task.event(
-                &TaskId::from(id),
-                &Event::Progress(format!(
-                    "rust_worker_memory {}",
-                    serde_json::to_string(&attempt.units.unit("rust")?.worker()?.memory_usage())?
-                )),
-            )?;
-            let summary = self.index.summary(&candidate).clone();
-            let evidence = summary.evidence.clone();
-            let (revision, publishing) = match self
-                .publish_candidate(
-                    id,
-                    req,
-                    &mut capture,
-                    crate::indexing::CandidatePublication {
-                        candidate,
-                        producer: "rust-core",
-                        progress: Some("rust_publish"),
-                    },
-                    cancel,
-                )
-                .await?
-            {
-                crate::indexing::CandidateOutcome::Committed { revision, started } => {
-                    (*revision, started)
-                }
-                crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
-            };
-            let ack = if attempt.baseline.unchanged {
-                None
-            } else {
-                crate::analysis_unit::acknowledge(attempt.units.workers_mut(), &revision.id).await
-            };
-            if let Ok(memory) =
-                serde_json::to_string(&attempt.units.unit("rust")?.worker()?.memory_usage())
-            {
-                let _ = self.task.event(
-                    &TaskId::from(id),
-                    &Event::Progress(format!("rust_worker_memory {memory}")),
-                );
-            }
-            self.finish_index(
-                id,
-                &capture,
-                PublishedIndex {
-                    revision,
-                    result_mode,
-                    summary,
-                    evidence,
-                    ack,
-                    worker_contexts: attempt.units.contexts()?,
-                    analyze_ms,
-                    publish_ms: publishing.elapsed().as_millis() as u64,
-                    index_elapsed_ms: started.elapsed().as_millis() as u64,
-                },
-            )
-            .await
-        }
-        .await;
-        self.finish_running_units(id, &mut attempt.units, result)
-            .await
-    }
-    async fn start_rust_units(
-        &self,
-        id: &str,
-        input: RustInput,
-        capture: &Capture,
-        java_enabled: bool,
-        cancel: &CancellationToken,
-        plan: &crate::index_plan::IndexPlan,
-    ) -> Result<crate::analysis_unit::RunningUnits> {
-        use crate::analysis_unit::{PreparedInput, RunningUnit, RunningUnits};
-        let memory = input.memory / (1 + u64::from(java_enabled));
-        ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
-        self.reserve_owned_input(id, AnalysisBackend::Rust, "")?;
-        let manifest = self.own_unit_manifest(id, AnalysisBackend::Rust, "", &input.manifest)?;
-        let mut units = RunningUnits {
+        let mut sessions = RunningUnits {
             units: vec![],
-            scratch: input.scratch.clone(),
+            scratch,
         };
-        units.units.push(RunningUnit::prepared(
-            PreparedInput::Rust(Box::new(input)),
-            capture.backend_capture(AnalysisBackend::Rust)?,
-            manifest,
-        )?);
-        let result: Result<()> = async {
-            units
-                .unit_mut("rust")?
-                .start(
-                    &self.workers,
-                    cancel,
-                    memory,
-                    self.analysis_binding(id, AnalysisBackend::Rust, ""),
-                    plan.previous_sources("rust"),
-                    plan.baseline.as_str(),
-                )
-                .await?;
-            if java_enabled {
-                self.reserve_owned_input(id, AnalysisBackend::Java, "")?;
-                let view = capture.backend_capture(AnalysisBackend::Java)?;
-                let manifest =
-                    self.own_unit_manifest(id, AnalysisBackend::Java, "", &view.manifest)?;
-                let input = self.prepare_java_unit(view.clone()).await?;
-                units.units.push(RunningUnit::prepared(
-                    PreparedInput::Java(Box::new(input)),
-                    view,
-                    manifest,
-                )?);
-                units
-                    .unit_mut("java")?
-                    .start(
-                        &self.workers,
-                        cancel,
-                        memory,
-                        self.analysis_binding(id, AnalysisBackend::Java, ""),
-                        plan.previous_sources("java"),
-                        plan.baseline.as_str(),
-                    )
-                    .await?;
-            }
-            Ok(())
-        }
-        .await;
-        if let Err(error) = result {
-            self.stop_running_units(id, &mut units).await;
-            return Err(error);
-        }
-        Ok(units)
-    }
-    async fn resolve_rust_baseline(
-        &self,
-        id: &str,
-        req: &IndexCommand,
-        capture: &Capture,
-        units: &crate::analysis_unit::RunningUnits,
-        expected: RevisionId,
-    ) -> Result<RustBaseline> {
-        let input = rust_input(units)?;
-        let config = &input.config;
-        let rust_worker = units.unit("rust")?.worker()?;
-        let java_worker = units
-            .units
-            .iter()
-            .find(|u| u.unit == "java")
-            .map(|u| u.worker())
-            .transpose()?;
-        let scratch = &input.scratch;
-        // Unpublished dependency bytes can alter bindings without a public source owner.
-        // Rebuild on their change until external interface summaries are available.
-        let dependency_inputs = config
-            .files
-            .iter()
-            .filter(|file| {
-                !config.inputs.crates.iter().any(|c| {
-                    c.publish
-                        && file.crates.contains(&c.id)
-                        && !config
-                            .excluded
-                            .contains(&(file.path.clone(), c.world.clone()))
-                })
-            })
-            .map(|f| (&f.path, &f.hash))
-            .collect::<Vec<_>>();
-        let profile = digest(&(
-            codeana_comment_search::identity(),
-            codeana_graph_io::records::POLICY_VERSION,
-            dependency_inputs,
-            &capture.effective.semantic_digest,
-            config.inputs.semantic_digest(),
-            &rust_worker.context.semantic_digest,
-            java_worker.as_ref().map(|w| &w.context.semantic_digest),
-            "graph6-schema13",
-        ));
-        let mut full =
-            req.full || expected.is_empty() || capture.effective.config.index.mode == "full";
-        let mut old = None;
-        let mut unchanged = false;
-        if !full {
-            let store = self.index.clone().with_context(self.staging_context(id));
-            let baseline_id = expected.clone();
-            let desired_profile = profile.clone();
-            let desired_manifest = capture.manifest.id();
-            let baseline_path = scratch.path().join("baseline-summary.json");
-            let rust_only = java_worker.is_none();
-            let (compatible, same, baseline) = tokio::task::spawn_blocking(move || -> Result<_> {
-                let reader = store.read(&baseline_id)?;
-                if reader.revision().profile != desired_profile {
-                    return Ok((false, false, None));
-                }
-                if rust_only && reader.revision().manifest.id() == desired_manifest {
-                    return Ok((true, true, None));
-                }
-                let bytes =
-                    serde_json::to_vec(&RustBaselineReader::rust_baseline_summary(&reader)?)?;
-                ensure!(bytes.len() <= 64 << 20, "RUST_BASELINE_BUDGET");
-                std::fs::write(&baseline_path, &bytes)?;
-                Ok((
-                    true,
-                    false,
-                    Some(BaselineInput::File(BaselineFile {
-                        path: baseline_path,
-                        sha256: hash(&bytes),
-                        bytes: bytes.len() as u64,
-                    })),
-                ))
-            })
-            .await??;
-            full = !compatible;
-            unchanged = same;
-            old = baseline;
-        }
-        self.task.event(
-            &TaskId::from(id),
-            &Event::Progress(
-                if full {
-                    "rust_analyze_full"
-                } else {
-                    "rust_analyze_delta"
-                }
-                .into(),
-            ),
-        )?;
-        Ok(RustBaseline {
-            expected,
-            profile,
-            full,
-            old,
-            unchanged,
-        })
-    }
-    async fn analyze_rust_index(
-        &self,
-        id: &str,
-        capture: &Capture,
-        attempt: &mut RustAttempt,
-        cancel: &CancellationToken,
-    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
-        let revision = Revision {
-            unit_ownership: self.ownership(
-                capture,
-                &attempt
-                    .units
-                    .units
-                    .iter()
-                    .map(|unit| unit.worker().map(|worker| &worker.context))
-                    .collect::<Result<Vec<_>>>()?,
-            )?,
-            id: String::new(),
-            target: capture.target.clone(),
-            project: capture.project.clone(),
-            checkout: capture.checkout.clone(),
-            manifest: capture.manifest.clone(),
-            profile: attempt.baseline.profile.clone(),
-            producer: if attempt.units.units.iter().any(|unit| unit.unit == "java") {
-                "codeana-java-rust"
-            } else {
-                "rust-core"
-            }
-            .into(),
-            created: 0,
-        };
-        if attempt.baseline.unchanged {
-            self.stage_unchanged_rust(id, attempt, revision, cancel)
-                .await
-        } else if !attempt.units.units.iter().any(|unit| unit.unit == "java") {
-            self.stage_rust_stream(id, attempt, revision, cancel).await
-        } else {
-            self.stage_mixed_languages(id, capture, attempt, revision, cancel)
-                .await
-        }
-    }
-    async fn stage_unchanged_rust(
-        &self,
-        id: &str,
-        attempt: &mut RustAttempt,
-        revision: Revision,
-        cancel: &CancellationToken,
-    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
-        let (rust_worker, _) = attempt.units.unit_mut("rust")?.stream()?;
-        let expected = attempt.baseline.expected.clone();
-        crate::analysis_unit::retire(vec![rust_worker]).await?;
-        self.task.event(
-            &TaskId::from(id),
-            &Event::Progress("rust_analyze_unchanged".into()),
-        )?;
-        self.stage_reused_revision(id, revision, expected, "rust-core".into(), None, cancel)
-            .await
-    }
-    async fn stage_rust_stream(
-        &self,
-        id: &str,
-        attempt: &mut RustAttempt,
-        revision: Revision,
-        cancel: &CancellationToken,
-    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
-        let (worker, manifest) = attempt.units.unit_mut("rust")?.stream()?;
-        self.stage_language_stream(
-            id,
-            worker,
-            crate::indexing::StreamRequest {
-                manifest,
-                revision,
-                expected: &attempt.baseline.expected,
-                baseline: attempt.baseline.old.as_ref(),
-                full: attempt.baseline.full,
-            },
-            cancel,
-        )
-        .await
-    }
-    async fn stage_mixed_languages(
-        &self,
-        id: &str,
-        capture: &Capture,
-        attempt: &mut RustAttempt,
-        revision: Revision,
-        cancel: &CancellationToken,
-    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
-        let input = rust_input(&attempt.units)?;
-        let result_bytes = input.config.result_bytes;
-        let fact_limit = input.config.fact_limit;
-        let expected = attempt.baseline.expected.clone();
-        let profile = attempt.baseline.profile.clone();
-        let full = attempt.baseline.full;
-        let staging_context = self.staging_context(id);
-        let (result, origin) = {
-            let (worker, manifest) = attempt.units.unit_mut("rust")?.stream()?;
-            let origin = worker.record_origin()?;
-            let result = worker
-                .analyze(
-                    manifest,
-                    &profile,
-                    &expected,
-                    attempt.baseline.old.as_ref(),
-                    full,
-                    cancel,
-                )
-                .await?;
-            self.task.event(
-                &TaskId::from(id),
-                &Event::Progress(format!(
-                    "rust_worker_memory {}",
-                    serde_json::to_string(&worker.memory_usage())?
-                )),
-            )?;
-            (result, origin)
-        };
-        let mut archives = vec![codeana_graph_io::records::ArchiveInput {
-            origin,
-            archive: result.records,
-            budget: staging_context
-                .as_ref()
-                .and_then(|c| c.hosts.get(&AnalysisBackend::Rust))
-                .cloned(),
-        }];
-        let mut replacements = result.header.replacements;
-        if let Some(unit) = attempt
-            .units
-            .units
-            .iter_mut()
-            .find(|unit| unit.unit == "java")
-        {
-            let (worker, manifest) = unit.stream()?;
-            let origin = worker.record_origin()?;
-            let result = worker
-                .analyze(manifest, &profile, &expected, None, true, cancel)
-                .await?;
-            archives.push(codeana_graph_io::records::ArchiveInput {
-                origin,
-                archive: result.records,
-                budget: staging_context
-                    .as_ref()
-                    .and_then(|c| c.hosts.get(&AnalysisBackend::Java))
-                    .cloned(),
-            });
-            replacements.extend(
-                manifest
-                    .files
-                    .iter()
-                    .filter(|s| s.language == "java" && !s.auxiliary)
-                    .map(|s| Owner {
-                        world: s.world.clone().into(),
-                        producer: worker.context.producer.clone(),
-                        kind: "source".into(),
-                        id: s.path.clone(),
-                    }),
-            );
-            if !full {
-                let reader = self.index.read(&expected)?;
-                replacements.extend(
-                    reader
-                        .revision()
-                        .manifest
-                        .files
-                        .iter()
-                        .filter(|s| s.language == "java" && !s.auxiliary)
-                        .map(|s| Owner {
-                            world: s.world.clone().into(),
-                            producer: worker.context.producer.clone(),
-                            kind: "source".into(),
-                            id: s.path.clone(),
-                        }),
-                );
-            }
-            unit.input.verify()?;
-        }
-        replacements.sort();
-        replacements.dedup();
-        let producer = if attempt.units.units.iter().any(|unit| unit.unit == "java") {
-            "codeana-java-rust"
-        } else {
-            "rust-core"
-        }
-        .to_owned();
-        let header = AnalysisHeader {
-            mode: if full {
-                AnalysisMode::Full
-            } else {
-                AnalysisMode::Delta
-            },
-            baseline: expected.to_string(),
-            manifest: capture.manifest.id(),
-            profile: profile.clone(),
-            producer: producer.clone(),
-            replacements,
-        };
-        self.task.event(
-            &TaskId::from(id),
-            &Event::Progress("rust_stage_graph".into()),
-        )?;
-        let result_mode = header.mode;
-        let store = self.index.clone().with_context(staging_context);
-        let cancellation = cancel.clone();
-        let candidate = tokio::task::spawn_blocking(move || {
-            store.stage_graph_records(
-                revision,
-                &header,
-                codeana_graph_io::records::Archives::new(
-                    archives,
-                    vec![],
-                    codeana_contracts::graph_delivery::OutputLimits {
-                        bytes: result_bytes,
-                        facts: fact_limit,
-                    },
-                )?,
-                &expected,
-                || {
-                    ensure!(
-                        !cancellation.is_cancelled(),
-                        DomainError::new(ErrorCode::Cancelled, "")
-                    );
-                    Ok(())
-                },
-                |_| Ok(()),
-            )
-        })
-        .await??;
-        Ok((result_mode, candidate))
-    }
-}
-
-impl IndexTask {
-    pub(super) async fn index_python(
-        &self,
-        id: &str,
-        req: &IndexCommand,
-        mut capture: Capture,
-        plan: &crate::index_plan::IndexPlan,
-        cancel: &CancellationToken,
-    ) -> Result<TaskResult> {
-        let started = Instant::now();
-        ensure!(!self.workers.is_mock(), "PYTHON_REAL_WORKER_REQUIRED");
-
-        let expected = plan.baseline.clone();
-        ensure!(
-            req.expected_revision.is_empty() || req.expected_revision == expected.as_str(),
-            DomainError::new(ErrorCode::HeadConflict, "")
-        );
-        let scratch = tempfile::Builder::new()
-            .prefix("python-index-")
-            .tempdir_in(self.index.home())?;
-        let crate::python_inputs::PreparedPython {
-            descriptor,
-            config,
-            source_bytes,
-        } = {
-            let capture = capture.clone();
-            let directory = scratch.path().to_path_buf();
-            tokio::task::spawn_blocking(move || {
-                crate::python_inputs::prepare_inputs(
-                    &capture,
-                    &directory,
-                    crate::python_inputs::InputMode::Standard,
-                )
-            })
-            .await??
-        };
-        let scratch_bytes = descriptor.scratch_bytes;
-        let resources = &capture.effective.config.resources.index;
-        let memory = resources
-            .worker_memory_bytes
-            .unwrap_or(self.workers.memory_cap());
-        ensure!(
-            memory > 0 && memory <= self.workers.memory_cap(),
-            DomainError::new(ErrorCode::ProjectWorkerMemoryLimit, "")
-        );
-        let rust_input = if plan.executes(AnalysisBackend::Rust) {
-            Some(self.prepare_rust_inputs(id, &capture).await?)
-        } else {
-            None
-        };
-        let java_enabled = plan.executes(AnalysisBackend::Java);
-        let memory = memory / (1 + u64::from(rust_input.is_some()) + u64::from(java_enabled));
-        ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
-        let java_capture = if plan.executes(AnalysisBackend::Java) {
-            let mut c = capture.backend_capture(AnalysisBackend::Java)?;
-            c.effective.set_worker_memory_limit(memory);
-            Some(c)
-        } else {
-            None
-        };
-        let prepared = if let Some(c) = java_capture.clone() {
-            Some(self.prepare_java_unit(c).await?)
-        } else {
-            None
-        };
-        // Admit ownership storage while inputs are still outside the running worker scope.
-        // A rejected reservation must not drop an input underneath an already started worker.
-        if rust_input.is_some() {
-            self.reserve_owned_input(id, AnalysisBackend::Rust, "")?;
-        }
-        if prepared.is_some() {
-            self.reserve_owned_input(id, AnalysisBackend::Java, "")?;
-        }
-        let python_capture = capture.backend_capture(AnalysisBackend::Python)?;
-        let python_manifest = python_capture.manifest.clone();
-        let merged_bytes = scratch_bytes - source_bytes - descriptor.bytes;
-        let mut sessions = crate::analysis_unit::RunningUnits {
-            units: vec![],
-            scratch: Arc::new(scratch),
-        };
-        sessions
-            .units
-            .push(crate::analysis_unit::RunningUnit::prepared(
-                crate::analysis_unit::PreparedInput::Python(descriptor, sessions.scratch.clone()),
-                python_capture,
-                python_manifest,
-            )?);
-        if let Some(input) = rust_input {
-            let manifest =
-                self.own_unit_manifest(id, AnalysisBackend::Rust, "", &input.manifest)?;
-            sessions
-                .units
-                .push(crate::analysis_unit::RunningUnit::prepared(
-                    crate::analysis_unit::PreparedInput::Rust(Box::new(input)),
-                    capture.backend_capture(AnalysisBackend::Rust)?,
-                    manifest,
-                )?);
-        }
-        if let (Some(input), Some(c)) = (prepared, java_capture) {
-            let manifest = c.manifest.clone();
-            sessions
-                .units
-                .push(crate::analysis_unit::RunningUnit::prepared(
-                    crate::analysis_unit::PreparedInput::Java(Box::new(input)),
-                    c,
-                    manifest,
-                )?);
-        }
-        sessions
-            .units
-            .sort_by(|a, b| (a.backend(), a.unit.as_str()).cmp(&(b.backend(), b.unit.as_str())));
         let result: Result<TaskResult> = async {
-            for unit in &mut sessions.units {
-                unit.start(
-                    &self.workers,
-                    cancel,
-                    memory,
-                    self.analysis_binding(id, unit.backend(), ""),
-                    plan.previous_sources(&unit.unit),
-                    plan.baseline.as_str(),
-                )
-                .await?;
-            }
-            let contexts = sessions
+            let count = plan
                 .units
                 .iter()
-                .map(|u| Ok(u.worker()?.context.semantic_digest.clone()))
-                .collect::<Result<Vec<_>>>()?;
-            let profile = digest(&(
-                codeana_comment_search::identity(),
-                codeana_graph_io::records::POLICY_VERSION,
-                &capture.effective.semantic_digest,
-                &config.inputs,
-                contexts,
-                python::ADAPTER_VERSION,
-            ));
-            let producer = if sessions.units.len() == 1 {
-                python::PRODUCER.to_owned()
-            } else {
-                "codeana-multi-language".into()
-            };
-            let revision = Revision {
-                unit_ownership: self.ownership(
-                    &capture,
-                    &sessions
-                        .units
-                        .iter()
-                        .map(|u| u.worker().map(|w| &w.context))
-                        .collect::<Result<Vec<_>>>()?,
-                )?,
-                id: String::new(),
-                target: capture.target.clone(),
-                project: capture.project.clone(),
-                checkout: capture.checkout.clone(),
-                manifest: capture.manifest.clone(),
-                profile: profile.clone(),
-                producer: producer.clone(),
-                created: 0,
-            };
-            let unchanged = !req.full
-                && capture.effective.config.index.mode != "full"
-                && !expected.is_empty()
-                && {
-                    let reader = self.index.read(&expected)?;
-                    reader.revision().profile == profile
-                        && same_sources_for_profile(&reader.revision().manifest, &capture.manifest)
-                };
-            let analyzing = Instant::now();
-            let (result_mode, candidate) = if unchanged {
-                crate::analysis_unit::retire(sessions.workers_mut()).await?;
-                self.stage_reused_revision(
-                    id,
-                    revision,
-                    expected.clone(),
-                    producer.clone(),
-                    None,
-                    cancel,
-                )
-                .await?
-            } else {
-                self.task.event(
-                    &TaskId::from(id),
-                    &Event::Progress("python_analyze_full: input_or_environment_changed".into()),
-                )?;
-                if sessions.units.len() == 1 {
-                    let (worker, manifest) = sessions.units[0].stream()?;
-                    self.stage_language_stream(
-                        id,
-                        worker,
-                        crate::indexing::StreamRequest {
-                            manifest,
-                            revision,
-                            expected: &expected,
-                            baseline: None,
-                            full: true,
-                        },
-                        cancel,
-                    )
-                    .await?
-                } else {
-                    self.stage_full_languages(
-                        id,
-                        &mut sessions.units,
-                        revision,
-                        &expected,
-                        codeana_contracts::graph_delivery::OutputLimits {
-                            bytes: merged_bytes,
-                            facts: 6_000_000,
-                        },
-                        cancel,
-                    )
-                    .await?
-                }
-            };
-            for unit in &sessions.units {
-                unit.input.verify()?;
-            }
-            let analyze_ms = analyzing.elapsed().as_millis() as u64;
-            for unit in &sessions.units {
-                let worker = unit.worker()?;
-                self.task.event(
-                    &TaskId::from(id),
-                    &Event::Progress(format!(
-                        "{}_worker_memory {}",
-                        worker.context.backend().as_str(),
-                        serde_json::to_string(&worker.memory_usage())?
-                    )),
-                )?;
-            }
-            let summary = self.index.summary(&candidate).clone();
-            let evidence = summary.evidence.clone();
-            let (revision, publishing) = match self
-                .publish_candidate(
-                    id,
-                    req,
-                    &mut capture,
-                    crate::indexing::CandidatePublication {
-                        candidate,
-                        producer: python::PRODUCER,
-                        progress: None,
-                    },
-                    cancel,
-                )
-                .await?
-            {
-                crate::indexing::CandidateOutcome::Committed { revision, started } => {
-                    (*revision, started)
-                }
-                crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
-            };
-            let publish_ms = publishing.elapsed().as_millis() as u64;
-            let ack = if unchanged {
-                None
-            } else {
-                crate::analysis_unit::acknowledge(sessions.workers_mut(), &revision.id).await
-            };
-            self.finish_index(
-                id,
-                &capture,
-                PublishedIndex {
-                    revision,
-                    result_mode,
-                    summary,
-                    evidence,
-                    ack,
-                    worker_contexts: sessions.contexts()?,
-                    analyze_ms,
-                    publish_ms,
-                    index_elapsed_ms: started.elapsed().as_millis() as u64,
-                },
-            )
-            .await
-        }
-        .await;
-        self.finish_running_units(id, &mut sessions, result).await
-    }
-}
-
-impl IndexTask {
-    pub(super) async fn index_prepared(
-        &self,
-        id: &str,
-        req: &IndexCommand,
-        mut capture: Capture,
-        plan: &crate::index_plan::IndexPlan,
-        cancel: &CancellationToken,
-    ) -> Result<TaskResult> {
-        ensure!(!self.workers.is_mock(), "PREPARED_REAL_WORKER_REQUIRED");
-        let started = Instant::now();
-        let expected = plan.baseline.clone();
-        ensure!(
-            req.expected_revision.is_empty() || req.expected_revision == expected.as_str(),
-            DomainError::new(ErrorCode::HeadConflict, "")
-        );
-        let scratch = tempfile::Builder::new()
-            .prefix("prepared-index-")
-            .tempdir_in(self.index.home())?;
-        let count = plan
-            .units
-            .iter()
-            .filter(|u| u.availability == UnitAvailability::Ready)
-            .count()
-            .max(1) as u64;
-        let memory = capture
-            .effective
-            .config
-            .resources
-            .index
-            .worker_memory_bytes
-            .unwrap_or(self.workers.memory_cap());
-        ensure!(
-            memory > 0 && memory <= self.workers.memory_cap(),
-            "PROJECT_WORKER_MEMORY_LIMIT"
-        );
-        let memory = memory / count;
-        ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
-        capture.effective.set_worker_memory_limit(memory);
-        let mut sessions = crate::analysis_unit::RunningUnits {
-            units: vec![],
-            scratch: Arc::new(scratch),
-        };
-        let result: Result<TaskResult> = async {
-            let mut additional = vec![];
-            for unit in plan.units.iter().filter(|u| {
-                u.availability == UnitAvailability::FilesOnly && u.prepared_index.is_none()
-            }) {
-                let modules = capture
-                    .effective
-                    .config
-                    .modules
-                    .iter()
-                    .filter(|m| crate::index_plan::language(&m.language) == Some(unit.language))
-                    .map(|m| m.id.as_str())
-                    .collect::<Vec<_>>();
-                for module in if modules.is_empty() {
-                    vec![unit.id.as_str()]
-                } else {
-                    modules
-                } {
-                    for scope in &capture.effective.config.scan.scopes {
-                        additional.push(
-                            CoverageRow {
-                                source_file: Some("*".into()),
-                                module: Some(module.into()),
-                                scope: Some(scope.clone()),
-                                language: Some(unit.language.as_str().into()),
-                                provider_id: Some("codeana-inputs".into()),
-                                capability: Some("AGGREGATE".into()),
-                                status: Some("partial".into()),
-                                occurrences: Some(1),
-                                groups_count: Some(1),
-                                codes: Some("[\"INPUT_CONTEXT_UNAVAILABLE\"]".into()),
-                                code_counts: Some("{\"INPUT_CONTEXT_UNAVAILABLE\":1}".into()),
-                                details_truncated: Some(0),
-                            }
-                            .into_row(&key("input-availability", &[module])),
-                        );
-                    }
-                }
-            }
-            let mut planned_units = plan
-                .units
-                .iter()
-                .filter(|u| u.availability == UnitAvailability::Ready);
-            let mut ordered = capture
+                .filter(|u| u.availability == UnitAvailability::Ready)
+                .count()
+                .max(1) as u64;
+            let memory = capture
                 .effective
-                .input_units
-                .iter()
-                .enumerate()
-                .collect::<Vec<_>>();
-            ordered.sort_by(|(_, a), (_, b)| {
-                (
-                    crate::index_plan::language(&a.prepared.language),
-                    a.prepared.id.as_str(),
-                )
-                    .cmp(&(
-                        crate::index_plan::language(&b.prepared.language),
-                        b.prepared.id.as_str(),
-                    ))
-            });
-            for (index, unit) in ordered {
-                self.task.event(
-                    &TaskId::from(id),
-                    &Event::Progress(format!(
-                        "input_unit {} {:?}",
-                        unit.prepared.id, unit.prepared.mode
-                    )),
-                )?;
-                additional.push(
-                    ProjectMetaRow {
-                        key: Some(format!("inputs.unit.{}", unit.prepared.id)),
-                        value: Some(serde_json::to_string(&unit.prepared)?),
-                    }
-                    .into_row(""),
-                );
-                let Some(_) = &unit.context else {
-                    let modules = if unit.prepared.modules.is_empty() {
-                        &unit.prepared.entries
-                    } else {
-                        &unit.prepared.modules
-                    };
-                    for entry in modules {
-                        for scope in &capture.effective.config.scan.scopes {
-                            additional.push(
-                                CoverageRow {
-                                    source_file: Some("*".into()),
-                                    module: Some(entry.clone()),
-                                    scope: Some(scope.clone()),
-                                    language: Some(unit.prepared.language.clone()),
-                                    provider_id: Some("codeana-inputs".into()),
-                                    capability: Some("AGGREGATE".into()),
-                                    status: Some("partial".into()),
-                                    occurrences: Some(1),
-                                    groups_count: Some(1),
-                                    codes: Some("[\"INPUT_CONTEXT_UNAVAILABLE\"]".into()),
-                                    code_counts: Some("{\"INPUT_CONTEXT_UNAVAILABLE\":1}".into()),
-                                    details_truncated: Some(0),
-                                }
-                                .into_row(&key("input-availability", &[entry])),
-                            );
-                        }
-                    }
-                    continue;
-                };
-                let child =
-                    capture.unit_capture(&AnalysisUnitId::from(unit.prepared.id.clone()))?;
-                let directory = sessions.scratch.path().join(&unit.prepared.id);
-                std::fs::create_dir(&directory)?;
-                let planned = planned_units.next().context("PREPARED_UNIT_MISSING")?;
-                ensure!(
-                    planned.prepared_index == Some(index),
-                    "PREPARED_UNIT_INDEX_MISMATCH"
-                );
-                let language = planned.language;
-                let binding = self.analysis_binding(id, language, &unit.prepared.id);
-                let input = self
-                    .prepare_analysis_unit(crate::analysis_unit::Preparation {
-                        task: id,
-                        instance: &unit.prepared.id,
-                        language,
-                        capture: &child,
-                        python_directory: &directory,
-                        python_guard: sessions.scratch.clone(),
-                        python_mode: crate::python_inputs::InputMode::Prepared,
-                    })
-                    .await?;
-                let manifest = child.manifest.clone();
-                sessions
-                    .units
-                    .push(crate::analysis_unit::RunningUnit::prepared(
-                        input, child, manifest,
-                    )?);
-                sessions
-                    .units
-                    .last_mut()
-                    .context("PREPARED_UNIT_MISSING")?
-                    .start(
-                        &self.workers,
-                        cancel,
-                        memory,
-                        binding,
-                        plan.previous_sources(&unit.prepared.id),
-                        plan.baseline.as_str(),
-                    )
-                    .await?;
-            }
-            let contexts = sessions
+                .config
+                .resources
+                .index
+                .worker_memory_bytes
+                .unwrap_or(self.workers.memory_cap());
+            ensure!(
+                memory > 0 && memory <= self.workers.memory_cap(),
+                DomainError::new(ErrorCode::ProjectWorkerMemoryLimit, "")
+            );
+            let memory = memory / count;
+            ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
+            for unit in plan
                 .units
                 .iter()
-                .map(|u| Ok(u.worker()?.context.semantic_digest.clone()))
-                .collect::<Result<Vec<_>>>()?;
-            let profile = digest(&(
-                codeana_comment_search::identity(),
-                codeana_graph_io::records::POLICY_VERSION,
-                &capture.effective.semantic_digest,
-                contexts,
-                "prepared-inputs-v1",
-            ));
-            let producer = "codeana-prepared-inputs".to_owned();
-            let revision = Revision {
-                unit_ownership: self.ownership(
-                    &capture,
-                    &sessions
-                        .units
-                        .iter()
-                        .map(|u| u.worker().map(|w| &w.context))
-                        .collect::<Result<Vec<_>>>()?,
-                )?,
-                id: String::new(),
-                target: capture.target.clone(),
-                project: capture.project.clone(),
-                checkout: capture.checkout.clone(),
-                manifest: capture.manifest.clone(),
-                profile: profile.clone(),
-                producer: producer.clone(),
-                created: 0,
-            };
-            let unchanged = !req.full
-                && capture.effective.config.index.mode != "full"
-                && !expected.is_empty()
-                && {
-                    let old = self.index.read(&expected)?;
-                    old.revision().profile == profile
-                        && same_sources_for_profile(&old.revision().manifest, &capture.manifest)
-                };
-            let analyzing = Instant::now();
-            let (result_mode, candidate) = if unchanged {
-                crate::analysis_unit::retire(sessions.workers_mut()).await?;
-                self.stage_reused_revision(
-                    id,
-                    revision,
-                    expected.clone(),
-                    producer.clone(),
-                    None,
-                    cancel,
-                )
-                .await?
-            } else if sessions.units.len() == 1 {
-                let (worker, manifest) = sessions.units[0].stream()?;
-                self.stage_language_stream_rows(
-                    id,
-                    worker,
-                    crate::indexing::StreamRequest {
-                        manifest,
-                        revision,
-                        expected: &expected,
-                        baseline: None,
-                        full: true,
-                    },
-                    additional,
-                    cancel,
-                )
-                .await?
-            } else {
-                let bytes = capture
+                .filter(|u| u.availability == UnitAvailability::Ready)
+            {
+                let memory = if capture
                     .effective
                     .config
                     .resources
                     .index
-                    .python_scratch_bytes
-                    .unwrap_or(2 << 30);
-                self.stage_full_language_rows(
+                    .worker_memory_bytes
+                    .is_none()
+                    && unit.language == AnalysisBackend::Rust
+                {
+                    memory.min(codeana_model::rust::DEFAULT_WORKER_MEMORY)
+                } else {
+                    memory
+                };
+                let mut child = capture.unit_capture(&unit.id)?;
+                child.effective.set_worker_memory_limit(memory);
+                let directory = sessions.scratch.path().join(unit.id.as_str());
+                std::fs::create_dir(&directory)?;
+                let input = self
+                    .prepare_analysis_unit(crate::analysis_unit::Preparation {
+                        task: id,
+                        instance: &unit.id,
+                        language: unit.language,
+                        capture: &child,
+                        python_directory: &directory,
+                        python_guard: sessions.scratch.clone(),
+                        python_mode: if unit.prepared_index.is_some() {
+                            crate::python_inputs::InputMode::Prepared
+                        } else {
+                            crate::python_inputs::InputMode::Standard
+                        },
+                    })
+                    .await?;
+                let manifest = self.own_unit_manifest(
                     id,
-                    &mut sessions.units,
-                    revision,
-                    &expected,
-                    codeana_contracts::graph_delivery::OutputLimits {
-                        bytes,
-                        facts: 6_000_000,
+                    unit.language,
+                    &unit.id,
+                    match &input {
+                        PreparedInput::Rust(input) => &input.manifest,
+                        _ => &child.manifest,
                     },
-                    additional,
+                )?;
+                sessions
+                    .units
+                    .push(RunningUnit::prepared(input, child, manifest)?);
+                let running = sessions.units.last_mut().context("ANALYSIS_UNIT_MISSING")?;
+                running
+                    .start(
+                        &self.workers,
+                        cancel,
+                        memory,
+                        self.analysis_binding(id, unit.language, &unit.id),
+                        plan.previous_sources(&unit.id),
+                        plan.baseline.as_str(),
+                    )
+                    .await?;
+                validate_java_context(running, false)?;
+            }
+            if let Some(timings) = &mut timings {
+                timings.phase("worker_context");
+            }
+            let contexts = sessions
+                .units
+                .iter()
+                .map(|u| u.worker().map(|w| &w.context))
+                .collect::<Result<Vec<_>>>()?;
+            let ownership = self
+                .ownership(&capture, &contexts)?
+                .context("UNIT_OWNERSHIP_REQUIRED")?;
+            let producer = if contexts.len() == 1 {
+                contexts[0].producer.clone()
+            } else {
+                "codeana-multi-language".into()
+            };
+            let profile = digest(&(
+                codeana_comment_search::identity(),
+                codeana_graph_io::records::POLICY_VERSION,
+                "unit-execution-v1",
+                &capture.effective.semantic_digest,
+                ownership
+                    .units
+                    .iter()
+                    .map(|u| (&u.unit, &u.semantic_profile))
+                    .collect::<Vec<_>>(),
+            ));
+            let revision = Revision {
+                unit_ownership: Some(ownership),
+                id: String::new(),
+                target: capture.target.clone(),
+                project: capture.project.clone(),
+                checkout: capture.checkout.clone(),
+                manifest: capture.manifest.clone(),
+                profile,
+                producer: producer.clone(),
+                created: 0,
+            };
+            let empty = Revision {
+                unit_ownership: Some(UnitOwnershipLedger::default()),
+                manifest: Manifest::default(),
+                id: String::new(),
+                profile: String::new(),
+                producer: String::new(),
+                target: revision.target.clone(),
+                project: revision.project.clone(),
+                checkout: revision.checkout.clone(),
+                created: 0,
+            };
+            let before = baseline
+                .filter(|r| {
+                    r.unit_ownership
+                        .as_ref()
+                        .is_some_and(|l| l.version == UNIT_OWNERSHIP_VERSION)
+                })
+                .unwrap_or(&empty);
+            let staging_context = self.staging_context(id);
+            let updates = UnitMergePlan::select_updates(
+                before,
+                &revision,
+                req.full || capture.effective.config.index.mode == "full",
+                &[AnalysisBackend::Java, AnalysisBackend::Rust],
+                staging_context.as_ref().map(|c| &c.hosts),
+            )?;
+            let mut updates: BTreeMap<_, _> =
+                updates.into_iter().map(|u| (u.unit.clone(), u)).collect();
+            let mut additional = availability_rows(
+                &capture,
+                plan,
+                staging_context
+                    .as_ref()
+                    .and_then(|c| c.hosts.values().next()),
+            )?;
+            for update in updates.values() {
+                self.task.event(
+                    &TaskId::from(id),
+                    &Event::Progress(format!(
+                        "unit_update {} {}",
+                        update.unit,
+                        update.kind.as_str()
+                    )),
+                )?;
+            }
+            let analyzing = Instant::now();
+            let disks = sessions
+                .units
+                .iter()
+                .filter_map(|u| u.worker().ok().and_then(|w| w.candidate_disk()))
+                .collect::<Vec<_>>();
+            for unit in &mut sessions.units {
+                if updates[&unit.unit].kind == UnitUpdateKind::Reuse {
+                    let (worker, _) = unit.stream()?;
+                    if worker.context.backend() == AnalysisBackend::Java {
+                        worker.reuse_java().await?;
+                    } else {
+                        worker.retire_unused().await?;
+                    }
+                    self.unit_result(id, &worker.context.unit, UnitUpdateKind::Reuse)?;
+                }
+            }
+            let executed: BTreeSet<_> = sessions
+                .units
+                .iter()
+                .filter(|u| {
+                    matches!(
+                        updates[&u.unit].kind,
+                        UnitUpdateKind::Full | UnitUpdateKind::Delta
+                    )
+                })
+                .map(|u| u.unit.clone())
+                .collect();
+            let executing = executed.len();
+            let (result_mode, candidate) = if executing == 1 {
+                let unit = sessions
+                    .units
+                    .iter_mut()
+                    .find(|u| {
+                        matches!(
+                            updates[&u.unit].kind,
+                            UnitUpdateKind::Full | UnitUpdateKind::Delta
+                        )
+                    })
+                    .context("ANALYSIS_UNIT_MISSING")?;
+                let update = &updates[&unit.unit];
+                let old = if update.kind == UnitUpdateKind::Delta {
+                    self.unit_baseline(id, unit, &plan.baseline).await?
+                } else {
+                    None
+                };
+                let unit_profile = revision
+                    .unit_ownership
+                    .as_ref()
+                    .unwrap()
+                    .units
+                    .iter()
+                    .find(|u| u.unit == unit.unit)
+                    .context("UNIT_OWNERSHIP_REQUIRED")?
+                    .semantic_profile
+                    .clone();
+                self.stream_unit(
+                    id,
+                    unit,
+                    revision,
+                    updates.into_values().collect(),
+                    &unit_profile,
+                    old.as_ref(),
+                    &plan.baseline,
+                    std::mem::take(&mut additional),
+                    disks,
                     cancel,
                 )
                 .await?
+            } else {
+                let mut archives = vec![];
+                let mut limits = codeana_contracts::graph_delivery::OutputLimits {
+                    bytes: 4,
+                    facts: additional.len() as u64,
+                };
+                for row in &additional {
+                    limits.bytes = limits
+                        .bytes
+                        .saturating_add(prost::Message::encoded_len(row) as u64 + 4);
+                }
+                for unit in &mut sessions.units {
+                    let update = updates
+                        .get_mut(&unit.unit)
+                        .context("ANALYSIS_UNIT_MISSING")?;
+                    if !matches!(update.kind, UnitUpdateKind::Full | UnitUpdateKind::Delta) {
+                        continue;
+                    }
+                    let old = if update.kind == UnitUpdateKind::Delta {
+                        self.unit_baseline(id, unit, &plan.baseline).await?
+                    } else {
+                        None
+                    };
+                    let unit_profile = &revision
+                        .unit_ownership
+                        .as_ref()
+                        .unwrap()
+                        .units
+                        .iter()
+                        .find(|u| u.unit == unit.unit)
+                        .context("UNIT_OWNERSHIP_REQUIRED")?
+                        .semantic_profile;
+                    let (worker, manifest) = unit.stream()?;
+                    let bound = worker.delivery_limits();
+                    limits.bytes = limits.bytes.saturating_add(bound.bytes);
+                    limits.facts = limits.facts.saturating_add(bound.facts);
+                    let result = worker
+                        .analyze(
+                            manifest,
+                            unit_profile,
+                            &plan.baseline,
+                            old.as_ref(),
+                            update.kind == UnitUpdateKind::Full,
+                            cancel,
+                        )
+                        .await?;
+                    record_outcome(update, &result.header)?;
+                    self.unit_result(id, &update.unit, update.kind)?;
+                    archives.push(ArchiveInput {
+                        origin: worker.record_origin()?,
+                        archive: result.records,
+                        budget: staging_context
+                            .as_ref()
+                            .and_then(|c| c.hosts.get(&unit.backend()))
+                            .cloned(),
+                    });
+                    unit.input.verify()?;
+                }
+                let store = self.index.clone().with_context(staging_context);
+                let expected = plan.baseline.clone();
+                let cancel = cancel.clone();
+                tokio::task::spawn_blocking(move || {
+                    stage_outcomes(
+                        store,
+                        revision,
+                        updates.into_values().collect(),
+                        Archives::new(archives, additional, limits)?,
+                        &expected,
+                        &cancel,
+                        &disks,
+                    )
+                })
+                .await??
             };
+            for unit in plan
+                .units
+                .iter()
+                .filter(|u| u.availability != UnitAvailability::Ready)
+            {
+                self.unit_result(
+                    id,
+                    &unit.id,
+                    match unit.availability {
+                        UnitAvailability::Removed => UnitUpdateKind::Removed,
+                        UnitAvailability::FilesOnly => UnitUpdateKind::FilesOnly,
+                        UnitAvailability::Ready => unreachable!(),
+                    },
+                )?;
+            }
             for unit in &sessions.units {
                 unit.input.verify()?;
             }
             let analyze_ms = analyzing.elapsed().as_millis() as u64;
             let summary = self.index.summary(&candidate).clone();
+            if let Some(timings) = &mut timings {
+                timings.phase("candidate_validated");
+                timings.storage(&summary.phase_ms);
+            }
             let evidence = summary.evidence.clone();
+            let worker_contexts = sessions.contexts()?;
             let (revision, publishing) = match self
                 .publish_candidate(
                     id,
@@ -1212,12 +480,22 @@ impl IndexTask {
                 }
                 crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
             };
+            if let Some(timings) = &mut timings {
+                timings.phase("published");
+            }
             let publish_ms = publishing.elapsed().as_millis() as u64;
-            let ack = if unchanged {
-                None
-            } else {
-                crate::analysis_unit::acknowledge(sessions.workers_mut(), &revision.id).await
-            };
+            let mut ack = None;
+            for unit in &mut sessions.units {
+                let was_executed = executed.contains(&unit.unit);
+                let (worker, _) = unit.stream()?;
+                // Reused receipts release their account; acknowledged workers do too.
+                // A non-Java reused worker has already exited and needs no Ack.
+                if was_executed && let Err(error) = worker.ack(&revision.id).await {
+                    ack = Some(error.to_string());
+                    continue;
+                }
+                unit.park(&self.workers, &revision.id);
+            }
             self.finish_index(
                 id,
                 &capture,
@@ -1227,7 +505,7 @@ impl IndexTask {
                     summary,
                     evidence,
                     ack,
-                    worker_contexts: sessions.contexts()?,
+                    worker_contexts,
                     analyze_ms,
                     publish_ms,
                     index_elapsed_ms: started.elapsed().as_millis() as u64,
@@ -1238,91 +516,518 @@ impl IndexTask {
         .await;
         self.finish_running_units(id, &mut sessions, result).await
     }
+
+    /// Explicit development fixtures use the same owner and publication boundary,
+    /// but never claim a real backend receipt or a production unit ledger.
+    pub(super) async fn index_fixture(
+        &self,
+        id: &str,
+        req: &IndexCommand,
+        mut capture: Capture,
+        plan: &crate::index_plan::IndexPlan,
+        cancel: &CancellationToken,
+    ) -> Result<TaskResult> {
+        ensure!(self.workers.is_mock(), "MOCK_FIXTURES_REQUIRED");
+        let started = Instant::now();
+        let selected = capture.backend_capture(AnalysisBackend::Java)?;
+        let manifest = selected.manifest.clone();
+        let input = PreparedInput::Fixture(
+            self.workers
+                .mock_fixtures()
+                .context("MOCK_FIXTURES_REQUIRED")?
+                .to_owned(),
+        );
+        let mut unit = RunningUnit::prepared(input, selected, manifest)?;
+        let result: Result<TaskResult> = async {
+            let memory = capture
+                .effective
+                .config
+                .resources
+                .index
+                .worker_memory_bytes
+                .unwrap_or(self.workers.memory_cap());
+            ensure!(
+                memory > 0 && memory <= self.workers.memory_cap(),
+                DomainError::new(ErrorCode::ProjectWorkerMemoryLimit, "")
+            );
+            unit.start(
+                &self.workers,
+                cancel,
+                memory,
+                None,
+                plan.previous_sources("java"),
+                &plan.baseline,
+            )
+            .await?;
+            validate_java_context(&unit, true)?;
+            let context = unit.worker()?.context.clone();
+            let profile = digest(&(
+                codeana_comment_search::identity(),
+                codeana_graph_io::records::POLICY_VERSION,
+                &unit.capture().effective.semantic_digest,
+                &context.semantic_digest,
+                "fixture-execution-v1",
+            ));
+            let mut full = req.full
+                || capture.effective.config.index.mode == "full"
+                || plan.baseline.is_empty();
+            let old = if !full {
+                let reader = self.index.read(&plan.baseline)?;
+                if reader.revision().profile == profile {
+                    Some(BaselineInput::Inline(
+                        reader.baseline_summary_for(&unit.manifest, &unit.unit)?,
+                    ))
+                } else {
+                    full = true;
+                    None
+                }
+            } else {
+                None
+            };
+            let analyzing = Instant::now();
+            let (worker, manifest) = unit.stream()?;
+            let origin = worker.record_origin()?;
+            let mut result = worker
+                .analyze(
+                    manifest,
+                    &profile,
+                    &plan.baseline,
+                    old.as_ref(),
+                    full,
+                    cancel,
+                )
+                .await?;
+            let result_mode = result.header.mode;
+            let revision =
+                self.revision_for_contexts(&capture, &[&context], &profile, &context.producer)?;
+            result.header.manifest = revision.manifest.id();
+            let store = self.index.clone();
+            let expected = plan.baseline.clone();
+            let cancelled = cancel.clone();
+            let candidate = tokio::task::spawn_blocking(move || {
+                store.stage_graph_records(
+                    revision,
+                    &result.header,
+                    result
+                        .records
+                        .records()?
+                        .map(|r| r.map(|row| origin.record(row))),
+                    &expected,
+                    || {
+                        ensure!(
+                            !cancelled.is_cancelled(),
+                            DomainError::new(ErrorCode::Cancelled, "")
+                        );
+                        Ok(())
+                    },
+                    |_| Ok(()),
+                )
+            })
+            .await??;
+            let analyze_ms = analyzing.elapsed().as_millis() as u64;
+            let summary = self.index.summary(&candidate).clone();
+            let evidence = summary.evidence.clone();
+            let (revision, publishing) = match self
+                .publish_candidate(
+                    id,
+                    req,
+                    &mut capture,
+                    crate::indexing::CandidatePublication {
+                        candidate,
+                        producer: &context.producer,
+                        progress: None,
+                    },
+                    cancel,
+                )
+                .await?
+            {
+                crate::indexing::CandidateOutcome::Committed { revision, started } => {
+                    (*revision, started)
+                }
+                crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
+            };
+            let publish_ms = publishing.elapsed().as_millis() as u64;
+            let ack = worker.ack(&revision.id).await.err().map(|e| e.to_string());
+            self.finish_index(
+                id,
+                &capture,
+                PublishedIndex {
+                    revision,
+                    result_mode,
+                    summary,
+                    evidence,
+                    ack,
+                    worker_contexts: vec![context],
+                    analyze_ms,
+                    publish_ms,
+                    index_elapsed_ms: started.elapsed().as_millis() as u64,
+                },
+            )
+            .await
+        }
+        .await;
+        if let Err(error) = unit.shutdown().await {
+            let _ = self.task.event(
+                &TaskId::from(id),
+                &Event::Progress(format!("worker_cleanup_warning {error}")),
+            );
+        }
+        result
+    }
+
+    fn unit_result(&self, id: &str, unit: &AnalysisUnitId, kind: UnitUpdateKind) -> Result<()> {
+        self.task.event(
+            &TaskId::from(id),
+            &Event::Progress(format!("unit_result {unit} {}", kind.as_str())),
+        )?;
+        Ok(())
+    }
+
+    async fn unit_baseline(
+        &self,
+        id: &str,
+        unit: &RunningUnit,
+        expected: &RevisionId,
+    ) -> Result<Option<BaselineInput>> {
+        let store = self.index.clone().with_context(self.staging_context(id));
+        let expected = expected.clone();
+        let owner = unit.unit.clone();
+        let backend = unit.backend();
+        let manifest = unit.manifest.clone();
+        let directory = unit
+            .input
+            .directories()
+            .into_iter()
+            .next()
+            .context("UNIT_BASELINE_DIRECTORY_REQUIRED")?;
+        let budget = self
+            .staging_context(id)
+            .and_then(|c| c.hosts.get(&backend).cloned());
+        tokio::task::spawn_blocking(move || {
+            let reader = store.read(&expected)?;
+            let summary = match backend {
+                AnalysisBackend::Java => {
+                    let mut summary = reader.baseline_summary_for(&manifest, &owner)?;
+                    // Java consumes `files` only as deletion owners. Controls and
+                    // read-only bindings remain in the frozen input/node context,
+                    // but can never authorize removal of a published source range.
+                    summary
+                        .files
+                        .retain(|s| publication_language(s) == Some(SourceLanguage::Java));
+                    summary
+                }
+                AnalysisBackend::Rust => {
+                    RustBaselineReader::rust_baseline_summary_for(&reader, &owner)?
+                }
+                _ => bail!("UNIT_INCREMENTAL_BASELINE_UNSUPPORTED"),
+            };
+            if let Some(budget) = budget {
+                budget
+                    .charge(1, 0, retained_size(&summary)?.saturating_mul(3))
+                    .map_err(DomainError::analysis)?;
+            }
+            let bytes = serde_json::to_vec(&summary)?;
+            ensure!(
+                bytes.len() <= 64 << 20,
+                DomainError::new(ErrorCode::GraphBaselineBudget, "")
+            );
+            let path = directory.path().join("baseline-summary.json");
+            store.write_baseline(&path, &bytes)?;
+            Ok(Some(BaselineInput::File(BaselineFile {
+                path,
+                sha256: hash(&bytes),
+                bytes: bytes.len() as u64,
+            })))
+        })
+        .await?
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn stream_unit(
+        &self,
+        id: &str,
+        unit: &mut RunningUnit,
+        revision: Revision,
+        updates: Vec<UnitUpdate>,
+        profile: &str,
+        old: Option<&BaselineInput>,
+        expected: &RevisionId,
+        additional: Vec<codeana_contracts::graph::Row>,
+        disks: Vec<crate::resources::DiskBudget>,
+        cancel: &CancellationToken,
+    ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
+        let owner = unit.unit.clone();
+        let full = updates
+            .iter()
+            .find(|u| u.unit == owner)
+            .context("ANALYSIS_UNIT_MISSING")?
+            .kind
+            == UnitUpdateKind::Full;
+        let (worker, manifest) = unit.stream()?;
+        let origin = worker.record_origin()?;
+        let mut staging = None;
+        let mut metrics = None;
+        let mut payload = Some((revision, updates, origin, additional, disks));
+        let receipt = worker
+            .analyze_into(manifest, profile, expected, old, full, cancel, |header| {
+                let (revision, mut updates, origin, additional, disks) =
+                    payload.take().context("DUPLICATE_CANDIDATE_STREAM_BEGIN")?;
+                record_outcome(
+                    updates
+                        .iter_mut()
+                        .find(|u| u.unit == owner)
+                        .context("ANALYSIS_UNIT_MISSING")?,
+                    header,
+                )?;
+                let (sender, records) = codeana_graph_io::stream::GraphStream::channel();
+                metrics = Some(sender.metrics.clone());
+                let store = self.index.clone().with_context(self.staging_context(id));
+                let expected = expected.clone();
+                let cancel = cancel.clone();
+                staging = Some(tokio::task::spawn_blocking(move || {
+                    stage_outcomes(
+                        store,
+                        revision,
+                        updates,
+                        records.map(move |r| r.map(|row| origin.record(row))).chain(
+                            additional
+                                .into_iter()
+                                .map(|row| Ok(Origin::Host.record(row))),
+                        ),
+                        &expected,
+                        &cancel,
+                        &disks,
+                    )
+                }));
+                Ok(sender)
+            })
+            .await;
+        let staged = match staging {
+            Some(task) => Some(task.await?),
+            None => None,
+        };
+        if let Ok(header) = &receipt {
+            self.unit_result(
+                id,
+                &owner,
+                match header.mode {
+                    AnalysisMode::Full => UnitUpdateKind::Full,
+                    AnalysisMode::Delta => UnitUpdateKind::Delta,
+                },
+            )?;
+        }
+        let result = match (receipt, staged) {
+            (Err(transport), Some(Err(storage)))
+                if transport
+                    .downcast_ref::<DomainError>()
+                    .is_some_and(|e| e.code == ErrorCode::CandidateStreamClosed) =>
+            {
+                Err(storage)
+            }
+            (Err(error), _) => Err(error),
+            (Ok(_), Some(candidate)) => candidate,
+            (Ok(_), None) => bail!("CANDIDATE_STREAM_NOT_STARTED"),
+        }?;
+        if let Some(metrics) = metrics {
+            self.task.event(
+                &TaskId::from(id),
+                &Event::Progress(format!(
+                    "{}_stream {}",
+                    worker.context.backend().as_str(),
+                    serde_json::to_string(&metrics.summary())?
+                )),
+            )?;
+        }
+        Ok(result)
+    }
 }
 
-#[cfg(test)]
-mod reuse_source_tests {
-    use super::*;
-    #[test]
-    fn presentation_capture_exception_keeps_all_analysis_owners_exact() {
-        let config = SourceUnit {
-            path: ".code-ana/config.toml".into(),
-            hash: "old".into(),
-            size: 10,
-            module: String::new(),
-            world: "files".into(),
-            scope: "FILES".into(),
-            language: String::new(),
-            auxiliary: false,
-        };
-        let source = SourceUnit {
-            path: "main.py".into(),
-            hash: "source".into(),
-            size: 20,
-            module: "app".into(),
-            world: "main".into(),
-            scope: "MAIN".into(),
-            language: "python".into(),
-            auxiliary: false,
-        };
-        let before = Manifest {
-            files: vec![config, source],
-        };
-        let mut after = before.clone();
-        after.files[0].hash = "new".into();
-        after.files[0].size = 100;
-        assert!(same_sources_for_profile(&before, &after));
-        after.files[1].hash = "changed source".into();
-        assert!(!same_sources_for_profile(&before, &after));
-        after = before.clone();
-        after.files[0].world = "different owner".into();
-        assert!(!same_sources_for_profile(&before, &after));
-        after = before.clone();
-        after.files[0].language = "python".into();
-        assert!(!same_sources_for_profile(&before, &after));
-        after = before.clone();
-        after.files.remove(0);
-        assert!(!same_sources_for_profile(&before, &after));
-    }
-    #[test]
-    fn preparation_artifacts_can_move_but_cannot_hide_semantic_or_owned_input_changes() {
-        let before = Manifest {
-            files: vec![SourceUnit {
-                path: "app.py".into(),
-                hash: hash(b"source"),
-                size: 6,
-                module: "app".into(),
-                world: "python-world".into(),
-                scope: "MAIN".into(),
-                language: "python".into(),
-                auxiliary: false,
-            }],
-        };
-        let mut after = before.clone();
-        after.files.push(SourceUnit {
-            path: ".code-ana/inputs/new-generation/inputs.json".into(),
-            hash: hash(b"receipt"),
-            size: 7,
-            module: String::new(),
-            world: "files".into(),
-            scope: "PREPARATION".into(),
-            language: String::new(),
-            auxiliary: false,
-        });
-        assert!(same_sources_for_profile(&before, &after));
-        for field in ["language", "world", "module", "scope", "auxiliary"] {
-            let mut forged = after.clone();
-            let input = forged.files.last_mut().unwrap();
-            match field {
-                "language" => input.language = "python".into(),
-                "world" => input.world = "owned-world".into(),
-                "module" => input.module = "app".into(),
-                "scope" => input.scope = "CONTROL".into(),
-                _ => input.auxiliary = true,
-            }
-            assert!(!same_sources_for_profile(&before, &forged));
+fn record_outcome(update: &mut UnitUpdate, header: &AnalysisHeader) -> Result<()> {
+    ensure!(
+        matches!(update.kind, UnitUpdateKind::Full | UnitUpdateKind::Delta),
+        "UNIT_UPDATE_EXECUTION_REQUIRED"
+    );
+    ensure!(
+        update.kind != UnitUpdateKind::Full || header.mode == AnalysisMode::Full,
+        "UNIT_UPDATE_FULL_REQUIRED"
+    );
+    update.kind = match header.mode {
+        AnalysisMode::Full => UnitUpdateKind::Full,
+        AnalysisMode::Delta => UnitUpdateKind::Delta,
+    };
+    update.replacements = if update.kind == UnitUpdateKind::Delta {
+        header.replacements.clone()
+    } else {
+        vec![]
+    };
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn stage_outcomes(
+    store: IndexService<ports::storage::IndexAdapter>,
+    revision: Revision,
+    updates: Vec<UnitUpdate>,
+    records: impl Iterator<Item = Result<codeana_graph_io::records::Record>>,
+    expected: &str,
+    cancel: &CancellationToken,
+    disks: &[crate::resources::DiskBudget],
+) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
+    let cancellation = || {
+        ensure!(
+            !cancel.is_cancelled(),
+            DomainError::new(ErrorCode::Cancelled, "")
+        );
+        Ok(())
+    };
+    let check = |path: &Path| {
+        for disk in disks {
+            disk.check_candidate(Some(path))?;
         }
-        after.files[0].hash = hash(b"changed");
-        assert!(!same_sources_for_profile(&before, &after));
+        Ok(())
+    };
+    // A complete replacement needs no copy of an obsolete physical schema.
+    // Mixed updates retain the pinned baseline and validate each original owner.
+    if updates
+        .iter()
+        .all(|u| !matches!(u.kind, UnitUpdateKind::Reuse | UnitUpdateKind::Delta))
+    {
+        let header = AnalysisHeader {
+            mode: AnalysisMode::Full,
+            baseline: expected.into(),
+            manifest: revision.manifest.id(),
+            profile: revision.profile.clone(),
+            producer: revision.producer.clone(),
+            replacements: vec![],
+        };
+        Ok((
+            AnalysisMode::Full,
+            store.stage_graph_records(revision, &header, records, expected, cancellation, check)?,
+        ))
+    } else {
+        Ok((
+            AnalysisMode::Delta,
+            store.stage_unit_records(revision, updates, records, expected, cancellation, check)?,
+        ))
     }
+}
+
+fn validate_java_context(unit: &RunningUnit, fixture: bool) -> Result<()> {
+    if unit.backend() != AnalysisBackend::Java {
+        return Ok(());
+    }
+    let worker = unit.worker()?;
+    for module in &unit.capture().effective.config.modules {
+        if module.language != "java" {
+            continue;
+        }
+        let source = worker
+            .context
+            .java_source_version()
+            .context("JAVA_CONTEXT_REQUIRED")?;
+        if let Some(version) = &module.analysis.source_version {
+            ensure!(
+                version == "auto" || version == source,
+                DomainError::new(ErrorCode::SourceVersionUnsupported, "")
+            );
+        }
+        if fixture && let Some(toolchain) = &module.analysis.toolchain {
+            ensure!(
+                toolchain == "auto" || toolchain == &format!("mock-jdk{source}"),
+                DomainError::new(ErrorCode::MockToolchainUnsupported, "")
+            );
+        }
+    }
+    Ok(())
+}
+
+fn availability_rows(
+    capture: &Capture,
+    plan: &crate::index_plan::IndexPlan,
+    host: Option<&AnalysisContext>,
+) -> Result<Vec<codeana_contracts::graph::Row>> {
+    let mut rows = vec![];
+    for unit in &capture.effective.input_units {
+        if let Some(host) = host {
+            host.charge(
+                1,
+                0,
+                retained_size(&unit.prepared)?
+                    .saturating_mul(3)
+                    .saturating_add(512),
+            )
+            .map_err(DomainError::analysis)?;
+        }
+        rows.push(
+            ProjectMetaRow {
+                key: Some(format!("inputs.unit.{}", unit.prepared.id)),
+                value: Some(serde_json::to_string(&unit.prepared)?),
+            }
+            .into_row(""),
+        );
+    }
+    for unit in plan
+        .units
+        .iter()
+        .filter(|u| u.availability == UnitAvailability::FilesOnly)
+    {
+        if let Some(host) = host {
+            host.charge(
+                1,
+                0,
+                retained_size(&capture.effective.config.modules)?
+                    .saturating_mul(3)
+                    .saturating_add(1024),
+            )
+            .map_err(DomainError::analysis)?;
+        }
+        let modules = match unit.prepared_index {
+            Some(index) => {
+                let p = &capture.effective.input_units[index].prepared;
+                if p.modules.is_empty() {
+                    p.entries.clone()
+                } else {
+                    p.modules.clone()
+                }
+            }
+            None => capture
+                .effective
+                .config
+                .modules
+                .iter()
+                .filter(|m| crate::index_plan::language(&m.language) == Some(unit.language))
+                .map(|m| m.id.clone())
+                .collect(),
+        };
+        for module in if modules.is_empty() {
+            vec![unit.id.to_string()]
+        } else {
+            modules
+        } {
+            for scope in &capture.effective.config.scan.scopes {
+                if let Some(host) = host {
+                    host.charge(1, 0, 4096 + 4 * (module.len() + scope.len()) as u64)
+                        .map_err(DomainError::analysis)?;
+                }
+                rows.push(
+                    CoverageRow {
+                        source_file: Some("*".into()),
+                        module: Some(module.clone()),
+                        scope: Some(scope.clone()),
+                        language: Some(unit.language.as_str().into()),
+                        provider_id: Some("codeana-inputs".into()),
+                        capability: Some("AGGREGATE".into()),
+                        status: Some("partial".into()),
+                        occurrences: Some(1),
+                        groups_count: Some(1),
+                        codes: Some("[\"INPUT_CONTEXT_UNAVAILABLE\"]".into()),
+                        code_counts: Some("{\"INPUT_CONTEXT_UNAVAILABLE\":1}".into()),
+                        details_truncated: Some(0),
+                    }
+                    .into_row(&key("input-availability", &[&module])),
+                );
+            }
+        }
+    }
+    Ok(rows)
 }

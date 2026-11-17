@@ -10,6 +10,18 @@ pub enum UnitUpdateKind {
     FilesOnly,
 }
 
+impl UnitUpdateKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Delta => "delta",
+            Self::Reuse => "reuse",
+            Self::Removed => "removed",
+            Self::FilesOnly => "files_only",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitUpdate {
     pub unit: AnalysisUnitId,
@@ -24,6 +36,97 @@ pub struct UnitMergePlan {
 }
 
 impl UnitMergePlan {
+    /// Host intent before execution. A Delta's actual replacement closure must
+    /// still come from the verified worker receipt and pass `new_with_budget`.
+    pub fn select_updates(
+        before: &Revision,
+        after: &Revision,
+        force_full: bool,
+        incremental: &[AnalysisBackend],
+        hosts: Option<&BTreeMap<AnalysisBackend, AnalysisContext>>,
+    ) -> Result<Vec<UnitUpdate>, DomainError> {
+        if let Some(hosts) = hosts {
+            Self::reserve_validation(before, after, hosts)?;
+        }
+        let select = || -> Result<Vec<UnitUpdate>, String> {
+            if before.project != after.project
+                || before.checkout != after.checkout
+                || before.target != after.target
+            {
+                return Err("UNIT_MERGE_REVISION_IDENTITY".into());
+            }
+            let old_ledger = before
+                .unit_ownership
+                .as_ref()
+                .ok_or("UNIT_MERGE_LEDGER_REQUIRED")?;
+            let new_ledger = after
+                .unit_ownership
+                .as_ref()
+                .ok_or("UNIT_MERGE_LEDGER_REQUIRED")?;
+            old_ledger.validate(&before.manifest)?;
+            new_ledger.validate(&after.manifest)?;
+            let old = unit_map(old_ledger)?;
+            let new = unit_map(new_ledger)?;
+            let old_publications = publications(old_ledger);
+            let new_publications = publications(new_ledger);
+            old.keys()
+                .chain(new.keys())
+                .copied()
+                .collect::<BTreeSet<_>>()
+                .into_iter()
+                .map(|id| {
+                    let a = old.get(id).copied();
+                    let b = new.get(id).copied();
+                    if a.zip(b).is_some_and(|(a, b)| a.backend != b.backend) {
+                        return Err("UNIT_MERGE_BACKEND_CHANGED".into());
+                    }
+                    let kind = match b {
+                        None => UnitUpdateKind::Removed,
+                        Some(b) if b.availability == UnitAvailability::FilesOnly => {
+                            UnitUpdateKind::FilesOnly
+                        }
+                        Some(b) if ready(b) => {
+                            let compatible = !force_full
+                                && a.is_some_and(|a| {
+                                    compatible(a, b)
+                                        && binding_publications_unchanged(
+                                            a,
+                                            &old_publications,
+                                            &new_publications,
+                                        )
+                                });
+                            if compatible
+                                && a.is_some_and(|a| {
+                                    a.input_digest == b.input_digest
+                                        && a.sources == b.sources
+                                        && same_semantic_sources(&a.inputs, &b.inputs)
+                                })
+                            {
+                                UnitUpdateKind::Reuse
+                            } else if compatible
+                                && incremental.contains(&b.backend)
+                                && a.is_some_and(|a| {
+                                    same_semantic_sources(&controls(a), &controls(b))
+                                })
+                            {
+                                UnitUpdateKind::Delta
+                            } else {
+                                UnitUpdateKind::Full
+                            }
+                        }
+                        Some(_) => return Err("UNIT_MERGE_MODE_OR_IDENTITY".into()),
+                    };
+                    Ok(UnitUpdate {
+                        unit: id.clone(),
+                        kind,
+                        replacements: vec![],
+                    })
+                })
+                .collect()
+        };
+        select().map_err(|e| DomainError::new(ErrorCode::ResultIdentityMismatch, e))
+    }
+
     /// Production reuse prepays validation maps and the owned plan from the
     /// existing host accounts. A rejected reservation preserves its failure code.
     pub fn all_reused_with_budget(
@@ -220,7 +323,16 @@ impl UnitMergePlan {
                         || !supplied.is_subset(&complete())
                         || !changed_owners(a.unwrap(), b.unwrap()).is_subset(&supplied)
                     {
-                        return Err("UNIT_MERGE_DELTA_SCOPE".into());
+                        let complete = complete();
+                        let changed = changed_owners(a.unwrap(), b.unwrap());
+                        return Err(format!(
+                            "UNIT_MERGE_DELTA_SCOPE unit={} supplied={} unique={} unexpected={:?} missing={:?}",
+                            update.unit,
+                            update.replacements.len(),
+                            supplied.len(),
+                            supplied.difference(&complete).next(),
+                            changed.difference(&supplied).next()
+                        ));
                     }
                     update.replacements = supplied.into_iter().collect();
                 }
@@ -476,6 +588,74 @@ mod tests {
         u.input_digest.clear();
         u
     }
+    #[test]
+    fn host_selection_keeps_all_five_modes_local_when_the_project_profile_changes() {
+        let before = revision(vec![
+            unit("full"),
+            unit("delta"),
+            unit("reuse"),
+            unit("removed"),
+            unit("files"),
+        ]);
+        let mut full = unit("full");
+        full.semantic_profile = hash("new toolchain");
+        let mut delta = unit("delta");
+        delta.sources[0].hash = hash("edited source");
+        delta.inputs = delta.sources.clone();
+        delta.input_digest = hash("edited inputs");
+        let mut after = revision(vec![full, delta, unit("reuse"), files_only(unit("files"))]);
+        after.profile = hash("new aggregate profile");
+        let updates =
+            UnitMergePlan::select_updates(&before, &after, false, &[AnalysisBackend::Java], None)
+                .unwrap();
+        assert_eq!(
+            updates
+                .iter()
+                .map(|u| (u.unit.as_str(), u.kind))
+                .collect::<Vec<_>>(),
+            [
+                ("delta", UnitUpdateKind::Delta),
+                ("files", UnitUpdateKind::FilesOnly),
+                ("full", UnitUpdateKind::Full),
+                ("removed", UnitUpdateKind::Removed),
+                ("reuse", UnitUpdateKind::Reuse),
+            ]
+        );
+        assert!(
+            updates.iter().all(|u| u.replacements.is_empty()),
+            "a pending Delta must obtain its closure from its own receipt"
+        );
+        let forced =
+            UnitMergePlan::select_updates(&before, &after, true, &[AnalysisBackend::Java], None)
+                .unwrap();
+        assert!(
+            forced
+                .iter()
+                .filter(|u| matches!(u.unit.as_str(), "delta" | "full" | "reuse"))
+                .all(|u| u.kind == UnitUpdateKind::Full)
+        );
+    }
+
+    #[test]
+    fn host_selection_rebuilds_consumers_of_a_changed_publication_identity() {
+        let publisher = unit("publisher");
+        let mut consumer = unit("consumer");
+        let mut binding = publisher.sources[0].clone();
+        binding.auxiliary = true;
+        consumer.inputs.push(binding);
+        let before = revision(vec![publisher.clone(), consumer.clone()]);
+        let mut changed = publisher;
+        changed.semantic_profile = hash("different producer rules");
+        let after = revision(vec![changed, consumer]);
+        let updates =
+            UnitMergePlan::select_updates(&before, &after, false, &[AnalysisBackend::Java], None)
+                .unwrap();
+        assert!(updates.iter().all(|u| u.kind == UnitUpdateKind::Full));
+        let mut other = after.clone();
+        other.project = "foreign".into();
+        assert!(UnitMergePlan::select_updates(&before, &other, false, &[], None).is_err());
+    }
+
     #[test]
     fn mixed_updates_include_deleted_and_zero_output_owners_and_normalize_order() {
         let before = revision(vec![

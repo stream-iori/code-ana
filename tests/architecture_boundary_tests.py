@@ -9,6 +9,13 @@ spec=importlib.util.spec_from_file_location('architecture', pathlib.Path(__file_
 architecture=importlib.util.module_from_spec(spec);spec.loader.exec_module(architecture)
 
 class Boundaries(unittest.TestCase):
+    def test_language_combinations_cannot_restore_separate_index_executors(self):
+        for source in ['enum ExecutionPolicy { Java, Prepared }', 'self.index_rust(request)',
+                       'self.index_python(request)', 'self.index_prepared(request)',
+                       'struct JavaAttempt {}', 'struct RustAttempt {}']:
+            self.assertTrue(architecture.rust_violations('crates/application/src/index_execution.rs', source), source)
+        self.assertFalse(architecture.rust_violations('crates/application/src/index_execution.rs', 'self.index_units(request);'))
+
     def test_production_delivery_cannot_drop_or_forge_unit_provenance(self):
         path='crates/application/src/indexing.rs'
         for source in ['store.stage_graph_records_with_context(request);',

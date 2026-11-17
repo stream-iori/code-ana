@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+prost.workspace = true
 codeana-worker-runtime = { path = "../worker-runtime" }
 codeana-graph-io = { path = "../graph-io" }
 serde.workspace = true

@@ -3,9 +3,14 @@
   "max_work": {
     "java": 8192,
     "rust": 16384,
-    "python_rust": 65536
+    "python_rust": 65536,
+    "python": 8192,
+    "prepared_python": 8192
   },
-  "reference": {
+  "reason": "Leave the measured host setup and Rust sibling enough work. A trusted worker receipt must exhaust work; host/admission failure is not this case. Both full and incremental requests retain the previous head.",
+  "evidence": "target/typescript-c-abi/r4-unit-factory/resource-report-recalibrated.json",
+  "python_case": "10000 pass statements make the trusted standalone worker exhaust backend work after host admission and per-unit merge planning.",
+  "historical_reference": {
     "java_worker_grant": 6138,
     "java_failure_used": 3445,
     "java_failure_requested": 4912,
@@ -16,6 +21,19 @@
     "python_failure_used": 22295,
     "python_failure_requested": 90480
   },
-  "reason": "Leave the measured host setup and Rust sibling enough work. A trusted worker receipt must exhaust work; host/admission failure is not this case. Both full and incremental requests retain the previous head.",
-  "evidence": "target/typescript-c-abi/r4-unit-factory/resource-report-recalibrated.json"
+  "reference": {
+    "python_host_limit": 2044,
+    "python_host_work": 917,
+    "python_worker_grant": 6132,
+    "python_failure_used": 6132,
+    "python_failure_requested": 1,
+    "python_failure_phase": "backend",
+    "prepared_python_host_work": 90,
+    "prepared_python_each_worker_grant": 2036,
+    "prepared_python_failure_used": 51,
+    "prepared_python_failure_requested": 2820,
+    "prepared_python_failure_phase": "discover"
+  },
+  "prepared_python_case": "Three static worker shares; the first rejects discovery work without borrowing the reserved siblings or the healthy host.",
+  "current_evidence": "target/typescript-c-abi/r4-common-executor/budget-calibration.jsonl"
 }

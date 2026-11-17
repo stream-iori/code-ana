@@ -142,7 +142,7 @@ class RustLanguage(RustHarness):
         _, unchanged=self.cli('index',timeout=90)
         self.assertEqual(self.canonical(first),self.canonical(unchanged['revision']))
         with sqlite3.connect(self.home/'catalog.db') as catalog:
-            self.assertGreater(catalog.execute("SELECT count(*) FROM events WHERE body LIKE '%rust_analyze_unchanged%'").fetchone()[0],0)
+            self.assertGreater(catalog.execute("SELECT count(*) FROM events WHERE body LIKE '%unit_update rust reuse%'").fetchone()[0],0)
         first=unchanged['revision']
         with self.db(first) as db:
             self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0],17)

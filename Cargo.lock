@@ -300,6 +300,7 @@ dependencies = [
  "codeana-storage",
  "codeana-worker-runtime",
  "libc",
+ "prost",
  "roxmltree",
  "serde",
  "serde_json",

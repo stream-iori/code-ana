@@ -43,26 +43,6 @@ pub(super) fn publication<'a>(
     crate::worker::Publication { previous, modules }
 }
 
-/// Reuse must close every selected analysis account before staging its empty delta.
-pub(super) async fn retire(units: Vec<&mut Worker>) -> Result<()> {
-    for worker in units {
-        worker.retire_unused().await?;
-    }
-    Ok(())
-}
-
-/// Commit has already happened: acknowledgement failures are warnings, never publication errors.
-/// Preserve the existing order and last-failure warning while attempting every acknowledgement.
-pub(super) async fn acknowledge(units: Vec<&mut Worker>, revision: &str) -> Option<String> {
-    let mut warning = None;
-    for worker in units {
-        if let Err(error) = worker.ack(revision).await {
-            warning = Some(error.to_string());
-        }
-    }
-    warning
-}
-
 /// Attempt every owned unit even when one cleanup reports an error.
 pub(super) async fn shutdown(units: Vec<&mut Worker>) -> Option<String> {
     let mut warning = None;
@@ -279,18 +259,6 @@ pub(super) struct RunningUnits {
     pub scratch: std::sync::Arc<tempfile::TempDir>,
 }
 impl RunningUnits {
-    pub fn unit(&self, id: &str) -> Result<&RunningUnit> {
-        self.units
-            .iter()
-            .find(|unit| unit.unit == id)
-            .ok_or_else(|| anyhow::anyhow!("ANALYSIS_UNIT_MISSING {id}"))
-    }
-    pub fn unit_mut(&mut self, id: &str) -> Result<&mut RunningUnit> {
-        self.units
-            .iter_mut()
-            .find(|unit| unit.unit == id)
-            .ok_or_else(|| anyhow::anyhow!("ANALYSIS_UNIT_MISSING {id}"))
-    }
     pub fn workers_mut(&mut self) -> Vec<&mut Worker> {
         fn running(u: &mut RunningUnit) -> Option<&mut Worker> {
             match &mut u.session {

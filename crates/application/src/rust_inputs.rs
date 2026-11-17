@@ -15,10 +15,8 @@ struct InputSummary {
 
 pub(super) struct RustInput {
     pub(super) scratch: Arc<tempfile::TempDir>,
-    pub(super) config: AnalysisConfig,
     pub(super) descriptor: RustConfig,
     pub(super) manifest: Manifest,
-    pub(super) memory: u64,
 }
 impl IndexTask {
     pub(super) async fn prepare_rust_inputs(
@@ -91,7 +89,7 @@ impl IndexTask {
             result_bytes,
             fact_limit,
         };
-        let config_io = config.clone();
+        let config_io = config;
         let input = scratch.path().join("inputs.json");
         let (descriptor, summary) = tokio::task::spawn_blocking(move || -> Result<_> {
             let config = config_io;
@@ -153,10 +151,8 @@ impl IndexTask {
         };
         Ok(RustInput {
             scratch: Arc::new(scratch),
-            config,
             descriptor,
             manifest,
-            memory,
         })
     }
 }

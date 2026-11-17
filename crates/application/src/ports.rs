@@ -61,7 +61,7 @@ pub trait IndexBaselineReader: SourceContext {
 }
 /// Rust's dependency and source-state baseline is not a generic index capability.
 pub trait RustBaselineReader: SourceContext {
-    fn rust_baseline_summary(&self) -> Result<BaselineSummary>;
+    fn rust_baseline_summary_for(&self, unit: &AnalysisUnitId) -> Result<BaselineSummary>;
 }
 pub trait IndexRepository: Clone + Send + Sync + 'static {
     type Candidate: Send + 'static;
@@ -93,7 +93,7 @@ pub trait IndexRepository: Clone + Send + Sync + 'static {
 }
 pub enum StageInput<'a> {
     Analysis(&'a AnalysisHeader),
-    Reused,
+    Units(Vec<UnitUpdate>),
 }
 pub struct StageRequest<'a> {
     pub context: Option<&'a GraphStagingContext>,
@@ -109,6 +109,27 @@ pub(super) struct IndexService<R: IndexRepository> {
     context: Option<GraphStagingContext>,
 }
 impl<R: IndexRepository> IndexService<R> {
+    pub fn stage_unit_records(
+        &self,
+        revision: Revision,
+        updates: Vec<UnitUpdate>,
+        records: impl Iterator<Item = Result<GraphRecord>>,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+    ) -> Result<R::Candidate> {
+        self.repository.stage(
+            StageRequest {
+                context: self.context.as_ref(),
+                revision,
+                input: StageInput::Units(updates),
+                expected,
+                cancellation: &cancellation,
+                check_directory: &check_directory,
+            },
+            records,
+        )
+    }
     pub fn new(repository: R) -> Self {
         Self {
             repository,
@@ -160,25 +181,6 @@ impl<R: IndexRepository> IndexService<R> {
                 check_directory: &check_directory,
             },
             records,
-        )
-    }
-    pub fn stage_reused_graph(
-        &self,
-        revision: Revision,
-        expected: &str,
-        cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
-    ) -> Result<R::Candidate> {
-        self.repository.stage(
-            StageRequest {
-                context: self.context.as_ref(),
-                revision,
-                input: StageInput::Reused,
-                expected,
-                cancellation: &cancellation,
-                check_directory: &check_directory,
-            },
-            std::iter::empty(),
         )
     }
     pub async fn publish(
@@ -239,6 +241,15 @@ pub(super) mod storage {
             records: impl Iterator<Item = Result<GraphRecord>>,
         ) -> Result<StagedCandidate> {
             match request.input {
+                StageInput::Units(updates) => self.0.stage_mixed_graph_records_with_context(
+                    request.revision,
+                    updates,
+                    records,
+                    request.expected,
+                    request.cancellation,
+                    request.check_directory,
+                    request.context,
+                ),
                 StageInput::Analysis(header) => self.0.stage_owned_graph_records_with_context(
                     request.revision,
                     header,
@@ -248,19 +259,6 @@ pub(super) mod storage {
                     request.check_directory,
                     request.context,
                 ),
-                StageInput::Reused => {
-                    ensure!(
-                        records.into_iter().next().is_none(),
-                        "REUSE_CANNOT_DELIVER_ROWS"
-                    );
-                    self.0.stage_reused_graph_with_context(
-                        request.revision,
-                        request.expected,
-                        request.cancellation,
-                        request.check_directory,
-                        request.context,
-                    )
-                }
             }
         }
         fn persist_and_publish(
@@ -295,8 +293,8 @@ pub(super) mod storage {
         }
     }
     impl RustBaselineReader for ReadContext {
-        fn rust_baseline_summary(&self) -> Result<BaselineSummary> {
-            ReadContext::rust_baseline_summary(self)
+        fn rust_baseline_summary_for(&self, unit: &AnalysisUnitId) -> Result<BaselineSummary> {
+            ReadContext::rust_baseline_summary_for(self, unit)
         }
     }
     impl TaskRepository for Store {

@@ -9,17 +9,11 @@ pub(super) enum InputMode {
     Prepared,
 }
 
-pub(super) struct PreparedPython {
-    pub descriptor: PythonConfig,
-    pub config: python::AnalysisConfig,
-    pub source_bytes: u64,
-}
-
 pub(super) fn prepare_inputs(
     capture: &Capture,
     scratch: &Path,
     mode: InputMode,
-) -> Result<PreparedPython> {
+) -> Result<PythonConfig> {
     let selected = capture.backend_capture(AnalysisBackend::Python)?;
     let capture = &selected;
     let inputs = capture
@@ -107,11 +101,7 @@ pub(super) fn prepare_inputs(
         scratch_bytes,
     };
     std::fs::write(input, bytes)?;
-    Ok(PreparedPython {
-        descriptor,
-        config,
-        source_bytes,
-    })
+    Ok(descriptor)
 }
 
 #[cfg(test)]
@@ -168,12 +158,12 @@ pub(super) mod tests {
         let (_project, capture) = capture();
         let scratch = tempfile::tempdir().unwrap();
         let ordinary = prepare_inputs(&capture, scratch.path(), InputMode::Standard).unwrap();
-        let bytes = std::fs::read(&ordinary.descriptor.input).unwrap();
+        let bytes = std::fs::read(&ordinary.input).unwrap();
         let prepared = prepare_inputs(&capture, scratch.path(), InputMode::Prepared).unwrap();
-        assert_eq!(bytes, std::fs::read(&prepared.descriptor.input).unwrap());
-        assert_eq!(ordinary.descriptor, prepared.descriptor);
-        assert_eq!(ordinary.source_bytes, prepared.source_bytes);
-        for file in ordinary.config.files {
+        assert_eq!(bytes, std::fs::read(&prepared.input).unwrap());
+        assert_eq!(ordinary, prepared);
+        let config: python::AnalysisConfig = serde_json::from_slice(&bytes).unwrap();
+        for file in config.files {
             assert_eq!(hash_file(&file.input).unwrap(), file.sha256);
             assert!(file.input.starts_with(std::env::temp_dir()));
         }

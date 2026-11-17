@@ -10,69 +10,11 @@ import subprocess
 import tempfile
 import time
 import unittest
-from product_support import ProductHarness, ROOT, BIN, JDK
+from product_support import ROOT, BIN, JDK
+from prepared_product_support import PreparedHarness
 
 
-class PreparedInputs(ProductHarness):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='prepared-inputs-', dir=ROOT/'target')
-        self.root = pathlib.Path(self.temp.name)
-        self.project, self.home = self.root/'project', self.root/'home'
-        fixture = pathlib.Path(os.environ.get('CODEANA_TEST_FIXTURES', ROOT/'fixtures'))/'python/preparation'
-        if not fixture.exists():
-            fixture = ROOT/'fixtures/python/preparation'
-        shutil.copytree(fixture, self.project)
-        subprocess.run(['git', 'init', '--quiet'], cwd=self.project, check=True)
-        (self.project/'.code-ana').mkdir()
-        self.home.mkdir(mode=0o700)
-        (self.home/'config.toml').write_text('schema_version=1\nkind="user"\n[limits]\nmax_worker_memory_bytes=3221225472\nmax_total_worker_memory_bytes=6442450944\n[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(str(JDK))+'\n')
-        self.config = '''schema_version=1
-kind="project"
-[resources.index]
-worker_memory_bytes=3221225472
-[languages.python]
-enabled=true
-[inputs]
-[[inputs.entries]]
-id="app-a"
-language="python"
-root="app-a"
-[inputs.entries.python]
-dependencies=["common"]
-[[inputs.entries]]
-id="app-b"
-language="python"
-root="app-b"
-[[inputs.entries]]
-id="common"
-language="python"
-root="common"
-'''
-        self.write_config()
-        self.daemon, self.log = None, None
-        self.addCleanup(self.cleanup)
-
-    def write_config(self):
-        (self.project/'.code-ana/config.toml').write_text(self.config)
-
-    def stop(self, kill=False):
-        if self.home.exists() and (self.home/'endpoint.json').exists():
-            subprocess.run([str(BIN/'codeana-cli'), '--home', str(self.home), 'daemon', 'stop'], capture_output=True, timeout=15)
-        super().stop(kill)
-
-    def daemon_log(self):
-        path = self.home/'daemon.log'
-        return path.read_text(errors='replace')[-12000:] if path.exists() else ''
-
-    def db(self, revision):
-        return contextlib.closing(sqlite3.connect(self.home/'revisions'/revision/'facts.db'))
-
-    def catalog(self):
-        return json.loads((self.project/'.code-ana/inputs.json').read_text())
-
-    def ownership(self, revision):
-        return json.loads((self.home/'revisions'/revision/'revision.json').read_text())['unit_ownership']
-
+class PreparedInputs(PreparedHarness):
     def test_new_semantic_index_still_requires_an_explicit_language(self):
         self.config = 'schema_version=1\nkind="project"\n'
         self.write_config()
@@ -159,11 +101,6 @@ root="common"
         self.assertEqual([s['allocation']['language'] for s in slots], ['python'])
         self.assertEqual(len(slots[0]['workers']), 3)
         self.assertTrue(all(w['state']=='complete' and w['usage']['work']==0 for w in slots[0]['workers']))
-
-    def add_python_comment_inputs(self):
-        for relative in ('app-a/main_a.py','app-b/main_b.py'):
-            source=self.project/relative
-            source.write_text('"""准备库存文档"""\n'+source.read_text())
 
     def test_native_unit_views_and_old_catalog_rejection(self):
         import tomllib
@@ -516,7 +453,14 @@ vm_classpath=true
         report = self.cli('report', repeated['report'])[0][0]
         self.assertTrue(all(w['phase']=='reused' for slot in report['analysis_resources']['coordinator']['languages'] for w in slot['workers']))
         sources['java-left'].write_text(source('ChangedMarker'))
-        changed = self.cli('index', '--prepare', timeout=180)[1]['revision']
+        changed_result = self.cli('index', '--prepare', timeout=180)[1]
+        changed = changed_result['revision']
+        changed_report = self.cli('report', changed_result['report'])[0][0]
+        phases = {w['grant']['id'].rsplit('/', 1)[-1]: w['phase'] for slot in changed_report['analysis_resources']['coordinator']['languages'] for w in slot['workers']}
+        self.assertEqual(phases['java-right'], 'reused', phases)
+        self.assertNotEqual(phases['java-left'], 'reused', phases)
+        with sqlite3.connect(self.home/'catalog.db') as catalog:
+            self.assertGreater(catalog.execute("SELECT count(*) FROM events WHERE body LIKE '%unit_result java-left delta%'").fetchone()[0], 0)
         check(changed, 'ChangedMarker')
         check(first, 'LeftMarker')
         full = self.cli('index', '--full', timeout=180)[1]['revision']

@@ -4,6 +4,8 @@
 No expected failures or skips: until production wiring lands, this gate is red.
 """
 import json
+import os
+import pathlib
 import contextlib
 import sqlite3
 import subprocess
@@ -17,6 +19,15 @@ import prepared_inputs_e2e as prepared
 def backend_work_limit(case):
     vector=json.loads((java.ROOT/'tests/fixtures/analysis-resources/backend-work-budget.json').read_text())
     return vector['max_work'][case]
+
+
+def record_budget(case, report):
+    destination = os.environ.get('CODEANA_BUDGET_CALIBRATION')
+    if destination:
+        path = pathlib.Path(destination)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open('a') as output:
+            output.write(json.dumps({'case': case, 'report': report}, sort_keys=True)+'\n')
 
 
 class BudgetCases:
@@ -274,13 +285,14 @@ class PythonBudget(BudgetCases, python.PythonLanguage):
                 self.assertEqual({r[0] for r in db.execute('SELECT DISTINCT language FROM nodes')}, {'python', 'rust'})
         try:
             source = self.project / 'main.py'
-            source.write_text(source.read_text() + ('\ndef added_for_budget():\n' + '    pass\n' * 10000 if mixed else '\ndef added_for_budget():\n    return factory()\n'))
+            source.write_text(source.read_text() + '\ndef added_for_budget():\n' + '    pass\n' * 10000)
             self.export()
-            config.write_text(original + '\n[resources.index.analysis]\nmax_work=' + str(backend_work_limit('python_rust') if mixed else 128) + '\n')
+            config.write_text(original + '\n[resources.index.analysis]\nmax_work=' + str(backend_work_limit('python_rust') if mixed else backend_work_limit('python')) + '\n')
             for args in [('index', '--full'), ('index',)]:
                 _, failed = self.cli(*args, code=1, timeout=180)
                 self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
                 report = self.cli('report', failed['report'])[0][0]['analysis_resources']['coordinator']
+                record_budget('python_rust' if mixed else 'python', report)
                 self.assertIsNone(report['admission']['failure'])
                 self.assertFalse(report['complete'])
                 slot = next(s for s in report['languages'] if s['allocation']['language'] == 'python')
@@ -334,13 +346,17 @@ class PreparedPythonBudget(prepared.PreparedInputs):
             self.assertEqual(sum(w['grant']['limits'][field] for w in slot['workers']), slot['allocation']['worker'][field])
         original = self.config
         try:
-            self.config = original + '\n[resources.index.analysis]\nmax_work=128\n'
+            for source in self.project.rglob('*.py'):
+                source.write_text(source.read_text()+'\ndef added_for_budget():\n'+'    pass\n'*10000)
+            self.config = original + '\n[resources.index.analysis]\nmax_work='+str(backend_work_limit('prepared_python'))+'\n'
             self.write_config()
             _, failed = self.cli('index', '--prepare', '--full', code=1, timeout=180)
             self.assertEqual(failed['code'], 'ANALYSIS_RESOURCE_LIMIT')
             report = self.cli('report', failed['report'])[0][0]['analysis_resources']['coordinator']
             self.assertIsNone(report['admission']['failure'])
+            record_budget('prepared_python', report)
             slot = next(s for s in report['languages'] if s['allocation']['language'] == 'python')
+            self.assertIsNone(slot['host_usage']['failure'])
             self.assertTrue(any(w['state'] == 'failed' for w in slot['workers']))
             self.assertEqual(self.cli('overview')[1]['revision'], old)
             with self.db(old) as db:
@@ -404,6 +420,8 @@ class PreparedRustBudget(prepared.PreparedInputs):
                 select([name]);_,result=self.cli('index','--prepare','--full',timeout=180)
                 with self.db(result['revision']) as db:self.assertGreater(db.execute("SELECT count(*) FROM nodes WHERE language='rust'").fetchone()[0],0)
                 report=self.cli('report',result['report'])[0][0]['analysis_resources']['coordinator']
+                record_budget('prepared_rust.single.'+name, report)
+                self.assertTrue(all(s['host_usage']['failure'] is None and all(w['state']=='complete' for w in s['workers']) for s in report['languages']), report)
                 self.assertEqual(len(report['languages'][0]['workers']),1)
             finally:
                 try:
@@ -419,7 +437,9 @@ class PreparedRustBudget(prepared.PreparedInputs):
         self.assertEqual(self.cli('overview')[1]['revision'],old)
         report=self.cli('report',failed['report'])[0][0]['analysis_resources']['coordinator']
         self.assertIsNone(report['admission']['failure'])
-        self.assertTrue(any(s['host_usage']['failure'] or any(w['state']=='failed' for w in s['workers']) for s in report['languages']))
+        record_budget('prepared_rust.combined', report)
+        self.assertTrue(all(s['host_usage']['failure'] is None for s in report['languages']), report)
+        self.assertTrue(any(w['state']=='failed' and w['usage']['failure']['Limit']['resource']=='work' for s in report['languages'] for w in s['workers']), report)
         select(['unit-a','unit-b'],False)
         _,recovered=self.cli('index','--prepare','--full',timeout=180)
         with self.db(recovered['revision']) as db:self.assertEqual({r[0] for r in db.execute("SELECT DISTINCT module FROM nodes WHERE language='rust'")},{'unit-a','unit-b'})

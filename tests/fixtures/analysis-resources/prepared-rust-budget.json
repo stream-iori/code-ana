@@ -1,7 +1,9 @@
 {
   "case": "two-independent-cargo-workspaces-cumulative-work",
-  "max_work": 5000,
-  "reference": {
+  "max_work": 7000,
+  "reason": "Each real standalone worker finishes within its 5222 work grant and its host finishes within 1741. Combined workers each receive only 2607: the first rejects a 2878-work discovery allocation after consuming 27, while host usage stays 40 and the sibling remains reserved. No host/sibling share is borrowed; preserve the published head.",
+  "evidence": "target/typescript-c-abi/r4-common-executor/budget-calibration.jsonl",
+  "historical_reference": {
     "single_admission_work": 37,
     "combined_admission_work": 47,
     "single_host_work": 211,
@@ -11,6 +13,16 @@
     "single_worker_grant": 3722,
     "combined_worker_grant": 1857
   },
-  "reason": "Use independent catalog homes for standalone runs: a Removed unit still keeps its static reservation. Each actual standalone worker needs 3457 work and receives 3722. With both units present each grant is 1857, so the first worker fails without borrowing its sibling or host share. Preserve the previously published two-unit graph.",
-  "evidence": "target/typescript-c-abi/r4-unit-factory/resource-report-recalibrated.json"
+  "reference": {
+    "single_host_limit": 1741,
+    "single_host_work": 1453,
+    "single_worker_grant": 5222,
+    "single_worker_work": 3430,
+    "combined_host_limit": 1739,
+    "combined_host_work": 40,
+    "combined_worker_grant": 2607,
+    "combined_failure_used": 27,
+    "combined_failure_requested": 2878,
+    "combined_failure_phase": "discover"
+  }
 }

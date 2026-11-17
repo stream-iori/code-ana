@@ -2,14 +2,6 @@
 use super::*;
 use std::collections::BTreeSet;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum ExecutionPolicy {
-    Java,
-    RustIncremental,
-    Conservative,
-    Prepared,
-}
-
 #[derive(Debug)]
 pub(super) struct PlannedUnit {
     pub id: AnalysisUnitId,
@@ -21,7 +13,6 @@ pub(super) struct PlannedUnit {
 pub(super) struct IndexPlan {
     pub baseline: RevisionId,
     pub fixture_sources: Vec<SourceUnit>,
-    pub policy: ExecutionPolicy,
     pub participants: Vec<AnalysisBackend>,
     pub units: Vec<PlannedUnit>,
 }
@@ -37,6 +28,7 @@ impl IndexPlan {
             .map(|u| u.inputs.as_slice())
             .unwrap_or(&self.fixture_sources)
     }
+    #[cfg(test)]
     pub fn executes(&self, backend: AnalysisBackend) -> bool {
         self.units
             .iter()
@@ -81,15 +73,6 @@ impl IndexPlan {
         budget: Option<&AnalysisContext>,
     ) -> Result<Self> {
         let effective = &capture.effective;
-        let policy = if !effective.input_units.is_empty() {
-            ExecutionPolicy::Prepared
-        } else if effective.python_inputs().is_some() {
-            ExecutionPolicy::Conservative
-        } else if effective.rust_inputs().is_some() {
-            ExecutionPolicy::RustIncremental
-        } else {
-            ExecutionPolicy::Java
-        };
         let admit = |id: &str, bytes: usize| -> Result<()> {
             ensure!(
                 !id.is_empty() && id.len() <= 256,
@@ -107,7 +90,7 @@ impl IndexPlan {
             Ok(())
         };
         let mut units: Vec<PlannedUnit> = Vec::new();
-        if policy == ExecutionPolicy::Prepared {
+        if !effective.input_units.is_empty() {
             for (index, unit) in effective.input_units.iter().enumerate() {
                 admit(&unit.prepared.id, 0)?;
                 ensure!(
@@ -183,7 +166,6 @@ impl IndexPlan {
         Ok(Self {
             baseline: RevisionId::default(),
             fixture_sources: vec![],
-            policy,
             participants,
             units,
         })
@@ -333,7 +315,6 @@ mod tests {
         assert!(!plan.executes(AnalysisBackend::Rust));
         assert!(!plan.executes(AnalysisBackend::Python));
         assert!(plan.units.iter().all(|unit| unit.prepared_index.is_none()));
-        assert_eq!(plan.policy, ExecutionPolicy::Java);
     }
 
     #[test]
@@ -346,7 +327,6 @@ mod tests {
             unit("python-a", "python", Some(c.effective.clone())),
         ];
         let plan = IndexPlan::build(&c, None).unwrap();
-        assert_eq!(plan.policy, ExecutionPolicy::Prepared);
         assert_eq!(
             plan.units
                 .iter()
