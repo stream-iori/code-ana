@@ -11,12 +11,13 @@ fn same_sources_for_profile(before: &Manifest, after: &Manifest) -> bool {
     codeana_model::same_semantic_sources(&before.files, &after.files)
 }
 
-struct RustWorkers {
-    rust: worker::Worker,
-    java: Option<worker::Worker>,
-    java_capture: Option<Capture>,
-    prepared: Option<java::PreparedJava>,
+fn rust_input(units: &crate::analysis_unit::RunningUnits) -> Result<&RustInput> {
+    let crate::analysis_unit::PreparedInput::Rust(input) = &units.unit("rust")?.input else {
+        bail!("RUST_UNIT_INPUT_REQUIRED");
+    };
+    Ok(input)
 }
+
 struct RustBaseline {
     expected: RevisionId,
     profile: String,
@@ -25,21 +26,13 @@ struct RustBaseline {
     unchanged: bool,
 }
 struct RustAttempt {
-    // Fields drop in declaration order: stop workers before deleting their inputs.
-    workers: RustWorkers,
-    input: RustInput,
+    units: crate::analysis_unit::RunningUnits,
     baseline: RustBaseline,
 }
 
 impl IndexTask {
-    async fn shutdown_rust_workers(&self, id: &str, workers: &mut RustWorkers) {
-        if let Some(warning) = crate::analysis_unit::shutdown(
-            std::iter::once(&mut workers.rust)
-                .chain(workers.java.iter_mut())
-                .collect(),
-        )
-        .await
-        {
+    async fn stop_running_units(&self, id: &str, units: &mut crate::analysis_unit::RunningUnits) {
+        if let Some(warning) = crate::analysis_unit::shutdown(units.workers_mut()).await {
             let _ = self.task.event(
                 &TaskId::from(id),
                 &Event::Progress(format!("worker_cleanup_warning {warning}")),
@@ -53,12 +46,7 @@ impl IndexTask {
         units: &mut crate::analysis_unit::RunningUnits,
         result: Result<TaskResult>,
     ) -> Result<TaskResult> {
-        if let Some(warning) = crate::analysis_unit::shutdown(units.workers_mut()).await {
-            let _ = self.task.event(
-                &TaskId::from(id),
-                &Event::Progress(format!("worker_cleanup_warning {warning}")),
-            );
-        }
+        self.stop_running_units(id, units).await;
         result
     }
 
@@ -94,6 +82,26 @@ impl IndexTask {
                 PreparedInput::Python(input.descriptor, request.python_guard.clone())
             }
         })
+    }
+
+    fn own_unit_manifest(
+        &self,
+        id: &str,
+        backend: AnalysisBackend,
+        instance: &str,
+        manifest: &Manifest,
+    ) -> Result<Manifest> {
+        if let Some(binding) = self.analysis_binding(id, backend, instance) {
+            let host = binding
+                .coordinator
+                .lock()
+                .unwrap()
+                .host(backend)
+                .map_err(DomainError::analysis)?;
+            codeana_contracts::json_budget::clone_with_budget(manifest, &host)
+        } else {
+            Ok(manifest.clone())
+        }
     }
 
     fn reserve_owned_input(
@@ -137,10 +145,10 @@ impl IndexTask {
             DomainError::new(ErrorCode::HeadConflict, "")
         );
         let input = self.prepare_rust_inputs(id, &capture).await?;
-        let mut workers = self
-            .start_rust_workers(
+        let mut units = self
+            .start_rust_units(
                 id,
-                &input,
+                input,
                 &capture,
                 plan.executes(AnalysisBackend::Java),
                 cancel,
@@ -148,20 +156,15 @@ impl IndexTask {
             )
             .await?;
         let baseline_result = self
-            .resolve_rust_baseline(id, req, &capture, &input, &workers, expected)
+            .resolve_rust_baseline(id, req, &capture, &units, expected)
             .await;
         let baseline = match baseline_result {
             Ok(baseline) => baseline,
             Err(error) => {
-                self.shutdown_rust_workers(id, &mut workers).await;
-                return Err(error);
+                return self.finish_running_units(id, &mut units, Err(error)).await;
             }
         };
-        let mut attempt = RustAttempt {
-            input,
-            workers,
-            baseline,
-        };
+        let mut attempt = RustAttempt { units, baseline };
         let result: Result<TaskResult> = async {
             let analyzing = Instant::now();
             let (result_mode, candidate) = self
@@ -172,7 +175,7 @@ impl IndexTask {
                 &TaskId::from(id),
                 &Event::Progress(format!(
                     "rust_worker_memory {}",
-                    serde_json::to_string(&attempt.workers.rust.memory_usage())?
+                    serde_json::to_string(&attempt.units.unit("rust")?.worker()?.memory_usage())?
                 )),
             )?;
             let summary = self.index.summary(&candidate).clone();
@@ -196,13 +199,14 @@ impl IndexTask {
                 }
                 crate::indexing::CandidateOutcome::Rejected(result) => return Ok(*result),
             };
-            let units = (!attempt.baseline.unchanged)
-                .then_some(&mut attempt.workers.rust)
-                .into_iter()
-                .chain(attempt.workers.java.iter_mut())
-                .collect();
-            let ack = crate::analysis_unit::acknowledge(units, &revision.id).await;
-            if let Ok(memory) = serde_json::to_string(&attempt.workers.rust.memory_usage()) {
+            let ack = if attempt.baseline.unchanged {
+                None
+            } else {
+                crate::analysis_unit::acknowledge(attempt.units.workers_mut(), &revision.id).await
+            };
+            if let Ok(memory) =
+                serde_json::to_string(&attempt.units.unit("rust")?.worker()?.memory_usage())
+            {
                 let _ = self.task.event(
                     &TaskId::from(id),
                     &Event::Progress(format!("rust_worker_memory {memory}")),
@@ -217,10 +221,7 @@ impl IndexTask {
                     summary,
                     evidence,
                     ack,
-                    worker_contexts: std::iter::once(&attempt.workers.rust)
-                        .chain(attempt.workers.java.iter())
-                        .map(|worker| worker.context.clone())
-                        .collect(),
+                    worker_contexts: attempt.units.contexts()?,
                     analyze_ms,
                     publish_ms: publishing.elapsed().as_millis() as u64,
                     index_elapsed_ms: started.elapsed().as_millis() as u64,
@@ -229,112 +230,89 @@ impl IndexTask {
             .await
         }
         .await;
-        self.shutdown_rust_workers(id, &mut attempt.workers).await;
-        result
+        self.finish_running_units(id, &mut attempt.units, result)
+            .await
     }
-    async fn start_rust_workers(
+    async fn start_rust_units(
         &self,
         id: &str,
-        input: &RustInput,
+        input: RustInput,
         capture: &Capture,
         java_enabled: bool,
         cancel: &CancellationToken,
         plan: &crate::index_plan::IndexPlan,
-    ) -> Result<RustWorkers> {
-        let descriptor = &input.descriptor;
-        let rust_manifest = &input.manifest;
-        let memory = if java_enabled {
-            input.memory / 2
-        } else {
-            input.memory
+    ) -> Result<crate::analysis_unit::RunningUnits> {
+        use crate::analysis_unit::{PreparedInput, RunningUnit, RunningUnits};
+        let memory = input.memory / (1 + u64::from(java_enabled));
+        ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
+        self.reserve_owned_input(id, AnalysisBackend::Rust, "")?;
+        let manifest = self.own_unit_manifest(id, AnalysisBackend::Rust, "", &input.manifest)?;
+        let mut units = RunningUnits {
+            units: vec![],
+            scratch: input.scratch.clone(),
         };
-        let rust_worker = worker::Worker::start_language(
-            worker::LaunchSpec {
-                fixtures: None,
-                language: worker::Language::Rust(descriptor),
-                checkout: &capture.root,
-                manifest: rust_manifest,
-                inputs: crate::supervisor::InputLease::new(capture, vec![input.scratch.clone()]),
-                publication: crate::analysis_unit::publication(
-                    capture,
-                    AnalysisBackend::Rust,
+        units.units.push(RunningUnit::prepared(
+            PreparedInput::Rust(Box::new(input)),
+            capture.backend_capture(AnalysisBackend::Rust)?,
+            manifest,
+        )?);
+        let result: Result<()> = async {
+            units
+                .unit_mut("rust")?
+                .start(
+                    cancel,
+                    memory,
+                    self.analysis_binding(id, AnalysisBackend::Rust, ""),
                     plan.previous_sources("rust"),
-                ),
-            },
-            cancel,
-            memory,
-            self.analysis_binding(id, AnalysisBackend::Rust, ""),
-        )
-        .await?;
-        let mut workers = RustWorkers {
-            rust: rust_worker,
-            java: None,
-            java_capture: None,
-            prepared: None,
-        };
-        let started: Result<()> = async {
-            ensure!(
-                workers.rust.context.backend() == AnalysisBackend::Rust,
-                "WORKER_LANGUAGE_MISMATCH"
-            );
-            workers.java_capture = if java_enabled {
-                Some(capture.backend_capture(AnalysisBackend::Java)?)
-            } else {
-                None
-            };
-            workers.prepared = if let Some(c) = workers.java_capture.clone() {
-                Some(self.prepare_java_unit(c).await?)
-            } else {
-                None
-            };
-            workers.java = if let Some(c) = &workers.java_capture {
-                Some(
-                    worker::Worker::start_language(
-                        worker::LaunchSpec {
-                            fixtures: None,
-                            language: worker::Language::Java(workers.prepared.as_ref()),
-                            checkout: &c.root,
-                            manifest: &c.manifest,
-                            inputs: crate::supervisor::InputLease::new(
-                                c,
-                                workers.prepared.iter().map(|p| p.scratch.clone()).collect(),
-                            ),
-                            publication: crate::analysis_unit::publication(
-                                c,
-                                AnalysisBackend::Java,
-                                plan.previous_sources("java"),
-                            ),
-                        },
+                )
+                .await?;
+            if java_enabled {
+                self.reserve_owned_input(id, AnalysisBackend::Java, "")?;
+                let view = capture.backend_capture(AnalysisBackend::Java)?;
+                let manifest =
+                    self.own_unit_manifest(id, AnalysisBackend::Java, "", &view.manifest)?;
+                let input = self.prepare_java_unit(view.clone()).await?;
+                units.units.push(RunningUnit::prepared(
+                    PreparedInput::Java(Box::new(input)),
+                    view,
+                    manifest,
+                )?);
+                units
+                    .unit_mut("java")?
+                    .start(
                         cancel,
                         memory,
                         self.analysis_binding(id, AnalysisBackend::Java, ""),
+                        plan.previous_sources("java"),
                     )
-                    .await?,
-                )
-            } else {
-                None
-            };
+                    .await?;
+            }
             Ok(())
         }
         .await;
-        if let Err(error) = started {
-            self.shutdown_rust_workers(id, &mut workers).await;
+        if let Err(error) = result {
+            self.stop_running_units(id, &mut units).await;
             return Err(error);
         }
-        Ok(workers)
+        Ok(units)
     }
     async fn resolve_rust_baseline(
         &self,
         id: &str,
         req: &IndexCommand,
         capture: &Capture,
-        input: &RustInput,
-        workers: &RustWorkers,
+        units: &crate::analysis_unit::RunningUnits,
         expected: RevisionId,
     ) -> Result<RustBaseline> {
+        let input = rust_input(units)?;
         let config = &input.config;
-        let rust_worker = &workers.rust;
-        let java_worker = &workers.java;
+        let rust_worker = units.unit("rust")?.worker()?;
+        let java_worker = units
+            .units
+            .iter()
+            .find(|u| u.unit == "java")
+            .map(|u| u.worker())
+            .transpose()?;
         let scratch = &input.scratch;
         // Unpublished dependency bytes can alter bindings without a public source owner.
         // Rebuild on their change until external interface summaries are available.
@@ -428,9 +406,12 @@ impl IndexTask {
         let revision = Revision {
             unit_ownership: self.ownership(
                 capture,
-                &std::iter::once(&attempt.workers.rust.context)
-                    .chain(attempt.workers.java.iter().map(|w| &w.context))
-                    .collect::<Vec<_>>(),
+                &attempt
+                    .units
+                    .units
+                    .iter()
+                    .map(|unit| unit.worker().map(|worker| &worker.context))
+                    .collect::<Result<Vec<_>>>()?,
             )?,
             id: String::new(),
             target: capture.target.clone(),
@@ -438,7 +419,7 @@ impl IndexTask {
             checkout: capture.checkout.clone(),
             manifest: capture.manifest.clone(),
             profile: attempt.baseline.profile.clone(),
-            producer: if attempt.workers.java.is_some() {
+            producer: if attempt.units.units.iter().any(|unit| unit.unit == "java") {
                 "codeana-java-rust"
             } else {
                 "rust-core"
@@ -449,7 +430,7 @@ impl IndexTask {
         if attempt.baseline.unchanged {
             self.stage_unchanged_rust(id, attempt, revision, cancel)
                 .await
-        } else if attempt.workers.java.is_none() {
+        } else if !attempt.units.units.iter().any(|unit| unit.unit == "java") {
             self.stage_rust_stream(id, attempt, revision, cancel).await
         } else {
             self.stage_mixed_languages(id, capture, attempt, revision, cancel)
@@ -463,7 +444,7 @@ impl IndexTask {
         revision: Revision,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
-        let rust_worker = &mut attempt.workers.rust;
+        let (rust_worker, _) = attempt.units.unit_mut("rust")?.stream()?;
         let expected = attempt.baseline.expected.clone();
         crate::analysis_unit::retire(vec![rust_worker]).await?;
         self.task.event(
@@ -480,11 +461,12 @@ impl IndexTask {
         revision: Revision,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
+        let (worker, manifest) = attempt.units.unit_mut("rust")?.stream()?;
         self.stage_language_stream(
             id,
-            &mut attempt.workers.rust,
+            worker,
             crate::indexing::StreamRequest {
-                manifest: &attempt.input.manifest,
+                manifest,
                 revision,
                 expected: &attempt.baseline.expected,
                 baseline: attempt.baseline.old.as_ref(),
@@ -502,44 +484,45 @@ impl IndexTask {
         revision: Revision,
         cancel: &CancellationToken,
     ) -> Result<(AnalysisMode, crate::indexing::StagedCandidate)> {
-        let RustWorkers {
-            rust: rust_worker,
-            java: java_worker,
-            java_capture,
-            prepared,
-        } = &mut attempt.workers;
-        let rust_manifest = &attempt.input.manifest;
-        let scratch = &attempt.input.scratch;
-        let result_bytes = attempt.input.config.result_bytes;
-        let fact_limit = attempt.input.config.fact_limit;
-        let old = &attempt.baseline.old;
-        let full = attempt.baseline.full;
+        let input = rust_input(&attempt.units)?;
+        let scratch = input.scratch.clone();
+        let result_bytes = input.config.result_bytes;
+        let fact_limit = input.config.fact_limit;
         let expected = attempt.baseline.expected.clone();
         let profile = attempt.baseline.profile.clone();
-
-        let result = rust_worker
-            .analyze(
-                rust_manifest,
-                &profile,
-                &expected,
-                old.as_ref(),
-                full,
-                cancel,
-            )
-            .await?;
-        self.task.event(
-            &TaskId::from(id),
-            &Event::Progress(format!(
-                "rust_worker_memory {}",
-                serde_json::to_string(&rust_worker.memory_usage())?
-            )),
-        )?;
+        let full = attempt.baseline.full;
+        let result = {
+            let (worker, manifest) = attempt.units.unit_mut("rust")?.stream()?;
+            let result = worker
+                .analyze(
+                    manifest,
+                    &profile,
+                    &expected,
+                    attempt.baseline.old.as_ref(),
+                    full,
+                    cancel,
+                )
+                .await?;
+            self.task.event(
+                &TaskId::from(id),
+                &Event::Progress(format!(
+                    "rust_worker_memory {}",
+                    serde_json::to_string(&worker.memory_usage())?
+                )),
+            )?;
+            result
+        };
         let mut archive = result.records;
         let mut replacements = result.header.replacements;
-        if let (Some(worker), Some(c)) = (java_worker.as_mut(), java_capture.as_ref()) {
-            // Java retains its existing semantic backend. The merge is still one revision.
+        if let Some(unit) = attempt
+            .units
+            .units
+            .iter_mut()
+            .find(|unit| unit.unit == "java")
+        {
+            let (worker, manifest) = unit.stream()?;
             let result = worker
-                .analyze(&c.manifest, &profile, &expected, None, true, cancel)
+                .analyze(manifest, &profile, &expected, None, true, cancel)
                 .await?;
             let root = scratch.path().to_path_buf();
             archive = tokio::task::spawn_blocking(move || -> Result<_> {
@@ -551,10 +534,10 @@ impl IndexTask {
             })
             .await??;
             replacements.extend(
-                c.manifest
+                manifest
                     .files
                     .iter()
-                    .filter(|s| s.language == "java")
+                    .filter(|s| s.language == "java" && !s.auxiliary)
                     .map(|s| Owner {
                         world: s.world.clone().into(),
                         producer: worker.context.producer.clone(),
@@ -570,7 +553,7 @@ impl IndexTask {
                         .manifest
                         .files
                         .iter()
-                        .filter(|s| s.language == "java")
+                        .filter(|s| s.language == "java" && !s.auxiliary)
                         .map(|s| Owner {
                             world: s.world.clone().into(),
                             producer: worker.context.producer.clone(),
@@ -579,13 +562,11 @@ impl IndexTask {
                         }),
                 );
             }
-        }
-        if let Some(prepared) = &prepared {
-            prepared.verify()?;
+            unit.input.verify()?;
         }
         replacements.sort();
         replacements.dedup();
-        let producer = if java_worker.is_some() {
+        let producer = if attempt.units.units.iter().any(|unit| unit.unit == "java") {
             "codeana-java-rust"
         } else {
             "rust-core"
@@ -719,7 +700,8 @@ impl IndexTask {
                 python_manifest,
             )?);
         if let Some(input) = rust_input {
-            let manifest = input.manifest.clone();
+            let manifest =
+                self.own_unit_manifest(id, AnalysisBackend::Rust, "", &input.manifest)?;
             sessions
                 .units
                 .push(crate::analysis_unit::RunningUnit::prepared(

@@ -205,11 +205,23 @@ impl RunningUnit {
 }
 
 pub(super) struct RunningUnits {
-    // Drop each owned session and its guards before the shared Python scratch.
+    // Drop each owned session and its guards before the shared task scratch.
     pub units: Vec<RunningUnit>,
     pub scratch: std::sync::Arc<tempfile::TempDir>,
 }
 impl RunningUnits {
+    pub fn unit(&self, id: &str) -> Result<&RunningUnit> {
+        self.units
+            .iter()
+            .find(|unit| unit.unit == id)
+            .ok_or_else(|| anyhow::anyhow!("ANALYSIS_UNIT_MISSING {id}"))
+    }
+    pub fn unit_mut(&mut self, id: &str) -> Result<&mut RunningUnit> {
+        self.units
+            .iter_mut()
+            .find(|unit| unit.unit == id)
+            .ok_or_else(|| anyhow::anyhow!("ANALYSIS_UNIT_MISSING {id}"))
+    }
     pub fn workers_mut(&mut self) -> Vec<&mut Worker> {
         fn running(u: &mut RunningUnit) -> Option<&mut Worker> {
             match &mut u.session {

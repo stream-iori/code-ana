@@ -156,7 +156,7 @@ Python 只读取显式清单并验证全部来源哈希。完全相同的 manife
 
 worker 终态由公共 analysis_unit 的同一 worker 引用集合入口处理，删除 One/Pair/Sessions 类型；Reused 失败仍中止暂存，PublishAck 失败只保存 warning 并继续确认其余实例，不改变已发布 revision。该迭代不复制 worker 或另建预算账户。
 
-prepared 入口以计划中的 Ready 单元确定内存分片和启动语言，按后端和稳定实例 ID 顺序准备/启动，保留降级 coverage。保守与 prepared 集合使用 Vec<RunningUnit>：每个单元直接持有 Prepared/Running 会话状态、输入守卫、manifest 和 Unit Capture，集合最后释放共享 scratch；删除平行 sessions/inputs 数组及其 Deref 入口。构造时核对单元捕获、后端和 manifest 子集，启动时核对 grant 实例，未启动状态不能提供流或上下文。输入装箱的预留接续既有 host 账户；单 Java 健康池及 Rust 增量策略仍保留其自身生命周期结构，R4 统一执行尚未完成。
+prepared 入口以计划中的 Ready 单元确定内存分片和启动语言，按后端和稳定实例 ID 顺序准备/启动，保留降级 coverage。Rust 普通/Java+Rust、保守与 prepared 集合使用 Vec<RunningUnit>：每个单元直接持有 Prepared/Running 会话状态、输入守卫、manifest 和 Unit Capture，集合最后释放共享 scratch；删除平行 sessions/inputs 数组及其 Deref 入口。构造时核对单元捕获、后端和 manifest 子集，启动时核对 grant 实例，未启动状态不能提供流或上下文。输入装箱的预留接续既有 host 账户；Rust 输入与 Java 输入直接归对应单元，删除 RustWorkers 和 RustAttempt 的平行输入字段，使用公共清理入口；新增 manifest 副本也先向原 host 账户预留。单 Java 健康池仍保留其自身生命周期结构，Rust 的失效/profile 策略与独立组合执行仍待统一，R4 执行器尚未完成。
 
 PlannedUnit 明确 Ready/FilesOnly/Removed。FilesOnly 和从基线归属清单发现的 Removed 均保留静态后端/实例份额，主机封存零 worker 用量，不能重领或借给 Ready；进程内存只按 Ready 数量分片。普通单元和 prepared 一样使用稳定实例 ID。全部单元禁用/删除时发布空语义及当前 FILES，不启动 Java 兜底；无基线且未启用语言仍报 NO_ENABLED_LANGUAGE。
 

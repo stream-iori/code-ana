@@ -137,6 +137,21 @@ enabled=false
         self.assertGreater(languages(first).get('java',0),0)
         self.assertGreater(languages(first).get('rust',0),0)
         self.assertTrue(self.cli('resolve','rust_answer')[0])
+        # Java preparation fails after Rust has received its real Discover grant.
+        # Cleanup must stop that process before dropping the owned frozen input.
+        original_config=config.read_text()
+        config.write_text(original_config.replace('toolchain = "java8"','toolchain = "missing-toolchain-fixture"'))
+        _,failed=self.cli('index',code=1,timeout=180)
+        self.assertEqual(failed['code'],'TARGET_JDK_REQUIRED')
+        self.assertEqual(self.cli('overview')[1]['revision'],first)
+        report=self.cli('report',failed['report'])[0][0]
+        rust=next(slot for slot in report['analysis_resources']['coordinator']['languages'] if slot['allocation']['language']=='rust')
+        self.assertTrue(any(worker.get('phase')=='discover' and worker['usage']['work']>0 for worker in rust['workers']))
+        children=[line for line in subprocess.check_output(['ps','-axo','ppid=,command='],text=True).splitlines()
+                  if (parts:=line.strip().split(None,1)) and len(parts)==2 and parts[0]==str(self.daemon.pid)
+                  and any(name in parts[1] for name in ('codeana-rust-worker','codeana-java-worker'))]
+        self.assertFalse(children)
+        config.write_text(original_config)
         source.write_text('pub fn rust_answer() -> i32 { 2 }\npub fn added() -> i32 { rust_answer() }\n')
         delta=self.cli('index',timeout=180)[1]['revision']
         full=self.cli('index','--full',timeout=180)[1]['revision']
