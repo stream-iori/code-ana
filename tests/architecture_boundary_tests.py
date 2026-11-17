@@ -9,6 +9,16 @@ spec=importlib.util.spec_from_file_location('architecture', pathlib.Path(__file_
 architecture=importlib.util.module_from_spec(spec);spec.loader.exec_module(architecture)
 
 class Boundaries(unittest.TestCase):
+    def test_candidate_sql_cannot_bypass_its_task_scope_after_a_move_or_alias(self):
+        for path in ['crates/storage/src/graph_candidate.rs', 'crates/storage/src/nested/helper.rs',
+                     'crates/storage/src/nested/lib.rs']:
+            for source in ['Connection::open(path);', 'rusqlite::Connection::open_with_flags(path, flags);',
+                           'let open=Connection::open;', 'use rusqlite::Connection as Db; Db::open(path);',
+                           'type Db=rusqlite::Connection; Db::open(path);']:
+                self.assertTrue(architecture.storage_rust_violations(path, source), (path,source))
+            self.assertFalse(architecture.storage_rust_violations(path,'let db=scope.open(path)?;'))
+        self.assertFalse(architecture.storage_rust_violations('crates/storage/src/sql_budget.rs','Connection::open_with_flags_and_vfs(path, flags, name);'))
+
     def test_language_combinations_cannot_restore_separate_index_executors(self):
         for source in ['enum ExecutionPolicy { Java, Prepared }', 'self.index_rust(request)',
                        'self.index_python(request)', 'self.index_prepared(request)',

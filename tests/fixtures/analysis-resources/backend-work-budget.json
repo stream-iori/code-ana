@@ -4,12 +4,12 @@
     "java": 8192,
     "rust": 16384,
     "python_rust": 65536,
-    "python": 8192,
+    "python": 262144,
     "prepared_python": 8192
   },
   "reason": "Leave the measured host setup and Rust sibling enough work. A trusted worker receipt must exhaust work; host/admission failure is not this case. Both full and incremental requests retain the previous head.",
   "evidence": "target/typescript-c-abi/r4-unit-factory/resource-report-recalibrated.json",
-  "python_case": "10000 pass statements make the trusted standalone worker exhaust backend work after host admission and per-unit merge planning.",
+  "python_case": "10000 pass statements: the measured standalone full worker requires 304101 work. A 262144 task cap leaves a healthy host; its trusted worker fails within its own static grant. Full and incremental failures retain the previous head.",
   "historical_reference": {
     "java_worker_grant": 6138,
     "java_failure_used": 3445,
@@ -21,7 +21,10 @@
     "python_failure_used": 22295,
     "python_failure_requested": 90480
   },
-  "reference": {
+  "prepared_python_case": "Three static worker shares; the first rejects discovery work without borrowing the reserved siblings or the healthy host.",
+  "current_evidence": "target/typescript-c-abi/r4-common-executor/budget-calibration.jsonl",
+  "sql_audit_calibration": "target/typescript-c-abi/r4-sql-budget/budget-calibration.jsonl",
+  "common_executor_reference": {
     "python_host_limit": 2044,
     "python_host_work": 917,
     "python_worker_grant": 6132,
@@ -34,6 +37,12 @@
     "prepared_python_failure_requested": 2820,
     "prepared_python_failure_phase": "discover"
   },
-  "prepared_python_case": "Three static worker shares; the first rejects discovery work without borrowing the reserved siblings or the healthy host.",
-  "current_evidence": "target/typescript-c-abi/r4-common-executor/budget-calibration.jsonl"
+  "reference": {
+    "python_host_limit": 65532,
+    "python_host_work": 18892,
+    "python_worker_grant": 196596,
+    "python_failure_used": 132978,
+    "python_failure_requested": 150981,
+    "python_failure_phase": "backend"
+  }
 }

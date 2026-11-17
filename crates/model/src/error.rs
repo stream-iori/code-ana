@@ -363,6 +363,8 @@ codes! {
     JavaResultBytesRange = "JAVA_RESULT_BYTES_RANGE",
     JavaScratchBudget = "JAVA_SCRATCH_BUDGET",
     JavaScratchBytesRange = "JAVA_SCRATCH_BYTES_RANGE",
+    HostScratchBytesRange = "HOST_SCRATCH_BYTES_RANGE",
+    HostScratchBudget = "HOST_SCRATCH_BUDGET",
     JavaSourceIndexIdentity = "JAVA_SOURCE_INDEX_IDENTITY",
     JavaUncapturedInputTable = "JAVA_UNCAPTURED_INPUT_TABLE",
     JavaWorldsDerivedFromSourceRoots = "JAVA_WORLDS_DERIVED_FROM_SOURCE_ROOTS",

@@ -293,11 +293,40 @@ impl IndexTask {
                 )?;
             }
             let analyzing = Instant::now();
-            let disks = sessions
-                .units
-                .iter()
-                .filter_map(|u| u.worker().ok().and_then(|w| w.candidate_disk()))
-                .collect::<Vec<_>>();
+            let mut disks = vec![
+                crate::resources::DiskBudget::new(
+                    sessions.scratch.path().to_path_buf(),
+                    capture
+                        .effective
+                        .config
+                        .resources
+                        .index
+                        .host_scratch_bytes
+                        .unwrap_or(2 << 30),
+                    0,
+                    0,
+                    "HOST_SCRATCH_BUDGET",
+                )
+                .with_analysis(
+                    staging_context
+                        .as_ref()
+                        .and_then(|c| c.hosts.values().next())
+                        .cloned(),
+                ),
+            ];
+            disks.extend(sessions.units.iter().filter_map(|u| {
+                u.worker()
+                    .ok()
+                    .and_then(|w| w.candidate_disk())
+                    .map(|disk| {
+                        disk.with_analysis(
+                            staging_context
+                                .as_ref()
+                                .and_then(|c| c.hosts.get(&u.backend()))
+                                .cloned(),
+                        )
+                    })
+            }));
             for unit in &mut sessions.units {
                 if updates[&unit.unit].kind == UnitUpdateKind::Reuse {
                     let (worker, _) = unit.stream()?;
@@ -334,7 +363,7 @@ impl IndexTask {
                     .context("ANALYSIS_UNIT_MISSING")?;
                 let update = &updates[&unit.unit];
                 let old = if update.kind == UnitUpdateKind::Delta {
-                    self.unit_baseline(id, unit, &plan.baseline).await?
+                    self.unit_baseline(id, unit, &plan.baseline, cancel).await?
                 } else {
                     None
                 };
@@ -380,7 +409,7 @@ impl IndexTask {
                         continue;
                     }
                     let old = if update.kind == UnitUpdateKind::Delta {
-                        self.unit_baseline(id, unit, &plan.baseline).await?
+                        self.unit_baseline(id, unit, &plan.baseline, cancel).await?
                     } else {
                         None
                     };
@@ -620,7 +649,7 @@ impl IndexTask {
                         );
                         Ok(())
                     },
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                 )
             })
             .await??;
@@ -688,11 +717,30 @@ impl IndexTask {
         id: &str,
         unit: &RunningUnit,
         expected: &RevisionId,
+        cancel: &CancellationToken,
     ) -> Result<Option<BaselineInput>> {
-        let store = self.index.clone().with_context(self.staging_context(id));
+        let backend = unit.backend();
+        let mut context = self.staging_context(id);
+        if let Some(context) = &mut context {
+            context.hosts.retain(|language, _| *language == backend);
+        }
+        let budget = context
+            .as_ref()
+            .and_then(|c| c.hosts.get(&backend).cloned());
+        if let Some(budget) = &budget {
+            budget
+                .charge(
+                    1,
+                    0,
+                    retained_size(&unit.manifest)?
+                        .saturating_mul(3)
+                        .saturating_add(4096),
+                )
+                .map_err(DomainError::analysis)?;
+        }
+        let store = self.index.clone();
         let expected = expected.clone();
         let owner = unit.unit.clone();
-        let backend = unit.backend();
         let manifest = unit.manifest.clone();
         let directory = unit
             .input
@@ -700,27 +748,65 @@ impl IndexTask {
             .into_iter()
             .next()
             .context("UNIT_BASELINE_DIRECTORY_REQUIRED")?;
-        let budget = self
-            .staging_context(id)
-            .and_then(|c| c.hosts.get(&backend).cloned());
+        let disk = unit
+            .worker()?
+            .candidate_disk()
+            .map(|disk| disk.with_analysis(budget.clone()));
+        let host_disk = crate::resources::DiskBudget::new(
+            directory.path().to_path_buf(),
+            unit.capture()
+                .effective
+                .config
+                .resources
+                .index
+                .host_scratch_bytes
+                .unwrap_or(2 << 30),
+            0,
+            0,
+            "HOST_SCRATCH_BUDGET",
+        )
+        .with_analysis(budget.clone());
+        let cancel = cancel.clone();
         tokio::task::spawn_blocking(move || {
-            let reader = store.read(&expected)?;
-            let summary = match backend {
-                AnalysisBackend::Java => {
-                    let mut summary = reader.baseline_summary_for(&manifest, &owner)?;
-                    // Java consumes `files` only as deletion owners. Controls and
-                    // read-only bindings remain in the frozen input/node context,
-                    // but can never authorize removal of a published source range.
-                    summary
-                        .files
-                        .retain(|s| publication_language(s) == Some(SourceLanguage::Java));
-                    summary
-                }
-                AnalysisBackend::Rust => {
-                    RustBaselineReader::rust_baseline_summary_for(&reader, &owner)?
-                }
-                _ => bail!("UNIT_INCREMENTAL_BASELINE_UNSUPPORTED"),
+            let cancellation = || {
+                ensure!(
+                    !cancel.is_cancelled(),
+                    DomainError::new(ErrorCode::Cancelled, "")
+                );
+                Ok(())
             };
+            let check_directory = |_: &Path, extra| {
+                host_disk.check_candidate_with_extra(None, extra)?;
+                if let Some(disk) = &disk {
+                    disk.check_candidate_with_extra(None, extra)?;
+                }
+                Ok(())
+            };
+            let summary = store.with_baseline(
+                ports::BaselineRequest {
+                    id: &expected,
+                    root: directory.path(),
+                    context: context.as_ref(),
+                    cancellation: &cancellation,
+                    check_directory: &check_directory,
+                },
+                |reader| match backend {
+                    AnalysisBackend::Java => {
+                        let mut summary = reader.baseline_summary_for(&manifest, &owner)?;
+                        // Java consumes `files` only as deletion owners. Controls and
+                        // read-only bindings remain in the frozen input/node context,
+                        // but can never authorize removal of a published source range.
+                        summary
+                            .files
+                            .retain(|s| publication_language(s) == Some(SourceLanguage::Java));
+                        Ok(summary)
+                    }
+                    AnalysisBackend::Rust => {
+                        RustBaselineReader::rust_baseline_summary_for(reader, &owner)
+                    }
+                    _ => bail!("UNIT_INCREMENTAL_BASELINE_UNSUPPORTED"),
+                },
+            )?;
             if let Some(budget) = budget {
                 budget
                     .charge(1, 0, retained_size(&summary)?.saturating_mul(3))
@@ -732,6 +818,10 @@ impl IndexTask {
                 DomainError::new(ErrorCode::GraphBaselineBudget, "")
             );
             let path = directory.path().join("baseline-summary.json");
+            host_disk.check_candidate_with_extra(None, bytes.len() as u64)?;
+            if let Some(disk) = &disk {
+                disk.check_candidate_with_extra(None, bytes.len() as u64)?;
+            }
             store.write_baseline(&path, &bytes)?;
             Ok(Some(BaselineInput::File(BaselineFile {
                 path,
@@ -880,9 +970,9 @@ fn stage_outcomes(
         );
         Ok(())
     };
-    let check = |path: &Path| {
+    let check = |path: &Path, extra: u64| {
         for disk in disks {
-            disk.check_candidate(Some(path))?;
+            disk.check_candidate_with_extra(Some(path), extra)?;
         }
         Ok(())
     };

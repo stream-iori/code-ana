@@ -339,7 +339,7 @@ fn dependency_diagnostics_are_published_without_poisoning_unrelated_files() -> a
         rows.into_iter(),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     assert!(!candidate.summary.evidence.semantic);
     let revision = store.publish_staged(candidate, "fixture")?;

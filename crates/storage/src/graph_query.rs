@@ -226,7 +226,7 @@ impl ReadContext {
         self
     }
     fn charge_row(&self, row: &rusqlite::Row<'_>) -> Result<()> {
-        if self.budget.is_none() {
+        if self.budget.is_none() && self.analysis_budget.is_none() {
             return Ok(());
         }
         let mut bytes = 0u64;
@@ -238,8 +238,29 @@ impl ReadContext {
                 _ => 0,
             });
         }
+        if let Some(budget) = &self.analysis_budget {
+            budget
+                .charge(4, 0, bytes.saturating_mul(8).saturating_add(1024))
+                .map_err(DomainError::analysis)?;
+        }
         self.charge(4, bytes.saturating_mul(2))?;
         Ok(())
+    }
+
+    fn admit_baseline_inputs(&self, sources: &[SourceUnit]) -> Result<()> {
+        if let Some(budget) = &self.analysis_budget {
+            let bytes = sources.iter().fold(0u64, |n, s| {
+                n.saturating_add(1024 + 8 * (s.path.len() + s.world.len()) as u64)
+            });
+            budget
+                .charge(sources.len() as u64, 0, bytes)
+                .map_err(DomainError::analysis)?;
+        }
+        Ok(())
+    }
+    fn baseline_row(&self, row: &Row<'_>) -> rusqlite::Result<()> {
+        self.charge_row(row)
+            .map_err(|error| rusqlite::Error::ToSqlConversionFailure(error.into()))
     }
 
     fn owner_for(&self, source: &str, module: &str, scope: &str) -> Owner {
@@ -695,6 +716,17 @@ impl ReadContext {
         inputs: Option<&[SourceUnit]>,
         unit: Option<&AnalysisUnitId>,
     ) -> Result<BaselineSummary> {
+        self.admit_baseline_inputs(inputs.unwrap_or(&self.revision.manifest.files))?;
+        let selected = inputs
+            .map(|files| {
+                serde_json::to_string(
+                    &files
+                        .iter()
+                        .map(|s| (&s.path, &s.world))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .transpose()?;
         let owners = inputs.map(|files| {
             files
                 .iter()
@@ -708,11 +740,12 @@ impl ReadContext {
         };
         let mut contexts = BTreeMap::new();
         let mut statement = self.connection.prepare(
-            "SELECT substr(key,17),value FROM project_meta WHERE key LIKE 'codeana.context.%'",
+            "SELECT substr(key,17),value FROM project_meta WHERE key LIKE 'codeana.context.%' AND (?1 IS NULL OR substr(key,17) IN (SELECT json_extract(value,'$[1]') FROM json_each(?1)))",
         )?;
-        for row in
-            statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-        {
+        for row in statement.query_map([selected.as_deref()], |r| {
+            self.baseline_row(r)?;
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })? {
             let (k, v) = row?;
             if inputs.is_none_or(|files| files.iter().any(|s| s.world == k)) {
                 contexts.insert(k, v);
@@ -722,21 +755,26 @@ impl ReadContext {
         let mut statement = self.connection.prepare(
             "SELECT n.id,n.symbol_id,n.kind,n.module,n.scope,n.source_file,n.metadata,n.world,
               EXISTS(SELECT 1 FROM node_units m JOIN unit_catalog u USING(unit_pk) JOIN graph_nodes p ON p.node_pk=m.node_pk WHERE p.id=n.id AND u.unit_id=?1)
-              FROM nodes n ORDER BY n.id",
+              FROM nodes n WHERE ?2 IS NULL OR (n.source_file,n.world) IN (SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?2))
+              OR n.source_file='' AND EXISTS(SELECT 1 FROM node_units m JOIN unit_catalog u USING(unit_pk) JOIN graph_nodes p ON p.node_pk=m.node_pk WHERE p.id=n.id AND u.unit_id=?1) ORDER BY n.id",
         )?;
-        for row in statement.query_map([unit.map(|u| u.as_str()).unwrap_or("")], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, String>(4)?,
-                r.get::<_, String>(5)?,
-                r.get::<_, Option<String>>(6)?,
-                r.get::<_, String>(7)?,
-                r.get::<_, bool>(8)?,
-            ))
-        })? {
+        for row in statement.query_map(
+            params![unit.map(|u| u.as_str()).unwrap_or(""), selected.as_deref()],
+            |r| {
+                self.baseline_row(r)?;
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, Option<String>>(6)?,
+                    r.get::<_, String>(7)?,
+                    r.get::<_, bool>(8)?,
+                ))
+            },
+        )? {
             let (id, symbol, kind, module, scope, source, metadata, world, global_member) = row?;
             if !(owns(&source, &world) || source.is_empty() && global_member) {
                 continue;
@@ -761,17 +799,21 @@ impl ReadContext {
         let mut relations = Vec::new();
         let mut statement=self.connection.prepare("SELECT n.symbol_id,coalesce(t.symbol_id,e.external_target_fqn),e.relation,n.source_file,n.world,
             EXISTS(SELECT 1 FROM graph_edges g JOIN unit_catalog u USING(unit_pk) WHERE g.id=e.id AND u.unit_id=?1)
-            FROM edges e JOIN nodes n ON n.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id WHERE e.relation IN('INHERITS','IMPLEMENTS') ORDER BY e.source_id,e.relation,e.target_id,e.external_target_fqn")?;
-        for row in statement.query_map([unit.map(|u| u.as_str()).unwrap_or("")], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, Option<String>>(1)?,
-                r.get::<_, String>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, String>(4)?,
-                r.get::<_, bool>(5)?,
-            ))
-        })? {
+            FROM edges e JOIN nodes n ON n.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id WHERE e.relation IN('INHERITS','IMPLEMENTS') AND (?2 IS NULL OR (n.source_file,n.world) IN(SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?2)) OR n.source_file='' AND EXISTS(SELECT 1 FROM graph_edges g JOIN unit_catalog u USING(unit_pk) WHERE g.id=e.id AND u.unit_id=?1)) ORDER BY e.source_id,e.relation,e.target_id,e.external_target_fqn")?;
+        for row in statement.query_map(
+            params![unit.map(|u| u.as_str()).unwrap_or(""), selected.as_deref()],
+            |r| {
+                self.baseline_row(r)?;
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, bool>(5)?,
+                ))
+            },
+        )? {
             let (source, target, relation, file, world, global_member) = row?;
             if !(owns(&file, &world) || file.is_empty() && global_member) {
                 continue;
@@ -785,8 +827,7 @@ impl ReadContext {
                 });
             }
         }
-        let mut rust_states = self.read_rust_states()?;
-        rust_states.retain(|state| owns(&state.file, &state.world));
+        let rust_states = self.read_rust_states(inputs)?;
         Ok(BaselineSummary {
             rust_states,
             contexts,
@@ -796,12 +837,26 @@ impl ReadContext {
             changed_sources: None,
         })
     }
-    fn read_rust_states(&self) -> Result<Vec<rust::SourceState>> {
+    fn read_rust_states(&self, sources: Option<&[SourceUnit]>) -> Result<Vec<rust::SourceState>> {
+        self.admit_baseline_inputs(sources.unwrap_or(&self.revision.manifest.files))?;
+        let selected = sources
+            .map(|sources| {
+                serde_json::to_string(
+                    &sources
+                        .iter()
+                        .map(|s| (&s.path, &s.world))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .transpose()?;
         let mut states = BTreeMap::new();
         let mut query = self.connection.prepare(
-            "SELECT source_file,world,state FROM rust_source_states ORDER BY world,source_file",
+            "WITH selected AS (SELECT json_extract(value, '$[0]') AS file, json_extract(value, '$[1]') AS world FROM json_each(?1))
+             SELECT s.source_file,s.world,s.state FROM selected p JOIN rust_source_states s ON s.source_file=p.file AND s.world=p.world
+             UNION ALL SELECT source_file,world,state FROM rust_source_states WHERE ?1 IS NULL ORDER BY world,source_file",
         )?;
-        for row in query.query_map([], |r| {
+        for row in query.query_map([selected.as_deref()], |r| {
+            self.baseline_row(r)?;
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -833,8 +888,11 @@ impl ReadContext {
             };
             states.insert((world, file), state);
         }
-        let mut query = self.connection.prepare("SELECT source_file,world,kind,target_world,target_key FROM rust_analysis_dependencies ORDER BY world,source_file,kind,target_world,target_key")?;
-        for row in query.query_map([], |r| {
+        let mut query = self.connection.prepare("WITH selected AS (SELECT json_extract(value, '$[0]') AS file, json_extract(value, '$[1]') AS world FROM json_each(?1))
+            SELECT d.source_file,d.world,d.kind,d.target_world,d.target_key FROM selected p JOIN rust_analysis_dependencies d ON d.source_file=p.file AND d.world=p.world
+            UNION ALL SELECT source_file,world,kind,target_world,target_key FROM rust_analysis_dependencies WHERE ?1 IS NULL ORDER BY world,source_file,kind,target_world,target_key")?;
+        for row in query.query_map([selected.as_deref()], |r| {
+            self.baseline_row(r)?;
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -861,7 +919,7 @@ impl ReadContext {
         Ok(result)
     }
     pub fn rust_baseline_summary(&self) -> Result<BaselineSummary> {
-        let rust_states = self.read_rust_states()?;
+        let rust_states = self.read_rust_states(None)?;
         Ok(BaselineSummary {
             rust_states,
             files: self.revision.manifest.files.clone(),
@@ -875,13 +933,7 @@ impl ReadContext {
             .as_ref()
             .and_then(|ledger| ledger.units.iter().find(|u| &u.unit == unit))
             .context("UNIT_OWNERSHIP_BASELINE_UNIT")?;
-        let sources: BTreeSet<_> = owner
-            .sources
-            .iter()
-            .map(|s| (s.path.as_str(), s.world.as_str()))
-            .collect();
-        let mut rust_states = self.read_rust_states()?;
-        rust_states.retain(|state| sources.contains(&(state.file.as_str(), state.world.as_str())));
+        let rust_states = self.read_rust_states(Some(&owner.sources))?;
         Ok(BaselineSummary {
             rust_states,
             files: owner.inputs.clone(),
@@ -904,6 +956,8 @@ impl ReadContext {
             }
             None => &self.revision.manifest.files,
         };
+        self.admit_baseline_inputs(previous)?;
+        self.admit_baseline_inputs(&next.files)?;
         // Java's descriptor uses paths, but closure construction must retain worlds.
         // Auxiliary inputs are included only when this unit declared them.
         let before: BTreeMap<_, _> = previous
@@ -941,8 +995,9 @@ impl ReadContext {
             )?;
             let mut dependencies=self.connection.prepare("SELECT DISTINCT p.path,d.world FROM graph_symbol_dependencies d JOIN source_files p ON p.file_pk=d.source_file JOIN unit_catalog u USING(unit_pk) WHERE d.target_key=? AND (u.unit_id=? OR d.unit_pk=0) ORDER BY p.path,d.world")?;
             while let Some((target, world)) = pending.pop_first() {
-                for row in statement
-                    .query_map([target.as_str(), world.as_str(), unit.as_str()], |r| {
+                for row in
+                    statement.query_map([target.as_str(), world.as_str(), unit.as_str()], |r| {
+                        self.baseline_row(r)?;
                         Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
                     })?
                 {
@@ -954,13 +1009,15 @@ impl ReadContext {
                     }
                 }
                 for row in symbols.query_map([&target, &world], |r| {
+                    self.baseline_row(r)?;
                     Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
                 })? {
                     let (id, symbol) = row?;
                     for value in [id, symbol] {
                         let hash = sha2::Sha256::digest(value.as_bytes());
-                        for row in dependencies
-                            .query_map(params![&hash[..8], unit.as_str()], |r| {
+                        for row in
+                            dependencies.query_map(params![&hash[..8], unit.as_str()], |r| {
+                                self.baseline_row(r)?;
                                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
                             })?
                         {

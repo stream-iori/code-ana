@@ -1,6 +1,6 @@
 # 存储与原子发布
 
-对齐 2026-11-17：图库物理 `user_version=15`、Anatomist 逻辑 schema 36；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
+对齐 2026-11-18：图库物理 `user_version=17`、Anatomist 逻辑 schema 36；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
 
 Rust 存储按 blob、task、object、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。派生缓存位于独立 codeana-derived-cache crate，文本搜索与 Java worker 共享实现，原目录、锁、配额及持久化契约保持。对象使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
 
@@ -106,19 +106,19 @@ CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage
 
 物理 schema 17 将 source/world 联合用于替换和基线保留。边、注解、元注解来源、文件缓存及依赖保留 world；文件依赖同时保存目标 world，反查不再按路径挑第一个来源。声明匹配、重复事实 ordinal 和调用点来源/重建使用对应 world；注释/FTS 与 Rust 状态/依赖只删除指定来源实例。路径字典仍只代表字节路径，内部 file_pk 不充当语义来源身份。无 source 的汇总诊断沿用重新交付策略，NULL 不因复合 NOT IN 比较被额外保留。
 
-所有写入仍在私有候选和同一次 CAS 内。旧 schema 16 及更早不原地升级，查询/增量返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 从冻结输入建立新库并切 head，旧文件按原保留策略处理。GRA1 逻辑列、worker 25、graph model 6、Java ABI 4 和上游逻辑 schema 36 不变；主机投影补足的 world 不改公开实体 ID 或 hash 算法。持久化单元归属与混合暂存已有组件；公共执行器已接通，真实五模式混合与 Full 对照通过；SQL 预算及完整 R5/TS 验收仍待完成。
+所有写入仍在私有候选和同一次 CAS 内。旧 schema 16 及更早不原地升级，查询/增量返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 从冻结输入建立新库并切 head，旧文件按原保留策略处理。GRA1 逻辑列、worker 25、graph model 6、Java ABI 4 和上游逻辑 schema 36 不变；主机投影补足的 world 不改公开实体 ID 或 hash 算法。持久化单元归属与混合暂存已有组件；公共执行器已接通，真实五模式混合与 Full 对照通过；候选 SQL 与单元基线已接入原 host 账本及临时盘准入；完整 R5/TS 验收仍待完成。
 
 公开节点 ID 不允许跨 world 覆盖，公开关系/注解的 hash+ordinal 与调用点 stable_hash 有物理唯一约束。producer 的身份不满足隔离要求时返回 GRAPH_WORLD_OWNERSHIP_CONFLICT，不能靠改名或静默合并生成假精确结果；失败保留旧 head。
 
 整项目复用使用显式入口并独立复核身份、归属与语义输入。Reused 与重新分析的空 delta 分开：复用须保留原全局诊断、CLASSPATH_UNAVAILABLE coverage 和无来源元数据；重新分析时旧汇总由新结果替换。准备 generation 和根配置展示字节的例外由 model 的 same_semantic_sources 共用，辅助绑定内容/角色变化不能借旧 input_digest 绕过检查。
 
-复用校验使用 model 的 `UnitMergePlan::all_reused`，同时核对 project/checkout/target、完整有效归属清单，以及 FilesOnly 单元没有增删或变更。生产入口通过 `all_reused_with_budget` 从原 host 账户预付校验映射和计划分配；共享 manifest 映射归固定顺序首个 host，单元成本归自身后端，额度失败保留资源错误身份。`UnitMergePlan::new` 已定义逐单元 Full/Delta/Reuse/Removed/FilesOnly 的合并意图：Full、Removed 和 FilesOnly 从新旧清单导出完整来源范围；Delta 必须覆盖变更、删除和新增来源，不能借其他单元或 world 的 owner；Reuse 不接受替换范围。辅助绑定输入的发布单元消失或身份变化时，其消费者必须重分析。这是来源范围与复用的前置校验，尚未开放任意单元混合的 SQL 合并，也不代替各 worker 的 VerifiedEnd。
+复用校验使用 model 的 `UnitMergePlan::all_reused`，同时核对 project/checkout/target、完整有效归属清单，以及 FilesOnly 单元没有增删或变更。生产入口通过 `all_reused_with_budget` 从原 host 账户预付校验映射和计划分配；共享 manifest 映射归固定顺序首个 host，单元成本归自身后端，额度失败保留资源错误身份。`UnitMergePlan::new` 已定义逐单元 Full/Delta/Reuse/Removed/FilesOnly 的合并意图：Full、Removed 和 FilesOnly 从新旧清单导出完整来源范围；Delta 必须覆盖变更、删除和新增来源，不能借其他单元或 world 的 owner；Reuse 不接受替换范围。辅助绑定输入的发布单元消失或身份变化时，其消费者必须重分析。这是来源范围与复用的前置校验，已由公共执行器驱动任意单元混合的 SQL 合并；每份实际执行交付仍须独立取得 VerifiedEnd。
 
 生产候选入口接收带主机来源的 `graph_io::records::Record`，再按 Ready 单元的完整输入、语言和观察模块校验。未知、FilesOnly 或跨单元的来源拒绝；共享辅助输入不能授权节点发布。Host 仅可写准备说明及 coverage，保留原行大小/列数/world 准入。旧无来源行接口仅供显式 fixture，应用架构门禁禁止回到该入口。
 
 物理 schema 17 将 diagnostics、coverage、providers 与 project_meta 按主机来源持久化。unit_catalog 保存内部整数键与稳定单元 ID；0 仅为显式 Host/Fixture 桶。coverage 的物理唯一键含 unit_pk，公开视图列与业务 ID 保持；unit_providers、unit_project_meta 保存原始逐单元值，不存完整 Row/Fact 日志。活动集合来自执行计划的 Ready 单元，不能从输出推断；即使零输出也替换其全局观察，未活动单元保留。Delta 只继承活动单元未替换来源的文件观察；NULL、空串和 `*` 的全局观察均要求重新交付。显式整项目 Reused 不清除任何单元观察。当前活动集合仍由既有整项目执行路径提供，尚未开放任意单元混合。
 
-公开摘要由所有保留单元重新计算：任一 source_only／classpath unavailable／fallback 不会被其他正常单元覆盖。同一 provider 仍只有一条公开摘要；不同单元 profile 以稳定单元 ID 排序后生成聚合 hash，相同 profile 保持原值，运算能力取交集，不同限制按单元保留，版本或语言不同时明确显示 mixed／`*`。不相容的同 world 编译上下文拒绝发布。provider 读取/聚合在复制和 JSON 解码前从原 host 账户预付；SQL VM、临时文件与其余 staging 分配的完整计量仍待审计。无来源节点、元注解、缓存及依赖的完整单元归属仍待后续实现。
+公开摘要由所有保留单元重新计算：任一 source_only／classpath unavailable／fallback 不会被其他正常单元覆盖。同一 provider 仍只有一条公开摘要；不同单元 profile 以稳定单元 ID 排序后生成聚合 hash，相同 profile 保持原值，运算能力取交集，不同限制按单元保留，版本或语言不同时明确显示 mixed／`*`。不相容的同 world 编译上下文拒绝发布。provider 读取/聚合在复制和 JSON 解码前从原 host 账户预付；SQL VM、临时文件及调用点/依赖/wiring/metadata 的宿主分配已接入同一任务账本。无来源节点、元注解、缓存及依赖的完整单元归属仍待后续实现。
 
 
 物理 schema 17 保存 node_units 的逐单元最终定义摘要、声明摘要与 arity，不记录原始行日志。相同公开节点 ID 只有最终定义兼容时才能共享；无来源节点只能被实际交付该定义的单元引用。边、注解和调用点 owner 保存主机分配的 unit_pk，推导 wiring 使用独立 host_derived 标记，不从 producer 名猜归属。精确引用与 Java 名称／arity 补全均限制在本单元及显式声明的输入路径/world 内；辅助输入只授权目标绑定，不授权发布调用者或注解 owner。Delta 对活动单元的无来源定义和观察采用完整快照替换，显式 Reused 保留原归属。基线事实沿用原 hash，避免数据库默认值在复用重算时制造重复边。旧 schema 16 及更早要求显式全量重建。元注解与辅助缓存/依赖的单元归属见下节；公共执行器现经逐单元入口驱动该合并。
@@ -129,8 +129,22 @@ R4 的混合暂存组件 `stage_mixed_graph_records_with_context` 接受逐单�
 
 物理 schema 17 将元注解来源、file_cache、显式 file/symbol dependencies 按主机 unit 保存。模式表区别 Full/Delta/Reuse/Removed/FilesOnly：Full、不可用与删除清理该单元所有原始观察，Delta 继承未替换来源，Reuse 保留原值；全局元注解每次活动单元重新交付。辅助输入的四类观察独立于语义发布范围，首次新交付只替换该单元、该输入、该表的继承快照，后续行累积并保持首个位置；诊断和语义行仍不能借辅助输入或其他单元的替换范围。共享元注解定义保留，来源/状态/位置分单元。
 
-依赖的 host_derived 标记与 unit_pk 均为私有列；重建只清理推导行，显式交付不丢失，公开依赖视图按原逻辑列去重。推导包含静态调用点，注解/元注解的名称依赖仅指向本单元声明输入内的节点；Java 增量反查也按单元过滤。输入 file dependency 只有路径时，在本单元声明的目标 world 集合内保守展开，不按全项目第一个路径猜 world，未声明目标拒绝；空来源的观察不作为可导航文件依赖。交付策略 6 纳入 profile，公开 ID / worker / ABI / GRA1 列不因此改变；旧图需显式全量重建。SQL VM、SQLite cache 与临时磁盘的完整预算审计及 R5/TS 仍待完成。
+依赖的 host_derived 标记与 unit_pk 均为私有列；重建只清理推导行，显式交付不丢失，公开依赖视图按原逻辑列去重。推导包含静态调用点，注解/元注解的名称依赖仅指向本单元声明输入内的节点；Java 增量反查也按单元过滤。输入 file dependency 只有路径时，在本单元声明的目标 world 集合内保守展开，不按全项目第一个路径猜 world，未声明目标拒绝；空来源的观察不作为可导航文件依赖。交付策略 6 纳入 profile，公开 ID / worker / ABI / GRA1 列不因此改变；旧图需显式全量重建。SQL VM、SQLite cache 与匿名临时盘已计费；R5 完整矩阵、分发及 TS 生产仍待完成。
 
 元注解查询展开的全局 FQN 目录尚待按直接注解所属单元隔离；当前逐单元持久化及依赖补全通过，不代表该查询闭包已完成隔离。
 
 元注解查询以真实直接 occurrence 为锚定位 unit，拒绝伪造 hash/ordinal 或来源归属，再读取该 unit 的原始元注解观察；查询缓存使用稳定 unit/world/producer 上下文。重复事实按逻辑 backend/unit ID 排列序号，保证 Full+Reuse 与 Full 的公开 occurrence/元注解 ID 一致。公开属性过滤内部整数行号及 *_pk，保留文本业务 ID。
+
+## 任务内 SQL 与基线准入
+
+| 路径 | 规则 |
+|---|---|
+| 基线 | 回调借用固定 revision 读者，连接不离开任务 scope；单元基线只使用自身后端的原 host。Rust 状态/依赖、节点、类型关系及上下文在 SQL 内按声明的 path/world 筛选。manifest 副本、结果行及 JSON 处理先付额度。 |
+| 工作 | 每 128 个 SQLite VM 操作预付下一段 work，覆盖 prepare/step；每 4 KiB 文件 I/O 计 work，backup 每批最多 128 页在复制前预付。调用点分组、依赖哈希、wiring 集合及 metadata 压缩在复制/分配前计费。 |
+| 内存 | VFS 打开文件前预付 pager/schema/文件缓冲，连接预付 SQL 工作区及排序缓冲。主库、temp 和附加库的 cache_size 设置为 1 MiB，mmap 与辅助排序线程关闭；ATTACH 加载 schema 前按默认 2000 KiB 缓存向上预付 2 MiB。scope 按同时存活连接/文件保留已付容量；关闭解除占用，不返还 host 额度。 |
+| 临时盘 | xWrite/xTruncate/shmMap 在操作系统增长文件前检查目录现存字节、命名文件待增长字节及所有仍打开的匿名/已 unlink 文件。关闭清除归属；原始磁盘/预算/取消错误保持到 scope 结束，嵌套映射和清理不覆盖首次失败。 |
+| 巡检 | 缓存有限数量的完整路径，遍历共享这些路径；每次仍 stat 活文件，不能缓存旧文件大小。实际路径/集合分配先付额度；串行目录扫描复用已付缓冲，新账户重新准入。 |
+
+共享合并使用固定顺序首个原 host，不创建诊断账户、重置预算或借用其他 worker 份额。`host_scratch_bytes` 同样覆盖无 Ready 单元的任务；Java 原有任务 scratch 上限继续单独检查。任一步失败清理私有候选并保留旧 head。
+
+`cache_size` 是 SQLite 建议缓存设置；逻辑资源额度不是 daemon 的内核级 RSS 硬隔离。真实 SQLite 3.53.2 的匿名排序文件、写前拒绝、VM 取消/耗尽、连接容量复用、跨 world 大基线及候选回滚证据见 `target/typescript-c-abi/r4-sql-budget/receipt.json`。

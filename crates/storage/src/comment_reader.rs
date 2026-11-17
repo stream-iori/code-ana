@@ -362,7 +362,7 @@ mod tests {
             rows.into_iter().map(Ok),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
         )?;
         let published = store.publish_staged(candidate, "gap")?;
         let read = store.read(&published.id)?;
@@ -403,7 +403,7 @@ mod tests {
             std::iter::empty(),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
         )?;
         let published = store.publish_staged(candidate, "sql-budget")?;
         let budget = ResourceBudget::new(ResourceLimits {

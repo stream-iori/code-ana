@@ -21,6 +21,32 @@ class MultilangAnalysis(PreparedHarness):
                                    for row in comments)
         return graph
 
+    def test_host_sql_scratch_limit_keeps_ready_and_files_only_heads(self):
+        ready = self.config
+        unavailable = self.project/'unavailable'
+        unavailable.mkdir()
+        (unavailable/'README.md').write_text('files only\n')
+        files_only = 'schema_version=1\nkind="project"\n[resources.index]\nworker_memory_bytes=1073741824\n[languages.python]\nenabled=true\n[inputs]\n[[inputs.entries]]\nid="unavailable"\nlanguage="python"\nroot="unavailable"\n'
+        for available, config in [(True, ready), (False, files_only)]:
+            with self.subTest(ready=available):
+                self.config = config
+                self.write_config()
+                old = self.cli('index', '--prepare', '--full', timeout=180)[1]['revision']
+                historical = canonical_graph(self, old)
+                self.config = config.replace('[resources.index]', '[resources.index]\nhost_scratch_bytes=65536')
+                self.write_config()
+                _, failed = self.cli('index', '--prepare', '--full', code=1, timeout=180)
+                self.assertEqual(failed['code'], 'HOST_SCRATCH_BUDGET')
+                self.assertEqual(self.cli('overview')[1]['revision'], old)
+                self.assertEqual(canonical_graph(self, old), historical)
+                if not available:
+                    self.assertTrue(all(unit['mode']=='files_only' for unit in self.catalog()['units']))
+                    report = self.cli('report', failed['report'])[0][0]['analysis_resources']['coordinator']
+                    self.assertTrue(all(w['state']=='complete' and w['usage']['work']==0 for slot in report['languages'] for w in slot['workers']))
+                self.config = config
+                self.write_config()
+                self.assertEqual(self.cli('index', '--prepare', '--full', timeout=180)[1]['publication'], 'published')
+
     def test_five_update_modes_share_one_candidate_and_match_full(self):
         self.add_python_comment_inputs()
         self.config += '\n[languages.rust]\nenabled=true\n'

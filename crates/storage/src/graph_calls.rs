@@ -142,6 +142,7 @@ pub fn rebuild(
     db: &Connection,
     affected: Option<&std::collections::BTreeSet<String>>,
     check: &dyn Fn() -> Result<()>,
+    staging: Option<&codeana_model::GraphStagingContext>,
 ) -> Result<()> {
     db.execute_batch("DELETE FROM graph_call_site_owners WHERE unit_pk IN(SELECT unit_pk FROM staged.stage_active_units) AND source_file IN(SELECT file_pk FROM source_files WHERE path='');")?;
     if affected.is_some() {
@@ -176,6 +177,7 @@ pub fn rebuild(
         |r| r.get(0),
     )?;
     while let Some(row) = rows.next()? {
+        crate::sql_budget::row(staging, row)?;
         let site = Site {
             unit: row.get(25)?,
             caller: row.get(0)?,
@@ -247,7 +249,9 @@ pub fn rebuild(
             producer: row.get(15)?,
         };
         if target.id.is_some() || target.external.is_some() {
-            current.as_mut().unwrap().add(target);
+            let group = current.as_mut().unwrap();
+            crate::sql_budget::admit(staging, group.targets.len() as u64 + 1, 0)?;
+            group.add(target);
         }
     }
     if let Some(g) = current {

@@ -729,6 +729,12 @@ source_roots=[{path="src",scope="MAIN",label="api"},{path="bridge",scope="MAIN",
                 "JAVA_RESULT_BYTES_RANGE",
             ),
             (
+                "host_scratch_bytes",
+                vec![65536, 2147483648, 32u64 << 30],
+                vec![0, 65535, (32u64 << 30) + 1],
+                "HOST_SCRATCH_BYTES_RANGE",
+            ),
+            (
                 "java_scratch_bytes",
                 vec![
                     65536,

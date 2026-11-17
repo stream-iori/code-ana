@@ -71,6 +71,11 @@ pub trait IndexRepository: Clone + Send + Sync + 'static {
     fn head(&self, target: &IndexTarget) -> Result<RevisionId>;
     fn write_baseline(&self, path: &Path, bytes: &[u8]) -> Result<()>;
     fn read(&self, id: &str) -> Result<Self::Baseline>;
+    fn with_baseline<T>(
+        &self,
+        request: BaselineRequest<'_>,
+        read: impl FnOnce(&Self::Baseline) -> Result<T>,
+    ) -> Result<T>;
     fn pin_baseline(
         &self,
         id: &str,
@@ -91,6 +96,13 @@ pub trait IndexRepository: Clone + Send + Sync + 'static {
         fence: &PublicationFence,
     ) -> Result<Revision>;
 }
+pub struct BaselineRequest<'a> {
+    pub id: &'a str,
+    pub root: &'a Path,
+    pub context: Option<&'a GraphStagingContext>,
+    pub cancellation: &'a dyn Fn() -> Result<()>,
+    pub check_directory: &'a dyn Fn(&Path, u64) -> Result<()>,
+}
 pub enum StageInput<'a> {
     Analysis(&'a AnalysisHeader),
     Units(Vec<UnitUpdate>),
@@ -101,7 +113,7 @@ pub struct StageRequest<'a> {
     pub input: StageInput<'a>,
     pub expected: &'a str,
     pub cancellation: &'a dyn Fn() -> Result<()>,
-    pub check_directory: &'a dyn Fn(&Path) -> Result<()>,
+    pub check_directory: &'a dyn Fn(&Path, u64) -> Result<()>,
 }
 #[derive(Clone)]
 pub(super) struct IndexService<R: IndexRepository> {
@@ -116,7 +128,7 @@ impl<R: IndexRepository> IndexService<R> {
         records: impl Iterator<Item = Result<GraphRecord>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
     ) -> Result<R::Candidate> {
         self.repository.stage(
             StageRequest {
@@ -152,6 +164,13 @@ impl<R: IndexRepository> IndexService<R> {
     pub fn read(&self, id: &str) -> Result<R::Baseline> {
         self.repository.read(id)
     }
+    pub fn with_baseline<T>(
+        &self,
+        request: BaselineRequest<'_>,
+        read: impl FnOnce(&R::Baseline) -> Result<T>,
+    ) -> Result<T> {
+        self.repository.with_baseline(request, read)
+    }
     pub fn pin_baseline(
         &self,
         id: &str,
@@ -169,7 +188,7 @@ impl<R: IndexRepository> IndexService<R> {
         records: impl Iterator<Item = Result<GraphRecord>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
     ) -> Result<R::Candidate> {
         self.repository.stage(
             StageRequest {
@@ -224,6 +243,22 @@ pub(super) mod storage {
         }
         fn read(&self, id: &str) -> Result<ReadContext> {
             self.0.read(id)
+        }
+        fn with_baseline<T>(
+            &self,
+            request: BaselineRequest<'_>,
+            read: impl FnOnce(&ReadContext) -> Result<T>,
+        ) -> Result<T> {
+            self.0.with_analysis_reader(
+                request.id,
+                codeana_storage::AnalysisRead {
+                    root: request.root,
+                    context: request.context,
+                    cancellation: request.cancellation,
+                    check_directory: request.check_directory,
+                },
+                read,
+            )
         }
         fn pin_baseline(
             &self,
@@ -401,6 +436,13 @@ mod tests {
         }
         fn read(&self, _: &str) -> Result<Baseline> {
             Err(DomainError::new(ErrorCode::TaskNotFound, "fixture has no baseline").into())
+        }
+        fn with_baseline<T>(
+            &self,
+            request: BaselineRequest<'_>,
+            read: impl FnOnce(&Baseline) -> Result<T>,
+        ) -> Result<T> {
+            read(&self.read(request.id)?)
         }
         fn summary(candidate: &Candidate) -> &IndexSummary {
             &candidate.summary

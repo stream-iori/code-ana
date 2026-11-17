@@ -307,6 +307,12 @@ fn validate_index_resources(limits: &IndexResources) -> Result<()> {
             )
         );
     }
+    if let Some(bytes) = limits.host_scratch_bytes {
+        ensure!(
+            (64 * 1024..=32u64 << 30).contains(&bytes),
+            codeana_model::DomainError::new(codeana_model::ErrorCode::HostScratchBytesRange, "")
+        );
+    }
     if let Some(bytes) = limits.java_scratch_bytes {
         ensure!(
             (64 * 1024..=codeana_model::MAX_JAVA_SCRATCH_BYTES).contains(&bytes),

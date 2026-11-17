@@ -2,14 +2,16 @@
 use anyhow::{Context, Result, ensure};
 use std::{
     collections::{HashMap, HashSet},
-    ffi::OsString,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::SystemTime,
 };
 
 /// Task scratch excludes published revisions and shared caches; reserves cache-write and blob-copy transients.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct DiskBudget {
     pub root: PathBuf,
     pub max_bytes: u64,
@@ -18,8 +20,31 @@ pub struct DiskBudget {
     reserve_bytes: u64,
     directory_entries: Arc<Mutex<DirectoryEntries>>,
     budget_name: &'static str,
+    analysis: Option<codeana_model::AnalysisContext>,
+    scan_buffer: Arc<AtomicBool>,
 }
-// Cache names only: every budget check still stats every live entry. Appending to a
+impl std::fmt::Debug for DiskBudget {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DiskBudget")
+            .field("root", &self.root)
+            .field("max_bytes", &self.max_bytes)
+            .field("budget_name", &self.budget_name)
+            .finish_non_exhaustive()
+    }
+}
+fn admit_scan(
+    budget: Option<&codeana_model::AnalysisContext>,
+    work: u64,
+    bytes: u64,
+) -> Result<()> {
+    if let Some(budget) = budget {
+        budget
+            .charge(work, 0, bytes)
+            .map_err(codeana_model::DomainError::analysis)?;
+    }
+    Ok(())
+}
+// Cache paths only: every budget check still stats every live entry. Appending to a
 // file does not change its parent's mtime, so caching byte totals would be unsound.
 #[derive(Debug, PartialEq, Eq)]
 struct DirectoryStamp {
@@ -46,13 +71,13 @@ impl DirectoryStamp {
 #[derive(Debug)]
 struct DirectoryListing {
     stamp: DirectoryStamp,
-    names: Arc<Vec<OsString>>,
+    paths: Arc<Vec<PathBuf>>,
     bytes: usize,
 }
 #[derive(Debug, Default)]
 struct DirectoryEntries {
     listings: HashMap<PathBuf, DirectoryListing>,
-    names: usize,
+    paths: usize,
     bytes: usize,
     #[cfg(test)]
     reads: usize,
@@ -60,23 +85,36 @@ struct DirectoryEntries {
 impl DirectoryEntries {
     fn remove(&mut self, path: &Path) {
         if let Some(old) = self.listings.remove(path) {
-            self.names -= old.names.len();
+            self.paths -= old.paths.len();
             self.bytes -= old.bytes;
         }
     }
-    fn names(&mut self, path: &Path, metadata: &std::fs::Metadata) -> Result<Arc<Vec<OsString>>> {
+    fn paths(
+        &mut self,
+        path: &Path,
+        metadata: &std::fs::Metadata,
+        budget: Option<&codeana_model::AnalysisContext>,
+        scan_buffer: &AtomicBool,
+    ) -> Result<Arc<Vec<PathBuf>>> {
         let stamp = DirectoryStamp::of(metadata);
         if let Some(current) = &stamp
             && let Some(cached) = self.listings.get(path)
             && &cached.stamp == current
         {
-            return Ok(cached.names.clone());
+            return Ok(cached.paths.clone());
         }
         self.remove(path);
         #[cfg(test)]
         {
             self.reads += 1;
         }
+        if !scan_buffer.load(Ordering::Relaxed) {
+            // Scans are serialized; each iterator closes before the next opens.
+            // Keep its funded workspace capacity instead of returning quota.
+            admit_scan(budget, 1, 64 << 10)?;
+            scan_buffer.store(true, Ordering::Relaxed);
+        }
+        admit_scan(budget, 1, 256 + 2 * path.as_os_str().len() as u64)?;
         let directory = match std::fs::read_dir(path) {
             Ok(value) => value,
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -84,33 +122,38 @@ impl DirectoryEntries {
             }
             Err(error) => return Err(error.into()),
         };
-        let mut names = vec![];
+        let mut paths = vec![];
         for entry in directory {
+            admit_scan(budget, 1, 2048 + 2 * path.as_os_str().len() as u64)?;
             match entry {
-                Ok(entry) => names.push(entry.file_name()),
+                Ok(entry) => paths.push(entry.path()),
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(error.into()),
             }
         }
-        let bytes = path.as_os_str().len() + names.iter().map(|name| name.len()).sum::<usize>();
-        let names = Arc::new(names);
+        let bytes = path.as_os_str().len()
+            + paths
+                .iter()
+                .map(|path| path.as_os_str().len())
+                .sum::<usize>();
+        let paths = Arc::new(paths);
         if let Some(stamp) = stamp
             && self.listings.len() < 4096
-            && self.names + names.len() <= 65536
+            && self.paths + paths.len() <= 65536
             && self.bytes + bytes <= 16 * 1024 * 1024
         {
-            self.names += names.len();
+            self.paths += paths.len();
             self.bytes += bytes;
             self.listings.insert(
                 path.to_path_buf(),
                 DirectoryListing {
                     stamp,
-                    names: names.clone(),
+                    paths: paths.clone(),
                     bytes,
                 },
             );
         }
-        Ok(names)
+        Ok(paths)
     }
 }
 impl DiskBudget {
@@ -129,7 +172,15 @@ impl DiskBudget {
             reserve_bytes,
             directory_entries: Arc::default(),
             budget_name,
+            analysis: None,
+            scan_buffer: Arc::default(),
         }
+    }
+    pub fn with_analysis(mut self, budget: Option<codeana_model::AnalysisContext>) -> Self {
+        self.analysis = budget;
+        // A different account must fund its own buffer, even on a warm listing cache.
+        self.scan_buffer = Arc::default();
+        self
     }
     /// Reserve copied inputs before writing; the input subtree is excluded from live scans.
     pub fn include_input(&mut self, bytes: u64) -> Result<()> {
@@ -145,17 +196,29 @@ impl DiskBudget {
 
     fn directory_bytes(&self, root: &Path, skip: Option<&Path>) -> Result<u64> {
         let mut total = 0u64;
-        let mut pending = vec![root.to_path_buf()];
+        admit_scan(
+            self.analysis.as_ref(),
+            1,
+            256 + 2 * root.as_os_str().len() as u64,
+        )?;
+        let mut pending = vec![(Arc::new(vec![root.to_path_buf()]), 0usize)];
         let mut visited = HashSet::new();
         let mut entries = self.directory_entries.lock().unwrap();
-        while let Some(path) = pending.pop() {
+        while let Some((paths, index)) = pending.last_mut() {
+            if *index == paths.len() {
+                pending.pop();
+                continue;
+            }
+            let path = &paths[*index];
+            *index += 1;
+            admit_scan(self.analysis.as_ref(), 1, 0)?;
             if skip == Some(path.as_path()) {
                 continue;
             }
-            let metadata = match std::fs::symlink_metadata(&path) {
+            let metadata = match std::fs::symlink_metadata(path) {
                 Ok(value) => value,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                    entries.remove(&path);
+                    entries.remove(path);
                     continue;
                 }
                 Err(error) => return Err(error.into()),
@@ -167,7 +230,7 @@ impl DiskBudget {
                 ));
             }
             if metadata.is_file() {
-                entries.remove(&path);
+                entries.remove(path);
                 total =
                     total
                         .checked_add(metadata.len())
@@ -176,17 +239,32 @@ impl DiskBudget {
                             "",
                         ))?;
             } else if metadata.is_dir() {
+                admit_scan(
+                    self.analysis.as_ref(),
+                    1,
+                    256 + 2 * path.as_os_str().len() as u64,
+                )?;
                 visited.insert(path.clone());
-                let names = entries.names(&path, &metadata)?;
-                pending.extend(names.iter().map(|name| path.join(name)));
+                let paths =
+                    entries.paths(path, &metadata, self.analysis.as_ref(), &self.scan_buffer)?;
+                // Borrow cached full paths through one Arc per directory. File
+                // stats allocate no new path strings on each VFS quota check.
+                admit_scan(self.analysis.as_ref(), 1, 128)?;
+                pending.push((paths, 0));
             }
         }
-        let stale: Vec<_> = entries
-            .listings
-            .keys()
-            .filter(|path| path.starts_with(root) && !visited.contains(*path))
-            .cloned()
-            .collect();
+        let mut stale = Vec::new();
+        for path in entries.listings.keys() {
+            admit_scan(self.analysis.as_ref(), 1, 0)?;
+            if path.starts_with(root) && !visited.contains(path) {
+                admit_scan(
+                    self.analysis.as_ref(),
+                    1,
+                    256 + 2 * path.as_os_str().len() as u64,
+                )?;
+                stale.push(path.clone());
+            }
+        }
         for path in stale {
             entries.remove(&path);
         }
@@ -196,6 +274,11 @@ impl DiskBudget {
         self.check_candidate(None)
     }
     pub fn check_candidate(&self, candidate: Option<&Path>) -> Result<()> {
+        self.check_candidate_with_extra(candidate, 0)
+    }
+    /// SQLite owns anonymous/unlinked files outside directory traversal, and
+    /// reserves named-file growth before xWrite changes the visible file size.
+    pub fn check_candidate_with_extra(&self, candidate: Option<&Path>, extra: u64) -> Result<()> {
         let input = self.root.join("input");
         let dynamic = self.directory_bytes(&self.root, Some(&input))?;
         let staged = candidate
@@ -208,15 +291,17 @@ impl DiskBudget {
             .and_then(|n| n.checked_add(self.reserve_bytes))
             .and_then(|n| n.checked_add(dynamic))
             .and_then(|n| n.checked_add(staged))
+            .and_then(|n| n.checked_add(extra))
             .context(codeana_model::DomainError::new(
                 codeana_model::ErrorCode::TaskScratchOverflow,
                 "",
             ))?;
         ensure!(
             total <= self.max_bytes,
-            "{} bytes={total} limit={}",
-            self.budget_name,
-            self.max_bytes
+            codeana_model::DomainError::new(
+                codeana_model::ErrorCode::from(self.budget_name),
+                format!("bytes={total} limit={}", self.max_bytes),
+            )
         );
         Ok(())
     }
@@ -225,6 +310,69 @@ impl DiskBudget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn repeated_disk_checks_reuse_paths_and_still_detect_file_growth() -> Result<()> {
+        use codeana_model::{AnalysisContext, AnalysisLimits, DomainError, ErrorCode};
+        let root = tempfile::tempdir()?;
+        for index in 0..200 {
+            std::fs::write(root.path().join(index.to_string()), b"x")?;
+        }
+        let host = AnalysisContext::new(
+            AnalysisLimits {
+                max_payload_bytes: 2 << 20,
+                ..Default::default()
+            },
+            None,
+        )?;
+        let disk = DiskBudget::new(root.path().into(), 400, 0, 0, "HOST_SCRATCH_BUDGET")
+            .with_analysis(Some(host.clone()));
+        for _ in 0..50 {
+            disk.check()?;
+        }
+        assert!(host.usage().failure.is_none());
+        assert!(host.usage().payload_bytes < 2 << 20);
+        assert_eq!(disk.directory_entries.lock().unwrap().reads, 1);
+        std::fs::write(root.path().join("0"), vec![b'x'; 256])?;
+        let error = disk.check().unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<DomainError>().unwrap().code,
+            ErrorCode::HostScratchBudget
+        );
+        assert!(host.usage().failure.is_none());
+        Ok(())
+    }
+    #[test]
+    fn disk_traversal_uses_the_original_host_budget_and_cancellation() -> Result<()> {
+        use codeana_model::{AnalysisContext, AnalysisLimits, DomainError, ErrorCode};
+        let root = tempfile::tempdir()?;
+        for index in 0..32 {
+            std::fs::write(root.path().join(index.to_string()), b"x")?;
+        }
+        let host = AnalysisContext::new(
+            AnalysisLimits {
+                max_payload_bytes: 32 << 10,
+                ..Default::default()
+            },
+            None,
+        )?;
+        let disk = DiskBudget::new(root.path().into(), 1 << 20, 0, 0, "HOST_SCRATCH_BUDGET")
+            .with_analysis(Some(host.clone()));
+        let error = disk.check().unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<DomainError>().unwrap().code,
+            ErrorCode::AnalysisResourceLimit
+        );
+        assert!(host.usage().payload_bytes <= 32 << 10);
+        assert!(disk.directory_entries.lock().unwrap().listings.is_empty());
+        let host = AnalysisContext::new(AnalysisLimits::default(), None)?;
+        host.cancel();
+        let error = disk.with_analysis(Some(host)).check().unwrap_err();
+        assert_eq!(
+            error.downcast_ref::<DomainError>().unwrap().code,
+            ErrorCode::Cancelled
+        );
+        Ok(())
+    }
     #[test]
     fn task_disk_listing_cache_is_bounded_and_fallback_still_counts() {
         let root = tempfile::tempdir().unwrap();
@@ -236,6 +384,8 @@ mod tests {
             reserve_bytes: 0,
             directory_entries: Arc::default(),
             budget_name: "JAVA_SCRATCH_BUDGET",
+            analysis: None,
+            scan_buffer: Arc::default(),
         };
         for index in 0..4112 {
             std::fs::create_dir(root.path().join(format!("dir-{index}"))).unwrap();
@@ -245,7 +395,7 @@ mod tests {
             let cache = budget.directory_entries.lock().unwrap();
             assert!(
                 cache.listings.len() <= 4096
-                    && cache.names <= 65536
+                    && cache.paths <= 65536
                     && cache.bytes <= 16 * 1024 * 1024
             );
             (0..4112)
@@ -277,6 +427,8 @@ mod tests {
             reserve_bytes: 0,
             directory_entries: Arc::default(),
             budget_name: "JAVA_SCRATCH_BUDGET",
+            analysis: None,
+            scan_buffer: Arc::default(),
         };
         let nested = root.path().join("nested");
         std::fs::create_dir(&nested).unwrap();
@@ -355,6 +507,8 @@ mod tests {
             reserve_bytes: 3,
             directory_entries: Arc::default(),
             budget_name: "JAVA_SCRATCH_BUDGET",
+            analysis: None,
+            scan_buffer: Arc::default(),
         };
         std::fs::File::create(root.path().join("result"))
             .unwrap()
@@ -387,7 +541,7 @@ mod tests {
         );
         std::fs::remove_file(&database).unwrap();
         budget.check_candidate(Some(candidate.path())).unwrap();
-        assert_eq!(budget.directory_entries.lock().unwrap().names, 1);
+        assert_eq!(budget.directory_entries.lock().unwrap().paths, 1);
     }
 
     #[test]
@@ -412,6 +566,8 @@ mod tests {
             reserve_bytes: 64,
             directory_entries: Arc::default(),
             budget_name: "JAVA_SCRATCH_BUDGET",
+            analysis: None,
+            scan_buffer: Arc::default(),
         };
         budget.check().unwrap();
         std::fs::File::create(candidate.path().join("facts.db"))

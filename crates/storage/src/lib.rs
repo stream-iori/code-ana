@@ -10,6 +10,9 @@ pub mod graph_store;
 mod maintenance;
 mod objects;
 mod pages;
+mod sql_budget;
+#[cfg(all(test, unix))]
+mod sql_budget_tests;
 mod staged;
 mod tasks;
 mod text_search;
@@ -60,7 +63,14 @@ fn unpin_revision(coord: &Mutex<Coordination>, id: &str) {
         }
     }
 }
+pub struct AnalysisRead<'a> {
+    pub root: &'a Path,
+    pub context: Option<&'a GraphStagingContext>,
+    pub cancellation: &'a dyn Fn() -> Result<()>,
+    pub check_directory: &'a dyn Fn(&Path, u64) -> Result<()>,
+}
 pub struct ReadContext {
+    analysis_budget: Option<AnalysisContext>,
     comment_sort_key_bytes: u64,
     cancellation: Option<Arc<CancellationCheck>>,
     budget: Option<ResourceBudget>,
@@ -271,19 +281,84 @@ impl Store {
         admit(body.len())?;
         Ok(serde_json::from_str(body)?)
     }
+    /// Task-owned baseline SQL shares the caller's existing host account and
+    /// scratch admission; the pinned reader cannot escape the callback.
+    pub fn with_analysis_reader<T>(
+        &self,
+        id: &str,
+        request: AnalysisRead<'_>,
+        read: impl FnOnce(&ReadContext) -> Result<T>,
+    ) -> Result<T> {
+        let scope = sql_budget::Scope::new(
+            request.root,
+            request.context,
+            request.cancellation,
+            request.check_directory,
+        )?;
+        scope.with_reader(self, id, read)
+    }
     pub fn read(&self, id: &str) -> Result<ReadContext> {
-        self.read_metered(id, None)
+        self.read_metered(id, None, None)
     }
     pub fn read_budgeted(&self, id: &str, budget: ResourceBudget) -> Result<ReadContext> {
-        self.read_metered(id, Some(budget))
+        self.read_metered(id, Some(budget), None)
     }
-    fn read_metered(&self, id: &str, budget: Option<ResourceBudget>) -> Result<ReadContext> {
+    fn read_staging(&self, id: &str, context: Option<&GraphStagingContext>) -> Result<ReadContext> {
+        let analysis = context.and_then(|c| c.hosts.values().next()).cloned();
+        let result = self.read_metered(id, None, analysis.clone());
+        if result.is_err()
+            && let Some(budget) = &analysis
+        {
+            budget.checkpoint().map_err(DomainError::analysis)?;
+        }
+        result
+    }
+    fn read_metered(
+        &self,
+        id: &str,
+        budget: Option<ResourceBudget>,
+        analysis: Option<AnalysisContext>,
+    ) -> Result<ReadContext> {
+        if let Some(host) = &analysis {
+            // This immutable connection only validates identity/schema and serves
+            // backup pages; all task SQL/sorts run in the destination VFS.
+            host.charge(1, 0, sql_budget::READ_BYTES)
+                .map_err(DomainError::analysis)?;
+        }
         let mut lock = self.coord.lock().unwrap();
-        let r = self.revision_metered(id, budget.as_ref())?;
+        let r = if let Some(host) = &analysis {
+            self.revision_admitted(id, |bytes| {
+                host.charge(1, 1, (bytes as u64).saturating_mul(8))
+                    .map_err(DomainError::analysis)?;
+                Ok(())
+            })?
+        } else {
+            self.revision_metered(id, budget.as_ref())?
+        };
         let c = Connection::open_with_flags(
             self.home.join("revisions").join(&r.id).join("facts.db"),
             rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
         )?;
+        if let Some(host) = &analysis {
+            let host = host.clone();
+            c.progress_handler(128, Some(move || host.charge(1, 0, 0).is_err()))?;
+            c.execute_batch("PRAGMA main.cache_size=-1024; PRAGMA mmap_size=0; PRAGMA threads=0;")?;
+        }
+        *lock.readers.entry(id.into()).or_default() += 1;
+        drop(lock);
+        let _pin = RevisionPin {
+            id: id.into(),
+            coord: self.coord.clone(),
+        };
+        self.reader_from_connection(r, c, budget, analysis)
+    }
+    fn reader_from_connection(
+        &self,
+        r: Revision,
+        c: Connection,
+        budget: Option<ResourceBudget>,
+        analysis_budget: Option<AnalysisContext>,
+    ) -> Result<ReadContext> {
         let schema_version: i64 = c.query_row("PRAGMA user_version", [], |r| r.get(0))?;
         ensure!(
             schema_version == graph_store::SCHEMA_VERSION,
@@ -305,6 +380,15 @@ impl Store {
             codeana_model::DomainError::new(codeana_model::ErrorCode::GraphIdentityMismatch, "")
         );
         let mut sources = BTreeMap::new();
+        if let Some(b) = &analysis_budget {
+            let bytes = r
+                .manifest
+                .files
+                .iter()
+                .fold(0u64, |n, s| n.saturating_add(s.path.len() as u64 + 128));
+            b.charge(r.manifest.files.len() as u64, 0, bytes)
+                .map_err(DomainError::analysis)?;
+        }
         let mut comment_sort_key_bytes = 328u64;
         for (index, source) in r.manifest.files.iter().enumerate() {
             if let Some(b) = &budget {
@@ -314,8 +398,15 @@ impl Store {
                 comment_sort_key_bytes.max((source.path.len() + source.world.len()) as u64 + 328);
             sources.insert(source.path.clone(), index);
         }
-        *lock.readers.entry(id.into()).or_default() += 1;
+        *self
+            .coord
+            .lock()
+            .unwrap()
+            .readers
+            .entry(r.id.clone())
+            .or_default() += 1;
         Ok(ReadContext {
+            analysis_budget,
             comment_sort_key_bytes,
             cancellation: None,
             budget,
@@ -345,7 +436,7 @@ impl Store {
             rows.into_iter().map(Ok),
             expected,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
         )?;
         self.publish_staged(candidate, task)
     }

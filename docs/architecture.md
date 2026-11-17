@@ -82,7 +82,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 `Fact.id`、所属 world和 expected revision 使用各自身份 newtype。封闭选项通过 `TryFrom` / `FromStr` 拒绝非法值；producer 状态使用 `FactStatus::Other(String)` 保留未来扩展。Rust 声明种类、可见性、关系、解析状态和分析模式使用封闭枚举。Rust/fixture 通过具名行结构构造 GRA1，Java 原始 protobuf 行继续按原契约验证和交付。
 
-配置解析校验、语言输入发现、源码捕获和执行预算分别由 config 内部模块负责，公开 TOML 与入口保持。一次捕获先创建 CaptureReader，再通过 InputReader 解析根配置/prepared/原生清单，后续内容捕获共用其缓存和封存检查；独立诊断使用 LiveInputs，公共端口不解释语言语义。Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。IndexPlan 从冻结输入规划资源参与后端及稳定分析单元；index_execution 负责跨语言调度，语言输入模块不启动其他语言。未变基线复用、单语言记录流与混合语言归档合并保留；各策略通过同一质量门禁、PublicationFence 和发布入口提交。普通/prepared 捕获在 config 内逐实例登记 FrozenUnitView；语言准备只接收该实例的 manifest/blob/观察索引。不同上下文可共享物理根和只读内容，但不共享未声明的控制或依赖；PlannedUnit 保留 Ready/FilesOnly/Removed 和静态预算；revision 持久化 unit_ownership v2，按稳定实例记录完整输入、声明 scope、发布范围、零输出来源及语义身份。旧元数据缺清单或仅有 v1 时增量要求 index --full；清单随同一次 CAS 发布，已有公开 ID/图 schema 不变。启动经过公共 LaunchSpec/supervisor；普通/prepared 已共用逐单元 Full/Delta/Reuse/Removed/FilesOnly 执行及候选合并；Java/Rust 的失效策略保留在自身基线准备，Python 保守全量只影响自身单元。SQL 预算及完整 R5/TS 仍待完成。
+配置解析校验、语言输入发现、源码捕获和执行预算分别由 config 内部模块负责，公开 TOML 与入口保持。一次捕获先创建 CaptureReader，再通过 InputReader 解析根配置/prepared/原生清单，后续内容捕获共用其缓存和封存检查；独立诊断使用 LiveInputs，公共端口不解释语言语义。Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。IndexPlan 从冻结输入规划资源参与后端及稳定分析单元；index_execution 负责跨语言调度，语言输入模块不启动其他语言。未变基线复用、单语言记录流与混合语言归档合并保留；各策略通过同一质量门禁、PublicationFence 和发布入口提交。普通/prepared 捕获在 config 内逐实例登记 FrozenUnitView；语言准备只接收该实例的 manifest/blob/观察索引。不同上下文可共享物理根和只读内容，但不共享未声明的控制或依赖；PlannedUnit 保留 Ready/FilesOnly/Removed 和静态预算；revision 持久化 unit_ownership v2，按稳定实例记录完整输入、声明 scope、发布范围、零输出来源及语义身份。旧元数据缺清单或仅有 v1 时增量要求 index --full；清单随同一次 CAS 发布，已有公开 ID/图 schema 不变。启动经过公共 LaunchSpec/supervisor；普通/prepared 已共用逐单元 Full/Delta/Reuse/Removed/FilesOnly 执行及候选合并；Java/Rust 的失效策略保留在自身基线准备，Python 保守全量只影响自身单元。候选/基线 SQL 预算已接入原账本；完整 R5/TS 仍待完成。
 
 语言模型原始 wire arena 继续有界验证；类型图通过节点句柄及 `SingleEdge` / `ManyEdge` 遍历，不展开循环。
 
@@ -189,3 +189,5 @@ CLI 交互边界（daemon 协议 6）：命令输入契约由应用层组合查�
 公共上下文由 unit、source_languages、modules/worlds、semantic_digest、producer/图能力及类型化后端详情组成；Discover 同时携带稳定实例和显式源码语言，启动和 Java 池重绑定均校验。报告 schema 4 逐实例保存 contexts，JSON/Markdown 共同展示后端与发布语言，删除伪 multi 上下文。公共交付设施和执行流程仍按当前实现中标记的后续阶段迁移。
 
 公共图交付已迁入 graph-io：Java/Rust/Python 共用按解码占用计量的队列和同一个行编码器，daemon 共用接收 verifier；contracts 只保留图 DTO 和 wire 准入。归档输入以任务根 FD 为锚逐级 openat，拒绝中间/末端 symlink、父级逃逸和非普通文件，校验失败不删除原文件。worker-runtime 承担 IPC 进度、三语言请求状态与 daemon 结果状态、公共终态及 FFI owner/通知/账本交接；Java EngineRequest/EngineAnalysisReceipt 已迁入 Java worker，无旧路径兼容导出。运行设施的实际验证范围见当前实现。
+
+候选及单元基线 SQL 连接由 storage 内任务 scope 管理，使用私有 VFS 和原 host 账户；共享合并使用固定顺序首个 host。应用只提供取消检查及带额外字节的磁盘准入回调。架构门禁递归拒绝候选通过新文件或连接别名绕过 scope；catalog、不可变读者、查询 spool 和文本搜索保留各自边界。详细计量及限制见 [存储](modules/storage.md#任务内-sql-与基线准入)。

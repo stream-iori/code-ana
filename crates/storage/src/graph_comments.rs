@@ -460,7 +460,7 @@ mod tests {
                 nodes.into_iter().map(Ok),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )
             .err()
@@ -479,7 +479,7 @@ mod tests {
                     .map(Ok),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "worlds",
@@ -529,7 +529,7 @@ mod tests {
                 std::iter::empty(),
                 &first.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "remove-world",
@@ -550,7 +550,7 @@ mod tests {
                 vec![test_row, test_link].into_iter().map(Ok),
                 &delta.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "full-world",
@@ -577,7 +577,7 @@ mod tests {
                 std::iter::empty(),
                 &full.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "zero-comments",
@@ -613,7 +613,7 @@ mod tests {
                 vec![row.clone(), link.clone()].into_iter().map(Ok),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "tokenizer",
@@ -633,7 +633,7 @@ mod tests {
                     vec![row.clone(), reserved].into_iter().map(Ok),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     Some(&ctx)
                 )
                 .is_err()
@@ -662,7 +662,7 @@ mod tests {
                 std::iter::empty(),
                 &first.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )
             .err()
@@ -681,7 +681,7 @@ mod tests {
                 vec![row, link].into_iter().map(Ok),
                 &first.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "rebuild-tokenizer",
@@ -709,7 +709,7 @@ mod tests {
                 vec![row.clone(), link.clone()].into_iter().map(Ok),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "baseline",
@@ -729,7 +729,7 @@ mod tests {
                 broken.into_iter(),
                 &first.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )
             .err()
@@ -744,7 +744,7 @@ mod tests {
                 vec![row.clone(), link.clone()].into_iter().map(Ok),
                 &first.id,
                 || Ok(()),
-                |_| {
+                |_, _| {
                     calls.set(calls.get() + 1);
                     ensure!(
                         calls.get() < 6,
@@ -764,7 +764,7 @@ mod tests {
             vec![row.clone(), link.clone()].into_iter().map(Ok),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&ctx),
         )?;
         let b = store.stage_graph_records_with_context(
@@ -773,7 +773,7 @@ mod tests {
             vec![row, link].into_iter().map(Ok),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&ctx),
         )?;
         let winner = store.publish_staged(a, "winner")?;
@@ -853,7 +853,7 @@ mod tests {
                 std::iter::once(Ok(row)),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&context),
             )?,
             "large-body",
@@ -888,7 +888,7 @@ mod tests {
                 vec![row.clone(), link.clone()].into_iter().map(Ok),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 Some(&ctx),
             )?,
             "owner",
@@ -907,7 +907,7 @@ mod tests {
                     std::iter::empty(),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     Some(&ctx)
                 )
                 .is_err()
@@ -923,7 +923,7 @@ mod tests {
                     std::iter::empty(),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     Some(&ctx)
                 )
                 .is_err()
@@ -940,7 +940,7 @@ mod tests {
                     std::iter::once(Ok(row.clone())),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     Some(&ctx)
                 )
                 .is_err()
@@ -956,7 +956,7 @@ mod tests {
                     vec![row, malformed].into_iter().map(Ok),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     Some(&ctx)
                 )
                 .is_err()
@@ -992,7 +992,7 @@ mod tests {
             nodes.into_iter().map(Ok),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&ctx),
         )?;
         let published = store.publish_staged(candidate, "query")?;
@@ -1090,7 +1090,7 @@ mod tests {
             vec![row.clone(), link.clone()].into_iter().map(Ok),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&ctx),
         )?;
         let first = store.publish_staged(candidate, "comments")?;
@@ -1142,7 +1142,7 @@ mod tests {
                         std::iter::once(Ok(bad)),
                         &first.id,
                         || Ok(()),
-                        |_| Ok(()),
+                        |_, _| Ok(()),
                         Some(&ctx)
                     )
                     .is_err()
@@ -1159,7 +1159,7 @@ mod tests {
                     vec![row.clone(), wrong].into_iter().map(Ok),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     Some(&ctx)
                 )
                 .is_err()
@@ -1172,7 +1172,7 @@ mod tests {
                     std::iter::once(Ok(row)),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(())
+                    |_, _| Ok(())
                 )
                 .is_err()
         );
@@ -1182,7 +1182,7 @@ mod tests {
             std::iter::empty(),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&ctx),
         )?;
         let second = store.publish_staged(candidate, "empty")?;

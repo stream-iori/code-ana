@@ -101,8 +101,9 @@ Java 原生适配器固定使用 Java 25 + GraalVM；目标 JDK 编译器桥单�
 | java_result_bytes | 64 MiB | 64 KiB–8 GiB，控制结果 / GRA1 归档分别受限 |
 | java_fact_limit | 100,000 | 1–5,000,000，全任务行/归属计数 |
 | java_scratch_bytes | 2 GiB | 64 KiB–32 GiB，捕获副本 / 模型 / 候选暂存 |
+| host_scratch_bytes | 2 GiB | 64 KiB–32 GiB，公共宿主 scratch、单元基线暂存与候选 SQLite；含匿名/已 unlink 临时文件及写入前增长；零 Ready 任务同样检查 |
 
-当前 schema 固定 Java/Rust 命名空间，未知语言/字段拒绝；不从项目下载插件。扩展描述符/新语言注册是后续设计，Rust 必须提供匹配的冻结输入清单。
+当前 schema 显式声明 Java/Rust/Python，未知语言/字段拒绝；不从项目下载插件。Rust/Python 使用匹配的冻结输入；JS/TS 生产配置仍待接入。
 
 | 语言专属键 | 值域 / 解释 |
 |---|---|

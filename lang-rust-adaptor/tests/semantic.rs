@@ -270,7 +270,7 @@ fn mixed_archive_preserves_java_on_rust_delta_and_rejects_partial_publication() 
         rows.into_iter().map(Ok),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let baseline = store.publish_staged(candidate, "initial")?;
     assert_eq!(
@@ -319,7 +319,7 @@ fn mixed_archive_preserves_java_on_rust_delta_and_rejects_partial_publication() 
         delta.archive.records()?,
         &baseline.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let published = store.publish_staged(candidate, "delta")?;
     let facts = store.read(&published.id)?.select(&FactFilter {
@@ -337,7 +337,7 @@ fn mixed_archive_preserves_java_on_rust_delta_and_rejects_partial_publication() 
                 std::iter::once(Err(anyhow::anyhow!("unsealed worker failure"))),
                 &published.id,
                 || Ok(()),
-                |_| Ok(())
+                |_, _| Ok(())
             )
             .is_err()
     );

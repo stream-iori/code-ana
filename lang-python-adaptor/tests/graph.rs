@@ -95,7 +95,7 @@ fn inferred_graph_survives_storage_and_unknowns_keep_python_identity() -> anyhow
         rows.into_iter(),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     assert!(!candidate.summary.evidence.semantic);
     let revision = store.publish_staged(candidate, "fixture")?;
@@ -164,7 +164,7 @@ fn inferred_graph_survives_storage_and_unknowns_keep_python_identity() -> anyhow
         std::iter::empty(),
         &baseline,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let reused = store.publish_staged(candidate, "unchanged")?;
     let reused_db = rusqlite::Connection::open(

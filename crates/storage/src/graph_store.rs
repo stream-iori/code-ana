@@ -89,7 +89,7 @@ pub fn restore_bulk(
 }
 
 pub fn initialize_stage(db: &Connection) -> Result<()> {
-    db.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA foreign_keys=OFF; PRAGMA cache_size=-64000;")?;
+    db.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA foreign_keys=OFF; PRAGMA cache_size=-1024;")?;
     db.execute_batch(include_str!("anatomist-stage.sql"))?;
     db.execute_batch(include_str!("unit-catalog.sql"))?;
     unit_nodes::initialize_stage(db)?;

@@ -398,11 +398,12 @@ class PreparedRustBudget(prepared.PreparedInputs):
 
     def test_individual_units_pass_but_combined_task_exhausts(self):
         base='schema_version=1\nkind="project"\n[languages.rust]\nenabled=true\n[resources.index]\nworker_memory_bytes=1073741824\n'
+        vector=json.loads((java.ROOT/'tests/fixtures/analysis-resources/prepared-rust-budget.json').read_text())
         entries={}
         for name in ('unit-a','unit-b'):
             path=self.project/name;(path/'src').mkdir(parents=True)
             (path/'Cargo.toml').write_text('[workspace]\n[package]\nname="fixture"\nversion="0.1.0"\nedition="2024"\n')
-            (path/'src/lib.rs').write_text('pub fn answer() -> u32 { 1 }\n')
+            (path/'src/lib.rs').write_text('pub fn answer() -> u32 {\n'+'let _ = 1;\n'*vector['body_statements']+'1 }\n')
             subprocess.run(['cargo','generate-lockfile','--offline'],cwd=path,check=True,capture_output=True)
             entries[name]=f'\n[[inputs.entries]]\nid="{name}"\nlanguage="rust"\nroot="{name}"\n'
         def select(names,limited=True):
@@ -440,6 +441,12 @@ class PreparedRustBudget(prepared.PreparedInputs):
         record_budget('prepared_rust.combined', report)
         self.assertTrue(all(s['host_usage']['failure'] is None for s in report['languages']), report)
         self.assertTrue(any(w['state']=='failed' and w['usage']['failure']['Limit']['resource']=='work' for s in report['languages'] for w in s['workers']), report)
+        workers=report['languages'][0]['workers']
+        self.assertEqual(len(workers),2)
+        self.assertEqual(workers[0]['grant']['limits'],workers[1]['grant']['limits'])
+        for worker in workers:
+            self.assertLessEqual(worker['usage']['work'],worker['grant']['limits']['max_work'])
+        self.assertFalse(report['complete'])
         select(['unit-a','unit-b'],False)
         _,recovered=self.cli('index','--prepare','--full',timeout=180)
         with self.db(recovered['revision']) as db:self.assertEqual({r[0] for r in db.execute("SELECT DISTINCT module FROM nodes WHERE language='rust'")},{'unit-a','unit-b'})

@@ -19,7 +19,11 @@ fn intern_metadata(db: &Connection, digest: &[u8], value: &str) -> Result<i64> {
     Ok(db.last_insert_rowid())
 }
 
-pub fn seal(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
+pub fn seal(
+    db: &Connection,
+    check: &dyn Fn() -> Result<()>,
+    context: Option<&codeana_model::GraphStagingContext>,
+) -> Result<()> {
     check()?;
     // Restore shared values before counting both inherited and newly inserted
     // observations. This also unshares values whose last duplicate was deleted.
@@ -37,7 +41,7 @@ pub fn seal(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
         // One value at a time; no whole-project metadata materialization.
         let row: Option<(i64,String)> = db.query_row(
             "SELECT rowid,value FROM compact_metadata_wanted WHERE rowid>? ORDER BY rowid LIMIT 1",
-            [cursor], |r| Ok((r.get(0)?,r.get(1)?)),
+            [cursor], |r| { crate::sql_budget::row(context, r)?; Ok((r.get(0)?,r.get(1)?)) },
         ).optional()?;
         let Some((id, value)) = row else { break };
         let pk = intern_metadata(db, &Sha256::digest(value.as_bytes()), &value)?;
@@ -156,7 +160,7 @@ mod tests {
         node(&db, "B", "B.java", Some(&value), 1)?;
         node(&db, "C", "C.java", None, 1)?;
         node(&db, "D", "D.java", Some(""), 1)?;
-        seal(&db, &|| Ok(()))?;
+        seal(&db, &|| Ok(()), None)?;
         assert_eq!(
             db.query_row("SELECT count(*) FROM metadata_values", [], |r| r
                 .get::<_, i64>(0))?,
@@ -186,7 +190,7 @@ mod tests {
             ""
         );
         db.execute("DELETE FROM nodes WHERE id='B'", [])?;
-        seal(&db, &|| Ok(()))?;
+        seal(&db, &|| Ok(()), None)?;
         assert_eq!(
             db.query_row("SELECT count(*) FROM metadata_values", [], |r| r
                 .get::<_, i64>(0))?,
@@ -206,7 +210,7 @@ mod tests {
         db.execute(insert, params!["unresolved", "A.java", "L1:1"])?;
         db.execute(insert, params!["exact", "A.java", "L9:1"])?;
         db.execute(insert, params!["exact", "B.java", "L2:1"])?;
-        seal(&db, &|| Ok(()))?;
+        seal(&db, &|| Ok(()), None)?;
         assert_eq!(
             db.query_row("SELECT count(*) FROM annotation_meta_relations", [], |r| {
                 r.get::<_, i64>(0)
@@ -233,7 +237,7 @@ mod tests {
             "DELETE FROM annotation_meta_owned WHERE source_file='B.java'",
             [],
         )?;
-        seal(&db, &|| Ok(()))?;
+        seal(&db, &|| Ok(()), None)?;
         assert_eq!(
             db.query_row(
                 "SELECT resolution_status FROM annotation_meta_relations",
@@ -246,7 +250,7 @@ mod tests {
             "DELETE FROM annotation_meta_owned WHERE source_file='A.java'",
             [],
         )?;
-        seal(&db, &|| Ok(()))?;
+        seal(&db, &|| Ok(()), None)?;
         assert_eq!(
             db.query_row("SELECT count(*) FROM annotation_meta_relations", [], |r| {
                 r.get::<_, i64>(0)
@@ -267,7 +271,7 @@ mod tests {
         let insert = "INSERT INTO edges(source_id,external_target_fqn,external_target_symbol,external_target_language,relation,is_external) VALUES('A','p.External','p.External',?,'REFERENCES',1)";
         db.execute(insert, params![None::<String>])?;
         db.execute(insert, params![Some("")])?;
-        seal(&db, &|| Ok(()))?;
+        seal(&db, &|| Ok(()), None)?;
         assert_eq!(
             db.query_row("SELECT count(*) FROM external_targets", [], |r| r
                 .get::<_, i64>(0))?,

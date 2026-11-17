@@ -132,7 +132,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
             records(&template[0], &before, &ids.map(|id| (id, 1))).into_iter(),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&initial_context),
         )?,
         "mixed-first",
@@ -209,7 +209,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
             records(&template[0], &after, &[("keep", 1)]).into_iter(),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )
         .err()
@@ -237,7 +237,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
                     failed,
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                     None
                 )
                 .is_err()
@@ -268,7 +268,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
             std::iter::empty(),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&context),
         )
         .err()
@@ -288,7 +288,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
             records(&template[0], &after, &[("delta", 2), ("full", 2)]).into_iter(),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "mixed-five-modes",
@@ -338,7 +338,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
             .into_iter(),
             &mixed.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "mixed-full-control",
@@ -359,7 +359,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
             std::iter::empty(),
             &full.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "mixed-zero-output-full",
@@ -391,7 +391,7 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
             std::iter::empty(),
             &no_output.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "mixed-remove-to-zero",
@@ -419,7 +419,7 @@ fn delta_cannot_borrow_a_peer_full_replacement_through_auxiliary_metadata() -> R
             records(&template[0], &revision, &[("left", 1), ("right", 1)]).into_iter(),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "auxiliary-range-first",
@@ -453,7 +453,7 @@ fn delta_cannot_borrow_a_peer_full_replacement_through_auxiliary_metadata() -> R
             std::iter::once(Ok(row)),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )
         .err()
@@ -494,7 +494,7 @@ fn shared_global_membership_survives_a_peer_snapshot_and_rejects_incompatible_re
             initial.into_iter(),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "shared-members-first",
@@ -515,7 +515,7 @@ fn shared_global_membership_survives_a_peer_snapshot_and_rejects_incompatible_re
             std::iter::empty(),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "shared-members-retained",
@@ -533,7 +533,7 @@ fn shared_global_membership_survives_a_peer_snapshot_and_rejects_incompatible_re
             std::iter::once(shared("left", 2)),
             &mixed.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )
         .err()
@@ -558,7 +558,7 @@ fn shared_global_membership_survives_a_peer_snapshot_and_rejects_incompatible_re
             fresh.into_iter(),
             &mixed.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "shared-members-refreshed",

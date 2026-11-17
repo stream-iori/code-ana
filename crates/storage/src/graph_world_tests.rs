@@ -83,7 +83,7 @@ fn unit_nodes_and_external_references_survive_reuse_and_replace_global_snapshots
             rows(true).into_iter(),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-nodes-full",
@@ -120,7 +120,7 @@ fn unit_nodes_and_external_references_survive_reuse_and_replace_global_snapshots
             revision.clone(),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-nodes-reused",
@@ -142,7 +142,7 @@ fn unit_nodes_and_external_references_survive_reuse_and_replace_global_snapshots
             conflicting.into_iter(),
             &reused.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )
         .err()
@@ -175,7 +175,7 @@ fn unit_nodes_and_external_references_survive_reuse_and_replace_global_snapshots
             rows(false).into_iter(),
             &reused.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-nodes-delta",
@@ -210,7 +210,7 @@ fn unit_nodes_and_external_references_survive_reuse_and_replace_global_snapshots
             rows(false).into_iter(),
             &delta.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-nodes-full-again",
@@ -338,7 +338,7 @@ fn unit_metadata_survives_real_candidates_delta_reuse_and_matches_full() -> Resu
             records(true).into_iter(),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-metadata-full",
@@ -368,7 +368,7 @@ fn unit_metadata_survives_real_candidates_delta_reuse_and_matches_full() -> Resu
             records(false).into_iter(),
             &first.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-metadata-delta",
@@ -386,7 +386,7 @@ fn unit_metadata_survives_real_candidates_delta_reuse_and_matches_full() -> Resu
             revision.clone(),
             &delta.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-metadata-reuse",
@@ -402,7 +402,7 @@ fn unit_metadata_survives_real_candidates_delta_reuse_and_matches_full() -> Resu
             records(false).into_iter(),
             &reused.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             None,
         )?,
         "unit-metadata-full-again",
@@ -459,7 +459,7 @@ fn host_assigned_delivery_origin_cannot_borrow_a_peer_or_an_unavailable_unit() -
                 rows.clone().into_iter().map(|row| Ok(origin.record(row))),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 None,
             )
             .err()
@@ -487,7 +487,7 @@ fn host_assigned_delivery_origin_cannot_borrow_a_peer_or_an_unavailable_unit() -
                 rows.clone().into_iter().map(|row| Ok(origin.record(row))),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 None
             )
             .is_err()
@@ -501,7 +501,7 @@ fn host_assigned_delivery_origin_cannot_borrow_a_peer_or_an_unavailable_unit() -
                 std::iter::once(Ok(origin.record(rows[0].clone()))),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
                 None
             )
             .is_err()
@@ -513,7 +513,7 @@ fn host_assigned_delivery_origin_cannot_borrow_a_peer_or_an_unavailable_unit() -
         rows.into_iter().map(|row| Ok(origin.record(row))),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
         None,
     )?;
     store.publish_staged(candidate, "correct-unit-origin")?;
@@ -565,7 +565,7 @@ fn rust_state_and_lookup_dependencies_are_replaced_by_world_even_without_nodes()
         rows.into_iter().map(Ok),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let first = store.publish_staged(candidate, "rust-worlds")?;
     assert_eq!(
@@ -592,7 +592,7 @@ fn rust_state_and_lookup_dependencies_are_replaced_by_world_even_without_nodes()
         std::iter::empty(),
         &first.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let second = store.publish_staged(candidate, "delete-rust-main")?;
     let states = store.read(&second.id)?.rust_baseline_summary()?.rust_states;
@@ -708,7 +708,7 @@ fn reverse_dependencies_bind_both_worlds_and_one_world_deletion_keeps_the_other(
         rows.into_iter().map(Ok),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let first = store.publish_staged(candidate, "dependency-worlds")?;
     let before = store.read(&first.id)?;
@@ -743,7 +743,7 @@ fn reverse_dependencies_bind_both_worlds_and_one_world_deletion_keeps_the_other(
         std::iter::empty(),
         &first.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let next = store.publish_staged(candidate, "delete-main-reference")?;
     let after = store.read(&next.id)?;
@@ -921,7 +921,7 @@ fn deleting_one_world_at_a_shared_path_keeps_the_other_world_and_the_old_revisio
         rows.into_iter().map(Ok),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let first = store.publish_staged(candidate, "first")?;
     revision.manifest.files.retain(|s| s.world == "test");
@@ -940,7 +940,7 @@ fn deleting_one_world_at_a_shared_path_keeps_the_other_world_and_the_old_revisio
         std::iter::once(Ok(global)),
         &first.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let second = store.publish_staged(candidate, "delete-main")?;
     let reader = store.read(&second.id)?;
@@ -986,7 +986,7 @@ fn deleting_one_world_at_a_shared_path_keeps_the_other_world_and_the_old_revisio
         full_rows.into_iter().map(Ok),
         &second.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let full = store.publish_staged(full_candidate, "full-test-world")?;
     assert_eq!(expected, canonical(&store.read(&full.id)?.connection)?);
@@ -1053,7 +1053,7 @@ fn declarations_with_the_same_symbol_and_scope_keep_each_worlds_metadata() -> Re
         rows.into_iter().map(Ok),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let first = store.publish_staged(candidate, "declaration-worlds")?;
     let reader = store.read(&first.id)?;
@@ -1085,7 +1085,7 @@ fn declarations_with_the_same_symbol_and_scope_keep_each_worlds_metadata() -> Re
         std::iter::empty(),
         &first.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let second = store.publish_staged(candidate, "delete-main-type")?;
     let reader = store.read(&second.id)?;
@@ -1113,7 +1113,7 @@ fn colliding_worlds_cannot_overwrite_nodes_or_publish_ambiguous_public_ids() -> 
                 template.clone().into_iter().map(Ok),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
             )?,
             "good",
         )?;
@@ -1174,7 +1174,7 @@ fn colliding_worlds_cannot_overwrite_nodes_or_publish_ambiguous_public_ids() -> 
                 rows.into_iter().map(Ok),
                 &first.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
             )
             .err()
             .context(format!("identity collision accepted: {fault}"))?;
@@ -1255,7 +1255,7 @@ fn explicit_reuse_keeps_global_diagnostics_coverage_and_metadata_and_rejects_cha
         rows.into_iter().map(Ok),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let first = store.publish_staged(candidate, "reuse-baseline")?;
     let expected = canonical(&store.read(&first.id)?.connection)?;
@@ -1263,7 +1263,7 @@ fn explicit_reuse_keeps_global_diagnostics_coverage_and_metadata_and_rejects_cha
         revision.clone(),
         &first.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
         None,
     )?;
     let reused = store.publish_staged(candidate, "explicit-reused")?;
@@ -1287,7 +1287,13 @@ fn explicit_reuse_keeps_global_diagnostics_coverage_and_metadata_and_rejects_cha
         }
         assert!(
             store
-                .stage_reused_graph_with_context(changed, &reused.id, || Ok(()), |_| Ok(()), None)
+                .stage_reused_graph_with_context(
+                    changed,
+                    &reused.id,
+                    || Ok(()),
+                    |_, _| Ok(()),
+                    None
+                )
                 .is_err(),
             "{change}"
         );
@@ -1356,7 +1362,7 @@ fn reuse_ledger_ignores_only_integrity_generation_and_config_presentation_bytes(
             rows.into_iter().map(Ok),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
         )?,
         "ledger-baseline",
     )?;
@@ -1381,7 +1387,7 @@ fn reuse_ledger_ignores_only_integrity_generation_and_config_presentation_bytes(
         changed.clone(),
         &first.id,
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
         None,
     )?;
     let reused = store.publish_staged(candidate, "new-integrity-generation")?;
@@ -1406,7 +1412,7 @@ fn reuse_ledger_ignores_only_integrity_generation_and_config_presentation_bytes(
             changed.clone(),
             &reused.id,
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
             Some(&limited),
         )
         .err()
@@ -1455,7 +1461,7 @@ fn reuse_ledger_ignores_only_integrity_generation_and_config_presentation_bytes(
             }
         }
         let failure = store
-            .stage_reused_graph_with_context(forged, &reused.id, || Ok(()), |_| Ok(()), None)
+            .stage_reused_graph_with_context(forged, &reused.id, || Ok(()), |_, _| Ok(()), None)
             .err()
             .context(format!("changed reuse accepted: {field}"))?;
         assert_eq!(
@@ -1595,7 +1601,7 @@ fn unit_baseline_keeps_only_declared_bindings_and_never_collapses_same_path_worl
         rows.into_iter().map(Ok),
         "",
         || Ok(()),
-        |_| Ok(()),
+        |_, _| Ok(()),
     )?;
     let published = store.publish_staged(candidate, "scoped-unit-baseline")?;
     let reader = store.read(&published.id)?;

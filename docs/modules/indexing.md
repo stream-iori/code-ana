@@ -179,7 +179,7 @@ A5 服务边界：索引策略实现于 `IndexTask`，只拿本任务状态、In
 
 application/supervisor 的 Process 统一保有 child 与租约。显式关闭和 Drop 都先终止所属进程组；独立回收线程保有待回收 child，按有界 OS 快照确认组内无非僵尸成员后才 try_wait 回收 leader、释放租约。leader 未回收前不复用其数值 PGID。任务 runtime 关闭不销毁回收登记。显式停止最多等待两秒；失败/超时独立报告并保留输入，后台继续回收。未确认记录达到 1024 时拒绝新增启动；该阈值不是业务预算的可借额度。
 
-验证过 attempt/revision 的 Acked，或验证过 attempt/grant/可信用量的 Java Reused，才解除健康 worker 的任务租约与 scratch 观察；错误回执保留输入并由调用方关闭。正在进行的磁盘检查也持有旧租约，过期检查不能杀死下一任务的 worker。Java 健康池策略与 RSS 监控仍在既有模块；固定基线、公共装配与混合执行已接通；SQLite VM/cache/匿名临时磁盘及完整 host 计费仍待专项审计。
+验证过 attempt/revision 的 Acked，或验证过 attempt/grant/可信用量的 Java Reused，才解除健康 worker 的任务租约与 scratch 观察；错误回执保留输入并由调用方关闭。正在进行的磁盘检查也持有旧租约，过期检查不能杀死下一任务的 worker。Java 健康池策略与 RSS 监控仍在既有模块；固定基线、公共装配与混合执行已接通；SQLite VM/cache/匿名临时磁盘、基线与派生集合已接入原 host 计费，见 [存储](storage.md#任务内-sql-与基线准入)。
 
 索引捕获后只读取一次 head，并通过元数据租约持有该 revision，覆盖规划、worker、候选及发布后的处理。后续策略使用计划中的相同 baseline，提交仍做 CAS；GC 在租约释放前保留基线。元数据租约不打开旧 facts.db，因此显式全量可从旧图 schema 迁移；读取前先为元数据解码预留预算。
 
@@ -187,8 +187,10 @@ application/supervisor 的 Process 统一保有 child 与租约。显式关闭�
 
 Java 的未变判定比较该单元历史 inputs，避免将全项目 FILES 与单元视图直接比较。增量基线的文件、节点、上下文和类型关系仅取该单元声明输入（含辅助绑定）；变更闭包按 path/world 计算，反向依赖只回到该单元输入，交给 Java 的删除 owner 清单进一步只保留该单元可发布源码/资源；显式 fixture 使用独立测试输入。Python 的汇总 coverage 模块还包括冻结输入描述符中的原生上下文模块，与具体源文件的模块归属分别校验。
 
-所有生产 staging 路径携带主机分配的 Unit/Host/Fixture 来源；普通 Java 流、Rust 增量/混合、Python 和 prepared 不再在存储端口丢弃单元身份。多单元结果逐份读取原主机归档，保留原 count/SHA/EOF 和目录租约，每次只打开一个文件；删除了 Rust 混合和保守/prepared 的二次合并归档。原总输出上限和 Host 尾部准入保留，解码接续原 host 账户。交付策略版本同时进入项目/单元 profile，单元 profile 也纳入注释规则身份；旧策略更新重新分析。持久化观察模块包含实际 BuildContext 模块，存储可据其复核全局 coverage。现已由公共执行器驱动逐单元混合合并；SQL 资源审计和完整 R5/TS 验收仍未完成。
+所有生产 staging 路径携带主机分配的 Unit/Host/Fixture 来源；普通 Java 流、Rust 增量/混合、Python 和 prepared 不再在存储端口丢弃单元身份。多单元结果逐份读取原主机归档，保留原 count/SHA/EOF 和目录租约，每次只打开一个文件；删除了 Rust 混合和保守/prepared 的二次合并归档。原总输出上限和 Host 尾部准入保留，解码接续原 host 账户。交付策略版本同时进入项目/单元 profile，单元 profile 也纳入注释规则身份；旧策略更新重新分析。持久化观察模块包含实际 BuildContext 模块，存储可据其复核全局 coverage。现已由公共执行器驱动逐单元混合合并；SQL 资源路径已计费；完整 R5 矩阵、分发及 TS 生产验收仍未完成。
 
 现行单 Java、Rust、普通保守及 prepared 启动统一为 RunningUnit → WorkerService::launch → LaunchSpec/supervisor；只有工厂可启动或 rediscover，架构反例覆盖关联函数别名、嵌套同名文件与绕过 owner 的调用。Java 池 key/基线匹配和错误后禁止重领 grant 的规则在工厂内；mock 是显式 Fixture 输入，须与该服务配置的 fixtures 路径相同。只有账户已结束、任务 scratch 已解除且进程健康时，单元才可移交健康池；移交后为 Released，不能再提供流、上下文或重启。单 Java 流式暂存与候选磁盘检查保持，工厂/装箱/新增 manifest 副本继续使用原 host 预算。
 
 任务进度的 unit_update 记录规划意图；unit_result 记录 worker 已验证的实际 Full/Delta/Reuse，或候选校验后的 Removed/FilesOnly。NeedFull 可使实际结果从 Delta 变为 Full，两者分别记录；预算与 grant 不因此重置。
+
+单元基线通过 `IndexRepository::with_baseline` 借用读者，连接不能交给异步 worker。读者只持有自身后端 host，共享候选使用固定首个原 host。Full/Delta/Reuse 与 Removed/FilesOnly 均受 `host_scratch_bytes` 限制，候选成功后才进入一次 CAS。容量复用不重领 grant；首次 SQL 失败不被后续取消或清理错误覆盖。

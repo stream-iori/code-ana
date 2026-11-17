@@ -78,14 +78,14 @@ impl Store {
         records: impl Iterator<Item = Result<GraphRecord>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
         context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
         cancellation()?;
         let old = if expected.is_empty() {
             None
         } else {
-            Some(self.read(expected)?)
+            Some(self.read_staging(expected, context)?)
         };
         let empty = Revision {
             id: String::new(),
@@ -143,7 +143,7 @@ impl Store {
         records: impl Iterator<Item = Result<Row>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
     ) -> Result<StagedCandidate> {
         self.stage_graph_records_with_context(
             revision,
@@ -164,7 +164,7 @@ impl Store {
         records: impl Iterator<Item = Result<Row>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
         context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
         self.stage_owned_graph_records_with_context(
@@ -185,7 +185,7 @@ impl Store {
         records: impl Iterator<Item = Result<GraphRecord>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
         context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
         self.stage_graph_records_inner(
@@ -204,7 +204,7 @@ impl Store {
         revision: Revision,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
         context: Option<&GraphStagingContext>,
     ) -> Result<StagedCandidate> {
         let header = AnalysisHeader {
@@ -234,7 +234,7 @@ impl Store {
         records: impl Iterator<Item = Result<GraphRecord>>,
         expected: &str,
         cancellation: impl Fn() -> Result<()>,
-        check_directory: impl Fn(&Path) -> Result<()>,
+        check_directory: impl Fn(&Path, u64) -> Result<()>,
         context: Option<&GraphStagingContext>,
         pinned_baseline: Option<ReadContext>,
     ) -> Result<StagedCandidate> {
@@ -262,7 +262,7 @@ impl Store {
             );
             let r = match pinned_baseline {
                 Some(r) => r,
-                None => self.read(expected)?,
+                None => self.read_staging(expected, context)?,
             };
             ensure!(
                 r.revision.id == expected,
@@ -304,470 +304,465 @@ impl Store {
                 },
             }
         };
-        let check = || {
-            cancellation()?;
-            check_directory(directory.path())
-        };
-        check()?;
-        let mut phase_ms = BTreeMap::new();
-        let mut started = std::time::Instant::now();
-        let mut db = Connection::open(directory.path().join("facts.db"))?;
-        if let Some(source) = &baseline {
-            let backup = rusqlite::backup::Backup::new(&source.connection, &mut db)?;
-            loop {
-                check()?;
-                match backup.step(128)? {
-                    rusqlite::backup::StepResult::Done => break,
-                    rusqlite::backup::StepResult::More => {}
-                    rusqlite::backup::StepResult::Busy | rusqlite::backup::StepResult::Locked => {
-                        std::thread::sleep(Duration::from_millis(1))
-                    }
-                    _ => anyhow::bail!(codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::SqliteBackupStep,
-                        ""
-                    )),
+        let root = directory.path().to_path_buf();
+        let scope = crate::sql_budget::Scope::new(&root, context, &cancellation, &check_directory)?;
+        let result = (|| {
+            let check = || scope.check();
+            check()?;
+            let mut phase_ms = BTreeMap::new();
+            let mut started = std::time::Instant::now();
+            let mut db = scope.open(&directory.path().join("facts.db"))?;
+            if let Some(source) = &baseline {
+                db.backup_from(&source.connection, &check)?;
+            }
+            graph_store::initialize(&db)?;
+            db.execute_batch("PRAGMA journal_mode=OFF;PRAGMA synchronous=OFF;PRAGMA cache_size=-1024;PRAGMA temp_store=FILE;PRAGMA foreign_keys=ON;")?;
+            if baseline.is_some() {
+                crate::graph_comments::validate_baseline(&db)?;
+            }
+            let stage_path = directory.path().join("stage.db");
+            let stage = scope.open(&stage_path)?;
+            graph_store::initialize_stage(&stage)?;
+            let unit_pks = graph_store::unit_metadata::setup(
+                &db,
+                &stage,
+                &revision,
+                context,
+                !seed.is_reused(),
+            )?;
+            if let GraphSeed::Mixed(_, plan) = seed {
+                stage.execute("DELETE FROM stage_active_units", [])?;
+                for update in plan
+                    .updates()
+                    .iter()
+                    .filter(|u| u.kind != UnitUpdateKind::Reuse)
+                {
+                    stage.execute("INSERT INTO stage_active_units SELECT unit_pk FROM unit_catalog WHERE unit_id=?", [update.unit.as_str()])?;
                 }
-            }
-        }
-        graph_store::initialize(&db)?;
-        db.execute_batch("PRAGMA journal_mode=OFF;PRAGMA synchronous=OFF;PRAGMA cache_size=-64000;PRAGMA temp_store=FILE;PRAGMA foreign_keys=ON;")?;
-        if baseline.is_some() {
-            crate::graph_comments::validate_baseline(&db)?;
-        }
-        let stage_path = directory.path().join("stage.db");
-        let stage = Connection::open(&stage_path)?;
-        graph_store::initialize_stage(&stage)?;
-        let unit_pks =
-            graph_store::unit_metadata::setup(&db, &stage, &revision, context, !seed.is_reused())?;
-        if let GraphSeed::Mixed(_, plan) = seed {
-            stage.execute("DELETE FROM stage_active_units", [])?;
-            for update in plan
-                .updates()
-                .iter()
-                .filter(|u| u.kind != UnitUpdateKind::Reuse)
-            {
-                stage.execute("INSERT INTO stage_active_units SELECT unit_pk FROM unit_catalog WHERE unit_id=?", [update.unit.as_str()])?;
-            }
-            stage.execute("INSERT INTO stage_active_units VALUES(0)", [])?;
-        }
-        stage.execute(
-            "INSERT INTO stage_unit_modes SELECT unit_pk,? FROM stage_active_units",
-            [header.mode.as_str()],
-        )?;
-        if let GraphSeed::Mixed(_, plan) = seed {
-            for update in plan.updates() {
-                let mode = match update.kind {
-                    UnitUpdateKind::Full => "full",
-                    UnitUpdateKind::Delta => "delta",
-                    UnitUpdateKind::Reuse => "reuse",
-                    UnitUpdateKind::Removed => "removed",
-                    UnitUpdateKind::FilesOnly => "files_only",
-                };
-                stage.execute("INSERT OR REPLACE INTO stage_unit_modes SELECT unit_pk,? FROM unit_catalog WHERE unit_id=?", params![mode,update.unit.as_str()])?;
+                stage.execute("INSERT INTO stage_active_units VALUES(0)", [])?;
             }
             stage.execute(
-                "UPDATE stage_unit_modes SET mode='full' WHERE unit_pk=0",
+                "INSERT INTO stage_unit_modes SELECT unit_pk,? FROM stage_active_units",
+                [header.mode.as_str()],
+            )?;
+            if let GraphSeed::Mixed(_, plan) = seed {
+                for update in plan.updates() {
+                    let mode = match update.kind {
+                        UnitUpdateKind::Full => "full",
+                        UnitUpdateKind::Delta => "delta",
+                        UnitUpdateKind::Reuse => "reuse",
+                        UnitUpdateKind::Removed => "removed",
+                        UnitUpdateKind::FilesOnly => "files_only",
+                    };
+                    stage.execute("INSERT OR REPLACE INTO stage_unit_modes SELECT unit_pk,? FROM unit_catalog WHERE unit_id=?", params![mode,update.unit.as_str()])?;
+                }
+                stage.execute(
+                    "UPDATE stage_unit_modes SET mode='full' WHERE unit_pk=0",
+                    [],
+                )?;
+            }
+            graph_store::unit_aux::setup(&stage, &revision, context)?;
+            graph_store::unit_nodes::setup(&stage, &revision, &unit_pks, context)?;
+            // The retained baseline catalogue is available to reference resolution without
+            // importing or materializing any serialized Fact IR.
+            if baseline.is_some() {
+                seed_baseline(&stage, &db, seed, &check)?;
+            }
+            // Unit registration writes the private copy. Acquire its exclusive lock
+            // only after the separate staging connection has detached that copy.
+            db.pragma_update(None, "locking_mode", "EXCLUSIVE")?;
+            phase_ms.insert(
+                "candidate_setup_backup".into(),
+                started.elapsed().as_millis() as u64,
+            );
+            started = std::time::Instant::now();
+            stage.execute_batch("BEGIN")?;
+            let sources: BTreeMap<_, _> = revision
+                .manifest
+                .files
+                .iter()
+                .map(|s| ((s.path.as_str(), s.world.as_str()), s))
+                .collect();
+            let replaced: BTreeSet<_> = header
+                .replacements
+                .iter()
+                .filter(|o| o.kind == "source")
+                .map(|o| (o.id.as_str(), o.world.as_str()))
+                .collect();
+            let unit_ranges: BTreeSet<_> = if let GraphSeed::Mixed(_, plan) = seed {
+                plan.updates()
+                    .iter()
+                    .flat_map(|u| {
+                        u.replacements
+                            .iter()
+                            .map(|o| (&u.unit, o.id.as_str(), o.world.as_str()))
+                    })
+                    .collect()
+            } else {
+                BTreeSet::new()
+            };
+            let unit_scopes = revision
+                .unit_ownership
+                .as_ref()
+                .map(|ledger| {
+                    ledger
+                        .units
+                        .iter()
+                        .filter(|u| {
+                            u.availability == UnitAvailability::Ready && seed.executes(&u.unit)
+                        })
+                        .map(|unit| {
+                            let budget = context.and_then(|c| c.hosts.get(&unit.backend));
+                            let scope = codeana_graph_io::scope::Scope::from_sources(
+                                &unit.unit,
+                                &unit.inputs,
+                                &[],
+                                &unit.modules,
+                                &unit.source_languages,
+                                codeana_graph_io::scope::Mode::Compiler,
+                                budget,
+                            )?;
+                            Ok((&unit.unit, (scope, unit.backend)))
+                        })
+                        .collect::<Result<BTreeMap<_, _>>>()
+                })
+                .transpose()?
+                .unwrap_or_default();
+            let mut positions = 0;
+            let mut comment_source = crate::graph_comments::SourceCache::default();
+            for row in records {
+                if positions % 256 == 0 {
+                    check()?;
+                }
+                let GraphRecord { origin, row } = row?;
+                let mut row_delta = header.mode == AnalysisMode::Delta;
+                let mut auxiliary_observation = None;
+                let unit_pk = match &origin {
+                    Origin::Unit(unit) => {
+                        let (scope, backend) =
+                            unit_scopes.get(unit.as_ref()).context(DomainError::new(
+                                ErrorCode::AnalysisUnitScope,
+                                "unknown or unavailable delivery unit",
+                            ))?;
+                        let world = scope.source_world(&row)?;
+                        if let Some(update) = seed.update(unit) {
+                            row_delta = update.kind == UnitUpdateKind::Delta;
+                        }
+                        if let Some(world) = world {
+                            let table = codeana_contracts::graph::Table::try_from(row.table)?;
+                            let column = codeana_graph_io::scope::source_columns(table)
+                                .context("unit source column missing")?
+                                .source;
+                            let path = row
+                                .cells
+                                .get(column)
+                                .and_then(|cell| match cell.value.as_ref() {
+                                    Some(codeana_contracts::graph::cell::Value::Text(path)) => {
+                                        Some(path.as_str())
+                                    }
+                                    _ => None,
+                                })
+                                .context(DomainError::new(
+                                    ErrorCode::GraphColumnType,
+                                    "unit source text missing",
+                                ))?;
+                            if graph_store::unit_aux::is_observation(table)
+                                && scope.is_auxiliary(path, world)
+                            {
+                                auxiliary_observation = Some((path, world, table, *backend));
+                                row_delta = false;
+                            }
+                            if row_delta && seed.update(unit).is_some() {
+                                ensure!(
+                                    unit_ranges.contains(&(unit.as_ref(), path, world)),
+                                    DomainError::new(
+                                        ErrorCode::GraphSourceNotReplaced,
+                                        "unit cannot borrow a peer replacement range"
+                                    )
+                                );
+                            }
+                        }
+                        graph_store::unit_nodes::admit(
+                            &row,
+                            context.and_then(|c| c.hosts.get(backend)),
+                        )?;
+                        *unit_pks.get(unit.as_ref()).context(DomainError::new(
+                            ErrorCode::AnalysisUnitScope,
+                            "unit catalog entry missing",
+                        ))?
+                    }
+                    Origin::Host => {
+                        codeana_graph_io::records::validate_host_row(&row)?;
+                        0
+                    }
+                    Origin::Fixture => {
+                        ensure!(
+                            !matches!(seed, GraphSeed::Mixed(..)),
+                            DomainError::new(
+                                ErrorCode::AnalysisUnitScope,
+                                "mixed deliveries require a host-assigned unit"
+                            )
+                        );
+                        graph_store::unit_nodes::admit(
+                            &row,
+                            context.and_then(|c| c.hosts.values().next()),
+                        )?;
+                        0
+                    }
+                };
+                let owner = validate_record(&row, &sources, &replaced, row_delta)?;
+                if let Some((path, world, table, backend)) = auxiliary_observation {
+                    graph_store::unit_aux::fresh_input(
+                        &stage,
+                        unit_pk,
+                        path,
+                        world,
+                        table,
+                        context.and_then(|c| c.hosts.get(&backend)),
+                    )?;
+                }
+                if matches!(
+                    codeana_contracts::graph::Table::try_from(row.table),
+                    Ok(codeana_contracts::graph::Table::Comment
+                        | codeana_contracts::graph::Table::CommentLink)
+                ) {
+                    crate::graph_comments::stage(
+                        &stage,
+                        &row,
+                        &revision.manifest,
+                        context,
+                        &mut comment_source,
+                        &check,
+                    )?;
+                } else {
+                    graph_store::insert_owned_with_world(
+                        &stage,
+                        &row,
+                        owner.map(|s| s.world.as_str()).unwrap_or(&row.world),
+                        unit_pk,
+                    )?;
+                }
+                positions += 1;
+                if positions % 10000 == 0 {
+                    stage.execute_batch("COMMIT;BEGIN")?;
+                }
+            }
+            stage.execute_batch("COMMIT")?;
+            phase_ms.insert(
+                "record_validate_ingest".into(),
+                started.elapsed().as_millis() as u64,
+            );
+            started = std::time::Instant::now();
+            check()?;
+            stage.execute_batch("BEGIN")?;
+            let dropped = graph_store::resolve(&stage)?;
+            graph_store::prepare_identities(&stage, &check)?;
+            stage.execute_batch("COMMIT")?;
+            phase_ms.insert(
+                "stage_resolve_identities".into(),
+                started.elapsed().as_millis() as u64,
+            );
+            started = std::time::Instant::now();
+            drop(stage);
+            db.execute(
+                "ATTACH DATABASE ? AS staged",
+                [stage_path.to_string_lossy().as_ref()],
+            )?;
+            db.execute_batch("PRAGMA staged.cache_size=-1024; BEGIN IMMEDIATE")?;
+            let affected = if baseline.is_some() {
+                Some(
+                    header
+                        .replacements
+                        .iter()
+                        .map(|o| o.id.clone())
+                        .collect::<BTreeSet<_>>(),
+                )
+            } else {
+                None
+            };
+            let structures = if baseline.is_none() {
+                graph_store::suspend_bulk(&db)?
+            } else {
+                Vec::new()
+            };
+            if affected.is_some() {
+                replace_affected(&db, &header.replacements)?;
+            }
+            graph_store::unit_metadata::replace_active(&db)?;
+            graph_store::promote_with_context(&db, context)?;
+            crate::graph_comments::promote(&db, &revision.manifest, context, &check)?;
+            db.execute(
+                "INSERT OR REPLACE INTO project_meta VALUES('schema_version',?)",
+                [graph_store::SOURCE_SCHEMA_VERSION.to_string()],
+            )?;
+            graph_calls::rebuild(&db, affected.as_ref(), &check, context)?;
+            rebuild_wiring(&db, &check, context)?;
+            if baseline.is_none() {
+                graph_store::restore_bulk(&db, &structures, &check)?;
+            }
+            rebuild_dependencies(&db, &check, context)?;
+            crate::graph_compact::seal(&db, &check, context)?;
+            db.execute(
+                "INSERT OR REPLACE INTO project_meta VALUES('codeana.revision',?)",
+                [&revision.id],
+            )?;
+            db.execute(
+                "INSERT OR REPLACE INTO project_meta VALUES('codeana.profile',?)",
+                [&revision.profile],
+            )?;
+            db.execute(
+                "INSERT OR REPLACE INTO project_meta VALUES('codeana.dropped_dangling',?)",
+                [dropped.to_string()],
+            )?;
+            db.execute_batch("COMMIT;DETACH DATABASE staged;").context(
+                codeana_model::DomainError::new(codeana_model::ErrorCode::GraphPromotionDetach, ""),
+            )?;
+            std::fs::remove_file(stage_path)?;
+            phase_ms.insert(
+                "promotion_calls_wiring".into(),
+                started.elapsed().as_millis() as u64,
+            );
+            started = std::time::Instant::now();
+            check()?;
+            let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
+            ensure!(
+                integrity == "ok",
+                codeana_model::DomainError::new(codeana_model::ErrorCode::CorruptCandidate, "")
+            );
+            ensure!(
+                !db.prepare("PRAGMA foreign_key_check")?.exists([])?,
+                codeana_model::DomainError::new(codeana_model::ErrorCode::GraphForeignKeyCheck, "")
+            );
+            db.execute(
+                "INSERT INTO node_names(node_names) VALUES('integrity-check')",
                 [],
             )?;
-        }
-        graph_store::unit_aux::setup(&stage, &revision, context)?;
-        graph_store::unit_nodes::setup(&stage, &revision, &unit_pks, context)?;
-        // The retained baseline catalogue is available to reference resolution without
-        // importing or materializing any serialized Fact IR.
-        if baseline.is_some() {
-            seed_baseline(&stage, &db, seed, &check)?;
-        }
-        // Unit registration writes the private copy. Acquire its exclusive lock
-        // only after the separate staging connection has detached that copy.
-        db.pragma_update(None, "locking_mode", "EXCLUSIVE")?;
-        phase_ms.insert(
-            "candidate_setup_backup".into(),
-            started.elapsed().as_millis() as u64,
-        );
-        started = std::time::Instant::now();
-        stage.execute_batch("BEGIN")?;
-        let sources: BTreeMap<_, _> = revision
-            .manifest
-            .files
-            .iter()
-            .map(|s| ((s.path.as_str(), s.world.as_str()), s))
-            .collect();
-        let replaced: BTreeSet<_> = header
-            .replacements
-            .iter()
-            .filter(|o| o.kind == "source")
-            .map(|o| (o.id.as_str(), o.world.as_str()))
-            .collect();
-        let unit_ranges: BTreeSet<_> = if let GraphSeed::Mixed(_, plan) = seed {
-            plan.updates()
-                .iter()
-                .flat_map(|u| {
-                    u.replacements
-                        .iter()
-                        .map(|o| (&u.unit, o.id.as_str(), o.world.as_str()))
-                })
-                .collect()
-        } else {
-            BTreeSet::new()
-        };
-        let unit_scopes = revision
-            .unit_ownership
-            .as_ref()
-            .map(|ledger| {
-                ledger
-                    .units
-                    .iter()
-                    .filter(|u| u.availability == UnitAvailability::Ready && seed.executes(&u.unit))
-                    .map(|unit| {
-                        let budget = context.and_then(|c| c.hosts.get(&unit.backend));
-                        let scope = codeana_graph_io::scope::Scope::from_sources(
-                            &unit.unit,
-                            &unit.inputs,
-                            &[],
-                            &unit.modules,
-                            &unit.source_languages,
-                            codeana_graph_io::scope::Mode::Compiler,
-                            budget,
-                        )?;
-                        Ok((&unit.unit, (scope, unit.backend)))
-                    })
-                    .collect::<Result<BTreeMap<_, _>>>()
-            })
-            .transpose()?
-            .unwrap_or_default();
-        let mut positions = 0;
-        let mut comment_source = crate::graph_comments::SourceCache::default();
-        for row in records {
-            if positions % 256 == 0 {
-                check()?;
-            }
-            let GraphRecord { origin, row } = row?;
-            let mut row_delta = header.mode == AnalysisMode::Delta;
-            let mut auxiliary_observation = None;
-            let unit_pk = match &origin {
-                Origin::Unit(unit) => {
-                    let (scope, backend) =
-                        unit_scopes.get(unit.as_ref()).context(DomainError::new(
-                            ErrorCode::AnalysisUnitScope,
-                            "unknown or unavailable delivery unit",
-                        ))?;
-                    let world = scope.source_world(&row)?;
-                    if let Some(update) = seed.update(unit) {
-                        row_delta = update.kind == UnitUpdateKind::Delta;
-                    }
-                    if let Some(world) = world {
-                        let table = codeana_contracts::graph::Table::try_from(row.table)?;
-                        let column = codeana_graph_io::scope::source_columns(table)
-                            .context("unit source column missing")?
-                            .source;
-                        let path = row
-                            .cells
-                            .get(column)
-                            .and_then(|cell| match cell.value.as_ref() {
-                                Some(codeana_contracts::graph::cell::Value::Text(path)) => {
-                                    Some(path.as_str())
-                                }
-                                _ => None,
-                            })
-                            .context(DomainError::new(
-                                ErrorCode::GraphColumnType,
-                                "unit source text missing",
-                            ))?;
-                        if graph_store::unit_aux::is_observation(table)
-                            && scope.is_auxiliary(path, world)
-                        {
-                            auxiliary_observation = Some((path, world, table, *backend));
-                            row_delta = false;
-                        }
-                        if row_delta && seed.update(unit).is_some() {
-                            ensure!(
-                                unit_ranges.contains(&(unit.as_ref(), path, world)),
-                                DomainError::new(
-                                    ErrorCode::GraphSourceNotReplaced,
-                                    "unit cannot borrow a peer replacement range"
-                                )
-                            );
-                        }
-                    }
-                    graph_store::unit_nodes::admit(
-                        &row,
-                        context.and_then(|c| c.hosts.get(backend)),
-                    )?;
-                    *unit_pks.get(unit.as_ref()).context(DomainError::new(
-                        ErrorCode::AnalysisUnitScope,
-                        "unit catalog entry missing",
-                    ))?
-                }
-                Origin::Host => {
-                    codeana_graph_io::records::validate_host_row(&row)?;
-                    0
-                }
-                Origin::Fixture => {
-                    ensure!(
-                        !matches!(seed, GraphSeed::Mixed(..)),
-                        DomainError::new(
-                            ErrorCode::AnalysisUnitScope,
-                            "mixed deliveries require a host-assigned unit"
-                        )
-                    );
-                    graph_store::unit_nodes::admit(
-                        &row,
-                        context.and_then(|c| c.hosts.values().next()),
-                    )?;
-                    0
-                }
+            db.execute(
+                "INSERT INTO comment_terms(comment_terms,rank) VALUES('integrity-check',1)",
+                [],
+            )?;
+            let mut summary = StagedSummary {
+                evidence: Evidence::complete(),
+                ..Default::default()
             };
-            let owner = validate_record(&row, &sources, &replaced, row_delta)?;
-            if let Some((path, world, table, backend)) = auxiliary_observation {
-                graph_store::unit_aux::fresh_input(
-                    &stage,
-                    unit_pk,
-                    path,
-                    world,
-                    table,
-                    context.and_then(|c| c.hosts.get(&backend)),
-                )?;
+            for table in [
+                "nodes",
+                "edges",
+                "call_sites",
+                "call_site_targets",
+                "annotations",
+                "annotation_meta_owned",
+                "comments",
+                "comment_links",
+            ] {
+                let count: i64 =
+                    db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
+                summary.counts.insert(table.into(), count as u64);
+                summary.fact_count += count as u64;
             }
-            if matches!(
-                codeana_contracts::graph::Table::try_from(row.table),
-                Ok(codeana_contracts::graph::Table::Comment
-                    | codeana_contracts::graph::Table::CommentLink)
-            ) {
-                crate::graph_comments::stage(
-                    &stage,
-                    &row,
-                    &revision.manifest,
-                    context,
-                    &mut comment_source,
-                    &check,
-                )?;
-            } else {
-                graph_store::insert_owned_with_world(
-                    &stage,
-                    &row,
-                    owner.map(|s| s.world.as_str()).unwrap_or(&row.world),
-                    unit_pk,
-                )?;
-            }
-            positions += 1;
-            if positions % 10000 == 0 {
-                stage.execute_batch("COMMIT;BEGIN")?;
-            }
-        }
-        stage.execute_batch("COMMIT")?;
-        phase_ms.insert(
-            "record_validate_ingest".into(),
-            started.elapsed().as_millis() as u64,
-        );
-        started = std::time::Instant::now();
-        check()?;
-        stage.execute_batch("BEGIN")?;
-        let dropped = graph_store::resolve(&stage)?;
-        graph_store::prepare_identities(&stage, &check)?;
-        stage.execute_batch("COMMIT")?;
-        phase_ms.insert(
-            "stage_resolve_identities".into(),
-            started.elapsed().as_millis() as u64,
-        );
-        started = std::time::Instant::now();
-        drop(stage);
-        db.execute(
-            "ATTACH DATABASE ? AS staged",
-            [stage_path.to_string_lossy().as_ref()],
-        )?;
-        db.execute_batch("BEGIN IMMEDIATE")?;
-        let affected = if baseline.is_some() {
-            Some(
-                header
-                    .replacements
-                    .iter()
-                    .map(|o| o.id.clone())
-                    .collect::<BTreeSet<_>>(),
-            )
-        } else {
-            None
-        };
-        let structures = if baseline.is_none() {
-            graph_store::suspend_bulk(&db)?
-        } else {
-            Vec::new()
-        };
-        if affected.is_some() {
-            replace_affected(&db, &header.replacements)?;
-        }
-        graph_store::unit_metadata::replace_active(&db)?;
-        graph_store::promote_with_context(&db, context)?;
-        crate::graph_comments::promote(&db, &revision.manifest, context, &check)?;
-        db.execute(
-            "INSERT OR REPLACE INTO project_meta VALUES('schema_version',?)",
-            [graph_store::SOURCE_SCHEMA_VERSION.to_string()],
-        )?;
-        graph_calls::rebuild(&db, affected.as_ref(), &check)?;
-        rebuild_wiring(&db, &check)?;
-        if baseline.is_none() {
-            graph_store::restore_bulk(&db, &structures, &check)?;
-        }
-        rebuild_dependencies(&db, &check)?;
-        crate::graph_compact::seal(&db, &check)?;
-        db.execute(
-            "INSERT OR REPLACE INTO project_meta VALUES('codeana.revision',?)",
-            [&revision.id],
-        )?;
-        db.execute(
-            "INSERT OR REPLACE INTO project_meta VALUES('codeana.profile',?)",
-            [&revision.profile],
-        )?;
-        db.execute(
-            "INSERT OR REPLACE INTO project_meta VALUES('codeana.dropped_dangling',?)",
-            [dropped.to_string()],
-        )?;
-        db.execute_batch("COMMIT;DETACH DATABASE staged;").context(
-            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphPromotionDetach, ""),
-        )?;
-        std::fs::remove_file(stage_path)?;
-        phase_ms.insert(
-            "promotion_calls_wiring".into(),
-            started.elapsed().as_millis() as u64,
-        );
-        started = std::time::Instant::now();
-        check()?;
-        let integrity: String = db.query_row("PRAGMA integrity_check", [], |r| r.get(0))?;
-        ensure!(
-            integrity == "ok",
-            codeana_model::DomainError::new(codeana_model::ErrorCode::CorruptCandidate, "")
-        );
-        ensure!(
-            !db.prepare("PRAGMA foreign_key_check")?.exists([])?,
-            codeana_model::DomainError::new(codeana_model::ErrorCode::GraphForeignKeyCheck, "")
-        );
-        db.execute(
-            "INSERT INTO node_names(node_names) VALUES('integrity-check')",
-            [],
-        )?;
-        db.execute(
-            "INSERT INTO comment_terms(comment_terms,rank) VALUES('integrity-check',1)",
-            [],
-        )?;
-        let mut summary = StagedSummary {
-            evidence: Evidence::complete(),
-            ..Default::default()
-        };
-        for table in [
-            "nodes",
-            "edges",
-            "call_sites",
-            "call_site_targets",
-            "annotations",
-            "annotation_meta_owned",
-            "comments",
-            "comment_links",
-        ] {
-            let count: i64 =
-                db.query_row(&format!("SELECT count(*) FROM {table}"), [], |r| r.get(0))?;
-            summary.counts.insert(table.into(), count as u64);
-            summary.fact_count += count as u64;
-        }
-        let counts = crate::graph_query::overview_counts(&db)?;
-        db.execute(
-            "INSERT OR REPLACE INTO project_meta VALUES('codeana.overview_counts',?)",
-            [serde_json::to_string(&counts)?],
-        )?;
-        let incomplete: i64 = db.query_row(
-            "SELECT count(DISTINCT source_file) FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') NOT IN ('','*')",
-            [],
-            |r| r.get(0),
-        )?;
-        if incomplete > 0 {
-            summary.evidence.semantic = false;
-            summary
-                .evidence
-                .reasons
-                .push(format!("coverage:partial_files:{incomplete}"));
-        }
-        let incomplete_contexts: i64 = db.query_row(
-            "SELECT count(*) FROM (SELECT DISTINCT module,scope,language,provider_id,world FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') IN ('','*'))",
-            [], |r| r.get(0))?;
-        if incomplete_contexts > 0 {
-            summary.evidence.semantic = false;
-            summary
-                .evidence
-                .reasons
-                .push(format!("coverage:partial_contexts:{incomplete_contexts}"));
-        }
-        summary.analysis_mode = db
-            .query_row(
-                "SELECT value FROM project_meta WHERE key='analysis_mode'",
+            let counts = crate::graph_query::overview_counts(&db)?;
+            db.execute(
+                "INSERT OR REPLACE INTO project_meta VALUES('codeana.overview_counts',?)",
+                [serde_json::to_string(&counts)?],
+            )?;
+            let incomplete: i64 = db.query_row(
+                "SELECT count(DISTINCT source_file) FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') NOT IN ('','*')",
                 [],
                 |r| r.get(0),
-            )
-            .optional()?;
-        summary.classpath_status = db
-            .query_row(
-                "SELECT value FROM project_meta WHERE key='classpath_status'",
+            )?;
+            if incomplete > 0 {
+                summary.evidence.semantic = false;
+                summary
+                    .evidence
+                    .reasons
+                    .push(format!("coverage:partial_files:{incomplete}"));
+            }
+            let incomplete_contexts: i64 = db.query_row(
+                "SELECT count(*) FROM (SELECT DISTINCT module,scope,language,provider_id,world FROM analysis_coverage WHERE status<>'complete' AND coalesce(source_file,'') IN ('','*'))",
+                [], |r| r.get(0))?;
+            if incomplete_contexts > 0 {
+                summary.evidence.semantic = false;
+                summary
+                    .evidence
+                    .reasons
+                    .push(format!("coverage:partial_contexts:{incomplete_contexts}"));
+            }
+            summary.analysis_mode = db
+                .query_row(
+                    "SELECT value FROM project_meta WHERE key='analysis_mode'",
+                    [],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            summary.classpath_status = db
+                .query_row(
+                    "SELECT value FROM project_meta WHERE key='classpath_status'",
+                    [],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let fallback: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM project_meta WHERE key='dependency_mode' AND value='source_only_fallback')", [], |r| r.get(0))?;
+            if fallback {
+                summary.evidence.semantic = false;
+                summary
+                    .evidence
+                    .reasons
+                    .push("CLASSPATH_UNAVAILABLE".into());
+            }
+            summary.diagnostic_rows =
+                db.query_row("SELECT count(*) FROM index_diagnostics", [], |r| {
+                    r.get::<_, i64>(0)
+                })? as u64;
+            summary.diagnostic_total = db.query_row(
+                "SELECT coalesce(sum(occurrence_count),0) FROM index_diagnostics",
                 [],
-                |r| r.get(0),
+                |r| r.get::<_, i64>(0),
+            )? as u64;
+            summary.diagnostic_groups = db
+                .prepare("SELECT code,sum(occurrence_count) FROM index_diagnostics GROUP BY code ORDER BY sum(occurrence_count) DESC,code LIMIT 20")?
+                .query_map([], |r| { crate::sql_budget::row(context, r)?; Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)) })?
+                .collect::<rusqlite::Result<_>>()?;
+            let group_count = db.query_row(
+                "SELECT count(DISTINCT code) FROM index_diagnostics",
+                [],
+                |r| r.get::<_, i64>(0),
+            )? as u64;
+            summary.diagnostic_groups_omitted = group_count.saturating_sub(20);
+            phase_ms.insert(
+                "graph_integrity_summary".into(),
+                started.elapsed().as_millis() as u64,
+            );
+            started = std::time::Instant::now();
+            summary.statistics = prepare_statistics(&db, &cancellation)?;
+            // Close all prepared statements and FTS cursors before changing journal
+            // mode. A fresh connection cannot retain an OFF-mode table read lock.
+            db.flush_prepared_statement_cache();
+            db.execute_batch("PRAGMA locking_mode=NORMAL;")?;
+            drop(db);
+            let db = scope.reopen_for_seal(&directory.path().join("facts.db"))?;
+            db.execute_batch(
+                "PRAGMA journal_mode=WAL;PRAGMA synchronous=NORMAL;PRAGMA wal_checkpoint(TRUNCATE);",
             )
-            .optional()?;
-        let fallback: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM project_meta WHERE key='dependency_mode' AND value='source_only_fallback')", [], |r| r.get(0))?;
-        if fallback {
-            summary.evidence.semantic = false;
-            summary
-                .evidence
-                .reasons
-                .push("CLASSPATH_UNAVAILABLE".into());
-        }
-        summary.diagnostic_rows =
-            db.query_row("SELECT count(*) FROM index_diagnostics", [], |r| {
-                r.get::<_, i64>(0)
-            })? as u64;
-        summary.diagnostic_total = db.query_row(
-            "SELECT coalesce(sum(occurrence_count),0) FROM index_diagnostics",
-            [],
-            |r| r.get::<_, i64>(0),
-        )? as u64;
-        summary.diagnostic_groups = db
-            .prepare("SELECT code,sum(occurrence_count) FROM index_diagnostics GROUP BY code ORDER BY sum(occurrence_count) DESC,code LIMIT 20")?
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)? as u64)))?
-            .collect::<rusqlite::Result<_>>()?;
-        let group_count = db.query_row(
-            "SELECT count(DISTINCT code) FROM index_diagnostics",
-            [],
-            |r| r.get::<_, i64>(0),
-        )? as u64;
-        summary.diagnostic_groups_omitted = group_count.saturating_sub(20);
-        phase_ms.insert(
-            "graph_integrity_summary".into(),
-            started.elapsed().as_millis() as u64,
-        );
-        started = std::time::Instant::now();
-        summary.statistics = prepare_statistics(&db, &cancellation)?;
-        // Close all prepared statements and FTS cursors before changing journal
-        // mode. A fresh connection cannot retain an OFF-mode table read lock.
-        db.flush_prepared_statement_cache();
-        db.execute_batch("PRAGMA locking_mode=NORMAL;")?;
-        drop(db);
-        let db = Connection::open(directory.path().join("facts.db"))?;
-        db.execute_batch(
-            "PRAGMA journal_mode=WAL;PRAGMA synchronous=NORMAL;PRAGMA wal_checkpoint(TRUNCATE);",
-        )
-        .context(codeana_model::DomainError::new(
-            codeana_model::ErrorCode::GraphFinalizeDurability,
-            "",
-        ))?;
-        phase_ms.insert(
-            "statistics_finalize".into(),
-            started.elapsed().as_millis() as u64,
-        );
-        summary.phase_ms = phase_ms;
-        check()?;
-        drop(db);
-        Ok(StagedCandidate {
-            directory,
-            revision,
-            expected: expected.into(),
-            _baseline: baseline,
-            summary,
-        })
+            .context(codeana_model::DomainError::new(
+                codeana_model::ErrorCode::GraphFinalizeDurability,
+                "",
+            ))?;
+            phase_ms.insert(
+                "statistics_finalize".into(),
+                started.elapsed().as_millis() as u64,
+            );
+            summary.phase_ms = phase_ms;
+            check()?;
+            drop(db);
+            Ok(StagedCandidate {
+                directory,
+                revision,
+                expected: expected.into(),
+                _baseline: baseline,
+                summary,
+            })
+        })();
+        scope.result(result)
     }
 }
 
@@ -957,7 +952,7 @@ fn seed_baseline(
         ))?],
     )?;
     stage.execute_batch(
-        "CREATE TEMP TABLE replaced(source_file TEXT,world TEXT,PRIMARY KEY(source_file,world)); CREATE TEMP TABLE baseline_policy(reused INTEGER NOT NULL);",
+        "PRAGMA baseline.cache_size=-1024; CREATE TEMP TABLE replaced(source_file TEXT,world TEXT,PRIMARY KEY(source_file,world)); CREATE TEMP TABLE baseline_policy(reused INTEGER NOT NULL);",
     )?;
     stage.execute("INSERT INTO baseline_policy VALUES(?)", [seed.is_reused()])?;
     for owner in &header.replacements {
@@ -999,7 +994,11 @@ fn seed_baseline(
     Ok(())
 }
 
-fn rebuild_dependencies(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
+fn rebuild_dependencies(
+    db: &Connection,
+    check: &dyn Fn() -> Result<()>,
+    context: Option<&GraphStagingContext>,
+) -> Result<()> {
     check()?;
     db.execute_batch("DELETE FROM graph_file_dependencies WHERE host_derived=1;DELETE FROM graph_symbol_dependencies WHERE host_derived=1;")?;
     db.execute_batch(&include_str!("anatomist-dependencies.sql").replace(
@@ -1016,6 +1015,7 @@ fn rebuild_dependencies(db: &Connection, check: &dyn Fn() -> Result<()>) -> Resu
     )?;
     let mut count = 0usize;
     while let Some(row) = rows.next()? {
+        crate::sql_budget::row(context, row)?;
         if count.is_multiple_of(2048) {
             check()?;
         }
@@ -1029,11 +1029,18 @@ fn rebuild_dependencies(db: &Connection, check: &dyn Fn() -> Result<()>) -> Resu
     Ok(())
 }
 
-fn rebuild_wiring(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
+fn rebuild_wiring(
+    db: &Connection,
+    check: &dyn Fn() -> Result<()>,
+    context: Option<&GraphStagingContext>,
+) -> Result<()> {
     db.execute("DELETE FROM graph_edges WHERE host_derived=1", [])?;
     let mut implementations = BTreeMap::<String, BTreeSet<String>>::new();
     let mut statement=db.prepare("SELECT source_id,target_id FROM edges WHERE relation='IMPLEMENTS' AND language='java' AND is_external=0 AND source_id IS NOT NULL AND target_id IS NOT NULL ORDER BY id")?;
-    for row in statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))? {
+    for row in statement.query_map([], |r| {
+        crate::sql_budget::row(context, r)?;
+        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+    })? {
         let (source, target) = row?;
         implementations.entry(target).or_default().insert(source);
     }
@@ -1041,6 +1048,7 @@ fn rebuild_wiring(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()>
     let mut statement=db.prepare("SELECT e.source_id,e.target_id,e.source_file,e.source_location,e.world,g.unit_pk FROM edges e JOIN graph_edges g ON g.id=e.id WHERE e.relation='INJECTS' AND e.language='java' AND e.is_external=0 AND e.source_id IS NOT NULL AND e.target_id IS NOT NULL ORDER BY e.id")?;
     let mut rows = statement.query([])?;
     while let Some(row) = rows.next()? {
+        crate::sql_budget::row(context, row)?;
         check()?;
         let source: String = row.get(0)?;
         let target: String = row.get(1)?;
@@ -1051,6 +1059,7 @@ fn rebuild_wiring(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()>
         let mut allowed = BTreeSet::new();
         for candidate in candidates {
             check()?;
+            crate::sql_budget::admit(context, 1, 128 + 2 * candidate.len() as u64)?;
             let sql = format!(
                 "SELECT EXISTS(SELECT 1 FROM nodes n WHERE n.id=?1 AND {})",
                 graph_store::unit_nodes::visible_persisted("n", "?2")
@@ -1068,6 +1077,14 @@ fn rebuild_wiring(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()>
         let file: Option<String> = row.get(2)?;
         let location: Option<String> = row.get(3)?;
         let world: String = row.get(4)?;
+        let bytes = candidates.iter().fold(target.len() as u64, |n, s| {
+            n.saturating_add(s.len() as u64 + 8)
+        });
+        crate::sql_budget::admit(
+            context,
+            1 + bytes.div_ceil(1024),
+            bytes.saturating_mul(8).saturating_add(2048),
+        )?;
         let metadata = format!(
             "{{\"via\":\"injection\",\"source\":{},\"candidates\":{}}}",
             serde_json::to_string(&target)?,
@@ -1195,7 +1212,7 @@ mod tests {
                 rows.into_iter().map(Ok),
                 "",
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
             )?;
             assert!(!candidate.summary.evidence.semantic);
             assert!(
@@ -1220,7 +1237,7 @@ mod tests {
             rows.clone().into_iter().map(Ok),
             "",
             || Ok(()),
-            |_| Ok(()),
+            |_, _| Ok(()),
         )?;
         let first = store.publish_staged(candidate, "first")?;
         for (index, value, message) in [
@@ -1239,7 +1256,7 @@ mod tests {
                     std::iter::once(Ok(row)),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(()),
+                    |_, _| Ok(()),
                 )
                 .err()
                 .context("malformed rows accepted")?;
@@ -1261,7 +1278,7 @@ mod tests {
                     )))),
                 &first.id,
                 || Ok(()),
-                |_| Ok(()),
+                |_, _| Ok(()),
             )
             .err()
             .context("unsealed rows accepted")?;
@@ -1279,7 +1296,7 @@ mod tests {
                     std::iter::once(Ok(reserved)),
                     &first.id,
                     || Ok(()),
-                    |_| Ok(())
+                    |_, _| Ok(())
                 )
                 .err()
                 .unwrap()
@@ -1309,7 +1326,7 @@ mod tests {
                     );
                     Ok(())
                 },
-                |_| Ok(()),
+                |_, _| Ok(()),
             )
             .err()
             .context("cancelled rows accepted")?;

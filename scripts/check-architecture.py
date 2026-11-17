@@ -202,6 +202,23 @@ def shared_rust_violations(package, source):
     return failures
 
 
+def storage_rust_violations(path, source):
+    # Catalog/immutable readers, query spools and text search have separate
+    # admission. Every other production SQL opener must use the task scope.
+    path = pathlib.Path(path).as_posix()
+    allowed = {'crates/storage/src/'+name for name in
+               ('lib.rs', 'pages.rs', 'text_search.rs', 'sql_budget.rs')}
+    if path in allowed or path.endswith('_tests.rs'):
+        return []
+    code = scrub(production(source))
+    aliases = ['Connection']
+    aliases += re.findall(r'use\s+rusqlite\s*::[^;]*?\bConnection\s+as\s+(\w+)', code)
+    aliases += re.findall(r'type\s+(\w+)\s*=\s*(?:rusqlite\s*::\s*)?Connection\b', code)
+    if any(re.search(r'\b'+re.escape(alias)+r'\s*::\s*open(?:_\w+)?\b', code) for alias in aliases):
+        return ['candidate SQL files must use the task-owned scope, including cache/work and anonymous-file admission']
+    return []
+
+
 def check_rust_sources(root, graph):
     failures = []
     # Every production source subtree is scanned; file moves and nested modules cannot evade policy.
@@ -217,6 +234,8 @@ def check_rust_sources(root, graph):
             messages = shared_rust_violations(package, source)
             if package == 'codeana-application':
                 messages += rust_violations(path.relative_to(root), source)
+            if package == 'codeana-storage':
+                messages += storage_rust_violations(path.relative_to(root), source)
             failures.extend(f'{path.relative_to(root)}: {message}' for message in messages)
     return failures
 

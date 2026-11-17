@@ -80,6 +80,7 @@ pub struct Resources {
 pub struct IndexResources {
     pub analysis: AnalysisResources,
     pub worker_memory_bytes: Option<u64>,
+    pub host_scratch_bytes: Option<u64>,
     pub rust_result_bytes: Option<u64>,
     pub rust_fact_limit: Option<u64>,
     pub python_result_bytes: Option<u64>,

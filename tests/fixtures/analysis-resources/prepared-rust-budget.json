@@ -1,7 +1,7 @@
 {
   "case": "two-independent-cargo-workspaces-cumulative-work",
-  "max_work": 7000,
-  "reason": "Each real standalone worker finishes within its 5222 work grant and its host finishes within 1741. Combined workers each receive only 2607: the first rejects a 2878-work discovery allocation after consuming 27, while host usage stays 40 and the sibling remains reserved. No host/sibling share is borrowed; preserve the published head.",
+  "max_work": 114688,
+  "reason": "700 ignored let statements per source keep meaningful analysis work while admitting candidate SQL. Each standalone host uses 15901/28663 work and worker 55930/85988. Combined workers each receive 42990: the first exhausts backend work; the host remains healthy. The stopped sibling retains partial discovery usage without claiming a terminal receipt, completing it, or returning its quota. The previous head remains published.",
   "evidence": "target/typescript-c-abi/r4-common-executor/budget-calibration.jsonl",
   "historical_reference": {
     "single_admission_work": 37,
@@ -13,7 +13,9 @@
     "single_worker_grant": 3722,
     "combined_worker_grant": 1857
   },
-  "reference": {
+  "body_statements": 700,
+  "sql_audit_calibration": "target/typescript-c-abi/r4-sql-budget/budget-calibration.jsonl",
+  "common_executor_reference": {
     "single_host_limit": 1741,
     "single_host_work": 1453,
     "single_worker_grant": 5222,
@@ -24,5 +26,20 @@
     "combined_failure_used": 27,
     "combined_failure_requested": 2878,
     "combined_failure_phase": "discover"
+  },
+  "reference": {
+    "single_host_limit": 28663,
+    "single_host_work": 15901,
+    "single_worker_grant": 85988,
+    "single_worker_work": 55930,
+    "combined_host_limit": 28661,
+    "combined_host_work": 2813,
+    "combined_worker_grant": 42990,
+    "combined_failure_used": 42990,
+    "combined_failure_requested": 1,
+    "combined_failure_phase": "backend",
+    "combined_sibling_state": "unknown",
+    "combined_sibling_phase": "discover",
+    "combined_sibling_partial_work": 3048
   }
 }

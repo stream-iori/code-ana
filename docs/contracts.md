@@ -290,11 +290,13 @@ R3 的语义 profile 使用核实后的上下文 semantic_digest，Java toolchai
 
 revision 的主机元数据新增 `unit_ownership.version=2`：稳定实例、后端、Ready/FilesOnly、发布语言、模块/world/scope、producer、独立语义 profile/输入摘要、完整发布来源与完整输入及其辅助角色。范围从冻结输入取得，包含零输出单元/来源；辅助输入参与输入摘要，但不能取得发布归属。同一 world/path 的发布来源不能归两个单元。storage 在创建私有候选前校验清单，随 revision.json、catalog 和同一次 CAS 持久化；不改变公开 ID、GRA1 列、图库物理 schema 或 worker 协议。旧 revision 缺清单或只有 v1 仍可读取原事实，语义增量返回 `UNIT_OWNERSHIP_REBUILD_REQUIRED`，必须 `index --full` 建立新清单后切 head。
 
-PlannedUnit 保留 Ready/FilesOnly/Removed；Removed 取自旧清单，不从当前行或 producer 推导。所有单元先静态分片，FilesOnly/Removed 由主机将未发出的 grant 封为可信零用量；份额不借出、不再领取。普通单元也使用显式后端实例 ID。没有 Ready 单元时不启动兜底 Java；禁用全部语言可在已有基线上清除旧归属，首次语义索引仍要求显式语言。现行全量/增量策略仍由各入口执行，任意混合 Full/Delta/Reuse 与公共监控策略仍待 R4；TypeScript 启动工厂仍待生产接入。
+PlannedUnit 保留 Ready/FilesOnly/Removed；Removed 取自旧清单，不从当前行或 producer 推导。所有单元先静态分片，FilesOnly/Removed 由主机将未发出的 grant 封为可信零用量；份额不借出、不再领取。普通单元也使用显式后端实例 ID。没有 Ready 单元时不启动兜底 Java；禁用全部语言可在已有基线上清除旧归属，首次语义索引仍要求显式语言。普通/prepared 共用逐单元 Full/Delta/Reuse/Removed/FilesOnly 执行及一次候选/CAS；TypeScript 启动工厂仍待生产接入。
 
 
-主机 LaunchSpec 必须携带任务 InputLease。Process 在启动协议前取得文件/spool/scratch 所有权，回收失败或任务 future/runtime 退出时由独立回收登记继续保有。停止确认包含所属进程组全部非僵尸成员退出及 leader 回收，不能仅以发送 SIGKILL 当作完成。有效 Acked 允许健康进程解除任务租约；错误 ACK 不解除。此为主机生命周期实现，不改变 worker 25 / Java ABI 4 或图 schema。现行三语言的 LaunchSpec 装配和 Java rediscover 已集中到 WorkerService 工厂，只能由公共单元 owner 调用；TypeScript 执行装配、公共监控和任意单元结果合并仍待完成。
+主机 LaunchSpec 必须携带任务 InputLease。Process 在启动协议前取得文件/spool/scratch 所有权，回收失败或任务 future/runtime 退出时由独立回收登记继续保有。停止确认包含所属进程组全部非僵尸成员退出及 leader 回收，不能仅以发送 SIGKILL 当作完成。有效 Acked 允许健康进程解除任务租约；错误 ACK 不解除。此为主机生命周期实现，不改变 worker 25 / Java ABI 4 或图 schema。现行三语言的 LaunchSpec 装配和 Java rediscover 已集中到 WorkerService 工厂，只能由公共单元 owner 调用；三语言任意单元合并由公共执行器驱动；TypeScript 执行装配仍待生产接入。
 
 主机按任务固定一次 baseline 并持有 GC 元数据租约；显式全量迁移无需打开旧图。Receiver 绑定单元冻结 manifest 和 v2 的历史输入：替换 owner 的 kind、producer、world/path 必须匹配，图行的 source、world、module/scope 和语言必须落在当前单元范围内。越界返回 `ANALYSIS_UNIT_SCOPE`，接收状态粘性失败，不能获得 VerifiedEnd；原始传输 SHA 先按原行验证；主机随后只将唯一绑定的隐式 world 显式化，投影另算 SHA，只有原始 End 校验成功且投影计数一致才给出投影的 VerifiedEnd。旧 v1 缺少完整历史输入，必须全量重建，不能推测缺失的辅助来源。
 
 主机内部暂存输入区分 Analysis 与 Reused。后者仅在 worker 交付有效 Reused 回执后请求，不能带新行；存储再检查全局及逐单元语义身份、来源与角色。它保留基线的全局诊断/coverage/字典；普通空 delta 不取得这种保留权限。外部 Begin/End 和 CLI 的既有索引模式编码保持。
+
+候选及单元基线 SQL 接续原 host 账户：VM/I/O、连接/cache/排序工作区及派生集合须准入；单元基线计入自身后端，共享合并计入固定首个 host。工作区按同时存活对象预付，已计入 payload 的容量可在同一 scope 内复用，关闭不退还用量或重发 grant。磁盘检查接收匿名/已 unlink 文件及待增长字节，在 xWrite/xTruncate/shmMap 前拒绝超限；首次失败在嵌套映射、后续取消及清理中保持原身份。`host_scratch_bytes` 由宿主执行，不新增 worker/Java ABI 字段，也不改变 graph schema 或公开 ID。
