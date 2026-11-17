@@ -27,7 +27,7 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     binary = ROOT / 'target/debug/codeana-typescript-worker'
     fixtures = json.loads((ROOT / 'lang-typescript-adaptor/overlay/engine/testdata/resolution.json').read_text())
-    assert len(fixtures) == 4
+    assert len(fixtures) == 5
     source_paths = [ROOT / name for name in subprocess.check_output(
         ['git', 'ls-files', '-co', '--exclude-standard'], cwd=ROOT, text=True).splitlines()]
     paths = [*source_paths, binary, *[path for path in sdk.rglob('*') if path.is_file()]]
@@ -77,21 +77,22 @@ def main():
             context = native['contexts'][0]
             target = str(project) + case['target']
             assert any(file['path'] == target for file in context['files'])
+            assert sum(file['role'] == 'publish' for file in context['files']) == case['published_sources']
             assert not any(Path(file['path']).name in ('runtime.js', 'runtime.cjs') for file in context['files'])
             if case['links']:
                 assert context['links']
                 assert next(file for file in context['files'] if file['path'] == target)['role'] == 'auxiliary'
-        (output / 'cases.json').write_text(json.dumps([case['name'] for case in fixtures]))
+        (output / 'cases.json').write_text(json.dumps([[case['name'], case['published_sources']] for case in fixtures]))
         run('public-capture', ['cargo', 'test', '-p', 'codeana-config', '--test', 'typescript_inputs',
                               '--locked', 'actual_resolution_inventories_freeze_roles_and_reject_stale_observations',
                               '--', '--ignored', '--exact', '--nocapture'],
             dict(os.environ, CODEANA_TYPESCRIPT_RESOLUTION_FIXTURE=str(output)), timeout=300)
         proof = json.loads((output / 'capture-proof.json').read_text())
-        assert len(proof) == 4 and all(item['live_files_deleted'] and item['control_and_failed_lookup_staleness'] for item in proof)
+        assert len(proof) == 5 and all(item['live_files_deleted'] and item['control_and_failed_lookup_staleness'] for item in proof)
         after = identities(paths)
         report['artifact_drift'] = [name for name in sorted(before.keys() | after.keys()) if before.get(name) != after.get(name)]
         assert not report['artifact_drift']
-        report.update(status='passed', executed_count=4, proof=proof)
+        report.update(status='passed', executed_count=5, proof=proof)
     except Exception as failure:
         report.update(failure=str(failure), failure_type=type(failure).__name__)
         raise

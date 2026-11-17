@@ -132,7 +132,7 @@ root = "."
 
 `manifest` 是入口根下的静态 compiler 配置；省略时 TS 取 tsconfig.json，JS 取 jsconfig.json。相同配置、module、scope 的 JS/TS 入口只准备一次，别名归入同一单元；冲突拒绝。CLI 启动相邻的 `codeana-typescript-worker`，SDK 使用 `CODEANA_TYPESCRIPT_SDK` 绝对路径，或安装目录 `lib/typescript/current`；不运行包管理器。准备使用显式依赖根、任务预算和超时，scratch 在目标项目外。
 
-当前 `index --prepare` 能生成并捕获清单；后续语义执行明确返回 `TYPESCRIPT_INPUT_NOT_READY`，不会发布占位语义。references、pnpm 和多配置闭包仍需补齐。
+当前 `index --prepare` 能生成并捕获清单；后续语义执行明确返回 `TYPESCRIPT_INPUT_NOT_READY`，不会发布占位语义。pnpm 与有声明产物的 references 闭包已有真实验证；空根 solution、多配置编排及缺产物的产品建议仍需补齐。
 
 ## 输入与降级
 

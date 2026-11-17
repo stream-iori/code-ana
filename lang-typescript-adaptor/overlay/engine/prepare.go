@@ -50,9 +50,6 @@ func DiscoverProject(ctx context.Context, request *pb.Prepare, meter *Meter) (*p
 	if len(config.ParsedConfig.ContentMappers) != 0 {
 		return nil, &Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "configuration content mappers are disabled"}
 	}
-	if len(config.ParsedConfig.ProjectReferences) != 0 {
-		return nil, &Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "project reference preparation is not implemented yet"}
-	}
 	if len(config.ParsedConfig.FileNames) == 0 {
 		return nil, invalid("preparation compiler context has no root files")
 	}
@@ -76,6 +73,10 @@ func DiscoverProject(ctx context.Context, request *pb.Prepare, meter *Meter) (*p
 	if err := observed.Check(); err != nil {
 		return nil, err
 	}
+	dependencies, err := referenceInputs(program, meter, observed.key)
+	if err != nil {
+		return nil, err
+	}
 	// Bind/check now so lazy module/package reads are part of the inventory.
 	for _, source := range program.SourceFiles() {
 		if err := meter.Check(); err != nil {
@@ -89,7 +90,11 @@ func DiscoverProject(ctx context.Context, request *pb.Prepare, meter *Meter) (*p
 			return nil, err
 		}
 	}
+	if err := meter.Charge(uint64(len(config.ProjectReferences()))+1, 1, uint64(len(config.ProjectReferences()))*512+128); err != nil {
+		return nil, err
+	}
 	observed.context.RootFiles = append([]string(nil), config.ParsedConfig.FileNames...)
+	observed.context.References = append([]string(nil), config.ResolvedProjectReferencePaths()...)
 	project, err := observed.Project()
 	if err != nil {
 		return nil, err
@@ -105,12 +110,12 @@ func DiscoverProject(ctx context.Context, request *pb.Prepare, meter *Meter) (*p
 	for _, file := range project.Files {
 		identity := file.File
 		language := sourceLanguage(identity.Path)
-		if sourceFiles[observed.key(identity.Path)] && language != pb.SourceLanguage_SOURCE_LANGUAGE_UNSPECIFIED {
+		if (sourceFiles[observed.key(identity.Path)] || dependencies[observed.key(identity.Path)]) && language != pb.SourceLanguage_SOURCE_LANGUAGE_UNSPECIFIED {
 			identity.Language = language
 			identity.Role = pb.FileRole_AUXILIARY
 			// Dependencies and disabled source languages remain auxiliary.
 			relative := strings.TrimPrefix(observed.key(identity.Path), observed.key(request.ProjectRoot)+"/")
-			dependency := strings.HasPrefix(relative, "node_modules/") || strings.Contains(relative, "/node_modules/")
+			dependency := dependencies[observed.key(identity.Path)] || strings.HasPrefix(relative, "node_modules/") || strings.Contains(relative, "/node_modules/")
 			if enabled[language] && beneath(observed.key(identity.Path), observed.key(request.ProjectRoot)) && !dependency {
 				identity.Role = pb.FileRole_PUBLISH
 				identity.Module = request.Module

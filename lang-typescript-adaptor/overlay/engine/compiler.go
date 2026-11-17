@@ -2,6 +2,7 @@ package engine
 
 import (
 	"context"
+	"slices"
 	"strings"
 
 	pb "github.com/microsoft/typescript-go/codeana/typescriptpb"
@@ -11,6 +12,7 @@ import (
 	"github.com/microsoft/typescript-go/internal/core"
 	"github.com/microsoft/typescript-go/internal/scanner"
 	"github.com/microsoft/typescript-go/internal/tsoptions"
+	"github.com/microsoft/typescript-go/internal/tspath"
 	"github.com/microsoft/typescript-go/internal/vfs"
 )
 
@@ -65,8 +67,8 @@ func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
 	if len(config.ParsedConfig.ContentMappers) != 0 {
 		return nil, &Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "configuration content mappers are disabled"}
 	}
-	if len(config.ParsedConfig.ProjectReferences) != 0 {
-		return nil, &Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "project reference replay is not implemented yet"}
+	if !slices.Equal(context.References, config.ResolvedProjectReferencePaths()) {
+		return nil, invalid("captured project reference order changed")
 	}
 	if len(config.ParsedConfig.FileNames) == 0 {
 		return nil, invalid("compiler context has no root files")
@@ -110,8 +112,15 @@ func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
 	if err := meter.Check(); err != nil {
 		return nil, err
 	}
+	dependencies, err := referenceInputs(program, meter, frozen.key)
+	if err != nil {
+		return nil, err
+	}
 	files := make(map[string]*pb.FileIdentity, len(project.Files))
 	for _, file := range project.Files {
+		if dependencies[frozen.key(file.File.Path)] && file.File.Role == pb.FileRole_PUBLISH {
+			return nil, invalid("referenced project input cannot be published by the consumer")
+		}
 		files[frozen.resolve(file.File.Path)] = file.File
 	}
 	return &Program{program: program, config: config, frozen: frozen, meter: meter, files: files}, nil
@@ -207,4 +216,39 @@ func (p *Program) WalkCallBindings(ctx context.Context, emit func(CallBinding) e
 		}
 	}
 	return nil
+}
+
+// Compiler-owned reference mapping distinguishes consumer sources from another
+// project's source/declaration output. Missing outputs remain negative lookups;
+// no source redirect, target build or synthetic declaration is enabled.
+func referenceInputs(program *compiler.Program, meter *Meter, canonical func(string) string) (map[string]bool, error) {
+	result := make(map[string]bool)
+	var failure error
+	program.RangeResolvedProjectReference(func(_ tspath.Path, config *tsoptions.ParsedCommandLine, _ *tsoptions.ParsedCommandLine, _ int) bool {
+		if failure = meter.Charge(1, 1, 512); failure != nil {
+			return false
+		}
+		if config == nil {
+			return true
+		}
+		if len(config.Errors) != 0 || config.ParsedConfig == nil || config.ParsedConfig.CompilerOptions == nil {
+			failure = invalid("invalid referenced project configuration")
+			return false
+		}
+		if len(config.ParsedConfig.ContentMappers) != 0 {
+			failure = &Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "referenced project content mappers are disabled"}
+			return false
+		}
+		for _, mapping := range config.SourceToProjectReference() {
+			if failure = meter.Charge(1, 1, uint64(len(mapping.Source)+len(mapping.OutputDts))*4+256); failure != nil {
+				return false
+			}
+			result[canonical(mapping.Source)] = true
+			if mapping.OutputDts != "" {
+				result[canonical(mapping.OutputDts)] = true
+			}
+		}
+		return true
+	})
+	return result, failure
 }

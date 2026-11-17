@@ -8,7 +8,8 @@
       "src/library.ts": "export function greet(value: number) { return value + 1; }"
     },
     "links": {},
-    "target": "/src/library.ts"
+    "target": "/src/library.ts",
+    "published_sources": 2
   },
   {
     "name": "pnpm-exports",
@@ -22,7 +23,8 @@
     "links": {
       "node_modules/fixture": ".pnpm/fixture@1.0.0/node_modules/fixture"
     },
-    "target": "/node_modules/.pnpm/fixture@1.0.0/node_modules/fixture/types/feature.d.ts"
+    "target": "/node_modules/.pnpm/fixture@1.0.0/node_modules/fixture/types/feature.d.ts",
+    "published_sources": 1
   },
   {
     "name": "nodenext-package-imports",
@@ -34,7 +36,8 @@
       "runtime.cjs": "throw Error(\"target runtime must not execute\");"
     },
     "links": {},
-    "target": "/types/library.d.ts"
+    "target": "/types/library.d.ts",
+    "published_sources": 2
   },
   {
     "name": "types-versions",
@@ -46,6 +49,20 @@
       "node_modules/fixture/versioned/index.d.ts": "export declare function greet(value: number): number;"
     },
     "links": {},
-    "target": "/node_modules/fixture/versioned/index.d.ts"
+    "target": "/node_modules/fixture/versioned/index.d.ts",
+    "published_sources": 1
+  },
+  {
+    "name": "project-reference-declarations",
+    "files": {
+      "tsconfig.json": "{\"compilerOptions\":{\"noLib\":true,\"types\":[],\"module\":\"ESNext\",\"moduleResolution\":\"bundler\"},\"files\":[\"entry.ts\"],\"references\":[{\"path\":\"./lib\"}]}",
+      "entry.ts": "import { greet } from \"./lib/src/library\"; greet(1); greet(2);",
+      "lib/tsconfig.json": "{\"compilerOptions\":{\"noLib\":true,\"composite\":true,\"declaration\":true,\"rootDir\":\"src\",\"outDir\":\"dist\"},\"files\":[\"src/library.ts\"]}",
+      "lib/src/library.ts": "export function greet(value: number): number { return value + 1; }",
+      "lib/dist/library.d.ts": "export declare function greet(value: number): number;"
+    },
+    "links": {},
+    "target": "/lib/dist/library.d.ts",
+    "published_sources": 1
   }
 ]

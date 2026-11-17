@@ -449,10 +449,11 @@ fn a_changed_target_volume_case_rule_cannot_be_silently_replayed() -> Result<()>
 #[ignore = "requires explicit actual Go resolution inventories; mandatory in test-typescript-resolution"]
 fn actual_resolution_inventories_freeze_roles_and_reject_stale_observations() -> Result<()> {
     let evidence = PathBuf::from(std::env::var("CODEANA_TYPESCRIPT_RESOLUTION_FIXTURE")?);
-    let cases: Vec<String> = serde_json::from_slice(&std::fs::read(evidence.join("cases.json"))?)?;
-    assert_eq!(cases.len(), 4, "complete real resolver matrix required");
+    let cases: Vec<(String, usize)> =
+        serde_json::from_slice(&std::fs::read(evidence.join("cases.json"))?)?;
+    assert_eq!(cases.len(), 5, "complete real resolver matrix required");
     let mut proofs = Vec::new();
-    for case in cases {
+    for (case, expected) in cases {
         anyhow::ensure!(codeana_model::safe_path(&case), "FIXTURE_CASE_PATH");
         let root = evidence.join(&case).canonicalize()?;
         let inputs: ts::Inputs =
@@ -468,11 +469,6 @@ fn actual_resolution_inventories_freeze_roles_and_reject_stale_observations() ->
             .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
         let frozen = capture(&root, &Request::default())?;
         assert_eq!(frozen.unit_views.len(), 1);
-        let expected = context
-            .files
-            .iter()
-            .filter(|file| file.role == ts::FileRole::Publish)
-            .count();
         let published = frozen
             .manifest
             .files

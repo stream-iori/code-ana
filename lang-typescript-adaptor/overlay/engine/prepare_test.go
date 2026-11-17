@@ -279,10 +279,11 @@ func TestProductStateIsOutsideTheCompilerViewAndNewGenerationsDoNotInvalidateInp
 // checking bindings again. node_modules content is never flattened or mocked.
 func TestResolutionClosureUsesCompilerOptionsAndReplaysWithoutLiveFiles(t *testing.T) {
 	var cases []struct {
-		Name   string            `json:"name"`
-		Files  map[string]string `json:"files"`
-		Links  map[string]string `json:"links"`
-		Target string            `json:"target"`
+		Name             string            `json:"name"`
+		Files            map[string]string `json:"files"`
+		Links            map[string]string `json:"links"`
+		Target           string            `json:"target"`
+		PublishedSources int               `json:"published_sources"`
 	}
 	data, err := os.ReadFile("testdata/resolution.json")
 	if err != nil {
@@ -291,7 +292,7 @@ func TestResolutionClosureUsesCompilerOptionsAndReplaysWithoutLiveFiles(t *testi
 	if err := json.Unmarshal(data, &cases); err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 4 {
+	if len(cases) != 5 {
 		t.Fatal("resolution matrix incomplete", len(cases))
 	}
 
@@ -325,7 +326,11 @@ func TestResolutionClosureUsesCompilerOptionsAndReplaysWithoutLiveFiles(t *testi
 				t.Fatal("unchanged resolver closure changed identity")
 			}
 			found := false
+			published := 0
 			for _, file := range project.Files {
+				if file.File.Role == pb.FileRole_PUBLISH {
+					published++
+				}
 				if strings.HasSuffix(file.File.Path, "/runtime.js") || strings.HasSuffix(file.File.Path, "/runtime.cjs") {
 					t.Fatal("runtime condition selected instead of types", file.File.Path)
 				}
@@ -338,6 +343,9 @@ func TestResolutionClosureUsesCompilerOptionsAndReplaysWithoutLiveFiles(t *testi
 			}
 			if !found {
 				t.Fatal("expected resolution target absent", test.Target)
+			}
+			if published != test.PublishedSources {
+				t.Fatal("publication role differs from fixture truth", published, test.PublishedSources)
 			}
 			if len(test.Links) > 0 && len(project.Context.Links) == 0 {
 				t.Fatal("pnpm symlink chain not captured")
@@ -365,5 +373,71 @@ func TestResolutionClosureUsesCompilerOptionsAndReplaysWithoutLiveFiles(t *testi
 				t.Fatal("lost repeated call sites", count)
 			}
 		})
+	}
+}
+
+func TestMissingReferencedDeclarationsStayMissingAndFrozen(t *testing.T) {
+	request, meter := preparationFixture(t)
+	request.AllowedRoots = []string{request.ProjectRoot}
+	for name, text := range map[string]string{
+		"tsconfig.json":      `{"compilerOptions":{"noLib":true,"types":[],"module":"ESNext","moduleResolution":"bundler"},"files":["entry.ts"],"references":[{"path":"./lib"}]}`,
+		"entry.ts":           `import { greet } from "./lib/src/library"; greet(1); greet(2);`,
+		"lib/tsconfig.json":  `{"compilerOptions":{"noLib":true,"composite":true,"declaration":true,"rootDir":"src","outDir":"dist"},"files":["src/library.ts"]}`,
+		"lib/src/library.ts": `export function greet(value: number) {return value + 1;}`,
+	} {
+		destination := filepath.Join(request.ProjectRoot, name)
+		if err := os.MkdirAll(filepath.Dir(destination), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(destination, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	project, err := DiscoverProject(context.Background(), request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(project.Context.References) != 1 || project.Context.References[0] != request.ProjectRoot+"/lib/tsconfig.json" {
+		t.Fatal("missing reference identity", project.Context.References)
+	}
+	witnessed := false
+	for _, lookup := range project.Context.Absent {
+		if lookup.Path == request.ProjectRoot+"/lib/dist/library.d.ts" && lookup.Kind == pb.LookupKind_FILE {
+			witnessed = true
+		}
+	}
+	if !witnessed {
+		t.Fatal("missing declaration output was not observed")
+	}
+	for _, file := range project.Files {
+		if file.File.Path == request.ProjectRoot+"/lib/src/library.ts" && file.File.Role == pb.FileRole_PUBLISH {
+			t.Fatal("referenced implementation became a consumer declaration target")
+		}
+	}
+	for _, file := range project.Files {
+		if err := os.Remove(file.File.Path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	program, err := OpenProgram(project, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	if err := program.WalkCallBindings(context.Background(), func(call CallBinding) error {
+		if call.Resolved {
+			t.Fatal("missing declaration became an exact implementation", call)
+		}
+		calls++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatal("unresolved call sites lost", calls)
+	}
+	project.Context.References = nil
+	if _, err := OpenProgram(project, meter); err == nil {
+		t.Fatal("forged reference identity accepted")
 	}
 }

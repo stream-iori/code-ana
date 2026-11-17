@@ -71,7 +71,7 @@ fixture SDK 只在显式 `--dev-abi-fixture` 构建时对本仓库 overlay 增�
 
 最新 `t3-components-prepare-first/receipt.json` 为 12 场景、20 ABI 检查；两个锁定 SDK 各 25 项 Go 测试，包含删除活输入后的真实重放和大小写路径绑定。汇总为 `target/typescript-c-abi/t3-input-component-sealed/receipt.json`。T2b 的 11/16 数量属于其历史回执。
 
-当前 Prepare 对 references 和 live WalkDir 明确拒绝；配置错误尚未输出产品诊断。尚未完成公共配置/provider/capture、依赖模式/多上下文真值，不能把本组件写成 T3 或 TS 产品全部完成。生成器现在从已校验 production.mod 构建，与 protobuf runtime 共用锁；原代理 504 构建失败继续保留。
+该组件检查点的 Prepare 对 references 和 live WalkDir 明确拒绝；配置错误尚未输出产品诊断。尚未完成公共配置/provider/capture、依赖模式/多上下文真值，不能把本组件写成 T3 或 TS 产品全部完成。生成器现在从已校验 production.mod 构建，与 protobuf runtime 共用锁；原代理 504 构建失败继续保留。
 
 ## 原生输入模型
 
@@ -104,3 +104,9 @@ JS/TS 各自显式启用，共用原生清单与依赖根。普通输入按 comp
 ## 解析闭包专项
 
 `just test-typescript-resolution SDK NEW_EVIDENCE` 必须执行真实准备与公共 Rust capture 的四组 fixture：extends/paths、pnpm/exports、NodeNext/imports、typesVersions。普通无 Go 门禁显式忽略该真实编译器测试，专项入口强制执行并核对四组证明。相同 JSON fixture 也进入构建时 Go 测试，验证捕获后删除活文件的实际 Checker 重放及重复调用目标。references、多配置和缺声明产物仍待补齐。
+
+## project references 的冻结闭包
+
+inputs3 SDK 保留 compiler 配置给出的有序 references，按内核的引用映射区分消费者输入与引用项目的源码/声明产物。已有 `.d.ts` 可作为辅助解析输入，不能由消费者发布；缺产物记录真实失败查找，不改用引用源码充当实现目标，不自动构建。引用配置的 content mapper 仍明确拒绝。Go 冻结重放校验 references 与封存配置一致。
+
+共享 fixture 现为五组，新增 reference 声明目标；另有缺声明产物的两次 unknown 调用测试。实际 SDK / ABI / provider / 公共 capture 及聚焦 Rust 门禁均通过，见当前实现的 t3-references 回执。空根 solution、多配置编排和产品诊断/BuildAdvice 仍待完成；协议不变，旧 inputs2 SDK 要求重建。

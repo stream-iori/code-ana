@@ -15,6 +15,21 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 project references（2026-11-18）
+
+| 已实现 / 验证 | 边界 |
+|---|---|
+| 原生 reference 配置与输入闭包 | 同一内核保留有序 reference 路径、读取引用配置、映射源码与声明产物；引用输入保持辅助角色 |
+| 有声明产物 | 真实调用绑定至引用项目 `.d.ts`；删除活输入后仍按冻结视图重放 |
+| 缺声明产物 | 记录真实失败查找，两次调用都保持 unknown；不进行源码重定向，不生成声明、不执行目标构建 |
+| 发布隔离 | 引用输入不能作为消费者发布内容；伪造 reference 顺序/身份会被拒绝 |
+| 新 SDK 与 Rust host | adapter 修订 inputs3，旧 inputs2 SDK 已实际验证拒绝；ABI / 引擎协议仍为 1 |
+| 回归 | 5 组真实公共捕获、6 个 CLI provider、5 个独立准备、12 场景 / 20 ABI 检查；模型/契约/配置/worker 聚焦与 clippy 通过 |
+
+本轮 SDK：`target/typescript-c-abi/t3-references-sdk` 与 `t3-references-fixture-sdk`。汇总 `t3-references-sealed/receipt.json`，专项为 `t3-references-public-first/receipt.json`、`t3-references-abi-first/receipt.json`、`t3-references-provider-first/receipt.json`、`t3-references-prepare-first/receipt.json`；原始构建/测试日志保留。
+
+五组共享 fixture 增加有声明产物的 reference；发布源数量按独立 fixture 真值核对。空根 solution、多配置编排、缺产物的产品 BuildAdvice/partial、冻结输入交接以及 T4—T8 仍待实现。CLI 尚不发布 JS/TS 语义图；无正式 Native、分发或性能放行。
+
 ## TypeScript T3 解析闭包真值（2026-11-18）
 
 | 自建 fixture | 通过的行为 |

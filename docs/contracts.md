@@ -315,3 +315,5 @@ TypeScript 准备结果在 worker 内经 inventory wire 准入和显式映射进
 prepared schema 3 的每个单元必须给出 `backend` 与非空、去重的 `source_languages`，不再使用单一 language 字段。JS/TS 一个 compiler context 共用 TypeScript 后端及预算，禁用标签不能发布。准备摘要 schema 2、索引报告 schema 5 使用同一单元形状；旧格式明确拒绝，重新 prepare/full 后才发布新 revision。
 
 TypeScript adapter 输入策略修订为 `inputs2`；旧 SDK 需要重建，TS ABI 1 / analysis 1 不变。Prepare 探测目标卷大小写规则，使用显式根，精确记录祖先缺失元数据；正的外部依赖必须显式授权。项目根 `.code-ana` 不进入编译器逻辑目录。共享 `input-io` 提供只读、有界、FD 锚定的大小写探测，不包含编译器或配置语义。
+
+TypeScript 当前最小 adapter 输入策略为 `inputs3`。有序 project references 与封存 compiler 配置核对，引用源码/声明产物为辅助输入，不能由消费者发布；缺声明产物保留失败查找与 unknown，不进行源码重定向。此前 inputs2 SDK 在装载前拒绝；独立 TS ABI 1、analysis 1、原生输入 schema 1 不变。
