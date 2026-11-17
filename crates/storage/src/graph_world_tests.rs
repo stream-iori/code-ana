@@ -6,6 +6,230 @@ use codeana_contracts::{
     graph::{Table, cell},
 };
 #[test]
+fn unit_nodes_and_external_references_survive_reuse_and_replace_global_snapshots() -> Result<()> {
+    use codeana_contracts::graph_rows::{EdgeRow, GraphRow};
+    use codeana_graph_io::records::{Origin, Record};
+    let directory = tempfile::tempdir()?;
+    let store = Store::open(directory.path())?;
+    let (mut revision, mut header, template) = captured(&store);
+    let a = revision.manifest.files[0].clone();
+    let mut b = a.clone();
+    b.path = "B.java".into();
+    revision.manifest.files.push(b.clone());
+    revision.unit_ownership = Some(UnitOwnershipLedger {
+        version: UNIT_OWNERSHIP_VERSION,
+        units: [("left", a), ("right", b)]
+            .into_iter()
+            .map(|(id, source)| UnitOwnership {
+                unit: id.into(),
+                backend: AnalysisBackend::Java,
+                availability: UnitAvailability::Ready,
+                source_languages: vec![SourceLanguage::Java],
+                modules: vec!["app".into()],
+                worlds: vec!["main".into()],
+                scopes: vec!["MAIN".into()],
+                producer: "mock".into(),
+                semantic_profile: hash("profile"),
+                input_digest: hash(id),
+                inputs: vec![source.clone()],
+                sources: vec![source],
+            })
+            .collect(),
+    });
+    header.manifest = revision.manifest.id();
+    let node = |id: &str, file: &str| {
+        let mut row = template[0].clone();
+        for (column, value) in [(0, id), (1, id), (12, file)] {
+            row.cells[column].value = Some(cell::Value::Text(value.into()));
+        }
+        row.world = if file.is_empty() { "" } else { "main" }.into();
+        row
+    };
+    let rows = |global: bool| -> Vec<Result<Record>> {
+        let left = Origin::Unit(std::sync::Arc::new("left".into()));
+        let right = Origin::Unit(std::sync::Arc::new("right".into()));
+        let mut rows = vec![
+            Ok(left.record(node("owner", "A.java"))),
+            Ok(right.record(node("peer", "B.java"))),
+        ];
+        if global {
+            rows.push(Ok(left.record(node("library", ""))));
+        }
+        rows.push(Ok(left.record(
+            EdgeRow {
+                source_ref: Some("owner".into()),
+                source_is_key: Some(1),
+                resolved_source: Some("owner".into()),
+                external_target_fqn: Some("peer".into()),
+                is_external: Some(1),
+                relation: Some("REFERENCES".into()),
+                language: Some("java".into()),
+                provider_id: Some("java-core".into()),
+                producer_id: Some("mock".into()),
+                source_file: Some("A.java".into()),
+                source_module: Some("app".into()),
+                source_scope: Some("MAIN".into()),
+                ..Default::default()
+            }
+            .into_row("main"),
+        )));
+        rows
+    };
+    let first = store.publish_staged(
+        store.stage_owned_graph_records_with_context(
+            revision.clone(),
+            &header,
+            rows(true).into_iter(),
+            "",
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-nodes-full",
+    )?;
+    let reader = store.read(&first.id)?;
+    assert_eq!(
+        reader
+            .connection
+            .query_row("SELECT count(*) FROM node_units", [], |r| r
+                .get::<_, i64>(0))?,
+        3
+    );
+    let inputs = Manifest {
+        files: revision.unit_ownership.as_ref().unwrap().units[0]
+            .inputs
+            .clone(),
+    };
+    assert!(
+        reader
+            .baseline_summary_for(&inputs, &"left".into())?
+            .nodes
+            .iter()
+            .any(|n| n.id == "library")
+    );
+    assert!(
+        !reader
+            .baseline_summary_for(&inputs, &"right".into())?
+            .nodes
+            .iter()
+            .any(|n| n.id == "library")
+    );
+    let reused = store.publish_staged(
+        store.stage_reused_graph_with_context(
+            revision.clone(),
+            &first.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-nodes-reused",
+    )?;
+    assert_eq!(
+        canonical(&reader.connection)?,
+        canonical(&store.read(&reused.id)?.connection)?
+    );
+    let mut conflicting = rows(true);
+    let mut library = node("library", "");
+    library.cells[21].value = Some(cell::Value::Text(r#"{"different":true}"#.into()));
+    conflicting.push(Ok(
+        Origin::Unit(std::sync::Arc::new("right".into())).record(library)
+    ));
+    let error = store
+        .stage_owned_graph_records_with_context(
+            revision.clone(),
+            &header,
+            conflicting.into_iter(),
+            &reused.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )
+        .err()
+        .context("conflicting shared node accepted")?;
+    assert_eq!(
+        error
+            .downcast_ref::<DomainError>()
+            .context(format!("{error:#}"))?
+            .code,
+        ErrorCode::GraphWorldOwnershipConflict
+    );
+    assert_eq!(store.head("t")?, reused.id);
+    header.mode = AnalysisMode::Delta;
+    header.baseline = reused.id.clone();
+    header.replacements = revision
+        .manifest
+        .files
+        .iter()
+        .map(|source| Owner {
+            world: source.world.clone().into(),
+            producer: "mock".into(),
+            kind: "source".into(),
+            id: source.path.clone(),
+        })
+        .collect();
+    let delta = store.publish_staged(
+        store.stage_owned_graph_records_with_context(
+            revision.clone(),
+            &header,
+            rows(false).into_iter(),
+            &reused.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-nodes-delta",
+    )?;
+    let db = &store.read(&delta.id)?.connection;
+    assert_eq!(
+        db.query_row("SELECT count(*) FROM nodes WHERE id='library'", [], |r| r
+            .get::<_, i64>(
+            0
+        ))?,
+        0
+    );
+    assert_eq!(
+        db.query_row("SELECT is_external FROM edges", [], |r| r.get::<_, i64>(0))?,
+        1
+    );
+    assert_eq!(
+        db.query_row(
+            "SELECT c.unit_id FROM graph_edges e JOIN unit_catalog c USING(unit_pk)",
+            [],
+            |r| r.get::<_, String>(0)
+        )?,
+        "left"
+    );
+    header.mode = AnalysisMode::Full;
+    header.baseline = delta.id.clone();
+    header.replacements.clear();
+    let full = store.publish_staged(
+        store.stage_owned_graph_records_with_context(
+            revision,
+            &header,
+            rows(false).into_iter(),
+            &delta.id,
+            || Ok(()),
+            |_| Ok(()),
+            None,
+        )?,
+        "unit-nodes-full-again",
+    )?;
+    assert_eq!(
+        canonical(db)?,
+        canonical(&store.read(&full.id)?.connection)?
+    );
+    assert_eq!(
+        reader
+            .connection
+            .query_row("SELECT count(*) FROM nodes WHERE id='library'", [], |r| r
+                .get::<_, i64>(
+                0
+            ))?,
+        1
+    );
+    Ok(())
+}
+#[test]
 fn unit_metadata_survives_real_candidates_delta_reuse_and_matches_full() -> Result<()> {
     use codeana_contracts::graph_rows::{
         CoverageRow, DiagnosticRow, GraphRow, ProjectMetaRow, ProviderRow,

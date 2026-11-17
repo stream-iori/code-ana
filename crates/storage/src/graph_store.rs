@@ -9,6 +9,7 @@ use sha2::{Digest, Sha256};
 
 mod language_completion;
 pub(crate) mod unit_metadata;
+pub(crate) mod unit_nodes;
 use language_completion::resolve_reference;
 
 mod inserts {
@@ -17,7 +18,7 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 15;
+pub const SCHEMA_VERSION: i64 = 16;
 pub const SOURCE_SCHEMA_VERSION: i64 = 36;
 pub const PAGE_SIZE: i64 = 4096;
 
@@ -90,6 +91,7 @@ pub fn initialize_stage(db: &Connection) -> Result<()> {
     db.execute_batch("PRAGMA journal_mode=OFF; PRAGMA synchronous=OFF; PRAGMA temp_store=FILE; PRAGMA foreign_keys=OFF; PRAGMA cache_size=-64000;")?;
     db.execute_batch(include_str!("anatomist-stage.sql"))?;
     db.execute_batch(include_str!("unit-catalog.sql"))?;
+    unit_nodes::initialize_stage(db)?;
     db.execute_batch("CREATE TABLE stage_active_units(unit_pk INTEGER PRIMARY KEY);")?;
     db.execute_batch("CREATE TABLE stage_file_cache(provider_id TEXT,source_file TEXT,hash TEXT,schema_version INTEGER,node_count INTEGER,edge_count INTEGER,file_size INTEGER,contract_hash TEXT,world TEXT NOT NULL DEFAULT '');
       CREATE TABLE stage_file_dependencies(source_provider_id TEXT,source_file TEXT,depends_on_provider_id TEXT,depends_on_file TEXT,world TEXT NOT NULL DEFAULT '');
@@ -128,7 +130,7 @@ pub fn insert_owned_with_world(
         Table::Annotation => inserts::ANNOTATION_INSERT,
         Table::AnnotationMeta => inserts::ANNOTATION_META_INSERT,
         Table::UnresolvedCall => {
-            "INSERT INTO stage_call_sites(source_ref,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,call_kind,context,metadata,producer_id,source_module,source_scope,resolved_source,relation,language,provider_id,world) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'CALLS','java','java-core',?)"
+            "INSERT INTO stage_call_sites(source_ref,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,call_kind,context,metadata,producer_id,source_module,source_scope,resolved_source,relation,language,provider_id,world,unit_pk) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'CALLS','java','java-core',?,?)"
         }
         Table::FileCache => "INSERT INTO stage_file_cache VALUES(?,?,?,?,?,?,?,?,?)",
         Table::FileDependency => "INSERT INTO stage_file_dependencies VALUES(?,?,?,?,?)",
@@ -192,7 +194,13 @@ pub fn insert_owned_with_world(
         && !matches!(table, Table::SourceState | Table::AnalysisDependency);
     let owns_unit = matches!(
         table,
-        Table::Diagnostic | Table::Coverage | Table::Provider | Table::ProjectMeta
+        Table::Diagnostic
+            | Table::Coverage
+            | Table::Provider
+            | Table::ProjectMeta
+            | Table::Edge
+            | Table::Annotation
+            | Table::UnresolvedCall
     );
     ensure!(
         statement.parameter_count()
@@ -220,10 +228,13 @@ pub fn insert_owned_with_world(
             anyhow::anyhow!(codeana_model::DomainError::new(codeana_model::ErrorCode::GraphWorldOwnershipConflict, "node ID belongs to another world"))
         } else { error.into() }
     })?;
+    unit_nodes::observe(db, row, world, unit_pk)?;
     Ok(())
 }
 
 pub fn resolve(db: &Connection) -> Result<u64> {
+    unit_nodes::validate_definitions(db)?;
+    unit_nodes::validate_references(db)?;
     resolve_reference(db, "stage_edges", "resolved_source", "source_ref", "1=1")?;
     resolve_reference(
         db,
@@ -248,10 +259,11 @@ pub fn resolve(db: &Connection) -> Result<u64> {
         "external_target_fqn",
         "is_external=1",
     )?;
-    db.execute_batch("UPDATE stage_edges SET external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND resolved_target IS NOT NULL;
-      UPDATE stage_edges SET external_target_fqn=target_ref,external_target_symbol=target_ref,external_target_language=language,external_target_provider_id=provider_id,resolution='source_fallback',target_ref=NULL,is_external=1,confidence='AMBIGUOUS' WHERE is_external=0 AND resolved_target IS NULL AND target_ref IS NOT NULL AND target_is_key=0;")?;
+    db.execute_batch("UPDATE stage_edges SET fact_hash=NULL,external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND resolved_target IS NOT NULL;
+      UPDATE stage_edges SET fact_hash=NULL,external_target_fqn=target_ref,external_target_symbol=target_ref,external_target_language=language,external_target_provider_id=provider_id,resolution='source_fallback',target_ref=NULL,is_external=1,confidence='AMBIGUOUS' WHERE is_external=0 AND resolved_target IS NULL AND target_ref IS NOT NULL AND target_is_key=0;")?;
     language_completion::resolve_external(db)?;
     resolve_reference(db, "stage_annotations", "resolved_node", "node_ref", "1=1")?;
+    unit_nodes::validate_references(db)?;
     db.execute_batch("UPDATE stage_edges SET source_file=(SELECT n.source_file FROM stage_nodes n WHERE n.id=stage_edges.resolved_source) WHERE source_file IS NULL AND resolved_source IS NOT NULL;
       UPDATE stage_annotations SET source_file=(SELECT n.source_file FROM stage_nodes n WHERE n.id=stage_annotations.resolved_node) WHERE source_file IS NULL AND resolved_node IS NOT NULL;")?;
     let mut dropped = 0;
@@ -352,6 +364,7 @@ pub fn promote_with_context(
 ) -> Result<()> {
     db.execute_batch(include_str!("anatomist-promote.sql"))
         .map_err(identity_error)?;
+    unit_nodes::promote(db)?;
     db.execute_batch("INSERT INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash,world) SELECT * FROM staged.stage_file_cache;
       INSERT OR IGNORE INTO file_dependencies(source_provider_id,source_file,depends_on_provider_id,depends_on_file,world) SELECT * FROM staged.stage_file_dependencies;
       INSERT OR IGNORE INTO symbol_dependencies SELECT * FROM staged.stage_symbol_dependencies;
@@ -384,7 +397,7 @@ mod tests {
                 .to_string()
                 .contains("run index --full")
         );
-        db.pragma_update(None, "user_version", 14)?;
+        db.pragma_update(None, "user_version", 15)?;
         assert!(
             initialize(&db)
                 .unwrap_err()
@@ -393,7 +406,7 @@ mod tests {
         );
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-            14
+            15
         );
         db.pragma_update(None, "user_version", 0)?;
         initialize(&db)?;

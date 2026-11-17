@@ -1,5 +1,10 @@
 -- Anatomist schema 33 definitions and lossless file-owned observations.
 -- Public projections keep their original columns; ownership stays private.
+CREATE TABLE node_units(unit_pk INTEGER NOT NULL REFERENCES unit_catalog(unit_pk),
+ node_pk INTEGER NOT NULL REFERENCES graph_nodes(node_pk) ON DELETE CASCADE,
+ node_hash BLOB NOT NULL CHECK(length(node_hash)=32),declaration_hash BLOB CHECK(length(declaration_hash)=32),arity_key TEXT,
+ PRIMARY KEY(unit_pk,node_pk)) WITHOUT ROWID;
+CREATE INDEX node_units_node ON node_units(node_pk,unit_pk);
 CREATE TABLE unit_project_meta(unit_pk INTEGER NOT NULL REFERENCES unit_catalog(unit_pk),
  key TEXT NOT NULL,value TEXT,PRIMARY KEY(unit_pk,key)) WITHOUT ROWID;
 CREATE TABLE unit_providers(unit_pk INTEGER NOT NULL DEFAULT 0 REFERENCES unit_catalog(unit_pk),

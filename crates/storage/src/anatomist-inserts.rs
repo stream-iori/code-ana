@@ -16,10 +16,10 @@ pub const EDGE_INSERT: &str = r#"INSERT INTO stage_edges(source_ref, target_ref,
             provider_id, call_kind, confidence, resolution, context, is_external, source_file, source_location,
             begin_line, begin_column, end_line, end_column, source_ordinal, syntax_target, receiver_static_type,
             metadata, source_module, source_scope, source_is_key, target_is_key, resolved_source, resolved_target,
-            target_arity_key, producer_id,world) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)"#;
+            target_arity_key, producer_id,world,unit_pk) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)"#;
 pub const ANNOTATION_INSERT: &str = r#"INSERT INTO stage_annotations(node_ref, annotation_fqn, raw_name, attributes, target_kind, target_path,
             language, provider_id, mechanism, resolution_status, source_file, source_location, begin_line,
-            begin_column, end_line, end_column, source_module, source_scope, node_is_key, resolved_node, producer_id,world) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)"#;
+            begin_column, end_line, end_column, source_module, source_scope, node_is_key, resolved_node, producer_id,world,unit_pk) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?,?)"#;
 pub const ANNOTATION_META_INSERT: &str = r#"INSERT INTO stage_annotation_meta(annotation_fqn, meta_annotation_fqn, raw_name, language, provider_id,
             mechanism, resolution_status, source_file, source_location, producer_id,world) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?,?)"#;
 pub const DECLARATION_INSERT: &str = r#"INSERT OR REPLACE INTO stage_declarations(symbol_id, domain, language, provider_id, entity_kind,

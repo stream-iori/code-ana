@@ -682,9 +682,13 @@ impl ReadContext {
         Ok(result)
     }
     pub fn baseline_summary(&self) -> Result<BaselineSummary> {
-        self.baseline_summary_selected(None)
+        self.baseline_summary_selected(None, None)
     }
-    fn baseline_summary_selected(&self, inputs: Option<&[SourceUnit]>) -> Result<BaselineSummary> {
+    fn baseline_summary_selected(
+        &self,
+        inputs: Option<&[SourceUnit]>,
+        unit: Option<&AnalysisUnitId>,
+    ) -> Result<BaselineSummary> {
         let owners = inputs.map(|files| {
             files
                 .iter()
@@ -710,9 +714,11 @@ impl ReadContext {
         }
         let mut nodes = Vec::new();
         let mut statement = self.connection.prepare(
-            "SELECT id,symbol_id,kind,module,scope,source_file,metadata,world FROM nodes ORDER BY id",
+            "SELECT n.id,n.symbol_id,n.kind,n.module,n.scope,n.source_file,n.metadata,n.world,
+              EXISTS(SELECT 1 FROM node_units m JOIN unit_catalog u USING(unit_pk) JOIN graph_nodes p ON p.node_pk=m.node_pk WHERE p.id=n.id AND u.unit_id=?1)
+              FROM nodes n ORDER BY n.id",
         )?;
-        for row in statement.query_map([], |r| {
+        for row in statement.query_map([unit.map(|u| u.as_str()).unwrap_or("")], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, String>(1)?,
@@ -722,13 +728,15 @@ impl ReadContext {
                 r.get::<_, String>(5)?,
                 r.get::<_, Option<String>>(6)?,
                 r.get::<_, String>(7)?,
+                r.get::<_, bool>(8)?,
             ))
         })? {
-            let (id, symbol, kind, module, scope, source, metadata, world) = row?;
-            if !owns(&source, &world) {
+            let (id, symbol, kind, module, scope, source, metadata, world, global_member) = row?;
+            if !(owns(&source, &world) || source.is_empty() && global_member) {
                 continue;
             }
             let owner = self.owner_for(&source, &module, &scope);
+            let global = source.is_empty();
             nodes.push(BaselineNode {
                 id,
                 symbol_id: symbol,
@@ -737,7 +745,7 @@ impl ReadContext {
                 scope,
                 source_file: source,
                 metadata,
-                world: if world.is_empty() {
+                world: if world.is_empty() && !global {
                     owner.world.to_string()
                 } else {
                     world
@@ -745,18 +753,21 @@ impl ReadContext {
             });
         }
         let mut relations = Vec::new();
-        let mut statement=self.connection.prepare("SELECT n.symbol_id,coalesce(t.symbol_id,e.external_target_fqn),e.relation,n.source_file,n.world FROM edges e JOIN nodes n ON n.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id WHERE e.relation IN('INHERITS','IMPLEMENTS') ORDER BY e.source_id,e.relation,e.target_id,e.external_target_fqn")?;
-        for row in statement.query_map([], |r| {
+        let mut statement=self.connection.prepare("SELECT n.symbol_id,coalesce(t.symbol_id,e.external_target_fqn),e.relation,n.source_file,n.world,
+            EXISTS(SELECT 1 FROM graph_edges g JOIN unit_catalog u USING(unit_pk) WHERE g.id=e.id AND u.unit_id=?1)
+            FROM edges e JOIN nodes n ON n.id=e.source_id LEFT JOIN nodes t ON t.id=e.target_id WHERE e.relation IN('INHERITS','IMPLEMENTS') ORDER BY e.source_id,e.relation,e.target_id,e.external_target_fqn")?;
+        for row in statement.query_map([unit.map(|u| u.as_str()).unwrap_or("")], |r| {
             Ok((
                 r.get::<_, String>(0)?,
                 r.get::<_, Option<String>>(1)?,
                 r.get::<_, String>(2)?,
                 r.get::<_, String>(3)?,
                 r.get::<_, String>(4)?,
+                r.get::<_, bool>(5)?,
             ))
         })? {
-            let (source, target, relation, file, world) = row?;
-            if !owns(&file, &world) {
+            let (source, target, relation, file, world, global_member) = row?;
+            if !(owns(&file, &world) || file.is_empty() && global_member) {
                 continue;
             }
             if let Some(target) = target {
@@ -934,7 +945,7 @@ impl ReadContext {
                 }
             }
         }
-        let mut summary = self.baseline_summary_selected(Some(previous))?;
+        let mut summary = self.baseline_summary_selected(Some(previous), Some(unit))?;
         summary.changed_sources = Some(changed.into_iter().map(|(path, _)| path).collect());
         Ok(summary)
     }

@@ -24,7 +24,13 @@ pub(super) fn resolve_reference(
                 " AND t.language='{}' AND n.language=t.language",
                 policy.language()
             );
-            let matches = format!("n.symbol_id=t.{reference} AND {candidate}{language}");
+            let visible = if matches!(output, "resolved_source" | "resolved_node") {
+                super::unit_nodes::owns("n", "t.unit_pk")
+            } else {
+                super::unit_nodes::visible("n", "t.unit_pk")
+            };
+            let matches =
+                format!("n.symbol_id=t.{reference} AND {candidate}{language} AND {visible}");
             db.execute_batch(&format!("UPDATE {table} AS t SET {output}=(SELECT min(n.id) FROM stage_nodes n WHERE {matches}) WHERE {output} IS NULL AND t.{reference} IS NOT NULL AND {additional} AND (SELECT count(*) FROM stage_nodes n WHERE {matches})=1"))?;
         }
     }
@@ -37,6 +43,7 @@ pub(super) fn resolve_external(db: &Connection) -> Result<()> {
         .filter(|p| p.reference_completion())
     {
         let language = policy.language();
+        let visible = super::unit_nodes::visible("n", "stage_edges.unit_pk");
         for (match_key, condition) in [
             ("n.id=stage_edges.external_target_fqn", "1=1"),
             ("n.symbol_id=stage_edges.external_target_fqn", "1=1"),
@@ -49,7 +56,7 @@ pub(super) fn resolve_external(db: &Connection) -> Result<()> {
                 "target_arity_key IS NOT NULL",
             ),
         ] {
-            db.execute_batch(&format!("UPDATE stage_edges SET resolved_target=(SELECT min(n.id) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language),external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND language='{language}' AND {condition} AND (SELECT count(*) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language)=1"))?;
+            db.execute_batch(&format!("UPDATE stage_edges SET fact_hash=NULL,resolved_target=(SELECT min(n.id) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language AND {visible}),external_target_fqn=NULL,is_external=0,resolution=CASE WHEN relation='CALLS' AND confidence='INFERRED' THEN NULL ELSE resolution END WHERE is_external=1 AND language='{language}' AND {condition} AND (SELECT count(*) FROM stage_nodes n WHERE {match_key} AND n.language=stage_edges.language AND {visible})=1"))?;
         }
     }
     Ok(())

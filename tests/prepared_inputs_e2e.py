@@ -128,8 +128,8 @@ root="common"
         old_graph = self.home/'revisions'/revision/'facts.db'
         self.stop()
         with sqlite3.connect(old_graph) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 15)
-            db.execute('PRAGMA user_version=14')
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 16)
+            db.execute('PRAGMA user_version=15')
         _, failed = self.cli('index', code=1)
         self.assertEqual(failed['code'], 'GRAPH_SCHEMA_REBUILD_REQUIRED')
         with sqlite3.connect(self.home/'catalog.db') as db:
@@ -139,9 +139,9 @@ root="common"
         _, rebuilt = self.cli('index', '--full', timeout=120)
         self.assertNotEqual(rebuilt['revision'], revision)
         with sqlite3.connect(self.home/'revisions'/rebuilt['revision']/'facts.db') as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 15)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 16)
         with sqlite3.connect(old_graph) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 14)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 15)
         self.assertTrue(self.cli('resolve', 'from_a')[0])
 
     def test_disabling_all_units_removes_semantics_without_a_fallback_worker(self):

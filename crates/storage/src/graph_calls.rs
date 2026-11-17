@@ -5,6 +5,7 @@ use sha2::{Digest, Sha256};
 
 #[derive(Clone, PartialEq, Eq)]
 struct Site {
+    unit: i64,
     caller: String,
     symbol: String,
     module: String,
@@ -108,12 +109,13 @@ impl Group {
     fn write(&self, db: &Connection, pk: i64) -> Result<()> {
         let s = &self.site;
         db.execute(
-            "INSERT OR IGNORE INTO call_site_owners(caller_id,source_file,world) VALUES(?,?,?)",
-            params![s.caller, s.source, s.world],
+            "INSERT OR IGNORE INTO source_files(path) VALUES(?)",
+            [&s.source],
         )?;
+        db.execute("INSERT OR IGNORE INTO graph_call_site_owners(caller_id,source_file,world,unit_pk) SELECT node_pk,(SELECT file_pk FROM source_files WHERE path=?),?,? FROM graph_nodes WHERE id=?",params![s.source,s.world,s.unit,s.caller])?;
         let owner: i64 = db.query_row(
-            "SELECT owner_pk FROM call_site_owners WHERE caller_id=? AND source_file=? AND world=?",
-            params![s.caller, s.source, s.world],
+            "SELECT o.owner_pk FROM graph_call_site_owners o JOIN graph_nodes n ON n.node_pk=o.caller_id JOIN source_files f ON f.file_pk=o.source_file WHERE n.id=? AND f.path=? AND o.world=? AND o.unit_pk=?",
+            params![s.caller, s.source, s.world,s.unit],
             |r| r.get(0),
         )?;
         db.execute("INSERT INTO call_sites(site_pk,stable_hash,owner_pk,begin_line,begin_column,end_line,end_column,ordinal,context,syntax_target,receiver_static_type,dispatch_kind,metadata,origin,resolution_status,producer_id,language,provider_id) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'extracted',?,?,?,?)",
@@ -141,6 +143,7 @@ pub fn rebuild(
     affected: Option<&std::collections::BTreeSet<String>>,
     check: &dyn Fn() -> Result<()>,
 ) -> Result<()> {
+    db.execute_batch("DELETE FROM graph_call_site_owners WHERE unit_pk IN(SELECT unit_pk FROM staged.stage_active_units) AND source_file IN(SELECT file_pk FROM source_files WHERE path='');")?;
     if affected.is_some() {
         db.execute("DELETE FROM call_site_owners WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced)",[])?;
     } else {
@@ -152,15 +155,15 @@ pub fn rebuild(
       e.begin_line,e.begin_column,e.end_line,e.end_column,coalesce(e.source_ordinal,0),
       e.context,e.syntax_target,e.receiver_static_type,e.call_kind,e.metadata,e.producer_id,
       e.resolved_target,e.external_target_fqn,e.confidence,e.language,e.provider_id,
-      e.external_target_symbol,e.external_target_language,e.external_target_provider_id,e.world
+      e.external_target_symbol,e.external_target_language,e.external_target_provider_id,e.world,e.unit_pk
       FROM (SELECT * FROM staged.stage_edges UNION ALL SELECT * FROM staged.stage_call_sites) e
       JOIN nodes src ON src.id=e.resolved_source WHERE e.relation='CALLS' AND e.resolved_source IS NOT NULL
       AND e.source_file IS NOT NULL AND e.begin_line IS NOT NULL AND e.begin_column IS NOT NULL
       AND e.end_line IS NOT NULL AND e.end_column IS NOT NULL
       ORDER BY e.source_file,e.begin_line,e.begin_column,e.end_line,e.end_column,e.resolved_source,
-      coalesce(e.source_ordinal,0),e.producer_id,e.language,e.provider_id,e.world,e.seq";
+      coalesce(e.source_ordinal,0),e.producer_id,e.language,e.provider_id,e.world,e.unit_pk,e.seq";
     let sql = if affected.is_some() {
-        sql.replace("AND e.source_file IS NOT NULL","AND e.source_file IS NOT NULL AND (e.source_file,e.world) IN(SELECT source_file,world FROM graph_replaced)")
+        sql.replace("AND e.source_file IS NOT NULL","AND e.source_file IS NOT NULL AND ((e.source_file,e.world) IN(SELECT source_file,world FROM graph_replaced) OR (e.source_file='' AND e.unit_pk IN(SELECT unit_pk FROM staged.stage_active_units)))")
     } else {
         sql.to_owned()
     };
@@ -174,6 +177,7 @@ pub fn rebuild(
     )?;
     while let Some(row) = rows.next()? {
         let site = Site {
+            unit: row.get(25)?,
             caller: row.get(0)?,
             symbol: row.get(1)?,
             module: row.get(2)?,
