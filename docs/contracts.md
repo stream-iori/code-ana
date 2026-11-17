@@ -309,3 +309,5 @@ TypeScript 私有引擎协议 1 由 `proto/codeana/typescript/v1/analysis.proto`
 TypeScript 私有输入视图必须显式携带 case_sensitive；Directory 的 listing_complete 区分存在观察和完整枚举。旧组件 SDK 因 analysis proto SHA 不符而拒绝，需重建；版本 1 尚未发布为产品 SDK。Prepare 的 protobuf inventory 只交付身份和观察，不代替 Rust 公共 capture 的内容封存。
 
 TypeScript 准备结果在 worker 内经 inventory wire 准入和显式映射进入 `model::typescript::Inputs`，config 不依赖引擎 protobuf。原生清单 schema 1 与私有 analysis 1 各自版本化；清单要求显式大小写/目录完整性，内容和上下文分开校验。库、header、标准库及 proto SHA 进入语义身份，SDK 安装位置和准备 generation 不进入身份。当前为组件链路，生产 provider/capture 待接入。
+
+公共 capture 的 Entry 观察保存路径的实际 file/directory/other/缺失类型，封存时复核；Directory 仍专门表示完整枚举。TypeScript 原生上下文分别形成冻结单元，输入正文与发布角色分开，过滤仅影响发布。该捕获端口扩展没有改变 worker wire、Java ABI 或图库 schema；CLI TS prepare provider 和产品执行尚待接入。

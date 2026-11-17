@@ -4,7 +4,9 @@ mod blob;
 pub use blob::CapturedBlob;
 mod java;
 mod reader;
-pub use reader::{CaptureReader, DeclaredLink, FileIdentity, ResolutionObservation, SealedCapture};
+pub use reader::{
+    CaptureReader, DeclaredLink, EntryKind, FileIdentity, ResolutionObservation, SealedCapture,
+};
 pub(super) mod registry;
 mod views;
 use java::capture_java_metadata;
@@ -271,6 +273,15 @@ fn capture_workspace(
         if !files_only
             && effective.python_inputs().is_some()
             && (p.ends_with(".py") || p.ends_with(".pyi") || p.ends_with("py.typed"))
+        {
+            continue;
+        }
+        if !files_only
+            && effective.typescript_inputs().is_some()
+            && matches!(
+                Path::new(&p).extension().and_then(|ext| ext.to_str()),
+                Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
+            )
         {
             continue;
         }

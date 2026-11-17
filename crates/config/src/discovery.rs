@@ -136,6 +136,8 @@ pub(super) fn resolve_modules(
         let enabled = match m.language.as_str() {
             "java" => c.languages.java.as_ref().and_then(|l| l.enabled),
             "rust" => c.languages.rust.as_ref().and_then(|l| l.enabled),
+            "javascript" => c.languages.javascript.as_ref().and_then(|l| l.enabled),
+            "typescript" => c.languages.typescript.as_ref().and_then(|l| l.enabled),
             _ => None,
         };
         ensure!(

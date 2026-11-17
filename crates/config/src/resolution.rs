@@ -184,6 +184,9 @@ pub(crate) fn resolve_config_using(
     let python_inputs = input_reader::in_backend(reader, AnalysisBackend::Python, || {
         python_inputs::discover_using(root, &c, language_required, reader)
     })?;
+    let typescript_inputs = input_reader::in_backend(reader, AnalysisBackend::TypeScript, || {
+        typescript_inputs::discover_using(root, &c, language_required, reader)
+    })?;
     resolve_modules(&mut c, request, java_inputs.is_some())?;
     // Sources for defaulted scalar fields are materialized for doctor.
 
@@ -207,6 +210,11 @@ pub(crate) fn resolve_config_using(
     }
     if let Some(metadata) = python_inputs {
         inputs.push(UnitInput::Python {
+            metadata: std::sync::Arc::new(metadata),
+        });
+    }
+    if let Some(metadata) = typescript_inputs {
+        inputs.push(UnitInput::TypeScript {
             metadata: std::sync::Arc::new(metadata),
         });
     }
@@ -368,7 +376,8 @@ fn resolve_languages(
             || c.languages
                 .python
                 .as_ref()
-                .is_some_and(|l| l.enabled == Some(true)),
+                .is_some_and(|l| l.enabled == Some(true))
+            || [&c.languages.javascript, &c.languages.typescript].into_iter().flatten().any(|language| language.enabled == Some(true)),
         codeana_model::DomainError::new(codeana_model::ErrorCode::NoEnabledLanguage, "")
     );
     if let Some(l) = &mut c.languages.java {
@@ -434,6 +443,18 @@ fn resolve_languages(
             "RUST_ANALYSIS_MODE"
         );
     }
+    for (name, script) in [
+        ("javascript", &c.languages.javascript),
+        ("typescript", &c.languages.typescript),
+    ] {
+        if let Some(script) = script {
+            ensure!(
+                script.enabled.is_some(),
+                DomainError::new(ErrorCode::LanguageEnabledRequired, name)
+            );
+        }
+    }
+    typescript_inputs::configuration(c)?;
     if let Some(python) = &c.languages.python {
         ensure!(
             python.enabled.is_some(),

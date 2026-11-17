@@ -68,7 +68,8 @@ impl ObservationIndex {
                 ResolutionObservation::Link { path, .. }
                 | ResolutionObservation::File { path, .. }
                 | ResolutionObservation::Directory { path, .. }
-                | ResolutionObservation::Missing { path } => {
+                | ResolutionObservation::Missing { path }
+                | ResolutionObservation::Entry { path, .. } => {
                     paths.entry(path.clone()).or_default().push(index);
                 }
             }
@@ -292,17 +293,44 @@ pub(super) fn unit_plans(effective: &Effective) -> Result<Vec<CapturePlan<'_>>> 
             })
             .collect())
     } else {
-        effective
-            .inputs
-            .iter()
-            .map(|input| {
-                Ok(CapturePlan {
+        let mut plans = Vec::new();
+        for input in &effective.inputs {
+            let context = effective.for_backend(input.backend())?;
+            if let UnitInput::TypeScript { metadata } = input {
+                for native in &metadata.contexts {
+                    let mut context = context.clone();
+                    context.inputs = vec![UnitInput::TypeScript {
+                        metadata: std::sync::Arc::new(codeana_model::typescript::Inputs {
+                            schema_version: metadata.schema_version,
+                            compiler: metadata.compiler.clone(),
+                            contexts: vec![native.clone()],
+                        }),
+                    }];
+                    context.semantic_digest = semantic::context(&context.config, &context.inputs);
+                    plans.push(CapturePlan {
+                        unit: native.unit.clone(),
+                        context: std::borrow::Cow::Owned(context),
+                        preparation: None,
+                    });
+                }
+            } else {
+                plans.push(CapturePlan {
                     unit: input.backend().as_str().into(),
-                    context: std::borrow::Cow::Owned(effective.for_backend(input.backend())?),
+                    context: std::borrow::Cow::Owned(context),
                     preparation: None,
-                })
-            })
-            .collect()
+                });
+            }
+        }
+        ensure!(
+            plans
+                .iter()
+                .map(|plan| &plan.unit)
+                .collect::<BTreeSet<_>>()
+                .len()
+                == plans.len(),
+            "CAPTURE_DUPLICATE_UNIT"
+        );
+        Ok(plans)
     }
 }
 pub(super) fn capture_units(
@@ -345,6 +373,15 @@ pub(super) fn capture_units(
             policy.reader,
         )?;
         python_inputs::capture(
+            policy.root,
+            context,
+            &mut local.manifest,
+            &mut local.blobs,
+            &mut local.total,
+            &local.spool,
+            policy.reader,
+        )?;
+        typescript_inputs::capture(
             policy.root,
             context,
             &mut local.manifest,

@@ -88,6 +88,27 @@ source_roots = [{path = "src", scope = "MAIN"}]
 
 Python schema 3 增加根 module、模块元数据、上下文 publish_roots/gaps，只接受 schema 3。adapter 为 pyrefly-1.4.0-codeana-v5-comments，后端提交不变。不提供旧格式默认值或迁移；归属进入 world/profile。
 
+### JS / TS（配置与捕获已接入，prepare provider / 产品执行待接入）
+
+```toml
+[languages.javascript]
+enabled = true
+[languages.javascript.discovery]
+inputs_manifest = ".code-ana/typescript-inputs.json"
+dependency_roots = []
+[languages.typescript]
+enabled = true
+[languages.typescript.discovery]
+inputs_manifest = ".code-ana/typescript-inputs.json"
+dependency_roots = []
+```
+
+两个源码开关独立，共用一份 TypeScript 原生清单和有序依赖根；不创建两份后端预算。清单 schema 1 为 `model::typescript::Inputs`，包括 SDK 内容身份、每个 compiler context 的文件/角色/大小写/目录/链接/失败查找。每个 context 形成自己的冻结单元。SDK 安装路径和准备清单位置不进入语义身份，实际库摘要进入；禁用语言后必须重新准备，不能沿用仍发布该标签的清单。
+
+公共 capture 验证字节与观察并使用任务自有 spool。目录存在和完整枚举分开；某路径不是文件不表示该路径也不是目录。外部依赖正文必须位于显式 dependency_roots，禁止用 `/` 授权整个文件系统；祖先 package/type 的失败查找仅授权精确元数据观察，不授权内容回退。过滤的源码仍可作为辅助 Checker 输入，不能发布其语义。
+
+`just test-typescript-inputs SDK NEW_EVIDENCE` 强制执行真实 Go 准备及公共 capture，用例在普通无 Go Rust 门禁中显式 ignored；SDK 门禁不允许跳过。该入口目前验证组件，不表示 `index --prepare` 的 JS/TS provider 或公开语义产品已经可用。
+
 ## 输入与降级
 
 公共清单 schema 2 登记原始/规范化语言清单及原生配置视图的路径、长度和 SHA。原生视图只含 discovery、languages 和 modules；公共扫描、资源、发布及报告策略从项目配置解析一次，由所有单元共享。视图中注入公共策略直接拒绝。Maven 回执、Cargo 图分别保留，不拼成虚构的共同构建。准备使用项目锁和独立 generation；配置未变、规范化视图验证通过后原子切换。索引再次验证并捕获，之后不借活文件补全。

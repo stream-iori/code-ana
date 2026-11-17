@@ -12,13 +12,15 @@ mod resolution;
 pub mod rust_inputs;
 mod schema;
 mod semantic;
+pub mod typescript_inputs;
 use anyhow::{Context, Result, ensure};
 use capture::add_captured;
 #[cfg(test)]
 use capture::source_ownership;
 pub use capture::{
-    CaptureCancellation, CapturedBlob, DeclaredLink, FileIdentity, FrozenUnitView, ObservationSet,
-    ResolutionObservation, capture, capture_controlled, capture_query, identity, require_java,
+    CaptureCancellation, CapturedBlob, DeclaredLink, EntryKind, FileIdentity, FrozenUnitView,
+    ObservationSet, ResolutionObservation, capture, capture_controlled, capture_query, identity,
+    require_java,
 };
 pub use capture::{CaptureReader as InputCaptureReader, SealedCapture as SealedInputs};
 use codeana_model::*;
@@ -69,6 +71,9 @@ pub enum UnitInput {
     Python {
         metadata: std::sync::Arc<codeana_model::python::Inputs>,
     },
+    TypeScript {
+        metadata: std::sync::Arc<codeana_model::typescript::Inputs>,
+    },
 }
 impl UnitInput {
     pub const fn backend(&self) -> AnalysisBackend {
@@ -76,6 +81,7 @@ impl UnitInput {
             Self::Java { .. } => AnalysisBackend::Java,
             Self::Rust { .. } => AnalysisBackend::Rust,
             Self::Python { .. } => AnalysisBackend::Python,
+            Self::TypeScript { .. } => AnalysisBackend::TypeScript,
         }
     }
 }
@@ -91,6 +97,10 @@ impl ResolvedContext {
             UnitInput::Java { .. } => languages.java = self.config.languages.java.clone(),
             UnitInput::Rust { .. } => languages.rust = self.config.languages.rust.clone(),
             UnitInput::Python { .. } => languages.python = self.config.languages.python.clone(),
+            UnitInput::TypeScript { .. } => {
+                languages.javascript = self.config.languages.javascript.clone();
+                languages.typescript = self.config.languages.typescript.clone();
+            }
         }
         let mut context = Self {
             config: ProjectConfig {
@@ -118,6 +128,12 @@ impl ResolvedContext {
         context.config_digest = digest(&context.config);
         context.semantic_digest = semantic::context(&context.config, &context.inputs);
         Ok(context)
+    }
+    pub fn typescript_inputs(&self) -> Option<&codeana_model::typescript::Inputs> {
+        self.inputs.iter().find_map(|input| match input {
+            UnitInput::TypeScript { metadata } => Some(metadata.as_ref()),
+            _ => None,
+        })
     }
     pub fn java_inputs(&self) -> Option<&JavaInputs> {
         self.inputs.iter().find_map(|i| match i {

@@ -239,3 +239,10 @@ test-typescript-core sdk fixture_sdk evidence:
   cargo build -p codeana-typescript-worker --locked
   cargo clippy -p codeana-contracts -p codeana-worker-runtime -p codeana-typescript-worker --all-targets --locked -- -D warnings
   python3 tests/typescript_abi_e2e.py --sdk '{{sdk}}' --fixture-sdk '{{fixture_sdk}}' --evidence '{{evidence}}'
+
+# Real compiler inventory and the public Rust capture port; SDK is explicit.
+test-typescript-inputs sdk evidence:
+    cargo test -p codeana-config --locked
+    cargo build -p codeana-typescript-worker --locked
+    cargo clippy -p codeana-config --all-targets --locked -- -D warnings
+    python3 tests/typescript_inputs_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'

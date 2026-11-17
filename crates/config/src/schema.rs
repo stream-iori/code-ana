@@ -121,6 +121,22 @@ pub struct Languages {
     pub java: Option<JavaLanguage>,
     pub rust: Option<RustLanguage>,
     pub python: Option<PythonLanguage>,
+    pub javascript: Option<ScriptLanguage>,
+    pub typescript: Option<ScriptLanguage>,
+}
+/// JS and TS are explicit source switches over one compiler backend.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ScriptLanguage {
+    pub enabled: Option<bool>,
+    pub discovery: ScriptDiscovery,
+}
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ScriptDiscovery {
+    pub inputs_manifest: Option<String>,
+    /// Ordered, explicit dependency roots; never a global types cache fallback.
+    pub dependency_roots: Vec<String>,
 }
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]

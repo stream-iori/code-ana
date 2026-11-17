@@ -1,6 +1,8 @@
 //! Task-owned live IO: file bytes are read once, observations are rechecked before sealing.
 use super::*;
+mod kinds;
 mod links;
+pub use kinds::EntryKind;
 pub use links::DeclaredLink;
 use std::{
     collections::BTreeMap,
@@ -60,6 +62,10 @@ pub enum ResolutionObservation {
     Missing {
         path: PathBuf,
     },
+    Entry {
+        path: PathBuf,
+        entry: Option<EntryKind>,
+    },
 }
 struct Root {
     requested: PathBuf,
@@ -116,6 +122,7 @@ pub struct CaptureReader {
     by_identity: BTreeMap<FileIdentity, KnownContent>,
     directories: BTreeMap<PathBuf, DirectorySnapshot>,
     missing: BTreeMap<PathBuf, (usize, PathBuf)>,
+    kinds: BTreeMap<PathBuf, kinds::KindSnapshot>,
     spool: std::sync::Arc<tempfile::TempDir>,
     started: std::time::Instant,
     deadline: std::time::Duration,
@@ -269,6 +276,7 @@ impl CaptureReader {
             by_identity: BTreeMap::new(),
             directories: BTreeMap::new(),
             missing: BTreeMap::new(),
+            kinds: BTreeMap::new(),
             spool,
             started,
             deadline,
@@ -713,6 +721,19 @@ impl CaptureReader {
                 path: root.requested.clone(),
                 real: root.real.clone(),
                 exact: root.exact.clone(),
+            });
+        }
+        for (path, snapshot) in self.kinds {
+            control()?;
+            ensure!(
+                kinds::anchored_kind(&self.roots[snapshot.root], &snapshot.relative)?
+                    == snapshot.entry,
+                "CAPTURE_ENTRY_KIND_CHANGED: {}",
+                path.display()
+            );
+            observations.push(ResolutionObservation::Entry {
+                path,
+                entry: snapshot.entry,
             });
         }
         let mut blobs = Vec::new();

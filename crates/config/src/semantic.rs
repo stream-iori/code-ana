@@ -12,6 +12,12 @@ pub(crate) fn configuration(config: &ProjectConfig) -> String {
     if let Some(python) = &mut languages.python {
         python.discovery.inputs_manifest = None;
     }
+    for script in [&mut languages.javascript, &mut languages.typescript]
+        .into_iter()
+        .flatten()
+    {
+        script.discovery.inputs_manifest = None;
+    }
     digest(&(&languages, &config.modules))
 }
 
@@ -23,6 +29,7 @@ pub(crate) fn context(config: &ProjectConfig, inputs: &[UnitInput]) -> String {
                 UnitInput::Java { metadata } => metadata.as_ref().map(|m| m.semantic_digest()),
                 UnitInput::Rust { metadata } => Some(metadata.semantic_digest()),
                 UnitInput::Python { metadata } => Some(digest(metadata)),
+                UnitInput::TypeScript { metadata } => Some(metadata.semantic_digest()),
             };
             (input.backend(), identity)
         })

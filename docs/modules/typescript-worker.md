@@ -1,6 +1,6 @@
 # TypeScript worker
 
-当前完成 T0、T2a、本机 T2b 及 T3 输入发现组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；Go 显式准备入口已记录编译器输入，配置/公共 capture、公开图语义与产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
+当前完成 T0、T2a、本机 T2b 及 T3 输入发现组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；Go 显式准备入口已记录编译器输入，显式配置/公共 capture 已接入，prepare provider、公开图语义与产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
 
 ```text
 Rust worker → Request protobuf → Go 独立会话 / goroutine
@@ -78,3 +78,11 @@ fixture SDK 只在显式 `--dev-abi-fixture` 构建时对本仓库 overlay 增�
 私有 `PreparationInventory` 只在 worker 内解码。先执行有界 wire 准入，再显式映射到 `model::typescript::Inputs`；model/config 不依赖引擎 protobuf。model 的 Context/文件角色/目录/链接/缺失观察均为严格类型，SDK 语义身份包括实际库摘要，不只比较 adapter 名称。清单没有安装路径或 generation 字段；文件/观察枚举规范化，编译器 root/reference 顺序保留。
 
 当前实际 Prepare 组件写出 `native-inputs.json`，验证其库 SHA 与 SDK 文件清单一致。12 场景、20 ABI 检查、模型 79 / contracts 39 / worker 3 项聚焦及 clippy 通过，见 `target/typescript-c-abi/t3-native-inputs-sealed/receipt.json`。公共 config/provider/capture 尚未消费该模型；下一步接生产路径，不将类型测试算作输入闭包全部验收。
+
+## 公共 capture 接入
+
+JS/TS 各自显式启用，共用原生清单与依赖根。普通输入按 compiler context 拆成独立单元，分别持有 manifest/观察/正文；同一文件可在不同 world 出现。共享捕获器新增 EntryKind 元数据观察，与完整目录枚举分开，封存时复核；精确缺失路径即使父目录尚未存在，也不授权相邻文件读取。Go 只消费后续从这些正文构造的冻结视图，不从活工作区补缺。
+
+最新真实门禁 `tests/typescript_inputs_e2e.py` 从正常 SDK 调用 Go Prepare，再用其实际原生清单进入公共 Rust capture，删除 3 个活输入后验证全部捕获正文。普通 Rust 门禁不要求 Go，专项用例显式 ignored；`just test-typescript-inputs SDK EVIDENCE` 必须实际执行，已通过且无产物漂移。完整 `just test-rust` 同轮通过。汇总：`target/typescript-c-abi/t3-config-capture-sealed/receipt.json`。
+
+当前仍需注册 CLI prepare provider，补齐 references/pnpm/多配置闭包与冻结 Go 分析的产品链路，随后完成 T4—T8。历史段落所列“未消费”是对应组件检查点状态，不表示本轮已完成整个 T3。

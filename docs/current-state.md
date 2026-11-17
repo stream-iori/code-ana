@@ -15,6 +15,20 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 配置与公共 capture（2026-11-18，部分出口已验证）
+
+| 当前实现 | 实际证据 |
+|---|---|
+| 显式 JS/TS 配置 | 独立 enabled、共用一份原生清单和有序依赖根；禁用标签不能发布；缺清单时报错，FILES 无需语义清单 |
+| 单元和冻结 | 每个原生 compiler context 拥有独立捕获视图；文件、控制、辅助角色与 world 保留；发布过滤不移除 Checker 必需字节 |
+| 文件系统观察 | 公共捕获器区分 file/directory/other/缺失；目录存在不等于完整枚举；精确外部缺失观察不授权相邻文件内容；封存时复核 |
+| 验证 | 配置 63、声明链接 13、类型观察 5、JS/TS 输入 11 项通过；完整 `just test-rust` 与 Python 独立 workspace 核心/clippy 通过 |
+| 真实清单 | 固定 Go SDK → protobuf inventory → 原生 JSON → 公共 Rust capture；3 个必要正文封存后删除活文件，全部捕获正文仍可读取；2 个发布源、1 个实例，产物无漂移 |
+
+证据：`target/typescript-c-abi/t3-config-capture-sealed/receipt.json`，真实门禁为 `t3-actual-public-capture-first/receipt.json`。独立真实编译器用例在无 Go 的普通 Rust 门禁显式 ignored，在 `just test-typescript-inputs` 中强制执行，已单独通过；Java 的既有真实 G1 teardown 用例仍按 SDK 专项入口验证，不计为本轮 Native 放行。原测试编译错误及多上下文整份/单份清单比较失败保留。
+
+T3 尚未完成：CLI prepare provider、references/pnpm/复杂配置真值和完整闭包仍待接入；后续 T4—T8 公开语义、产品、故障和实际分发继续实施。配置/捕获成功不代表现在可用 CLI 索引 JS/TS。本轮没有重新构建 Java Native 或进行性能测量。
+
 ## TypeScript T3 输入发现组件（2026-11-18；产品接入继续实施）
 
 | 已验证 | 证据 / 边界 |
