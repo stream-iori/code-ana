@@ -31,6 +31,68 @@ impl UnitMergePlan {
         after: &Revision,
         hosts: &BTreeMap<AnalysisBackend, AnalysisContext>,
     ) -> Result<Self, DomainError> {
+        Self::reserve_validation(before, after, hosts)?;
+        Self::all_reused(before, after)
+            .map_err(|e| DomainError::new(ErrorCode::ResultIdentityMismatch, e))
+    }
+
+    pub fn new_with_budget(
+        before: &Revision,
+        after: &Revision,
+        updates: Vec<UnitUpdate>,
+        hosts: &BTreeMap<AnalysisBackend, AnalysisContext>,
+    ) -> Result<Self, DomainError> {
+        Self::reserve_validation(before, after, hosts)?;
+        // Each side permits 10,000 units; disjoint removal/addition uses their union.
+        if updates.len() > 20_000 {
+            return Err(DomainError::new(
+                ErrorCode::ResultIdentityMismatch,
+                "UNIT_MERGE_MEMBERSHIP",
+            ));
+        }
+        let owners: BTreeMap<_, _> = before
+            .unit_ownership
+            .iter()
+            .chain(after.unit_ownership.iter())
+            .flat_map(|l| &l.units)
+            .map(|u| (&u.unit, u.backend))
+            .collect();
+        for update in &updates {
+            let backend = owners.get(&update.unit).ok_or_else(|| {
+                DomainError::new(ErrorCode::ResultIdentityMismatch, "UNIT_MERGE_MEMBERSHIP")
+            })?;
+            let host = hosts
+                .get(backend)
+                .ok_or_else(|| DomainError::analysis(AnalysisFailure::InvalidUsage))?;
+            let bytes =
+                update
+                    .replacements
+                    .iter()
+                    .fold(512u64 + update.unit.len() as u64, |n, o| {
+                        n.saturating_add(256).saturating_add(
+                            (o.id.len() + o.world.len() + o.producer.len() + o.kind.len()) as u64
+                                * 4,
+                        )
+                    });
+            host.charge(
+                (update.replacements.len() as u64)
+                    .saturating_add(1)
+                    .saturating_mul(32)
+                    .saturating_add(bytes.div_ceil(64)),
+                0,
+                bytes,
+            )
+            .map_err(DomainError::analysis)?;
+        }
+        Self::new(before, after, updates)
+            .map_err(|e| DomainError::new(ErrorCode::ResultIdentityMismatch, e))
+    }
+
+    fn reserve_validation(
+        before: &Revision,
+        after: &Revision,
+        hosts: &BTreeMap<AnalysisBackend, AnalysisContext>,
+    ) -> Result<(), DomainError> {
         for revision in [before, after] {
             let ledger = revision.unit_ownership.as_ref().ok_or_else(|| {
                 DomainError::new(
@@ -74,8 +136,7 @@ impl UnitMergePlan {
                 .map_err(DomainError::analysis)?;
             }
         }
-        Self::all_reused(before, after)
-            .map_err(|e| DomainError::new(ErrorCode::ResultIdentityMismatch, e))
+        Ok(())
     }
     /// Validate every old/new unit, including units that emit no graph rows.
     pub fn new(

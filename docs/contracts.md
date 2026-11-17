@@ -16,7 +16,7 @@
 | profile / 输入 digest | 包含实际工具链、依赖顺序、adapter/模型/规则及语义配置；执行预算另记录 |
 | replacement owners | 源文件/资源/producer 的替换范围包含删除和零输出，避免留下旧事实 |
 
-当前 graph model 6、worker 25、analysis request/result 13、C ABI 4、daemon handshake 7；javac-model-v51、compiler batch 2。图库物理 user_version 15，上游逻辑 schema 36、GraphSemantics 28，adapter `anatomist-4a903272-codeana-graph6-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
+当前 graph model 6、worker 25、analysis request/result 13、C ABI 4、daemon handshake 7；javac-model-v51、compiler batch 2。图库物理 user_version 16，上游逻辑 schema 36、GraphSemantics 28，adapter `anatomist-4a903272-codeana-graph6-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
 
 SDK manifest 使用公共 schema 4；Java Native 3 / JVM 2 等旧格式要求重建。公共字段为 `version/worker_protocol/fact_ir/adapter/graph_schema/graph_encoding/os/arch/files`，`backend` 为类型化对象：
 

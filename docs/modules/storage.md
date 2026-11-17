@@ -122,3 +122,6 @@ CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage
 
 
 物理 schema 16 保存 node_units 的逐单元最终定义摘要、声明摘要与 arity，不记录原始行日志。相同公开节点 ID 只有最终定义兼容时才能共享；无来源节点只能被实际交付该定义的单元引用。边、注解和调用点 owner 保存主机分配的 unit_pk，推导 wiring 使用独立 host_derived 标记，不从 producer 名猜归属。精确引用与 Java 名称／arity 补全均限制在本单元及显式声明的输入路径/world 内；辅助输入只授权目标绑定，不授权发布调用者或注解 owner。Delta 对活动单元的无来源定义和观察采用完整快照替换，显式 Reused 保留原归属。基线事实沿用原 hash，避免数据库默认值在复用重算时制造重复边。旧 schema 15 及更早要求显式全量重建。元注解、辅助缓存/依赖的完整逐单元归属、任意更新模式混合和公共执行器继续待办。
+
+
+R4 的混合暂存组件 `stage_mixed_graph_records_with_context` 接受逐单元更新意图，持有同一个旧 revision 读者复核 UnitMergePlan，再在同一候选中替换 Full/Delta、保留 Reuse、清理 Removed/FilesOnly 的已归属数据。允许项目汇总 profile 改变，复用资格仍逐单元严格检查；Full 单元交付完整快照，Delta 来源必须在自身替换闭包内，不能借用其他单元的范围。Reuse、Removed、FilesOnly 不接受新单元行，混合入口也不接受 Fixture 无签名语义行。Host 行独立代表本次任务观察的完整快照。模型的混合验证与更新范围预付使用任务原 host 账户，拒绝保留原预算错误码。当前仅完成节点、边/注解/调用 owner 及四类 metadata 的组件合并回归，尚未由公共产品执行器调用；元注解和辅助缓存/依赖的逐单元归属仍须补齐后才能签混合产品验收。

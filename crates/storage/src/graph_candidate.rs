@@ -9,15 +9,34 @@ use sha2::Digest;
 enum GraphSeed<'a> {
     Analyze(&'a AnalysisHeader),
     Reused(&'a AnalysisHeader),
+    Mixed(&'a AnalysisHeader, &'a UnitMergePlan),
 }
-impl GraphSeed<'_> {
+impl<'a> GraphSeed<'a> {
     fn header(&self) -> &AnalysisHeader {
         match self {
-            Self::Analyze(h) | Self::Reused(h) => h,
+            Self::Analyze(h) | Self::Reused(h) | Self::Mixed(h, _) => h,
         }
     }
     fn is_reused(self) -> bool {
         matches!(self, Self::Reused(_))
+    }
+    fn executes(self, unit: &AnalysisUnitId) -> bool {
+        match self {
+            Self::Mixed(..) => self
+                .update(unit)
+                .is_some_and(|u| matches!(u.kind, UnitUpdateKind::Full | UnitUpdateKind::Delta)),
+            Self::Analyze(_) => true,
+            Self::Reused(_) => false,
+        }
+    }
+    fn update(self, unit: &AnalysisUnitId) -> Option<&'a UnitUpdate> {
+        let Self::Mixed(_, plan) = self else {
+            return None;
+        };
+        plan.updates()
+            .binary_search_by(|u| u.unit.cmp(unit))
+            .ok()
+            .map(|i| &plan.updates()[i])
     }
 }
 fn validate_reused_baseline(
@@ -47,6 +66,76 @@ fn validate_reused_baseline(
     Ok(())
 }
 impl Store {
+    /// Merge independently verified unit deliveries into one private candidate.
+    /// Worker receipts remain the caller's responsibility; this checks ownership
+    /// and update ranges against the exact retained revision, including zero output.
+    /// Host rows are a complete task observation snapshot, independent of unit reuse.
+    #[allow(clippy::too_many_arguments)]
+    pub fn stage_mixed_graph_records_with_context(
+        &self,
+        revision: Revision,
+        updates: Vec<UnitUpdate>,
+        records: impl Iterator<Item = Result<GraphRecord>>,
+        expected: &str,
+        cancellation: impl Fn() -> Result<()>,
+        check_directory: impl Fn(&Path) -> Result<()>,
+        context: Option<&GraphStagingContext>,
+    ) -> Result<StagedCandidate> {
+        cancellation()?;
+        let old = if expected.is_empty() {
+            None
+        } else {
+            Some(self.read(expected)?)
+        };
+        let empty = Revision {
+            id: String::new(),
+            target: revision.target.clone(),
+            project: revision.project.clone(),
+            checkout: revision.checkout.clone(),
+            manifest: Manifest::default(),
+            profile: String::new(),
+            producer: String::new(),
+            created: 0,
+            unit_ownership: Some(UnitOwnershipLedger {
+                version: UNIT_OWNERSHIP_VERSION,
+                units: vec![],
+            }),
+        };
+        let before = old.as_ref().map(|r| &r.revision).unwrap_or(&empty);
+        let plan = if let Some(context) = context {
+            UnitMergePlan::new_with_budget(before, &revision, updates, &context.hosts)?
+        } else {
+            UnitMergePlan::new(before, &revision, updates)
+                .map_err(|e| DomainError::new(ErrorCode::ResultIdentityMismatch, e))?
+        };
+        let header = AnalysisHeader {
+            mode: if expected.is_empty() {
+                AnalysisMode::Full
+            } else {
+                AnalysisMode::Delta
+            },
+            baseline: expected.into(),
+            manifest: revision.manifest.id(),
+            profile: revision.profile.clone(),
+            producer: revision.producer.clone(),
+            replacements: plan
+                .updates()
+                .iter()
+                .flat_map(|u| &u.replacements)
+                .cloned()
+                .collect(),
+        };
+        self.stage_graph_records_inner(
+            revision,
+            GraphSeed::Mixed(&header, &plan),
+            records,
+            expected,
+            cancellation,
+            check_directory,
+            context,
+            old,
+        )
+    }
     pub fn stage_graph_records(
         &self,
         revision: Revision,
@@ -107,6 +196,7 @@ impl Store {
             cancellation,
             check_directory,
             context,
+            None,
         )
     }
     pub fn stage_reused_graph_with_context(
@@ -133,6 +223,7 @@ impl Store {
             cancellation,
             check_directory,
             context,
+            None,
         )
     }
     #[allow(clippy::too_many_arguments)]
@@ -145,6 +236,7 @@ impl Store {
         cancellation: impl Fn() -> Result<()>,
         check_directory: impl Fn(&Path) -> Result<()>,
         context: Option<&GraphStagingContext>,
+        pinned_baseline: Option<ReadContext>,
     ) -> Result<StagedCandidate> {
         let header = seed.header();
         if let Some(ledger) = &revision.unit_ownership {
@@ -168,9 +260,16 @@ impl Store {
                 header.baseline == expected,
                 codeana_model::DomainError::new(codeana_model::ErrorCode::BaselineMismatch, "")
             );
-            let r = self.read(expected)?;
+            let r = match pinned_baseline {
+                Some(r) => r,
+                None => self.read(expected)?,
+            };
             ensure!(
-                r.revision.profile == revision.profile,
+                r.revision.id == expected,
+                DomainError::new(ErrorCode::BaselineMismatch, "")
+            );
+            ensure!(
+                matches!(seed, GraphSeed::Mixed(..)) || r.revision.profile == revision.profile,
                 codeana_model::DomainError::new(codeana_model::ErrorCode::ProfileMismatch, "")
             );
             if seed.is_reused() {
@@ -240,6 +339,17 @@ impl Store {
         graph_store::initialize_stage(&stage)?;
         let unit_pks =
             graph_store::unit_metadata::setup(&db, &stage, &revision, context, !seed.is_reused())?;
+        if let GraphSeed::Mixed(_, plan) = seed {
+            stage.execute("DELETE FROM stage_active_units", [])?;
+            for update in plan
+                .updates()
+                .iter()
+                .filter(|u| u.kind != UnitUpdateKind::Reuse)
+            {
+                stage.execute("INSERT INTO stage_active_units SELECT unit_pk FROM unit_catalog WHERE unit_id=?", [update.unit.as_str()])?;
+            }
+            stage.execute("INSERT INTO stage_active_units VALUES(0)", [])?;
+        }
         graph_store::unit_nodes::setup(&stage, &revision, &unit_pks, context)?;
         // The retained baseline catalogue is available to reference resolution without
         // importing or materializing any serialized Fact IR.
@@ -267,6 +377,18 @@ impl Store {
             .filter(|o| o.kind == "source")
             .map(|o| (o.id.as_str(), o.world.as_str()))
             .collect();
+        let unit_ranges: BTreeSet<_> = if let GraphSeed::Mixed(_, plan) = seed {
+            plan.updates()
+                .iter()
+                .flat_map(|u| {
+                    u.replacements
+                        .iter()
+                        .map(|o| (&u.unit, o.id.as_str(), o.world.as_str()))
+                })
+                .collect()
+        } else {
+            BTreeSet::new()
+        };
         let unit_scopes = revision
             .unit_ownership
             .as_ref()
@@ -274,7 +396,7 @@ impl Store {
                 ledger
                     .units
                     .iter()
-                    .filter(|u| u.availability == UnitAvailability::Ready)
+                    .filter(|u| u.availability == UnitAvailability::Ready && seed.executes(&u.unit))
                     .map(|unit| {
                         let budget = context.and_then(|c| c.hosts.get(&unit.backend));
                         let scope = codeana_graph_io::scope::Scope::from_sources(
@@ -299,6 +421,7 @@ impl Store {
                 check()?;
             }
             let GraphRecord { origin, row } = row?;
+            let mut row_delta = header.mode == AnalysisMode::Delta;
             let unit_pk = match &origin {
                 Origin::Unit(unit) => {
                     let (scope, backend) =
@@ -306,7 +429,37 @@ impl Store {
                             ErrorCode::AnalysisUnitScope,
                             "unknown or unavailable delivery unit",
                         ))?;
-                    scope.row(&row)?;
+                    let world = scope.source_world(&row)?;
+                    if let Some(update) = seed.update(unit) {
+                        row_delta = update.kind == UnitUpdateKind::Delta;
+                        if row_delta && let Some(world) = world {
+                            let column = codeana_graph_io::scope::source_columns(
+                                codeana_contracts::graph::Table::try_from(row.table)?,
+                            )
+                            .context("unit source column missing")?
+                            .source;
+                            let path = row
+                                .cells
+                                .get(column)
+                                .and_then(|cell| match cell.value.as_ref() {
+                                    Some(codeana_contracts::graph::cell::Value::Text(path)) => {
+                                        Some(path.as_str())
+                                    }
+                                    _ => None,
+                                })
+                                .context(DomainError::new(
+                                    ErrorCode::GraphColumnType,
+                                    "unit source text missing",
+                                ))?;
+                            ensure!(
+                                unit_ranges.contains(&(unit.as_ref(), path, world)),
+                                DomainError::new(
+                                    ErrorCode::GraphSourceNotReplaced,
+                                    "unit cannot borrow a peer replacement range"
+                                )
+                            );
+                        }
+                    }
                     graph_store::unit_nodes::admit(
                         &row,
                         context.and_then(|c| c.hosts.get(backend)),
@@ -321,6 +474,13 @@ impl Store {
                     0
                 }
                 Origin::Fixture => {
+                    ensure!(
+                        !matches!(seed, GraphSeed::Mixed(..)),
+                        DomainError::new(
+                            ErrorCode::AnalysisUnitScope,
+                            "mixed deliveries require a host-assigned unit"
+                        )
+                    );
                     graph_store::unit_nodes::admit(
                         &row,
                         context.and_then(|c| c.hosts.values().next()),
@@ -328,7 +488,7 @@ impl Store {
                     0
                 }
             };
-            let owner = validate_record(&row, &sources, &replaced, header.mode == "delta")?;
+            let owner = validate_record(&row, &sources, &replaced, row_delta)?;
             if matches!(
                 codeana_contracts::graph::Table::try_from(row.table),
                 Ok(codeana_contracts::graph::Table::Comment
@@ -1122,5 +1282,12 @@ mod tests {
 }
 
 #[cfg(test)]
+#[path = "graph_mixed_tests.rs"]
+mod mixed_tests;
+#[cfg(test)]
 #[path = "graph_world_tests.rs"]
 mod world_tests;
+
+#[cfg(test)]
+#[path = "graph_test_support.rs"]
+mod test_support;
