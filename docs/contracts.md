@@ -286,7 +286,7 @@ R3 的语义 profile 使用核实后的上下文 semantic_digest，Java toolchai
 
 同一捕获路径有多个实例归属时，Java 既有未填写 world 的行按其显式 module/scope 选择来源，不取路径上的第一个 world。显式非空 world 仍必须精确匹配；无归属、错 module/scope 仍拒绝。仅调整私有候选的来源校验，不修改公开 ID、GRA1 列或物理 schema。
 
-主机 CaptureScope 显式区分 Task 与 Unit，单元上下文仅保留对应后端的输入/语言/模块并共享 TaskConfig；不加入 wire 或 profile 的文件系统观察。普通和 prepared 捕获共用单元构造入口。各现行路径的 RunningUnit 拥有输入守卫、捕获视图和会话状态，替代按数组位置配对；未启动/错后端/外部 manifest 拒绝，启动前核对实例 grant。计划与保守/prepared 启动按后端、稳定实例 ID 排序；普通 Rust+Java 暂沿 Rust 优先的旧增量策略，待统一执行器迁移。
+主机 CaptureScope 显式区分 Task 与 Unit，单元上下文仅保留对应后端的输入/语言/模块并共享 TaskConfig；不加入 wire 或 profile 的文件系统观察。普通和 prepared 捕获共用单元构造入口。各现行路径的 RunningUnit 拥有输入守卫、捕获视图和会话状态，替代按数组位置配对；未启动/错后端/外部 manifest 拒绝，启动前核对实例 grant。所有普通/prepared 单元按后端、稳定实例 ID 排序，经公共执行器调度；Java/Rust 增量策略只决定自身单元的更新与基线。
 
 revision 的主机元数据新增 `unit_ownership.version=2`：稳定实例、后端、Ready/FilesOnly、发布语言、模块/world/scope、producer、独立语义 profile/输入摘要、完整发布来源与完整输入及其辅助角色。范围从冻结输入取得，包含零输出单元/来源；辅助输入参与输入摘要，但不能取得发布归属。同一 world/path 的发布来源不能归两个单元。storage 在创建私有候选前校验清单，随 revision.json、catalog 和同一次 CAS 持久化；不改变公开 ID、GRA1 列、图库物理 schema 或 worker 协议。旧 revision 缺清单或只有 v1 仍可读取原事实，语义增量返回 `UNIT_OWNERSHIP_REBUILD_REQUIRED`，必须 `index --full` 建立新清单后切 head。
 
@@ -300,3 +300,5 @@ PlannedUnit 保留 Ready/FilesOnly/Removed；Removed 取自旧清单，不从当
 主机内部暂存输入区分 Analysis 与 Reused。后者仅在 worker 交付有效 Reused 回执后请求，不能带新行；存储再检查全局及逐单元语义身份、来源与角色。它保留基线的全局诊断/coverage/字典；普通空 delta 不取得这种保留权限。外部 Begin/End 和 CLI 的既有索引模式编码保持。
 
 候选及单元基线 SQL 接续原 host 账户：VM/I/O、连接/cache/排序工作区及派生集合须准入；单元基线计入自身后端，共享合并计入固定首个 host。工作区按同时存活对象预付，已计入 payload 的容量可在同一 scope 内复用，关闭不退还用量或重发 grant。磁盘检查接收匿名/已 unlink 文件及待增长字节，在 xWrite/xTruncate/shmMap 前拒绝超限；首次失败在嵌套映射、后续取消及清理中保持原身份。`host_scratch_bytes` 由宿主执行，不新增 worker/Java ABI 字段，也不改变 graph schema 或公开 ID。
+
+原生 Java/Rust/Python 描述符在普通和 prepared 捕获中统一登记为 PREPARATION；实际构建控制文件仍为 CONTROL。完整性 SHA 校验保持，规范化语义 profile 决定复用。显式原生视图与等价 prepared 输入不因描述符角色不同而重做全量。

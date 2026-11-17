@@ -6,7 +6,7 @@ import sqlite3
 import subprocess
 import unittest
 import comment_search_e2e as comments
-import python_language_e2e as python
+from python_product_support import PythonHarness
 import rust_language_e2e as rust
 from product_support import JavaProductHarness
 
@@ -51,7 +51,7 @@ class DisabledJava(rust.RustHarness):
             user.write_text('schema_version=1\nkind="user"\n[limits]\nmax_worker_memory_bytes=3221225472\nmax_total_worker_memory_bytes=6442450944\n')
         # Explicit Rust inputs bypass ignore discovery; isolate the newly added Java sources too.
         subprocess.run(['git', 'init', '--quiet'], cwd=self.project, check=True, capture_output=True)
-        python.PythonLanguage.add_java(self)
+        PythonHarness.add_java(self)
         (self.project/'src/p/CommentOwner.java').write_text('package p;\n/** 语言停用文档 */\nclass CommentOwner {}\n')
         config = self.project / '.code-ana/config.toml'
         # Match the pre-existing mixed-language lifecycle matrix's fixed total request.

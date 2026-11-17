@@ -368,7 +368,9 @@ class PreparedPythonBudget(prepared.PreparedInputs):
         self.assertEqual(recovered['publication'], 'published')
 
 
-class PreparedRustBudget(prepared.PreparedInputs):
+class PreparedRustBudget(prepared.PreparedHarness):
+    required_backends = frozenset({"rust"})
+    copy_fixture = False
     def test_prepared_reuse_finishes_every_instance(self):
         self.config = 'schema_version=1\nkind="project"\n[languages.rust]\nenabled=true\n[resources.index]\nworker_memory_bytes=1073741824\n[inputs]\n'
         for name in ('rust-a', 'rust-b'):
@@ -443,7 +445,13 @@ class PreparedRustBudget(prepared.PreparedInputs):
         self.assertTrue(any(w['state']=='failed' and w['usage']['failure']['Limit']['resource']=='work' for s in report['languages'] for w in s['workers']), report)
         workers=report['languages'][0]['workers']
         self.assertEqual(len(workers),2)
-        self.assertEqual(workers[0]['grant']['limits'],workers[1]['grant']['limits'])
+        self.assertEqual([w['grant']['id'].rsplit('/',1)[-1] for w in workers], ['unit-a','unit-b'])
+        allocation=report['languages'][0]['allocation']['worker']
+        for field in ('max_work','max_nodes','max_payload_bytes'):
+            shares=[w['grant']['limits'][field] for w in workers]
+            self.assertEqual(sum(shares),allocation[field])
+            self.assertIn(shares[0]-shares[1],(0,1))
+        self.assertTrue(all(w['grant']['limits']['max_depth']==allocation['max_depth'] for w in workers))
         for worker in workers:
             self.assertLessEqual(worker['usage']['work'],worker['grant']['limits']['max_work'])
         self.assertFalse(report['complete'])

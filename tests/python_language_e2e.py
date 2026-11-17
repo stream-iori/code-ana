@@ -16,80 +16,10 @@ from python_product_audit import audit_calls
 from product_support import ProductHarness, ROOT, BIN, FIX, JDK
 
 
-class PythonLanguage(ProductHarness):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix='python-language-', dir=ROOT/'target')
-        self.root = pathlib.Path(self.temp.name)
-        self.home, self.project = self.root/'home', self.root/'project'
-        fixture = FIX/'python/inference'
-        shutil.copytree(fixture if fixture.exists() else ROOT/'fixtures/python/inference', self.project)
-        # Isolate the fixture from the parent repository's ignored target/ tree.
-        subprocess.run(['git', 'init', '--quiet'], cwd=self.project, check=True, capture_output=True)
-        (self.project/'.code-ana').mkdir()
-        (self.project/'.code-ana/config.toml').write_text('schema_version=1\nkind="project"\n[languages.python]\nenabled=true\n[languages.python.discovery]\ninputs_manifest=".code-ana/python-inputs.json"\n')
-        self.home.mkdir(mode=0o700)
-        (self.home/'config.toml').write_text('schema_version=1\nkind="user"\n[limits]\nmax_worker_memory_bytes=1073741824\nmax_total_worker_memory_bytes=2147483648\n')
-        self.export()
-        self.daemon, self.log = None, None
-        self.addCleanup(self.cleanup)
-        self.log = open(self.root/'daemon.log', 'a')
-        self.daemon = subprocess.Popen([str(BIN/'codeana-daemon'), '--home', str(self.home)], stdout=self.log, stderr=self.log)
-        until = time.monotonic()+10
-        while not (self.home/'endpoint.json').exists():
-            if self.daemon.poll() is not None or time.monotonic()>until:
-                raise RuntimeError(self.daemon_log())
-            time.sleep(.05)
+from python_product_support import PythonHarness
 
-    def export(self):
-        script = BIN/'codeana-export-python-inputs'
-        if not script.exists():
-            script = ROOT/'scripts/export-python-inputs.py'
-        subprocess.run(['python3', str(script), '--project', str(self.project), '--source-root', '.', '--python-version', '3.12', '--platform', 'darwin'], check=True, capture_output=True)
 
-    def db(self, revision):
-        return contextlib.closing(sqlite3.connect(self.home/'revisions'/revision/'facts.db'))
-
-    def canonical(self, revision):
-        with self.db(revision) as db:
-            result = {}
-            for table in ('nodes', 'edges', 'analysis_coverage', 'index_diagnostics'):
-                columns = [r[1] for r in db.execute('PRAGMA table_info('+table+')')
-                           if not (r[1] == 'id' and table != 'nodes')]
-                result[table] = sorted(db.execute('SELECT '+','.join(columns)+' FROM '+table).fetchall(), key=repr)
-            result['calls'] = sorted(db.execute('SELECT hex(c.stable_hash),o.caller_id,o.source_file,c.resolution_status,t.target_id,t.external_target_fqn FROM call_sites c JOIN call_site_owners o USING(owner_pk) LEFT JOIN call_site_targets t ON t.call_site_pk=c.site_pk').fetchall(), key=repr)
-            return result
-
-    def add_rust(self):
-        fixture = FIX/'rust/workspace'
-        shutil.copytree(fixture if fixture.exists() else ROOT/'fixtures/rust/workspace', self.project, dirs_exist_ok=True)
-        config = self.project/'.code-ana/config.toml'
-        config.write_text(config.read_text()+'\n[languages.rust]\nenabled=true\n')
-        subprocess.run(['cargo', 'generate-lockfile', '--offline'], cwd=self.project, check=True, capture_output=True)
-        script = BIN/'codeana-export-rust-inputs'
-        subprocess.run(['python3', str(script if script.exists() else ROOT/'scripts/export-rust-inputs.py'), '--project', str(self.project)], check=True, capture_output=True)
-
-    def add_java(self):
-        config = self.project/'.code-ana/config.toml'
-        fixture = FIX/'java-native/base'
-        if not fixture.exists():
-            fixture = ROOT/'tests/fixtures/java-native/base'
-        java_config = (fixture/'.code-ana/config.toml').read_text()
-        config.write_text(config.read_text()+'\n'+java_config[java_config.index('[languages.java]'):])
-        shutil.copytree(fixture/'src', self.project/'src', dirs_exist_ok=True)
-        user = self.home/'config.toml'
-        user.write_text(user.read_text().replace('max_worker_memory_bytes=1073741824', 'max_worker_memory_bytes=3221225472').replace('max_total_worker_memory_bytes=2147483648', 'max_total_worker_memory_bytes=6442450944')+'\n[toolchains.java8]\nlanguage="java"\nhome='+json.dumps(str(JDK))+'\n')
-        # User toolchains are read at daemon startup.
-        self.stop()
-        self.log = open(self.root/'daemon.log', 'a')
-        self.daemon = subprocess.Popen([str(BIN/'codeana-daemon'), '--home', str(self.home)], stdout=self.log, stderr=self.log)
-        until = time.monotonic()+10
-        while time.monotonic() < until:
-            check = subprocess.run([str(BIN/'codeana-cli'), '--home', str(self.home), 'daemon', 'status'], capture_output=True)
-            if check.returncode == 0:
-                return
-            time.sleep(.05)
-        self.fail(self.daemon_log())
-
+class PythonLanguage(PythonHarness):
     def test_inference_queries_reuse_strict_and_stale_inputs(self):
         _, terminal = self.cli('index', timeout=90)
         first = terminal['revision']
@@ -138,9 +68,11 @@ class PythonLanguage(ProductHarness):
     def test_optional_pyproject_controls_and_current_inventory(self):
         pyproject = self.project/'pyproject.toml'
         fixture = FIX/'python/metadata/pyproject.toml'
-        pyproject.write_bytes((fixture if fixture.exists() else ROOT/'fixtures/python/metadata/pyproject.toml').read_bytes())
+        if not fixture.exists() and 'CODEANA_TEST_FIXTURES' not in os.environ:
+            fixture = ROOT/'fixtures/python/metadata/pyproject.toml'
+        pyproject.write_bytes(fixture.read_bytes())
         script = BIN/'codeana-export-python-inputs'
-        if not script.exists():
+        if not script.exists() and 'CODEANA_TEST_BIN' not in os.environ:
             script = ROOT/'scripts/export-python-inputs.py'
         def metadata_export():
             subprocess.run(['python3', str(script), '--project', str(self.project), '--source-root', '.',

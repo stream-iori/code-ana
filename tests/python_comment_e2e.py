@@ -3,21 +3,10 @@
 import unittest
 import copy
 import json
-from product_support import ProductHarness, ROOT, FIX
-import python_language_e2e as language
+from python_product_support import PythonHarness
 
-class PythonComments(ProductHarness):
-    setUp = language.PythonLanguage.setUp
-    export = language.PythonLanguage.export
-    db = language.PythonLanguage.db
-    add_rust = language.PythonLanguage.add_rust
-    add_java = language.PythonLanguage.add_java
-
-    def prepare(self):
-        source=self.project/'comments.py'
-        source.write_bytes(((FIX/'python/comment-indexing/comments.py') if (FIX/'python/comment-indexing/comments.py').exists() else (ROOT/'fixtures/python/comment-indexing/comments.py')).read_bytes())
-        self.export()
-        return source,self.cli('index','--full',timeout=120)[1]['revision']
+class PythonComments(PythonHarness):
+    prepare = PythonHarness.prepare_comment_fixture
 
     def canonical_comments(self,revision):
         with self.db(revision) as db:

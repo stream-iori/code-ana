@@ -11,14 +11,19 @@ from product_support import ProductHarness, ROOT, BIN, JDK
 
 
 class PreparedHarness(ProductHarness):
+    required_backends = frozenset({"python"})
+    copy_fixture = True
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='prepared-inputs-', dir=ROOT/'target')
         self.root = pathlib.Path(self.temp.name)
         self.project, self.home = self.root/'project', self.root/'home'
-        fixture = pathlib.Path(os.environ.get('CODEANA_TEST_FIXTURES', ROOT/'fixtures'))/'python/preparation'
-        if not fixture.exists():
-            fixture = ROOT/'fixtures/python/preparation'
-        shutil.copytree(fixture, self.project)
+        if self.copy_fixture:
+            fixture = pathlib.Path(os.environ.get('CODEANA_TEST_FIXTURES', ROOT/'fixtures'))/'python/preparation'
+            if not fixture.exists() and 'CODEANA_TEST_FIXTURES' not in os.environ:
+                fixture = ROOT/'fixtures/python/preparation'
+            shutil.copytree(fixture, self.project)
+        else:
+            self.project.mkdir()
         subprocess.run(['git', 'init', '--quiet'], cwd=self.project, check=True)
         (self.project/'.code-ana').mkdir()
         self.home.mkdir(mode=0o700)

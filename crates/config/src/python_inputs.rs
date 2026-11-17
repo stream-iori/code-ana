@@ -109,7 +109,7 @@ pub(super) fn capture(
         bytes,
         (
             String::new(),
-            "CONTROL".into(),
+            "PREPARATION".into(),
             String::new(),
             String::new(),
         ),

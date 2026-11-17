@@ -9,6 +9,7 @@ import time
 import sys
 import unittest
 from acceptance_support import identities,summarize
+from backend_test_support import select_cases
 import java_jvm_product_gate as evidence
 
 DEBUG_ONLY={
@@ -47,15 +48,19 @@ def main():
         tests.extend(evidence.flatten(unittest.defaultTestLoader.loadTestsFromTestCase(module.PythonLanguage)))
         module=importlib.import_module('prepared_inputs_e2e')
         for test in evidence.flatten(unittest.defaultTestLoader.loadTestsFromTestCase(module.PreparedInputs)):
-            if test._testMethodName=='test_independent_maven_reactors_and_three_languages':
-                exclusions[test.id()]='Java SDK distributed and tested separately'
-            else:tests.append(test)
+            selected, excluded = select_cases([test], {'rust','python'})
+            tests.extend(selected);exclusions.update(excluded)
+    matrix=importlib.import_module('multilang_analysis_e2e')
+    selected,excluded=matrix.cases({'rust'} if args.kind=='rust' else {'rust','python'})
+    tests.extend(selected);exclusions.update(excluded)
+    for name in (['rust_comment_e2e'] if args.kind=='rust' else ['rust_comment_e2e','python_comment_e2e']):
+        tests.extend(evidence.flatten(unittest.defaultTestLoader.loadTestsFromModule(importlib.import_module(name))))
     resources=importlib.import_module('analysis_resources_e2e')
     # Honor the resource module's explicit gate; inherited legacy test methods
     # are outside this matrix and can otherwise pull in an unbundled Java SDK.
     for test in evidence.flatten(unittest.defaultTestLoader.loadTestsFromModule(resources)):
         if isinstance(test,resources.JavaBudget):continue
-        if args.kind=='rust' and not isinstance(test,resources.RustBudget):continue
+        if args.kind=='rust' and not isinstance(test,(resources.RustBudget,resources.PreparedRustBudget)):continue
         tests.append(test)
     expected=[test.id() for test in tests]
     (output/'expected-cases.json').write_text(json.dumps(expected,indent=2)+'\n')

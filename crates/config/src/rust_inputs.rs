@@ -330,6 +330,11 @@ pub(super) fn capture(
             ensure!(hash(&bytes) == *expected, "RUST_INPUTS_STALE");
         }
         if !manifest.files.iter().any(|f| f.path == control) {
+            let scope = if control == path {
+                "PREPARATION"
+            } else {
+                "CONTROL"
+            };
             add_captured(
                 manifest,
                 blobs,
@@ -337,12 +342,7 @@ pub(super) fn capture(
                 spool,
                 control,
                 bytes,
-                (
-                    String::new(),
-                    "CONTROL".into(),
-                    String::new(),
-                    String::new(),
-                ),
+                (String::new(), scope.into(), String::new(), String::new()),
             )?;
         }
     }

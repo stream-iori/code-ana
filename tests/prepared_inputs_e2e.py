@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Unified input preparation through real workers; no target compilation."""
+import argparse
+import sys
 import contextlib
 import json
 import os
@@ -12,6 +14,9 @@ import time
 import unittest
 from product_support import ROOT, BIN, JDK
 from prepared_product_support import PreparedHarness
+
+
+from backend_test_support import requires_backends, select_cases, run_cases
 
 
 class PreparedInputs(PreparedHarness):
@@ -334,7 +339,7 @@ source_roots=[{path=".",scope="MAIN"}]
         self.assertEqual(report['result']['execution'], 'failed')
         self.assertFalse(report['global']['measurements_available'])
 
-    @unittest.skipUnless(os.environ.get('CODEANA_TEST_REAL_JAVA') == '1', 'explicit Native Java SDK gate')
+    @requires_backends('java', 'python')
     def test_late_preparation_failure_reaps_started_units_and_retains_head(self):
         self.config += '\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\nclasspath="existing"\nvm_classpath=true\n'
         for name, kind, method in [('java-first','First','first'), ('java-last','Last','last')]:
@@ -369,7 +374,7 @@ source_roots=[{path=".",scope="MAIN"}]
         self.assertNotEqual(recovered['revision'], initial['revision'])
         self.assertTrue(self.cli('resolve', 'last')[0])
 
-    @unittest.skipUnless(os.environ.get('CODEANA_TEST_REAL_JAVA') == '1', 'explicit Native Java SDK gate')
+    @requires_backends('java', 'python')
     def test_same_maven_root_in_independent_contexts_keeps_both_owners(self):
         self.config += '\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\nclasspath="existing"\nvm_classpath=true\n'
         path = self.project/'java-shared'
@@ -409,7 +414,7 @@ source_roots=[{path=".",scope="MAIN"}]
         with self.db(removed['revision']) as db:
             self.assertEqual({r[0] for r in db.execute("SELECT DISTINCT module FROM nodes WHERE source_file='java-shared/src/main/java/Shared.java'")}, {'first'})
 
-    @unittest.skipUnless(os.environ.get('CODEANA_TEST_REAL_JAVA') == '1', 'explicit real Java SDK gate')
+    @requires_backends('java', 'python')
     def test_meta_annotations_do_not_cross_independent_java_contexts(self):
         self.config = '''schema_version=1
 kind="project"
@@ -467,7 +472,7 @@ vm_classpath=true
         check(full, 'ChangedMarker')
         self.assertFalse(list(self.project.rglob('*.class')), 'index must not compile the fixture project')
 
-    @unittest.skipUnless(os.environ.get('CODEANA_TEST_REAL_JAVA') == '1', 'explicit Native Java SDK gate')
+    @requires_backends('java', 'rust', 'python')
     def test_independent_maven_reactors_and_three_languages(self):
         self.add_python_comment_inputs()
         self.config += '\n[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\nclasspath="existing"\nvm_classpath=true\n'
@@ -516,5 +521,23 @@ vm_classpath=true
         self.assertTrue(self.cli('resolve', 'beta')[0])
 
 
+def main():
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('--backends')
+    parser.add_argument('--evidence')
+    args, remaining = parser.parse_known_args()
+    if remaining:
+        if args.backends or args.evidence:
+            parser.error('named unittest selectors use the direct runner; declare a complete scoped suite separately')
+        unittest.main(argv=[sys.argv[0],*remaining])
+        return 0
+    backends = (args.backends or ('java,rust,python' if os.environ.get('CODEANA_TEST_REAL_JAVA')=='1' else 'rust,python')).split(',')
+    if not backends or len(set(backends))!=len(backends) or set(backends)-{'java','rust','python'}:
+        parser.error('declare distinct java,rust,python backends')
+    from java_jvm_product_gate import flatten
+    tests, excluded = select_cases(flatten(unittest.defaultTestLoader.loadTestsFromTestCase(PreparedInputs)),backends)
+    return run_cases(tests,backends,excluded,args.evidence)
+
+
 if __name__ == '__main__':
-    unittest.main()
+    raise SystemExit(main())

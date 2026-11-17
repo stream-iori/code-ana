@@ -157,3 +157,14 @@ RPC 任务终态仍是类型化 protobuf。stdout 为结果/显式观察事件�
 fixture 原始输入和人工编写的查询预期见 `tests/fixtures/`；`build_mock.py` 仅生成固定测试数据，不是从任意源码提取语义的解析器。发布和报告故障点仅在 debug 构建的显式 mock home 下响应 `CODEANA_TEST_FAULT`；release 构建无此路径。
 
 真实 Rust 语言入口：见 [Rust worker](modules/rust-worker.md)。分发包新增 `codeana-rust-worker` 和 `codeana-export-rust-inputs`（使用 `python3` 执行）。
+
+## 多语言重构门禁
+
+| 入口 | 验证范围 |
+|---|---|
+| `just test-multilang` | Java/Rust/Python 单语言、两两、三语言；普通/prepared、Full/Delta/Reuse、删除、重命名及一次发布 |
+| `python3 tests/prepared_inputs_e2e.py --backends java,rust,python --evidence /absolute/new/evidence` | 全部 19 项真实准备场景，含同后端多独立上下文 |
+| `just test-rust-release` | 包内 Rust 语义、更新、注释、共享预算及 mock 协议；显式排除开发专用故障钩子 |
+| `just test-python-release /absolute/package` | 包内 Rust/Python、准备和组合语义；四项 Java 准备测试声明为范围排除 |
+
+`tests/backend_test_support.py` 统一选择后端范围并记录排除项。已声明范围内出现 skip 必须失败；缺后端不能以 skip 认证通过。分发门禁校验全部包文件 SHA，显式包路径的 fixture/导出器缺失不得回退开发源码。Native SDK 需要独立安装与验证。

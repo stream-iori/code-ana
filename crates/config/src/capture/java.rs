@@ -52,7 +52,7 @@ pub(super) fn capture_java_metadata(
             metadata,
             (
                 String::new(),
-                "CONTROL".into(),
+                "PREPARATION".into(),
                 String::new(),
                 String::new(),
             ),

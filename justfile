@@ -28,6 +28,7 @@ smoke:
 check-architecture:
   python3 scripts/check-architecture.py
   python3 tests/architecture_boundary_tests.py
+  python3 tests/backend_gate_tests.py
 
 test-rust:
   just check-architecture
@@ -51,10 +52,7 @@ test-rust:
 
 test-rust-release:
   ./scripts/package-rust.sh
-  cd "dist/codeana-rust-$(uname -s)-$(uname -m)" && shasum -a 256 -c SHA256SUMS
-  CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_graph_e2e.py
-  CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_language_e2e.py
-  CODEANA_TEST_BIN="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/bin" CODEANA_TEST_FIXTURES="$PWD/dist/codeana-rust-$(uname -s)-$(uname -m)/fixtures" python3 tests/rust_comment_e2e.py
+  python3 tests/release_fixture_gate.py --kind rust --package "dist/codeana-rust-$(uname -s)-$(uname -m)" --evidence "target/rust-release-$(date +%Y%m%d-%H%M%S)"
 
 demo-rust:
   ./scripts/demo-rust.sh
@@ -168,8 +166,8 @@ test-python:
   ./scripts/build-python.sh
   python3 tests/python_language_e2e.py
   python3 tests/python_comment_e2e.py
-  python3 tests/prepared_inputs_e2e.py
-  python3 tests/multilang_analysis_e2e.py
+  python3 tests/prepared_inputs_e2e.py --backends rust,python
+  python3 tests/multilang_analysis_e2e.py --backends rust,python
 
 package-python output:
   cargo build --release --workspace --locked
@@ -177,17 +175,13 @@ package-python output:
   python3 scripts/package-python.py --output '{{output}}'
 
 test-python-release package:
-  cd '{{package}}' && shasum -a 256 -c SHA256SUMS
-  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/python_language_e2e.py
-  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/python_comment_e2e.py
-  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/multilang_analysis_e2e.py
-  CODEANA_TEST_BIN="$(cd '{{package}}/bin' && pwd)" CODEANA_TEST_FIXTURES="$(cd '{{package}}/fixtures' && pwd)" python3 tests/prepared_inputs_e2e.py
+  python3 tests/release_fixture_gate.py --kind python --package '{{package}}' --evidence "target/python-release-$(date +%Y%m%d-%H%M%S)"
 
 # Java combinations require the matching installed Native SDK.
 test-python-mixed:
   python3 tests/comment_mixed_e2e.py
   python3 tests/python_language_e2e.py PythonJava.test_java_python_and_three_language_publication
-  CODEANA_TEST_REAL_JAVA=1 python3 tests/prepared_inputs_e2e.py PreparedInputs.test_independent_maven_reactors_and_three_languages
+  CODEANA_TEST_REAL_JAVA=1 python3 tests/prepared_inputs_e2e.py --backends java,rust,python
 
 # Unified-budget acceptance requires a matching installed Native Java SDK.
 # No skip/expected-failure: production wiring gaps fail this gate.
@@ -230,8 +224,8 @@ test-java17:
   CODEANA_JAVA_BACKEND=jvm python3 tests/java17_e2e.py
   CODEANA_JAVA_BACKEND=native python3 tests/java17_e2e.py
 
-# Real Rust/Python per-unit Full/Delta/Reuse/Removed/FilesOnly publication.
+# Real single/pair/triple backends and per-unit Full/Delta/Reuse/Removed/FilesOnly.
 test-multilang:
   cargo build --workspace --locked
   ./scripts/build-python.sh
-  python3 tests/multilang_analysis_e2e.py
+  CODEANA_JAVA_BACKEND=native CODEANA_TEST_REAL_JAVA=1 python3 tests/multilang_analysis_e2e.py --backends java,rust,python

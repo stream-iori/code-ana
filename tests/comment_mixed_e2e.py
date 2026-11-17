@@ -2,8 +2,7 @@
 """All language pairs and one three-language comment publication use the same planner."""
 import subprocess
 import unittest
-import python_comment_e2e as python_comments
-import python_language_e2e as python
+from python_product_support import PythonHarness
 import rust_language_e2e as rust
 from product_support import ProductHarness, ROOT, FIX
 
@@ -31,12 +30,8 @@ def assert_languages(test,expected):
             test.assertEqual(link['comment'],row['comment']['id'])
 
 
-class PythonMixedComments(ProductHarness):
-    setUp=python.PythonLanguage.setUp
-    export=python.PythonLanguage.export
-    add_rust=python.PythonLanguage.add_rust
-    add_java=python.PythonLanguage.add_java
-    prepare=python_comments.PythonComments.prepare
+class PythonMixedComments(PythonHarness):
+    prepare=PythonHarness.prepare_comment_fixture
 
     def test_python_rust_comments(self):
         self.prepare(); self.add_rust(); rust_comments(self.project); self.export()
@@ -65,7 +60,7 @@ class JavaRustComments(rust.RustHarness):
         if not user.exists():
             user.write_text('schema_version=1\nkind="user"\n[limits]\nmax_worker_memory_bytes=3221225472\nmax_total_worker_memory_bytes=6442450944\n')
         subprocess.run(['git','init','--quiet'],cwd=self.project,check=True,capture_output=True)
-        python.PythonLanguage.add_java(self);java_comments(self.project);rust_comments(self.project)
+        PythonHarness.add_java(self);java_comments(self.project);rust_comments(self.project)
         config=self.project/'.code-ana/config.toml'
         config.write_text(config.read_text()+'\n[resources.index]\nworker_memory_bytes=1073741824\n')
         rust.exporter.export(self.project,self.project/'.code-ana/rust-inputs.json')

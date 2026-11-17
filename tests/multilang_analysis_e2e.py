@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
 """Real per-unit execution and one publication; no target compilation or mocks."""
+import contextlib
+import argparse
+import itertools
+import os
+import pathlib
+import time
 import json
 import sqlite3
 import subprocess
@@ -7,6 +13,9 @@ import unittest
 
 from graph_product_support import canonical_graph
 from prepared_product_support import PreparedHarness
+from python_product_support import PythonHarness
+from product_support import ROOT, BIN
+from backend_test_support import required_backends, requires_backends, select_cases, run_cases
 
 
 class MultilangAnalysis(PreparedHarness):
@@ -20,6 +29,25 @@ class MultilangAnalysis(PreparedHarness):
         graph['comments'] = sorted(json.dumps(row['comment'], sort_keys=True, ensure_ascii=False)
                                    for row in comments)
         return graph
+
+    def test_native_view_ordinary_and_prepared_have_the_same_semantics(self):
+        self.config = 'schema_version=1\nkind="project"\n[languages.python]\nenabled=true\n[inputs]\n[[inputs.entries]]\nid="python"\nlanguage="python"\nroot="common"\n'
+        self.write_config()
+        first = self.cli('index', '--prepare', '--full', timeout=180)[1]['revision']
+        expected = canonical_graph(self, first)
+        unit = self.catalog()['units'][0]
+        native = (self.project/unit['config']['path']).read_text()
+        self.config = 'schema_version=1\nkind="project"\n'+native
+        self.write_config()
+        (self.project/'.code-ana/inputs.json').unlink()
+        result = self.cli('index', timeout=180)[1]
+        ordinary = result['revision']
+        with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
+            events = [row[0] for row in db.execute('SELECT body FROM events WHERE task=? ORDER BY seq',(result['report'],))]
+        self.assertTrue(any('unit_result python reuse' in event for event in events), events)
+        self.assertEqual(canonical_graph(self, ordinary), expected)
+        self.assertEqual(canonical_graph(self, first), expected)
+        self.assertEqual({u['unit'] for u in self.ownership(ordinary)['units']}, {'python'})
 
     def test_host_sql_scratch_limit_keeps_ready_and_files_only_heads(self):
         ready = self.config
@@ -47,6 +75,7 @@ class MultilangAnalysis(PreparedHarness):
                 self.write_config()
                 self.assertEqual(self.cli('index', '--prepare', '--full', timeout=180)[1]['publication'], 'published')
 
+    @requires_backends("rust", "python")
     def test_five_update_modes_share_one_candidate_and_match_full(self):
         self.add_python_comment_inputs()
         self.config += '\n[languages.rust]\nenabled=true\n'
@@ -74,12 +103,12 @@ class MultilangAnalysis(PreparedHarness):
         (unavailable/'missing.py').write_text('"""准备库存文档"""\nvalue = 1\n')
         self.config += '\n[[inputs.entries]]\nid="unavailable"\nlanguage="python"\nroot="unavailable"\n'
         self.write_config()
-        with sqlite3.connect(self.home/'catalog.db') as db:
+        with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
             before = {row[0] for row in db.execute('SELECT id FROM revisions')}
         result = self.cli('index', '--prepare', timeout=180)[1]
         mixed = result['revision']
         self.assertFalse(result['evidence']['semantic'])
-        with sqlite3.connect(self.home/'catalog.db') as db:
+        with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
             after = {row[0] for row in db.execute('SELECT id FROM revisions')}
             events = [row[0] for row in db.execute('SELECT body FROM events WHERE task=? ORDER BY seq',
                                                   (result['report'],))]
@@ -114,5 +143,117 @@ class MultilangAnalysis(PreparedHarness):
         self.assertFalse(list(self.project.rglob('target')), 'analysis must not build target crates')
 
 
+class OrdinaryMatrix(PythonHarness):
+    def setUp(self):
+        self.include_python = 'python' in required_backends(self)
+        super().setUp()
+
+    def run_backends(self, backends):
+        if 'java' in backends:
+            self.add_java()
+        if 'rust' in backends:
+            self.add_rust()
+        config = self.project/'.code-ana/config.toml'
+        if 'python' not in backends:
+            config.write_text(config.read_text().replace('[languages.python]\nenabled=true', '[languages.python]\nenabled=false'))
+        if self.include_python:
+            self.export()
+        first_result = self.publish_once('index', '--full', timeout=180)[1]
+        first = first_result['revision']
+        historical = canonical_graph(self, first)
+        with self.db(first) as db:
+            self.assertEqual({r[0] for r in db.execute('SELECT DISTINCT language FROM nodes')}, set(backends))
+        ownership = json.loads((self.home/'revisions'/first/'revision.json').read_text())['unit_ownership']
+        self.assertEqual({u['unit'] for u in ownership['units']}, set(backends))
+        reused = self.publish_once('index', timeout=180)[1]
+        self.assertEqual(canonical_graph(self, reused['revision']), historical)
+        self.assert_modes(reused, {backend:'reuse' for backend in backends})
+
+        if 'python' in backends:
+            source = self.project/'main.py'
+            source.write_text(source.read_text()+'\n# matrix changed Python input\n')
+        if 'rust' in backends:
+            source = self.project/next(s['path'] for unit in ownership['units'] for s in unit['sources'] if s['language']=='rust')
+            source.write_text(source.read_text()+'\n// matrix changed Rust input\n')
+            script = BIN/'codeana-export-rust-inputs'
+            if not script.exists() and 'CODEANA_TEST_BIN' not in os.environ:
+                script = ROOT/'scripts/export-rust-inputs.py'
+            subprocess.run(['python3', str(script), '--project', str(self.project)], check=True, capture_output=True)
+        if 'java' in backends:
+            source = self.project/next(s['path'] for unit in ownership['units'] for s in unit['sources'] if s['language']=='java')
+            source.write_text(source.read_text()+'\n// matrix changed Java input\n')
+        if self.include_python:
+            self.export()
+        changed = self.publish_once('index', timeout=180)[1]
+        self.assert_modes(changed, {backend:('full' if backend=='python' else 'delta') for backend in backends})
+        expected = canonical_graph(self, changed['revision'])
+        full = self.publish_once('index', '--full', timeout=180)[1]['revision']
+        self.assertEqual(canonical_graph(self, full), expected)
+        self.assertEqual(canonical_graph(self, first), historical)
+        if 'python' in backends:
+            (self.project/'main.py').rename(self.project/'matrix_renamed.py')
+            self.export()
+            renamed = self.publish_once('index', timeout=180)[1]['revision']
+            with self.db(renamed) as db:
+                self.assertEqual(db.execute("SELECT count(*) FROM nodes WHERE language='python' AND source_file='main.py'").fetchone()[0],0)
+                self.assertGreater(db.execute("SELECT count(*) FROM nodes WHERE language='python' AND source_file='matrix_renamed.py'").fetchone()[0],0)
+            expected = canonical_graph(self, renamed)
+            full = self.publish_once('index', '--full', timeout=180)[1]['revision']
+            self.assertEqual(canonical_graph(self, full), expected)
+        self.assertFalse(list(self.project.rglob('target')), 'index cannot build the target crate')
+        self.assertFalse(list(self.project.rglob('*.class')), 'index cannot emit target Java bytecode')
+
+    def publish_once(self, *args, **kwargs):
+        with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
+            before = {row[0] for row in db.execute('SELECT id FROM revisions')}
+        response = self.cli(*args, **kwargs)
+        result = response[1]
+        self.assertEqual(result['publication'], 'published')
+        with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
+            after = {row[0] for row in db.execute('SELECT id FROM revisions')}
+        self.assertEqual(after-before, {result['revision']}, 'one task must publish exactly one candidate')
+        return response
+
+    def assert_modes(self, result, modes):
+        with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
+            events = [row[0] for row in db.execute('SELECT body FROM events WHERE task=? ORDER BY seq', (result['report'],))]
+        for unit, mode in modes.items():
+            self.assertTrue(any(f'unit_result {unit} {mode}' in event for event in events), (unit,mode,events))
+
+
+def ordinary_case(backends):
+    @requires_backends(*backends)
+    def test(self):
+        self.run_backends(backends)
+    return test
+
+
+for size in (1,2,3):
+    for combination in itertools.combinations(('java','rust','python'), size):
+        setattr(OrdinaryMatrix, 'test_'+'_'.join(combination), ordinary_case(combination))
+
+
+def cases(backends):
+    from java_jvm_product_gate import flatten
+    tests = []
+    for cls in (MultilangAnalysis, OrdinaryMatrix):
+        tests.extend(flatten(unittest.defaultTestLoader.loadTestsFromTestCase(cls)))
+    return select_cases(tests, backends)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--backends', default='java,rust,python', help='explicit supported scope; Java requires its real installed SDK')
+    parser.add_argument('--evidence', type=pathlib.Path)
+    args = parser.parse_args()
+    backends = args.backends.split(',')
+    if not backends or len(set(backends))!=len(backends) or set(backends)-{'java','rust','python'}:
+        parser.error('declare distinct java,rust,python backends')
+    tests, excluded = cases(backends)
+    if not tests:
+        parser.error('empty declared product scope')
+    return run_cases(tests, backends, excluded, args.evidence)
+
+
 if __name__ == '__main__':
-    unittest.main()
+    raise SystemExit(main())

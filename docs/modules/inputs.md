@@ -118,7 +118,7 @@ Java plain 使用已有显式模块根，不运行 Maven，仍需正确的 Java 
 
 当前版本为 worker 25、daemon 7、Java ABI 4、graph 6、物理 schema 17。准备与索引不是跨进程事务，报告以实际捕获和提交为准。分析 worker 和 Java SDK 仍须按安装说明具备。
 
-验证入口为 tests/prepared_inputs_e2e.py；CODEANA_TEST_REAL_JAVA=1 显式启用 Native 三语言及两个独立 Maven reactor。旧路径继续由现有 Rust/Python 门禁覆盖。
+验证入口为 `tests/prepared_inputs_e2e.py --backends java,rust,python --evidence /absolute/new/evidence`，显式执行全部 19 项，包括 Native 三语言及两个独立 Maven reactor；Rust/Python 分发声明 `--backends rust,python`，明确列出四项 Java 范围排除。已选后端缺失或测试 skip 均判失败。
 
 准备清单 schema 2 只使用 config_sha256 精确校验原始配置字节；注释展示参数及 preparation_sha256 例外已删除。schema 1/旧例外清单、配置字节变化或输入策略变化均需重新 index --prepare；artifact、来源和任务前后配置漂移检查保持。
 
@@ -126,7 +126,7 @@ Java plain 使用已有显式模块根，不运行 Maven，仍需正确的 Java 
 
 捕获边界：公共 workspace 遍历在 `config/capture.rs`；Java metadata/依赖捕获在 `capture/java.rs`，只负责 Java 输入；`capture/blob.rs` 负责冻结字节及 spool 所有权，Rust/Python 使用相同字节捕获能力。语言配置 wire 兼容与实际 Java/Rust 视图分离，公共扫描和资源配置继续共享；源 hash、owner/world、捕获顺序和资源准入规则不变。
 
-内部配置已拆为共享 TaskConfig 和类型化 UnitInput；prepared 单元保存扁平 ResolvedContext，不再递归包含整份 Effective。运行时分配内存上限时先更新共享任务策略，再生成各单元视图。普通入口的多语言计划与统一执行器仍在后续重构范围。
+内部配置已拆为共享 TaskConfig 和类型化 UnitInput；prepared 单元保存扁平 ResolvedContext，不再递归包含整份 Effective。运行时分配内存上限时先更新共享任务策略，再生成各单元视图。普通与 prepared 入口已使用同一单元计划及公共执行器。
 
 
 ## R3 捕获登记与语义摘要（进行中）
@@ -221,3 +221,5 @@ Java 的每个声明 jar 路径都核对原字节，不能因相同 SHA 的另�
 普通后端上下文只保留自己的 UnitInput、语言配置和模块，并引用同一 TaskConfig；配置解析期间的原生发现也按后端登记观察，prepared 的现有实例作用域保持。Java 的流式/归档结果先按单元 manifest 核实，私有候选使用完整 revision manifest，FILES 仍保留全项目资源。
 
 Java 单元还保留项目根模块的 XML 资源输入规则：启用 Spring XML/SOFA 时，把公共扫描选中的项目 XML 纳入该视图，跳过 pom.xml；原生资源根已有 owner 时保持该 owner，Lombok 控制仍独立捕获。不会因此把 Cargo.toml 等无关控制或其他语言源码交给 Java。根资源目录观察随单元保留，XML 内容变更继续参与增量与资源限制检查。
+
+普通与 prepared 原生描述符均以 PREPARATION 登记，只承担字节完整性校验；有效配置进入语义 profile。pom.xml、Cargo.toml、pyproject.toml 等实际控制文件仍以 CONTROL 登记并参与失效判断。等价原生视图从 prepared 改为普通入口时可 Reuse；旧普通角色清单至多触发一次保守全量。
