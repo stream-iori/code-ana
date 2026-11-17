@@ -26,9 +26,20 @@ class SdkContract(unittest.TestCase):
             java(jvm, 'native')
         ts = copy.deepcopy(jvm)
         ts['backend'] = dict(kind='typescript', abi=1, analysis_request=1,
-            upstream_commit='a' * 40, go_version='go1.26.2', build_options=['-buildmode=c-shared'],
+            upstream_commit='a' * 40, typescript_commit='d' * 40, compiler_version='7.0.0',
+            analysis_proto_sha256='e' * 64, graph_proto_sha256='f' * 64,
+            go_version='go1.26.2', build_options=['-buildmode=c-shared'],
             standard_library={'lib.d.ts': 'b' * 64}, header_sha256='c' * 64)
         validate_manifest(ts)
+        for key in ('typescript_commit', 'compiler_version', 'analysis_proto_sha256', 'graph_proto_sha256'):
+            invalid = copy.deepcopy(ts)
+            del invalid['backend'][key]
+            with self.subTest(missing=key), self.assertRaises(ValueError):
+                validate_manifest(invalid)
+            invalid = copy.deepcopy(ts)
+            invalid['backend'][key] = ''
+            with self.subTest(empty=key), self.assertRaises(ValueError):
+                validate_manifest(invalid)
         ts['backend']['target_java'] = [8, 17]
         with self.assertRaisesRegex(ValueError, 'MANIFEST_INVALID'):
             validate_manifest(ts)

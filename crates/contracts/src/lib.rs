@@ -13,6 +13,11 @@ pub mod protobuf {
             tonic::include_proto!("codeana.worker.v1");
         }
     }
+    pub mod typescript {
+        pub mod v1 {
+            tonic::include_proto!("codeana.typescript.v1");
+        }
+    }
 }
 pub use protobuf::{graph::v1 as graph, worker::v1 as worker};
 pub mod analysis_budget;

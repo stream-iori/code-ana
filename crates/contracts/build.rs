@@ -1,6 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let files =
-        ["hello", "task", "worker", "graph"].map(|s| format!("../../proto/codeana/v1/{s}.proto"));
+    let mut files = ["hello", "task", "worker", "graph"]
+        .map(|s| format!("../../proto/codeana/v1/{s}.proto"))
+        .to_vec();
+    files.push("../../proto/codeana/typescript/v1/analysis.proto".into());
     tonic_prost_build::configure()
         .boxed("codeana.worker.v1.BuildContext.details.java")
         .boxed("codeana.worker.v1.Discover.config.java")

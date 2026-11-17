@@ -34,6 +34,10 @@ pub struct TypeScriptIdentity {
     pub abi: u32,
     pub analysis_request: u32,
     pub upstream_commit: String,
+    pub typescript_commit: String,
+    pub compiler_version: String,
+    pub analysis_proto_sha256: String,
+    pub graph_proto_sha256: String,
     pub go_version: String,
     pub build_options: Vec<String>,
     pub standard_library: BTreeMap<String, String>,
@@ -114,6 +118,14 @@ impl BundleManifest {
                             .upstream_commit
                             .bytes()
                             .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                        && ts.typescript_commit.len() == 40
+                        && ts
+                            .typescript_commit
+                            .bytes()
+                            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+                        && !ts.compiler_version.is_empty()
+                        && digest(&ts.analysis_proto_sha256)
+                        && digest(&ts.graph_proto_sha256)
                         && !ts.go_version.is_empty()
                         && !ts.build_options.is_empty()
                         && ts.build_options.iter().all(|v| !v.is_empty())
@@ -204,7 +216,10 @@ mod tests {
             assert_eq!(serde_json::to_value(&typed).unwrap(), source);
         }
         let mut source = manifest(json!({"kind":"typescript", "abi":1, "analysis_request":1,
-            "upstream_commit":"a".repeat(40), "go_version":"go1.26.2", "build_options":["-buildmode=c-shared"],
+            "upstream_commit":"a".repeat(40), "typescript_commit":"d".repeat(40),
+            "compiler_version":"7.0.0", "analysis_proto_sha256":"e".repeat(64),
+            "graph_proto_sha256":"f".repeat(64),
+            "go_version":"go1.26.2", "build_options":["-buildmode=c-shared"],
             "standard_library":{"lib.d.ts":"b".repeat(64)}, "header_sha256":"c".repeat(64)}));
         source["producer_metadata"] = json!({"backend":"unregistered"});
         let typed = BundleManifest::parse(&serde_json::to_vec(&source).unwrap()).unwrap();
@@ -213,6 +228,19 @@ mod tests {
             .unwrap();
         assert!(typed.java().is_err());
         assert_eq!(serde_json::to_value(typed).unwrap(), source);
+        for field in [
+            "typescript_commit",
+            "compiler_version",
+            "analysis_proto_sha256",
+            "graph_proto_sha256",
+        ] {
+            let mut missing = source.clone();
+            missing["backend"].as_object_mut().unwrap().remove(field);
+            assert!(BundleManifest::parse(&serde_json::to_vec(&missing).unwrap()).is_err());
+            let mut empty = source.clone();
+            empty["backend"][field] = json!("");
+            assert!(BundleManifest::parse(&serde_json::to_vec(&empty).unwrap()).is_err());
+        }
         source["backend"]["target_java"] = json!([8, 17]);
         assert!(BundleManifest::parse(&serde_json::to_vec(&source).unwrap()).is_err());
     }

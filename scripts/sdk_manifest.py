@@ -71,12 +71,18 @@ def validate_manifest(manifest):
         else:
             raise ValueError('SDK_JAVA_RUNTIME_INVALID')
     elif kind == 'typescript':
-        _keys(backend, ('kind', 'abi', 'analysis_request', 'upstream_commit', 'go_version',
+        _keys(backend, ('kind', 'abi', 'analysis_request', 'upstream_commit', 'typescript_commit',
+                        'compiler_version', 'analysis_proto_sha256', 'graph_proto_sha256', 'go_version',
                         'build_options', 'standard_library', 'header_sha256'))
         for key in ('abi', 'analysis_request'):
             _positive(backend[key])
-        if not isinstance(backend['upstream_commit'], str) or not re.fullmatch('[0-9a-f]{40}', backend['upstream_commit']):
-            raise ValueError('SDK_UPSTREAM_INVALID')
+        for key in ('upstream_commit', 'typescript_commit'):
+            if not isinstance(backend[key], str) or not re.fullmatch('[0-9a-f]{40}', backend[key]):
+                raise ValueError('SDK_UPSTREAM_INVALID')
+        if not isinstance(backend['compiler_version'], str) or not backend['compiler_version']:
+            raise ValueError('SDK_COMPILER_VERSION_REQUIRED')
+        if not all(_digest(backend[key]) for key in ('analysis_proto_sha256', 'graph_proto_sha256')):
+            raise ValueError('SDK_PROTO_IDENTITY_INVALID')
         if not isinstance(backend['go_version'], str) or not backend['go_version']:
             raise ValueError('SDK_GO_VERSION_REQUIRED')
         if not isinstance(backend['build_options'], list) or not backend['build_options'] or any(not isinstance(v, str) or not v for v in backend['build_options']):

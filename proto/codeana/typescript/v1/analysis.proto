@@ -1,0 +1,177 @@
+syntax = "proto3";
+package codeana.typescript.v1;
+option go_package = "github.com/microsoft/typescript-go/codeana/typescriptpb";
+
+import "codeana/v1/worker.proto";
+
+// Private engine protocol, independently versioned from worker IPC and Java.
+// No compiler objects, arbitrary metadata or language-combination orchestration.
+message RuntimeIdentity {
+  uint32 abi = 1;
+  uint32 analysis_request = 2;
+  uint32 worker_protocol = 3;
+  uint32 graph_model = 4;
+  uint32 graph_schema = 5;
+  string adapter = 6;
+  string upstream_commit = 7;
+  string typescript_commit = 8;
+  string compiler_version = 9;
+  string go_version = 10;
+  string standard_library_digest = 11;
+  string analysis_proto_sha256 = 12;
+  string graph_proto_sha256 = 13;
+  reserved 14 to 19;
+}
+
+enum SourceLanguage {
+  SOURCE_LANGUAGE_UNSPECIFIED = 0;
+  JAVASCRIPT = 1;
+  TYPESCRIPT = 2;
+}
+
+enum FileRole {
+  FILE_ROLE_UNSPECIFIED = 0;
+  PUBLISH = 1;
+  AUXILIARY = 2;
+  CONTROL = 3;
+}
+
+// Paths identify the logical VFS, never a scratch copy or content-object path.
+message FileIdentity {
+  string path = 1;
+  string sha256 = 2;
+  uint64 size = 3;
+  FileRole role = 4;
+  SourceLanguage language = 5;
+  string module = 6;
+  string scope = 7;
+  string world = 8;
+}
+message FrozenFile {
+  FileIdentity file = 1;
+  bytes content = 2;
+}
+message Directory {
+  string path = 1;
+  repeated string files = 2;
+  repeated string directories = 3;
+}
+message SymbolicLink {
+  string path = 1;
+  string target = 2;
+  string allowed_root = 3;
+}
+enum LookupKind {
+  LOOKUP_KIND_UNSPECIFIED = 0;
+  FILE = 1;
+  DIRECTORY = 2;
+}
+message AbsentLookup {
+  string path = 1;
+  LookupKind kind = 2;
+}
+message ProjectContext {
+  string unit = 1;
+  string root = 2;
+  string config_path = 3;
+  repeated SourceLanguage publish_languages = 4;
+  reserved 5;
+  repeated Directory directories = 6;
+  repeated SymbolicLink links = 7;
+  repeated AbsentLookup absent = 8;
+  repeated string root_files = 9;
+  repeated string references = 10;
+  reserved 11 to 19;
+}
+message FrozenProject {
+  ProjectContext context = 1;
+  repeated FrozenFile files = 2;
+}
+message PreparationInventory {
+  ProjectContext context = 1;
+  repeated FileIdentity files = 2;
+}
+
+// Preparation alone may read these explicitly permitted live roots. It never
+// executes package managers, plugins, target builds, interpreters or target code.
+message Prepare {
+  string unit = 1;
+  string project_root = 2;
+  string config_path = 3;
+  repeated SourceLanguage publish_languages = 4;
+  repeated string allowed_roots = 5;
+  string module = 6;
+  string scope = 7;
+  string world = 8;
+  string scratch = 9;
+  uint64 inventory_bytes = 10;
+  uint64 file_limit = 11;
+  uint64 scratch_bytes = 12;
+}
+message OutputLimits {
+  uint64 archive_bytes = 1;
+  uint64 rows = 2;
+  uint64 scratch_bytes = 3;
+}
+message Analyze {
+  FrozenProject project = 1;
+  string semantic_profile = 2;
+  string scratch = 3;
+  OutputLimits output = 4;
+}
+message Request {
+  uint32 version = 1;
+  string request_id = 2;
+  RuntimeIdentity expected_runtime = 3;
+  codeana.worker.v1.AnalysisBudgetGrant grant = 4;
+  codeana.worker.v1.AnalysisBudgetUsage seed = 5;
+  optional uint64 deadline_ms = 6;
+  oneof operation {
+    Prepare prepare = 10;
+    Analyze analyze = 11;
+  }
+  reserved 7 to 9, 12 to 19;
+}
+
+message Archive {
+  string path = 1; // Safe relative regular file under this task's scratch.
+  uint64 bytes = 2;
+  uint64 count = 3;
+  string sha256 = 4; // Original sealed bytes; never a re-encoded checksum.
+}
+message AnalysisResult {
+  Archive graph = 1;
+}
+// PreparationInventory protobuf file; no full project bytes in the result.
+// Rust validates and captures its declared inputs before building FrozenProject.
+message PreparedResult {
+  Archive inventory = 1;
+}
+enum FailureCode {
+  FAILURE_CODE_UNSPECIFIED = 0;
+  INVALID_REQUEST = 1;
+  INPUT_LIMIT = 2;
+  INPUT_STALE = 3;
+  UNSUPPORTED_CONTEXT = 4;
+  CANCELLED = 5;
+  TIMEOUT = 6;
+  RESOURCE_LIMIT = 7;
+  INTERNAL_PANIC = 8;
+  IO_FAILURE = 9;
+}
+message Failure {
+  FailureCode code = 1;
+  string message = 2;
+}
+message Result {
+  uint32 version = 1;
+  string request_id = 2;
+  RuntimeIdentity runtime = 3;
+  codeana.worker.v1.AnalysisBudgetReceipt receipt = 4;
+  oneof outcome {
+    AnalysisResult analysis = 10;
+    PreparedResult prepared = 11;
+    Failure failure = 12;
+  }
+  reserved 5 to 9, 13 to 19;
+}

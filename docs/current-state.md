@@ -15,6 +15,10 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T2a 生产契约草案（2026-11-18）
+
+C ABI 1 header、私有 analysis protobuf 1、状态/所有权和公共设施对接已定义；SDK 的 TypeScript 变体强制校验子模块提交、编译器版本及 analysis/graph proto SHA，Java 变体保持。Rust 绑定由同源 protobuf 构建生成，普通 workspace 构建无需 Go。契约 35 项、Python SDK 校验 4 项、contracts clippy 与 workspace 构建通过。证据：`target/typescript-c-abi/t2a/receipt.json`；详见 [TypeScript worker](modules/typescript-worker.md)。这只是 T2a，尚无生产 Go ABI、TS worker 或产品能力，不替代 T2b—T8。
+
 ## R5 既有三语言重构验证（2026-11-18，本机通过）
 
 普通与 prepared 已共用分析单元、冻结视图、预算、运行监督、图交付、候选合并和一次 CAS；Java/Rust 保留自身增量策略，Python 保守全量。旧组合执行器已删除。TypeScript 生产接入 T2—T8 继续实施，当前不能索引 JS/TS。
