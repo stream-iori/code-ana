@@ -129,6 +129,11 @@ impl<'a> Scope<'a> {
     pub fn row(&self, row: &Row) -> Result<()> {
         self.source_world(row).map(|_| ())
     }
+    pub fn is_auxiliary(&self, path: &str, world: &str) -> bool {
+        self.sources
+            .get(&(path, world))
+            .is_some_and(|s| s.auxiliary)
+    }
     /// Resolve only an implicit world against this unit's frozen inputs.
     /// Raw bytes remain the transport verifier's responsibility.
     pub fn source_world(&self, row: &Row) -> Result<Option<&str>> {

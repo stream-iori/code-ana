@@ -20,6 +20,13 @@ impl Column for Option<i64> {
         }
     }
 }
+impl Column for Option<Vec<u8>> {
+    fn into_cell(self) -> Cell {
+        Cell {
+            value: self.map(cell::Value::Blob),
+        }
+    }
+}
 macro_rules! graph_row {
  ($name:ident, $table:ident, {$($field:ident: $ty:ty),* $(,)?}) => {
   #[derive(Debug, Clone, Default)]
@@ -27,6 +34,23 @@ macro_rules! graph_row {
   impl GraphRow for $name {fn into_row(self, world:&str)->Row {Row {table:Table::$table as i32,world:world.into(),cells:vec![$(self.$field.into_cell(),)*]}}}
  };
 }
+graph_row!(FileCacheRow, FileCache, {
+    provider_id: Option<String>, source_file: Option<String>, hash: Option<String>,
+    schema_version: Option<i64>, node_count: Option<i64>, edge_count: Option<i64>,
+    file_size: Option<i64>, contract_hash: Option<String>,
+});
+graph_row!(FileDependencyRow, FileDependency, {
+    source_provider_id: Option<String>, source_file: Option<String>,
+    depends_on_provider_id: Option<String>, depends_on_file: Option<String>,
+});
+graph_row!(SymbolDependencyRow, SymbolDependency, {
+    target_key: Option<Vec<u8>>, source_file: Option<String>,
+});
+graph_row!(AnnotationMetaRow, AnnotationMeta, {
+    annotation_fqn: Option<String>, meta_annotation_fqn: Option<String>, raw_name: Option<String>,
+    language: Option<String>, provider_id: Option<String>, mechanism: Option<String>,
+    resolution_status: Option<String>, source_file: Option<String>, source_location: Option<String>, producer_id: Option<String>,
+});
 graph_row!(
     NodeRow, Node, {
         id: Option<String>,

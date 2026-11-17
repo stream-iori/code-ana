@@ -1,6 +1,5 @@
 //! Real candidate publication with five independent unit update modes.
-use super::test_support::canonical;
-use super::tests::captured;
+use super::test_support::{canonical, units_fixture as fixture};
 use super::*;
 use codeana_contracts::graph::{Row, cell};
 use codeana_contracts::graph_rows::{
@@ -401,41 +400,6 @@ fn five_unit_modes_share_one_candidate_match_full_and_keep_history_on_failure() 
     assert_eq!(counts(&first_reader.connection)?, [10, 5, 5]);
     assert_eq!(counts(&mixed_reader.connection)?, [6, 3, 3]);
     Ok(())
-}
-
-fn fixture(ids: &[&str]) -> Result<(tempfile::TempDir, Store, Revision, Vec<Row>)> {
-    let directory = tempfile::tempdir()?;
-    let store = Store::open(directory.path())?;
-    let (mut before, _, template) = captured(&store);
-    let source = before.manifest.files[0].clone();
-    before.manifest.files.clear();
-    let mut units = vec![];
-    for &id in ids {
-        let source = SourceUnit {
-            path: format!("{id}.java"),
-            ..source.clone()
-        };
-        before.manifest.files.push(source.clone());
-        units.push(UnitOwnership {
-            unit: id.into(),
-            backend: AnalysisBackend::Java,
-            availability: UnitAvailability::Ready,
-            source_languages: vec![SourceLanguage::Java],
-            modules: vec!["app".into()],
-            worlds: vec!["main".into()],
-            scopes: vec!["MAIN".into()],
-            producer: "mock".into(),
-            semantic_profile: hash("profile"),
-            input_digest: hash(id),
-            sources: vec![source.clone()],
-            inputs: vec![source],
-        });
-    }
-    before.unit_ownership = Some(UnitOwnershipLedger {
-        version: UNIT_OWNERSHIP_VERSION,
-        units,
-    });
-    Ok((directory, store, before, template))
 }
 
 #[test]

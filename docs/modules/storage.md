@@ -96,7 +96,7 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 
 ## 注释物理布局（C1 已交付）
 
-当前源码 schema 16 / 逻辑 36 保留 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。关联只接受 documents/enclosing_callable，basis 只接受 language_rule。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；三语言生命周期与实际分发已由 C2—C4 覆盖，A7 验证最终重构产物。
+当前源码 schema 17 / 逻辑 36 保留 graph_comments、graph_comment_links 与 comment_terms FTS5；逻辑视图 comments/comment_links 只输出公开身份。暂存层使用任务原有语言 host 预算和冻结源码读取器，验证 hash、字节/UTF-16 范围、body_map、显式 world 及声明引用。所有语言使用同一个分词实现；tokenizer 身份写入保留元数据，查询不匹配时要求全量重建。关联只接受 documents/enclosing_callable，basis 只接受 language_rule。FTS 与候选同一事务完成后才允许 CAS。失败保留旧 head；C1 Native/JVM 公开查询和 ABI 验证已通过；三语言生命周期与实际分发已由 C2—C4 覆盖，A7 验证最终重构产物。
 
 ### 显式语言补全
 
@@ -104,9 +104,9 @@ blob 批次使用共享上限 2 的文件 I/O，复制时计算 hash、同步和
 
 CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage 投影为类型化注释输入缺口。JSON 及 scope/world 字符串先按存储长度准入，再解码/复制；SQL VM 与读取共用当前账户和取消 token。仅消费已冻结字段，不新增 schema 或修改历史库。
 
-物理 schema 16 将 source/world 联合用于替换和基线保留。边、注解、元注解来源、文件缓存及依赖保留 world；文件依赖同时保存目标 world，反查不再按路径挑第一个来源。声明匹配、重复事实 ordinal 和调用点来源/重建使用对应 world；注释/FTS 与 Rust 状态/依赖只删除指定来源实例。路径字典仍只代表字节路径，内部 file_pk 不充当语义来源身份。无 source 的汇总诊断沿用重新交付策略，NULL 不因复合 NOT IN 比较被额外保留。
+物理 schema 17 将 source/world 联合用于替换和基线保留。边、注解、元注解来源、文件缓存及依赖保留 world；文件依赖同时保存目标 world，反查不再按路径挑第一个来源。声明匹配、重复事实 ordinal 和调用点来源/重建使用对应 world；注释/FTS 与 Rust 状态/依赖只删除指定来源实例。路径字典仍只代表字节路径，内部 file_pk 不充当语义来源身份。无 source 的汇总诊断沿用重新交付策略，NULL 不因复合 NOT IN 比较被额外保留。
 
-所有写入仍在私有候选和同一次 CAS 内。旧 schema 15 及更早不原地升级，查询/增量返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 从冻结输入建立新库并切 head，旧文件按原保留策略处理。GRA1 逻辑列、worker 25、graph model 6、Java ABI 4 和上游逻辑 schema 36 不变；主机投影补足的 world 不改公开实体 ID 或 hash 算法。无来源字典的完整单元归属及任意单元 Full/Delta/Reuse 合并仍在 R4 后续范围。
+所有写入仍在私有候选和同一次 CAS 内。旧 schema 16 及更早不原地升级，查询/增量返回 GRAPH_SCHEMA_REBUILD_REQUIRED；显式 index --full 从冻结输入建立新库并切 head，旧文件按原保留策略处理。GRA1 逻辑列、worker 25、graph model 6、Java ABI 4 和上游逻辑 schema 36 不变；主机投影补足的 world 不改公开实体 ID 或 hash 算法。持久化单元归属与混合暂存已有组件；公共执行器、SQL 预算与真实混合产品验收仍在 R4 后续范围。
 
 公开节点 ID 不允许跨 world 覆盖，公开关系/注解的 hash+ordinal 与调用点 stable_hash 有物理唯一约束。producer 的身份不满足隔离要求时返回 GRAPH_WORLD_OWNERSHIP_CONFLICT，不能靠改名或静默合并生成假精确结果；失败保留旧 head。
 
@@ -116,12 +116,19 @@ CommentReader 将已有 `project_meta.inputs.unit.*` 和不可用输入 coverage
 
 生产候选入口接收带主机来源的 `graph_io::records::Record`，再按 Ready 单元的完整输入、语言和观察模块校验。未知、FilesOnly 或跨单元的来源拒绝；共享辅助输入不能授权节点发布。Host 仅可写准备说明及 coverage，保留原行大小/列数/world 准入。旧无来源行接口仅供显式 fixture，应用架构门禁禁止回到该入口。
 
-物理 schema 16 将 diagnostics、coverage、providers 与 project_meta 按主机来源持久化。unit_catalog 保存内部整数键与稳定单元 ID；0 仅为显式 Host/Fixture 桶。coverage 的物理唯一键含 unit_pk，公开视图列与业务 ID 保持；unit_providers、unit_project_meta 保存原始逐单元值，不存完整 Row/Fact 日志。活动集合来自执行计划的 Ready 单元，不能从输出推断；即使零输出也替换其全局观察，未活动单元保留。Delta 只继承活动单元未替换来源的文件观察；NULL、空串和 `*` 的全局观察均要求重新交付。显式整项目 Reused 不清除任何单元观察。当前活动集合仍由既有整项目执行路径提供，尚未开放任意单元混合。
+物理 schema 17 将 diagnostics、coverage、providers 与 project_meta 按主机来源持久化。unit_catalog 保存内部整数键与稳定单元 ID；0 仅为显式 Host/Fixture 桶。coverage 的物理唯一键含 unit_pk，公开视图列与业务 ID 保持；unit_providers、unit_project_meta 保存原始逐单元值，不存完整 Row/Fact 日志。活动集合来自执行计划的 Ready 单元，不能从输出推断；即使零输出也替换其全局观察，未活动单元保留。Delta 只继承活动单元未替换来源的文件观察；NULL、空串和 `*` 的全局观察均要求重新交付。显式整项目 Reused 不清除任何单元观察。当前活动集合仍由既有整项目执行路径提供，尚未开放任意单元混合。
 
 公开摘要由所有保留单元重新计算：任一 source_only／classpath unavailable／fallback 不会被其他正常单元覆盖。同一 provider 仍只有一条公开摘要；不同单元 profile 以稳定单元 ID 排序后生成聚合 hash，相同 profile 保持原值，运算能力取交集，不同限制按单元保留，版本或语言不同时明确显示 mixed／`*`。不相容的同 world 编译上下文拒绝发布。provider 读取/聚合在复制和 JSON 解码前从原 host 账户预付；SQL VM、临时文件与其余 staging 分配的完整计量仍待审计。无来源节点、元注解、缓存及依赖的完整单元归属仍待后续实现。
 
 
-物理 schema 16 保存 node_units 的逐单元最终定义摘要、声明摘要与 arity，不记录原始行日志。相同公开节点 ID 只有最终定义兼容时才能共享；无来源节点只能被实际交付该定义的单元引用。边、注解和调用点 owner 保存主机分配的 unit_pk，推导 wiring 使用独立 host_derived 标记，不从 producer 名猜归属。精确引用与 Java 名称／arity 补全均限制在本单元及显式声明的输入路径/world 内；辅助输入只授权目标绑定，不授权发布调用者或注解 owner。Delta 对活动单元的无来源定义和观察采用完整快照替换，显式 Reused 保留原归属。基线事实沿用原 hash，避免数据库默认值在复用重算时制造重复边。旧 schema 15 及更早要求显式全量重建。元注解、辅助缓存/依赖的完整逐单元归属、任意更新模式混合和公共执行器继续待办。
+物理 schema 17 保存 node_units 的逐单元最终定义摘要、声明摘要与 arity，不记录原始行日志。相同公开节点 ID 只有最终定义兼容时才能共享；无来源节点只能被实际交付该定义的单元引用。边、注解和调用点 owner 保存主机分配的 unit_pk，推导 wiring 使用独立 host_derived 标记，不从 producer 名猜归属。精确引用与 Java 名称／arity 补全均限制在本单元及显式声明的输入路径/world 内；辅助输入只授权目标绑定，不授权发布调用者或注解 owner。Delta 对活动单元的无来源定义和观察采用完整快照替换，显式 Reused 保留原归属。基线事实沿用原 hash，避免数据库默认值在复用重算时制造重复边。旧 schema 16 及更早要求显式全量重建。元注解与辅助缓存/依赖的单元归属见下节；公共执行器与混合产品接入继续待办。
 
 
-R4 的混合暂存组件 `stage_mixed_graph_records_with_context` 接受逐单元更新意图，持有同一个旧 revision 读者复核 UnitMergePlan，再在同一候选中替换 Full/Delta、保留 Reuse、清理 Removed/FilesOnly 的已归属数据。允许项目汇总 profile 改变，复用资格仍逐单元严格检查；Full 单元交付完整快照，Delta 来源必须在自身替换闭包内，不能借用其他单元的范围。Reuse、Removed、FilesOnly 不接受新单元行，混合入口也不接受 Fixture 无签名语义行。Host 行独立代表本次任务观察的完整快照。模型的混合验证与更新范围预付使用任务原 host 账户，拒绝保留原预算错误码。当前仅完成节点、边/注解/调用 owner 及四类 metadata 的组件合并回归，尚未由公共产品执行器调用；元注解和辅助缓存/依赖的逐单元归属仍须补齐后才能签混合产品验收。
+R4 的混合暂存组件 `stage_mixed_graph_records_with_context` 接受逐单元更新意图，持有同一个旧 revision 读者复核 UnitMergePlan，再在同一候选中替换 Full/Delta、保留 Reuse、清理 Removed/FilesOnly 的已归属数据。允许项目汇总 profile 改变，复用资格仍逐单元严格检查；Full 单元交付完整快照，Delta 来源必须在自身替换闭包内，不能借用其他单元的范围。Reuse、Removed、FilesOnly 不接受新单元行，混合入口也不接受 Fixture 无签名语义行。Host 行独立代表本次任务观察的完整快照。模型的混合验证与更新范围预付使用任务原 host 账户，拒绝保留原预算错误码。当前仅完成节点、边/注解/调用 owner 及四类 metadata 的组件合并回归，尚未由公共产品执行器调用；元注解和辅助缓存/依赖已补逐单元归属；公共执行器及真实混合产品验收仍待完成。
+
+
+物理 schema 17 将元注解来源、file_cache、显式 file/symbol dependencies 按主机 unit 保存。模式表区别 Full/Delta/Reuse/Removed/FilesOnly：Full、不可用与删除清理该单元所有原始观察，Delta 继承未替换来源，Reuse 保留原值；全局元注解每次活动单元重新交付。辅助输入的四类观察独立于语义发布范围，首次新交付只替换该单元、该输入、该表的继承快照，后续行累积并保持首个位置；诊断和语义行仍不能借辅助输入或其他单元的替换范围。共享元注解定义保留，来源/状态/位置分单元。
+
+依赖的 host_derived 标记与 unit_pk 均为私有列；重建只清理推导行，显式交付不丢失，公开依赖视图按原逻辑列去重。推导包含静态调用点，注解/元注解的名称依赖仅指向本单元声明输入内的节点；Java 增量反查也按单元过滤。输入 file dependency 只有路径时，在本单元声明的目标 world 集合内保守展开，不按全项目第一个路径猜 world，未声明目标拒绝；空来源的观察不作为可导航文件依赖。交付策略 4 纳入 profile，公开 ID / worker / ABI / GRA1 列不因此改变；旧图需显式全量重建。SQL VM、SQLite cache 与临时磁盘的完整预算审计、公共执行器及 R5/TS 仍待完成。
+
+元注解查询展开的全局 FQN 目录尚待按直接注解所属单元隔离；当前逐单元持久化及依赖补全通过，不代表该查询闭包已完成隔离。

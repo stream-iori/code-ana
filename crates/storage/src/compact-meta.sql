@@ -21,21 +21,26 @@ CREATE UNIQUE INDEX idx_annotation_meta_identity ON annotation_meta_relations(
 CREATE INDEX idx_annotation_meta_source ON annotation_meta_relations(annotation_fqn);
 CREATE INDEX idx_annotation_meta_target ON annotation_meta_relations(meta_annotation_fqn);
 CREATE TABLE annotation_meta_sources(id INTEGER PRIMARY KEY,
- source_file INTEGER REFERENCES source_files(file_pk),identity_file INTEGER NOT NULL,world TEXT NOT NULL DEFAULT '',UNIQUE(identity_file,world));
+ source_file INTEGER REFERENCES source_files(file_pk),identity_file INTEGER NOT NULL,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0 REFERENCES unit_catalog(unit_pk),UNIQUE(unit_pk,identity_file,world));
 CREATE TABLE annotation_meta_owners(relation_id INTEGER NOT NULL REFERENCES annotation_meta_relations(id),
  source_id INTEGER NOT NULL REFERENCES annotation_meta_sources(id),
  resolution_status TEXT NOT NULL CHECK(resolution_status IN('exact','heuristic','unresolved')),
  source_location TEXT,PRIMARY KEY(relation_id,source_id)) WITHOUT ROWID;
 CREATE INDEX idx_annotation_meta_owner_source ON annotation_meta_owners(source_id,relation_id);
-CREATE VIEW annotation_meta_owned AS SELECT r.id,r.annotation_fqn,r.meta_annotation_fqn,r.raw_name,r.language,
- r.provider_id,r.mechanism,o.resolution_status,f.path AS source_file,o.source_location,r.producer_id,s.world
+CREATE VIEW annotation_meta_units AS SELECT r.id,r.annotation_fqn,r.meta_annotation_fqn,r.raw_name,r.language,
+ r.provider_id,r.mechanism,o.resolution_status,f.path AS source_file,o.source_location,r.producer_id,s.world,s.unit_pk
  FROM annotation_meta_owners o JOIN annotation_meta_relations r ON r.id=o.relation_id
  JOIN annotation_meta_sources s ON s.id=o.source_id LEFT JOIN source_files f ON f.file_pk=s.source_file;
+CREATE VIEW annotation_meta_owned AS SELECT id,annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world FROM annotation_meta_units;
 CREATE TRIGGER annotation_meta_owned_insert INSTEAD OF INSERT ON annotation_meta_owned BEGIN
+ INSERT INTO annotation_meta_units(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world,unit_pk)
+ VALUES(NEW.annotation_fqn,NEW.meta_annotation_fqn,NEW.raw_name,NEW.language,NEW.provider_id,NEW.mechanism,NEW.resolution_status,NEW.source_file,NEW.source_location,NEW.producer_id,NEW.world,0);
+END;
+CREATE TRIGGER annotation_meta_units_insert INSTEAD OF INSERT ON annotation_meta_units BEGIN
  INSERT OR IGNORE INTO source_files(path) SELECT NEW.source_file WHERE NEW.source_file IS NOT NULL;
- INSERT OR IGNORE INTO annotation_meta_sources(source_file,identity_file,world)
+ INSERT OR IGNORE INTO annotation_meta_sources(source_file,identity_file,world,unit_pk)
  VALUES((SELECT file_pk FROM source_files WHERE path=NEW.source_file),
- CASE WHEN coalesce(NEW.source_file,'')='' THEN 0 ELSE (SELECT file_pk FROM source_files WHERE path=NEW.source_file) END,coalesce(NEW.world,''));
+ CASE WHEN coalesce(NEW.source_file,'')='' THEN 0 ELSE (SELECT file_pk FROM source_files WHERE path=NEW.source_file) END,coalesce(NEW.world,''),coalesce(NEW.unit_pk,0));
  INSERT OR IGNORE INTO annotation_meta_relations(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,producer_id)
  VALUES(NEW.annotation_fqn,NEW.meta_annotation_fqn,NEW.raw_name,NEW.language,NEW.provider_id,NEW.mechanism,NEW.resolution_status,NEW.producer_id);
  INSERT OR IGNORE INTO annotation_meta_owners(relation_id,source_id,resolution_status,source_location)
@@ -43,7 +48,7 @@ CREATE TRIGGER annotation_meta_owned_insert INSTEAD OF INSERT ON annotation_meta
  WHERE r.provider_id=NEW.provider_id AND r.annotation_fqn=NEW.annotation_fqn
  AND coalesce(r.meta_annotation_fqn,'')=coalesce(NEW.meta_annotation_fqn,'') AND r.raw_name=NEW.raw_name
  AND r.language=NEW.language AND r.mechanism=NEW.mechanism AND r.producer_id=NEW.producer_id
- AND s.identity_file=CASE WHEN coalesce(NEW.source_file,'')='' THEN 0 ELSE (SELECT file_pk FROM source_files WHERE path=NEW.source_file) END AND s.world=coalesce(NEW.world,'');
+ AND s.identity_file=CASE WHEN coalesce(NEW.source_file,'')='' THEN 0 ELSE (SELECT file_pk FROM source_files WHERE path=NEW.source_file) END AND s.world=coalesce(NEW.world,'') AND s.unit_pk=coalesce(NEW.unit_pk,0);
 END;
 CREATE TRIGGER annotation_meta_owned_delete INSTEAD OF DELETE ON annotation_meta_owned BEGIN
  DELETE FROM annotation_meta_owners WHERE relation_id=OLD.id AND source_id IN

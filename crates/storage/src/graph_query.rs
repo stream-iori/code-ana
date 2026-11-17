@@ -909,15 +909,17 @@ impl ReadContext {
             );
         } else {
             let mut pending = changed.clone();
-            let mut statement=self.connection.prepare("SELECT source_file,world FROM file_dependencies WHERE depends_on_file=? AND target_world=? ORDER BY source_file,world")?;
+            let mut statement=self.connection.prepare("SELECT DISTINCT p.path,d.world FROM graph_file_dependencies d JOIN source_files p ON p.file_pk=d.source_file JOIN source_files t ON t.file_pk=d.depends_on_file JOIN unit_catalog u USING(unit_pk) WHERE t.path=? AND d.target_world=? AND (u.unit_id=? OR d.unit_pk=0) ORDER BY p.path,d.world")?;
             let mut symbols = self.connection.prepare(
                 "SELECT id,symbol_id FROM nodes WHERE source_file=? AND world=? ORDER BY id",
             )?;
-            let mut dependencies=self.connection.prepare("SELECT source_file,world FROM symbol_dependencies WHERE target_key=? ORDER BY source_file,world")?;
+            let mut dependencies=self.connection.prepare("SELECT DISTINCT p.path,d.world FROM graph_symbol_dependencies d JOIN source_files p ON p.file_pk=d.source_file JOIN unit_catalog u USING(unit_pk) WHERE d.target_key=? AND (u.unit_id=? OR d.unit_pk=0) ORDER BY p.path,d.world")?;
             while let Some((target, world)) = pending.pop_first() {
-                for row in statement.query_map([&target, &world], |r| {
-                    Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-                })? {
+                for row in statement
+                    .query_map([target.as_str(), world.as_str(), unit.as_str()], |r| {
+                        Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                    })?
+                {
                     let source = row?;
                     if (before.contains_key(&source) || after.contains_key(&source))
                         && changed.insert(source.clone())
@@ -931,9 +933,11 @@ impl ReadContext {
                     let (id, symbol) = row?;
                     for value in [id, symbol] {
                         let hash = sha2::Sha256::digest(value.as_bytes());
-                        for row in dependencies.query_map([&hash[..8]], |r| {
-                            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
-                        })? {
+                        for row in dependencies
+                            .query_map(params![&hash[..8], unit.as_str()], |r| {
+                                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+                            })?
+                        {
                             let source = row?;
                             if (before.contains_key(&source) || after.contains_key(&source))
                                 && changed.insert(source.clone())
@@ -1339,7 +1343,7 @@ impl DependencyReader for ReadContext {
             ensure!(targets.len()<=500 && (1..=1024).contains(&limit), codeana_model::DomainError::new(codeana_model::ErrorCode::InvalidDependencyBatch, ""));
             if targets.is_empty(){return Ok(vec![]);}
             let paths:Vec<_>=targets.iter().map(|t|&t.path).collect();
-            let sql=format!("SELECT source_file,depends_on_file,world,target_world FROM file_dependencies WHERE depends_on_file IN({}) ORDER BY source_file,depends_on_file",vec!["?";paths.len()].join(","));
+            let sql=format!("SELECT source_file,depends_on_file,world,target_world FROM file_dependencies WHERE coalesce(source_file,'')<>'' AND depends_on_file IN({}) ORDER BY source_file,depends_on_file",vec!["?";paths.len()].join(","));
             let mut statement=self.connection.prepare(&sql)?;let mut rows=statement.query(rusqlite::params_from_iter(paths))?;let mut output=BTreeMap::new();
             while let Some(row)=rows.next()?{ self.charge_row(row)?;
                 let source:String=row.get(0)?;let target:String=row.get(1)?;

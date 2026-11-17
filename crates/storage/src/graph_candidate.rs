@@ -350,6 +350,27 @@ impl Store {
             }
             stage.execute("INSERT INTO stage_active_units VALUES(0)", [])?;
         }
+        stage.execute(
+            "INSERT INTO stage_unit_modes SELECT unit_pk,? FROM stage_active_units",
+            [header.mode.as_str()],
+        )?;
+        if let GraphSeed::Mixed(_, plan) = seed {
+            for update in plan.updates() {
+                let mode = match update.kind {
+                    UnitUpdateKind::Full => "full",
+                    UnitUpdateKind::Delta => "delta",
+                    UnitUpdateKind::Reuse => "reuse",
+                    UnitUpdateKind::Removed => "removed",
+                    UnitUpdateKind::FilesOnly => "files_only",
+                };
+                stage.execute("INSERT OR REPLACE INTO stage_unit_modes SELECT unit_pk,? FROM unit_catalog WHERE unit_id=?", params![mode,update.unit.as_str()])?;
+            }
+            stage.execute(
+                "UPDATE stage_unit_modes SET mode='full' WHERE unit_pk=0",
+                [],
+            )?;
+        }
+        graph_store::unit_aux::setup(&stage, &revision, context)?;
         graph_store::unit_nodes::setup(&stage, &revision, &unit_pks, context)?;
         // The retained baseline catalogue is available to reference resolution without
         // importing or materializing any serialized Fact IR.
@@ -422,6 +443,7 @@ impl Store {
             }
             let GraphRecord { origin, row } = row?;
             let mut row_delta = header.mode == AnalysisMode::Delta;
+            let mut auxiliary_observation = None;
             let unit_pk = match &origin {
                 Origin::Unit(unit) => {
                     let (scope, backend) =
@@ -432,25 +454,32 @@ impl Store {
                     let world = scope.source_world(&row)?;
                     if let Some(update) = seed.update(unit) {
                         row_delta = update.kind == UnitUpdateKind::Delta;
-                        if row_delta && let Some(world) = world {
-                            let column = codeana_graph_io::scope::source_columns(
-                                codeana_contracts::graph::Table::try_from(row.table)?,
-                            )
+                    }
+                    if let Some(world) = world {
+                        let table = codeana_contracts::graph::Table::try_from(row.table)?;
+                        let column = codeana_graph_io::scope::source_columns(table)
                             .context("unit source column missing")?
                             .source;
-                            let path = row
-                                .cells
-                                .get(column)
-                                .and_then(|cell| match cell.value.as_ref() {
-                                    Some(codeana_contracts::graph::cell::Value::Text(path)) => {
-                                        Some(path.as_str())
-                                    }
-                                    _ => None,
-                                })
-                                .context(DomainError::new(
-                                    ErrorCode::GraphColumnType,
-                                    "unit source text missing",
-                                ))?;
+                        let path = row
+                            .cells
+                            .get(column)
+                            .and_then(|cell| match cell.value.as_ref() {
+                                Some(codeana_contracts::graph::cell::Value::Text(path)) => {
+                                    Some(path.as_str())
+                                }
+                                _ => None,
+                            })
+                            .context(DomainError::new(
+                                ErrorCode::GraphColumnType,
+                                "unit source text missing",
+                            ))?;
+                        if graph_store::unit_aux::is_observation(table)
+                            && scope.is_auxiliary(path, world)
+                        {
+                            auxiliary_observation = Some((path, world, table, *backend));
+                            row_delta = false;
+                        }
+                        if row_delta && seed.update(unit).is_some() {
                             ensure!(
                                 unit_ranges.contains(&(unit.as_ref(), path, world)),
                                 DomainError::new(
@@ -489,6 +518,16 @@ impl Store {
                 }
             };
             let owner = validate_record(&row, &sources, &replaced, row_delta)?;
+            if let Some((path, world, table, backend)) = auxiliary_observation {
+                graph_store::unit_aux::fresh_input(
+                    &stage,
+                    unit_pk,
+                    path,
+                    world,
+                    table,
+                    context.and_then(|c| c.hosts.get(&backend)),
+                )?;
+            }
             if matches!(
                 codeana_contracts::graph::Table::try_from(row.table),
                 Ok(codeana_contracts::graph::Table::Comment
@@ -896,9 +935,7 @@ fn replace_affected(db: &Connection, owners: &[Owner]) -> Result<()> {
     // Retain matching hash/ordinal pairs exactly as Anatomist incremental promotion does.
     db.execute_batch("DELETE FROM graph_comments WHERE EXISTS(SELECT 1 FROM source_files f JOIN graph_replaced r ON r.source_file=f.path WHERE f.file_pk=graph_comments.source_file AND r.world=graph_comments.world); DELETE FROM edges WHERE NOT EXISTS(SELECT 1 FROM staged.stage_edges s WHERE s.relation<>'CALLS' AND s.fact_hash=edges.fact_hash AND s.fact_ordinal=edges.fact_ordinal AND s.world=edges.world);
       DELETE FROM annotations WHERE NOT EXISTS(SELECT 1 FROM staged.stage_annotations s WHERE s.fact_hash=annotations.fact_hash AND s.fact_ordinal=annotations.fact_ordinal AND s.world=annotations.world);
-      DELETE FROM annotation_meta_owned WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
       DELETE FROM nodes WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced) AND id NOT IN(SELECT id FROM staged.stage_nodes);
-      DELETE FROM file_cache WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
       DELETE FROM rust_analysis_dependencies WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
       DELETE FROM rust_source_states WHERE (source_file,world) IN(SELECT source_file,world FROM graph_replaced);
 ")?;
@@ -945,8 +982,6 @@ fn seed_baseline(
       SELECT e.source_id,e.target_id,e.external_target_fqn,e.external_target_symbol,e.external_target_language,e.external_target_provider_id,e.relation,e.semantic,e.mechanism,e.language,e.provider_id,e.call_kind,e.confidence,e.resolution,e.context,e.is_external,e.source_file,e.source_location,e.begin_line,e.begin_column,e.end_line,e.end_column,e.source_ordinal,e.syntax_target,e.receiver_static_type,e.metadata,n.module,n.scope,1,1,e.source_id,e.target_id,e.producer_id,e.world,g.unit_pk,e.fact_hash,e.fact_ordinal FROM baseline.edges e JOIN baseline.graph_edges g ON g.id=e.id JOIN baseline.nodes n ON n.id=e.source_id WHERE g.host_derived=0 AND (coalesce(e.source_file,'')<>'' OR g.unit_pk NOT IN(SELECT unit_pk FROM stage_active_units)) AND NOT EXISTS(SELECT 1 FROM replaced r WHERE r.source_file=e.source_file AND r.world=e.world);
       INSERT INTO stage_annotations(node_ref,annotation_fqn,raw_name,attributes,target_kind,target_path,language,provider_id,mechanism,resolution_status,source_file,source_location,begin_line,begin_column,end_line,end_column,source_module,source_scope,node_is_key,resolved_node,producer_id,world,unit_pk,fact_hash,fact_ordinal)
       SELECT a.node_id,a.annotation_fqn,a.raw_name,a.attributes,a.target_kind,a.target_path,a.language,a.provider_id,a.mechanism,a.resolution_status,a.source_file,a.source_location,a.begin_line,a.begin_column,a.end_line,a.end_column,n.module,n.scope,1,a.node_id,a.producer_id,a.world,g.unit_pk,a.fact_hash,a.fact_ordinal FROM baseline.annotations a JOIN baseline.graph_annotations g ON g.id=a.id JOIN baseline.nodes n ON n.id=a.node_id WHERE (coalesce(a.source_file,'')<>'' OR g.unit_pk NOT IN(SELECT unit_pk FROM stage_active_units)) AND NOT EXISTS(SELECT 1 FROM replaced r WHERE r.source_file=a.source_file AND r.world=a.world);
-      INSERT INTO stage_annotation_meta(annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world) SELECT annotation_fqn,meta_annotation_fqn,raw_name,language,provider_id,mechanism,resolution_status,source_file,source_location,producer_id,world FROM baseline.annotation_meta_owned WHERE (source_file IS NOT NULL OR (SELECT reused FROM baseline_policy)) AND (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
-      INSERT INTO stage_file_cache SELECT provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash,world FROM baseline.file_cache WHERE (source_file,world) NOT IN(SELECT source_file,world FROM replaced);
       INSERT INTO stage_coverage SELECT f.path,c.module,c.scope,c.language,c.provider_id,c.capability,c.status,c.occurrences,c.groups_count,c.codes,c.code_counts,c.details_truncated,c.world,c.unit_pk
       FROM baseline.graph_analysis_coverage c JOIN baseline.source_files f ON f.file_pk=c.source_file
       WHERE c.unit_pk IN(SELECT unit_pk FROM stage_active_units) AND coalesce(f.path,'') NOT IN('','*') AND (f.path,c.world) NOT IN(SELECT source_file,world FROM replaced);
@@ -958,6 +993,7 @@ fn seed_baseline(
     stage.execute_batch("INSERT INTO stage_call_sites(source_ref,target_ref,external_target_fqn,external_target_symbol,external_target_language,external_target_provider_id,relation,language,provider_id,call_kind,confidence,is_external,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,context,metadata,source_module,source_scope,source_is_key,target_is_key,resolved_source,resolved_target,producer_id,world,unit_pk)
       SELECT o.caller_id,t.target_id,t.external_target_fqn,t.external_target_symbol,t.external_target_language,t.external_target_provider_id,'CALLS',c.language,c.provider_id,c.dispatch_kind,t.confidence,t.target_id IS NULL,o.source_file,c.begin_line,c.begin_column,c.end_line,c.end_column,c.ordinal,c.syntax_target,c.receiver_static_type,c.context,c.metadata,n.module,n.scope,1,1,o.caller_id,t.target_id,c.producer_id,o.world,g.unit_pk FROM baseline.call_sites c JOIN baseline.call_site_owners o USING(owner_pk) JOIN baseline.graph_call_site_owners g USING(owner_pk) JOIN baseline.nodes n ON n.id=o.caller_id LEFT JOIN baseline.call_site_targets t ON t.call_site_pk=c.site_pk WHERE NOT EXISTS(SELECT 1 FROM replaced r WHERE r.source_file=o.source_file AND r.world=o.world) AND (coalesce(o.source_file,'')<>'' OR g.unit_pk NOT IN(SELECT unit_pk FROM stage_active_units));")?;
     graph_store::unit_nodes::seed(stage)?;
+    graph_store::unit_aux::seed(stage)?;
     check()?;
     stage.execute_batch("DETACH DATABASE baseline;")?;
     Ok(())
@@ -965,12 +1001,18 @@ fn seed_baseline(
 
 fn rebuild_dependencies(db: &Connection, check: &dyn Fn() -> Result<()>) -> Result<()> {
     check()?;
-    db.execute_batch("DELETE FROM file_dependencies;DELETE FROM symbol_dependencies;")?;
-    db.execute_batch(include_str!("anatomist-dependencies.sql"))?;
-    let mut statement = db.prepare(include_str!("anatomist-symbol-dependencies.sql"))?;
+    db.execute_batch("DELETE FROM graph_file_dependencies WHERE host_derived=1;DELETE FROM graph_symbol_dependencies WHERE host_derived=1;")?;
+    db.execute_batch(&include_str!("anatomist-dependencies.sql").replace(
+        "__VISIBLE_TARGET__",
+        &graph_store::unit_nodes::visible_persisted("tn", "g.unit_pk"),
+    ))?;
+    let mut statement = db.prepare(&include_str!("anatomist-symbol-dependencies.sql").replace(
+        "__VISIBLE_TARGET__",
+        &graph_store::unit_nodes::visible_persisted("tn", "g.unit_pk"),
+    ))?;
     let mut rows = statement.query([])?;
     let mut insert = db.prepare_cached(
-        "INSERT OR IGNORE INTO symbol_dependencies(target_key,source_file,world) VALUES(?,?,?)",
+        "INSERT OR IGNORE INTO graph_symbol_dependencies(host_derived,unit_pk,target_key,source_file,world) VALUES(1,?,?,(SELECT file_pk FROM source_files WHERE path=?),?)",
     )?;
     let mut count = 0usize;
     while let Some(row) = rows.next()? {
@@ -982,7 +1024,7 @@ fn rebuild_dependencies(db: &Connection, check: &dyn Fn() -> Result<()>) -> Resu
         let file: String = row.get(1)?;
         let key = sha2::Sha256::digest(value.as_bytes());
         let world: String = row.get(4)?;
-        insert.execute(params![&key[..8], file, world])?;
+        insert.execute(params![row.get::<_, i64>(5)?, &key[..8], file, world])?;
     }
     Ok(())
 }
@@ -1291,3 +1333,7 @@ mod world_tests;
 #[cfg(test)]
 #[path = "graph_test_support.rs"]
 mod test_support;
+
+#[cfg(test)]
+#[path = "graph_aux_tests.rs"]
+mod aux_tests;

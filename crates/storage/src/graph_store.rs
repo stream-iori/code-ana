@@ -8,6 +8,7 @@ use rusqlite::{
 use sha2::{Digest, Sha256};
 
 mod language_completion;
+pub(crate) mod unit_aux;
 pub(crate) mod unit_metadata;
 pub(crate) mod unit_nodes;
 use language_completion::resolve_reference;
@@ -18,7 +19,7 @@ mod inserts {
 mod hashes {
     include!("anatomist-hashes.rs");
 }
-pub const SCHEMA_VERSION: i64 = 16;
+pub const SCHEMA_VERSION: i64 = 17;
 pub const SOURCE_SCHEMA_VERSION: i64 = 36;
 pub const PAGE_SIZE: i64 = 4096;
 
@@ -92,10 +93,11 @@ pub fn initialize_stage(db: &Connection) -> Result<()> {
     db.execute_batch(include_str!("anatomist-stage.sql"))?;
     db.execute_batch(include_str!("unit-catalog.sql"))?;
     unit_nodes::initialize_stage(db)?;
+    unit_aux::initialize_stage(db)?;
     db.execute_batch("CREATE TABLE stage_active_units(unit_pk INTEGER PRIMARY KEY);")?;
-    db.execute_batch("CREATE TABLE stage_file_cache(provider_id TEXT,source_file TEXT,hash TEXT,schema_version INTEGER,node_count INTEGER,edge_count INTEGER,file_size INTEGER,contract_hash TEXT,world TEXT NOT NULL DEFAULT '');
-      CREATE TABLE stage_file_dependencies(source_provider_id TEXT,source_file TEXT,depends_on_provider_id TEXT,depends_on_file TEXT,world TEXT NOT NULL DEFAULT '');
-      CREATE TABLE stage_symbol_dependencies(target_key BLOB,source_file TEXT,world TEXT NOT NULL DEFAULT '');
+    db.execute_batch("CREATE TABLE stage_file_cache(provider_id TEXT,source_file TEXT,hash TEXT,schema_version INTEGER,node_count INTEGER,edge_count INTEGER,file_size INTEGER,contract_hash TEXT,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE stage_file_dependencies(source_provider_id TEXT,source_file TEXT,depends_on_provider_id TEXT,depends_on_file TEXT,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0);
+      CREATE TABLE stage_symbol_dependencies(target_key BLOB,source_file TEXT,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE stage_diagnostics(severity TEXT,code TEXT,phase TEXT,source_file TEXT,module TEXT,scope TEXT,symbol TEXT,language TEXT,provider_id TEXT,provider_reason TEXT,reason_code TEXT,sample_details TEXT,occurrence_count INTEGER,sample TEXT,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE stage_coverage(source_file TEXT,module TEXT,scope TEXT,language TEXT,provider_id TEXT,capability TEXT,status TEXT,occurrences INTEGER,groups_count INTEGER,codes TEXT,code_counts TEXT,details_truncated INTEGER,world TEXT NOT NULL DEFAULT '',unit_pk INTEGER NOT NULL DEFAULT 0);
       CREATE TABLE stage_providers(provider_id TEXT,language TEXT,provider_version TEXT,operations TEXT,limitations TEXT,profile_hash TEXT,unit_pk INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(unit_pk,provider_id));
@@ -132,9 +134,9 @@ pub fn insert_owned_with_world(
         Table::UnresolvedCall => {
             "INSERT INTO stage_call_sites(source_ref,source_file,begin_line,begin_column,end_line,end_column,source_ordinal,syntax_target,receiver_static_type,call_kind,context,metadata,producer_id,source_module,source_scope,resolved_source,relation,language,provider_id,world,unit_pk) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'CALLS','java','java-core',?,?)"
         }
-        Table::FileCache => "INSERT INTO stage_file_cache VALUES(?,?,?,?,?,?,?,?,?)",
-        Table::FileDependency => "INSERT INTO stage_file_dependencies VALUES(?,?,?,?,?)",
-        Table::SymbolDependency => "INSERT INTO stage_symbol_dependencies VALUES(?,?,?)",
+        Table::FileCache => "INSERT INTO stage_file_cache VALUES(?,?,?,?,?,?,?,?,?,?)",
+        Table::FileDependency => "INSERT INTO stage_file_dependencies VALUES(?,?,?,?,?,?)",
+        Table::SymbolDependency => "INSERT INTO stage_symbol_dependencies VALUES(?,?,?,?)",
         Table::Diagnostic => {
             "INSERT INTO stage_diagnostics(severity,code,phase,source_file,module,scope,symbol,language,provider_id,provider_reason,reason_code,sample_details,occurrence_count,sample,world,unit_pk) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)"
         }
@@ -201,6 +203,10 @@ pub fn insert_owned_with_world(
             | Table::Edge
             | Table::Annotation
             | Table::UnresolvedCall
+            | Table::AnnotationMeta
+            | Table::FileCache
+            | Table::FileDependency
+            | Table::SymbolDependency
     );
     ensure!(
         statement.parameter_count()
@@ -365,11 +371,11 @@ pub fn promote_with_context(
     db.execute_batch(include_str!("anatomist-promote.sql"))
         .map_err(identity_error)?;
     unit_nodes::promote(db)?;
-    db.execute_batch("INSERT INTO file_cache(provider_id,source_file,hash,schema_version,node_count,edge_count,file_size,contract_hash,world) SELECT * FROM staged.stage_file_cache;
-      INSERT OR IGNORE INTO file_dependencies(source_provider_id,source_file,depends_on_provider_id,depends_on_file,world) SELECT * FROM staged.stage_file_dependencies;
-      INSERT OR IGNORE INTO symbol_dependencies SELECT * FROM staged.stage_symbol_dependencies;
-      INSERT INTO rust_source_states SELECT * FROM staged.stage_rust_source_states;
-      INSERT INTO rust_analysis_dependencies SELECT * FROM staged.stage_rust_dependencies;")?;
+    unit_aux::promote(db)?;
+    db.execute_batch(
+        "      INSERT INTO rust_source_states SELECT * FROM staged.stage_rust_source_states;
+      INSERT INTO rust_analysis_dependencies SELECT * FROM staged.stage_rust_dependencies;",
+    )?;
     unit_metadata::promote(db, context)
 }
 
@@ -397,7 +403,7 @@ mod tests {
                 .to_string()
                 .contains("run index --full")
         );
-        db.pragma_update(None, "user_version", 15)?;
+        db.pragma_update(None, "user_version", 16)?;
         assert!(
             initialize(&db)
                 .unwrap_err()
@@ -406,7 +412,7 @@ mod tests {
         );
         assert_eq!(
             db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))?,
-            15
+            16
         );
         db.pragma_update(None, "user_version", 0)?;
         initialize(&db)?;

@@ -33,6 +33,6 @@ SDK 装载、IPC 会话状态、进程监督和数据库发布不属于本 crate
 
 主机 `Record` 的来源不在 worker protobuf 中：真实 worker 的来源来自已验证 Discover 单元，mock 仅显式 Fixture，准备说明和缺口 coverage 标为 Host。应用存储端口保留该来源，存储入口按 revision 中 Ready 单元的完整 inputs 再验一次来源；Host 不允许写语义节点或边。存储已据此持久化 diagnostics、coverage、providers 和 project_meta 的单元归属；无来源节点等剩余字典与任意单元混合 SQL 合并仍待完成。
 
-混合、Python 和 prepared 结果依次读取原主机 spool，每次只打开一个文件。每份归档单独验证声明长度、count、原 SHA 和 EOF，错误后不进入后续单元或 Host 尾部；读取器保有临时目录租约，解码与读缓冲从原 host 账户预付。总输出额度保持一个 GRA1 魔数加所有帧和 Host 尾部的原上限。`records::POLICY_VERSION=3` 纳入项目及单元语义 profile；旧策略第一次更新重新分析，公开业务 ID、worker/ABI 与 GRA1 不因此变化；当前物理 schema 16 的逐单元 metadata、节点归属及引用边界也由该策略身份覆盖。
+混合、Python 和 prepared 结果依次读取原主机 spool，每次只打开一个文件。每份归档单独验证声明长度、count、原 SHA 和 EOF，错误后不进入后续单元或 Host 尾部；读取器保有临时目录租约，解码与读缓冲从原 host 账户预付。总输出额度保持一个 GRA1 魔数加所有帧和 Host 尾部的原上限。`records::POLICY_VERSION=4` 纳入项目及单元语义 profile；旧策略第一次更新重新分析，公开业务 ID、worker/ABI 与 GRA1 不因此变化；当前物理 schema 17 的逐单元 metadata、节点归属及引用边界也由该策略身份覆盖。
 
 主机按单元视图验证原始 Chunk，再把能唯一定位的空 world 补入存储投影。原始 GRA1/IPC 的 count/SHA/EOF 仍独立核实；Projection 逐行单独计费、计算投影 SHA，原始 End 成功且投影的行数/块数一致才封存。范围歧义、原始 SHA 错误、投影超限或缺行均无证明，不能用投影 SHA 代替原始 SHA。同路径多 world 的文件缓存等无 module/scope 行必须显式携带 world，不做任意选择。

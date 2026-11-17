@@ -61,3 +61,40 @@ pub(super) fn canonical(db: &Connection) -> Result<BTreeMap<String, Vec<String>>
     }
     Ok(output)
 }
+
+pub(super) fn units_fixture(
+    ids: &[&str],
+) -> Result<(tempfile::TempDir, Store, Revision, Vec<Row>)> {
+    let directory = tempfile::tempdir()?;
+    let store = Store::open(directory.path())?;
+    let (mut before, _, template) = super::tests::captured(&store);
+    let source = before.manifest.files[0].clone();
+    before.manifest.files.clear();
+    let mut units = vec![];
+    for &id in ids {
+        let source = SourceUnit {
+            path: format!("{id}.java"),
+            ..source.clone()
+        };
+        before.manifest.files.push(source.clone());
+        units.push(UnitOwnership {
+            unit: id.into(),
+            backend: AnalysisBackend::Java,
+            availability: UnitAvailability::Ready,
+            source_languages: vec![SourceLanguage::Java],
+            modules: vec!["app".into()],
+            worlds: vec!["main".into()],
+            scopes: vec!["MAIN".into()],
+            producer: "mock".into(),
+            semantic_profile: hash("profile"),
+            input_digest: hash(id),
+            sources: vec![source.clone()],
+            inputs: vec![source],
+        });
+    }
+    before.unit_ownership = Some(UnitOwnershipLedger {
+        version: UNIT_OWNERSHIP_VERSION,
+        units,
+    });
+    Ok((directory, store, before, template))
+}
