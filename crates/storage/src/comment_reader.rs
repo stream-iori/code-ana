@@ -26,7 +26,8 @@ fn invalid() -> DomainError {
 #[derive(serde::Deserialize)]
 struct StoredInputUnit {
     mode: String,
-    language: String,
+    backend: AnalysisBackend,
+    source_languages: Vec<SourceLanguage>,
     roots: Vec<String>,
     entries: Vec<String>,
     #[serde(default)]
@@ -224,32 +225,34 @@ impl CommentReader for ReadContext {
                 self.admit_comment_payload(row.get(1)?)?;
                 let key: String = row.get(0)?;
                 let value: String = detail.query_row([key], |r| r.get(0))?;
-                let unit: StoredInputUnit = serde_json::from_str(&value)?;
+                let unit: StoredInputUnit = serde_json::from_str(&value).context("FROZEN_INPUT_METADATA_UNSUPPORTED: index --full")?;
                 match unit.mode.as_str() {
                     "semantic" | "source_only" => continue,
                     "files_only" => (),
                     _ => return Err(invalid().into()),
                 }
-                ensure!(!unit.roots.is_empty() && !unit.language.is_empty(), invalid());
+                ensure!(!unit.roots.is_empty() && !unit.source_languages.is_empty() && unit.source_languages.iter().all(|source|unit.backend.supports(*source)) && unit.source_languages.iter().collect::<BTreeSet<_>>().len()==unit.source_languages.len(), invalid());
                 for root in &unit.roots {
                     ensure!(!root.is_empty() && std::path::Path::new(root).components().all(|c|
                         matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir)), invalid());
                 }
                 let modules = if unit.modules.is_empty() { unit.entries } else { unit.modules };
                 ensure!(!modules.is_empty(), invalid());
-                let mut scopes = Vec::new();
                 let mut coverage = self.connection.prepare_cached(
                     "SELECT scope,world,128+octet_length(scope)+octet_length(world) FROM analysis_coverage WHERE provider_id='codeana-inputs' AND capability='AGGREGATE' AND status<>'complete' AND module=? AND language=? ORDER BY scope,world")?;
-                for module in modules {
-                    let mut matches = coverage.query(rusqlite::params![module,unit.language])?;
-                    let before = scopes.len();
-                    while let Some(row) = matches.next()? {
-                        self.admit_comment_payload(row.get::<_, i64>(2)?.saturating_add(module.len() as i64))?;
-                        scopes.push(CommentInputScope { module: module.clone(), scope: row.get(0)?, world: row.get::<_, String>(1)?.into() });
+                for language in unit.source_languages {
+                    let mut scopes=Vec::new();
+                    for module in &modules {
+                        let mut matches = coverage.query(rusqlite::params![module,language.as_str()])?;
+                        let before = scopes.len();
+                        while let Some(row) = matches.next()? {
+                            self.admit_comment_payload(row.get::<_, i64>(2)?.saturating_add(module.len() as i64))?;
+                            scopes.push(CommentInputScope { module: module.clone(), scope: row.get(0)?, world: row.get::<_, String>(1)?.into() });
+                        }
+                        ensure!(scopes.len()>before, invalid());
                     }
-                    ensure!(scopes.len()>before, invalid());
+                    result.push(UnavailableCommentInput { language:language.as_str().into(), roots: unit.roots.clone(), scopes });
                 }
-                result.push(UnavailableCommentInput { language: unit.language, roots: unit.roots, scopes });
             }
             Ok(result)
         })().map_err(|error| self.comment_read_error(error))
@@ -333,7 +336,7 @@ mod tests {
             ProjectMetaRow {
                 key: Some("inputs.unit.unavailable".into()),
                 value: Some(
-                    serde_json::json!({"mode":"files_only", "language":"python",
+                    serde_json::json!({"mode":"files_only", "backend":"python", "source_languages":["python"],
                     "entries":["logical-module"], "roots":["physical-root"],
                     "reason":"captured preparation failure"})
                     .to_string(),

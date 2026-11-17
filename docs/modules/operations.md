@@ -1,6 +1,6 @@
 # 诊断与报告
 
-现行报告 schema 4 为全局摘要：JSON/Markdown 同源，不内嵌完整配置、逐文件诊断或日志，不新增 JSONL。失败、取消、strict 拒绝也保存可用摘要；最终计数不可得用 measurements_available=false 表达。仅支持当前报告格式，off/basic/full 配置接受但新报告均不携带诊断明细。具体排查使用 CLI 和日志；详见 [统一输入准备](inputs.md)。
+现行报告 schema 5 为全局摘要：JSON/Markdown 同源，不内嵌完整配置、逐文件诊断或日志，不新增 JSONL。失败、取消、strict 拒绝也保存可用摘要；最终计数不可得用 measurements_available=false 表达。仅支持当前报告格式，off/basic/full 配置接受但新报告均不携带诊断明细。具体排查使用 CLI 和日志；详见 [统一输入准备](inputs.md)。
 
 
 > 对齐 2026-10-20。现行版本与支持范围见 [当前实现](../current-state.md)；以下验收表是需保持的行为约束，未完成能力单独注明。

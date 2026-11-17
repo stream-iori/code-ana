@@ -31,8 +31,10 @@ fn fixture() -> Result<(tempfile::TempDir, PathBuf, ts::Inputs)> {
         let publish = language.is_some();
         records.push(json!({"path":root.join(name),"sha256":codeana_model::hash(text),"bytes":text.len(),"role":if publish {"publish"} else {"control"},"language":language,"module":publish.then_some("app"),"scope":publish.then_some("MAIN"),"world":publish.then_some("typescript/main")}));
     }
+    let case_sensitive =
+        codeana_input_io::case_sensitive_path(&root.join("tsconfig.json"), |_, _| Ok(()))?;
     let inputs: ts::Inputs = serde_json::from_value(
-        json!({"schema_version":1,"compiler":{"adapter":"typescript-fixture","upstream_commit":"a".repeat(40),"typescript_commit":"b".repeat(40),"compiler_version":"7.1.0-dev","go_version":"go1.26.2","library_sha256":"a".repeat(64),"header_sha256":"b".repeat(64),"standard_library_digest":"c".repeat(64),"analysis_proto_sha256":"d".repeat(64),"graph_proto_sha256":"e".repeat(64)},"contexts":[{"unit":"typescript/app/main","root":root,"config_path":root.join("tsconfig.json"),"publish_languages":["javascript","typescript"],"case_sensitive":true,"root_files":[root.join("src/a.ts"),root.join("src/b.js")],"references":[],"files":records,"directories":[{"path":root.join("src"),"files":["a.ts","b.js"],"directories":[],"listing_complete":true}],"links":[],"absent":[{"path":root.join("src/missing.ts"),"kind":"file"},{"path":root.join("src/a.ts"),"kind":"directory"},{"path":root.join("src"),"kind":"file"}]}]}),
+        json!({"schema_version":1,"compiler":{"adapter":"typescript-fixture","upstream_commit":"a".repeat(40),"typescript_commit":"b".repeat(40),"compiler_version":"7.1.0-dev","go_version":"go1.26.2","library_sha256":"a".repeat(64),"header_sha256":"b".repeat(64),"standard_library_digest":"c".repeat(64),"analysis_proto_sha256":"d".repeat(64),"graph_proto_sha256":"e".repeat(64)},"contexts":[{"unit":"typescript/app/main","root":root,"config_path":root.join("tsconfig.json"),"publish_languages":["javascript","typescript"],"case_sensitive":case_sensitive,"root_files":[root.join("src/a.ts"),root.join("src/b.js")],"references":[],"files":records,"directories":[{"path":root.join("src"),"files":["a.ts","b.js"],"directories":[],"listing_complete":true}],"links":[],"absent":[{"path":root.join("src/missing.ts"),"kind":"file"},{"path":root.join("src/a.ts"),"kind":"directory"},{"path":root.join("src"),"kind":"file"}]}]}),
     )?;
     write_inputs(&root, &inputs)?;
     write_config(&root, true, true, "native.json")?;
@@ -428,5 +430,17 @@ fn actual_compiler_inventory_uses_public_capture_without_live_fallback() -> Resu
         evidence.join("capture-proof.json"),
         serde_json::to_vec_pretty(&proof)?,
     )?;
+    Ok(())
+}
+
+#[test]
+fn a_changed_target_volume_case_rule_cannot_be_silently_replayed() -> Result<()> {
+    let (_temp, root, mut inputs) = fixture()?;
+    inputs.contexts[0].case_sensitive = !inputs.contexts[0].case_sensitive;
+    write_inputs(&root, &inputs)?;
+    assert!(
+        format!("{:#}", capture(&root, &Request::default()).err().unwrap())
+            .contains("TYPESCRIPT_CASE_RULES_STALE")
+    );
     Ok(())
 }

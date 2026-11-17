@@ -38,6 +38,7 @@ CLI
 | crates/model | 公共身份、查询实体、诊断和版本常量 | 不依赖 SQL/进程；查询 Fact 形状不是持久化格式 |
 | crates/contracts、proto/codeana/v1 | gRPC、worker、GRA1 与 Java 控制契约 | .proto、ABI、compiler 协议分别版本化 |
 | crates/graph-io | GRA1 文件读写、原字节校验、有界行队列、公共 Encoder/Verifier 与 VerifiedEnd；主机 Record 来源和逐份原归档读取 | 依赖 model/contracts；不解释语言 envelope、SDK 或进程，storage 可依赖；主机来源不进入 worker wire |
+| crates/input-io | 只读、FD 锚定、有界的文件系统大小写探测 | 不依赖 model/config/worker、SDK 或编译器 |
 | crates/worker-runtime | IPC 帧进度、会话状态、终态回执、FFI owner/通知和累计账本交接 | 依赖 model/contracts/graph-io；不依赖 application/storage、SDK 或编译器 |
 | crates/config | resolution 解析校验、discovery 输入发现、capture 源码捕获、execution 执行预算 | TaskConfig 共享公共策略；UnitInput 保存类型化后端输入，worker 不重新读配置 |
 | crates/application | 调度、监督、索引、版本和运维编排 | 不解析 AST；不自动执行目标构建 |
@@ -186,11 +187,11 @@ Lombok与扩展不可变元数据复制前沿用同一账户；内部DTO通过co
 
 CLI 交互边界（daemon 协议 6）：命令输入契约由应用层组合查询能力字段；OperationRouter 组合查询、历史、维护、就绪与报告服务。类型化 Record/TaskResult 先持久化，再由 presentation/output 编码和计量，CLI 使用有界观察编码及原子不覆盖导出。投影/编码与原发布事务分离；交付失败或 strict 拒绝不能重判分析门禁与提交事实。
 
-公共上下文由 unit、source_languages、modules/worlds、semantic_digest、producer/图能力及类型化后端详情组成；Discover 同时携带稳定实例和显式源码语言，启动和 Java 池重绑定均校验。报告 schema 4 逐实例保存 contexts，JSON/Markdown 共同展示后端与发布语言，删除伪 multi 上下文。公共交付设施和执行流程仍按当前实现中标记的后续阶段迁移。
+公共上下文由 unit、source_languages、modules/worlds、semantic_digest、producer/图能力及类型化后端详情组成；Discover 同时携带稳定实例和显式源码语言，启动和 Java 池重绑定均校验。报告 schema 5 逐实例保存 contexts，JSON/Markdown 共同展示后端与发布语言，删除伪 multi 上下文。公共交付设施和执行流程仍按当前实现中标记的后续阶段迁移。
 
 公共图交付已迁入 graph-io：Java/Rust/Python 共用按解码占用计量的队列和同一个行编码器，daemon 共用接收 verifier；contracts 只保留图 DTO 和 wire 准入。归档输入以任务根 FD 为锚逐级 openat，拒绝中间/末端 symlink、父级逃逸和非普通文件，校验失败不删除原文件。worker-runtime 承担 IPC 进度、三语言请求状态与 daemon 结果状态、公共终态及 FFI owner/通知/账本交接；Java EngineRequest/EngineAnalysisReceipt 已迁入 Java worker，无旧路径兼容导出。运行设施的实际验证范围见当前实现。
 
 候选及单元基线 SQL 连接由 storage 内任务 scope 管理，使用私有 VFS 和原 host 账户；共享合并使用固定顺序首个 host。应用只提供取消检查及带额外字节的磁盘准入回调。架构门禁递归拒绝候选通过新文件或连接别名绕过 scope；catalog、不可变读者、查询 spool 和文本搜索保留各自边界。详细计量及限制见 [存储](modules/storage.md#任务内-sql-与基线准入)。
 
 
-TypeScript 的 T2b 组件在 `crates/typescript-worker` 装载独立 Go SDK，Go runtime 只存在于该 worker 进程。共享 Owner 约束 Rust 控制入口，Go 自行管理 goroutine/取消/句柄，library 固定到进程退出；Java 通知保持单 token，Go 的关闭式通知额外要求 EOF。普通 Cargo 构建不调用 Go。当前只有显式组件入口、partial 绑定诊断与传输验证；CLI/daemon 的 TypeScript 工厂和公开图语义仍待接入，不能当作 TS 产品支持。
+TypeScript 的 T2b 组件在 `crates/typescript-worker` 装载独立 Go SDK，Go runtime 只存在于该 worker 进程。共享 Owner 约束 Rust 控制入口，Go 自行管理 goroutine/取消/句柄，library 固定到进程退出；Java 通知保持单 token，Go 的关闭式通知额外要求 EOF。普通 Cargo 构建不调用 Go。当前具有 CLI/独立 worker 准备入口、公共 capture、partial 组件绑定诊断与传输验证；CLI/daemon 的 TypeScript 工厂和公开图语义仍待接入，不能当作 TS 产品支持。

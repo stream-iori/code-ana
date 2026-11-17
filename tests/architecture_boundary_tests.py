@@ -150,4 +150,9 @@ class Boundaries(unittest.TestCase):
         graph={'codeana-worker-runtime':{'middle'},'middle':{'libloading'}}
         self.assertTrue(any('codeana-worker-runtime -> middle -> libloading' in error for error in architecture.dependency_violations(graph)))
 
+    def test_read_only_input_io_cannot_acquire_a_domain_or_compiler_through_a_helper(self):
+        for target in ['codeana-model','codeana-config','codeana-typescript-worker','libloading']:
+            graph={'codeana-input-io':{'middle'},'middle':{target}}
+            self.assertTrue(any('codeana-input-io -> middle -> '+target in error for error in architecture.dependency_violations(graph)))
+
 if __name__=='__main__': unittest.main(verbosity=2)

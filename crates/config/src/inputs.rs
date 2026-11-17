@@ -25,6 +25,7 @@ pub struct InputEntry {
     pub java: JavaPreparation,
     pub rust: RustPreparation,
     pub python: PythonPreparation,
+    pub typescript: TypeScriptPreparation,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -92,6 +93,20 @@ impl Default for PythonPreparation {
         }
     }
 }
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct TypeScriptPreparation {
+    pub scope: String,
+    pub timeout: u64,
+}
+impl Default for TypeScriptPreparation {
+    fn default() -> Self {
+        Self {
+            scope: "MAIN".into(),
+            timeout: 120,
+        }
+    }
+}
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum InputMode {
@@ -110,7 +125,8 @@ pub struct InputArtifact {
 #[serde(deny_unknown_fields)]
 pub struct PreparedUnit {
     pub id: String,
-    pub language: String,
+    pub backend: AnalysisBackend,
+    pub source_languages: Vec<SourceLanguage>,
     pub entries: Vec<String>,
     #[serde(default)]
     pub modules: Vec<String>,
@@ -256,6 +272,17 @@ pub fn validate(project: &Path, config: &ProjectConfig) -> Result<()> {
                 "python" => config.languages.python.as_ref().is_some_and(|v| {
                     v.enabled == Some(true) && v.discovery.inputs_manifest.is_none()
                 }),
+                "javascript" | "typescript" => {
+                    let source = SourceLanguage::lookup(&entry.language).unwrap();
+                    let enabled = match source {
+                        SourceLanguage::JavaScript => config.languages.javascript.as_ref(),
+                        _ => config.languages.typescript.as_ref(),
+                    }
+                    .is_some_and(|language| language.enabled == Some(true));
+                    enabled
+                        && crate::typescript_inputs::configuration(config)?
+                            .is_some_and(|(discovery, _)| discovery.inputs_manifest.is_none())
+                }
                 _ => false,
             };
         ensure!(
@@ -270,6 +297,13 @@ pub fn validate(project: &Path, config: &ProjectConfig) -> Result<()> {
             (1..=3600).contains(&entry.java.timeout),
             "INPUT_PREPARE_TIMEOUT"
         );
+        if matches!(entry.language.as_str(), "javascript" | "typescript") {
+            ensure!(
+                matches!(entry.typescript.scope.as_str(), "MAIN" | "TEST")
+                    && (1..=3600).contains(&entry.typescript.timeout),
+                "TYPESCRIPT_PREPARATION_OPTIONS"
+            );
+        }
         if entry.language == "python" {
             ensure!(
                 entry.python.python_version == "3.12" && entry.python.platform == "darwin",
@@ -315,6 +349,15 @@ pub fn validate(project: &Path, config: &ProjectConfig) -> Result<()> {
         ensure!(
             !enabled || preparation.entries.iter().any(|v| v.language == language),
             "INPUT_LANGUAGE_ENTRY_REQUIRED: {language}"
+        );
+    }
+    if crate::typescript_inputs::configuration(config)?.is_some() {
+        ensure!(
+            preparation
+                .entries
+                .iter()
+                .any(|entry| matches!(entry.language.as_str(), "javascript" | "typescript")),
+            "INPUT_LANGUAGE_ENTRY_REQUIRED: typescript"
         );
     }
     Ok(())
@@ -385,9 +428,18 @@ pub(super) fn resolve_using(
     let preparation = config.inputs.as_ref().unwrap();
     let path = checked_path(project, &preparation.manifest)
         .context("INPUT_PREPARATION_REQUIRED: run index --prepare")?;
-    let catalog: InputCatalog = serde_json::from_slice(&reader.read(&path, 32 << 20)?)?;
+    let catalog_bytes = reader.read(&path, 32 << 20)?;
+    #[derive(Deserialize)]
+    struct CatalogVersion {
+        schema_version: u32,
+    }
     ensure!(
-        catalog.schema_version == 2
+        serde_json::from_slice::<CatalogVersion>(&catalog_bytes)?.schema_version == 3,
+        "INPUT_CATALOG_STALE: run index --prepare"
+    );
+    let catalog: InputCatalog = serde_json::from_slice(&catalog_bytes)?;
+    ensure!(
+        catalog.schema_version == 3
             && matches_configuration(&catalog, &config, &effective.input_hash)
             && !catalog.units.is_empty()
             && catalog.units.len() <= 256,
@@ -402,16 +454,50 @@ pub(super) fn resolve_using(
             "INPUT_CATALOG_DUPLICATE_UNIT"
         );
         ensure!(
-            unit.entries.contains(&unit.id)
+            (unit.backend == AnalysisBackend::TypeScript || unit.entries.contains(&unit.id))
+                && !unit.source_languages.is_empty()
+                && unit
+                    .source_languages
+                    .iter()
+                    .all(|source| unit.backend.supports(*source))
+                && unit.source_languages.iter().collect::<BTreeSet<_>>().len()
+                    == unit.source_languages.len()
+                && unit.source_languages.iter().all(|language| match language {
+                    SourceLanguage::Java => config
+                        .languages
+                        .java
+                        .as_ref()
+                        .is_some_and(|language| language.enabled == Some(true)),
+                    SourceLanguage::Rust => config
+                        .languages
+                        .rust
+                        .as_ref()
+                        .is_some_and(|language| language.enabled == Some(true)),
+                    SourceLanguage::Python => config
+                        .languages
+                        .python
+                        .as_ref()
+                        .is_some_and(|language| language.enabled == Some(true)),
+                    SourceLanguage::JavaScript => config
+                        .languages
+                        .javascript
+                        .as_ref()
+                        .is_some_and(|language| language.enabled == Some(true)),
+                    SourceLanguage::TypeScript => config
+                        .languages
+                        .typescript
+                        .as_ref()
+                        .is_some_and(|language| language.enabled == Some(true)),
+                })
                 && unit.entries.len() == unit.roots.len()
                 && unit
                     .entries
                     .iter()
                     .zip(&unit.roots)
-                    .all(|(id, root)| preparation
-                        .entries
-                        .iter()
-                        .any(|e| &e.id == id && &e.root == root && e.language == unit.language)),
+                    .all(|(id, root)| preparation.entries.iter().any(|e| &e.id == id
+                        && &e.root == root
+                        && SourceLanguage::lookup(&e.language)
+                            .is_some_and(|source| source.backend() == unit.backend))),
             "INPUT_CATALOG_UNIT_IDENTITY"
         );
         for artifact in &unit.artifacts {
@@ -428,12 +514,29 @@ pub(super) fn resolve_using(
                 reader,
             )?;
             ensure!(
-                child.inputs[0].backend()
-                    == SourceLanguage::lookup(&unit.language)
-                        .context("INPUT_LANGUAGE")?
-                        .backend(),
+                child.inputs.len() == 1 && child.inputs[0].backend() == unit.backend,
                 "INPUT_UNIT_BACKEND_MISMATCH"
             );
+            if unit.backend == AnalysisBackend::TypeScript {
+                let native = child
+                    .typescript_inputs()
+                    .context("TYPESCRIPT_INPUTS_REQUIRED")?;
+                ensure!(
+                    native.contexts.len() == 1
+                        && native.contexts[0].unit == unit.id
+                        && native.contexts[0]
+                            .publish_languages
+                            .iter()
+                            .copied()
+                            .collect::<BTreeSet<_>>()
+                            == unit
+                                .source_languages
+                                .iter()
+                                .copied()
+                                .collect::<BTreeSet<_>>(),
+                    "INPUT_UNIT_CONTEXT_MISMATCH"
+                );
+            }
             effective
                 .config
                 .modules
@@ -564,7 +667,8 @@ mod tests {
         parent.input_units = vec![ResolvedUnit {
             prepared: PreparedUnit {
                 id: "app".into(),
-                language: "java".into(),
+                backend: AnalysisBackend::Java,
+                source_languages: vec![SourceLanguage::Java],
                 entries: vec!["app".into()],
                 modules: vec!["app".into()],
                 roots: vec![".".into()],
@@ -615,7 +719,7 @@ mod strict_config_tests {
     fn prepared_configuration_requires_original_bytes() {
         let original = hash(b"original TOML");
         let catalog = InputCatalog {
-            schema_version: 2,
+            schema_version: 3,
             config_sha256: original.clone(),
             units: vec![],
         };

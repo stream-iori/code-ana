@@ -12,6 +12,7 @@ members = [
     "crates/typescript-worker",
     "crates/model",
     "crates/config",
+    "crates/input-io",
     "crates/storage",
     "crates/query",
     "crates/application",

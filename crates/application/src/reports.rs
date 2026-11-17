@@ -1,5 +1,6 @@
 //! Typed persisted report summaries and comparison; no JSON keys drive business decisions.
 use super::*;
+pub(super) const REPORT_SCHEMA_VERSION: u32 = 5;
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub(super) struct GlobalReport {
@@ -19,7 +20,8 @@ pub(super) struct GlobalReport {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(super) struct UnitReport {
     pub id: String,
-    pub language: String,
+    pub backend: AnalysisBackend,
+    pub source_languages: Vec<SourceLanguage>,
     pub entries: Vec<String>,
     pub mode: codeana_config::inputs::InputMode,
     pub reason_code: Option<String>,
@@ -46,10 +48,10 @@ impl GlobalReport {
             units_omitted: capture.effective.input_units.len().saturating_sub(20),
             known_modules: capture.effective.config.modules.len(),
             mode_counts: capture.effective.input_units.iter().fold(BTreeMap::new(), |mut counts, unit| {
-                *counts.entry(format!("{}:{:?}", unit.prepared.language, unit.prepared.mode)).or_default() += 1; counts
+                *counts.entry(format!("{}:{:?}", unit.prepared.backend.as_str(), unit.prepared.mode)).or_default() += 1; counts
             }),
             units: capture.effective.input_units.iter().take(20).map(|u| UnitReport {
-                id: u.prepared.id.clone(), language: u.prepared.language.clone(), entries: u.prepared.entries.clone(), mode: u.prepared.mode,
+                id: u.prepared.id.clone(), backend: u.prepared.backend, source_languages: u.prepared.source_languages.clone(), entries: u.prepared.entries.clone(), mode: u.prepared.mode,
                 reason_code: u.prepared.reason.clone(), log: u.prepared.log.clone(),
             }).collect(),
             next_steps: vec!["doctor: inspect configuration and input readiness".into(), "inspect task events and referenced preparation logs; after repairing inputs, run index --prepare".into()],
@@ -191,7 +193,7 @@ impl ReportService {
         persisted.report = id.into();
         let report = ReportDocument {
             analysis_resources,
-            schema_version: 4,
+            schema_version: REPORT_SCHEMA_VERSION,
             id: id.into(),
             created: now(),
             revision: revision.clone(),
@@ -248,12 +250,18 @@ impl ReportService {
     }
     pub(super) fn report(&self, req: &Request, project: &str) -> Result<Output> {
         let value: ReportDocument = self.store.object("report", &req.selector, project)?;
-        ensure!(value.schema_version == 4, "REPORT_SCHEMA_UNSUPPORTED");
+        ensure!(
+            value.schema_version == REPORT_SCHEMA_VERSION,
+            "REPORT_SCHEMA_UNSUPPORTED"
+        );
         let record = if req.base.is_empty() {
             Record::display(&value)?
         } else {
             let base: ReportDocument = self.store.object("report", &req.base, project)?;
-            ensure!(base.schema_version == 4, "REPORT_SCHEMA_UNSUPPORTED");
+            ensure!(
+                base.schema_version == REPORT_SCHEMA_VERSION,
+                "REPORT_SCHEMA_UNSUPPORTED"
+            );
             let a = &base.summary;
             let b = &value.summary;
             ensure!(
@@ -334,7 +342,10 @@ impl ReportService {
 /// Presentation only; machine consumers continue reading the same JSON document.
 pub fn report_markdown(value: serde_json::Value) -> Result<String> {
     let report: ReportDocument = serde_json::from_value(value)?;
-    ensure!(report.schema_version == 4, "REPORT_SCHEMA_UNSUPPORTED");
+    ensure!(
+        report.schema_version == REPORT_SCHEMA_VERSION,
+        "REPORT_SCHEMA_UNSUPPORTED"
+    );
     let clean = |text: &str| text.replace(['\n', '\r', '|'], " ");
     let mut out = format!(
         "# Index report {}\n\n| Execution | Quality | Gate | Publication | Revision |\n|---|---|---|---|---|\n| {} | {} | {} | {} | {} |\n\n",
@@ -383,13 +394,21 @@ pub fn report_markdown(value: serde_json::Value) -> Result<String> {
     }
     if !report.global.units.is_empty() {
         out.push_str(
-            "| Entry | Language | Input mode | Reason | Preparation log |\n|---|---|---|---|---|\n",
+            "| Entry | Backend / Sources | Input mode | Reason | Preparation log |\n|---|---|---|---|---|\n",
         );
         for unit in &report.global.units {
             out.push_str(&format!(
                 "| {} | {} | {:?} | {} | {} |\n",
                 clean(&unit.id),
-                clean(&unit.language),
+                clean(&format!(
+                    "{} / {}",
+                    unit.backend.as_str(),
+                    unit.source_languages
+                        .iter()
+                        .map(|source| source.as_str())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )),
                 unit.mode,
                 clean(unit.reason_code.as_deref().unwrap_or("none")),
                 clean(unit.log.as_deref().unwrap_or("none"))

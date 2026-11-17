@@ -110,13 +110,44 @@ func (f *ObservedFS) reserve(bytes uint64) bool {
 	return true
 }
 
+// Ancestor package/type searches may witness actual absence, but never grant
+// permission to read a positive global package or enumerate a global cache.
+func (f *ObservedFS) ancestor(name string) bool {
+	for _, root := range f.roots {
+		if beneath(f.key(root), f.key(name)) {
+			return true
+		}
+	}
+	return false
+}
+func (f *ObservedFS) metadataProbe(name string) bool {
+	if f.ancestor(name) {
+		return true
+	}
+	for _, root := range f.roots {
+		for parent := root; ; parent = path.Dir(parent) {
+			if f.key(name) == f.key(path.Join(parent, "package.json")) || beneath(f.key(name), f.key(path.Join(parent, "node_modules"))) {
+				return true
+			}
+			if parent == "/" {
+				break
+			}
+		}
+	}
+	return false
+}
+
 // Lstat each traversed component and record links before resolving them. The
 // eventual content open is additionally confined by os.Root against path races.
 func (f *ObservedFS) resolve(name string) string {
 	if f.Check() != nil {
 		return ""
 	}
-	if !absolute(name) || !f.allowed(name) {
+	if beneath(f.key(path.Clean(name)), f.key(path.Join(f.context.Root, ".code-ana"))) {
+		f.fail(&Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "indexer-owned state is not a compiler input"})
+		return ""
+	}
+	if !absolute(name) || (!f.allowed(name) && !f.metadataProbe(name)) {
 		f.fail(&Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "compiler lookup outside explicit preparation roots"})
 		return ""
 	}
@@ -209,6 +240,10 @@ func (f *ObservedFS) stat(name string, kind pb.LookupKind) (string, fs.FileInfo)
 	}
 	if err != nil {
 		f.fail(err)
+		return name, nil
+	}
+	if !f.allowed(name) && !(info.IsDir() && f.ancestor(name)) {
+		f.fail(&Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "positive package/type input outside explicit preparation roots"})
 		return name, nil
 	}
 	if !info.IsDir() && !info.Mode().IsRegular() {
@@ -306,6 +341,10 @@ func (f *ObservedFS) ReadFile(name string) (string, bool) {
 	return string(data), true
 }
 func (f *ObservedFS) GetAccessibleEntries(name string) vfs.Entries {
+	if !f.allowed(name) {
+		f.fail(&Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "directory enumeration outside explicit preparation roots"})
+		return vfs.Entries{}
+	}
 	name, info := f.stat(name, pb.LookupKind_DIRECTORY)
 	if info == nil || !info.IsDir() {
 		return vfs.Entries{}
@@ -337,6 +376,9 @@ func (f *ObservedFS) GetAccessibleEntries(name string) vfs.Entries {
 			break
 		}
 		for _, entry := range batch {
+			if f.key(path.Join(name, entry.Name())) == f.key(path.Join(f.context.Root, ".code-ana")) {
+				continue
+			}
 			if !f.reserve(uint64(len(entry.Name())) + 128) {
 				break
 			}

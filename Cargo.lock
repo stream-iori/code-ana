@@ -345,6 +345,7 @@ name = "codeana-config"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "codeana-input-io",
  "codeana-model",
  "globset",
  "libc",
@@ -419,6 +420,15 @@ dependencies = [
  "sha2",
  "tempfile",
  "tokio",
+]
+
+[[package]]
+name = "codeana-input-io"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "libc",
+ "tempfile",
 ]
 
 [[package]]
@@ -556,6 +566,7 @@ dependencies = [
  "clap",
  "codeana-contracts",
  "codeana-graph-io",
+ "codeana-input-io",
  "codeana-model",
  "codeana-worker-runtime",
  "libc",

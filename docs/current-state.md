@@ -15,6 +15,22 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 真实准备入口（2026-11-18，继续实施）
+
+| 已验证 | 证据目录（target/typescript-c-abi 下） |
+|---|---|
+| 正常 / fixture inputs2 SDK，各 27 项 Go 测试 | t3-sdk-preparer2-build / t3-sdk-preparer2-fixture-build |
+| 独立 worker 准备 5 场景 | t3-prepare-entry-real-first |
+| CLI provider 6 场景，共享 JS/TS 单元与别名、冲突保留清单 | t3-provider-matrix-first |
+| 新 SDK ABI 12 场景 / 20 检查，真实公共 capture | t3-preparer2-abi-matrix / t3-preparer2-public-capture |
+| Native Java/Rust/Python prepared 19/19；Python 产品 7 项 | t3-catalog3-prepared-fixed / t3-report5-python-product.log |
+| 完整 just test-rust、Python 独立核心/clippy | t3-provider-full-rust-first.log / t3-provider-python-core.log |
+| 应用 66、配置 63、链接 13、观察 5、TS 输入 12、存储 87，聚焦 clippy | t3-catalog3-consumers-focused.log / t3-provider-consumers-clippy.log |
+
+公共准备清单升级为 3，准备摘要 2，索引报告 5；单元显式区分 backend/source_languages。旧清单拒绝；历史注释不可用输入按实际源码语言归属。原 CLI 路径错误、报告版本与旧注释字段失败均保留，不覆盖旧回执。
+
+CLI 通过新 worker 调真实 Go 准备，不在 CLI/daemon 装编译器；大小写规则按目标卷探测，`.code-ana` 不进入逻辑目录。当前准备成功后语义执行仍明确返回 TYPESCRIPT_INPUT_NOT_READY；references/pnpm/复杂配置和 T4—T8 继续实施。没有重新构建 Java Native 或进行性能测量。汇总回执：`target/typescript-c-abi/t3-provider-sealed/receipt.json`。以下小节保留各检查点验证范围。
+
 ## TypeScript T3 配置与公共 capture（2026-11-18，部分出口已验证）
 
 | 当前实现 | 实际证据 |
@@ -27,7 +43,7 @@
 
 证据：`target/typescript-c-abi/t3-config-capture-sealed/receipt.json`，真实门禁为 `t3-actual-public-capture-first/receipt.json`。独立真实编译器用例在无 Go 的普通 Rust 门禁显式 ignored，在 `just test-typescript-inputs` 中强制执行，已单独通过；Java 的既有真实 G1 teardown 用例仍按 SDK 专项入口验证，不计为本轮 Native 放行。原测试编译错误及多上下文整份/单份清单比较失败保留。
 
-T3 尚未完成：CLI prepare provider、references/pnpm/复杂配置真值和完整闭包仍待接入；后续 T4—T8 公开语义、产品、故障和实际分发继续实施。配置/捕获成功不代表现在可用 CLI 索引 JS/TS。本轮没有重新构建 Java Native 或进行性能测量。
+T3 尚未完成：references/pnpm/复杂配置真值和完整闭包仍待接入；后续 T4—T8 公开语义、产品、故障和实际分发继续实施。配置/捕获成功不代表现在可用 CLI 索引 JS/TS。本轮没有重新构建 Java Native 或进行性能测量。
 
 ## TypeScript T3 输入发现组件（2026-11-18；产品接入继续实施）
 

@@ -156,6 +156,8 @@ def main():
         stdlib_digest = hashlib.sha256(json.dumps(stdlib, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         compiler_version = re.search(r'var version = "([^"]+)"', (source/'internal/core/version.go').read_text())[1]
         adapter = f'typescript-go-{lock["commit"][:12]}-codeana-graph{graph_model}-tsabi1'
+        revision = int(re.search(r'pub const ADAPTER_REVISION: u32 = (\d+)', (ROOT/'crates/model/src/typescript.rs').read_text())[1])
+        adapter += f'-inputs{revision}'
         if args.dev_abi_fixture:adapter+='-abi-fixture'
         values = dict(Adapter=adapter, UpstreamCommit=lock['commit'], TypeScriptCommit=lock['typescript']['commit'],
                       StandardLibraryDigest=stdlib_digest,

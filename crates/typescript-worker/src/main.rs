@@ -10,6 +10,8 @@ use std::{os::fd::AsRawFd, path::PathBuf, time::Duration};
 
 #[derive(Parser)]
 struct Args {
+    #[command(flatten)]
+    preparation: codeana_typescript_worker::preparation::PreparationArgs,
     #[arg(long)]
     sdk: PathBuf,
     #[arg(long)]
@@ -70,6 +72,13 @@ async fn main() -> Result<()> {
         println!("{}", serde_json::to_string(&runtime)?);
         owner.shutdown().await?;
         return Ok(());
+    }
+    if args.preparation.prepare_project.is_some() {
+        ensure!(
+            !args.dev_abi_fixture && args.component.is_none(),
+            "TYPESCRIPT_PREPARATION_MODE"
+        );
+        return codeana_typescript_worker::preparation::run(args.preparation, &mut owner).await;
     }
     let fixture = args.component.context(
         "TypeScript product IPC is pending T6; use --component for explicit component verification",

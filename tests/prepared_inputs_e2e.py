@@ -111,11 +111,11 @@ class PreparedInputs(PreparedHarness):
         import tomllib
         revision = self.cli('index', '--prepare', timeout=120)[1]['revision']
         catalog = self.catalog()
-        self.assertEqual(catalog['schema_version'], 2)
+        self.assertEqual(catalog['schema_version'], 3)
         for unit in catalog['units']:
             native = tomllib.loads((self.project / unit['config']['path']).read_text())
             self.assertEqual(set(native), {'discovery', 'languages', 'modules'})
-            self.assertEqual(set(native['languages']), {unit['language']})
+            self.assertEqual(set(native['languages']), {unit['backend']})
         catalog['schema_version'] = 1
         (self.project / '.code-ana/inputs.json').write_text(json.dumps(catalog))
         _, terminal = self.cli('index', code=1, timeout=120)
@@ -216,7 +216,7 @@ class PreparedInputs(PreparedHarness):
         reused, second = self.cli('index', timeout=120)
         self.assertEqual(reused[0]['mode'], 'delta')
         report = self.cli('report', second['report'])[0][0]
-        self.assertEqual(report['schema_version'], 4)
+        self.assertEqual(report['schema_version'], 5)
         self.assertEqual(report['diagnostics'], [])
         self.assertEqual({c['unit'] for c in report['contexts']}, {'app-a','app-b','common'})
         self.assertTrue(all(c['details']['backend']=='python' and c['source_languages']==['python'] and c['semantic_digest'] for c in report['contexts']))
@@ -385,7 +385,7 @@ source_roots=[{path=".",scope="MAIN"}]
             self.config += f'\n[[inputs.entries]]\nid="{name}"\nlanguage="java"\nroot="java-shared"\n[inputs.entries.java]\noffline=true\nsource_only={str(source_only).lower()}\n'
         self.write_config()
         _, initial = self.cli('index', '--prepare', timeout=180)
-        units = [u for u in self.catalog()['units'] if u['language']=='java']
+        units = [u for u in self.catalog()['units'] if u['backend']=='java']
         self.assertEqual({u['id'] for u in units}, {'first','second'})
         self.assertEqual({u['mode'] for u in units}, {'semantic','source_only'})
         with self.db(initial['revision']) as db:

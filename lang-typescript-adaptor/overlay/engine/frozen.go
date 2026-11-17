@@ -27,6 +27,7 @@ type FrozenFS struct {
 	absent        map[string]uint8
 	meter         *Meter
 	failure       error
+	hidden        string
 	caseSensitive bool
 	spellings     map[string]string
 	entries       map[string]map[string]uint8
@@ -59,12 +60,15 @@ func NewFrozenFS(project *pb.FrozenProject, meter *Meter) (*FrozenFS, error) {
 	if err := meter.Charge(count+1, count, count*256+512); err != nil {
 		return nil, err
 	}
-	frozen := &FrozenFS{files: make(map[string]string), directories: make(map[string]*pb.Directory), links: make(map[string]*pb.SymbolicLink), absent: make(map[string]uint8), meter: meter, caseSensitive: *context.CaseSensitive, spellings: make(map[string]string), entries: make(map[string]map[string]uint8)}
+	frozen := &FrozenFS{files: make(map[string]string), directories: make(map[string]*pb.Directory), links: make(map[string]*pb.SymbolicLink), absent: make(map[string]uint8), meter: meter, hidden: path.Join(context.Root, ".code-ana"), caseSensitive: *context.CaseSensitive, spellings: make(map[string]string), entries: make(map[string]map[string]uint8)}
 	for _, file := range project.Files {
 		if file == nil || file.File == nil || !absolute(file.File.Path) || beneath(file.File.Path, bundled.LibPath()) || file.File.Size != uint64(len(file.Content)) || !utf8.Valid(file.Content) {
 			return nil, invalid("invalid frozen file identity or text")
 		}
 		identity := file.File
+		if beneath(frozen.key(identity.Path), frozen.key(frozen.hidden)) {
+			return nil, invalid("indexer-owned state cannot be a compiler input")
+		}
 		if identity.Role < pb.FileRole_PUBLISH || identity.Role > pb.FileRole_CONTROL ||
 			(identity.Role != pb.FileRole_CONTROL && identity.Language != pb.SourceLanguage_TYPESCRIPT && identity.Language != pb.SourceLanguage_JAVASCRIPT) ||
 			(identity.Role == pb.FileRole_PUBLISH && (!languages[identity.Language] || !beneath(frozen.key(identity.Path), frozen.key(context.Root)) || identity.Module == "" || identity.World == "" || (identity.Scope != "MAIN" && identity.Scope != "TEST"))) {
@@ -231,6 +235,10 @@ func (f *FrozenFS) resolve(name string) string {
 		return ""
 	}
 	name = f.key(path.Clean(name))
+	if beneath(name, f.key(f.hidden)) {
+		f.fail(invalid("indexer-owned state is not a compiler input"))
+		return ""
+	}
 	if !absolute(name) {
 		f.fail(invalid("compiler requested a nonabsolute VFS path"))
 		return ""

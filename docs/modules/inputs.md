@@ -88,7 +88,7 @@ source_roots = [{path = "src", scope = "MAIN"}]
 
 Python schema 3 增加根 module、模块元数据、上下文 publish_roots/gaps，只接受 schema 3。adapter 为 pyrefly-1.4.0-codeana-v5-comments，后端提交不变。不提供旧格式默认值或迁移；归属进入 world/profile。
 
-### JS / TS（配置与捕获已接入，prepare provider / 产品执行待接入）
+### JS / TS（准备与捕获已接入，语义索引待接入）
 
 ```toml
 [languages.javascript]
@@ -107,11 +107,36 @@ dependency_roots = []
 
 公共 capture 验证字节与观察并使用任务自有 spool。目录存在和完整枚举分开；某路径不是文件不表示该路径也不是目录。外部依赖正文必须位于显式 dependency_roots，禁止用 `/` 授权整个文件系统；祖先 package/type 的失败查找仅授权精确元数据观察，不授权内容回退。过滤的源码仍可作为辅助 Checker 输入，不能发布其语义。
 
-`just test-typescript-inputs SDK NEW_EVIDENCE` 强制执行真实 Go 准备及公共 capture，用例在普通无 Go Rust 门禁中显式 ignored；SDK 门禁不允许跳过。该入口目前验证组件，不表示 `index --prepare` 的 JS/TS provider 或公开语义产品已经可用。
+`just test-typescript-inputs SDK NEW_EVIDENCE` 强制执行真实 Go 准备及公共 capture，用例在普通无 Go Rust 门禁中显式 ignored；SDK 门禁不允许跳过。该入口验证公共捕获；CLI 准备另由 `just test-typescript-provider SDK NEW_EVIDENCE` 验证。公开语义索引尚不可用。
+
+也可使用统一准备入口：
+
+```toml
+[languages.javascript]
+enabled = true
+[languages.typescript]
+enabled = true
+[[inputs.entries]]
+id = "app"
+language = "typescript"
+root = "."
+manifest = "tsconfig.json"
+[inputs.entries.typescript]
+scope = "MAIN"
+timeout = 120
+[[modules]]
+id = "app"
+language = "typescript"
+root = "."
+```
+
+`manifest` 是入口根下的静态 compiler 配置；省略时 TS 取 tsconfig.json，JS 取 jsconfig.json。相同配置、module、scope 的 JS/TS 入口只准备一次，别名归入同一单元；冲突拒绝。CLI 启动相邻的 `codeana-typescript-worker`，SDK 使用 `CODEANA_TYPESCRIPT_SDK` 绝对路径，或安装目录 `lib/typescript/current`；不运行包管理器。准备使用显式依赖根、任务预算和超时，scratch 在目标项目外。
+
+当前 `index --prepare` 能生成并捕获清单；后续语义执行明确返回 `TYPESCRIPT_INPUT_NOT_READY`，不会发布占位语义。references、pnpm 和多配置闭包仍需补齐。
 
 ## 输入与降级
 
-公共清单 schema 2 登记原始/规范化语言清单及原生配置视图的路径、长度和 SHA。原生视图只含 discovery、languages 和 modules；公共扫描、资源、发布及报告策略从项目配置解析一次，由所有单元共享。视图中注入公共策略直接拒绝。Maven 回执、Cargo 图分别保留，不拼成虚构的共同构建。准备使用项目锁和独立 generation；配置未变、规范化视图验证通过后原子切换。索引再次验证并捕获，之后不借活文件补全。
+公共清单 schema 3 登记原始/规范化语言清单及原生配置视图的路径、长度和 SHA。原生视图只含 discovery、languages 和 modules；公共扫描、资源、发布及报告策略从项目配置解析一次，由所有单元共享。视图中注入公共策略直接拒绝。Maven 回执、Cargo 图分别保留，不拼成虚构的共同构建。准备使用项目锁和独立 generation；配置未变、规范化视图验证通过后原子切换。索引再次验证并捕获，之后不借活文件补全。
 
 | 情况 | 处理 |
 |---|---|
@@ -131,9 +156,9 @@ Java plain 使用已有显式模块根，不运行 Maven，仍需正确的 Java 
 
 ## 报告与兼容
 
-报告 schema 4 提供执行、质量、门禁、发布、报告五个状态，范围、输入模式分布、主要原因和日志/CLI 定位。JSON/Markdown 同源；不增加 JSONL，不嵌入完整配置、逐文件诊断或日志全文。入口样例上限 20，另给总量及省略量；详细排查继续使用 CLI/日志。
+报告 schema 5 提供执行、质量、门禁、发布、报告五个状态，范围、输入模式分布、主要原因和日志/CLI 定位。JSON/Markdown 同源；不增加 JSONL，不嵌入完整配置、逐文件诊断或日志全文。入口样例上限 20，另给总量及省略量；详细排查继续使用 CLI/日志。
 
-失败、取消、strict 拒绝也保存可用摘要；global.measurements_available=false 表示最终分析计数不可得，零值不能解释成无问题。报告关闭仍有终态；报告失败不撤销发布。仅接受当前 schema 4 报告。
+失败、取消、strict 拒绝也保存可用摘要；global.measurements_available=false 表示最终分析计数不可得，零值不能解释成无问题。报告关闭仍有终态；报告失败不撤销发布。仅接受当前 schema 5 报告。
 
 无 inputs 配置时保持旧入口；新公共清单与启用语言的旧 inputs_manifest 互斥。原导出器、java-inputs export 保留，Python 原脚本默认不读 pyproject，显式 --pyproject 不变。独立导出器可只准备、不索引。
 
@@ -141,7 +166,7 @@ Java plain 使用已有显式模块根，不运行 Maven，仍需正确的 Java 
 
 验证入口为 `tests/prepared_inputs_e2e.py --backends java,rust,python --evidence /absolute/new/evidence`，显式执行全部 19 项，包括 Native 三语言及两个独立 Maven reactor；Rust/Python 分发声明 `--backends rust,python`，明确列出四项 Java 范围排除。已选后端缺失或测试 skip 均判失败。
 
-准备清单 schema 2 只使用 config_sha256 精确校验原始配置字节；注释展示参数及 preparation_sha256 例外已删除。schema 1/旧例外清单、配置字节变化或输入策略变化均需重新 index --prepare；artifact、来源和任务前后配置漂移检查保持。
+准备清单 schema 3 只使用 config_sha256 精确校验原始配置字节；注释展示参数及 preparation_sha256 例外已删除。schema 1/2/旧例外清单、配置字节变化或输入策略变化均需重新 index --prepare；artifact、来源和任务前后配置漂移检查保持。
 
 完整语义 profile 相同、其余源码/owner 完全相同时，普通 Python 与 prepared 可以复用图并更新 FILES 中的根配置捕获；源码、依赖或 world 改变仍沿原策略重算。
 

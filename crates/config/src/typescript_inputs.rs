@@ -236,6 +236,13 @@ pub(super) fn capture(
         })
         .collect::<Result<BTreeMap<_, _>>>()?;
     for context in &inputs.contexts {
+        ensure!(
+            reader
+                .borrow_mut()
+                .case_sensitive(Path::new(&context.config_path))?
+                == context.case_sensitive,
+            "TYPESCRIPT_CASE_RULES_STALE"
+        );
         for link in &context.links {
             ensure!(
                 within(Path::new(&link.path), project, &dependencies)
@@ -276,6 +283,12 @@ pub(super) fn capture(
                 let mut files = BTreeSet::new();
                 let mut directories = BTreeSet::new();
                 for (name, kind) in entries {
+                    if path == Path::new(&context.root)
+                        && (name == ".code-ana"
+                            || (!context.case_sensitive && name.eq_ignore_ascii_case(".code-ana")))
+                    {
+                        continue;
+                    }
                     let is_directory = if kind == "link" {
                         let target = reader.borrow_mut().entry_kind(&path.join(&name))?;
                         ensure!(

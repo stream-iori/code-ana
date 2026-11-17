@@ -46,7 +46,8 @@ pub(crate) fn prepared(effective: &Effective) -> String {
             let p = &unit.prepared;
             (
                 &p.id,
-                &p.language,
+                &p.backend,
+                &p.source_languages,
                 &p.entries,
                 &p.roots,
                 &p.modules,
@@ -75,7 +76,8 @@ mod tests {
         effective.input_units.push(ResolvedUnit {
             prepared: PreparedUnit {
                 id: "app".into(),
-                language: "java".into(),
+                backend: AnalysisBackend::Java,
+                source_languages: vec![SourceLanguage::Java],
                 entries: vec!["app".into()],
                 modules: vec!["app".into()],
                 roots: vec![".".into()],

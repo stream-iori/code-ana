@@ -201,7 +201,7 @@ Rust 单语言由 blocking 记录生成器直接送入 IPC，daemon 复用 `anal
 
 worker 25 的 `Discover.python` 与 Java/Rust 描述符互斥，携带冻结配置文件的路径、SHA-256、长度及结果/事实/scratch 预算。PythonConfig 不改变 Java ABI 或请求版本。Python world 包含显式上下文和根身份顺序；公共位置是一基 UTF-16 列，偏移来自原始 UTF-8 字节。
 
-Python 当前输入 schema 3，仅接受 3；新增根 module、模块元数据和上下文发布范围/缺口。独立导出器仍可用 --pyproject 读取可选静态配置，统一准备默认检查入口根；没有 pyproject 不构成前置条件。adapter v5-comments 与固定后端提交严格核对，旧 worker 拒绝；新 profile 不复用旧结果。诊断仍按实际反向依赖归因，辅助/后端来源和未知影响保留。公共准备清单 schema 2、报告 schema 4 独立版本化，不升级 worker/daemon/GRA1/图库协议。详见 [统一输入准备](modules/inputs.md)。
+Python 当前输入 schema 3，仅接受 3；新增根 module、模块元数据和上下文发布范围/缺口。独立导出器仍可用 --pyproject 读取可选静态配置，统一准备默认检查入口根；没有 pyproject 不构成前置条件。adapter v5-comments 与固定后端提交严格核对，旧 worker 拒绝；新 profile 不复用旧结果。诊断仍按实际反向依赖归因，辅助/后端来源和未知影响保留。公共准备清单 schema 3、报告 schema 5 独立版本化，不升级 worker/daemon/GRA1/图库协议。详见 [统一输入准备](modules/inputs.md)。
 
 物理 schema 17 在保持 schema 9 紧凑表结构的基础上扩展 Python 声明约束，逻辑 schema 36。Python 只发布已绑定目标，不按同名函数跨 world/语言补边。未解析调用继承已验证 source 的 language/provider。缺模块即使被源码 ignore 也计入完整性；严格模式拒绝 partial。旧 revision 查询/增量必须先 `index --full`。详见 [Python worker](modules/python-worker.md)。
 
@@ -268,11 +268,11 @@ TaskRequest 字段 48 为 search_in；49/50 及名称 context_before/context_aft
 
 JavaConfig 必填 target_java（8/17），附带 actual_java_version 与 toolchain_aliases；analysis 13 请求必填目标，缺失或非法值拒绝。SDK manifest 4 在 Java 后端身份中登记 target_java=[8,17]、compiler_bridges 映射及每个文件摘要；缺桥、错误摘要和混装 SDK 拒绝。javac-model-v51、compiler batch 2、C ABI 4 保持；Native 构建 JDK 25 与目标 JDK 分开。新语义与旧图库不原地迁移，index --full 建成后切 head。
 
-prepared 输入清单当前为 schema 2。单元配置 artifact 仅接受 discovery/languages/modules，不包含根 schema/kind、扫描、资源或报告策略；任务公共策略从项目 TOML 一次归一，由原生单元共享。schema 1 明确拒绝并要求 index --prepare，不提供旧配置视图转换。完整性仍以根配置原始 SHA 和各 artifact 原始字节校验。
+prepared 输入清单当前为 schema 3。单元配置 artifact 仅接受 discovery/languages/modules，不包含根 schema/kind、扫描、资源或报告策略；任务公共策略从项目 TOML 一次归一，由原生单元共享。schema 1/2 明确拒绝并要求 index --prepare，不提供旧配置视图转换。完整性仍以根配置原始 SHA 和各 artifact 原始字节校验。
 
 worker 25 的 BuildContext 使用必需 unit、source_languages、modules/worlds、semantic_digest、producer 和图能力；后端由 details oneof 的 Java/Rust/Python/TypeScript 变体确定。Java 的目标版本/classpath/JDK/桥、Rust toolchain/adapter、Python 目标/adapter/后端提交与 TS 编译器/提交均进入各自类型化详情，不能由开放元数据选择后端。Discover 必须显式给出 unit 和发布源码语言，实例须匹配 grant；daemon 在启动和池复用时核对实例、后端、语言、worlds 及摘要。旧通用 source_version/classpath、缺失/重复详情和重复 unit 在 wire 解码前拒绝；用量回执不进入领域上下文。上下文摘要包括稳定实例/语言/模块/world/后端详情，排除源码正文和 IPC 用量；规范化 SDK 定位等完整 profile 稳定性继续由公共捕获阶段处理。
 
-报告 schema 4 的 contexts 数组保存每个已发现实例的上下文；失败在未发现上下文时为显式空数组。移除单一 context 和伪 multi 后端，schema 3 不转换、不补默认值。全局准备状态仍覆盖 FilesOnly 单元；有上下文不等于语义结果已经发布。
+报告 schema 5 的 contexts 数组保存每个已发现实例的上下文；失败在未发现上下文时为显式空数组。移除单一 context 和伪 multi 后端，schema 3/4 不转换、不补默认值。全局准备状态仍覆盖 FilesOnly 单元；有上下文不等于语义结果已经发布。
 
 GRA1 的 Descriptor/OutputLimits 为 contracts::graph_delivery 纯契约；文件 IO、归档校验、行队列及生产/接收摘要统一由 graph-io 承担。Java 只解自己的 JSON envelope，再调用公共 read_descriptor；原始归档 SHA 不以重编码替代。IPC 行流独立使用同一 Verifier/Encoder 的规范编码摘要，只有完整匹配 chunks/count/SHA 才能生成不可在调用方构造的 VerifiedEnd；daemon 还须核实终态用量后才能投递证明。删除 contracts 的 graph_archive/stream/worker_rows 和 Java 专属 delivery 模块，无旧路径 re-export。
 
@@ -308,6 +308,10 @@ TypeScript 私有引擎协议 1 由 `proto/codeana/typescript/v1/analysis.proto`
 
 TypeScript 私有输入视图必须显式携带 case_sensitive；Directory 的 listing_complete 区分存在观察和完整枚举。旧组件 SDK 因 analysis proto SHA 不符而拒绝，需重建；版本 1 尚未发布为产品 SDK。Prepare 的 protobuf inventory 只交付身份和观察，不代替 Rust 公共 capture 的内容封存。
 
-TypeScript 准备结果在 worker 内经 inventory wire 准入和显式映射进入 `model::typescript::Inputs`，config 不依赖引擎 protobuf。原生清单 schema 1 与私有 analysis 1 各自版本化；清单要求显式大小写/目录完整性，内容和上下文分开校验。库、header、标准库及 proto SHA 进入语义身份，SDK 安装位置和准备 generation 不进入身份。当前为组件链路，生产 provider/capture 待接入。
+TypeScript 准备结果在 worker 内经 inventory wire 准入和显式映射进入 `model::typescript::Inputs`，config 不依赖引擎 protobuf。原生清单 schema 1 与私有 analysis 1 各自版本化；清单要求显式大小写/目录完整性，内容和上下文分开校验。库、header、标准库及 proto SHA 进入语义身份，SDK 安装位置和准备 generation 不进入身份。CLI prepare provider 和公共 capture 已接入；公开语义与产品 worker IPC 仍待接入。
 
 公共 capture 的 Entry 观察保存路径的实际 file/directory/other/缺失类型，封存时复核；Directory 仍专门表示完整枚举。TypeScript 原生上下文分别形成冻结单元，输入正文与发布角色分开，过滤仅影响发布。该捕获端口扩展没有改变 worker wire、Java ABI 或图库 schema；CLI TS prepare provider 和产品执行尚待接入。
+
+prepared schema 3 的每个单元必须给出 `backend` 与非空、去重的 `source_languages`，不再使用单一 language 字段。JS/TS 一个 compiler context 共用 TypeScript 后端及预算，禁用标签不能发布。准备摘要 schema 2、索引报告 schema 5 使用同一单元形状；旧格式明确拒绝，重新 prepare/full 后才发布新 revision。
+
+TypeScript adapter 输入策略修订为 `inputs2`；旧 SDK 需要重建，TS ABI 1 / analysis 1 不变。Prepare 探测目标卷大小写规则，使用显式根，精确记录祖先缺失元数据；正的外部依赖必须显式授权。项目根 `.code-ana` 不进入编译器逻辑目录。共享 `input-io` 提供只读、有界、FD 锚定的大小写探测，不包含编译器或配置语义。

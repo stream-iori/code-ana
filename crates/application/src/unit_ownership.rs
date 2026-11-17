@@ -205,8 +205,7 @@ pub(super) fn freeze(
         .iter()
         .filter(|u| u.context.is_none())
     {
-        let backend =
-            crate::index_plan::language(&unit.prepared.language).context("INPUT_LANGUAGE")?;
+        let backend = unit.prepared.backend;
         admit(
             backend,
             (unit.prepared.id.len() + 1024) as u64 + 2 * retained_size(&unit.prepared.modules)?,
@@ -233,9 +232,7 @@ pub(super) fn freeze(
             unit: unit.prepared.id.as_str().into(),
             backend,
             availability: UnitAvailability::FilesOnly,
-            source_languages: vec![
-                SourceLanguage::lookup(&unit.prepared.language).context("INPUT_LANGUAGE")?,
-            ],
+            source_languages: unit.prepared.source_languages.clone(),
             modules,
             worlds: vec![],
             producer: String::new(),

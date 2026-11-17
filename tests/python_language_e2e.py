@@ -112,7 +112,7 @@ class PythonLanguage(PythonHarness):
         first = self.cli('index', timeout=90)[1]
         self.assertFalse(first['evidence']['semantic'])
         report = self.cli('report', first['report'])[0][0]
-        self.assertEqual(report['schema_version'], 4)
+        self.assertEqual(report['schema_version'], 5)
         self.assertEqual({c['details']['backend'] for c in report['contexts']}, {'python'})
         with self.db(first['revision']) as db:
             groups = dict(db.execute('SELECT code,sum(occurrence_count) FROM index_diagnostics GROUP BY code'))

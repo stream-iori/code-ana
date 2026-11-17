@@ -171,3 +171,104 @@ func TestIncompleteDirectoryPresenceCannotCertifyMissingChildren(t *testing.T) {
 		t.Fatal("presence invented absence")
 	}
 }
+
+func TestPreparationWitnessesAncestorAbsenceButRejectsPositiveGlobalInputs(t *testing.T) {
+	request, meter := preparationFixture(t)
+	outer, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	child := filepath.Join(outer, "app")
+	if err := os.Mkdir(child, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.ts", "b.ts", "tsconfig.json"} {
+		data, err := os.ReadFile(filepath.Join(request.ProjectRoot, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(child, name), data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	request.ProjectRoot = child
+	request.ConfigPath = filepath.Join(child, "tsconfig.json")
+	request.AllowedRoots = []string{child}
+	project, err := DiscoverProject(context.Background(), request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, lookup := range project.Context.Absent {
+		if lookup.Path == filepath.Join(outer, "package.json") {
+			seen = true
+		}
+	}
+	if !seen {
+		t.Fatal("ancestor absence was invented instead of observed")
+	}
+	if err := os.WriteFile(filepath.Join(outer, "package.json"), []byte(`{"type":"module"}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	observed, err := NewObservedFS(request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observed.FileExists(filepath.Join(outer, "package.json")) || observed.Check() == nil {
+		t.Fatal("positive global package read accepted")
+	}
+	if err := os.Mkdir(filepath.Join(outer, "node_modules"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	observed, err = NewObservedFS(request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observed.DirectoryExists(filepath.Join(outer, "node_modules")) || observed.Check() == nil {
+		t.Fatal("positive global type root accepted")
+	}
+}
+
+func TestProductStateIsOutsideTheCompilerViewAndNewGenerationsDoNotInvalidateInputs(t *testing.T) {
+	request, meter := preparationFixture(t)
+	request.AllowedRoots = []string{request.ProjectRoot}
+	state := filepath.Join(request.ProjectRoot, ".code-ana")
+	if err := os.Mkdir(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "private.ts"), []byte("export const privateState = 1;"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(request.ConfigPath, []byte(`{"compilerOptions":{"noLib":true,"module":"ESNext","moduleResolution":"bundler"},"include":["**/*.ts"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	first, err := DiscoverProject(context.Background(), request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range first.Files {
+		if filepath.Dir(file.File.Path) == state {
+			t.Fatal("indexer state became a compiler input")
+		}
+	}
+	if err := os.Mkdir(filepath.Join(state, "generation-next"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	second, err := DiscoverProject(context.Background(), request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(first, second) {
+		t.Fatal("generation-only state invalidated semantic input")
+	}
+	if _, err := OpenProgram(first, meter); err != nil {
+		t.Fatal(err)
+	}
+	observed, err := NewObservedFS(request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := observed.ReadFile(filepath.Join(state, "private.ts")); ok || observed.Check() == nil {
+		t.Fatal("explicit private state read accepted")
+	}
+}

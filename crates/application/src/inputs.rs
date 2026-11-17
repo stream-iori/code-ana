@@ -1,8 +1,9 @@
 //! Explicit CLI-side input preparation. The daemon never invokes these tools.
+mod typescript;
 use crate::input_process::run;
 use anyhow::{Context, Result, bail, ensure};
 use codeana_config::{Module, ProjectConfig, inputs::*};
-use codeana_model::{hash, hash_file, python, rust};
+use codeana_model::{SourceLanguage, hash, hash_file, python, rust};
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs::{self, File, OpenOptions},
@@ -65,8 +66,13 @@ fn child_config(config: &ProjectConfig, language: &str, root: &str) -> ProjectCo
     if language != "python" {
         child.languages.python = None;
     }
+    if !typescript::is_script(language) {
+        child.languages.javascript = None;
+        child.languages.typescript = None;
+    }
     child.modules.retain(|m| {
-        m.language == language
+        (m.language == language
+            || (typescript::is_script(language) && typescript::is_script(&m.language)))
             && (root == "." || m.root == root || m.root.starts_with(&format!("{root}/")))
     });
     child
@@ -75,7 +81,11 @@ fn module_id(entry: &InputEntry, root: &str, config: &ProjectConfig) -> String {
     config
         .modules
         .iter()
-        .find(|m| m.language == entry.language && m.root == root)
+        .find(|m| {
+            (m.language == entry.language
+                || (typescript::is_script(&entry.language) && typescript::is_script(&m.language)))
+                && m.root == root
+        })
         .map(|m| m.id.clone())
         .unwrap_or_else(|| {
             if root == entry.root {
@@ -110,7 +120,7 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
     let generation = state.join(codeana_model::new_id("generation"));
     fs::create_dir(&generation)?;
     let mut catalog = InputCatalog {
-        schema_version: 2,
+        schema_version: 3,
         config_sha256: before.clone(),
         units: vec![],
     };
@@ -121,7 +131,9 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
             if !handled.insert(entry.id.clone()) {
                 continue;
             }
-            let members = if entry.language == "python" {
+            let members = if typescript::is_script(&entry.language) {
+                typescript::members(entry, &config)?
+            } else if entry.language == "python" {
                 preparation
                     .entries
                     .iter()
@@ -152,6 +164,7 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                     _ => "pyproject.toml",
                 },
             ));
+            let mut native_typescript = None;
             let mut mode = InputMode::Semantic;
             let mut reason = None;
             let plain = entry.language == "java"
@@ -395,6 +408,18 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                             false
                         }
                     }
+                    "javascript" | "typescript" => {
+                        native_typescript = Some(typescript::prepare(
+                            &project,
+                            &config,
+                            entry,
+                            &raw,
+                            &normalized,
+                            &log,
+                            cancel,
+                        )?);
+                        true
+                    }
                     _ => bail!("INPUT_LANGUAGE"),
                 }
             };
@@ -434,6 +459,19 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                             .discovery
                             .inputs_manifest = Some(normalized_path)
                     }
+                    "javascript" | "typescript" => {
+                        for language in [
+                            &mut child.languages.javascript,
+                            &mut child.languages.typescript,
+                        ]
+                        .into_iter()
+                        .flatten()
+                        {
+                            if language.enabled == Some(true) {
+                                language.discovery.inputs_manifest = Some(normalized_path.clone());
+                            }
+                        }
+                    }
                     _ => unreachable!(),
                 }
                 let path = directory.join("config.toml");
@@ -449,8 +487,19 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                 None
             };
             catalog.units.push(PreparedUnit {
-                id: entry.id.clone(),
-                language: entry.language.clone(),
+                id: native_typescript
+                    .as_ref()
+                    .map(|inputs| inputs.contexts[0].unit.to_string())
+                    .unwrap_or_else(|| entry.id.clone()),
+                backend: SourceLanguage::lookup(&entry.language)
+                    .context("INPUT_LANGUAGE")?
+                    .backend(),
+                source_languages: native_typescript
+                    .as_ref()
+                    .map(|inputs| inputs.contexts[0].publish_languages.clone())
+                    .unwrap_or(vec![
+                        SourceLanguage::lookup(&entry.language).context("INPUT_LANGUAGE")?,
+                    ]),
                 entries: members.clone(),
                 modules: if child.modules.is_empty() {
                     members.clone()
@@ -546,7 +595,7 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
     write_json(
         &generation.join("report.json"),
         &PreparationReport {
-            schema_version: 1,
+            schema_version: 2,
             status: &summary.status,
             manifest: &summary.manifest,
             units_total: summary.units.len(),
@@ -557,7 +606,8 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                 .take(20)
                 .map(|u| crate::reports::UnitReport {
                     id: u.id.clone(),
-                    language: u.language.clone(),
+                    backend: u.backend,
+                    source_languages: u.source_languages.clone(),
                     entries: u.entries.clone(),
                     mode: u.mode,
                     reason_code: u.reason.clone(),
@@ -581,4 +631,38 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
 fn toml_text(config: &ProjectConfig) -> Result<String> {
     // Keep TOML serialization with configuration ownership.
     codeana_config::inputs::config_text(config)
+}
+
+#[cfg(test)]
+mod script_tests {
+    use super::*;
+    fn config() -> ProjectConfig {
+        serde_json::from_value(serde_json::json!({
+            "schema_version":1,"kind":"project","languages":{"java":{"enabled":true},"javascript":{"enabled":true},"typescript":{"enabled":true}},
+            "inputs":{"entries":[{"id":"ts","language":"typescript","root":".","manifest":"tsconfig.json"},{"id":"js","language":"javascript","root":".","manifest":"tsconfig.json"}]},
+            "modules":[{"id":"app","language":"typescript","root":"."}]
+        })).unwrap()
+    }
+    #[test]
+    fn script_tags_group_one_context_and_legacy_children_drop_other_backends() {
+        let config = config();
+        let entry = &config.inputs.as_ref().unwrap().entries[0];
+        assert_eq!(typescript::members(entry, &config).unwrap(), ["js", "ts"]);
+        let child = child_config(&config, "java", ".");
+        assert!(child.languages.javascript.is_none() && child.languages.typescript.is_none());
+        let child = child_config(&config, "javascript", ".");
+        assert!(
+            child.languages.java.is_none()
+                && child.languages.javascript.is_some()
+                && child.languages.typescript.is_some()
+        );
+        assert_eq!(child.modules.len(), 1);
+    }
+    #[test]
+    fn identical_config_paths_with_conflicting_module_owners_are_not_analyzed_twice() {
+        let mut config = config();
+        config.modules.clear();
+        let entry = &config.inputs.as_ref().unwrap().entries[0];
+        assert!(typescript::members(entry, &config).is_err());
+    }
 }

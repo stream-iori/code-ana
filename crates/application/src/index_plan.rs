@@ -99,7 +99,7 @@ impl IndexPlan {
                 );
                 units.push(PlannedUnit {
                     id: unit.prepared.id.as_str().into(),
-                    language: language(&unit.prepared.language).context("INPUT_LANGUAGE")?,
+                    language: unit.prepared.backend,
                     availability: if unit.context.is_some() {
                         UnitAvailability::Ready
                     } else {
@@ -281,7 +281,8 @@ mod tests {
         ResolvedUnit {
             prepared: PreparedUnit {
                 id: id.into(),
-                language: language.into(),
+                backend: SourceLanguage::lookup(language).unwrap().backend(),
+                source_languages: vec![SourceLanguage::lookup(language).unwrap()],
                 entries: vec![],
                 modules: vec![],
                 roots: vec![],
@@ -364,19 +365,9 @@ mod tests {
     }
 
     #[test]
-    fn unknown_ready_languages_are_rejected_but_files_only_units_need_no_worker() {
+    fn a_files_only_unit_does_not_require_a_worker() {
         let mut c = capture();
-        c.effective.input_units = vec![unit("external", "unknown", Some(c.effective.clone()))];
-        assert!(
-            IndexPlan::build(&c, None)
-                .err()
-                .unwrap()
-                .to_string()
-                .contains("INPUT_LANGUAGE")
-        );
-        c.effective.input_units[0].context = None;
-        assert!(IndexPlan::build(&c, None).is_err());
-        c.effective.input_units[0].prepared.language = "python".into();
+        c.effective.input_units = vec![unit("external", "python", None)];
         let plan = IndexPlan::build(&c, None).unwrap();
         assert_eq!(plan.units[0].availability, UnitAvailability::FilesOnly);
         assert!(!plan.executes(AnalysisBackend::Python));

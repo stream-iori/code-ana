@@ -246,3 +246,12 @@ test-typescript-inputs sdk evidence:
     cargo build -p codeana-typescript-worker --locked
     cargo clippy -p codeana-config --all-targets --locked -- -D warnings
     python3 tests/typescript_inputs_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'
+
+# Genuine preparation; neither gate claims public semantic indexing.
+test-typescript-prepare sdk evidence:
+    cargo build -p codeana-typescript-worker --locked
+    python3 tests/typescript_prepare_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'
+
+test-typescript-provider sdk evidence:
+    cargo build -p codeana-cli -p codeana-daemon -p codeana-typescript-worker --locked
+    python3 tests/typescript_provider_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'

@@ -71,6 +71,17 @@ impl Sdk {
                         .context("GO_VERSION")?,
             "SDK_TYPESCRIPT_SOURCE_MISMATCH"
         );
+        let expected_adapter = format!(
+            "typescript-go-{}-codeana-graph{}-tsabi1-inputs{}{}",
+            &identity.upstream_commit[..12],
+            codeana_model::VERSION,
+            codeana_model::typescript::ADAPTER_REVISION,
+            if fixture { "-abi-fixture" } else { "" }
+        );
+        ensure!(
+            manifest.adapter == expected_adapter,
+            "SDK_TYPESCRIPT_ADAPTER_MISMATCH"
+        );
         ensure!(
             identity.analysis_proto_sha256
                 == codeana_model::hash(include_bytes!(

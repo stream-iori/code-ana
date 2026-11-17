@@ -61,6 +61,24 @@ pub(super) fn anchored_kind(root: &Root, relative: &Path) -> Result<Option<Entry
 }
 
 impl CaptureReader {
+    pub fn case_sensitive(&mut self, path: &Path) -> Result<bool> {
+        self.checkpoint()?;
+        self.observe_for_unit(path)?;
+        let (root, relative) = self.resolve_link_path(path)?;
+        let parent =
+            self.roots[root].open(relative.parent().context("INPUT_CASE_PROBE_PARENT")?, true)?;
+        codeana_input_io::case_sensitive(
+            &parent,
+            relative.file_name().context("INPUT_CASE_PROBE_NAME")?,
+            |work, bytes| {
+                self.checkpoint()?;
+                if let Some(budget) = &self.budget {
+                    budget.charge(work, bytes)?;
+                }
+                Ok(())
+            },
+        )
+    }
     /// Permit one metadata lookup even when its parent does not exist. The
     /// nearest existing ancestor is anchored, but access remains exact-path.
     pub fn allow_lookup(&mut self, path: &Path) -> Result<()> {

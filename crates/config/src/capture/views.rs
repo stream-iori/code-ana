@@ -610,7 +610,8 @@ mod tests {
             let proof = artifact(&root, &format!(".code-ana/{id}-proof.txt"), id.as_bytes())?;
             units.push(inputs::PreparedUnit {
                 id: id.into(),
-                language: "java".into(),
+                backend: AnalysisBackend::Java,
+                source_languages: vec![SourceLanguage::Java],
                 entries: vec![id.into()],
                 modules: vec![id.into()],
                 roots: vec![".".into()],
@@ -622,7 +623,7 @@ mod tests {
             });
         }
         let catalog = inputs::InputCatalog {
-            schema_version: 2,
+            schema_version: 3,
             config_sha256: hash(config),
             units,
         };

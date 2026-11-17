@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+codeana-input-io = { path = "../input-io" }
 anyhow.workspace = true
 clap.workspace = true
 codeana-contracts = { path = "../contracts" }

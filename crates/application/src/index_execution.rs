@@ -1089,33 +1089,60 @@ fn availability_rows(
                 .map(|m| m.id.clone())
                 .collect(),
         };
+        let source_languages = unit
+            .prepared_index
+            .map(|index| {
+                capture.effective.input_units[index]
+                    .prepared
+                    .source_languages
+                    .clone()
+            })
+            .unwrap_or_else(|| {
+                if unit.language == AnalysisBackend::TypeScript {
+                    codeana_config::typescript_inputs::configuration(&capture.effective.config)
+                        .ok()
+                        .flatten()
+                        .map(|(_, languages)| languages)
+                        .unwrap_or_default()
+                } else {
+                    SourceLanguage::lookup(unit.language.as_str())
+                        .into_iter()
+                        .collect()
+                }
+            });
+        ensure!(
+            !source_languages.is_empty(),
+            "INPUT_SOURCE_LANGUAGES_REQUIRED"
+        );
         for module in if modules.is_empty() {
             vec![unit.id.to_string()]
         } else {
             modules
         } {
             for scope in &capture.effective.config.scan.scopes {
-                if let Some(host) = host {
-                    host.charge(1, 0, 4096 + 4 * (module.len() + scope.len()) as u64)
-                        .map_err(DomainError::analysis)?;
-                }
-                rows.push(
-                    CoverageRow {
-                        source_file: Some("*".into()),
-                        module: Some(module.clone()),
-                        scope: Some(scope.clone()),
-                        language: Some(unit.language.as_str().into()),
-                        provider_id: Some("codeana-inputs".into()),
-                        capability: Some("AGGREGATE".into()),
-                        status: Some("partial".into()),
-                        occurrences: Some(1),
-                        groups_count: Some(1),
-                        codes: Some("[\"INPUT_CONTEXT_UNAVAILABLE\"]".into()),
-                        code_counts: Some("{\"INPUT_CONTEXT_UNAVAILABLE\":1}".into()),
-                        details_truncated: Some(0),
+                for language in &source_languages {
+                    if let Some(host) = host {
+                        host.charge(1, 0, 4096 + 4 * (module.len() + scope.len()) as u64)
+                            .map_err(DomainError::analysis)?;
                     }
-                    .into_row(&key("input-availability", &[&module])),
-                );
+                    rows.push(
+                        CoverageRow {
+                            source_file: Some("*".into()),
+                            module: Some(module.clone()),
+                            scope: Some(scope.clone()),
+                            language: Some(language.as_str().into()),
+                            provider_id: Some("codeana-inputs".into()),
+                            capability: Some("AGGREGATE".into()),
+                            status: Some("partial".into()),
+                            occurrences: Some(1),
+                            groups_count: Some(1),
+                            codes: Some("[\"INPUT_CONTEXT_UNAVAILABLE\"]".into()),
+                            code_counts: Some("{\"INPUT_CONTEXT_UNAVAILABLE\":1}".into()),
+                            details_truncated: Some(0),
+                        }
+                        .into_row(&key("input-availability", &[&module])),
+                    );
+                }
             }
         }
     }

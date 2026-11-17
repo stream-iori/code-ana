@@ -391,7 +391,7 @@ impl IndexTask {
             );
             let report = ReportDocument {
                 analysis_resources: self.analysis_admission_report(id),
-                schema_version: 4,
+                schema_version: crate::reports::REPORT_SCHEMA_VERSION,
                 global: crate::reports::GlobalReport::from_capture(c, true),
                 id: id.into(),
                 created: now(),

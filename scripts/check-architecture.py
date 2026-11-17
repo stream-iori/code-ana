@@ -173,6 +173,7 @@ def dependency_violations(graph):
         'codeana-rust-worker': {'codeana-java-worker', 'codeana-python-adaptor'},
         'codeana-python-worker': {'codeana-java-worker', 'codeana-rust-adaptor'},
     }
+    constraints['codeana-input-io'] = {'codeana-model', 'codeana-contracts', 'codeana-config', 'codeana-storage', 'codeana-application', 'codeana-query', 'codeana-graph-io', 'codeana-worker-runtime', 'libloading'} | compilers
     if 'codeana-worker-runtime' in graph:
         constraints['codeana-worker-runtime'] = {'codeana-application', 'codeana-storage', 'libloading'} | compilers
     for missing in sorted(constraints.keys()-graph.keys()):
