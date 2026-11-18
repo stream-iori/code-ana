@@ -1,10 +1,13 @@
-//! Prepared JS/TS inputs. No protobuf, compiler object, live file IO or task path.
+//! JS/TS semantic inputs; task-owned content references live in the frozen submodule.
 use crate::{AnalysisBackend, AnalysisUnitId, SourceLanguage, WorldId, digest};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Component, Path},
 };
+
+mod frozen;
+pub use frozen::{FROZEN_INPUT_SCHEMA, FrozenFile, FrozenInputs};
 
 pub const INPUT_SCHEMA: u32 = 1;
 /// Minimum bridge semantics, independently of the stable C calling convention.

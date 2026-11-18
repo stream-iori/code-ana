@@ -19,6 +19,7 @@ def main():
     parser.add_argument('--sdk',type=Path,required=True)
     parser.add_argument('--evidence',type=Path,required=True)
     parser.add_argument('--binary',type=Path,default=ROOT/'target/debug/codeana-typescript-worker')
+    parser.add_argument('--handoff',action='store_true',help='Also pass real public captured bytes through the Go ABI')
     args=parser.parse_args();sdk=args.sdk.resolve();binary=args.binary.resolve();output=args.evidence.resolve()
     if not output.is_relative_to(ROOT/'target/typescript-c-abi'):parser.error('evidence must be new under target/typescript-c-abi')
     output.mkdir(parents=True,exist_ok=False)
@@ -39,10 +40,15 @@ def main():
     try:
         prepared=output/'prepared'
         run('go-prepare',[binary,'--sdk',sdk,'--component',ROOT/'lang-typescript-adaptor/probe/fixtures','--evidence',prepared,'--case','prepare'],dict(os.environ,PATH=''),45)
-        run('public-capture',['cargo','test','-p','codeana-config','--test','typescript_inputs','--locked','actual_compiler_inventory_uses_public_capture_without_live_fallback','--','--ignored','--exact','--nocapture'],dict(os.environ,CODEANA_TYPESCRIPT_PREPARED_FIXTURE=str(prepared/'native-inputs.json')),300)
+        if args.handoff:
+            run('captured-handoff',['cargo','test','-p','codeana-typescript-worker','--test','frozen_capture','--locked','actual_capture_handoff_survives_deleted_live_inputs','--','--ignored','--exact','--nocapture'],dict(os.environ,CODEANA_TYPESCRIPT_PREPARED_FIXTURE=str(prepared/'native-inputs.json'),CODEANA_TYPESCRIPT_SDK=str(sdk)),300)
+        else:
+            run('public-capture',['cargo','test','-p','codeana-config','--test','typescript_inputs','--locked','actual_compiler_inventory_uses_public_capture_without_live_fallback','--','--ignored','--exact','--nocapture'],dict(os.environ,CODEANA_TYPESCRIPT_PREPARED_FIXTURE=str(prepared/'native-inputs.json')),300)
         proof=json.loads((prepared/'capture-proof.json').read_text())
         assert proof['real_go_inventory'] and proof['public_capture'] and proof['live_inputs_deleted']
         assert proof['captured_bodies_verified']==3 and proof['published_sources']==2 and proof['units']==1
+        if args.handoff:
+            assert proof['real_c_abi_handoff'] and proof['verified_rows']==5 and len(proof['binding_samples'])==2
         report['proof']=proof
         after=identities(paths);report['artifact_drift']=[name for name in sorted(before.keys()|after.keys()) if before.get(name)!=after.get(name)]
         assert not report['artifact_drift']

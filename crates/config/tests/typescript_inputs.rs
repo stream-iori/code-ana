@@ -706,3 +706,47 @@ fn actual_physical_spelling_inventory_is_captured_and_sealed() -> Result<()> {
     )?;
     Ok(())
 }
+
+#[test]
+fn frozen_references_use_captured_blobs_and_actual_filtered_publication() -> Result<()> {
+    let (_temp, root, _inputs) = fixture()?;
+    let config = root.join(".code-ana/config.toml");
+    let mut text = std::fs::read_to_string(&config)?;
+    text.push_str("\n[scan]\nexclude=['src/b.js']\n");
+    std::fs::write(config, text)?;
+    let captured = capture(&root, &Request::default())?;
+    assert!(codeana_config::typescript_inputs::frozen_inputs(&captured).is_err());
+    let (id, _view) = captured.unit_views.iter().next().unwrap();
+    let unit = captured.unit_capture(id)?;
+    let frozen = codeana_config::typescript_inputs::frozen_inputs(&unit)?;
+    assert_eq!(frozen.files.len(), 3);
+    assert_eq!(frozen.files.iter().filter(|file| file.publish).count(), 1);
+    assert!(
+        !frozen
+            .files
+            .iter()
+            .find(|file| file.source.ends_with("/b.js"))
+            .unwrap()
+            .publish
+    );
+    for file in &frozen.files {
+        assert_ne!(file.input, Path::new(&file.source));
+        std::fs::remove_file(&file.source)?;
+        assert!(file.input.is_file());
+    }
+    let mut invalid = frozen.clone();
+    invalid.files.pop();
+    assert!(invalid.validate().is_err());
+    let mut invalid = frozen.clone();
+    invalid.files[0].input = PathBuf::from(&invalid.files[0].source);
+    assert!(invalid.validate().is_err());
+    let mut invalid = frozen.clone();
+    invalid
+        .files
+        .iter_mut()
+        .find(|file| file.source.ends_with("/tsconfig.json"))
+        .unwrap()
+        .publish = true;
+    assert!(invalid.validate().is_err());
+    Ok(())
+}

@@ -265,3 +265,8 @@ test-typescript-resolution sdk evidence:
 test-typescript-spelling sdk evidence:
     cargo build -p codeana-typescript-worker --locked
     python3 tests/typescript_spelling_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'
+
+# Actual public capture -> frozen VFS -> Go ABI -> verified GRA1.
+test-typescript-handoff sdk evidence:
+    cargo build -p codeana-typescript-worker --locked
+    python3 tests/typescript_inputs_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}' --handoff

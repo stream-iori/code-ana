@@ -271,3 +271,5 @@ Java 单元还保留项目根模块的 XML 资源输入规则：启用 Spring XM
 普通与 prepared 原生描述符均以 PREPARATION 登记，只承担字节完整性校验；有效配置进入语义 profile。pom.xml、Cargo.toml、pyproject.toml 等实际控制文件仍以 CONTROL 登记并参与失效判断。等价原生视图从 prepared 改为普通入口时可 Reuse；旧普通角色清单至多触发一次保守全量。
 
 多个 JS/TS 入口可使用不同 compiler 配置且共享相同的模块策略；相同源文件按各 context 的 world 独立登记。重复 module ID 仅允许完全一致的脚本策略，其他冲突拒绝。当前同根多个不同脚本 module 明确报上下文冲突，尚未实现文件级多模块归属。
+
+TypeScript 的单元冻结视图可生成 FrozenInputs schema 1：每个原生文件都有实际捕获内容引用，发布标记来自当前过滤结果。source 是 VFS 身份，input 是 task-owned spool 内容对象；spool 位置不参与语义摘要。worker 校验实例、SDK、大小和 SHA 后组装只读 VFS，调用方持续持有捕获租约。真实交接由 test-typescript-handoff 验证，公开语义与产品执行仍待完成。

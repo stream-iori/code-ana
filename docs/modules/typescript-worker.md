@@ -122,3 +122,9 @@ JS/TS 的旧式 inputs_manifest 可以引用两份不同位置但语义等价的
 当前最小 adapter 为 inputs4。Darwin 准备器使用只读 FD 的物理路径，保留文件和 symlink 自身拼写，不枚举全局目录来猜测大小写；按内核 canonical 规则核对并拒绝不同物理条目的冲突。Rust 通过已封存目录名称验证文件及父路径的精确拼写，避免内容相同的改名沿用旧清单。
 
 `just test-typescript-spelling SDK NEW_EVIDENCE` 是显式不区分大小写卷的真实门禁，缺该卷会失败而不跳过。验证 Actual.ts / Link.ts 经真实 SDK 进入公共 capture、同字节改名拒绝和删活文件后的正文；Go 测试另验证两个大小写/链接别名调用在冻结后仍绑定正确文件。其他平台的不区分大小写捕获明确 unsupported，Linux 等平台仍需独立验证。
+
+## 捕获内容交接
+
+`model::typescript::FrozenInputs`（schema 1）保存一个已封存单元及内容对象引用，独立于语义清单。config 按实际单元 manifest 得到发布选择；worker 先核对 SDK/实例和完整引用集合，再用预算约束的只读文件读取校验大小、SHA、UTF-8，构造私有 protobuf FrozenProject。来源路径仅用于 VFS 身份，内容来自捕获 spool；调用方保留 capture 租约。
+
+`just test-typescript-handoff SDK EVIDENCE` 复用现有真实输入入口的 --handoff，强制运行独立 ignored SDK 用例：公共 capture 后删除活输入，经上述组装进入真实 Go ABI，再验证原始 GRA1 与两次调用目标。当前是 5 行组件诊断图，不能作为公开 TS 声明/调用图或产品索引放行。config 仅为 worker 集成测试的 dev-dependency，生产 worker 不依赖 config。

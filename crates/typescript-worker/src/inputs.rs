@@ -101,9 +101,9 @@ pub fn from_inventory(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    fn fixture() -> (p::PreparationInventory, m::CompilerIdentity) {
+    pub(crate) fn fixture() -> (p::PreparationInventory, m::CompilerIdentity) {
         let compiler = m::CompilerIdentity {
             adapter: "test".into(),
             upstream_commit: "a".repeat(40),

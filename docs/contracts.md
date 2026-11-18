@@ -323,3 +323,5 @@ TypeScript 当前最小 adapter 输入策略为 `inputs4`。有序 project refer
 JS/TS 旧式配置可给出多个位置的语义等价原生清单，或由一个位置提供共享清单；先规范化内容，再判上下文冲突。已声明的每份清单仍以原字节捕获认证，清单位置和排版不进入编译器语义身份。普通计划直接使用冻结视图的单元 ID，不再用后端名代替实例；scratch 使用内部短序号目录名。
 
 inputs4 在 Darwin 准备阶段通过只读 FD 保存文件与链接实际拼写，以同一编译器 canonical 规则核对；不同物理条目不能占用同一 canonical 路径。Rust 捕获验证目录条目的精确拼写并封存观察，同字节大小写改名也需重新准备。该策略独立升级 adapter，C ABI / 内部分析 / 输入清单仍为 1。非 Darwin 的不区分大小写路径捕获明确 unsupported，不能从本机验证推定支持。
+
+TypeScript FrozenInputs schema 1 独立于语义 Inputs schema 1：一个已封存单元、完整内容对象引用及实际发布选择。spool 位置不进入语义身份，SDK/实例在读取前核对，缺失内容不从来源路径补读。过滤源在 Go VFS 中降为辅助并清空发布 owner；控制文件保持控制角色。调用方须保留 capture 租约直到 worker 停止；该主机输入契约不改变 TS ABI 1 / analysis 1。

@@ -481,3 +481,73 @@ pub(super) fn capture(
     }
     Ok(())
 }
+
+/// Build references only from one sealed unit. Origin paths are never used as
+/// content locations, and filtered sources remain available solely as auxiliary.
+/// The caller retains the capture lease until all worker consumers stop.
+pub fn frozen_inputs(capture: &Capture) -> Result<codeana_model::typescript::FrozenInputs> {
+    use codeana_model::typescript as ts;
+    let CaptureScope::Unit(unit) = &capture.scope else {
+        anyhow::bail!("CAPTURE_UNIT_REQUIRED")
+    };
+    let metadata = capture
+        .effective
+        .inputs
+        .iter()
+        .find_map(|input| match input {
+            UnitInput::TypeScript { metadata } => Some(metadata.clone()),
+            _ => None,
+        })
+        .context("TYPESCRIPT_INPUTS_REQUIRED")?;
+    ensure!(
+        metadata.contexts.len() == 1 && metadata.contexts[0].unit == *unit,
+        "TYPESCRIPT_FROZEN_CONTEXT_REQUIRED"
+    );
+    let mut owners: BTreeMap<&str, Vec<&SourceUnit>> = BTreeMap::new();
+    for source in &capture.manifest.files {
+        owners.entry(source.path.as_str()).or_default().push(source);
+    }
+    let mut files = Vec::with_capacity(metadata.contexts[0].files.len());
+    for file in &metadata.contexts[0].files {
+        let path = captured_path(&capture.root, Path::new(&file.path))?;
+        let source = owners
+            .get(path.as_str())
+            .context("TYPESCRIPT_CAPTURE_FILE_MISSING")?
+            .iter()
+            .copied()
+            .find(|source| {
+                source.path == path
+                    && source.hash == file.sha256
+                    && source.size == file.bytes
+                    && source.language
+                        == file
+                            .language
+                            .map(|language| language.as_str())
+                            .unwrap_or_default()
+                    && (file.role != ts::FileRole::Publish
+                        || (Some(source.module.as_str()) == file.module.as_deref()
+                            && Some(source.scope.as_str()) == file.scope.as_deref()
+                            && file
+                                .world
+                                .as_ref()
+                                .is_some_and(|world| world.as_str() == source.world)))
+            })
+            .context("TYPESCRIPT_CAPTURE_FILE_MISSING")?;
+        let blob = capture
+            .blobs
+            .get(&file.sha256)
+            .context("TYPESCRIPT_CAPTURE_BLOB_MISSING")?;
+        files.push(ts::FrozenFile {
+            source: file.path.clone(),
+            input: blob.as_ref().to_path_buf(),
+            publish: file.role == ts::FileRole::Publish && !source.auxiliary,
+        });
+    }
+    let frozen = ts::FrozenInputs {
+        schema_version: ts::FROZEN_INPUT_SCHEMA,
+        inputs: metadata,
+        files,
+    };
+    frozen.validate().map_err(anyhow::Error::msg)?;
+    Ok(frozen)
+}

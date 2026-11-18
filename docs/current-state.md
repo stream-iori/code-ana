@@ -15,6 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 封存字节交接（2026-11-18）
+
+| 已实现 / 验证 | 边界 |
+|---|---|
+| FrozenInputs schema 1 | 与语义 Inputs 分开，只登记实际捕获的内容对象位置、来源路径和发布标记；调用方保留 capture 租约 |
+| 发布选择 | 从过滤后的单元 manifest 产生发布标记；辅助文件和控制文件不能提升为发布源 |
+| worker VFS 组装 | 核对实例、SDK 身份、完整文件集合、普通文件、大小、原字节 SHA 与 UTF-8；预算先于读取/分配；只读封存对象 |
+| 真实交接 | 活输入全部删除后，公共 Rust capture → worker VFS → 实际 Go ABI → graph-io 原字节校验通过，5 行组件图、2 次正确绑定，无漂移 |
+| 聚焦 | worker 6 项、JS/TS 输入 15 项通过；缺内容、坏内容、symlink、身份错误和预算拒绝均有断言 |
+
+实际门禁为 `just test-typescript-handoff SDK EVIDENCE`；本轮实际回执 `target/typescript-c-abi/t3-frozen-handoff-real-first/receipt.json`，汇总为 `t3-frozen-handoff-sealed/receipt.json`；模型/配置/worker 聚焦、clippy 和架构门禁通过。复用原输入测试入口的 --handoff 模式，不将普通未执行的 ignored 测试算通过。交付仍是 partial 组件绑定诊断；产品 IPC、公开语义、多模块文件归属和空根 solution 等仍继续实施。
+
 ## TypeScript T3 物理文件名拼写（2026-11-18）
 
 | 已取证 / 实现 | 边界 |
