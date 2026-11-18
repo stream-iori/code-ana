@@ -100,7 +100,7 @@ func declarationKind(node *ast.Node) string {
 		return "variable"
 	case ast.KindParameter:
 		return "parameter"
-	case ast.KindTypeAliasDeclaration:
+	case ast.KindTypeAliasDeclaration, ast.KindJSTypeAliasDeclaration:
 		return "type_alias"
 	case ast.KindTypeParameter:
 		return "type_parameter"

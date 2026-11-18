@@ -161,7 +161,35 @@ func (b *semanticBuilder) comments(file *semanticFile) error {
 			}{lexicalRange{scanner.SkipTrivia(text, node.Pos()), node.End()}, b.facts.Declarations[index].ID})
 		}
 		if node.Flags&ast.NodeFlagsHasJSDoc != 0 {
-			for _, doc := range parser.GetJSDocCommentRanges(factory, nil, node, text) {
+			ranges := parser.GetJSDocCommentRanges(factory, nil, node, text)
+			if node.Flags&ast.NodeFlagsReparsed != 0 {
+				// A JS typedef/callback is reparsed inside its own comment. Its
+				// leading trivia cannot rediscover that enclosing token; use the
+				// compiler's attached JSDoc object and match the exact token end.
+				for _, doc := range node.JSDoc(file.source) {
+					if err := b.program.meter.Charge(uint64(doc.End()-doc.Pos())+1, 1, 1024); err != nil {
+						return err
+					}
+					add := func(token ast.CommentRange) {
+						if token.End() != doc.End() {
+							return
+						}
+						for _, existing := range ranges {
+							if existing.Pos() == token.Pos() {
+								return
+							}
+						}
+						ranges = append(ranges, token)
+					}
+					for token := range scanner.GetLeadingCommentRanges(factory, text, doc.Pos()) {
+						add(token)
+					}
+					for token := range scanner.GetTrailingCommentRanges(factory, text, doc.Pos()) {
+						add(token)
+					}
+				}
+			}
+			for _, doc := range ranges {
 				if err := b.program.meter.Charge(1, 1, 512); err != nil {
 					return err
 				}

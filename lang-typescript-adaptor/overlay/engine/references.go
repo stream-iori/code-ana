@@ -163,7 +163,7 @@ func (b *semanticBuilder) reference(c *checker.Checker, file *semanticFile, node
 			role = "implements"
 		}
 		symbol = c.GetSymbolAtLocation(name)
-	} else if node.Kind == ast.KindImportDeclaration || node.Kind == ast.KindExportDeclaration {
+	} else if node.Kind == ast.KindImportDeclaration || node.Kind == ast.KindJSImportDeclaration || node.Kind == ast.KindExportDeclaration {
 		name = node.ModuleSpecifier()
 		if name == nil {
 			return nil, nil

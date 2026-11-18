@@ -176,3 +176,11 @@ TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返
 SourcePositions 采用显式换行策略，提供 UTF-8 字节与一基 UTF-16 行列的双向转换。JS/TS 识别 U+2028/U+2029，其他既有语言保持原规则；comment body 高亮、入库校验、源码坐标及 source_span 使用同一策略。缓存键含内容与策略，不能用 Java 的位置索引校验同字节的 JS/TS 注释。真实 SDK 已验证 Unicode 分隔符后的文档/源码及高亮。
 
 inputs6 是适配器语义修订；不改变 C ABI、内部 protobuf 或输入清单 schema。装载时拒绝旧修订，必须重建 SDK 并重新 prepare。两个 SDK 各 57 项 Go 测试包含 26 项强制真值；真实 ABI、公共 capture、解析、CLI provider 和入库/查询已通过。声明/JSDoc 边界审计、完整产品 IPC、任务故障/预算与实际包仍继续实施。
+
+## JSDoc 重解析声明
+
+固定内核在 JS AST 中追加 JSTypeAliasDeclaration / JSImportDeclaration；提取器分别将其纳入 type_alias 与 type-only 模块事实。typedef 的原文名称/类型引用、callback 的原参数位置与声明目标均有真值，不把 callback 签名升级成实现。
+
+重解析 typedef/callback 位于自己的注释内部，单靠 declaration 的 leading trivia 找不到 enclosing comment。使用内核已附着的 JSDoc 对象，并按原注释 token 的精确结束位置定位；同时处理 leading/trailing 范围并去重。不能把 JSDoc fullStart 当真实注释起点，也不能按相近位置推测 owner。
+
+当前强制核心为 29 项；正常 / 故障 SDK 各 60 项 Go 测试及 ABI/公共 capture/provider/解析/公开图回归通过。实际 CLI 产品 JSDoc、剩余成员边界和后续故障/分发仍待完成。

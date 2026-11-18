@@ -15,6 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T5 JSDoc 声明与导入审计（2026-11-18）
+
+| 实际修复 / 验证 | 范围 |
+|---|---|
+| typedef / callback | 识别固定内核的 JSTypeAliasDeclaration；属性归属类型别名，保留原 JS 名称/参数区间、type space，callback 调用仍是声明目标 |
+| 类型导入 | 识别内核重解析的JSImportDeclaration，保留 type-only 模块、别名和类型引用；不生成运行时调用 |
+| 注释归属 | 重解析声明使用同内核已附着的 JSDoc，并按真实注释 token 的结束位置匹配；不按附近声明猜测。修复 typedef 原注释未关联类型别名的问题 |
+| 门禁 | 两个新 SDK 各 60 项 Go 测试，全部 29 项强制真值通过；实际 ABI 12 场景/20 检查、冻结交接、provider 16、解析 5 组和公共归档/查询回归通过，无漂移 |
+| 仍待实施 | 参数属性/隐式构造器等剩余成员边界，T6 产品 IPC、T7 任务故障/资源/复用、T8 实际包；不签完整产品、正式或性能放行 |
+
+当前正常 / 故障 SDK 为 target/typescript-c-abi/t5-jsdoc-sdk / t5-jsdoc-fixture-sdk，仍为 inputs6、ABI/analysis/input 各 1。源码真值覆盖 JSDoc 新语义；公共归档回归验证既有路径，不能代替后续真实产品 JSDoc 验收。原 typedef 缺失、错误属性 owner 和注释归属遗漏日志保留；汇总为 t5-jsdoc-sealed/receipt.json。
+
 ## TypeScript T5 能力质量与跨语言坐标（2026-11-18）
 
 | 当前实现 / 实际验证 | 边界 |
