@@ -653,7 +653,7 @@ mod script_tests {
         assert_eq!(child.modules.len(), 1);
     }
     #[test]
-    fn ambiguous_script_modules_do_not_depend_on_configuration_order() {
+    fn script_module_order_does_not_split_compiler_context() {
         let mut config = config();
         let mut other = config.modules[0].clone();
         other.id = "other".into();
@@ -661,7 +661,7 @@ mod script_tests {
         config.modules.push(other);
         for _ in 0..2 {
             let entry = &config.inputs.as_ref().unwrap().entries[0];
-            assert!(typescript::members(entry, &config).is_err());
+            assert_eq!(typescript::members(entry, &config).unwrap(), ["js", "ts"]);
             config.modules.reverse();
         }
     }

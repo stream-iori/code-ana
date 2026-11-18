@@ -67,6 +67,27 @@ def main():
         assert {str(project/'a.ts'),str(project/'b.js')}.issubset(set(f['path'] for f in contexts[0]['files']) & set(f['path'] for f in contexts[1]['files']))
         assert set(f['world'] for f in contexts[0]['files'] if f['role']=='publish').isdisjoint(set(f['world'] for f in contexts[1]['files'] if f['role']=='publish'))
         assert all(f['module']=='app' for c in contexts for f in c['files'] if f['role']=='publish')
+        # A single compiler context may publish files from several modules.
+        (project/'nested/lib').mkdir(parents=True)
+        (project/'nested/main.ts').write_text('export const main = 1;\n')
+        (project/'nested/lib/child.js').write_text('export const child = 2;\n')
+        config(aliases=True)
+        text=(state/'config.toml').read_text()+"source_roots=[{path='nested',scope='MAIN'}]\n[[modules]]\nid='child'\nlanguage='javascript'\nroot='nested/lib'\n"
+        (state/'config.toml').write_text(text)
+        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('file-module-owners','index','--prepare')
+        owner_units=catalog()['units'];assert len(owner_units)==1 and set(owner_units[0]['modules'])=={'app','child'}
+        owned=native(owner_units[0])['contexts'][0]['files']
+        published={Path(f['path']).relative_to(project).as_posix():f for f in owned if f['role']=='publish'}
+        assert set(published)=={'nested/main.ts','nested/lib/child.js'}
+        assert published['nested/main.ts']['module']=='app' and published['nested/lib/child.js']['module']=='child'
+        assert published['nested/main.ts']['world']!=published['nested/lib/child.js']['world']
+        assert all(f['role']=='auxiliary' and f.get('module') is None for f in owned if Path(f['path']).name in {'a.ts','b.js'})
+        retained=sha256(state/'inputs.json')
+        (state/'config.toml').write_text(text+"[[modules]]\nid='overlap'\nlanguage='javascript'\nroot='.'\nsource_roots=[{path='nested',scope='MAIN'}]\n")
+        assert 'TYPESCRIPT_MODULE_OWNER_CONFLICT' in run('overlapping-module-owners','index','--prepare')
+        assert sha256(state/'inputs.json')==retained
+        (project/'nested/lib/child.js').unlink();(project/'nested/lib').rmdir()
+        (project/'nested/main.ts').unlink();(project/'nested').rmdir()
         retained=sha256(state/'inputs.json');config(aliases=True,conflict=True)
         assert 'TYPESCRIPT_CONTEXT_CONFLICT' in run('conflict','index','--prepare');assert sha256(state/'inputs.json')==retained
         config(aliases=True);old=catalog();old['schema_version']=2;(state/'inputs.json').write_text(json.dumps(old))

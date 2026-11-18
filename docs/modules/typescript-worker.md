@@ -128,3 +128,5 @@ JS/TS 的旧式 inputs_manifest 可以引用两份不同位置但语义等价的
 `model::typescript::FrozenInputs`（schema 1）保存一个已封存单元及内容对象引用，独立于语义清单。config 按实际单元 manifest 得到发布选择；worker 先核对 SDK/实例和完整引用集合，再用预算约束的只读文件读取校验大小、SHA、UTF-8，构造私有 protobuf FrozenProject。来源路径仅用于 VFS 身份，内容来自捕获 spool；调用方保留 capture 租约。
 
 `just test-typescript-handoff SDK EVIDENCE` 复用现有真实输入入口的 --handoff，强制运行独立 ignored SDK 用例：公共 capture 后删除活输入，经上述组装进入真实 Go ABI，再验证原始 GRA1 与两次调用目标。当前是 5 行组件诊断图，不能作为公开 TS 声明/调用图或产品索引放行。config 仅为 worker 集成测试的 dev-dependency，生产 worker 不依赖 config。
+
+CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roots 和当前 MAIN/TEST scope；最长路径前缀决定 owner，同深度多模块返回 TYPESCRIPT_MODULE_OWNER_CONFLICT。未覆盖文件保留辅助角色并清空 module/scope/world。模块语言选择共享后端，不把 JS/TS Program 拆成两个执行实例；world 仍由 context/module/scope 生成。此为主机清单归一，不改变 SDK、ABI 或 wire。

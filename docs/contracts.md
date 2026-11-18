@@ -325,3 +325,5 @@ JS/TS 旧式配置可给出多个位置的语义等价原生清单，或由一�
 inputs4 在 Darwin 准备阶段通过只读 FD 保存文件与链接实际拼写，以同一编译器 canonical 规则核对；不同物理条目不能占用同一 canonical 路径。Rust 捕获验证目录条目的精确拼写并封存观察，同字节大小写改名也需重新准备。该策略独立升级 adapter，C ABI / 内部分析 / 输入清单仍为 1。非 Darwin 的不区分大小写路径捕获明确 unsupported，不能从本机验证推定支持。
 
 TypeScript FrozenInputs schema 1 独立于语义 Inputs schema 1：一个已封存单元、完整内容对象引用及实际发布选择。spool 位置不进入语义身份，SDK/实例在读取前核对，缺失内容不从来源路径补读。过滤源在 Go VFS 中降为辅助并清空发布 owner；控制文件保持控制角色。调用方须保留 capture 租约直到 worker 停止；该主机输入契约不改变 TS ABI 1 / analysis 1。
+
+CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roots 和当前 MAIN/TEST scope；最长路径前缀决定 owner，同深度多模块返回 TYPESCRIPT_MODULE_OWNER_CONFLICT。未覆盖文件保留辅助角色并清空 module/scope/world。模块语言选择共享后端，不把 JS/TS Program 拆成两个执行实例；world 仍由 context/module/scope 生成。此为主机清单归一，不改变 SDK、ABI 或 wire。
