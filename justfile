@@ -234,6 +234,10 @@ test-multilang:
 build-typescript-native source go_home output evidence:
   python3 scripts/build-typescript-native.py --source '{{source}}' --go-home '{{go_home}}' --output '{{output}}' --evidence '{{evidence}}'
 
+# Detached Checker truth from locked sources; no SDK or public product claim.
+test-typescript-semantics source go_home evidence:
+  python3 scripts/test-typescript-semantics.py --source '{{source}}' --go-home '{{go_home}}' --evidence '{{evidence}}'
+
 test-typescript-core sdk fixture_sdk evidence:
   cargo test -p codeana-contracts -p codeana-worker-runtime -p codeana-typescript-worker --locked
   cargo build -p codeana-typescript-worker --locked

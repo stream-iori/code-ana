@@ -31,6 +31,7 @@ type Program struct {
 	frozen  *FrozenFS
 	meter   *Meter
 	files   map[string]*pb.FileIdentity
+	context *pb.ProjectContext
 }
 
 func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
@@ -123,7 +124,7 @@ func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
 		}
 		files[frozen.resolve(file.File.Path)] = file.File
 	}
-	return &Program{program: program, config: config, frozen: frozen, meter: meter, files: files}, nil
+	return &Program{program: program, config: config, frozen: frozen, meter: meter, files: files, context: context}, nil
 }
 
 // Detached binding evidence. No AST/Checker/Type pointer reaches the caller.

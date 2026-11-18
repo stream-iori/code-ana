@@ -15,6 +15,10 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T4 核心语义端口（2026-11-18）
+
+Go `Program.Semantics` 已先建声明表、再交付脱离编译器对象的声明、引用和调用事实；保存合并/重载来源，区分实现、声明、外部和 unknown，位置使用原始 UTF-8 字节与 UTF-16 行列。命名声明身份与函数体/无关前缀编辑分开。16 项专门真值由 `just test-typescript-semantics` 强制执行；尚未接生产 GRA1、图库/查询或产品 IPC，不作为公开 TS 语义能力放行。证据：target/typescript-c-abi/t4-semantic-core-complete/semantic-receipt.json。
+
 ## TypeScript T3 空根 solution 输入（2026-11-18）
 
 实现按 compiler references 展开空根 solution，保留零发布配置单元及独立引用 Program；SDK 输入策略升级为 inputs5。完整 just test-rust、真实 SDK CLI 16 场景及聚焦 clippy 已通过；solution 引用与显式入口重合时，核对完整语义后合并为同一单元，保留所有原始准备产物的认证。公开图语义、产品 IPC、资源故障和分发仍未完成。证据目录：target/typescript-c-abi/t3-solutions。 正常 SDK 为 t3-solutions-sdk，显式 ABI fixture 为 t3-solutions-abi-fixture-sdk；ABI 12 场景 / 20 检查、五组解析、五个准备、真实封存交接与物理拼写门禁通过。原 protobuf 根文件准入失败、测试模块后置的 clippy 失败及并行构建导致的二进制漂移回执均保留；修正后完整 Rust 与固定二进制专项通过。公共准备改动另经 Java/Rust/Python 真实 prepared 19/19 回归，无产物漂移。本轮无 TS 产品、分发或性能放行。

@@ -134,3 +134,18 @@ CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roo
 TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返回的配置路径逐上下文准备，最多 256 个上下文，菱形引用只准备一次、循环引用拒绝；solution 自身作为零发布单元保留配置/观察。仅当选择的入口为空根 solution 时展开引用闭包，普通消费者仍只发布自身来源；外部引用源码需单独项目配置，当前跨项目只消费显式依赖声明。catalog 3 的同一 TS 入口可覆盖多个独立单元，其他后端仍要求一份归属；缺配置失败后不切换活动清单。旧 inputs4 SDK 必须重建，TS ABI 1 / analysis 1 / 输入清单 1 不变。公开语义与产品执行仍未接入。
 
 跨入口的同 ID TS 上下文须经完整 semantic_digest、发布标签和模式核对才合并，入口/root 归属合并后去重；每份原配置和清单仍认证。不同上下文冲突及全局超过 256 个单元，在切换活动 catalog 前失败。
+
+
+## T4 核心语义提取端口
+
+`Program.Semantics` 先完成发布源的声明表，再选引用/调用端点；只返回字符串、位置和值标记，不交出 AST、Symbol 或 Checker Type。每份文件获取并释放自己的 Checker。该端口尚未接入生产 GRA1、storage/query 或产品 IPC，当前 SDK 仍只交付旧组件诊断。
+
+| 事实 | 已有真值 |
+|---|---|
+| 声明 | 文件模块、class/interface/function/member/variable/parameter、type alias、enum/namespace、导入导出和签名；辅助文件不发布声明 |
+| 合并与身份 | 声明与合并组分开；保留全部重载/合并来源及值/类型/命名空间标记。同名遮蔽分开，命名声明 ID 不因函数体或无关前缀编辑变化 |
+| 调用 | 唯一函数体与已选签名分开；参数/接口仅作声明目标，辅助声明作外部目标，any/union/调用错误为 unknown；不把无关类型错误扩散到所有调用 |
+| 引用 | 读、写、读写、类型、namespace qualifier、typeof、模块与别名导入导出；属性定义名、声明名和调用被调名不批量伪造读取 |
+| 位置与预算 | 原始 UTF-8 半开区间、一基 UTF-16 行列；BOM/中文/emoji/CRLF/CR/Unicode 换行；索引/查询前计量，拒绝后无部分结果，累计 seed 和首次失败保留 |
+
+门禁 `just test-typescript-semantics SOURCE GO_HOME NEW_EVIDENCE` 使用锁定来源重新生成并执行 Go fixture，强制核对 16 项语义真值测试。fixture 在提取前删除全部已捕获活输入，并比较不同项目根的完整事实。只做源码准备与测试，不创建 SDK，不表示 T4 全部完成。DDL/模型/查询版本及公开行映射继续实施；T5 的完整成员/构造器、JSX、注释和质量边界仍需补齐。
