@@ -19,6 +19,7 @@ mod publication;
 mod python_inputs;
 mod reports;
 mod resources;
+mod typescript_inputs;
 pub use codeana_query::input_contract::input_fields as query_input_fields;
 pub use reports::report_markdown;
 mod input_contract;

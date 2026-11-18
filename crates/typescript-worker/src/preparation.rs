@@ -124,7 +124,7 @@ pub async fn run(args: PreparationArgs, owner: &mut Owner<Native>) -> Result<()>
     std::fs::create_dir(&scratch)?;
     let scratch = scratch.canonicalize()?;
     let mut request = p::Request {
-        version: 1,
+        version: codeana_model::typescript::ANALYSIS_VERSION,
         request_id: format!("prepare/{unit}"),
         expected_runtime: Some(runtime.clone()),
         grant: Some(analysis_budget::encode_grant(&grant)),

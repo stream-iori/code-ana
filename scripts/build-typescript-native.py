@@ -202,7 +202,7 @@ def main():
         files = {str(p.relative_to(output)):sha(p) for p in output.rglob('*') if p.is_file()}
         manifest = dict(version=4, worker_protocol=worker, fact_ir=graph_model, adapter=adapter, graph_schema=schema,
                         graph_encoding='GRA1-protobuf-row-v1', os='Darwin', arch='arm64', files=files,
-                        backend=dict(kind='typescript', abi=1, analysis_request=1, upstream_commit=lock['commit'],
+                        backend=dict(kind='typescript', abi=1, analysis_request=int(re.search(r'pub const ANALYSIS_VERSION: u32 = (\d+)', (ROOT/'crates/model/src/typescript.rs').read_text())[1]), upstream_commit=lock['commit'],
                             typescript_commit=lock['typescript']['commit'], compiler_version=compiler_version,
                             analysis_proto_sha256=values['AnalysisProtoSHA256'], graph_proto_sha256=values['GraphProtoSHA256'],
                             go_version=lock['go']['distribution']['version'],

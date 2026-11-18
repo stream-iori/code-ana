@@ -123,6 +123,7 @@ message Analyze {
   string semantic_profile = 2;
   string scratch = 3;
   OutputLimits output = 4;
+  string publication_root = 5; // Original project root for every public source path.
 }
 message Request {
   uint32 version = 1;

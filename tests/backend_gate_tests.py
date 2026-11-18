@@ -8,10 +8,10 @@ from backend_test_support import required_backends, run_cases, select_cases
 class BackendGates(unittest.TestCase):
     def test_matrix_scope_selects_actual_single_pair_and_triple_cases(self):
         from multilang_analysis_e2e import cases
-        for backends, count in [({'rust'},1),({'python'},3),({'rust','python'},6),({'java','rust','python'},10)]:
+        for backends, count in [({'rust'},1),({'python'},3),({'rust','python'},6),({'java','rust','python'},10),({'java','rust','python','typescript'},16),({'typescript'},0)]:
             selected, excluded = cases(backends)
             self.assertEqual(len(selected),count)
-            self.assertEqual(len(selected)+len(excluded),10)
+            self.assertEqual(len(selected)+len(excluded),16)
             self.assertTrue(all(required_backends(test)<=backends for test in selected))
 
     def test_prepared_java_requirements_are_excluded_or_executed_never_skipped(self):

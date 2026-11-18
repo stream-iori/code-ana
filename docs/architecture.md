@@ -1,8 +1,8 @@
 # 总体架构
 
-> worker 25 正在迁移：Discover 使用互斥配置并在解码前拒绝重复变体。此前 worker 24 的产品、Native 与分发回执不代表本次协议验收；当前进度见 [当前实现](current-state.md)。
+> 当前 worker 25：Discover 使用互斥配置并在解码前拒绝重复变体。此前 worker 24 的产品、Native 与分发回执不代表本次协议验收；当前进度见 [当前实现](current-state.md)。
 
-对齐 2026-11-01。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
+对齐 2026-11-18。Rust 管理任务、存储和查询；Java 负责 javac 分析与框架事实。版本与支持范围见 [当前实现](current-state.md)。
 
 ```text
 CLI
@@ -65,7 +65,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 | TaskService | 任务注册/事件、队列、调度、watcher、取消、截止时间、空闲退出；不持有查询/索引 Engine |
 | TaskExecution | 只组合单次操作；把 TaskContext 交给索引，把索引动作交给历史快照 |
 | IndexTask / IndexService | 本任务预算、捕获源码、发布屏障与窄索引端口；没有全局任务表或原始 Store |
-| WorkerService | 现行三语言公共启动工厂、配置、内存上限和健康 Java 池；由 RunningUnit 持有启动结果，不依赖任务注册表或图库 |
+| WorkerService | 四后端公共启动工厂、配置、内存上限和健康 Java 池；由 RunningUnit 持有启动结果，不依赖任务注册表或图库 |
 | HistoryService | 历史快照、diff、冻结页及源码引用；分析快照接收显式索引动作 |
 | ReportService | 报告构造/持久化/读取；接收任务资源快照，不查全局任务表 |
 | QueryService / DoctorService | 固定 revision 查询路由与就绪投影；不访问任务调度或索引内部状态 |
@@ -83,7 +83,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 `Fact.id`、所属 world和 expected revision 使用各自身份 newtype。封闭选项通过 `TryFrom` / `FromStr` 拒绝非法值；producer 状态使用 `FactStatus::Other(String)` 保留未来扩展。Rust 声明种类、可见性、关系、解析状态和分析模式使用封闭枚举。Rust/fixture 通过具名行结构构造 GRA1，Java 原始 protobuf 行继续按原契约验证和交付。
 
-配置解析校验、语言输入发现、源码捕获和执行预算分别由 config 内部模块负责，公开 TOML 与入口保持。一次捕获先创建 CaptureReader，再通过 InputReader 解析根配置/prepared/原生清单，后续内容捕获共用其缓存和封存检查；独立诊断使用 LiveInputs，公共端口不解释语言语义。Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。IndexPlan 从冻结输入规划资源参与后端及稳定分析单元；index_execution 负责跨语言调度，语言输入模块不启动其他语言。未变基线复用、单语言记录流与混合语言归档合并保留；各策略通过同一质量门禁、PublicationFence 和发布入口提交。普通/prepared 捕获在 config 内逐实例登记 FrozenUnitView；语言准备只接收该实例的 manifest/blob/观察索引。不同上下文可共享物理根和只读内容，但不共享未声明的控制或依赖；PlannedUnit 保留 Ready/FilesOnly/Removed 和静态预算；revision 持久化 unit_ownership v2，按稳定实例记录完整输入、声明 scope、发布范围、零输出来源及语义身份。旧元数据缺清单或仅有 v1 时增量要求 index --full；清单随同一次 CAS 发布，已有公开 ID/图 schema 不变。启动经过公共 LaunchSpec/supervisor；普通/prepared 已共用逐单元 Full/Delta/Reuse/Removed/FilesOnly 执行及候选合并；Java/Rust 的失效策略保留在自身基线准备，Python 保守全量只影响自身单元。候选/基线 SQL 预算已接入原账本；既有三语言 R5 本机组合及实际包门禁已通过；TS 生产接入仍待完成。
+配置解析校验、语言输入发现、源码捕获和执行预算分别由 config 内部模块负责，公开 TOML 与入口保持。一次捕获先创建 CaptureReader，再通过 InputReader 解析根配置/prepared/原生清单，后续内容捕获共用其缓存和封存检查；独立诊断使用 LiveInputs，公共端口不解释语言语义。Java bundle/工具链/上下文准备、Maven 发现与输出、Rust HIR 采集分别按阶段拆分。IndexPlan 从冻结输入规划资源参与后端及稳定分析单元；index_execution 负责跨语言调度，语言输入模块不启动其他语言。未变基线复用、单语言记录流与混合语言归档合并保留；各策略通过同一质量门禁、PublicationFence 和发布入口提交。普通/prepared 捕获在 config 内逐实例登记 FrozenUnitView；语言准备只接收该实例的 manifest/blob/观察索引。不同上下文可共享物理根和只读内容，但不共享未声明的控制或依赖；PlannedUnit 保留 Ready/FilesOnly/Removed 和静态预算；revision 持久化 unit_ownership v2，按稳定实例记录完整输入、声明 scope、发布范围、零输出来源及语义身份。旧元数据缺清单或仅有 v1 时增量要求 index --full；清单随同一次 CAS 发布，已有公开 ID/图 schema 不变。启动经过公共 LaunchSpec/supervisor；普通/prepared 已共用逐单元 Full/Delta/Reuse/Removed/FilesOnly 执行及候选合并；Java/Rust 的失效策略保留在自身基线准备，Python 保守全量只影响自身单元。候选/基线 SQL 预算已接入原账本；既有三语言 R5 本机组合及实际包门禁已通过；TS 已接入相同执行器，完整产品验收继续实施。
 
 语言模型原始 wire arena 继续有界验证；类型图通过节点句柄及 `SingleEdge` / `ManyEdge` 遍历，不展开循环。
 
@@ -91,7 +91,7 @@ Rust 接入 DTO 经显式映射进入 `TaskCommand`，索引和查询分别使�
 
 ## 2. 输入与分析
 
-显式 `index --prepare` 在 CLI 本地通过类型化 provider 准备 Java/Rust/Python 输入，保留各原生工作区回执并原子更新公共清单。daemon 不运行这些工具；捕获阶段验证公共清单及各配置视图，分析单元各持上下文，全部验证后一次 CAS。上下文不可得的入口只保留文件/文本及不可用 coverage；新模式保守全量或相同输入复用。见 [统一输入准备](modules/inputs.md)。
+显式 `index --prepare` 在 CLI 本地通过类型化 provider 准备 Java/Rust/Python/JS/TS 输入，保留各原生工作区回执并原子更新公共清单。daemon 不运行这些工具；捕获阶段验证公共清单及各配置视图，分析单元各持上下文，全部验证后一次 CAS。上下文不可得的入口只保留文件/文本及不可用 coverage；新模式保守全量或相同输入复用。见 [统一输入准备](modules/inputs.md)。
 
 | 阶段 | 实现 |
 |---|---|
@@ -198,4 +198,4 @@ TypeScript 的 T2b 组件在 `crates/typescript-worker` 装载独立 Go SDK，Go
 
 ## JS/TS 位置与质量
 
-当前 inputs6 的 Go 事实通过公共 graph-io/storage/query，五类能力质量按 Program/诊断/未解析事实单独判定。Rust 统一的位置正反转换、注释校验和高亮按源语言选择换行策略；Java/Rust/Python 与 JS/TS 的 Unicode 分隔符规则独立，位置缓存含策略。TS 产品 IPC 和正式分发仍待接入，详见当前实现。
+当前 inputs7 的 Go 事实通过公共 graph-io/storage/query，五类能力质量按 Program/诊断/未解析事实单独判定。Rust 统一的位置正反转换、注释校验和高亮按源语言选择换行策略；Java/Rust/Python 与 JS/TS 的 Unicode 分隔符规则独立，位置缓存含策略。TS 产品 IPC 已接入；任务故障与实际分发仍继续验证，详见当前实现。

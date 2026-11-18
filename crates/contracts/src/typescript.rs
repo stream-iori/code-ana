@@ -106,9 +106,15 @@ pub fn decode_result(bytes: &[u8]) -> Result<p::Result> {
         seen & mask(&[1, 3, 4]) == mask(&[1, 3, 4]),
         "TYPESCRIPT_RESULT_REQUIRED"
     );
-    scalars(bytes, &[(1, 1)])?;
+    scalars(
+        bytes,
+        &[(1, codeana_model::typescript::ANALYSIS_VERSION as u64)],
+    )?;
     let result = p::Result::decode(bytes)?;
-    ensure!(result.version == 1, "TYPESCRIPT_RESULT_VERSION");
+    ensure!(
+        result.version == codeana_model::typescript::ANALYSIS_VERSION,
+        "TYPESCRIPT_RESULT_VERSION"
+    );
     Ok(result)
 }
 

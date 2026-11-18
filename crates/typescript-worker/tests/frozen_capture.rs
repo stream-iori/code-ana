@@ -54,13 +54,18 @@ async fn actual_capture_handoff_survives_deleted_live_inputs() -> Result<()> {
         limits,
     };
     let mut request = p::Request {
-        version: 1,
+        version: codeana_model::typescript::ANALYSIS_VERSION,
         request_id: "captured-handoff/1".into(),
         expected_runtime: Some(runtime.clone()),
         grant: Some(analysis_budget::encode_grant(&grant)),
         seed: Some(Default::default()),
         deadline_ms: Some(30_000),
         operation: Some(p::request::Operation::Analyze(p::Analyze {
+            publication_root: snapshot
+                .publication_root
+                .to_str()
+                .context("PUBLICATION_ROOT_UTF8")?
+                .into(),
             project: Some(project),
             semantic_profile: metadata.semantic_digest(),
             scratch: scratch.to_string_lossy().into_owned(),

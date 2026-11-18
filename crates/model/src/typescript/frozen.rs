@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-pub const FROZEN_INPUT_SCHEMA: u32 = 1;
+pub const FROZEN_INPUT_SCHEMA: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -22,8 +22,19 @@ pub struct FrozenFile {
 #[serde(deny_unknown_fields)]
 pub struct FrozenInputs {
     pub schema_version: u32,
+    pub publication_root: PathBuf,
     pub inputs: Arc<Inputs>,
     pub files: Vec<FrozenFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AnalysisConfig {
+    pub snapshot: FrozenInputs,
+    pub scratch: PathBuf,
+    pub result_bytes: u64,
+    pub fact_limit: u64,
+    pub scratch_bytes: u64,
 }
 impl FrozenInputs {
     pub fn validate(&self) -> Result<(), String> {
@@ -32,6 +43,15 @@ impl FrozenInputs {
             return Err("TYPESCRIPT_FROZEN_CONTEXT_REQUIRED".into());
         }
         let context = &self.inputs.contexts[0];
+        if !self.publication_root.is_absolute()
+            || self
+                .publication_root
+                .components()
+                .any(|c| matches!(c, Component::ParentDir | Component::CurDir))
+            || !Path::new(&context.root).starts_with(&self.publication_root)
+        {
+            return Err("TYPESCRIPT_PUBLICATION_ROOT".into());
+        }
         if self.files.len() != context.files.len() {
             return Err("TYPESCRIPT_FROZEN_FILE_COVERAGE".into());
         }

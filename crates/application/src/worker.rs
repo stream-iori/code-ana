@@ -16,10 +16,12 @@ impl Worker {
             .map(|s| s.budget.clone())
     }
 }
+#[derive(Clone, Copy)]
 pub enum Language<'a> {
     Java(Option<&'a super::java::PreparedJava>),
     Rust(&'a w::RustConfig),
     Python(&'a w::PythonConfig),
+    TypeScript(&'a crate::typescript_inputs::TypeScriptInput),
 }
 pub(super) struct LaunchSpec<'a> {
     pub fixtures: Option<&'a Path>,
@@ -102,6 +104,7 @@ impl MemoryUsage {
             if let Some(phase) = line
                 .strip_prefix("codeana-rust-phase=")
                 .or_else(|| line.strip_prefix("codeana-python-phase="))
+                .or_else(|| line.strip_prefix("codeana-typescript-phase="))
                 && matches!(
                     phase,
                     "backend_run"
@@ -372,17 +375,15 @@ impl Worker {
             fixtures.is_some() || analysis.is_some(),
             "ANALYSIS_GRANT_REQUIRED"
         );
-        let (java, rust, python) = match language {
-            Language::Java(java) => (java, None, None),
-            Language::Rust(rust) => (None, Some(rust), None),
-            Language::Python(python) => (None, None, Some(python)),
+        let java = match language {
+            Language::Java(j) => j,
+            _ => None,
         };
-        let backend = if rust.is_some() {
-            AnalysisBackend::Rust
-        } else if python.is_some() {
-            AnalysisBackend::Python
-        } else {
-            AnalysisBackend::Java
+        let backend = match language {
+            Language::Java(_) => AnalysisBackend::Java,
+            Language::Rust(_) => AnalysisBackend::Rust,
+            Language::Python(_) => AnalysisBackend::Python,
+            Language::TypeScript(_) => AnalysisBackend::TypeScript,
         };
         let expected_producer = if fixtures.is_some() {
             "mock-fixture-v1"
@@ -391,7 +392,7 @@ impl Worker {
                 AnalysisBackend::Java => "javac-v3",
                 AnalysisBackend::Rust => codeana_model::rust::PRODUCER,
                 AnalysisBackend::Python => codeana_model::python::PRODUCER,
-                AnalysisBackend::TypeScript => unreachable!(),
+                AnalysisBackend::TypeScript => codeana_model::typescript::PRODUCER,
             }
         };
         let unit = analysis
@@ -399,19 +400,22 @@ impl Worker {
             .filter(|b| !b.instance.is_empty())
             .map(|b| b.instance.clone())
             .unwrap_or_else(|| backend.as_str().into());
-        let source_languages =
-            vec![SourceLanguage::lookup(backend.as_str()).expect("registered source")];
+        let source_languages = match language {
+            Language::TypeScript(input) => input.languages.clone(),
+            _ => vec![SourceLanguage::lookup(backend.as_str()).expect("registered source")],
+        };
         let (a, b) = std::os::unix::net::UnixStream::pair()?;
         a.set_nonblocking(true)?;
         let fd = b.as_raw_fd();
         let binary = std::env::current_exe()?.with_file_name(if fixtures.is_some() {
             "codeana-mock-worker"
-        } else if rust.is_some() {
-            "codeana-rust-worker"
-        } else if python.is_some() {
-            "codeana-python-worker"
         } else {
-            "codeana-java-worker"
+            match backend {
+                AnalysisBackend::Java => "codeana-java-worker",
+                AnalysisBackend::Rust => "codeana-rust-worker",
+                AnalysisBackend::Python => "codeana-python-worker",
+                AnalysisBackend::TypeScript => "codeana-typescript-worker",
+            }
         });
         let mut cmd = Command::new(&binary);
         if let Some(fixtures) = fixtures {
@@ -419,6 +423,9 @@ impl Worker {
         }
         if let Some(java) = java {
             cmd.arg(&java.library).arg("--backend").arg(java.backend);
+        }
+        if let Language::TypeScript(input) = language {
+            cmd.arg("--sdk").arg(&input.sdk);
         }
         cmd.arg("--fd")
             .arg("3")
@@ -445,10 +452,16 @@ impl Worker {
                 .map(|arg| arg.to_string_lossy().into_owned())
                 .collect::<Vec<_>>(),
         )?;
-        let output_limits = java
+        let mut output_limits = java
             .map(|j| codeana_contracts::java::output_limits(&j.config))
             .transpose()?
             .unwrap_or_default();
+        if let Language::TypeScript(input) = language {
+            output_limits = codeana_contracts::graph_delivery::OutputLimits {
+                bytes: input.descriptor.result_bytes,
+                facts: input.descriptor.fact_limit,
+            };
+        }
         let ipc = UnixStream::from_std(a)?;
         let mut child = cmd.spawn().context(codeana_model::DomainError::new(
             codeana_model::ErrorCode::WorkerNotInstalled,
@@ -490,9 +503,25 @@ impl Worker {
         });
         let memory_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
         let exceeded = memory_exceeded.clone();
-        let scratch = std::sync::Arc::new(std::sync::Mutex::new(java.map(|j| ScratchLease {
-            budget: j.disk_budget.clone(),
-            _inputs: inputs.clone(),
+        let disk_budget = match language {
+            Language::Java(Some(j)) => Some(j.disk_budget.clone()),
+            Language::TypeScript(t) => Some(super::resources::DiskBudget::new(
+                Path::new(&t.descriptor.input)
+                    .parent()
+                    .context("TYPESCRIPT_INPUT_PARENT")?
+                    .into(),
+                t.descriptor.scratch_bytes,
+                0,
+                0,
+                "TYPESCRIPT_SCRATCH_BUDGET",
+            )),
+            _ => None,
+        };
+        let scratch = std::sync::Arc::new(std::sync::Mutex::new(disk_budget.map(|budget| {
+            ScratchLease {
+                budget,
+                _inputs: inputs.clone(),
+            }
         })));
         let monitored_scratch = scratch.clone();
         let scratch_exceeded = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -584,7 +613,7 @@ impl Worker {
             ),
         };
         let initialized: Result<()> = async {
-            if let Some(config) = rust {
+            if let Language::Rust(config) = language {
                 ensure!(
                     (65536..=1073741824).contains(&config.result_bytes)
                         && (1..=2000000).contains(&config.fact_limit),
@@ -595,7 +624,7 @@ impl Worker {
                     facts: config.fact_limit,
                 };
             }
-            if let Some(config) = python {
+            if let Language::Python(config) = language {
                 ensure!(
                     (65536..=1073741824).contains(&config.result_bytes)
                         && (1..=2000000).contains(&config.fact_limit),
@@ -629,16 +658,7 @@ impl Worker {
                     ensure!(
                         h.protocol == WORKER_PROTOCOL_VERSION
                             && h.fact_ir == VERSION
-                            && h.producer
-                                == if fixtures.is_some() {
-                                    "mock-fixture-v1"
-                                } else if rust.is_some() {
-                                    "rust-core"
-                                } else if python.is_some() {
-                                    "python-core"
-                                } else {
-                                    "javac-v3"
-                                },
+                            && h.producer == expected_producer,
                         codeana_model::DomainError::new(
                             codeana_model::ErrorCode::WorkerVersionMismatch,
                             ""
@@ -663,21 +683,20 @@ impl Worker {
                         Box::new(codeana_contracts::analysis_budget::encode_grant(grant))
                     }),
 
-                    config: match (java, rust, python) {
-                        (Some(j), None, None) => {
-                            Some(w::discover::Config::Java(Box::new(j.config.clone())))
+                    config: Some(match language {
+                        Language::Java(Some(j)) => {
+                            w::discover::Config::Java(Box::new(j.config.clone()))
                         }
-                        (None, Some(r), None) => {
-                            Some(w::discover::Config::Rust(Box::new(r.clone())))
+                        Language::Java(None) if fixtures.is_some() => {
+                            w::discover::Config::Java(Box::default())
                         }
-                        (None, None, Some(p)) => {
-                            Some(w::discover::Config::Python(Box::new(p.clone())))
+                        Language::Java(None) => bail!("DISCOVER_CONFIG_REQUIRED"),
+                        Language::Rust(r) => w::discover::Config::Rust(Box::new(r.clone())),
+                        Language::Python(p) => w::discover::Config::Python(Box::new(p.clone())),
+                        Language::TypeScript(t) => {
+                            w::discover::Config::Typescript(Box::new(t.descriptor.clone()))
                         }
-                        (None, None, None) if fixtures.is_some() => {
-                            Some(w::discover::Config::Java(Box::default()))
-                        }
-                        _ => bail!("DISCOVER_CONFIG_REQUIRED"),
-                    },
+                    }),
                     manifest: Some(map(manifest)?),
                 }))
                 .await?;
@@ -760,8 +779,18 @@ impl Worker {
                         .any(|c| c == "analysis-resources-v1"),
                 "ANALYSIS_CAPABILITY_REQUIRED"
             );
-            if python.is_some() {
+            if matches!(language, Language::Python(_)) {
                 validate_python_context(&worker.context)?;
+            }
+            if let Language::TypeScript(input) = language {
+                ensure!(
+                    matches!(&worker.context.details,
+                    BackendContext::TypeScript { compiler_version, upstream_commit, adapter }
+                    if compiler_version == &input.compiler.compiler_version
+                        && upstream_commit == &input.compiler.upstream_commit
+                        && adapter == &input.compiler.semantic_adapter()),
+                    "TYPESCRIPT_CONTEXT_IDENTITY"
+                );
             }
             Ok(())
         }

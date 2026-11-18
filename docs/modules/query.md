@@ -177,7 +177,7 @@ codeana search-code "库存不足" --in names,comments
 
 search-code 默认 names，沿用公开 ID 顺序和流式冻结；comments 路径目前有界计算后冻结，最多 10,000 条并披露截断。search-comments 返回类型化 CommentMatch，包含 comment、原源码命中范围、links；不附带 source 窗口；按文件、字节起止、world、comment ID 排序。公共分词模块固定词典，关键词 AND，FTS 候选必须经原正文复核。孤立注释可检索；代码投影只采用 documents/enclosing_callable 中实际存在的公开声明，保留所有注释证据。不计算前置／行尾语句关联。
 
-CommentReader 只负责当前 revision 的有界事实/关联读取；源码读取继续校验 manifest hash。[query.comments] 与注释专用上下文参数已删除；旧配置／参数明确拒绝。按 symbol 和同一 revision 使用 source 按需读取完整声明，长声明需读取全部分块。旧注释分页游标拒绝并提示重新查询。pipeline 的 search-comments 可作为首阶段，以语言提供的声明链接进入后续阶段，不能给孤立注释猜测声明。COMMENTS 覆盖独立于绑定覆盖；Java/Rust/Python 均已接入。
+CommentReader 只负责当前 revision 的有界事实/关联读取；源码读取继续校验 manifest hash。[query.comments] 与注释专用上下文参数已删除；旧配置／参数明确拒绝。按 symbol 和同一 revision 使用 source 按需读取完整声明，长声明需读取全部分块。旧注释分页游标拒绝并提示重新查询。pipeline 的 search-comments 可作为首阶段，以语言提供的声明链接进入后续阶段，不能给孤立注释猜测声明。COMMENTS 覆盖独立于绑定覆盖；Java/Rust/Python/JS/TS 均已接入。
 
 prepared 输入降为 files_only 时，纯注释查询也必须披露 `comment_inputs_unavailable:模块:scope`。CommentReader 从当前 revision 的 `inputs.unit.*` 元数据读取冻结 roots，再结合 `codeana-inputs/AGGREGATE` 回执判断所选路径、模块、scope 与 world；不读取现行 inputs.json，不把模块名猜成目录。健康子目录保持完整，失败目录的零命中不能宣称语义穷尽；恢复输入不改变历史 revision 的缺口。读取/解码/比较接续原预算及取消。
 
@@ -186,3 +186,6 @@ prepared 输入降为 files_only 时，纯注释查询也必须披露 `comment_i
 查询输入字段契约由本 crate 声明，应用输入契约将其与执行/交付参数组合；CLI help 与本地拒绝使用同一字段集合。pipeline 文件改为每行一个文本阶段，内部 Stage 仍类型化。
 
 调用关系批量补充现场的源码范围，现场 ID/次数保留；call-sites 附带同 world 的既有绑定事实，未知不猜目标，不额外执行 CHA。原文按 UTF-8 边界分块，公开范围为 UTF-16 行列，text 合并连续块，不逐行加编号。预算考虑控制字符的 JSON 转义上界，最终页仍由所选编码器精确计量。分页本身不再将 enumeration 改成 false。
+
+
+JS/TS 使用静态 LanguagePolicy，支持声明/引用、导入导出、继承/实现、calls 的 in/out 方向、逐次 call-sites、源码、注释与历史查询。实现、声明、外部和 unknown 保留各自证据；JS↔TS 关系不按标签裁掉。JSX 组件引用不表示运行时调用，CHA/runtime implementations 明确不支持；质量按单元实际 coverage 披露。

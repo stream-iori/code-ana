@@ -41,7 +41,26 @@ impl IndexTask {
         use crate::analysis_unit::PreparedInput;
         self.reserve_owned_input(request.task, request.language, request.instance)?;
         Ok(match request.language {
-            AnalysisBackend::TypeScript => bail!("TYPESCRIPT_INPUT_NOT_READY"),
+            AnalysisBackend::TypeScript => {
+                let captured = request.capture.clone();
+                let directory = request.directory.to_path_buf();
+                let guard = request.scratch_guard.clone();
+                let host = self
+                    .analysis_binding(request.task, request.language, request.instance)
+                    .map(|b| b.coordinator.lock().unwrap().host(b.language))
+                    .transpose()
+                    .map_err(DomainError::analysis)?;
+                let input = tokio::task::spawn_blocking(move || {
+                    crate::typescript_inputs::prepare_inputs(
+                        &captured,
+                        &directory,
+                        guard,
+                        host.as_ref(),
+                    )
+                })
+                .await??;
+                PreparedInput::TypeScript(Box::new(input))
+            }
             AnalysisBackend::Java => PreparedInput::Java(Box::new(
                 self.prepare_java_unit(request.capture.clone()).await?,
             )),
@@ -51,13 +70,13 @@ impl IndexTask {
             )),
             AnalysisBackend::Python => {
                 let captured = request.capture.clone();
-                let directory = request.python_directory.to_path_buf();
+                let directory = request.directory.to_path_buf();
                 let mode = request.python_mode;
                 let input = tokio::task::spawn_blocking(move || {
                     crate::python_inputs::prepare_inputs(&captured, &directory, mode)
                 })
                 .await??;
-                PreparedInput::Python(input, request.python_guard.clone())
+                PreparedInput::Python(input, request.scratch_guard.clone())
             }
         })
     }
@@ -99,7 +118,9 @@ impl IndexTask {
                 AnalysisBackend::Java => std::mem::size_of::<java::PreparedJava>(),
                 AnalysisBackend::Rust => std::mem::size_of::<RustInput>(),
                 AnalysisBackend::Python => 0,
-                AnalysisBackend::TypeScript => bail!("TYPESCRIPT_INPUT_NOT_READY"),
+                AnalysisBackend::TypeScript => {
+                    std::mem::size_of::<crate::typescript_inputs::TypeScriptInput>()
+                }
             };
             host.charge(1, 0, bytes as u64)
                 .map_err(DomainError::analysis)?;
@@ -176,8 +197,8 @@ impl IndexTask {
                         instance: &unit.id,
                         language: unit.language,
                         capture: &child,
-                        python_directory: &directory,
-                        python_guard: sessions.scratch.clone(),
+                        directory: &directory,
+                        scratch_guard: sessions.scratch.clone(),
                         python_mode: if unit.prepared_index.is_some() {
                             crate::python_inputs::InputMode::Prepared
                         } else {

@@ -15,6 +15,24 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T6 产品接入（2026-11-18）
+
+| 当前实现 / 实际验证 | 范围 |
+|---|---|
+| 产品链路 | 普通/prepared 共用 capture、RunningUnit、supervisor、会话、FFI 账本交接、原始 GRA1 校验和一次 CAS；JS/TS 一个后端/Program，不增加组合执行器 |
+| 身份与路径 | 最小 SDK inputs7，TS ABI 1 / analysis 2 / Inputs 1 / FrozenInputs 2；publication_root 区分整个项目与子目录配置根；BuildContext 封入完整 CompilerIdentity 摘要，主机独立核对 |
+| 生命周期 | 新进程串行会话；Ack 后关闭；Reuse/Reused 后等待主机 Cancel 才退出；输入租约留到进程树停止；不进 Java 健康池 |
+| Go 真值 | 两个 SDK 各 66 项 Go 测试，全部 35 项强制真值实际执行；新增按实际编译器读取预付 workspace、拒绝后停止读、子目录公开路径、父项目私有状态隔离 |
+| TS 真实产品 | ABI 12 场景/20 检查、冻结输入交接、provider 16、CLI 查询/历史 3 项通过，无漂移；单 JS、TS、双标签、多上下文、solution、子目录跨标签调用、注释/源码/续页、strict、删除与复用 |
+| 多后端 | TS 与 Java/Rust/Python 两两及四后端普通路径，加默认预算失败保旧 head 共 5 项；prepared 四后端全 semantic 的单候选、重复 prepare、普通复用、修改后重算/全量对照 1 项，通过且无漂移 |
+| 既有语言 | 当前 just test-rust 通过（含 workspace、产品、架构与 clippy）；既有三语言组合 10、prepared 19 项通过，零跳过、无漂移 |
+| 资源边界 | 默认 512 MiB 总逻辑预算下，四 worker 全部完成后共用合并/基线操作可能耗尽首个 host 的约 32 MiB 分片；失败水位保留、零提交。四后端正确性矩阵显式用 1 GiB；产品默认值未改 |
+| 继续实施 | T7 完整任务故障/取消/超限矩阵、T8 原子安装与实际包；没有完整任务故障、正式 Native、跨平台或性能放行 |
+
+当前 SDK：target/typescript-c-abi/t6-sealed-sdk 与 t6-fixture-sdk。证据为 t6-sealed-build / t6-fixture-build（各 mandatory-semantics.json）、t6-abi-final、t6-handoff-final / t6-handoff-self-prewarmed、t6-provider-final、t6-query-final、t6-mixed-complete、t6-prepared-four-final、t6-existing-matrix、t6-existing-prepared；完整 Rust 日志 t6-full-rust-final.log。默认预算原始失败及账本保留在 t6-four-account-diagnostic；四 worker 的已知用量都已归还，拒绝在 Java host。交接门禁先编译 fixture 再冻结产物，避免 Cargo feature 统一改变 SHA；self-prewarmed 轮次已无漂移。原 ID 超长、过早复用退出、缺 scratch、测试误选 import/旧 CLI 命令、fixture 缺源码根/锁文件及 Cargo 产物漂移回执均保留，不能把这些失败轮次算作通过。
+
+此前 inputs6 SDK / analysis 1 及 FrozenInputs 1 已过期，需重建 SDK 并重新 prepare。下方各阶段记录是历史范围，不代表当前完整验收。
+
 ## TypeScript T5 参数属性与构造器（2026-11-18）
 
 | 当前实现 / 真值 | 范围 |
@@ -240,7 +258,7 @@ T2b 基础已增加 production.lock、固定来源克隆/生成工具、Go 累�
 
 ## R5 既有三语言重构验证（2026-11-18，本机通过）
 
-普通与 prepared 已共用分析单元、冻结视图、预算、运行监督、图交付、候选合并和一次 CAS；Java/Rust 保留自身增量策略，Python 保守全量。旧组合执行器已删除。TypeScript T2b 组件已通过；T3—T8 继续实施，当前不能索引 JS/TS。
+普通与 prepared 已共用分析单元、冻结视图、预算、运行监督、图交付、候选合并和一次 CAS；Java/Rust 保留自身增量策略，Python 保守全量。旧组合执行器已删除。TypeScript T2b 组件已通过；当时 T3—T8 继续实施，尚不能索引 JS/TS；当前产品状态见上方 T6。
 
 | 当前证据 | 实际结果 |
 |---|---|

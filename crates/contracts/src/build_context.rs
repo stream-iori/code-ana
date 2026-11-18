@@ -6,7 +6,7 @@ use codeana_model::{
 
 pub fn valid_unit(unit: &str) -> bool {
     !unit.is_empty()
-        && unit.len() <= 64
+        && unit.len() <= 128
         && unit
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))

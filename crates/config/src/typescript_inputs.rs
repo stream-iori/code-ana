@@ -337,7 +337,9 @@ pub(super) fn capture(
                 let mut files = BTreeSet::new();
                 let mut directories = BTreeSet::new();
                 for (name, kind) in entries {
-                    if path == Path::new(&context.root)
+                    if (path == Path::new(&context.root)
+                        || path == project
+                        || dependencies.iter().any(|root| root == path))
                         && (name == ".code-ana"
                             || (!context.case_sensitive && name.eq_ignore_ascii_case(".code-ana")))
                     {
@@ -545,6 +547,7 @@ pub fn frozen_inputs(capture: &Capture) -> Result<codeana_model::typescript::Fro
     }
     let frozen = ts::FrozenInputs {
         schema_version: ts::FROZEN_INPUT_SCHEMA,
+        publication_root: capture.root.clone(),
         inputs: metadata,
         files,
     };

@@ -501,7 +501,11 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 		if identity == nil || identity.Role != pb.FileRole_PUBLISH {
 			continue
 		}
-		logical := strings.TrimPrefix(identity.Path, p.context.Root+"/")
+		root := p.publicationRoot
+		if root == "" {
+			root = p.context.Root
+		}
+		logical := strings.TrimPrefix(identity.Path, root+"/")
 		if logical == identity.Path {
 			return nil, invalid("published source outside context root")
 		}

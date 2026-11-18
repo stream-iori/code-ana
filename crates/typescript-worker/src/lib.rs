@@ -4,4 +4,5 @@ pub mod frozen;
 pub mod inputs;
 pub mod native;
 pub mod preparation;
+pub mod product;
 pub mod sdk;

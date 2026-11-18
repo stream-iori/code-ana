@@ -430,7 +430,7 @@ max_depth = 256
 
 逐字段按项目、用户、内置默认值继承；前三项为1..=i64::MAX，深度为1..=4096。节点与载荷覆盖分析中的描述、模型、事实及保留副本，不等于最终图节点数或进程RSS。释放不退额度，重试不重新领额度；预算属于执行策略，不改变语义指纹。
 
-扣除冻结输入准入用量后，按实际语言Java/Rust/Python平均静态分片，余数顺序固定；每语言host取向上取整的1/4，其余worker额度再按稳定实例ID拆分，不借用其他语言或实例的余量。索引硬超限返回ANALYSIS_RESOURCE_LIMIT、整次不发布，旧head可读；超时与取消分别保留TIMEOUT/CANCELLED。
+扣除冻结输入准入用量后，按实际后端 Java/Rust/Python/TypeScript 平均静态分片（JS/TS 共一个后端），余数顺序固定；每语言host取向上取整的1/4，其余worker额度再按稳定实例ID拆分，不借用其他语言或实例的余量。索引硬超限返回ANALYSIS_RESOURCE_LIMIT、整次不发布，旧head可读；超时与取消分别保留TIMEOUT/CANCELLED。
 
 三语言主要执行入口已接入累计回执；Java平台限制可比任务限额更严格，回执会记录实际局部拒绝，不能提高平台限额来让任务通过。Discover、未变复用与Java局部作用域已接入；当前严格worker24/Java13；帧分配前准入、codec 与本机 fixture 分发验证已完成对应轮次，证据及正式边界以 current-state 为准，不能扩大为所有内部运算或跨平台正式验收。
 
@@ -440,3 +440,10 @@ max_depth = 256
 内部配置按 `JavaLanguage` / `RustLanguage` 分开；Rust 的分析视图只暴露 edition，不提供 javac/Lombok/框架字段。私有 wire 编解码保留原 TOML 形状和摘要：原有拒绝规则照常执行，原来允许但不使用的兼容字段只用于原字节语义的序列化。内部语言配置拆分仍保持字段边界；本轮删除注释展示参数及其 prepared 指纹例外，旧图库要求全量重建。
 
 已有语义基线上禁用全部语言并移除对应 inputs 入口后，`index` 可清除旧单元并保留当前 FILES；不启动兜底 worker。首次语义索引仍须显式启用语言。缺少 unit_ownership v2 的旧基线（含 v1）须先 `index --full`，新 revision 成功才切 head。
+
+
+## JavaScript / TypeScript
+
+分别显式设置 `[languages.javascript] enabled=true` 和 `[languages.typescript] enabled=true`，同一 tsconfig/jsconfig 上下文共用一个后端单元。使用 `[inputs]` 的 JS/TS entry 配合 `index --prepare`；已有原生清单可通过各自 discovery.inputs_manifest 指定。SDK 来自 CODEANA_TYPESCRIPT_SDK 或可执行文件旁的 ../lib/typescript/current，实际装载前严格验证版本和内容 SHA。
+
+`[resources.index]` 的 typescript_result_bytes 默认 67108864（65536–67108864）、typescript_fact_limit 默认 100000（1–100000）、typescript_scratch_bytes 默认 536870912（至少结果限额，最多 32 GiB）。描述符、图与候选共享暂存额度；逻辑累计账本和进程组 RSS 限制另外生效。任何输入或 profile 改变保守全量，完全相同则认证复用。支持边界见 [TypeScript worker](modules/typescript-worker.md)。

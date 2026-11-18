@@ -314,9 +314,8 @@ TypeScript 准备结果在 worker 内经 inventory wire 准入和显式映射进
 
 prepared schema 3 的每个单元必须给出 `backend` 与非空、去重的 `source_languages`，不再使用单一 language 字段。JS/TS 一个 compiler context 共用 TypeScript 后端及预算，禁用标签不能发布。准备摘要 schema 2、索引报告 schema 5 使用同一单元形状；旧格式明确拒绝，重新 prepare/full 后才发布新 revision。
 
-TypeScript adapter 输入策略修订为 `inputs2`；旧 SDK 需要重建，TS ABI 1 / analysis 1 不变。Prepare 探测目标卷大小写规则，使用显式根，精确记录祖先缺失元数据；正的外部依赖必须显式授权。项目根 `.code-ana` 不进入编译器逻辑目录。共享 `input-io` 提供只读、有界、FD 锚定的大小写探测，不包含编译器或配置语义。
 
-TypeScript 当前最小 adapter 输入策略为 `inputs5`。有序 project references 与封存 compiler 配置核对，引用源码/声明产物为辅助输入，不能由消费者发布；缺声明产物保留失败查找与 unknown，不进行源码重定向。此前 inputs2 SDK 在装载前拒绝；独立 TS ABI 1、analysis 1、原生输入 schema 1 不变。
+TypeScript 当前最小 adapter 输入策略为 `inputs7`。有序 project references 与封存 compiler 配置核对，引用源码/声明产物为辅助输入，不能由消费者发布；缺声明产物保留失败查找与 unknown，不进行源码重定向。此前 inputs2 SDK 在装载前拒绝；独立 TS ABI 1、analysis 2、原生输入 schema 1。
 
 多份 prepared TypeScript 配置可引用完全相同的脚本 module 策略，公共配置只登记一次；每份 compiler context 的稳定 unit/world、原生输入及冻结视图仍独立。相同 module ID 的不同策略、跨后端重复仍拒绝。普通单元按 ID 选择其封存 context，多 context 时不允许仅按后端猜选。捕获后的资源分配使用当前共享任务策略，不从封存 context 的旧副本恢复预算。该主机内修正不改变 wire/SDK/图库版本。
 
@@ -324,15 +323,17 @@ JS/TS 旧式配置可给出多个位置的语义等价原生清单，或由一�
 
 inputs4 在 Darwin 准备阶段通过只读 FD 保存文件与链接实际拼写，以同一编译器 canonical 规则核对；不同物理条目不能占用同一 canonical 路径。Rust 捕获验证目录条目的精确拼写并封存观察，同字节大小写改名也需重新准备。该策略独立升级 adapter，C ABI / 内部分析 / 输入清单仍为 1。非 Darwin 的不区分大小写路径捕获明确 unsupported，不能从本机验证推定支持。
 
-TypeScript FrozenInputs schema 1 独立于语义 Inputs schema 1：一个已封存单元、完整内容对象引用及实际发布选择。spool 位置不进入语义身份，SDK/实例在读取前核对，缺失内容不从来源路径补读。过滤源在 Go VFS 中降为辅助并清空发布 owner；控制文件保持控制角色。调用方须保留 capture 租约直到 worker 停止；该主机输入契约不改变 TS ABI 1 / analysis 1。
+TypeScript FrozenInputs schema 2 独立于语义 Inputs schema 1：一个已封存单元、完整内容对象引用及实际发布选择。spool 位置不进入语义身份，SDK/实例在读取前核对，缺失内容不从来源路径补读。过滤源在 Go VFS 中降为辅助并清空发布 owner；控制文件保持控制角色。调用方须保留 capture 租约直到 worker 停止；publication_root 明确项目公开路径根；TS ABI 1 / analysis 2。
 
 CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roots 和当前 MAIN/TEST scope；最长路径前缀决定 owner，同深度多模块返回 TYPESCRIPT_MODULE_OWNER_CONFLICT。未覆盖文件保留辅助角色并清空 module/scope/world。模块语言选择共享后端，不把 JS/TS Program 拆成两个执行实例；world 仍由 context/module/scope 生成。此为主机清单归一，不改变 SDK、ABI 或 wire。
 
-TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返回的配置路径逐上下文准备，最多 256 个上下文，菱形引用只准备一次、循环引用拒绝；solution 自身作为零发布单元保留配置/观察。仅当选择的入口为空根 solution 时展开引用闭包，普通消费者仍只发布自身来源；外部引用源码需单独项目配置，当前跨项目只消费显式依赖声明。catalog 3 的同一 TS 入口可覆盖多个独立单元，其他后端仍要求一份归属；缺配置失败后不切换活动清单。旧 inputs4 SDK 必须重建，TS ABI 1 / analysis 1 / 输入清单 1 不变。公开语义与产品执行仍未接入。
+TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返回的配置路径逐上下文准备，最多 256 个上下文，菱形引用只准备一次、循环引用拒绝；solution 自身作为零发布单元保留配置/观察。仅当选择的入口为空根 solution 时展开引用闭包，普通消费者仍只发布自身来源；外部引用源码需单独项目配置，当前跨项目只消费显式依赖声明。catalog 3 的同一 TS 入口可覆盖多个独立单元，其他后端仍要求一份归属；缺配置失败后不切换活动清单。旧 inputs4 SDK 必须重建，TS ABI 1 / analysis 2 / 输入清单 1。公开语义与普通/prepared 产品已接入公共执行器。
 
 跨入口的同 ID TS 上下文须经完整 semantic_digest、发布标签和模式核对才合并，入口/root 归属合并后去重；每份原配置和清单仍认证。不同上下文冲突及全局超过 256 个单元，在切换活动 catalog 前失败。
 
 
 JS/TS 公开声明 vocabulary 位于 model::typescript::semantics：21 种声明及 public/protected/private/module/namespace/local；新增种类和可见性只放宽 JS/TS 的 SQL 分支。class/interface/enum 保留对应 type_kind，type_alias 等不假装 Java type。每个声明有独立 ID 与来源；合并组、值/类型/namespace 标记、实现状态和 UTF-8 字节区间进入 metadata。重复调用保留原始位置与 ordinal。
 
-TypeScript Analyze 现在只走 semanticGraph：先声明表，再 CONTAINS、引用/导入导出和静态 CALLS。参数/接口签名与实现、辅助外部目标、unknown 分开，selected_declaration 保留重载依据；隐式构造器不补源码实现。两种语言静态查询由显式 LanguagePolicy 选择，CHA/runtime implementations 拒绝，跨标签绑定不裁掉。尚未完成的成员/JSX/注释/诊断继续标 TYPESCRIPT_T5_PENDING partial；生产 worker IPC 仍未接入。
+TypeScript Analyze 现在只走 semanticGraph：先声明表，再 CONTAINS、引用/导入导出和静态 CALLS。参数/接口签名与实现、辅助外部目标、unknown 分开，selected_declaration 保留重载依据；隐式构造器不补源码实现。两种语言静态查询由显式 LanguagePolicy 选择，CHA/runtime implementations 拒绝，跨标签绑定不裁掉。成员、JSX、注释与诊断按各能力的实际证据生成质量；不支持构造显式 partial。生产 worker 使用公共会话、预算交接、图交付与一次 CAS。
+
+TypeScript 私有 analysis 2 的 Analyze 必须给出规范绝对 publication_root；它是整个 capture 项目根，与 compiler context.root 分开。公开 source 路径相对此根；FrozenInputs 2 同时封存该约定。BuildContext.adapter 为适配器名称加完整 CompilerIdentity 摘要，主机逐字段核对冻结身份；单元 ID 安全字符上限 128 字节。旧 analysis/FrozenInputs 不补默认值。

@@ -9,6 +9,7 @@ struct Capabilities<'a> {
     rust_source_analysis: &'a str,
     diff: &'a str,
     python_source_analysis: &'a str,
+    typescript_source_analysis: &'a str,
 }
 #[derive(Serialize)]
 struct ModuleSummary<'a> {
@@ -33,6 +34,7 @@ struct DoctorRecord<'a> {
     worker_memory_cap_bytes: u64,
     rust_worker_memory_bytes: Option<u64>,
     python_worker: serde_json::Value,
+    typescript_worker: serde_json::Value,
     preparation: Option<PreparationReadiness<'a>>,
 }
 #[derive(Serialize)]
@@ -203,8 +205,29 @@ impl DoctorService {
                         "unavailable"
                     },
                     rust_source_analysis: "rust-analyzer-0.0.349; schema 2 frozen inputs; direct dependencies; no explicit macro expansion",
+                    typescript_source_analysis: "pinned typescript-go; JS/TS shared frozen Program; full analysis or identical-input reuse; static bindings; no CHA",
                     diff: "existing_behavior",
                     python_source_analysis: "pyrefly-1.4.0; explicit frozen inputs; full analysis or identical-input reuse; static bindings; no CHA",
+                },
+                typescript_worker: {
+                    let sdk = crate::typescript_inputs::installed_sdk();
+                    serde_json::json!({
+                        "binary_present": std::env::current_exe()?.with_file_name("codeana-typescript-worker").is_file(),
+                        "sdk": sdk.as_ref().ok(),
+                        "sdk_error": sdk.as_ref().err().map(|e| format!("{e:#}")),
+                        "readiness": "requires_index_validation",
+                        "worker_protocol": WORKER_PROTOCOL_VERSION,
+                        "abi": typescript::ABI_VERSION,
+                        "analysis_request": typescript::ANALYSIS_VERSION,
+                        "input_schema": typescript::INPUT_SCHEMA,
+                        "frozen_input_schema": typescript::FROZEN_INPUT_SCHEMA,
+                        "minimum_adapter_revision": typescript::ADAPTER_REVISION,
+                        "javascript_enabled": effective.config.languages.javascript.as_ref().is_some_and(|l| l.enabled == Some(true)),
+                        "typescript_enabled": effective.config.languages.typescript.as_ref().is_some_and(|l| l.enabled == Some(true)),
+                        "result_bytes": effective.config.resources.index.typescript_result_bytes.unwrap_or(MAX_RESULT as u64),
+                        "fact_limit": effective.config.resources.index.typescript_fact_limit.unwrap_or(MAX_FACTS as u64),
+                        "scratch_bytes": effective.config.resources.index.typescript_scratch_bytes.unwrap_or(512 << 20),
+                    })
                 },
                 java_adapter: if self.workers.is_mock() {
                     "mock-fixture-v1"

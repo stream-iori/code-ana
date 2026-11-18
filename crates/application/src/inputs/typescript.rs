@@ -154,14 +154,7 @@ pub(super) fn prepare(
 ) -> Result<codeana_model::typescript::Inputs> {
     let binary = std::env::current_exe()?.with_file_name("codeana-typescript-worker");
     ensure!(binary.is_file(), "TYPESCRIPT_PREPARER_MISSING");
-    let sdk = std::env::var_os("CODEANA_TYPESCRIPT_SDK")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| binary.parent().unwrap().join("../lib/typescript/current"));
-    ensure!(
-        sdk.is_absolute() && sdk.is_dir(),
-        "TYPESCRIPT_SDK_REQUIRED: install the TypeScript SDK or set CODEANA_TYPESCRIPT_SDK"
-    );
-    let sdk = sdk.canonicalize()?;
+    let sdk = crate::typescript_inputs::installed_sdk()?;
     let root = checked_path(project, &entry.root)?.canonicalize()?;
     ensure!(
         !root.starts_with(project.join(".code-ana")),

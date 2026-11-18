@@ -38,14 +38,14 @@ func (q *fileQuality) coverage(capability string) (string, []string, map[string]
 	return "partial", codes, counts, count
 }
 
-func semanticQuality(facts *SemanticFacts, project *pb.FrozenProject, meter *Meter) (map[string]*fileQuality, error) {
+func semanticQuality(facts *SemanticFacts, project *pb.FrozenProject, publicationRoot string, meter *Meter) (map[string]*fileQuality, error) {
 	if err := meter.Charge(uint64(len(project.Files)+len(facts.Declarations)+len(facts.References)+len(facts.Calls)+len(facts.Diagnostics))+1, uint64(len(project.Files))*32+1, uint64(len(project.Files))*8192+uint64(len(facts.Declarations))*128+uint64(len(facts.Diagnostics))*1024+4096); err != nil {
 		return nil, err
 	}
 	quality := map[string]*fileQuality{}
 	for _, entry := range project.Files {
 		if entry.File.Role == pb.FileRole_PUBLISH {
-			quality[strings.TrimPrefix(entry.File.Path, project.Context.Root+"/")] = &fileQuality{Reasons: map[string]map[string]uint64{}}
+			quality[strings.TrimPrefix(entry.File.Path, publicationRoot+"/")] = &fileQuality{Reasons: map[string]map[string]uint64{}}
 		}
 	}
 	for _, d := range facts.Declarations {

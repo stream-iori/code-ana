@@ -548,3 +548,41 @@ func TestRootlessSolutionKeepsReferenceControlsWithoutPublishingSources(t *testi
 		t.Fatal(err)
 	}
 }
+
+func TestNestedProgramsCannotObserveAncestorIndexerState(t *testing.T) {
+	request, meter := preparationFixture(t)
+	parent := request.ProjectRoot
+	request.ProjectRoot = filepath.Join(parent, "nested")
+	if err := os.Mkdir(request.ProjectRoot, 0700); err != nil {
+		t.Fatal(err)
+	}
+	state := filepath.Join(parent, ".code-ana")
+	if err := os.Mkdir(state, 0700); err != nil {
+		t.Fatal(err)
+	}
+	secret := filepath.Join(state, "private.ts")
+	if err := os.WriteFile(secret, []byte("export const secret = 1"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	request.AllowedRoots = []string{parent}
+	observed, err := NewObservedFS(request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed.GetAccessibleEntries(parent)
+	if observed.Check() != nil {
+		t.Fatal(observed.Check())
+	}
+	inventory := observed.directories[observed.key(parent)]
+	if inventory == nil {
+		t.Fatal("parent was not observed")
+	}
+	for _, name := range inventory.Directories {
+		if name == ".code-ana" {
+			t.Fatal("ancestor state enumerated")
+		}
+	}
+	if _, ok := observed.ReadFile(secret); ok || observed.Check() == nil {
+		t.Fatal("ancestor state read accepted")
+	}
+}

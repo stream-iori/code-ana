@@ -245,12 +245,16 @@ func semanticGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *p
 	if err != nil {
 		return nil, err
 	}
+	if !absolute(analyze.PublicationRoot) || !beneath(program.context.Root, analyze.PublicationRoot) {
+		return nil, invalid("explicit publication root required")
+	}
+	program.publicationRoot = analyze.PublicationRoot
 	meter.phase = "extract"
 	facts, err := program.Semantics(ctx)
 	if err != nil {
 		return nil, err
 	}
-	quality, err := semanticQuality(facts, analyze.Project, meter)
+	quality, err := semanticQuality(facts, analyze.Project, analyze.PublicationRoot, meter)
 	if err != nil {
 		return nil, err
 	}
@@ -278,7 +282,7 @@ func semanticGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *p
 		if identity.Role != pb.FileRole_PUBLISH {
 			continue
 		}
-		name := strings.TrimPrefix(identity.Path, project.Context.Root+"/")
+		name := strings.TrimPrefix(identity.Path, analyze.PublicationRoot+"/")
 		language := languageName(identity.Language)
 		for _, capability := range semanticCapabilities {
 			if err := meter.Charge(1, 16, 4096); err != nil {

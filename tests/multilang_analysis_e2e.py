@@ -148,14 +148,20 @@ class OrdinaryMatrix(PythonHarness):
         self.include_python = 'python' in required_backends(self)
         super().setUp()
 
-    def run_backends(self, backends):
+    def run_backends(self, backends, expect_shared_limit=False):
         if 'java' in backends:
             self.add_java()
         if 'rust' in backends:
             self.add_rust()
+        if 'typescript' in backends:
+            self.add_typescript()
         config = self.project/'.code-ana/config.toml'
         if 'python' not in backends:
             config.write_text(config.read_text().replace('[languages.python]\nenabled=true', '[languages.python]\nenabled=false'))
+        if len(backends) == 4 and not expect_shared_limit:
+            # The matrix uses an explicit 1 GiB logical budget. Default 512 MiB
+            # shared-host exhaustion has its own retained-head regression below.
+            config.write_text(config.read_text()+'\n[resources.index.analysis]\nmax_payload_bytes=1073741824\n')
         if self.include_python:
             self.export()
         first_result = self.publish_once('index', '--full', timeout=180)[1]
@@ -182,10 +188,29 @@ class OrdinaryMatrix(PythonHarness):
         if 'java' in backends:
             source = self.project/next(s['path'] for unit in ownership['units'] for s in unit['sources'] if s['language']=='java')
             source.write_text(source.read_text()+'\n// matrix changed Java input\n')
+        if 'typescript' in backends:
+            source = self.project/'matrix.ts'
+            source.write_text(source.read_text()+'\n// matrix changed TypeScript input\n')
+            self.prepare_typescript()
         if self.include_python:
             self.export()
+        if expect_shared_limit:
+            with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
+                before = {row[0] for row in db.execute('SELECT id FROM revisions')}
+            _, failed = self.cli('index', code=1, timeout=180)
+            self.assertEqual(failed['code'],'ANALYSIS_RESOURCE_LIMIT')
+            self.assertEqual(self.cli('overview')[1]['revision'],reused['revision'])
+            with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
+                self.assertEqual({row[0] for row in db.execute('SELECT id FROM revisions')},before)
+            account = self.cli('report',failed['report'])[0][0]['analysis_resources']['coordinator']
+            java = next(slot for slot in account['languages'] if slot['allocation']['language']=='java')
+            self.assertEqual(java['host_usage']['failure']['Limit']['resource'],'payload_bytes')
+            self.assertTrue(all(w['state']=='complete' and w['usage']['failure'] is None
+                                for slot in account['languages'] for w in slot['workers']))
+            self.assertEqual(canonical_graph(self,first),historical)
+            return
         changed = self.publish_once('index', timeout=180)[1]
-        self.assert_modes(changed, {backend:('full' if backend=='python' else 'delta') for backend in backends})
+        self.assert_modes(changed, {backend:('full' if backend in ('python','typescript') else 'delta') for backend in backends})
         expected = canonical_graph(self, changed['revision'])
         full = self.publish_once('index', '--full', timeout=180)[1]['revision']
         self.assertEqual(canonical_graph(self, full), expected)
@@ -202,6 +227,28 @@ class OrdinaryMatrix(PythonHarness):
             self.assertEqual(canonical_graph(self, full), expected)
         self.assertFalse(list(self.project.rglob('target')), 'index cannot build the target crate')
         self.assertFalse(list(self.project.rglob('*.class')), 'index cannot emit target Java bytecode')
+
+    @requires_backends('java','rust','python','typescript')
+    def test_four_backend_default_quota_retains_head(self):
+        self.run_backends(('java','rust','python','typescript'),expect_shared_limit=True)
+
+    def add_typescript(self):
+        (self.project/'matrix.ts').write_text('/** 库存 TypeScript */\nexport function matrixTypescript(value: number) { return value + 1; }\nmatrixTypescript(1);\n')
+        (self.project/'tsconfig.json').write_text(json.dumps({'compilerOptions':{'noLib':True,'module':'ESNext','moduleResolution':'bundler'},'files':['matrix.ts']}))
+        config = self.project/'.code-ana/config.toml'
+        config.write_text(config.read_text()+'\n[languages.typescript]\nenabled=true\n[languages.typescript.discovery]\ninputs_manifest=".code-ana/typescript-inputs.json"\n')
+        self.prepare_typescript()
+
+    def prepare_typescript(self):
+        scratch = self.root/('typescript-prepare-'+str(time.monotonic_ns()))
+        output = scratch.with_suffix('.json')
+        result = subprocess.run([str(BIN/'codeana-typescript-worker'), '--sdk',os.environ['CODEANA_TYPESCRIPT_SDK'],
+            '--prepare-project',str(self.project),'--prepare-config',str(self.project/'tsconfig.json'),
+            '--output',str(output),'--scratch',str(scratch),
+            '--unit','typescript','--module','ts-app','--world','typescript/main','--publish-language','typescript'],
+            capture_output=True,text=True,timeout=60)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        os.replace(output,self.project/'.code-ana/typescript-inputs.json')
 
     def publish_once(self, *args, **kwargs):
         with contextlib.closing(sqlite3.connect(self.home/'catalog.db')) as db:
@@ -221,6 +268,70 @@ class OrdinaryMatrix(PythonHarness):
             self.assertTrue(any(f'unit_result {unit} {mode}' in event for event in events), (unit,mode,events))
 
 
+class PreparedTypeScriptMatrix(PreparedHarness):
+    copy_fixture = False
+    required_backends = frozenset({'java','rust','python','typescript'})
+
+    def test_all_backends_share_prepared_units_and_one_publication(self):
+        for name in ('java','rust','python','script'):
+            (self.project/name).mkdir()
+        (self.project/'java/src/main/java').mkdir(parents=True)
+        (self.project/'java/src/main/java/Stock.java').write_text('public class Stock { public static int stock() { return 1; } }\n')
+        (self.project/'java/pom.xml').write_text('<project><modelVersion>4.0.0</modelVersion><groupId>fixture</groupId><artifactId>stock</artifactId><version>1</version><properties><maven.compiler.source>8</maven.compiler.source><maven.compiler.target>8</maven.compiler.target></properties></project>')
+        (self.project/'rust/src').mkdir()
+        (self.project/'rust/Cargo.toml').write_text('[workspace]\n[package]\nname="stock"\nversion="0.1.0"\nedition="2024"\n')
+        (self.project/'rust/src/lib.rs').write_text('pub fn stock() -> i32 { 1 }\n')
+        subprocess.run(['cargo','generate-lockfile','--offline'],cwd=self.project/'rust',check=True,capture_output=True)
+        (self.project/'python/pyproject.toml').write_text('[project]\nname="stock"\nversion="1"\nrequires-python=">=3.12"\n[tool.setuptools.packages.find]\nwhere=["."]\n')
+        (self.project/'python/stock.py').write_text('def stock():\n    return 1\n')
+        (self.project/'script/a.ts').write_text('export function stock(value: number) { return value + 1; }\n')
+        js = self.project/'script/b.js'
+        js.write_text('import {stock} from "./a"; stock(1);\n')
+        (self.project/'script/tsconfig.json').write_text(json.dumps({'compilerOptions':{'noLib':True,'allowJs':True,'module':'ESNext','moduleResolution':'bundler'},'include':['*.ts','*.js']}))
+        self.config = ('schema_version=1\nkind="project"\n[resources.index]\nworker_memory_bytes=3221225472\n'
+            '[resources.index.analysis]\nmax_payload_bytes=1073741824\n'
+            '[languages.java]\nenabled=true\n[languages.java.analysis]\nsource_version="8"\ntoolchain="java8"\nclasspath="existing"\nvm_classpath=true\n'
+            + ''.join('[languages.'+name+']\nenabled=true\n' for name in ('rust','python','javascript','typescript'))+'[inputs]\n')
+        for name,language in [('java','java'),('rust','rust'),('python','python'),('script','typescript')]:
+            self.config += f'[[inputs.entries]]\nid="{name}"\nlanguage="{language}"\nroot="{name}"\n'
+            if name == 'java': self.config += '[inputs.entries.java]\noffline=true\n'
+        self.write_config()
+        def publish(*flags):
+            with self.db_catalog() as db:
+                before = {r[0] for r in db.execute('SELECT id FROM revisions')}
+            response = self.cli('index',*flags,timeout=180)
+            with self.db_catalog() as db:
+                self.assertEqual({r[0] for r in db.execute('SELECT id FROM revisions')}-before,{response[1]['revision']})
+            return response[1]
+        # Start the isolated daemon and catalog before counting publications.
+        self.cli('hello')
+        first = publish('--prepare','--full')
+        self.assertEqual({u['backend'] for u in self.catalog()['units']},{'java','rust','python','typescript'})
+        self.assertEqual(len(self.catalog()['units']),4)
+        self.assertTrue(all(u['mode']=='semantic' for u in self.catalog()['units']),self.catalog())
+        expected = canonical_graph(self,first['revision'])
+        repeated = publish('--prepare')
+        ordinary = publish()
+        self.assertEqual(canonical_graph(self,repeated['revision']),expected)
+        self.assertEqual(canonical_graph(self,ordinary['revision']),expected)
+        with self.db_catalog() as db:
+            events = '\n'.join(r[0] for r in db.execute('SELECT body FROM events WHERE task=?',(ordinary['report'],)))
+        for unit in self.catalog()['units']:
+            self.assertIn('unit_result '+unit['id']+' reuse',events)
+        js.write_text('import {stock} from "./a"; stock(2); stock(3);\n')
+        self.cli('index',code=1,timeout=180)
+        self.assertEqual(self.cli('overview')[1]['revision'],ordinary['revision'])
+        changed = publish('--prepare')
+        full = publish('--full')
+        self.assertEqual(canonical_graph(self,changed['revision']),canonical_graph(self,full['revision']))
+        self.assertEqual(canonical_graph(self,first['revision']),expected)
+        self.assertFalse(list(self.project.rglob('target')))
+        self.assertFalse(list(self.project.rglob('*.class')))
+
+    def db_catalog(self):
+        return contextlib.closing(sqlite3.connect(self.home/'catalog.db'))
+
+
 def ordinary_case(backends):
     @requires_backends(*backends)
     def test(self):
@@ -233,10 +344,13 @@ for size in (1,2,3):
         setattr(OrdinaryMatrix, 'test_'+'_'.join(combination), ordinary_case(combination))
 
 
+for combination in [('java','typescript'),('rust','typescript'),('python','typescript'),('java','rust','python','typescript')]:
+    setattr(OrdinaryMatrix, 'test_'+'_'.join(combination), ordinary_case(combination))
+
 def cases(backends):
     from java_jvm_product_gate import flatten
     tests = []
-    for cls in (MultilangAnalysis, OrdinaryMatrix):
+    for cls in (MultilangAnalysis, OrdinaryMatrix, PreparedTypeScriptMatrix):
         tests.extend(flatten(unittest.defaultTestLoader.loadTestsFromTestCase(cls)))
     return select_cases(tests, backends)
 
@@ -247,8 +361,8 @@ def main():
     parser.add_argument('--evidence', type=pathlib.Path)
     args = parser.parse_args()
     backends = args.backends.split(',')
-    if not backends or len(set(backends))!=len(backends) or set(backends)-{'java','rust','python'}:
-        parser.error('declare distinct java,rust,python backends')
+    if not backends or len(set(backends))!=len(backends) or set(backends)-{'java','rust','python','typescript'}:
+        parser.error('declare distinct java,rust,python,typescript backends')
     tests, excluded = cases(backends)
     if not tests:
         parser.error('empty declared product scope')

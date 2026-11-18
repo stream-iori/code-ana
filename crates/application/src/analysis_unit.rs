@@ -59,6 +59,7 @@ pub(super) enum PreparedInput {
     Fixture(std::path::PathBuf),
     Java(Box<crate::java::PreparedJava>),
     Rust(Box<crate::rust_inputs::RustInput>),
+    TypeScript(Box<crate::typescript_inputs::TypeScriptInput>),
     Python(
         codeana_contracts::worker::PythonConfig,
         std::sync::Arc<tempfile::TempDir>,
@@ -69,6 +70,7 @@ impl PreparedInput {
         match self {
             Self::Fixture(_) | Self::Java(_) => AnalysisBackend::Java,
             Self::Rust(_) => AnalysisBackend::Rust,
+            Self::TypeScript(_) => AnalysisBackend::TypeScript,
             Self::Python(..) => AnalysisBackend::Python,
         }
     }
@@ -77,6 +79,7 @@ impl PreparedInput {
             Self::Fixture(_) => crate::worker::Language::Java(None),
             Self::Java(input) => crate::worker::Language::Java(Some(input)),
             Self::Rust(input) => crate::worker::Language::Rust(&input.descriptor),
+            Self::TypeScript(input) => crate::worker::Language::TypeScript(input),
             Self::Python(input, _) => crate::worker::Language::Python(input),
         }
     }
@@ -91,6 +94,7 @@ impl PreparedInput {
             Self::Fixture(_) => vec![],
             Self::Java(input) => vec![input.scratch.clone()],
             Self::Rust(input) => vec![input.scratch.clone()],
+            Self::TypeScript(input) => vec![input.scratch.clone()],
             Self::Python(_, scratch) => vec![scratch.clone()],
         }
     }
@@ -276,15 +280,14 @@ impl RunningUnits {
     }
 }
 
-/// A frozen unit's preparation request. Python needs its shared task directory;
-/// Java and Rust retain their own existing scratch allocation policies.
+/// A frozen unit preparation request; each backend retains its scratch allocation policy.
 pub(super) struct Preparation<'a> {
     pub task: &'a str,
     pub instance: &'a str,
     pub language: codeana_model::AnalysisBackend,
     pub capture: &'a codeana_config::Capture,
-    pub python_directory: &'a std::path::Path,
-    pub python_guard: std::sync::Arc<tempfile::TempDir>,
+    pub directory: &'a std::path::Path,
+    pub scratch_guard: std::sync::Arc<tempfile::TempDir>,
     pub python_mode: crate::python_inputs::InputMode,
 }
 

@@ -150,7 +150,7 @@ func (f *ObservedFS) resolve(name string) string {
 	if f.Check() != nil {
 		return ""
 	}
-	if beneath(f.key(path.Clean(name)), f.key(path.Join(f.context.Root, ".code-ana"))) {
+	if f.private(name) {
 		f.fail(&Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "indexer-owned state is not a compiler input"})
 		return ""
 	}
@@ -420,7 +420,7 @@ func (f *ObservedFS) GetAccessibleEntries(name string) vfs.Entries {
 			break
 		}
 		for _, entry := range batch {
-			if f.key(path.Join(name, entry.Name())) == f.key(path.Join(f.context.Root, ".code-ana")) {
+			if f.private(path.Join(name, entry.Name())) {
 				continue
 			}
 			if !f.reserve(uint64(len(entry.Name())) + 128) {
@@ -531,3 +531,17 @@ func (f *ObservedFS) Project() (*pb.FrozenProject, error) {
 }
 
 var _ vfs.FS = (*ObservedFS)(nil)
+
+// All declared roots have an indexer-owned state directory. A nested Program
+// must not observe its parent project's active prepare generation.
+func (f *ObservedFS) private(name string) bool {
+	if beneath(f.key(path.Clean(name)), f.key(path.Join(f.context.Root, ".code-ana"))) {
+		return true
+	}
+	for _, root := range f.roots {
+		if beneath(f.key(path.Clean(name)), f.key(path.Join(root, ".code-ana"))) {
+			return true
+		}
+	}
+	return false
+}

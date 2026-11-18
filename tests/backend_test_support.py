@@ -45,6 +45,9 @@ def run_cases(tests, backends, excluded, evidence_directory=None):
         paths += [path for path in (ROOT/'target/lib/java').rglob('*') if path.is_file()]
         if os.environ.get('CODEANA_TEST_JAVA_BUNDLE'):
             paths += [path for path in pathlib.Path(os.environ['CODEANA_TEST_JAVA_BUNDLE']).rglob('*') if path.is_file()]
+    if 'typescript' in backends:
+        sdk = pathlib.Path(os.environ['CODEANA_TYPESCRIPT_SDK'])
+        paths += [path for path in sdk.rglob('*') if path.is_file()]
     before = identities(paths)
     expected = [test.id() for test in tests]
     (output/'expected-cases.json').write_text(json.dumps(expected,indent=2)+'\n')

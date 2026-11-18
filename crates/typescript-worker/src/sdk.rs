@@ -53,7 +53,8 @@ impl Sdk {
             "SDK_DEVELOPMENT_FIXTURE_REJECTED"
         );
         ensure!(
-            identity.abi == 1 && identity.analysis_request == 1,
+            identity.abi == 1
+                && identity.analysis_request == codeana_model::typescript::ANALYSIS_VERSION,
             "SDK_TYPESCRIPT_PROTOCOL_MISMATCH"
         );
         let lock: serde_json::Value = serde_json::from_str(include_str!(

@@ -179,3 +179,23 @@ fn discovery_rejects_empty_duplicate_and_wrong_source_languages() {
     d.unit = "../entry".into();
     assert!(discovery(&d, AnalysisBackend::TypeScript).is_err());
 }
+
+#[test]
+fn native_context_ids_survive_wire_admission_with_a_bounded_length() {
+    let unit = codeana_model::key("typescript-context", &["tsconfig.json", "app", "MAIN"]);
+    assert!(unit.len() > 64);
+    assert!(valid_unit(&unit));
+    assert!(valid_unit(&"a".repeat(128)));
+    assert!(!valid_unit(&"a".repeat(129)));
+    assert!(!valid_unit("a/../b"));
+    let frame = crate::envelope(
+        "attempt",
+        crate::worker::envelope::Body::Discover(w::Discover {
+            unit,
+            source_languages: vec!["typescript".into()],
+            config: Some(w::discover::Config::Typescript(Box::default())),
+            ..Default::default()
+        }),
+    );
+    crate::validate_envelope_wire(&frame.encode_to_vec()).unwrap();
+}

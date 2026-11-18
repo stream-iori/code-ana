@@ -1,4 +1,4 @@
-//! Explicit component entry until the product session is wired in T6.
+//! Fresh-process product worker and explicit native component diagnostics.
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
 use codeana_contracts::{analysis_budget, protobuf::typescript::v1 as p};
@@ -10,6 +10,8 @@ use std::{os::fd::AsRawFd, path::PathBuf, time::Duration};
 
 #[derive(Parser)]
 struct Args {
+    #[arg(long)]
+    fd: Option<i32>,
     #[command(flatten)]
     preparation: codeana_typescript_worker::preparation::PreparationArgs,
     #[arg(long)]
@@ -58,6 +60,21 @@ async fn main() -> Result<()> {
     let sdk = args.sdk.clone();
     let allow_fixture = args.dev_abi_fixture;
     let mut owner = Owner::spawn(move || Native::load_with_fixture(&sdk, allow_fixture)).await?;
+    if let Some(fd) = args.fd {
+        ensure!(
+            !args.dev_abi_fixture
+                && args.component.is_none()
+                && args.preparation.prepare_project.is_none()
+                && !args.runtime_info
+                && !args.abi_check
+                && args.evidence.is_none()
+                && args.case == "success",
+            "TYPESCRIPT_PRODUCT_MODE"
+        );
+        let result = codeana_typescript_worker::product::run(fd, &owner).await;
+        let cleanup = owner.shutdown().await;
+        return result.and(cleanup);
+    }
     let runtime = owner.call(|native| Ok(native.runtime.clone())).await?;
     if args.abi_check {
         let checks = owner.call(Native::conformance).await?;
@@ -80,9 +97,9 @@ async fn main() -> Result<()> {
         );
         return codeana_typescript_worker::preparation::run(args.preparation, &mut owner).await;
     }
-    let fixture = args.component.context(
-        "TypeScript product IPC is pending T6; use --component for explicit component verification",
-    )?;
+    let fixture = args
+        .component
+        .context("use --fd for product IPC or --component for explicit component verification")?;
     ensure!(
         matches!(
             args.case.as_str(),
@@ -142,13 +159,18 @@ async fn main() -> Result<()> {
     };
     let budget = AnalysisContext::new(limits, None)?;
     let mut request = p::Request {
-        version: if args.case == "invalid" { 99 } else { 1 },
+        version: if args.case == "invalid" {
+            99
+        } else {
+            codeana_model::typescript::ANALYSIS_VERSION
+        },
         request_id: "component/fixture/1".into(),
         expected_runtime: Some(runtime.clone()),
         grant: Some(analysis_budget::encode_grant(&grant)),
         seed: Some(Default::default()),
         deadline_ms: Some(0),
         operation: Some(p::request::Operation::Analyze(p::Analyze {
+            publication_root: "/src".into(),
             project: Some(p::FrozenProject {
                 context: Some(p::ProjectContext {
                     case_sensitive: Some(true),

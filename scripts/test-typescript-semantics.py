@@ -16,6 +16,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
+    'TestNestedProgramsCannotObserveAncestorIndexerState',
+    'TestCompilerWorkspaceFundsOnlyRequestedFilesBeforeKernelAccess',
+    'TestNestedProgramUsesPublicationRootForEverySemanticSource',
     'TestParameterPropertiesSeparateLexicalParameterAndInstanceMemberSymbols',
     'TestGenericParameterPropertyReferencesSurviveCheckerBoundariesAndBadDuplicates',
     'TestImplicitConstructorsKeepDeclarationEvidenceWithoutInventingBodies',

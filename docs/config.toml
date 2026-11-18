@@ -41,6 +41,10 @@ mode = "auto" # full：明确全量；auto：兼容时增量
 # java_fact_limit = 100000 # 全任务事实/owner 数，1–5000000
 # java_scratch_bytes = 2147483648 # 任务暂存总额，64 KiB–32 GiB；包含捕获副本和候选 SQLite
 
+# typescript_result_bytes = 67108864 # 64 KiB–64 MiB
+# typescript_fact_limit = 100000 # 1–100000
+# typescript_scratch_bytes = 536870912 # 结果上限至 32 GiB，另含描述符/候选暂存
+
 [resources.query]
 max_work = 100000
 max_payload_bytes = 67108864

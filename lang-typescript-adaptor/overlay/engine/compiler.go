@@ -22,12 +22,13 @@ func (h configHost) GetCurrentDirectory() string { return h.root }
 
 // Compiler objects remain in Go and in the lifetime of this one task.
 type Program struct {
-	program *compiler.Program
-	config  *tsoptions.ParsedCommandLine
-	frozen  *FrozenFS
-	meter   *Meter
-	files   map[string]*pb.FileIdentity
-	context *pb.ProjectContext
+	program         *compiler.Program
+	config          *tsoptions.ParsedCommandLine
+	frozen          *FrozenFS
+	meter           *Meter
+	files           map[string]*pb.FileIdentity
+	context         *pb.ProjectContext
+	publicationRoot string
 }
 
 func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
@@ -78,30 +79,13 @@ func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
 			return nil, invalid("captured root file order changed")
 		}
 	}
-	var bytes uint64
-	for _, file := range project.Files {
-		bytes += file.File.Size
-	}
-	// Embedded ReadFile returns an immutable string without allocation. Reserve
-	// parser/checker workspace before NewProgram; RSS remains supervisor-enforced.
-	if len(config.ParsedConfig.FileNames) != 0 && config.ParsedConfig.CompilerOptions.NoLib != core.TSTrue {
-		if err := meter.Charge(uint64(len(bundled.LibNames)), 0, uint64(len(bundled.LibNames))*128); err != nil {
-			return nil, err
-		}
-		for _, name := range bundled.LibNames {
-			text, ok := filesystem.ReadFile(bundled.LibPath() + "/" + name)
-			if !ok {
-				return nil, invalid("missing embedded standard library")
-			}
-			bytes += uint64(len(text))
-		}
-	}
-	if bytes > (^uint64(0)-4*1024*1024)/32 {
-		return nil, invalid("compiler workspace overflow")
-	}
-	if err := meter.Charge(bytes/4096+1, 1, bytes*32+4*1024*1024); err != nil {
+	// Reserve a fixed compiler baseline, then fund only files actually requested
+	// by the kernel. An immutable embedded library string is cheap to inspect;
+	// parser/checker workspace must be admitted before returning it to the host.
+	if err := meter.Charge(1, 1, 4*1024*1024); err != nil {
 		return nil, err
 	}
+	filesystem = &compilerBudgetFS{FS: filesystem, meter: meter, seen: make(map[string]bool)}
 	program := compiler.NewProgram(compiler.ProgramOptions{Config: config, Host: compiler.NewCompilerHost(context.Root, filesystem, bundled.LibPath(), nil, nil, nil), SingleThreaded: core.TSTrue})
 	if err := frozen.Check(); err != nil {
 		return nil, err
@@ -156,4 +140,32 @@ func referenceInputs(program *compiler.Program, meter *Meter, canonical func(str
 		return true
 	})
 	return result, failure
+}
+
+// Embedding preserves the frozen/bundled filesystem's exact lookup semantics.
+// A refusal latches in Meter; NewProgram may recover with a missing-file
+// diagnostic, but OpenProgram then returns that resource failure, never facts.
+type compilerBudgetFS struct {
+	vfs.FS
+	meter *Meter
+	seen  map[string]bool
+}
+
+func (f *compilerBudgetFS) ReadFile(name string) (string, bool) {
+	if f.meter.Check() != nil {
+		return "", false
+	}
+	text, ok := f.FS.ReadFile(name)
+	if !ok || f.seen[name] {
+		return text, ok
+	}
+	n := uint64(len(text))
+	if n > (^uint64(0)-4096)/32 {
+		return "", false
+	}
+	if f.meter.Charge(n/4096+1, 1, n*32+4096) != nil {
+		return "", false
+	}
+	f.seen[name] = true
+	return text, true
 }

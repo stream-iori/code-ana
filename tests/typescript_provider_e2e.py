@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Real CLI preparation/capture gate. Semantic indexing is pending T4--T6."""
+"""Real CLI preparation, capture and native product indexing gate."""
 import argparse
 import importlib.util
 import json
@@ -26,7 +26,7 @@ def main():
     binaries=[ROOT/'target/debug'/name for name in ['codeana-cli','codeana-daemon','codeana-typescript-worker']]
     paths=[ROOT/path for path in subprocess.check_output(['git','ls-files','-co','--exclude-standard'],cwd=ROOT,text=True).splitlines()]+binaries+[path for path in sdk.rglob('*') if path.is_file()]
     before=identities(paths);environment=dict(os.environ,PATH='',CODEANA_TYPESCRIPT_SDK=str(sdk))
-    report=dict(stage='T3 CLI TypeScript preparation',status='failed',commands=[],inputs=before,T3_complete=False,semantic_indexing=False,formal_native_acceptance=False,performance_acceptance=False)
+    report=dict(stage='T6 CLI TypeScript preparation and product indexing',status='failed',commands=[],inputs=before,T3_complete=False,semantic_indexing=True,formal_native_acceptance=False,performance_acceptance=False)
     def config(js=True,ts=True,aliases=False,conflict=False,multiple=False):
         text=f"schema_version=1\nkind='project'\n[languages.javascript]\nenabled={str(js).lower()}\n[languages.typescript]\nenabled={str(ts).lower()}\n[inputs]\n"
         text += "[[inputs.entries]]\nid='primary'\nlanguage='"+('typescript' if ts else 'javascript')+"'\nroot='.'\nmanifest='tsconfig.json'\n"
@@ -42,26 +42,27 @@ def main():
             try:process.wait(timeout=90)
             finally:
                 baseline.signal_group(process.pid,signal.SIGKILL);entry.update(exit_code=process.wait(),seconds=time.monotonic()-start,sha256=sha256(log))
-        assert entry['exit_code']==1,(name,entry,log.read_text())
+        failed = name in {'overlapping-module-owners','conflict','old-catalog','solution-reference-cycle','solution-stale-control','solution-missing-reference'}
+        assert entry['exit_code']==int(failed),(name,entry,log.read_text())
         return log.read_text()
     def catalog():return json.loads((state/'inputs.json').read_text())
     def native(unit):
         artifact=next(artifact for artifact in unit['artifacts'] if artifact['path'].endswith('/inputs.json'))
         path=project/artifact['path'];assert sha256(path)==artifact['sha256'];return json.loads(path.read_text())
     try:
-        config();assert 'TYPESCRIPT_INPUT_NOT_READY' in run('dual','index','--prepare')
+        config();run('dual','index','--prepare')
         first=catalog();assert first['schema_version']==3 and len(first['units'])==1
         unit=first['units'][0];assert unit['backend']=='typescript' and set(unit['source_languages'])=={'javascript','typescript'}
         original=native(unit)
-        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('repeat','index','--prepare')
+        run('repeat','index','--prepare')
         second=catalog()['units'][0];assert second['id']==unit['id'] and native(second)==original
-        config(js=True,ts=False);assert 'TYPESCRIPT_INPUT_NOT_READY' in run('js-only','index','--prepare')
+        config(js=True,ts=False);run('js-only','index','--prepare')
         js=catalog()['units'][0];assert js['backend']=='typescript' and js['source_languages']==['javascript']
         assert [Path(file['path']).name for file in native(js)['contexts'][0]['files'] if file['role']=='publish']==['b.js']
-        config(aliases=True);assert 'TYPESCRIPT_INPUT_NOT_READY' in run('aliases','index','--prepare')
+        config(aliases=True);run('aliases','index','--prepare')
         merged=catalog();assert len(merged['units'])==1 and set(merged['units'][0]['entries'])=={'primary','alias'}
         assert merged['units'][0]['id']==unit['id']
-        config(multiple=True);assert 'TYPESCRIPT_INPUT_NOT_READY' in run('multiple-contexts','index','--prepare')
+        config(multiple=True);run('multiple-contexts','index','--prepare')
         separate=catalog()['units'];assert len(separate)==2 and len({u['id'] for u in separate})==2
         contexts=[native(u)['contexts'][0] for u in separate]
         assert {str(project/'a.ts'),str(project/'b.js')}.issubset(set(f['path'] for f in contexts[0]['files']) & set(f['path'] for f in contexts[1]['files']))
@@ -74,7 +75,7 @@ def main():
         config(aliases=True)
         text=(state/'config.toml').read_text()+"source_roots=[{path='nested',scope='MAIN'}]\n[[modules]]\nid='child'\nlanguage='javascript'\nroot='nested/lib'\n"
         (state/'config.toml').write_text(text)
-        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('file-module-owners','index','--prepare')
+        run('file-module-owners','index','--prepare')
         owner_units=catalog()['units'];assert len(owner_units)==1 and set(owner_units[0]['modules'])=={'app','child'}
         owned=native(owner_units[0])['contexts'][0]['files']
         published={Path(f['path']).relative_to(project).as_posix():f for f in owned if f['role']=='publish'}
@@ -96,7 +97,7 @@ def main():
         alias=json.loads(json.dumps(original));alias['contexts'][0]['files'].reverse()
         (state/'legacy-b.json').write_text(json.dumps(alias,indent=2))
         (state/'config.toml').write_text("schema_version=1\nkind='project'\n[languages.javascript]\nenabled=true\n[languages.javascript.discovery]\ninputs_manifest='.code-ana/legacy-a.json'\n[languages.typescript]\nenabled=true\n[languages.typescript.discovery]\ninputs_manifest='.code-ana/legacy-b.json'\n[[modules]]\nid='app'\nlanguage='typescript'\nroot='.'\n")
-        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('legacy-equivalent-locators','index')
+        run('legacy-equivalent-locators','index')
         # A compiler-owned empty solution expands into distinct context units.
         for name in ['left','right']:
             (project/name).mkdir()
@@ -104,7 +105,7 @@ def main():
             (project/name/'tsconfig.json').write_text(json.dumps({'compilerOptions':{'noLib':True,'composite':True},'files':['index.ts']}))
         (project/'tsconfig.json').write_text(json.dumps({'compilerOptions':{'noLib':True},'files':[],'references':[{'path':'./left'},{'path':'./right'}]}))
         config(aliases=True)
-        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('rootless-solution','index','--prepare')
+        run('rootless-solution','index','--prepare')
         solution=catalog()['units'];assert len(solution)==3 and len({u['id'] for u in solution})==3
         assert all(set(u['entries'])=={'alias','primary'} for u in solution)
         native_contexts=[native(u)['contexts'][0] for u in solution]
@@ -115,10 +116,10 @@ def main():
         assert {f['path'] for f in published}=={str(project/'left/index.ts'),str(project/'right/index.ts')}
         assert len({f['world'] for f in published})==2
         saved={u['id']:native(u) for u in solution}
-        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('rootless-solution-repeat','index','--prepare')
+        run('rootless-solution-repeat','index','--prepare')
         assert {u['id']:native(u) for u in catalog()['units']}==saved
         (state/'config.toml').write_text((state/'config.toml').read_text()+"[[inputs.entries]]\nid='direct'\nlanguage='typescript'\nroot='.'\nmanifest='left/tsconfig.json'\n")
-        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('solution-overlapping-entry','index','--prepare')
+        run('solution-overlapping-entry','index','--prepare')
         merged=catalog()['units'];assert len(merged)==3
         left=next(u for u in merged if native(u)['contexts'][0]['config_path']==str(project/'left/tsconfig.json'))
         assert set(left['entries'])=={'alias','primary','direct'}

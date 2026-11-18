@@ -8,13 +8,13 @@ use std::{
 
 mod frozen;
 pub mod semantics;
-pub use frozen::{FROZEN_INPUT_SCHEMA, FrozenFile, FrozenInputs};
+pub use frozen::{AnalysisConfig, FROZEN_INPUT_SCHEMA, FrozenFile, FrozenInputs};
 
 pub const INPUT_SCHEMA: u32 = 1;
 /// Minimum bridge semantics, independently of the stable C calling convention.
-pub const ADAPTER_REVISION: u32 = 6;
+pub const ADAPTER_REVISION: u32 = 7;
 pub const ABI_VERSION: u32 = 1;
-pub const ANALYSIS_VERSION: u32 = 1;
+pub const ANALYSIS_VERSION: u32 = 2;
 pub const PRODUCER: &str = "typescript-core";
 
 /// Semantic SDK identity is independent of its installation directory. In
@@ -32,6 +32,12 @@ pub struct CompilerIdentity {
     pub standard_library_digest: String,
     pub analysis_proto_sha256: String,
     pub graph_proto_sha256: String,
+}
+
+impl CompilerIdentity {
+    pub fn semantic_adapter(&self) -> String {
+        format!("{}@{}", self.adapter, digest(self))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

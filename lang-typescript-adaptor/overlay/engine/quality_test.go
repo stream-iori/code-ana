@@ -26,7 +26,7 @@ func TestQualitySeparatesContextBindingAndCompleteCommentEvidence(t *testing.T) 
 			contextGap = true
 		}
 	}
-	quality, err := semanticQuality(facts, qualityProject(program), meter)
+	quality, err := semanticQuality(facts, qualityProject(program), program.context.Root, meter)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func TestQualityCompleteRequiresActualProgramAndKnownAmbientTypes(t *testing.T) 
 	// A declared publication source absent from the Program must not acquire
 	// complete coverage merely because no diagnostics mention it.
 	project.Files = append(project.Files, &pb.FrozenFile{File: &pb.FileIdentity{Path: program.context.Root + "/ignored.ts", Role: pb.FileRole_PUBLISH, Language: pb.SourceLanguage_TYPESCRIPT}})
-	quality, err := semanticQuality(facts, project, meter)
+	quality, err := semanticQuality(facts, project, program.context.Root, meter)
 	if err != nil {
 		t.Fatal(err)
 	}

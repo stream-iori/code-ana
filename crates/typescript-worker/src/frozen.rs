@@ -219,6 +219,7 @@ mod tests {
             spool,
             m::FrozenInputs {
                 schema_version: m::FROZEN_INPUT_SCHEMA,
+                publication_root: inputs.contexts[0].root.clone().into(),
                 inputs: Arc::new(inputs),
                 files: vec![file],
             },

@@ -23,7 +23,7 @@ var (
 )
 
 const ABIVersion uint32 = 1
-const RequestVersion uint32 = 1
+const RequestVersion uint32 = 2
 
 func RuntimeIdentity() *pb.RuntimeIdentity {
 	number := func(value string) uint32 {

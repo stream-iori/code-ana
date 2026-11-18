@@ -25,7 +25,7 @@ def main():
     output.mkdir(parents=True,exist_ok=False)
     paths=[ROOT/name for name in subprocess.check_output(['git','ls-files','-co','--exclude-standard'],cwd=ROOT,text=True).splitlines()]
     paths += [binary,*[path for path in sdk.rglob('*') if path.is_file()]]
-    before=identities(paths)
+    before={}
     report=dict(stage='T3 real preparation and public capture',status='failed',commands=[],inputs=before,component_only=True,T3_complete=False,product_indexing=False,formal_release_acceptance=False,performance_acceptance=False)
     def run(name,argv,environment,timeout):
         log=output/(name+'.log');entry=dict(name=name,argv=list(map(str,argv)),log=log.name);report['commands'].append(entry)
@@ -38,6 +38,11 @@ def main():
                 entry.update(exit_code=process.wait(),seconds=time.monotonic()-started,sha256=sha256(log))
         if entry['exit_code']:raise AssertionError(f'{name} failed; see {log}')
     try:
+        package,fixture = ('codeana-typescript-worker','frozen_capture') if args.handoff else ('codeana-config','typescript_inputs')
+        run('compile-fixture',['cargo','test','-p',package,'--test',fixture,'--locked','--no-run'],dict(os.environ),300)
+        # Cargo integration tests can relink the worker through feature unification.
+        # Freeze the artifacts after compilation, before any acceptance operation.
+        before=identities(paths);report['inputs']=before
         prepared=output/'prepared'
         run('go-prepare',[binary,'--sdk',sdk,'--component',ROOT/'lang-typescript-adaptor/probe/fixtures','--evidence',prepared,'--case','prepare'],dict(os.environ,PATH=''),45)
         if args.handoff:
