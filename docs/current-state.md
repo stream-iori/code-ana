@@ -15,6 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T5 编译器诊断与导出检查点（2026-11-18）
+
+| 已取证 | 结果 |
+|---|---|
+| 诊断 | 保留 TS 编译器代码、类别、原文范围和消息；缺模块与普通类型错误分开，无关错误不撤销合法调用；调用边界的零宽语法错误保持 unknown |
+| 导出 / CommonJS | 同一 Checker 的模块导出表保留默认匿名导出、重导出、类型导出、CommonJS 属性及 export-equals 来源；静态 require 使用编译器模块符号，局部同名 require 不生成导入 |
+| 未解析引用 | 保留 unresolved 关系和角色，不因没有端点而静默丢行；模块表导出使用明确的文件级观察范围 |
+| 门禁 | 强制核心 24 项通过；当前 SDK 真实 38 行归档经公共 store/query 验证，编译器 TS2322、注释、静态调用和源码均可读取；集成测试 clippy 通过 |
+| 继续实施 | T5 全局/上下文诊断、声明边界及 coverage/provider 收口，T6 产品 IPC、T7 故障/资源/复用、T8 实际包；仍为 partial，不签正式或性能放行 |
+
+SDK 为 target/typescript-c-abi/t5-diagnostics-exports-sdk，构建 / 强制核心 / 实际查询分别见 t5-diagnostics-exports-build、t5-diagnostics-exports-core-final、t5-diagnostics-exports-store-first。原导出测试角色假设与 AST BinaryExpression 访问错误保留原日志。已清理部分完成验证的生成源码副本，SDK、日志和回执保留，清理回执为 t5-generated-source-cleanup.json。
+
 ## TypeScript T5 成员、JSX 与注释检查点（2026-11-18）
 
 | 当前证据 | 范围 |

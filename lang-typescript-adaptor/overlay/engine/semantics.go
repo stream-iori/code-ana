@@ -42,6 +42,7 @@ type SemanticFacts struct {
 	Calls        []SemanticCall
 	References   []SemanticReference
 	Comments     []SemanticComment
+	Diagnostics  []SemanticDiagnostic
 }
 
 type semanticFile struct {
@@ -342,7 +343,7 @@ func (b *semanticBuilder) call(c *checker.Checker, file *semanticFile, node *ast
 		call.SyntaxKind = "new"
 	}
 	for _, diagnostic := range errors {
-		if diagnostic.Category() == diagnostics.CategoryError && diagnostic.Pos() < end && diagnostic.End() > start {
+		if diagnostic.Category() == diagnostics.CategoryError && diagnostic.Pos() <= end && diagnostic.End() >= start {
 			call.Reason = "call_type_error"
 			return call, nil
 		}
@@ -483,10 +484,24 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 		}
 	}
 	for _, file := range b.files {
+		syntax := p.program.GetSyntacticDiagnostics(ctx, file.source)
+		if err := b.diagnostics(file, syntax, "syntax"); err != nil {
+			return nil, err
+		}
 		errors := p.program.GetSemanticDiagnostics(ctx, file.source)
+		if err := b.diagnostics(file, errors, "check"); err != nil {
+			return nil, err
+		}
+		if err := p.meter.Charge(uint64(len(syntax)+len(errors))+1, 1, uint64(len(syntax)+len(errors))*16+128); err != nil {
+			return nil, err
+		}
+		callErrors := append(append(make([]*ast.Diagnostic, 0, len(syntax)+len(errors)), syntax...), errors...)
 		c, done := p.program.GetTypeCheckerForFile(ctx, file.source)
 		err := func() error {
 			defer done()
+			if err := b.moduleExports(c, file); err != nil {
+				return err
+			}
 			var ordinal uint64
 			var visit func(*ast.Node, uint32) error
 			visit = func(node *ast.Node, depth uint32) error {
@@ -516,10 +531,10 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 					b.facts.References = append(b.facts.References, *reference)
 				}
 				if node.Kind == ast.KindCallExpression || node.Kind == ast.KindNewExpression {
-					if err := p.meter.Charge(uint64(len(errors))+1, 1, 2048); err != nil {
+					if err := p.meter.Charge(uint64(len(callErrors))+1, 1, 2048); err != nil {
 						return err
 					}
-					call, err := b.call(c, file, node, errors, ordinal)
+					call, err := b.call(c, file, node, callErrors, ordinal)
 					if err != nil {
 						return err
 					}

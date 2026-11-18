@@ -37,7 +37,7 @@ missing;
 	}
 	counts := map[string]int{}
 	for _, ref := range facts.References {
-		if ref.File != "entry.ts" {
+		if ref.File != "entry.ts" || ref.Role == "exports_symbol" {
 			continue
 		}
 		text := referenceText(ref, sources[ref.File])
@@ -79,7 +79,7 @@ func TestSemanticSideEffectImportsAndReexportsKeepModuleEvidence(t *testing.T) {
 	}
 	count := 0
 	for _, ref := range facts.References {
-		if ref.File != "entry.ts" {
+		if ref.File != "entry.ts" || ref.Role == "exports_symbol" {
 			continue
 		}
 		if ref.Role != "imports_module" && ref.Role != "exports_module" {

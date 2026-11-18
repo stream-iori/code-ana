@@ -30,7 +30,9 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         let content = if name == "a.ts" {
             format!(
                 "/** 类型脚本文档 中文😀 */\r\n{}",
-                original.replace("return value", "/* 调用内部说明 */ return value")
+                original
+                    .replace("return value", "/* 调用内部说明 */ return value")
+                    .replace("value + 1", "value + 'bad'")
             )
         } else {
             original
@@ -184,6 +186,16 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         declarations
     );
     let target = &greet[0].id;
+    let diagnostics = reader.select(&FactFilter {
+        kinds: vec![FactKind::Diagnostic],
+        ..Default::default()
+    })?;
+    ensure!(
+        diagnostics
+            .iter()
+            .any(|d| d.name == "TS2322" && d.source == "a.ts"),
+        "PUBLIC_COMPILER_DIAGNOSTIC: {diagnostics:?}"
+    );
     let call_sites = reader.select(&FactFilter {
         kinds: vec![FactKind::CallSite],
         ..Default::default()
@@ -294,7 +306,7 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
     std::fs::write(
         evidence.join("proof.json"),
         serde_json::to_vec_pretty(
-            &json!({"status":"passed","actual_abi":true,"raw_archive_verified":true,"verified_rows":proof.count(),"imported_rows":before_count,"published_revision":published.id,"declarations":declarations.len(),"call_sites":call_sites.len(),"call_targets":targets.len(),"function_id":target,"public_static_dispatch":true,"cha_rejected":true,"captured_source":true,"public_resolve":true,"public_comment_search":true,"jsdoc_link":true,"enclosing_callable_link":true,"T5_complete":false,"product_ipc":false,"formal_release":false}),
+            &json!({"status":"passed","actual_abi":true,"raw_archive_verified":true,"verified_rows":proof.count(),"imported_rows":before_count,"published_revision":published.id,"declarations":declarations.len(),"call_sites":call_sites.len(),"call_targets":targets.len(),"function_id":target,"public_static_dispatch":true,"cha_rejected":true,"captured_source":true,"public_resolve":true,"public_comment_search":true,"jsdoc_link":true,"enclosing_callable_link":true,"public_compiler_diagnostic":true,"T5_complete":false,"product_ipc":false,"formal_release":false}),
         )?,
     )?;
     Ok(())

@@ -123,7 +123,7 @@ func (p *projection) facts(facts *SemanticFacts) error {
 		if err := p.meter.Charge(1, 1, 8192); err != nil {
 			return err
 		}
-		metadata, err := jsonText(map[string]any{"ts_reference_id": ref.ID, "role": ref.Role, "byte_start": ref.Span.Start.Byte, "byte_end": ref.Span.End.Byte, "enclosing_callable": ref.Caller})
+		metadata, err := jsonText(map[string]any{"ts_reference_id": ref.ID, "role": ref.Role, "export_name": ref.Name, "byte_start": ref.Span.Start.Byte, "byte_end": ref.Span.End.Byte, "enclosing_callable": ref.Caller})
 		if err != nil {
 			return err
 		}
@@ -143,10 +143,15 @@ func (p *projection) facts(facts *SemanticFacts) error {
 			relation = "EXTENDS"
 		case "implements":
 			relation = "IMPLEMENTS"
-		case "imports", "imports_type", "imports_module", "imports_module_type":
+		case "imports", "imports_type", "imports_module", "imports_module_type", "imports_module_commonjs":
 			relation = "IMPORTS"
-		case "exports", "exports_type", "exports_module", "exports_module_type":
+		case "exports", "exports_type", "exports_module", "exports_module_type", "exports_symbol":
 			relation = "EXPORTS"
+		}
+		if len(ref.Targets) == 0 && len(ref.External) == 0 {
+			if err := p.edge(owner, "", "", relation, ref.Role, "", "unresolved", ref.Span, 0, metadata); err != nil {
+				return err
+			}
 		}
 		for i, target := range ref.Targets {
 			if err := p.edge(owner, target, "", relation, ref.Role, "", "exact", ref.Span, uint64(i), metadata); err != nil {
@@ -192,6 +197,18 @@ func (p *projection) facts(facts *SemanticFacts) error {
 	}
 	for _, comment := range facts.Comments {
 		if err := p.comment(comment); err != nil {
+			return err
+		}
+	}
+	for _, d := range facts.Diagnostics {
+		if err := p.meter.Charge(1, 16, uint64(len(d.Message))*8+8192); err != nil {
+			return err
+		}
+		details, err := jsonText(map[string]any{"compiler_code": d.Code, "byte_start": d.Span.Start.Byte, "byte_end": d.Span.End.Byte, "begin_line": d.Span.Start.Line, "begin_column": d.Span.Start.Column, "end_line": d.Span.End.Line, "end_column": d.Span.End.Column})
+		if err != nil {
+			return err
+		}
+		if err := p.writer.Write(graphRow(g.Table_DIAGNOSTIC, d.World, textCell(d.Severity), textCell(d.Code), textCell(d.Phase), textCell(d.File), textCell(d.Module), textCell(d.Scope), nullCell(), textCell(d.Language), textCell(provider(d.Language)), textCell(d.Message), textCell(d.Reason), textCell(details), intCell(1), textCell(d.Message))); err != nil {
 			return err
 		}
 	}

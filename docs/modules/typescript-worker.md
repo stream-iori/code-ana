@@ -160,3 +160,11 @@ TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返
 注释扫描结合真实 AST 的 regex/string/template/JSX token 边界，避免独立 lexer 误判词法上下文。JSDoc 的真实范围来自 parser.GetJSDocCommentRanges；JSDoc 节点 Pos 含 fullStart，不能直接当注释起点。文档归属来自该 AST 的 JSDoc 标记，callable 归属来自包含范围；不猜最近声明。正文映射保留原始 UTF-8 片段，公开 comment ID 与 model::key 的 JSON 字符串数组编码一致。
 
 强制核心真值现为 21 项；新正常 SDK 已通过实际公开注释搜索和两类链接的入库查询。COMMENTS 的完整质量与 provider 声明仍待收口，当前仍 partial。质量诊断、CommonJS/导出及完整产品/故障/分发继续实施，不能将此检查点作为 T5—T8 完成。
+
+## T5 诊断与模块导出表
+
+源文件语法/类型诊断先脱离编译器对象，投影原 TS code、severity、reason、消息和 UTF-8/UTF-16 范围。缺模块与普通类型错误分别标识；合法调用不因其他位置的错误失效。调用范围两端的零宽语法错误也阻止恢复节点变成精确实现。全局/上下文诊断及能力级 coverage/provider 仍需收口。
+
+模块导出事实来自同一 Checker 的 ForEachExportAndPropertyOfModule 和 ResolveExternalModuleSymbol，保留默认导出、type-only、重导出及 CommonJS/export-equals 来源；合并同名观察后排序/去重，不按枚举顺序选第一项。模块表观察使用文件范围，语法 import/export 保留其 token 范围。静态 require 的本地遮蔽单独排除；动态 require 保持普通未知调用。无端点的引用仍投影 unresolved 行。
+
+当前强制核心真值为 24 项；真实 SDK 归档已通过公开编译器诊断、注释、调用及源码查询。仍未接产品 IPC，不能由上述组件通过宣称 T5—T8 全部完成。

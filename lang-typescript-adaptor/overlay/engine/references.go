@@ -15,6 +15,7 @@ type SemanticReference struct {
 	ID, Source, Caller, File, World, Language, Role, Resolution string
 	Span                                                        SourceSpan
 	Targets, External                                           []string
+	Name                                                        string
 }
 
 func (b *semanticBuilder) referenceOwner(node *ast.Node, file *semanticFile) string {
@@ -108,7 +109,7 @@ func matchesReferenceSpace(kind, role string) bool {
 	if role == "extends" || role == "implements" {
 		return kind == "class" || kind == "interface"
 	}
-	if role == "imports" || role == "exports" || role == "imports_type" || role == "exports_type" {
+	if role == "imports" || role == "exports" || role == "imports_type" || role == "exports_type" || role == "exports_symbol" {
 		return true
 	}
 	if role == "namespace_qualifier" {
@@ -138,6 +139,19 @@ func (b *semanticBuilder) reference(c *checker.Checker, file *semanticFile, node
 		}
 		role = "jsx_component"
 		symbol = c.GetSymbolAtLocation(name)
+	} else if ast.IsRequireCall(node, true) {
+		// Local bindings named require are ordinary calls. Only the compiler's
+		// unshadowed module form can contribute a static module import.
+		if local := c.GetSymbolAtLocation(node.Expression()); local != nil {
+			for _, declaration := range local.Declarations {
+				if ast.GetSourceFileOfNode(declaration) == file.source {
+					return nil, nil
+				}
+			}
+		}
+		name = node.Arguments()[0]
+		role = "imports_module_commonjs"
+		symbol = c.ResolveExternalModuleName(name)
 	} else if (node.Kind == ast.KindExpressionWithTypeArguments || node.Kind == ast.KindTypeReference) && node.Parent != nil && node.Parent.Kind == ast.KindHeritageClause {
 		if node.Kind == ast.KindTypeReference {
 			name = node.AsTypeReferenceNode().TypeName
