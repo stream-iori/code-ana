@@ -59,6 +59,19 @@ func jsxTagName(node *ast.Node) bool {
 	}
 	return false
 }
+func heritageName(node *ast.Node) bool {
+	container := node
+	for parent := container.Parent; parent != nil; parent = container.Parent {
+		if parent.Kind == ast.KindPropertyAccessExpression || parent.Kind == ast.KindQualifiedName {
+			container = parent
+			continue
+		}
+		return parent.Parent != nil && parent.Parent.Kind == ast.KindHeritageClause &&
+			((parent.Kind == ast.KindExpressionWithTypeArguments && parent.Expression() == container) ||
+				(parent.Kind == ast.KindTypeReference && parent.AsTypeReferenceNode().TypeName == container))
+	}
+	return false
+}
 func referenceRole(node *ast.Node) string {
 	if parent := node.Parent; parent != nil && parent.Kind == ast.KindQualifiedName {
 		if parent.AsQualifiedName().Left == node || (parent.Parent != nil && parent.Parent.Kind == ast.KindQualifiedName && parent.Parent.AsQualifiedName().Left == parent) {
@@ -92,6 +105,9 @@ func referenceRole(node *ast.Node) string {
 	return "read"
 }
 func matchesReferenceSpace(kind, role string) bool {
+	if role == "extends" || role == "implements" {
+		return kind == "class" || kind == "interface"
+	}
 	if role == "imports" || role == "exports" || role == "imports_type" || role == "exports_type" {
 		return true
 	}
@@ -115,7 +131,25 @@ func (b *semanticBuilder) reference(c *checker.Checker, file *semanticFile, node
 	role := ""
 	name := node
 	kind := declarationKind(node)
-	if node.Kind == ast.KindImportDeclaration || node.Kind == ast.KindExportDeclaration {
+	if node.Kind == ast.KindJsxOpeningElement || node.Kind == ast.KindJsxSelfClosingElement {
+		name = node.TagName()
+		if name == nil || ast.IsJsxNamespacedName(name) || (ast.IsIdentifier(name) && scanner.IsIntrinsicJsxName(name.Text())) {
+			return nil, nil
+		}
+		role = "jsx_component"
+		symbol = c.GetSymbolAtLocation(name)
+	} else if (node.Kind == ast.KindExpressionWithTypeArguments || node.Kind == ast.KindTypeReference) && node.Parent != nil && node.Parent.Kind == ast.KindHeritageClause {
+		if node.Kind == ast.KindTypeReference {
+			name = node.AsTypeReferenceNode().TypeName
+		} else {
+			name = node.Expression()
+		}
+		role = "extends"
+		if node.Parent.AsHeritageClause().Token == ast.KindImplementsKeyword {
+			role = "implements"
+		}
+		symbol = c.GetSymbolAtLocation(name)
+	} else if node.Kind == ast.KindImportDeclaration || node.Kind == ast.KindExportDeclaration {
 		name = node.ModuleSpecifier()
 		if name == nil {
 			return nil, nil
@@ -154,7 +188,7 @@ func (b *semanticBuilder) reference(c *checker.Checker, file *semanticFile, node
 		if parent.Kind == ast.KindShorthandPropertyAssignment && parent.Name() == node {
 			symbol = c.GetShorthandAssignmentValueSymbol(parent)
 		} else {
-			if ast.IsDeclarationNameOrImportPropertyName(node) || parent.Kind == ast.KindExportSpecifier || parent.Kind == ast.KindImportSpecifier || callCallee(node) || jsxTagName(node) {
+			if ast.IsDeclarationNameOrImportPropertyName(node) || parent.Kind == ast.KindExportSpecifier || parent.Kind == ast.KindImportSpecifier || callCallee(node) || jsxTagName(node) || heritageName(node) {
 				return nil, nil
 			}
 			// Labels and JSX tag/attribute names are separate syntactic roles;
@@ -200,7 +234,7 @@ func (b *semanticBuilder) reference(c *checker.Checker, file *semanticFile, node
 	if role == "namespace_qualifier" && symbol.Flags&ast.SymbolFlagsNamespace == 0 {
 		return reference, nil
 	}
-	if (role == "read" || role == "write" || role == "read_write" || role == "value_type_query") && symbol.Flags&ast.SymbolFlagsValue == 0 {
+	if (role == "read" || role == "write" || role == "read_write" || role == "value_type_query" || role == "jsx_component") && symbol.Flags&ast.SymbolFlagsValue == 0 {
 		return reference, nil
 	}
 	for _, declaration := range symbol.Declarations {

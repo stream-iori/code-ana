@@ -137,6 +137,12 @@ func (p *projection) facts(facts *SemanticFacts) error {
 			relation = "READS"
 		case "type":
 			relation = "USES_TYPE"
+		case "jsx_component":
+			relation = "REFERENCES"
+		case "extends":
+			relation = "EXTENDS"
+		case "implements":
+			relation = "IMPLEMENTS"
 		case "imports", "imports_type", "imports_module", "imports_module_type":
 			relation = "IMPORTS"
 		case "exports", "exports_type", "exports_module", "exports_module_type":
@@ -183,6 +189,37 @@ func (p *projection) facts(facts *SemanticFacts) error {
 		if err := p.edge(owner, target, call.External, "CALLS", targetKind, "STATIC", resolution, call.Span, call.Ordinal, metadata); err != nil {
 			return err
 		}
+	}
+	for _, comment := range facts.Comments {
+		if err := p.comment(comment); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (p *projection) comment(c SemanticComment) error {
+	if err := p.meter.Charge(uint64(len(c.Documents))+2, uint64(len(c.BodyMap))*4+32, uint64(len(c.Body))*4+uint64(len(c.BodyMap))*512+8192); err != nil {
+		return err
+	}
+	segments, err := jsonText(c.BodyMap)
+	if err != nil {
+		return err
+	}
+	s := c.Span
+	if err := p.writer.Write(graphRow(g.Table_COMMENT, c.World, textCell(c.ID), textCell(c.File), textCell(c.Hash), textCell(c.Module), textCell(c.Scope), textCell(c.Language), textCell(provider(c.Language)), textCell(producer), textCell(c.Kind), intCell(int64(s.Start.Byte)), intCell(int64(s.End.Byte)), intCell(int64(s.Start.Line)), intCell(int64(s.Start.Column)), intCell(int64(s.End.Line)), intCell(int64(s.End.Column)), textCell(c.Body), textCell(segments), textCell(commentRule))); err != nil {
+		return err
+	}
+	link := func(relation, declaration string) error {
+		return p.writer.Write(graphRow(g.Table_COMMENT_LINK, c.World, textCell(c.ID), textCell(relation), textCell(declaration), textCell(c.File), textCell(c.Module), textCell(c.Scope), intCell(int64(s.Start.Byte)), intCell(int64(s.End.Byte)), intCell(int64(s.Start.Line)), intCell(int64(s.Start.Column)), intCell(int64(s.End.Line)), intCell(int64(s.End.Column)), textCell("language_rule"), textCell(commentRule)))
+	}
+	for _, declaration := range c.Documents {
+		if err := link("documents", declaration); err != nil {
+			return err
+		}
+	}
+	if c.EnclosingCallable != "" {
+		return link("enclosing_callable", c.EnclosingCallable)
 	}
 	return nil
 }

@@ -38,6 +38,7 @@ fn language(name: &str) -> Result<AnalysisBackend> {
         "java" => Ok(AnalysisBackend::Java),
         "rust" => Ok(AnalysisBackend::Rust),
         "python" => Ok(AnalysisBackend::Python),
+        "javascript" | "typescript" => Ok(AnalysisBackend::TypeScript),
         _ => Err(invalid("language")),
     }
 }

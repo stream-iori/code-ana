@@ -41,6 +41,7 @@ type SemanticFacts struct {
 	Declarations []SemanticDeclaration
 	Calls        []SemanticCall
 	References   []SemanticReference
+	Comments     []SemanticComment
 }
 
 type semanticFile struct {
@@ -350,6 +351,13 @@ func (b *semanticBuilder) call(c *checker.Checker, file *semanticFile, node *ast
 	if expression == nil {
 		return call, nil
 	}
+	if ast.IsElementAccessExpression(expression) {
+		argument := expression.AsElementAccessExpression().ArgumentExpression
+		if argument == nil || (argument.Kind != ast.KindStringLiteral && argument.Kind != ast.KindNumericLiteral) {
+			call.Reason = "dynamic_property"
+			return call, nil
+		}
+	}
 	t := c.GetTypeAtLocation(expression)
 	if t == nil || t.Flags()&(checker.TypeFlagsAnyOrUnknown|checker.TypeFlagsUnionOrIntersection) != 0 {
 		call.Reason = "dynamic_callee_type"
@@ -373,13 +381,36 @@ func (b *semanticBuilder) call(c *checker.Checker, file *semanticFile, node *ast
 		}
 		return call, nil
 	}
-	// A signature of a parameter, interface/property or an arbitrary alias is
-	// declaration evidence. Only a function symbol's unique body is promoted.
+	// The compiler may select a body for an inline or immutable local callable.
+	// An arbitrary parameter, mutable variable or structural signature remains
+	// declaration evidence; selecting its signature is not a runtime proof.
+	if index, ok := b.byNode[selected]; ok && b.facts.Declarations[index].Implementation {
+		if selected.Kind == ast.KindConstructor && node.Kind == ast.KindNewExpression {
+			call.TargetKind, call.Reason = "implementation", "selected_constructor_body"
+			return call, nil
+		}
+		if ast.SkipParentheses(expression) == selected {
+			call.TargetKind, call.Reason = "implementation", "inline_callable_body"
+			return call, nil
+		}
+	}
 	symbol := c.GetSymbolAtLocation(expression)
+	if ast.IsElementAccessExpression(expression) {
+		symbol = c.GetSymbolAtLocation(expression.AsElementAccessExpression().ArgumentExpression)
+	}
 	if symbol != nil && symbol.Flags&ast.SymbolFlagsAlias != 0 {
 		symbol = c.GetAliasedSymbol(symbol)
 	}
-	if symbol == nil || symbol.Flags&ast.SymbolFlagsFunction == 0 {
+	if symbol != nil && symbol.ValueDeclaration != nil {
+		declaration := symbol.ValueDeclaration
+		if declaration.Kind == ast.KindVariableDeclaration && ast.GetCombinedNodeFlags(declaration)&ast.NodeFlagsConst != 0 && declaration.Initializer() != nil && ast.SkipParentheses(declaration.Initializer()) == selected {
+			if index, ok := b.byNode[selected]; ok && b.facts.Declarations[index].Implementation {
+				call.TargetKind, call.Reason = "implementation", "immutable_callable_initializer"
+				return call, nil
+			}
+		}
+	}
+	if symbol == nil || symbol.Flags&(ast.SymbolFlagsFunction|ast.SymbolFlagsMethod) == 0 {
 		return call, nil
 	}
 	symbol = c.GetMergedSymbol(symbol)
@@ -387,6 +418,9 @@ func (b *semanticBuilder) call(c *checker.Checker, file *semanticFile, node *ast
 		return call, nil
 	}
 	implementationID := ""
+	if err := b.program.meter.Charge(uint64(len(symbol.Declarations))+1, 0, 0); err != nil {
+		return SemanticCall{}, err
+	}
 	for _, decl := range symbol.Declarations {
 		if index, ok := b.byNode[decl]; ok && b.facts.Declarations[index].Implementation {
 			if implementationID != "" {
@@ -400,6 +434,9 @@ func (b *semanticBuilder) call(c *checker.Checker, file *semanticFile, node *ast
 		call.Target = implementationID
 		call.TargetKind = "implementation"
 		call.Reason = "function_symbol_unique_body"
+		if symbol.Flags&ast.SymbolFlagsMethod != 0 {
+			call.Reason = "method_symbol_unique_body"
+		}
 	}
 	return call, nil
 }
@@ -437,6 +474,11 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 	sort.Slice(b.files, func(i, j int) bool { return b.files[i].logical < b.files[j].logical })
 	for _, file := range b.files {
 		if err := b.collect(file); err != nil {
+			return nil, err
+		}
+	}
+	for _, file := range b.files {
+		if err := b.comments(file); err != nil {
 			return nil, err
 		}
 	}

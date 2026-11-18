@@ -152,3 +152,11 @@ TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返
 
 
 `just test-typescript-graph SDK NEW_EVIDENCE` 强制执行实际 SDK 归档入库/查询测试，使用独立 Store、真实来源和 unit ownership，验证声明、重复调用、静态 dispatch、源码和解析，并拒绝 TS CHA。CLI `index` 仍在工厂明确报 TYPESCRIPT_INPUT_NOT_READY；此门禁不替代 T6 的产品索引和一次发布验收。正常 SDK 及隔离 ABI fixture 都须按 graph model 7 重建，TS ABI/analysis 各为 1。
+
+## T5 成员、组件引用与注释
+
+构造器、方法重载、const 箭头与 inline callable 可发布有编译器证据的 body 目标；可变局部、函数参数及结构签名不因此升级为实现。字面量索引取索引参数的属性符号，动态索引保留 unknown。heritage 同时处理内核的 ExpressionWithTypeArguments 与 TypeReference；JSX 仅开始标签产生组件引用，不生成源码 CALLS。
+
+注释扫描结合真实 AST 的 regex/string/template/JSX token 边界，避免独立 lexer 误判词法上下文。JSDoc 的真实范围来自 parser.GetJSDocCommentRanges；JSDoc 节点 Pos 含 fullStart，不能直接当注释起点。文档归属来自该 AST 的 JSDoc 标记，callable 归属来自包含范围；不猜最近声明。正文映射保留原始 UTF-8 片段，公开 comment ID 与 model::key 的 JSON 字符串数组编码一致。
+
+强制核心真值现为 21 项；新正常 SDK 已通过实际公开注释搜索和两类链接的入库查询。COMMENTS 的完整质量与 provider 声明仍待收口，当前仍 partial。质量诊断、CommonJS/导出及完整产品/故障/分发继续实施，不能将此检查点作为 T5—T8 完成。

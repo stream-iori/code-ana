@@ -20,7 +20,23 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         "NEW_GRAPH_EVIDENCE_REQUIRED"
     );
     std::fs::create_dir_all(&evidence)?;
-    let fixture = root.join("lang-typescript-adaptor/probe/fixtures");
+    let fixture = evidence.join("fixture");
+    std::fs::create_dir(&fixture)?;
+    for name in ["a.ts", "b.ts"] {
+        let original = std::fs::read_to_string(
+            root.join("lang-typescript-adaptor/probe/fixtures")
+                .join(name),
+        )?;
+        let content = if name == "a.ts" {
+            format!(
+                "/** 类型脚本文档 中文😀 */\r\n{}",
+                original.replace("return value", "/* 调用内部说明 */ return value")
+            )
+        } else {
+            original
+        };
+        std::fs::write(fixture.join(name), content)?;
+    }
     let output = evidence.join("worker");
     let execution = Command::new(root.join("target/debug/codeana-typescript-worker"))
         .args([
@@ -67,7 +83,7 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         },
         || Ok(()),
     )?;
-    let store = Store::open(&evidence.join("home"))?;
+    let store = Arc::new(Store::open(&evidence.join("home"))?);
     let mut sources = Vec::new();
     let mut blobs = BTreeMap::new();
     for name in ["a.ts", "b.ts"] {
@@ -128,6 +144,18 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
     };
     let origin = Origin::Unit(Arc::new(unit));
     let before_count = rows.len();
+    let source_store = store.clone();
+    let staging = GraphStagingContext {
+        hosts: BTreeMap::from([(
+            AnalysisBackend::TypeScript,
+            AnalysisContext::new(AnalysisLimits::default(), None)?,
+        )]),
+        source: Arc::new(move |hash, _| {
+            source_store
+                .blob(hash)
+                .map_err(|error| DomainError::new(ErrorCode::SourceHashMismatch, error.to_string()))
+        }),
+    };
     let candidate = store.stage_owned_graph_records_with_context(
         revision,
         &header,
@@ -135,7 +163,7 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         "",
         || Ok(()),
         |_, _| Ok(()),
-        None,
+        Some(&staging),
     )?;
     let published = store.publish_staged(candidate, "typescript-public-graph")?;
     let reader = store.read(&published.id)?;
@@ -217,10 +245,56 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         &|s| store.blob(&s.hash),
     )?;
     ensure!(!resolve.records.is_empty(), "PUBLIC_RESOLVE");
+    let comments = codeana_query::run(
+        &reader,
+        &Request {
+            operation: Operation::SearchComments,
+            selector: "类型脚本文档".into(),
+            ..Default::default()
+        },
+        &|s| store.blob(&s.hash),
+    )?;
+    ensure!(
+        comments.records.len() == 1,
+        "PUBLIC_TYPESCRIPT_COMMENT_SEARCH"
+    );
+    let Record::Comment(hit) = &comments.records[0] else {
+        anyhow::bail!("PUBLIC_COMMENT_RECORD")
+    };
+    ensure!(
+        hit.comment.kind == CommentKind::Doc
+            && hit.comment.language == "typescript"
+            && hit
+                .links
+                .iter()
+                .any(|link| link.relation == CommentRelation::Documents
+                    && link.declaration.as_ref() == Some(target)),
+        "PUBLIC_JSDOC_LINK"
+    );
+    let inner = codeana_query::run(
+        &reader,
+        &Request {
+            operation: Operation::SearchComments,
+            selector: "调用内部说明".into(),
+            ..Default::default()
+        },
+        &|s| store.blob(&s.hash),
+    )?;
+    ensure!(inner.records.len() == 1, "PUBLIC_ENCLOSING_COMMENT");
+    let Record::Comment(hit) = &inner.records[0] else {
+        anyhow::bail!("PUBLIC_INNER_COMMENT_RECORD")
+    };
+    ensure!(
+        hit.links
+            .iter()
+            .any(|link| link.relation == CommentRelation::EnclosingCallable
+                && link.declaration.as_ref() == Some(target)),
+        "PUBLIC_ENCLOSING_CALLABLE_LINK"
+    );
     std::fs::write(
         evidence.join("proof.json"),
         serde_json::to_vec_pretty(
-            &json!({"status":"passed","actual_abi":true,"raw_archive_verified":true,"verified_rows":proof.count(),"imported_rows":before_count,"published_revision":published.id,"declarations":declarations.len(),"call_sites":call_sites.len(),"call_targets":targets.len(),"function_id":target,"public_static_dispatch":true,"cha_rejected":true,"captured_source":true,"public_resolve":true,"T4_complete":false,"product_ipc":false,"formal_release":false}),
+            &json!({"status":"passed","actual_abi":true,"raw_archive_verified":true,"verified_rows":proof.count(),"imported_rows":before_count,"published_revision":published.id,"declarations":declarations.len(),"call_sites":call_sites.len(),"call_targets":targets.len(),"function_id":target,"public_static_dispatch":true,"cha_rejected":true,"captured_source":true,"public_resolve":true,"public_comment_search":true,"jsdoc_link":true,"enclosing_callable_link":true,"T5_complete":false,"product_ipc":false,"formal_release":false}),
         )?,
     )?;
     Ok(())

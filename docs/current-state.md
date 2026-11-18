@@ -15,6 +15,19 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T5 成员、JSX 与注释检查点（2026-11-18）
+
+| 当前证据 | 范围 |
+|---|---|
+| 成员和调用 | 显式构造器、方法重载、const 箭头及立即执行函数使用编译器目标；可变函数变量、参数和接口保留声明目标，动态索引为 unknown |
+| JSX / 关系 | 开始标签只产生一次组件引用，intrinsic/结束标签不伪造调用；class/interface extends 与 implements 使用编译器声明端点 |
+| 注释 | 同内核 scanner、AST 字面量边界和 JSDoc 范围；正文映射、UTF-8/UTF-16、BOM/CRLF/无末尾换行、嵌套 callable；正则/模板/JSX 文本不当作注释 |
+| 公开查询 | 新 SDK 的实际 36 行归档入库；5 声明、2 调用点，公开注释搜索、documents 和 enclosing_callable 链接均通过 |
+| 验证 | 新 SDK 完整 Go 测试、Rust storage 单测及应用集成测试 clippy 通过；强制核心门禁扩至 21 项，回执单独保存 |
+| 尚未完成 | T5 质量诊断、CommonJS/导出与剩余声明边界；T6 产品 IPC、T7 故障/资源/复用、T8 实际包。保持 partial，无正式或性能放行 |
+
+当前正常 SDK：target/typescript-c-abi/t5-members-comments-sdk；构建回执 t5-members-comments-build/receipt.json，实际查询回执 t5-members-comments-store-first/proof.json。成员首轮符号定位、JSDoc fullStart 与模板 continuation trivia 失败及命令路径错误均保留；不能将组件与入库验证算作产品索引完成。
+
 ## TypeScript T4 公开图与 schema 迁移（2026-11-18）
 
 | 当前实现 | 验证边界 |

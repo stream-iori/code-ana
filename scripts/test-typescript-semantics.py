@@ -16,6 +16,10 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
+    'TestSemanticMembersConstructorsAndImmutableCallables',
+    'TestSemanticHeritageAndJSXKeepCompilerEndpointsWithoutRuntimeCalls',
+    'TestCommentPublicIdentityMatchesModelJSONUTF8',
+    'TestSemanticCommentsUseKernelTokensJSDocOwnershipAndRawMappings',
     'TestSemanticDeclarationTablePreservesMergedSpacesAndOverloadProvenance',
     'TestPublicProjectionContainsDeclarationsAndExactCrossTagCallEndpoints',
     'TestSemanticCallsSeparateJSBindingSignaturesExternalAndUnknown',
