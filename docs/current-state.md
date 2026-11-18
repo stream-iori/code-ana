@@ -15,6 +15,35 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T7 故障与资源（2026-11-18）
+
+| 实际验证 / 修正 | 范围 |
+|---|---|
+| 原生故障 | 隔离 C ABI proxy 使用真实固定 Go 库；SIGSEGV、致命退出、无响应调用取消/超时、真实 Go 协作取消、RSS/scratch 强杀、控制断连、Ack 失败；归档截断/追加/校验和损坏均不提交半图 |
+| 生命周期与账本 | 真实 Go 取消归还已知终态；崩溃/失联/强杀明确 Unknown；控制端 SIGKILL 后 worker 自行退出，重启保旧 head；Ack 失败只给提交后 warning，完整用量和新 head 保留 |
+| 资源真值 | 8 项一般资源回归、实际 AST 深度、单源 8 MiB、单行 GRA1 8 MiB、编码输入总额提前拒绝；超限后保留原 head；事实/总结果上限与单行上限独立 |
+| 输入边界 | FrozenInputs 拒绝不规范 publication_root；嵌套上下文不能通过封存引用导入父项目 .code-ana（含忽略大小写）；验证先于内容 I/O |
+| 错误身份 | Go OUTPUT_LIMIT 保留为 TYPESCRIPT_OUTPUT_LIMIT；主机和 supervisor 的 TS scratch 保留 TYPESCRIPT_SCRATCH_BUDGET，Java 继续 JAVA_SCRATCH_BUDGET |
+| 共用设施 | 抽出无测试用例的 TypeScriptHarness / BudgetCases；既有三语言共享资源 18 项通过；当前完整 just test-rust（含 clippy）通过 |
+
+证据：t7-resources-third（8）、t7-faults-third（7）、t7-controller-eof（1）、t7-ack-after-commit（1）、t7-structural-resources-second（3）、t7-shared-resources（18）、t7-full-rust.log。原配置字节变化导致 catalog stale、错误预期超时退出码、超时发生在原生启动前、超大源先触发 capture 上限等失败均保留；按真实契约修正测试，不把失败轮次算作通过。T8 本机实际分发结果见下节；没有正式 Native 或性能放行。
+
+## TypeScript T8 本机实际分发与收口（2026-11-18）
+
+| 门禁 | 实际结果 / 证据（`target/typescript-c-abi/` 下） |
+|---|---|
+| 不可变安装 | 9 项通过；旧 inode 保留、重复安装、错协议/平台/缺文件/坏 SHA/fixture 拒绝；`t8-install-first` |
+| 最终实际包 | `t8-package-final`；独立 home、空 PATH、隐藏并恢复开发二进制及 TS 源码，35 条 CLI 验证通过；`t8-release-final`，开发路径恢复、包 SHA 无漂移 |
+| 实际包组合与资源/故障 | 26 项通过（普通组合/默认预算 5、prepared 四后端 1、资源 11、故障 9）；Java SDK 独立安装；`t8-package-matrix`，包 SHA 无漂移 |
+| 默认安装 | `target/lib/typescript/current` 原子指向不可变版本 `370dfcd2365c1330614dc93dd86b698a5d60af8aafff0b1643e0425c45074422`；`t8-installed-default.json` |
+| 单轮测量 | 固定 500 个 TS 函数、1001 个预期调用点、空应用状态；一次 index 因 `ANALYSIS_RESOURCE_LIMIT` 失败，payload 分片上限 134195457、已用 134188866、请求 16384；`t8-performance-once` |
+
+单轮测量保留原始失败、输入/包 SHA、预算和 RSS 样本（同快照进程 RSS 求和峰值 159137792 字节；共享映射可能重复计数）。未发布 revision，未执行查询，没有完整 GRA1/数据库/语义校验或吞吐数据，`performance_complete=false`。采样脚本原有 GRA1 长度小端错误已改为协议的大端；未改写原回执，也未重跑。不得把失败前 RSS 当作成功容量指标。
+
+最终补验：`final-rust-regression.log` 的 `just test-rust` 成功（Cargo 551 通过、0 失败、6 个显式忽略的独立环境门禁；含图/文本 CLI E2E 与 clippy）。`final-frozen-handoff` 在删除活输入后通过真实 Go 重放；`final-resolution` 5 项、`final-abi` 12 场景/20 检查通过，均无产物漂移。架构、配方解析、fmt、Python 语法与 diff 空白检查通过。总回执：`target/typescript-c-abi/final-implementation/receipt.json`。
+
+本机首版 T0—T8 与公共重构 R0—R5 的实施及验证范围已收口；对应原始失败仍在各证据目录。早期 `t8-package-first`/`t8-release-first` 保留历史含义。安装布局与命令见 [JS/TS 分发](typescript-package.md)。Linux、目标 Java 25、框架虚拟文件、细粒度增量、动态分析、容量稳定性和正式 Native 放行不在本次完成范围；没有性能优越性结论。
+
 ## TypeScript T6 产品接入（2026-11-18）
 
 | 当前实现 / 实际验证 | 范围 |

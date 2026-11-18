@@ -290,3 +290,44 @@ test-typescript-multilang sdk evidence:
   cargo build --workspace --locked
   ./scripts/build-python.sh
   CODEANA_TYPESCRIPT_SDK='{{sdk}}' python3 tests/multilang_analysis_e2e.py --backends java,rust,python,typescript --evidence '{{evidence}}'
+
+# Resource/foreign-runtime failures use isolated test SDKs.
+test-typescript-resources sdk evidence:
+  cargo build -p codeana-cli -p codeana-daemon -p codeana-typescript-worker --locked
+  CODEANA_TYPESCRIPT_SDK='{{sdk}}' python3 tests/typescript_resources_e2e.py --evidence '{{evidence}}'
+
+test-typescript-faults sdk evidence:
+  cargo build -p codeana-cli -p codeana-daemon -p codeana-typescript-worker --locked
+  CODEANA_TYPESCRIPT_SDK='{{sdk}}' python3 tests/typescript_faults_e2e.py --evidence '{{evidence}}'
+
+install-typescript-native sdk:
+  python3 scripts/install-typescript-native.py --sdk '{{sdk}}'
+
+test-typescript-install sdk fixture_sdk evidence:
+  cargo build -p codeana-typescript-worker --locked
+  python3 tests/typescript_install_e2e.py --sdk '{{sdk}}' --fixture-sdk '{{fixture_sdk}}' --evidence '{{evidence}}'
+
+package-typescript output:
+  cargo build --release --workspace --locked
+  ./scripts/build-python.sh --release
+  python3 scripts/package-typescript.py --output '{{output}}'
+
+
+test-typescript-release package:
+  python3 tests/typescript_release_e2e.py --package '{{package}}' --evidence "target/typescript-c-abi/release-$(date +%Y%m%d-%H%M%S)"
+
+# Run the actual package across all backends; Java SDK is installed separately.
+test-typescript-package-matrix package java_sdk evidence:
+  python3 tests/typescript_package_matrix.py --package '{{package}}' --java-sdk '{{java_sdk}}' --evidence '{{evidence}}'
+
+# Exclusive sentinel: one measurement only; preserves failures without retry.
+test-typescript-performance-once package evidence:
+  python3 tests/typescript_performance_once.py --package '{{package}}' --evidence '{{evidence}}'
+
+# First-version JS/TS product gate; every component requires a new evidence path.
+test-typescript sdk evidence:
+  cargo build -p codeana-cli -p codeana-daemon -p codeana-typescript-worker --locked
+  python3 tests/typescript_provider_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}/provider'
+  CODEANA_TYPESCRIPT_SDK='{{sdk}}' python3 tests/typescript_product_e2e.py --evidence '{{evidence}}/product'
+  CODEANA_TYPESCRIPT_SDK='{{sdk}}' python3 tests/typescript_resources_e2e.py --evidence '{{evidence}}/resources'
+  CODEANA_TYPESCRIPT_SDK='{{sdk}}' python3 tests/typescript_faults_e2e.py --evidence '{{evidence}}/faults'

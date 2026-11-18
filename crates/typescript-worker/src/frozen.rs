@@ -328,4 +328,63 @@ mod tests {
         assert!(quota.checkpoint().is_err());
         Ok(())
     }
+    #[test]
+    fn nested_context_cannot_import_parent_private_state_even_with_a_sealed_reference() -> Result<()>
+    {
+        for name in [".code-ana", ".CODE-ANA"] {
+            let (_spool, mut snapshot) = fixture()?;
+            let hidden = format!("/project/{name}/private.ts");
+            let inputs = Arc::make_mut(&mut snapshot.inputs);
+            let context = &mut inputs.contexts[0];
+            context.root = "/project/nested".into();
+            context.directories.clear();
+            context.files[0].path = hidden.clone();
+            context.root_files = vec![hidden.clone()];
+            snapshot.files[0].source = hidden;
+            snapshot.inputs.validate().map_err(anyhow::Error::msg)?;
+            std::fs::remove_file(&snapshot.files[0].input)?;
+            let error = load(
+                &snapshot,
+                &snapshot.inputs.contexts[0].unit,
+                &snapshot.inputs.compiler,
+                &budget(),
+            )
+            .unwrap_err();
+            assert!(
+                error.to_string().contains("TYPESCRIPT_PRIVATE_INPUT"),
+                "{error}"
+            );
+        }
+        Ok(())
+    }
+    #[test]
+    fn publication_root_must_be_normalized_before_loading_content() -> Result<()> {
+        for root in ["/project/.", "/project//", "/project/../project"] {
+            let (_spool, mut snapshot) = fixture()?;
+            snapshot.publication_root = root.into();
+            assert_eq!(
+                snapshot.validate().unwrap_err(),
+                "TYPESCRIPT_PUBLICATION_ROOT"
+            );
+        }
+        Ok(())
+    }
+    #[test]
+    fn encoded_input_limit_rejects_oversized_content_before_opening_its_spool() -> Result<()> {
+        let (_spool, mut snapshot) = fixture()?;
+        Arc::make_mut(&mut snapshot.inputs).contexts[0].files[0].bytes = 32 << 20;
+        std::fs::remove_file(&snapshot.files[0].input)?;
+        let error = load(
+            &snapshot,
+            &snapshot.inputs.contexts[0].unit,
+            &snapshot.inputs.compiler,
+            &budget(),
+        )
+        .unwrap_err();
+        assert!(
+            error.to_string().contains("TYPESCRIPT_FROZEN_LIMIT"),
+            "{error}"
+        );
+        Ok(())
+    }
 }

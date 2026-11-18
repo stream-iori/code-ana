@@ -192,15 +192,15 @@ T6 产品及多语言 → T7 故障/预算/复用 → T8 实际包与收口
 
 ### T0：固定依据，确认方案 C 的实际可构建性
 
-- [ ] 重新核对实施时 main 的 HEAD、AGENTS、架构/契约和版本；先运行 `just test-java` 建立基线，保留失败日志，修复环境问题后复验；基线未通过不得进入后续改造。
-- [ ] 按第 7 节固定来源 commit、TypeScript 子模块、标准库、Go 精确版本、C 编译器及 macOS SDK，新建 `lang-typescript-adaptor/upstream.lock.json`；登记源文件 SHA、overlay/patch 理由与许可。
-- [ ] 新建 `probe/`：Go 桥叠加在固定上游同一模块内，Rust host 使用独立 Cargo workspace；不修改产品 workspace 或提前拆 Java 设施。
-- [ ] 用真实 Parser/Program/Checker 构建 c-shared，Rust 动态装载后分析双文件自建 fixture；包含导出函数、别名导入、两个重复调用现场、中文/emoji、CRLF 和无末尾换行。声明目标、调用签名及 UTF-8/UTF-16 范围使用人工 expected，不能从实际输出自动生成真值。
-- [ ] 使用独立 `codeana_ts_probe_` 前缀和探针 ABI 1，实现版本查询、同步分析、整数结果句柄、有界结果分块读取和关闭。允许具名诊断 DTO 使用标准 JSON codec；不返回 Go 对象指针，不沿用 Java JSON 请求，不将探针接口视为生产契约。
-- [ ] 验证空/错误/超大输入、坏/关闭句柄、重复关闭、单字节 canary、多块读取及 EOF；捕获后修改/删除临时原文件、调用返回后覆盖 Rust 输入缓冲，语义结果仍须符合 expected。
-- [ ] 将手写固定宽度 C 声明与 cgo 实际生成 header 一起编译，记录导出符号和动态依赖；分别从 Rust 主线程、工作线程装载并调用。保持库到进程退出，不使用 dlclose 重置 Go runtime。
-- [ ] 在独立子进程内验证 runtime 初始化后的 SIGINT/SIGTERM 退出及无残留进程组；用空 PATH 运行已构建探针，验证不依赖 Node、Go 或开发源码补输入。
-- [ ] 新建统一入口 `scripts/test-typescript-probe.py`，串起 Java 基线、来源准备、标准库生成、共享库/host 构建、header、fmt/clippy 和上述验证；子进程超时必须回收所属进程组，每次运行使用新的证据目录。
+- [x] 重新核对实施时 main 的 HEAD、AGENTS、架构/契约和版本；先运行 `just test-java` 建立基线，保留失败日志，修复环境问题后复验；基线未通过不得进入后续改造。
+- [x] 按第 7 节固定来源 commit、TypeScript 子模块、标准库、Go 精确版本、C 编译器及 macOS SDK，新建 `lang-typescript-adaptor/upstream.lock.json`；登记源文件 SHA、overlay/patch 理由与许可。
+- [x] 新建 `probe/`：Go 桥叠加在固定上游同一模块内，Rust host 使用独立 Cargo workspace；不修改产品 workspace 或提前拆 Java 设施。
+- [x] 用真实 Parser/Program/Checker 构建 c-shared，Rust 动态装载后分析双文件自建 fixture；包含导出函数、别名导入、两个重复调用现场、中文/emoji、CRLF 和无末尾换行。声明目标、调用签名及 UTF-8/UTF-16 范围使用人工 expected，不能从实际输出自动生成真值。
+- [x] 使用独立 `codeana_ts_probe_` 前缀和探针 ABI 1，实现版本查询、同步分析、整数结果句柄、有界结果分块读取和关闭。允许具名诊断 DTO 使用标准 JSON codec；不返回 Go 对象指针，不沿用 Java JSON 请求，不将探针接口视为生产契约。
+- [x] 验证空/错误/超大输入、坏/关闭句柄、重复关闭、单字节 canary、多块读取及 EOF；捕获后修改/删除临时原文件、调用返回后覆盖 Rust 输入缓冲，语义结果仍须符合 expected。
+- [x] 将手写固定宽度 C 声明与 cgo 实际生成 header 一起编译，记录导出符号和动态依赖；分别从 Rust 主线程、工作线程装载并调用。保持库到进程退出，不使用 dlclose 重置 Go runtime。
+- [x] 在独立子进程内验证 runtime 初始化后的 SIGINT/SIGTERM 退出及无残留进程组；用空 PATH 运行已构建探针，验证不依赖 Node、Go 或开发源码补输入。
+- [x] 新建统一入口 `scripts/test-typescript-probe.py`，串起 Java 基线、来源准备、标准库生成、共享库/host 构建、header、fmt/clippy 和上述验证；子进程超时必须回收所属进程组，每次运行使用新的证据目录。
 
 出口：本机真实共享库被 Rust 调用并返回可核对的语义结果；构建链和内核可用性有证据。未完成则停留在 T0，不能把架构推演写成可用产品。
 
@@ -230,10 +230,10 @@ T6 产品及多语言 → T7 故障/预算/复用 → T8 实际包与收口
 
 ### T1：拆出确实可复用的 Rust host 设施
 
-- [ ] 依据 T0 探针和 T2 生产契约草案，从 Java actor/result/delivery 拆出确有需要的 owner 队列、通知 FD、归档读取/行交付，放入新 worker-support；复用 contracts::graph_archive::OutputLimits，contracts 继续拥有 wire、图行和准入规则。
-- [ ] 共享设施接受类型化参数与窄接口；Java JSON envelope、Graal isolate、JVM 诊断后端、Java SDK 验证、derived cache 留在 Java。
-- [ ] 不复制 product.rs 大状态机；先让 Java 调用共享设施，再让新 worker 使用。同步 Cargo 依赖门禁、导入、打包与测试覆盖映射。
-- [ ] 验证 Java fixture、受影响 Rust/Native 生命周期、归档截断与计费失败路径，证明拆分保持现有行为。
+- [x] 依据 T0 探针和 T2 生产契约草案，从 Java actor/result/delivery 拆出确有需要的 owner 队列、通知 FD、归档读取/行交付，放入新 worker-support；复用 contracts::graph_archive::OutputLimits，contracts 继续拥有 wire、图行和准入规则。
+- [x] 共享设施接受类型化参数与窄接口；Java JSON envelope、Graal isolate、JVM 诊断后端、Java SDK 验证、derived cache 留在 Java。
+- [x] 不复制 product.rs 大状态机；先让 Java 调用共享设施，再让新 worker 使用。同步 Cargo 依赖门禁、导入、打包与测试覆盖映射。
+- [x] 验证 Java fixture、受影响 Rust/Native 生命周期、归档截断与计费失败路径，证明拆分保持现有行为。
 
 出口：Java 已迁入共享设施且回归通过，接口仅覆盖 T2a 草案确定需要的能力；T2b 接入第二个实际调用方，不提前建设无人使用的通用框架。
 
@@ -246,69 +246,69 @@ T6 产品及多语言 → T7 故障/预算/复用 → T8 实际包与收口
 | T2a：T1 前完成 | 生产 header 草案、同源 protobuf 请求/结果/失败/用量定义、会话状态与所有权表、SDK 身份字段，以及与现有 host 账本/通知/归档的对接清单；明确哪些设施已有公共实现、哪些确需抽取 |
 | T2b：T1 后完成 | 独立生产 worker 接入共享设施，取得“捕获 fixture → Go 异步分析 → 累计回执 → GRA1 → Rust 校验”的成功、失败和取消证据                                                          |
 
-- [ ] 建立 overlay、可重放构建脚本、独立 TS SDK manifest 和 Rust typescript-worker，使用 T1 共享设施；普通 `cargo build --workspace --locked` 无需先运行 Go 构建，真实 ABI 门禁由显式入口运行。
-- [ ] 固定 3.1 的函数签名、所有权、状态和错误码；Go 入参复制、句柄校验、结果缓冲写入和 FD 归属做跨语言边界测试。
-- [ ] 定义并生成内部 protobuf 请求/描述符/失败/用量模型；C ABI 与内部请求各自版本化，预留字段号而非沿用 Java 字段。
-- [ ] 接入累计 seed、deadline、预解码准入和结构化失败；完成“捕获 fixture → Go 异步分析 → GRA1 → Rust 校验”的组件闭环。
-- [ ] 验证 cancel、panic、运行中 close、无效句柄、错误 ABI/库摘要、超大输入、重复通知与 EOF；首版任务结束即退出进程。
+- [x] 建立 overlay、可重放构建脚本、独立 TS SDK manifest 和 Rust typescript-worker，使用 T1 共享设施；普通 `cargo build --workspace --locked` 无需先运行 Go 构建，真实 ABI 门禁由显式入口运行。
+- [x] 固定 3.1 的函数签名、所有权、状态和错误码；Go 入参复制、句柄校验、结果缓冲写入和 FD 归属做跨语言边界测试。
+- [x] 定义并生成内部 protobuf 请求/描述符/失败/用量模型；C ABI 与内部请求各自版本化，预留字段号而非沿用 Java 字段。
+- [x] 接入累计 seed、deadline、预解码准入和结构化失败；完成“捕获 fixture → Go 异步分析 → GRA1 → Rust 校验”的组件闭环。
+- [x] 验证 cancel、panic、运行中 close、无效句柄、错误 ABI/库摘要、超大输入、重复通知与 EOF；首版任务结束即退出进程。
 
 出口：编译器对象没有跨 ABI，成功/失败/取消都有可核对终态；Go 无可信回执的失败不会冒充计量完整。
 
 ### T3：输入准备、配置与冻结 VFS
 
-- [ ] 在 config 增加 JS/TS 显式开关、有效输入描述、语义摘要和预算；注册 prepare provider，合并同一 tsconfig 的双语言入口并检查冲突。
-- [ ] Go 准备入口使用同内核读取配置/解析模块，导出 3.2 的闭包和缺口；保留外部依赖准备建议，禁用插件、自动类型安装和目标构建。
-- [ ] 扩展 capture 与 application 的输入构造，校验清单、目录/缺失项、摘要和辅助角色，按 blob 恢复 VFS；阶段失败及时清理。
-- [ ] 覆盖 tsconfig extends、paths、ESM/CJS、node 类型、pnpm symlink、项目引用、同文件多上下文及缺声明产物；无法支持的模式明确报错。
-- [ ] 验证捕获后修改/删除活文件仍读取捕获内容；配置、依赖或原失败查找变化拒绝旧准备清单，重新 prepare 后结果更新。
+- [x] 在 config 增加 JS/TS 显式开关、有效输入描述、语义摘要和预算；注册 prepare provider，合并同一 tsconfig 的双语言入口并检查冲突。
+- [x] Go 准备入口使用同内核读取配置/解析模块，导出 3.2 的闭包和缺口；保留外部依赖准备建议，禁用插件、自动类型安装和目标构建。
+- [x] 扩展 capture 与 application 的输入构造，校验清单、目录/缺失项、摘要和辅助角色，按 blob 恢复 VFS；阶段失败及时清理。
+- [x] 覆盖 tsconfig extends、paths、ESM/CJS、node 类型、pnpm symlink、项目引用、同文件多上下文及缺声明产物；无法支持的模式明确报错。
+- [x] 验证捕获后修改/删除活文件仍读取捕获内容；配置、依赖或原失败查找变化拒绝旧准备清单，重新 prepare 后结果更新。
 
 出口：相同封存输入在不同 scratch 路径得到相同公开身份与事实，分析无清单外 live FS 回退。
 
 ### T4：图模型、存储与最小语义事实
 
-- [ ] 定义 TS/JS 声明、可见性、类型/值空间、合并符号、重载和外部目标映射；新增 model 类型、producer/profile 和两种语言的显式能力策略。
-- [ ] 同步改 anatomist-schema.sql / compact-meta.sql、生成器及 compact-schema.sql；校验入库、引用、语言/world 归属与对外投影，不把 TS 类型硬塞成 Java method/class。
-- [ ] Go 先完成确定性声明表，再实现引用、直接调用、导入导出及 provider/coverage/diagnostic 行；从同源 graph.proto 生成 Go 绑定。
-- [ ] 核实图 hash/ordinal、替换 owner、source 与声明范围；新增能力所需版本按第 5 节同步修改。
+- [x] 定义 TS/JS 声明、可见性、类型/值空间、合并符号、重载和外部目标映射；新增 model 类型、producer/profile 和两种语言的显式能力策略。
+- [x] 同步改 anatomist-schema.sql / compact-meta.sql、生成器及 compact-schema.sql；校验入库、引用、语言/world 归属与对外投影，不把 TS 类型硬塞成 Java method/class。
+- [x] Go 先完成确定性声明表，再实现引用、直接调用、导入导出及 provider/coverage/diagnostic 行；从同源 graph.proto 生成 Go 绑定。
+- [x] 核实图 hash/ordinal、替换 owner、source 与声明范围；新增能力所需版本按第 5 节同步修改。
 
 出口：最小真实图通过公共 storage/query 读取，声明 ID 和静态目标符合人工真值；不是仅有 parse 成功。
 
 ### T5：补齐首版语义与注释真值
 
-- [ ] 按 3.3 补齐成员、构造器、继承/实现、匿名/箭头函数、解构、默认导出、重导出、类型导入与 CommonJS。
-- [ ] 用 fixture 明确 interface/.d.ts/重载签名与实现的区别；验证 any/union、动态 require/属性、函数参数和错误恢复不会产生假精确边。
-- [ ] 接入 JSDoc、普通注释、正文到原文映射和语言归属；测试 UTF-8/UTF-16、BOM、CRLF、无末尾换行、前置 trivia 及重复调用点。
-- [ ] 锁定实际支持的 compilerOptions/模块解析模式和未支持清单，Checker 按固定内核要求获取/释放，不混用不同 Checker 的 Type；首版按上下文串行提取。
+- [x] 按 3.3 补齐成员、构造器、继承/实现、匿名/箭头函数、解构、默认导出、重导出、类型导入与 CommonJS。
+- [x] 用 fixture 明确 interface/.d.ts/重载签名与实现的区别；验证 any/union、动态 require/属性、函数参数和错误恢复不会产生假精确边。
+- [x] 接入 JSDoc、普通注释、正文到原文映射和语言归属；测试 UTF-8/UTF-16、BOM、CRLF、无末尾换行、前置 trivia 及重复调用点。
+- [x] 锁定实际支持的 compilerOptions/模块解析模式和未支持清单，Checker 按固定内核要求获取/释放，不混用不同 Checker 的 Type；首版按上下文串行提取。
 
 出口：所有已声明能力有绑定目标、位置和缺口真值；无证据的动态关系仍可定位但保持 unknown。
 
 ### T6：接入产品与多语言发布
 
-- [ ] 在 worker.proto Discover 增加 TS 描述符并验证与其他描述符互斥；补齐 contracts 的 wire 准入、预算语言转换及新 worker 的严格握手。BuildContext 的后端语言为 typescript，能力明确允许的 JS/TS 源标签；核对 producer、上游提交、TS ABI、内部版本和 SDK 摘要，不能按任意 metadata 选择后端。
-- [ ] 扩展 Worker::start_language、SDK 就绪检查、IndexPlan、PreparedInput、分析参与者、进度/报告和实例资源分配；JS/TS 合并为一个后端执行单元。
-- [ ] 将 TS 走公共 Conservative/Prepared 编排；只抽实际需要的语言组合公共部分，避免增加 TS×Java×Rust×Python 的独立策略。
-- [ ] 完成单 TS、单 JS、JS+TS、独立多 TS 上下文和 Java/Rust/Python 组合；验证项目删除到零输出、普通/prepare 入口一致、FILES/text-only 降级。
-- [ ] 验证真实 CLI 的实体搜索、源码、引用、caller/callee、调用点、注释、报告、snapshot/diff 和历史续页；help/doctor 正确展示支持、就绪、partial 和 unsupported。
+- [x] 在 worker.proto Discover 增加 TS 描述符并验证与其他描述符互斥；补齐 contracts 的 wire 准入、预算语言转换及新 worker 的严格握手。BuildContext 的后端语言为 typescript，能力明确允许的 JS/TS 源标签；核对 producer、上游提交、TS ABI、内部版本和 SDK 摘要，不能按任意 metadata 选择后端。
+- [x] 扩展 Worker::start_language、SDK 就绪检查、IndexPlan、PreparedInput、分析参与者、进度/报告和实例资源分配；JS/TS 合并为一个后端执行单元。
+- [x] 将 TS 走公共 Conservative/Prepared 编排；只抽实际需要的语言组合公共部分，避免增加 TS×Java×Rust×Python 的独立策略。
+- [x] 完成单 TS、单 JS、JS+TS、独立多 TS 上下文和 Java/Rust/Python 组合；验证项目删除到零输出、普通/prepare 入口一致、FILES/text-only 降级。
+- [x] 验证真实 CLI 的实体搜索、源码、引用、caller/callee、调用点、注释、报告、snapshot/diff 和历史续页；help/doctor 正确展示支持、就绪、partial 和 unsupported。
 
 出口：所有单元通过验证后只提交一次；任一单元失败不发布半图，旧 revision 和冻结查询保持。
 
 ### T7：故障、资源与保守复用
 
-- [ ] 验证取消/截止时间、Go panic、fatal 退出、真实 native 崩溃、归档截断/篡改、控制断连与提交竞争；使用隔离 fixture 进程，不破坏用户服务。
-- [ ] 验证输入、解码、遍历深度、事实数、结果字节、scratch、RSS 及大行上限；混合任务账本静态分配，重试不续期/重置额度。
-- [ ] 校验失败前已知消耗保留、最终未知水位明确；控制通道在业务预算耗尽后仍可发送终态；ack 失败不撤销提交。
-- [ ] 输入和 profile 完全相同时才走现有 Reuse/Reused 与候选复用；源码/目录/缺失查找/依赖/工具链/规则任一变化全量，处理删除及零输出替换。
-- [ ] 不接入 Rust 专属 SOURCE_STATE/ANALYSIS_DEPENDENCY 充当 TS 增量，也不在本阶段引入跨任务常驻 Program。
+- [x] 验证取消/截止时间、Go panic、fatal 退出、真实 native 崩溃、归档截断/篡改、控制断连与提交竞争；使用隔离 fixture 进程，不破坏用户服务。
+- [x] 验证输入、解码、遍历深度、事实数、结果字节、scratch、RSS 及大行上限；混合任务账本静态分配，重试不续期/重置额度。
+- [x] 校验失败前已知消耗保留、最终未知水位明确；控制通道在业务预算耗尽后仍可发送终态；ack 失败不撤销提交。
+- [x] 输入和 profile 完全相同时才走现有 Reuse/Reused 与候选复用；源码/目录/缺失查找/依赖/工具链/规则任一变化全量，处理删除及零输出替换。
+- [x] 不接入 Rust 专属 SOURCE_STATE/ANALYSIS_DEPENDENCY 充当 TS 增量，也不在本阶段引入跨任务常驻 Program。
 
 出口：资源/故障回执、旧 head 保留、所有线程/FD/scratch 归属均有实际证据。
 
 ### T8：实际分发、文档和收口
 
-- [ ] 新增并登记 build/test/package/release 的 just 入口与脚本；区分已有命令和新增入口，包内含 worker、Go 库、标准库、manifest、许可与校验和。
-- [ ] 固定安装版本目录，校验后原子安装，禁止活跃 worker 使用中的库替换；开发路径、安装路径、发行路径都核对身份，拒绝旧协议/错架构/坏 SHA。Java SDK 保持独立安装，release 测试暂存/恢复原 Cargo 路径，不能混装开发产物冒充实际包。
-- [ ] 执行第 6 节门禁；独立 home 从实际包运行 JS/TS 与混合 fixture，验证不依赖开发源码、Node、全局 types 或自动下载工具链。
-- [ ] 更新 AGENTS、docs/architecture、contracts、configuration、config 示例、inputs/indexing/query/runtime、TS worker 模块、分发/覆盖映射和当前实现；仅把实际取得证据的范围写成完成。
-- [ ] 逐项勾选、列出失败/跳过/未覆盖平台。性能按固定自建 fixture 单轮取证，保留原失败；不将 C ABI 推定为比 IPC 更快。
+- [x] 新增并登记 build/test/package/release 的 just 入口与脚本；区分已有命令和新增入口，包内含 worker、Go 库、标准库、manifest、许可与校验和。
+- [x] 固定安装版本目录，校验后原子安装，禁止活跃 worker 使用中的库替换；开发路径、安装路径、发行路径都核对身份，拒绝旧协议/错架构/坏 SHA。Java SDK 保持独立安装，release 测试暂存/恢复原 Cargo 路径，不能混装开发产物冒充实际包。
+- [x] 执行第 6 节门禁；独立 home 从实际包运行 JS/TS 与混合 fixture，验证不依赖开发源码、Node、全局 types 或自动下载工具链。
+- [x] 更新 AGENTS、docs/architecture、contracts、configuration、config 示例、inputs/indexing/query/runtime、TS worker 模块、分发/覆盖映射和当前实现；仅把实际取得证据的范围写成完成。
+- [x] 逐项勾选、列出失败/跳过/未覆盖平台。性能按固定自建 fixture 单轮取证，保留原失败；不将 C ABI 推定为比 IPC 更快。
 
 出口：本机当前实际包通过首版声明范围；跨平台、细粒度增量、运行时动态分析和容量稳定性能各自保留未完成边界。
 
@@ -380,3 +380,10 @@ T0 从以下固定来源开始构建，创建来源锁并独立验证。优先�
 | [cgo 指针规则](https://pkg.go.dev/cmd/cgo#hdr-Passing_pointers)                                                                         | Go GC 与跨 C 边界指针生命周期；使用句柄和调用方缓冲                                                                                                 |
 
 每个阶段均以实施时的源码、固定输入、实际产物与本阶段门禁判定是否完成。实施者应按实际结果更新现行文档；不能继承其他分支、其他机器或历史产物的通过状态。
+
+
+## 本次实施状态（2026-11-18）
+
+本机首版范围已实施，阶段证据与原始失败见 [当前实现](../docs/current-state.md)。公共重构 R0—R5 独立回执为 `target/typescript-c-abi/r5/receipt.json`；TS 产品回执为 `t6-sealed`，最终实际包为 `t8-package-final`，分发/组合/安装分别为 `t8-release-final`（35）、`t8-package-matrix`（26）、`t8-install-first`（9）。勾选表示已完成对应工作及本机门禁，不代表扩展到未验证平台或正式 Native 放行。
+
+性能按要求只取一轮，`t8-performance-once` 因逻辑 payload 限额失败；保留失败而不重跑，没有完整性能指标或稳定容量结论。Linux、框架虚拟文件、细粒度增量与动态关系仍按计划首版边界排除。

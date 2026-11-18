@@ -846,7 +846,7 @@ impl Worker {
                     self.stop_monitor().await;
                     let status=tokio::time::timeout(Duration::from_millis(100),self.child.shutdown()).await;
                     if matches!(&status,Ok(Ok(_))) { self.observed_exit(); }
-                    if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::JavaScratchBudget, ""));}
+                    if self.scratch_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(DomainError::new(ErrorCode::from(format!("{}_SCRATCH_BUDGET",self.context.backend().as_str().to_ascii_uppercase())), "task scratch quota exceeded"));}
                     if self.memory_exceeded.load(std::sync::atomic::Ordering::SeqCst){bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerMemoryBudget, serde_json::to_string(&self.memory_usage())?));}
                     let status=match status {Ok(Ok(s))=>s.to_string(),Ok(Err(e))=>e.to_string(),Err(_)=>"still running".into()};
                     bail!(codeana_model::DomainError::new(codeana_model::ErrorCode::WorkerProtocol, format!("{error}; pid={}; command={}; exit={status}; stderr={logs}", self.process_group,self.command)));

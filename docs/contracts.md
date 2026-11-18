@@ -1,8 +1,8 @@
 # 公共契约：身份、图记录与协议
 
-> worker 25 正在迁移：Discover 使用互斥配置并在解码前拒绝重复变体。此前 worker 24 的产品、Native 与分发回执不代表本次协议验收；当前进度见 [当前实现](current-state.md)。
+> 当前 worker 25：Discover 使用互斥配置并在解码前拒绝重复变体。此前 worker 24 的产品、Native 与分发回执不代表本次协议验收；当前进度见 [当前实现](current-state.md)。
 
-现行契约对齐 2026-10-20。版本总表见 [当前实现](current-state.md)；过期 Fact IR / CAF1 契约已删除。
+现行契约对齐 2026-11-18。版本总表见 [当前实现](current-state.md)；过期 Fact IR / CAF1 契约已删除。
 
 ## 1. 身份与版本
 

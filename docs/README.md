@@ -23,6 +23,7 @@
 | [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 18、逻辑 schema 37、只读投影和 pipeline |
 | [版本与源码](modules/versioning.md) / [诊断与报告](modules/operations.md) | 冻结历史、diff、引用保护和报告 |
 | [决策登记](design-review.md) / [实施与验收](delivery.md) | 已落实决策、剩余门禁与实际测试入口 |
+| [JS/TS 分发](typescript-package.md) | 不可变 SDK 版本、release 包、独立 home 与开发路径恢复 |
 | [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |
 
 ## 维护约定

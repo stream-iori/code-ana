@@ -47,7 +47,10 @@ pub(super) fn prepare_inputs(
             && (1..=MAX_FACTS as u64).contains(&fact_limit)
             && scratch_bytes >= result_bytes
             && scratch_bytes <= 32u64 << 30,
-        "TYPESCRIPT_OUTPUT_LIMIT"
+        DomainError::new(
+            ErrorCode::from("TYPESCRIPT_OUTPUT_LIMIT"),
+            "invalid TypeScript output limits"
+        )
     );
     let directory = directory.canonicalize()?;
     let config = AnalysisConfig {
@@ -68,7 +71,10 @@ pub(super) fn prepare_inputs(
         (bytes.len() as u64)
             .checked_add(result_bytes)
             .is_some_and(|n| n <= scratch_bytes),
-        "TYPESCRIPT_SCRATCH_BUDGET"
+        DomainError::new(
+            ErrorCode::from("TYPESCRIPT_SCRATCH_BUDGET"),
+            "descriptor and result exceed task scratch"
+        )
     );
     let input = directory.join("inputs.json");
     let descriptor = TypeScriptConfig {

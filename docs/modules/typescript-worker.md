@@ -56,4 +56,17 @@ Go 写封存 GRA1，Rust 的 graph-io 独立验证路径、大小、EOF、count�
 | test-typescript-product | 真实 CLI 子目录/JS↔TS 调用、源码/注释、历史/续页、strict、复用、删除 |
 | tests/multilang_analysis_e2e.py | TS 与 Java/Rust/Python 的实际组合；公共单候选/一次 CAS，与最后全量对照 |
 
-本机阶段证据见 [当前实现](../current-state.md)。任务故障矩阵和实际分发仍在实施；组件、build-only、历史回执不代表当前正式 Native、跨平台或性能放行。
+本机阶段证据见 [当前实现](../current-state.md)。任务故障/资源与控制断连已取得本机证据；实际包多语言、安装和分发已通过本机门禁；固定 fixture 单轮测量因 payload 上限失败，未获得完整性能指标；组件、build-only、历史回执不代表当前正式 Native、跨平台或性能放行。
+
+
+宿主预算错误、Go 结构化 OUTPUT_LIMIT 和 supervisor 磁盘限额保留各自错误身份。资源门禁还验证实际 AST 深度、8 MiB 源码/单行边界，以及编码输入超限在读取内容前拒绝。取消、RSS/scratch、控制断连与提交后 Ack 失败使用隔离原生 proxy；正常语义和协作取消仍运行真实 Go 内核。安装与包入口见 [JS/TS 分发](../typescript-package.md)。
+
+
+| 后续门禁入口 | 覆盖 |
+|---|---|
+| `tests/typescript_resources_e2e.py` | 11 项：预算、AST 深度、捕获文件与 GRA1 单行边界 |
+| `tests/typescript_faults_e2e.py` | 9 项：原生故障、真实取消、归档损坏、RSS/scratch、超时/断连与提交后 Ack |
+| `tests/typescript_install_e2e.py` | 9 项：不可变安装、旧 inode、协议/平台/文件身份拒绝 |
+| `tests/typescript_release_e2e.py` | 实际包 35 条 CLI 命令，隐藏开发路径、空 PATH、恢复与 SHA 核对 |
+| `tests/typescript_package_matrix.py` | 实际包组合/资源/故障共 26 项；Java SDK 独立安装 |
+| `tests/typescript_performance_once.py` | 固定输入、空状态、全进程同快照 RSS；排他 sentinel 防止重复挑选轮次；原失败保留 |

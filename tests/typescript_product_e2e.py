@@ -5,51 +5,12 @@ import json
 import pathlib
 import sqlite3
 import unittest
-from prepared_product_support import PreparedHarness
+from typescript_product_support import TypeScriptHarness
 from graph_product_support import canonical_graph
 from backend_test_support import run_cases, select_cases
 
 
-class TypeScriptProduct(PreparedHarness):
-    copy_fixture = False
-    required_backends = frozenset({'typescript'})
-
-    def setUp(self):
-        super().setUp()
-        self.script = self.project/'nested'
-        self.script.mkdir()
-        self.a = self.script/'a.ts'
-        self.b = self.script/'b.js'
-        self.a.write_bytes('\ufeff/** 库存文档 中文😀 */\r\nexport function greet(value: number) { return value + 1; }\r\n'.encode())
-        self.b.write_text('/** 库存调用说明 */\nimport {greet} from "./a";\nexport function exercise() { greet(1); greet(2); }\nexercise();')
-        (self.script/'tsconfig.json').write_text(json.dumps({
-            'compilerOptions': {'noLib':True,'allowJs':True,'checkJs':True,
-                                'module':'ESNext','moduleResolution':'bundler'},
-            'include':['*.ts','*.js']}))
-        self.config = '''schema_version=1
-kind="project"
-[resources.index]
-worker_memory_bytes=3221225472
-[languages.javascript]
-enabled=true
-[languages.typescript]
-enabled=true
-[inputs]
-[[inputs.entries]]
-id="script"
-language="typescript"
-root="nested"
-manifest="tsconfig.json"
-[[modules]]
-id="app"
-language="typescript"
-root="nested"
-'''
-        self.write_config()
-
-    def index(self, *args, **kwargs):
-        return self.cli('index', *args, timeout=180, **kwargs)
-
+class TypeScriptProduct(TypeScriptHarness):
     def test_nested_program_cross_tag_calls_source_comments_and_history(self):
         first = self.index('--prepare','--full')[1]['revision']
         self.assertEqual(len(self.catalog()['units']),1)

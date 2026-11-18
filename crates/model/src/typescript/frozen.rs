@@ -43,7 +43,13 @@ impl FrozenInputs {
             return Err("TYPESCRIPT_FROZEN_CONTEXT_REQUIRED".into());
         }
         let context = &self.inputs.contexts[0];
-        if !self.publication_root.is_absolute()
+        if self
+            .publication_root
+            .components()
+            .collect::<PathBuf>()
+            .as_os_str()
+            != self.publication_root.as_os_str()
+            || !self.publication_root.is_absolute()
             || self
                 .publication_root
                 .components()
@@ -51,6 +57,27 @@ impl FrozenInputs {
             || !Path::new(&context.root).starts_with(&self.publication_root)
         {
             return Err("TYPESCRIPT_PUBLICATION_ROOT".into());
+        }
+        let private = |name: &str| {
+            Path::new(name)
+                .strip_prefix(&self.publication_root)
+                .ok()
+                .and_then(|path| path.components().next())
+                .and_then(|part| part.as_os_str().to_str())
+                .is_some_and(|part| {
+                    part == ".code-ana"
+                        || (!context.case_sensitive && part.eq_ignore_ascii_case(".code-ana"))
+                })
+        };
+        if std::iter::once(context.root.as_str())
+            .chain(std::iter::once(context.config_path.as_str()))
+            .chain(context.files.iter().map(|file| file.path.as_str()))
+            .chain(context.directories.iter().map(|entry| entry.path.as_str()))
+            .chain(context.root_files.iter().map(String::as_str))
+            .chain(context.references.iter().map(String::as_str))
+            .any(private)
+        {
+            return Err("TYPESCRIPT_PRIVATE_INPUT".into());
         }
         if self.files.len() != context.files.len() {
             return Err("TYPESCRIPT_FROZEN_FILE_COVERAGE".into());

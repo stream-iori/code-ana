@@ -121,7 +121,10 @@ struct JavaInputsExport {
 struct IndexArgs {
     #[command(flatten)]
     query: QueryArgs,
-    #[arg(long)]
+    #[arg(
+        long,
+        help = "Prepare configured Java, Rust, Python and JS/TS inputs, then index without target compilation"
+    )]
     prepare: bool,
 }
 #[derive(Args)]

@@ -464,8 +464,16 @@ async fn analyze(
         bail!("CANCELLED")
     }
     budget.checkpoint()?;
-    let Some(p::result::Outcome::Analysis(value)) = result.outcome else {
-        bail!("TYPESCRIPT_ENGINE_FAILURE: {:?}", result.outcome)
+    let value = match result.outcome {
+        Some(p::result::Outcome::Analysis(value)) => value,
+        Some(p::result::Outcome::Failure(failure)) => {
+            let code = p::FailureCode::try_from(failure.code)?;
+            bail!(DomainError::adapter(
+                format!("TYPESCRIPT_{}", code.as_str_name()),
+                failure.message
+            ));
+        }
+        _ => bail!("TYPESCRIPT_ANALYSIS_REQUIRED"),
     };
     let archive = value.graph.context("TYPESCRIPT_GRAPH_REQUIRED")?;
     ensure!(safe_path(&archive.path), "TYPESCRIPT_GRAPH_PATH");
@@ -569,7 +577,7 @@ async fn analyze(
         )
         .await
     };
-    let result = tokio::select! {result=delivered=>result,incoming=frames.next_cancel(input)=>{analysis::expect_cancel(incoming?,attempt)?;budget.cancel();Err(anyhow::anyhow!("CANCELLED"))}};
+    let result = tokio::select! {result=delivered=>result,incoming=frames.next_cancel(input)=>{analysis::expect_cancel(incoming?,attempt)?;budget.cancel();budget.checkpoint()?;Err(anyhow::anyhow!("CANCELLED"))}};
     stopped.store(true, Ordering::Relaxed);
     result
 }
