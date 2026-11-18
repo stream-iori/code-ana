@@ -29,6 +29,7 @@ type SemanticDeclaration struct {
 	Span, NameSpan                                           SourceSpan
 	ValueSpace, TypeSpace, NamespaceSpace                    bool
 	Implementation, DeclarationFile, Synthetic, Resolved     bool
+	ParameterProperty                                        bool
 	Depth                                                    int
 }
 type SemanticCall struct {
@@ -56,6 +57,7 @@ type semanticBuilder struct {
 	facts      SemanticFacts
 	files      []*semanticFile
 	byNode     map[*ast.Node]int
+	properties map[*ast.Node]int
 	modules    map[*ast.SourceFile]int
 	identities map[string]uint64
 }
@@ -211,10 +213,27 @@ func (b *semanticBuilder) declaration(file *semanticFile, node *ast.Node, parent
 		}
 
 		synthetic = true
+		if kind == "constructor" {
+			at := start
+			if modifiers := node.Modifiers(); modifiers != nil {
+				at = scanner.SkipTrivia(file.source.Text(), modifiers.End())
+			}
+			token := scanner.GetScannerForSourceFile(file.source, at)
+			if token.Token() == ast.KindConstructorKeyword || (token.Token() == ast.KindStringLiteral && token.TokenValue() == "constructor") {
+				nameSpan, err = file.index.span(token.TokenStart(), token.TokenEnd())
+				if err != nil {
+					return 0, err
+				}
+				synthetic = false
+			}
+		}
 	}
 	parentDecl := &b.facts.Declarations[parent]
 	qualified := parentDecl.QualifiedName + "::" + name
 	visibility := semanticVisibility(node, file.source)
+	if kind == "parameter" {
+		visibility = "local"
+	}
 	role := "declaration"
 	if callable(node) {
 		role = "signature"
@@ -231,6 +250,11 @@ func (b *semanticBuilder) declaration(file *semanticFile, node *ast.Node, parent
 	index := len(b.facts.Declarations)
 	b.facts.Declarations = append(b.facts.Declarations, declaration)
 	b.byNode[node] = index
+	if ast.IsParameterPropertyDeclaration(node, node.Parent) {
+		if err := b.parameterProperty(node, index); err != nil {
+			return 0, err
+		}
+	}
 	return index, nil
 }
 func (b *semanticBuilder) collect(file *semanticFile) error {
@@ -266,6 +290,9 @@ func (b *semanticBuilder) collect(file *semanticFile) error {
 	return visit(file.source.AsNode(), parent, 1)
 }
 func (b *semanticBuilder) symbolGroup(c *checker.Checker, node *ast.Node) (string, ast.SymbolFlags, error) {
+	if _, ok := b.properties[node]; ok {
+		return b.groupForSymbol(c, c.ResolveName(node.Name().Text(), node, ast.SymbolFlagsFunctionScopedVariable, true))
+	}
 	var symbol *ast.Symbol
 	if node.Name() != nil && !ast.IsBindingPattern(node.Name()) {
 		symbol = c.GetSymbolAtLocation(node.Name())
@@ -273,6 +300,12 @@ func (b *semanticBuilder) symbolGroup(c *checker.Checker, node *ast.Node) (strin
 	if symbol == nil {
 		symbol = node.Symbol()
 	}
+	if symbol == nil {
+		return "", 0, nil
+	}
+	return b.groupForSymbol(c, symbol)
+}
+func (b *semanticBuilder) groupForSymbol(c *checker.Checker, symbol *ast.Symbol) (string, ast.SymbolFlags, error) {
 	if symbol == nil {
 		return "", 0, nil
 	}
@@ -285,7 +318,7 @@ func (b *semanticBuilder) symbolGroup(c *checker.Checker, node *ast.Node) (strin
 	}
 	ids := make([]string, 0, len(symbol.Declarations))
 	for _, decl := range symbol.Declarations {
-		if index, ok := b.byNode[decl]; ok {
+		if index, ok := b.declarationIndex(symbol, decl); ok {
 			ids = append(ids, b.facts.Declarations[index].ID)
 		}
 	}
@@ -365,7 +398,13 @@ func (b *semanticBuilder) call(c *checker.Checker, file *semanticFile, node *ast
 		return call, nil
 	}
 	signature := c.GetResolvedSignature(node)
-	if signature == nil || signature.Declaration() == nil {
+	if signature == nil {
+		return call, nil
+	}
+	if signature.Declaration() == nil {
+		if node.Kind == ast.KindNewExpression {
+			return b.implicitConstructor(c, t, call)
+		}
 		return call, nil
 	}
 	selected := signature.Declaration()
@@ -374,6 +413,9 @@ func (b *semanticBuilder) call(c *checker.Checker, file *semanticFile, node *ast
 		call.SelectedDeclaration = call.Target
 		call.TargetKind = "declaration"
 		call.Reason = "selected_signature"
+		if node.Kind == ast.KindNewExpression && selected.Kind == ast.KindClassDeclaration {
+			call.Reason = "implicit_constructor_declaration"
+		}
 	} else {
 		call.External = b.external(selected)
 		if call.External != "" {
@@ -450,7 +492,7 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 	if err := p.meter.Charge(uint64(len(sources)+len(p.files))+1, uint64(len(p.files))+1, uint64(len(p.files))*512+1024); err != nil {
 		return nil, err
 	}
-	b := &semanticBuilder{program: p, byNode: make(map[*ast.Node]int), modules: make(map[*ast.SourceFile]int), identities: make(map[string]uint64)}
+	b := &semanticBuilder{program: p, byNode: make(map[*ast.Node]int), properties: make(map[*ast.Node]int), modules: make(map[*ast.SourceFile]int), identities: make(map[string]uint64)}
 	for _, source := range sources {
 		if strings.HasPrefix(source.FileName(), bundled.LibPath()+"/") {
 			continue
@@ -522,13 +564,15 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 					decl.ValueSpace = flags&ast.SymbolFlagsValue != 0
 					decl.TypeSpace = flags&ast.SymbolFlagsType != 0
 					decl.NamespaceSpace = flags&ast.SymbolFlagsNamespace != 0
+					if property, ok := b.properties[node]; ok {
+						if err := b.bindParameterProperty(c, node, property); err != nil {
+							return err
+						}
+					}
 				}
 				gap := ""
 				if node.Kind == ast.KindTaggedTemplateExpression {
 					gap = "TYPESCRIPT_TAGGED_TEMPLATE_UNSUPPORTED"
-				}
-				if node.Kind == ast.KindParameter && ast.GetCombinedModifierFlags(node)&ast.ModifierFlagsParameterPropertyModifier != 0 {
-					gap = "TYPESCRIPT_PARAMETER_PROPERTY_UNSUPPORTED"
 				}
 				if gap != "" {
 					if err := p.meter.Charge(1, 1, 2048); err != nil {

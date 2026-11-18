@@ -1,6 +1,6 @@
 # TypeScript worker
 
-当前已实现冻结输入准备、真实 Go C ABI、公开声明/引用/静态调用、模块导出、继承/JSX 组件引用、注释及按能力质量。最小 SDK 为 inputs6；ABI / analysis / 输入清单各为 1，worker 25、model 7、schema 18/37。产品 IPC 尚未接入，正常 CLI 仍返回 TYPESCRIPT_INPUT_NOT_READY。已知参数属性、tagged template 与隐式构造器缺口保持 partial；不能用组件和入库验证替代产品索引。公共重构落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
+当前已实现冻结输入准备、真实 Go C ABI、公开声明/引用/静态调用、模块导出、继承/JSX 组件引用、注释及按能力质量。最小 SDK 为 inputs6；ABI / analysis / 输入清单各为 1，worker 25、model 7、schema 18/37。产品 IPC 尚未接入，正常 CLI 仍返回 TYPESCRIPT_INPUT_NOT_READY。tagged template 等明确不支持构造保持 partial；参数属性和隐式构造器已有声明证据映射；不能用组件和入库验证替代产品索引。公共重构落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
 
 ```text
 Rust worker → Request protobuf → Go 独立会话 / goroutine
@@ -184,3 +184,11 @@ inputs6 是适配器语义修订；不改变 C ABI、内部 protobuf 或输入�
 重解析 typedef/callback 位于自己的注释内部，单靠 declaration 的 leading trivia 找不到 enclosing comment。使用内核已附着的 JSDoc 对象，并按原注释 token 的精确结束位置定位；同时处理 leading/trailing 范围并去重。不能把 JSDoc fullStart 当真实注释起点，也不能按相近位置推测 owner。
 
 当前强制核心为 29 项；正常 / 故障 SDK 各 60 项 Go 测试及 ABI/公共 capture/provider/解析/公开图回归通过。实际 CLI 产品 JSDoc、剩余成员边界和后续故障/分发仍待完成。
+
+## 参数属性与默认构造器
+
+参数属性的词法参数和实例成员使用两个声明。binder 将 node.Symbol 设为成员属性符号，不能直接拿声明名的 GetSymbolAtLocation 作为词法参数符号；参数以 ResolveName 的 FunctionScopedVariable 空间确认，成员从类的 declared type / GetPropertyOfType 获取。引用和 symbol group 按符号空间选择端点。成员 ID 包含稳定参数 ID，错误的重复声明也不会制造重复公开 ID。成员标记 parameter_property，synthetic 表示隐式生成的成员声明，原参数 token/range 保留。
+
+隐式构造器的 resolved signature 可以没有 declaration。只在实际类型的 class 符号、唯一类声明且没有显式 constructor 的情况下记录 class declaration 目标；不生成方法体。显式 constructor 通过真实 token 定位，普通/私有修饰符不进入 name span。参数属性的绑定缺口单独反映 coverage，不再一律 unsupported。
+
+当前强制核心为 32 项，corrected 正常 / 故障 SDK 各实际执行 63 项 Go 测试，ABI/冻结交接/provider/解析/公开图回归通过。泛型测试曾误置于 fixture 字符串，强制名单核对拒绝了那一轮；原证据保留，不复用为通过声明。产品 IPC 和后续故障/分发继续实施。

@@ -52,7 +52,7 @@ func (p *projection) declaration(d *SemanticDeclaration) error {
 	if err := p.meter.Charge(1, 64, uint64(len(d.File))*32+16384); err != nil {
 		return err
 	}
-	metadata, err := jsonText(map[string]any{"ts_symbol_group": d.SymbolGroup, "value_space": d.ValueSpace, "type_space": d.TypeSpace, "namespace_space": d.NamespaceSpace, "implementation": d.Implementation, "declaration_file": d.DeclarationFile, "byte_start": d.Span.Start.Byte, "byte_end": d.Span.End.Byte, "name_byte_start": d.NameSpan.Start.Byte, "name_byte_end": d.NameSpan.End.Byte})
+	metadata, err := jsonText(map[string]any{"ts_symbol_group": d.SymbolGroup, "value_space": d.ValueSpace, "type_space": d.TypeSpace, "namespace_space": d.NamespaceSpace, "implementation": d.Implementation, "parameter_property": d.ParameterProperty, "declaration_file": d.DeclarationFile, "byte_start": d.Span.Start.Byte, "byte_end": d.Span.End.Byte, "name_byte_start": d.NameSpan.Start.Byte, "name_byte_end": d.NameSpan.End.Byte})
 	if err != nil {
 		return err
 	}
@@ -172,15 +172,8 @@ func (p *projection) facts(facts *SemanticFacts) error {
 		if err := p.meter.Charge(1, 1, 8192); err != nil {
 			return err
 		}
-		// A class declaration selected for an implicit constructor is type
-		// evidence, not an invented source constructor implementation.
 		target := call.Target
 		targetKind, reason := call.TargetKind, call.Reason
-		if declaration := p.declarations[target]; call.SyntaxKind == "new" && declaration != nil && declaration.Kind == "class" {
-			target = ""
-			targetKind = "unknown"
-			reason = "implicit_constructor_pending"
-		}
 		metadata, err := jsonText(map[string]any{"ts_call_id": call.ID, "target_kind": targetKind, "selected_declaration": call.SelectedDeclaration, "binding_reason": reason, "syntax_kind": call.SyntaxKind, "byte_start": call.Span.Start.Byte, "byte_end": call.Span.End.Byte})
 		if err != nil {
 			return err
@@ -273,7 +266,7 @@ func semanticGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *p
 			return nil, err
 		}
 		language := languageName(tag)
-		if err := writer.Write(graphRow(g.Table_PROVIDER, "", textCell(provider(language)), textCell(language), textCell(RuntimeIdentity().CompilerVersion), textCell(`["declarations","references","calls","imports","exports","heritage","jsx_components","comments"]`), textCell(`["runtime_dispatch_unsupported","tagged_templates_unsupported","parameter_properties_partial"]`), textCell(analyze.SemanticProfile))); err != nil {
+		if err := writer.Write(graphRow(g.Table_PROVIDER, "", textCell(provider(language)), textCell(language), textCell(RuntimeIdentity().CompilerVersion), textCell(`["declarations","references","calls","imports","exports","heritage","jsx_components","comments"]`), textCell(`["runtime_dispatch_unsupported","tagged_templates_unsupported"]`), textCell(analyze.SemanticProfile))); err != nil {
 			return nil, err
 		}
 	}

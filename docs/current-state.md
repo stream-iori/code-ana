@@ -15,6 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T5 参数属性与构造器（2026-11-18）
+
+| 当前实现 / 真值 | 范围 |
+|---|---|
+| 参数属性 | 一个语法参数保留 lexical parameter 与 instance property 两个 ID、owner 和 symbol group；参数为 local，成员保留 public/private/protected，readonly-only 成员默认 public；标记 parameter_property / synthetic，不伪造赋值语句 |
+| 绑定 | 词法参数用编译器 ResolveName 的 FunctionScopedVariable 空间；成员用类的 declared type / property symbol。value 与 this.value 不混淆，泛型跨文件 Checker 边界和重复错误声明均有真值 |
+| 构造器 | 显式构造器保留真实 constructor token 及 body 目标；无 declaration 的默认签名只在编译器 class 符号和无显式构造器得到证明时映射 class 声明，不造 body |
+| 门禁 | 修正后的两个 SDK 各 63 项 Go 测试，全部 32 项强制真值实际执行；ABI 12 场景/20 检查、公共冻结交接、provider 16、解析 5 组及公开归档/查询回归通过，无漂移 |
+| 继续实施 | T5 其余声明/首版边界收口、T6 产品 IPC、T7 任务故障/资源/复用、T8 实际包；没有正式或性能放行 |
+
+正常 / 故障 SDK 为 target/typescript-c-abi/t5-members-corrected-sdk / t5-members-fixture-corrected-sdk，仍为 inputs6。汇总见 t5-members-sealed/receipt.json。原参数/成员符号混合、默认签名无 declaration 失败，以及误置 fixture 字符串导致泛型测试未执行的整轮回执保留；前一个 members-build-final 的 62 项记录不能算作 32 项真值全部通过，只有 corrected 构建覆盖完整名单。
+
 ## TypeScript T5 JSDoc 声明与导入审计（2026-11-18）
 
 | 实际修复 / 验证 | 范围 |

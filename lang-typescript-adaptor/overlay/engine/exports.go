@@ -46,7 +46,7 @@ func (b *semanticBuilder) moduleExports(c *checker.Checker, file *semanticFile) 
 				return targets(c.GetAliasedSymbol(symbol), depth+1)
 			}
 			for _, declaration := range symbol.Declarations {
-				if index, ok := b.byNode[declaration]; ok {
+				if index, ok := b.declarationIndex(symbol, declaration); ok {
 					ref.Targets = append(ref.Targets, b.facts.Declarations[index].ID)
 				} else if declaration.Kind == ast.KindExportAssignment || (declaration.Kind == ast.KindBinaryExpression && declaration.AsBinaryExpression().OperatorToken.Kind == ast.KindEqualsToken) {
 					var right *ast.Node

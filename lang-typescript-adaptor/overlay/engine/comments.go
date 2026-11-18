@@ -195,6 +195,9 @@ func (b *semanticBuilder) comments(file *semanticFile) error {
 				}
 				if index, ok := b.byNode[node]; ok {
 					documents[doc.Pos()] = append(documents[doc.Pos()], b.facts.Declarations[index].ID)
+					if property, ok := b.properties[node]; ok {
+						documents[doc.Pos()] = append(documents[doc.Pos()], b.facts.Declarations[property].ID)
+					}
 				} else if node.Kind == ast.KindVariableStatement {
 					// JSDoc belongs to the statement's declared bindings by language
 					// syntax, never to a nearby same-name callable.

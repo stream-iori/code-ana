@@ -48,13 +48,19 @@ func semanticQuality(facts *SemanticFacts, project *pb.FrozenProject, meter *Met
 			quality[strings.TrimPrefix(entry.File.Path, project.Context.Root+"/")] = &fileQuality{Reasons: map[string]map[string]uint64{}}
 		}
 	}
-	classes := map[string]bool{}
 	for _, d := range facts.Declarations {
 		if d.Kind == "module" && quality[d.File] != nil {
 			quality[d.File].Analyzed = true
 		}
-		if d.Kind == "class" {
-			classes[d.ID] = true
+		if d.ParameterProperty && !d.Resolved {
+			if err := meter.Charge(3, 3, 1024); err != nil {
+				return nil, err
+			}
+			if q := quality[d.File]; q != nil {
+				for _, capability := range []string{"SOURCE_DEFS", "REFERENCES", "AGGREGATE"} {
+					q.add(capability, "TYPESCRIPT_PARAMETER_PROPERTY_BINDING_GAP")
+				}
+			}
 		}
 	}
 	add := func(file, code string, capabilities ...string) error {
@@ -78,8 +84,6 @@ func semanticQuality(facts *SemanticFacts, project *pb.FrozenProject, meter *Met
 			capabilities = semanticCapabilities
 		case d.Phase == "context" || d.Reason == "TYPESCRIPT_RESOLUTION_GAP":
 			capabilities = []string{"REFERENCES", "CALLS", "AGGREGATE"}
-		case d.Code == "TYPESCRIPT_PARAMETER_PROPERTY_UNSUPPORTED":
-			capabilities = []string{"SOURCE_DEFS", "REFERENCES", "CALLS", "AGGREGATE"}
 		case d.Code == "TYPESCRIPT_TAGGED_TEMPLATE_UNSUPPORTED":
 			capabilities = []string{"CALLS", "AGGREGATE"}
 		}
@@ -104,9 +108,6 @@ func semanticQuality(facts *SemanticFacts, project *pb.FrozenProject, meter *Met
 		code := ""
 		if call.Reason == "call_type_error" || call.Reason == "unresolved_signature" {
 			code = "TYPESCRIPT_UNRESOLVED_CALL"
-		}
-		if call.SyntaxKind == "new" && classes[call.Target] {
-			code = "TYPESCRIPT_IMPLICIT_CONSTRUCTOR_UNSUPPORTED"
 		}
 		if code != "" {
 			if err := add(call.File, code, "CALLS", "AGGREGATE"); err != nil {
