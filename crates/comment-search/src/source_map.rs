@@ -19,6 +19,7 @@ struct Segment {
 /// are never highlighted. A non-linear segment (e.g. a Unicode escape) maps as a whole;
 /// equal byte lengths alone do not establish a linear mapping.
 pub fn map_hits(
+    language: &str,
     body: &str,
     map: &[CommentBodySegment],
     source: &str,
@@ -93,13 +94,14 @@ pub fn map_hits(
     // Compute requested coordinates in one forward walk, rather than rescanning a large
     // source line for every occurrence. CRLF uses LF as the line boundary, like source views.
     let mut positions = BTreeMap::new();
+    let line_breaks = crate::positions::SourceLineBreaks::for_language(language);
     let mut chars = source.char_indices().peekable();
     let (mut line, mut column) = (1u32, 1u32);
     for offset in boundaries {
         while chars.peek().is_some_and(|(index, _)| *index < offset) {
             admit(1, 0)?;
             let (at, ch) = chars.next().ok_or_else(invalid)?;
-            crate::positions::advance(source, at, ch, &mut line, &mut column)?;
+            crate::positions::advance(source, at, ch, line_breaks, &mut line, &mut column)?;
         }
         positions.insert(offset, (line, column));
     }
@@ -137,6 +139,32 @@ fn bounds(segment: &CommentBodySegment) -> Result<(usize, usize, usize, usize), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ecma_separators_and_utf16_hits_follow_the_comment_language() {
+        let source = "/* first\u{2028}middle\u{2029}needle😀 */";
+        let at = source.find("needle").unwrap();
+        let map = [segment(0, 6, at, at + 6)];
+        for language in ["javascript", "typescript", "java", "rust", "python"] {
+            let hits = map_hits(
+                language,
+                "needle",
+                &map,
+                source,
+                &[BodyHit { start: 0, end: 6 }],
+                &|_, _| Ok(()),
+            )
+            .unwrap();
+            assert_eq!(
+                (hits[0].source.begin_line, hits[0].source.begin_column),
+                if matches!(language, "javascript" | "typescript") {
+                    (3, 1)
+                } else {
+                    (1, 17)
+                },
+                "{language}"
+            );
+        }
+    }
     use codeana_model::{ResourceBudget, ResourceLimits};
 
     fn segment(bs: usize, be: usize, ss: usize, se: usize) -> CommentBodySegment {
@@ -159,6 +187,7 @@ mod tests {
         ];
         let budget = ResourceBudget::new(ResourceLimits::default());
         let hits = map_hits(
+            "java",
             body,
             &map,
             source,
@@ -202,6 +231,7 @@ mod tests {
         let map = [segment(0, 3, 3, 9), segment(3, 6, 10, 16)];
         let budget = ResourceBudget::new(ResourceLimits::default());
         let hits = map_hits(
+            "java",
             body,
             &map,
             source,
@@ -229,15 +259,27 @@ mod tests {
             vec![segment(0, 3, 0, 4)],
         ] {
             assert_eq!(
-                map_hits("库", &map, "库", &[], &admit).unwrap_err().code,
+                map_hits("java", "库", &map, "库", &[], &admit)
+                    .unwrap_err()
+                    .code,
                 ErrorCode::CommentSourceMapInvalid
             );
         }
         let map = [segment(0, 3, 0, 3)];
-        assert!(map_hits("库", &map, "库", &[BodyHit { start: 0, end: 1 }], &admit).is_err());
+        assert!(
+            map_hits(
+                "java",
+                "库",
+                &map,
+                "库",
+                &[BodyHit { start: 0, end: 1 }],
+                &admit
+            )
+            .is_err()
+        );
         let cancelled = |_, _| Err(DomainError::new(ErrorCode::Cancelled, ""));
         assert_eq!(
-            map_hits("库", &map, "库", &[], &cancelled)
+            map_hits("java", "库", &map, "库", &[], &cancelled)
                 .unwrap_err()
                 .code,
             ErrorCode::Cancelled

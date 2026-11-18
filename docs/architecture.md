@@ -195,3 +195,7 @@ CLI 交互边界（daemon 协议 6）：命令输入契约由应用层组合查�
 
 
 TypeScript 的 T2b 组件在 `crates/typescript-worker` 装载独立 Go SDK，Go runtime 只存在于该 worker 进程。共享 Owner 约束 Rust 控制入口，Go 自行管理 goroutine/取消/句柄，library 固定到进程退出；Java 通知保持单 token，Go 的关闭式通知额外要求 EOF。普通 Cargo 构建不调用 Go。当前具有 CLI/独立 worker 准备入口、公共 capture、partial 组件绑定诊断与传输验证；CLI/daemon 的 TypeScript 工厂和公开图语义仍待接入，不能当作 TS 产品支持。
+
+## JS/TS 位置与质量
+
+当前 inputs6 的 Go 事实通过公共 graph-io/storage/query，五类能力质量按 Program/诊断/未解析事实单独判定。Rust 统一的位置正反转换、注释校验和高亮按源语言选择换行策略；Java/Rust/Python 与 JS/TS 的 Unicode 分隔符规则独立，位置缓存含策略。TS 产品 IPC 和正式分发仍待接入，详见当前实现。

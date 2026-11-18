@@ -381,7 +381,7 @@ async fn main() -> Result<()> {
     }
     owner.call(Native::close).await?;
     owner.shutdown().await?;
-    let report = serde_json::json!({"component_only":true,"semantic_partial":true,"complete_plan":false,"native_accepted":false,"runtime":runtime,"case":args.case,"outcome":result.outcome,"analysis_usage":budget.usage(),"accounting_owner":format!("{:?}",budget.accounting_owner()),"verified_graph":verified,"prepared_inventory":prepared,"semantic_declarations":semantics.declarations,"semantic_calls":semantics.calls,"development_fixture":args.dev_abi_fixture,"running_close_pending_observed":running_close_pending_observed});
+    let report = serde_json::json!({"component_only":true,"semantic_partial":semantics.coverage_seen==0 || semantics.partial,"coverage_rows":semantics.coverage_seen,"complete_plan":false,"native_accepted":false,"runtime":runtime,"case":args.case,"outcome":result.outcome,"analysis_usage":budget.usage(),"accounting_owner":format!("{:?}",budget.accounting_owner()),"verified_graph":verified,"prepared_inventory":prepared,"semantic_declarations":semantics.declarations,"semantic_calls":semantics.calls,"development_fixture":args.dev_abi_fixture,"running_close_pending_observed":running_close_pending_observed});
     std::fs::write(
         output.join("receipt.json"),
         serde_json::to_vec_pretty(&report)?,

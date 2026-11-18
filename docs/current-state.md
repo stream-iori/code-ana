@@ -15,6 +15,20 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T5 能力质量与跨语言坐标（2026-11-18）
+
+| 当前实现 / 实际验证 | 边界 |
+|---|---|
+| SDK | 最小适配器修订 inputs6；ABI / analysis / 输入清单仍为 1，worker 25、model 7、schema 18/37 不变。旧修订 5 在装载前拒绝，原生输入需重新 prepare |
+| 质量 | SOURCE_DEFS / REFERENCES / CALLS / COMMENTS / AGGREGATE 分开判定 complete、partial、unavailable；上下文诊断保留，未进入 Program 的发布文件不可报 complete，无关类型错误不撤销注释和合法调用 |
+| 已知缺口 | 参数属性和 tagged template 明确报告；隐式构造器不伪造 body。提供静态源码关系，runtime/CHA 不支持；T5 声明/JSDoc 边界审计仍继续 |
+| 坐标 | JS/TS 使用 ECMAScript 的 CR/LF/U+2028/U+2029；Java/Rust/Python 保留原规则。正反转换、入库校验、源码与高亮共用规则，缓存按内容及换行策略隔离 |
+| Go | 两个新 SDK 各 57 项 Go 测试通过，包含全部 26 项强制核心真值；原始执行日志和 SHA 保留，不重复构建充当新测试 |
+| 回归 | 修复后完整 just test-rust、Python 核心/clippy/构建；Native Java 注释 3、Python 注释 4；TS ABI 12 场景 / 20 检查、prepare 5、provider 16、解析 5 组、物理拼写、冻结交接及真实公开图查询全部通过，无产物漂移 |
+| 真实归档 | 39 行、5 声明、2 调用点/目标；编译器诊断、独立 coverage、JSDoc/callable 链接及 Unicode 分隔符的源码与高亮均通过 |
+
+正常 SDK 为 target/typescript-c-abi/t5-quality-sdk，故障 fixture 为 t5-quality-fixture-sdk。汇总证据见 t5-quality-sealed/receipt.json。原坐标错误 `(1,8)` / 预期 `(2,1)`、测试列号/类型/重复主键失败均保留。T6 产品 IPC、T7 任务故障/资源/复用与 T8 实际包仍未完成，无正式 Native、分发或性能放行。
+
 ## TypeScript T5 编译器诊断与导出检查点（2026-11-18）
 
 | 已取证 | 结果 |

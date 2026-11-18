@@ -33,7 +33,11 @@ pub(super) fn snippets(
             hash(&bytes) == s.hash,
             codeana_model::DomainError::new(codeana_model::ErrorCode::SourceHashMismatch, "")
         );
-        let positions = SourcePositions::new(std::str::from_utf8(&bytes)?, &|w, p| r.charge(w, p))?;
+        let positions = SourcePositions::new(
+            std::str::from_utf8(&bytes)?,
+            codeana_model::source_positions::SourceLineBreaks::for_language(&s.language),
+            &|w, p| r.charge(w, p),
+        )?;
         let full_text = std::str::from_utf8(&bytes)?;
         let location = |start: u64, end: u64| -> Result<SourceRange> {
             let (bl, bc) = positions.position(full_text, start as usize, &|w, p| r.charge(w, p))?;

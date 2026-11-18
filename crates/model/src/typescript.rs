@@ -12,7 +12,7 @@ pub use frozen::{FROZEN_INPUT_SCHEMA, FrozenFile, FrozenInputs};
 
 pub const INPUT_SCHEMA: u32 = 1;
 /// Minimum bridge semantics, independently of the stable C calling convention.
-pub const ADAPTER_REVISION: u32 = 5;
+pub const ADAPTER_REVISION: u32 = 6;
 pub const ABI_VERSION: u32 = 1;
 pub const ANALYSIS_VERSION: u32 = 1;
 pub const PRODUCER: &str = "typescript-core";

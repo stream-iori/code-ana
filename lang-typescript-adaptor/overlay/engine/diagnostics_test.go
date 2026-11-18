@@ -15,6 +15,9 @@ func TestCompilerDiagnosticsKeepResolutionAndTypeErrorsWithoutPoisoningValidCall
 	}
 	seen := map[string]bool{}
 	for _, d := range facts.Diagnostics {
+		if d.Phase == "context" {
+			continue
+		}
 		if d.File != "entry.ts" || d.Message == "" || strings.Contains(d.Message, program.context.Root) {
 			t.Fatal(d)
 		}

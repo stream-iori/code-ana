@@ -6,6 +6,7 @@
 | CLI / daemon | Rust；CLI 与本机用户级 daemon 使用 HTTP/2 + protobuf（gRPC）。项目在 daemon 内隔离。 |
 | Java | Java 代码放在 `lang-java-adaptor/`（旧 `lang-adaptor/` 已删除）；原生适配器使用 Java 25 + GraalVM Native Image 生成共享库；独立 Rust worker 通过 C ABI / FFI 调用。禁止 JNI。 |
 | Java 后端 | 仅采用 javac；不引入 JavaParser/SymbolSolver，也不提供回退。原生库协调目标 Java 8／17 javac 子进程；桥分别由目标 JDK 8／17 编译，与 Java 25 原生库分开构建。显式 JVM 仅供开发/诊断，无自动回退。 |
+| JS/TS | 独立 Rust worker 装载固定 typescript-go 共享库；最小适配器 inputs6，TS ABI / analysis / 输入清单各为 1。准备、冻结输入、公开语义/注释/质量组件已验证，产品 IPC 仍待接入；不运行目标安装、构建、业务代码或插件。 |
 | JDK 选择 | `lang-java-adaptor/.sdkmanrc` 固定 GraalVM JDK 25，Oracle `25.3.4+1.r25-graal`；进入该目录执行 `sdk env`。默认 Native GC 为 G1；显式 Serial 仍支持。 |
 | 配置 | 语义索引须在 `.code-ana/config.toml` 显式启用语言；FILES 和工作区文本搜索可无语言配置。Maven 自动展开模块需外部准备的 `inputs_manifest`；Lombok 配在 `[languages.java.lombok]`。 |
 | 构建 | 产品只给目标项目的构建建议，不自动运行目标项目的编译命令或注解处理器。禁用处理器、无业务字节码生成的 javac parse/analyze 属于索引分析。开发和测试可显式编译本项目与 fixture。 |

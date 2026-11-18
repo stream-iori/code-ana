@@ -29,7 +29,7 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         )?;
         let content = if name == "a.ts" {
             format!(
-                "/** 类型脚本文档 中文😀 */\r\n{}",
+                "/* first\u{2028}middle\u{2029}end */\r\n/** 类型脚本文档 中文😀 */\r\n{}",
                 original
                     .replace("return value", "/* 调用内部说明 */ return value")
                     .replace("value + 1", "value + 'bad'")
@@ -196,6 +196,40 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
             .any(|d| d.name == "TS2322" && d.source == "a.ts"),
         "PUBLIC_COMPILER_DIAGNOSTIC: {diagnostics:?}"
     );
+    let coverage = reader.select(&FactFilter {
+        kinds: vec![FactKind::Coverage],
+        ..Default::default()
+    })?;
+    ensure!(coverage.len() == 10, "PUBLIC_CAPABILITY_COVERAGE");
+    ensure!(
+        coverage
+            .iter()
+            .filter(|f| f
+                .attributes
+                .capability
+                .as_ref()
+                .is_some_and(|c| c == "COMMENTS" || c == "SOURCE_DEFS"))
+            .all(|f| f.status == "complete"),
+        "UNRELATED_TYPE_ERRORS_POISON_COVERAGE"
+    );
+    ensure!(
+        coverage.iter().any(|f| f.source == "a.ts"
+            && f.attributes
+                .capability
+                .as_ref()
+                .is_some_and(|c| c == "AGGREGATE")
+            && f.status == "partial"),
+        "TYPE_ERROR_CONTEXT_GAP_MISSING"
+    );
+    ensure!(
+        coverage.iter().any(|f| f.source == "b.ts"
+            && f.attributes
+                .capability
+                .as_ref()
+                .is_some_and(|c| c == "CALLS")
+            && f.status == "complete"),
+        "VALID_CALL_COVERAGE_POISONED"
+    );
     let call_sites = reader.select(&FactFilter {
         kinds: vec![FactKind::CallSite],
         ..Default::default()
@@ -247,6 +281,14 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
         &|s| store.blob(&s.hash),
     )?;
     ensure!(!source.records.is_empty(), "PUBLIC_CAPTURED_SOURCE");
+    let Record::Source(snippet) = &source.records[0] else {
+        anyhow::bail!("PUBLIC_SOURCE_RECORD")
+    };
+    ensure!(
+        snippet.range.as_ref().and_then(|r| r.begin_line) == Some(5)
+            && snippet.text.starts_with("export function greet"),
+        "PUBLIC_ECMA_SOURCE_RANGE: {snippet:?}"
+    );
     let resolve = codeana_query::run(
         &reader,
         &Request {
@@ -273,6 +315,10 @@ fn actual_typescript_archive_publishes_and_queries_real_declarations_and_calls()
     let Record::Comment(hit) = &comments.records[0] else {
         anyhow::bail!("PUBLIC_COMMENT_RECORD")
     };
+    ensure!(
+        hit.comment.range.begin_line == 4 && hit.hits.iter().all(|h| h.source.begin_line == 4),
+        "PUBLIC_ECMA_COMMENT_HIGHLIGHT: {hit:?}"
+    );
     ensure!(
         hit.comment.kind == CommentKind::Doc
             && hit.comment.language == "typescript"

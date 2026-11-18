@@ -729,7 +729,11 @@ fn emit_comments(
         if !positions.contains_key(observation.path.as_str()) {
             positions.insert(
                 observation.path.as_str(),
-                SourcePositions::new(text, &admit)?,
+                SourcePositions::new(
+                    text,
+                    codeana_model::source_positions::SourceLineBreaks::Standard,
+                    &admit,
+                )?,
             );
         }
         let position = &positions[observation.path.as_str()];

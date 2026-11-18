@@ -33,7 +33,11 @@ impl Collector<'_> {
                 .charge(w, 0, b)
                 .map_err(codeana_model::DomainError::analysis)
         };
-        let positions = SourcePositions::new(self.text, &admit)?;
+        let positions = SourcePositions::new(
+            self.text,
+            codeana_model::source_positions::SourceLineBreaks::Standard,
+            &admit,
+        )?;
         let mut result = Vec::new();
         let mut gaps = BTreeSet::new();
         for element in tree.descendants_with_tokens() {

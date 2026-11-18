@@ -1149,47 +1149,17 @@ impl SourceLocator for ReadContext {
                 codeana_model::DomainError::new(codeana_model::ErrorCode::BlobHashMismatch, "")
             );
             let text = std::str::from_utf8(&bytes)?;
+            let positions = codeana_model::source_positions::SourcePositions::new(
+                text,
+                codeana_model::source_positions::SourceLineBreaks::for_language(&source.language),
+                &|w, p| self.charge(w, p),
+            )?;
             let offset = |line: u64, column: u64| -> Result<u64> {
-                ensure!(
-                    line > 0 && column > 0,
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::SourceRangeInvalid,
-                        ""
-                    )
-                );
-                let mut start = 0usize;
-                for _ in 1..line {
-                    start += text[start..]
-                        .find('\n')
-                        .context(codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::SourceRangeLine,
-                            "",
-                        ))?
-                        + 1;
-                }
-                let mut units = 0u64;
-                let wanted = column - 1;
-                for (index, c) in text[start..].char_indices() {
-                    if units == wanted {
-                        return Ok((start + index) as u64);
-                    }
-                    ensure!(
-                        units < wanted && c != '\n',
-                        codeana_model::DomainError::new(
-                            codeana_model::ErrorCode::SourceRangeColumn,
-                            ""
-                        )
-                    );
-                    units += c.len_utf16() as u64;
-                }
-                ensure!(
-                    units == wanted,
-                    codeana_model::DomainError::new(
-                        codeana_model::ErrorCode::SourceRangeColumn,
-                        ""
-                    )
-                );
-                Ok(bytes.len() as u64)
+                let line = u32::try_from(line)
+                    .map_err(|_| DomainError::new(ErrorCode::SourceRangeLine, ""))?;
+                let column = u32::try_from(column)
+                    .map_err(|_| DomainError::new(ErrorCode::SourceRangeColumn, ""))?;
+                Ok(positions.offset(text, line, column, &|w, p| self.charge(w, p))? as u64)
             };
             let start = offset(bl, bc)?;
             let mut end = offset(el, ec)?;

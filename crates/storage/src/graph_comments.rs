@@ -5,7 +5,12 @@ use codeana_contracts::graph::{Row, Table, cell};
 
 #[derive(Default)]
 pub(crate) struct SourceCache {
-    value: Option<(String, String, SourcePositions)>,
+    value: Option<(
+        String,
+        codeana_model::source_positions::SourceLineBreaks,
+        String,
+        SourcePositions,
+    )>,
 }
 fn invalid(detail: impl Into<String>) -> anyhow::Error {
     DomainError::new(ErrorCode::CommentRecordInvalid, detail.into()).into()
@@ -97,10 +102,12 @@ pub(crate) fn stage(
         1,
         (codeana_graph_io::stream::row_bytes(row) as u64).saturating_mul(2),
     )?;
+    let line_breaks =
+        codeana_model::source_positions::SourceLineBreaks::for_language(&unit.language);
     if cache
         .value
         .as_ref()
-        .is_none_or(|(hash, _, _)| hash != &unit.hash)
+        .is_none_or(|(hash, policy, _, _)| hash != &unit.hash || *policy != line_breaks)
     {
         admit(unit.size.saturating_add(1), unit.size.saturating_mul(2))?;
         let bytes = (context.source)(&unit.hash, unit.size)?;
@@ -109,10 +116,10 @@ pub(crate) fn stage(
             DomainError::new(ErrorCode::SourceHashMismatch, "comment capture")
         );
         let source = String::from_utf8(bytes).map_err(|_| invalid("source is not UTF-8"))?;
-        let positions = SourcePositions::new(&source, &admit)?;
-        cache.value = Some((unit.hash.clone(), source, positions));
+        let positions = SourcePositions::new(&source, line_breaks, &admit)?;
+        cache.value = Some((unit.hash.clone(), line_breaks, source, positions));
     }
-    let (_, source, positions) = cache.value.as_ref().context(invalid("source cache"))?;
+    let (_, _, source, positions) = cache.value.as_ref().context(invalid("source cache"))?;
     if table == Table::Comment {
         ensure!(row.cells.len() == 18, invalid("comment column count"));
         let kind = match text(row, 8)? {
@@ -159,7 +166,14 @@ pub(crate) fn stage(
                 invalid("body map outside comment")
             );
         }
-        codeana_comment_search::map_hits(&fact.body, &fact.body_map, source, &[], &admit)?;
+        codeana_comment_search::map_hits(
+            &fact.language,
+            &fact.body,
+            &fact.body_map,
+            source,
+            &[],
+            &admit,
+        )?;
         let terms = codeana_comment_search::index_terms(&fact.body, &admit)?;
         let bytes = terms.iter().map(|s| s.len() as u64 + 1).sum::<u64>();
         admit(1, bytes.saturating_mul(2))?;
@@ -304,6 +318,87 @@ pub(crate) fn promote(
 mod tests {
     use super::*;
     use codeana_contracts::graph_rows::{CommentLinkRow, CommentRow, GraphRow};
+    #[test]
+    fn identical_bytes_keep_distinct_java_and_ecma_cached_coordinates() -> Result<()> {
+        let source = "/* first\u{2028}middle\u{2029}needle */";
+        let digest = hash(source);
+        let db = rusqlite::Connection::open_in_memory()?;
+        crate::graph_store::initialize_stage(&db)?;
+        let manifest = Manifest {
+            files: [
+                ("java", "A.java"),
+                ("typescript", "A.ts"),
+                ("javascript", "A.js"),
+            ]
+            .into_iter()
+            .map(|(language, path)| SourceUnit {
+                path: path.into(),
+                hash: digest.clone(),
+                size: source.len() as u64,
+                module: "app".into(),
+                scope: "MAIN".into(),
+                world: language.into(),
+                language: language.into(),
+                auxiliary: false,
+            })
+            .collect(),
+        };
+        let context = GraphStagingContext {
+            hosts: BTreeMap::from([
+                (
+                    AnalysisBackend::Java,
+                    AnalysisContext::new(Default::default(), None)?,
+                ),
+                (
+                    AnalysisBackend::TypeScript,
+                    AnalysisContext::new(Default::default(), None)?,
+                ),
+            ]),
+            source: Arc::new(move |_, _| Ok(source.as_bytes().to_vec())),
+        };
+        let mut cache = SourceCache::default();
+        for index in [0usize, 1, 2, 0] {
+            let unit = &manifest.files[index];
+            let (end_line, end_column) = if unit.language == "java" {
+                (1, 26)
+            } else {
+                (3, 10)
+            };
+            let mut fact = CommentFact {
+                id: "".into(),
+                source_file: unit.path.clone(),
+                source_hash: digest.clone(),
+                module: unit.module.clone(),
+                scope: unit.scope.clone(),
+                world: unit.world.clone().into(),
+                language: unit.language.clone(),
+                provider: "fixture".into(),
+                producer: "fixture".into(),
+                kind: CommentKind::Block,
+                range: CommentRange {
+                    byte_start: 0,
+                    byte_end: source.len() as u64,
+                    begin_line: 1,
+                    begin_column: 1,
+                    end_line,
+                    end_column,
+                },
+                body: source[2..source.len() - 2].into(),
+                body_map: vec![CommentBodySegment {
+                    body_start: 0,
+                    body_end: (source.len() - 4) as u64,
+                    source_start: 2,
+                    source_end: (source.len() - 2) as u64,
+                }],
+                rule_version: "fixture-v1".into(),
+            };
+            fact.id = fact.expected_id();
+            let row = CommentRow::try_from(&fact)?.into_row(fact.world.as_str());
+            stage(&db, &row, &manifest, Some(&context), &mut cache, &|| Ok(()))?;
+            db.execute("DELETE FROM stage_comments", [])?;
+        }
+        Ok(())
+    }
     fn setup(store: &Store) -> (Revision, AnalysisHeader, GraphStagingContext, Row, Row) {
         let source = "// 库存😀HTTPServer2\r\nclass A {}";
         let body = " 库存😀HTTPServer2";

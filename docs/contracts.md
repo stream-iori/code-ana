@@ -27,7 +27,7 @@ SDK manifest 使用公共 schema 4；Java Native 3 / JVM 2 等旧格式要求重
 | `backend.runtime.kind=jvm` | 不接受 Native 的 GC/ABI 字段 |
 | `backend.kind=typescript` | 独立 abi/analysis_request、upstream_commit、typescript_commit、compiler_version、Go 与构建参数、标准库及 header/analysis proto/graph proto SHA；不接受 Java 字段 |
 
-已知身份缺字段、未知变体/字段、重复 JSON 键均拒绝，包括 files/标准库及开放元数据中的键。SDK JSON 最多 1 MiB、65536 个值/键节点、128 层；Rust 在构造类型化 SDK 对象前用 serde 流式预检。额外 producer 元数据只放 `producer_metadata`，不选择执行后端。TypeScript 已有本机组件 SDK 和真实 ABI 验证，尚未接入产品索引；组件产物不表示分发放行。doctor 的 `java_sdk_state` 区分 missing/invalid/present_unverified，后者只验证元数据，不把未核实文件摘要写成 SDK 已就绪；错误另列 `java_sdk_error`。
+已知身份缺字段、未知变体/字段、重复 JSON 键均拒绝，包括 files/标准库及开放元数据中的键。SDK JSON 最多 1 MiB、65536 个值/键节点、128 层；Rust 在构造类型化 SDK 对象前用 serde 流式预检。额外 producer 元数据只放 `producer_metadata`，不选择执行后端。TypeScript 最小适配器修订为 inputs6，ABI / analysis / 输入清单各为 1；旧 SDK 在分析前拒绝，需重建并重新 prepare。已有本机组件 SDK、公开语义/注释/能力质量与真实 ABI 验证，尚未接入产品索引；组件产物不表示分发放行。doctor 的 `java_sdk_state` 区分 missing/invalid/present_unverified，后者只验证元数据，不把未核实文件摘要写成 SDK 已就绪；错误另列 `java_sdk_error`。
 
 manifest 仍沿用 `fact_ir` 键，daemon 仍声明历史能力标签 `fact-ir-v1`；这些名字不表示产品继续传输旧 Fact JSON。混装 bundle/worker/ABI 在分析前拒绝。
 

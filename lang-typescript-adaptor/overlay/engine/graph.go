@@ -208,7 +208,7 @@ func (p *projection) facts(facts *SemanticFacts) error {
 		if err != nil {
 			return err
 		}
-		if err := p.writer.Write(graphRow(g.Table_DIAGNOSTIC, d.World, textCell(d.Severity), textCell(d.Code), textCell(d.Phase), textCell(d.File), textCell(d.Module), textCell(d.Scope), nullCell(), textCell(d.Language), textCell(provider(d.Language)), textCell(d.Message), textCell(d.Reason), textCell(details), intCell(1), textCell(d.Message))); err != nil {
+		if err := p.writer.Write(graphRow(g.Table_DIAGNOSTIC, d.World, textCell(d.Severity), textCell(d.Code), textCell(d.Phase), optionalText(d.File), optionalText(d.Module), optionalText(d.Scope), nullCell(), textCell(d.Language), textCell(provider(d.Language)), textCell(d.Message), textCell(d.Reason), textCell(details), intCell(1), textCell(d.Message))); err != nil {
 			return err
 		}
 	}
@@ -257,6 +257,10 @@ func semanticGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *p
 	if err != nil {
 		return nil, err
 	}
+	quality, err := semanticQuality(facts, analyze.Project, meter)
+	if err != nil {
+		return nil, err
+	}
 	meter.phase = "records"
 	writer, err := NewArchive(analyze.Scratch, analyze.Output, meter)
 	if err != nil {
@@ -269,7 +273,7 @@ func semanticGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *p
 			return nil, err
 		}
 		language := languageName(tag)
-		if err := writer.Write(graphRow(g.Table_PROVIDER, "", textCell(provider(language)), textCell(language), textCell(RuntimeIdentity().CompilerVersion), textCell(`["declarations","references","calls","imports","exports"]`), textCell(`["TYPESCRIPT_T5_PENDING","runtime_dispatch_unsupported"]`), textCell(analyze.SemanticProfile))); err != nil {
+		if err := writer.Write(graphRow(g.Table_PROVIDER, "", textCell(provider(language)), textCell(language), textCell(RuntimeIdentity().CompilerVersion), textCell(`["declarations","references","calls","imports","exports","heritage","jsx_components","comments"]`), textCell(`["runtime_dispatch_unsupported","tagged_templates_unsupported","parameter_properties_partial"]`), textCell(analyze.SemanticProfile))); err != nil {
 			return nil, err
 		}
 	}
@@ -283,19 +287,30 @@ func semanticGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *p
 		}
 		name := strings.TrimPrefix(identity.Path, project.Context.Root+"/")
 		language := languageName(identity.Language)
-		for _, capability := range []string{"SOURCE_DEFS", "REFERENCES", "CALLS", "AGGREGATE"} {
+		for _, capability := range semanticCapabilities {
 			if err := meter.Charge(1, 16, 4096); err != nil {
 				return nil, err
 			}
-			if err := writer.Write(graphRow(g.Table_COVERAGE, identity.World, textCell(name), textCell(identity.Module), textCell(identity.Scope), textCell(language), textCell(provider(language)), textCell(capability), textCell("partial"), intCell(1), intCell(1), textCell(`["TYPESCRIPT_T5_PENDING"]`), textCell(`{"TYPESCRIPT_T5_PENDING":1}`), intCell(0))); err != nil {
+			status, codes, counts, count := quality[name].coverage(capability)
+			codeJSON, err := jsonText(codes)
+			if err != nil {
+				return nil, err
+			}
+			countJSON, err := jsonText(counts)
+			if err != nil {
+				return nil, err
+			}
+			if err := writer.Write(graphRow(g.Table_COVERAGE, identity.World, textCell(name), textCell(identity.Module), textCell(identity.Scope), textCell(language), textCell(provider(language)), textCell(capability), textCell(status), intCell(int64(count)), intCell(int64(len(codes))), textCell(codeJSON), textCell(countJSON), intCell(0))); err != nil {
 				return nil, err
 			}
 		}
-		if err := meter.Charge(1, 16, 4096); err != nil {
-			return nil, err
-		}
-		if err := writer.Write(graphRow(g.Table_DIAGNOSTIC, identity.World, textCell("warning"), textCell("TYPESCRIPT_T5_PENDING"), textCell("extract"), textCell(name), textCell(identity.Module), textCell(identity.Scope), nullCell(), textCell(language), textCell(provider(language)), textCell("first public semantic projection"), textCell("TYPESCRIPT_T5_PENDING"), nullCell(), intCell(1), textCell("Members, JSX, comments and full diagnostic coverage continue in T5"))); err != nil {
-			return nil, err
+		if !quality[name].Analyzed {
+			if err := meter.Charge(1, 16, 4096); err != nil {
+				return nil, err
+			}
+			if err := writer.Write(graphRow(g.Table_DIAGNOSTIC, identity.World, textCell("warning"), textCell("TYPESCRIPT_SOURCE_NOT_ANALYZED"), textCell("backend"), textCell(name), textCell(identity.Module), textCell(identity.Scope), nullCell(), textCell(language), textCell(provider(language)), textCell("Published input is not part of the captured compiler Program"), textCell("TYPESCRIPT_SOURCE_NOT_ANALYZED"), nullCell(), intCell(1), textCell(name))); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if err := meter.Charge(2, 8, 2048); err != nil {

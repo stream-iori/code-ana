@@ -523,6 +523,24 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 					decl.TypeSpace = flags&ast.SymbolFlagsType != 0
 					decl.NamespaceSpace = flags&ast.SymbolFlagsNamespace != 0
 				}
+				gap := ""
+				if node.Kind == ast.KindTaggedTemplateExpression {
+					gap = "TYPESCRIPT_TAGGED_TEMPLATE_UNSUPPORTED"
+				}
+				if node.Kind == ast.KindParameter && ast.GetCombinedModifierFlags(node)&ast.ModifierFlagsParameterPropertyModifier != 0 {
+					gap = "TYPESCRIPT_PARAMETER_PROPERTY_UNSUPPORTED"
+				}
+				if gap != "" {
+					if err := p.meter.Charge(1, 1, 2048); err != nil {
+						return err
+					}
+					span, err := file.index.span(scanner.SkipTrivia(file.source.Text(), node.Pos()), node.End())
+					if err != nil {
+						return err
+					}
+					d := file.identity
+					b.facts.Diagnostics = append(b.facts.Diagnostics, SemanticDiagnostic{File: file.logical, Module: d.Module, Scope: d.Scope, World: d.World, Language: languageName(d.Language), Severity: "warning", Code: gap, Phase: "extract", Reason: gap, Message: "Source construct is retained with incomplete semantic extraction", Span: span})
+				}
 				reference, err := b.reference(c, file, node)
 				if err != nil {
 					return err
@@ -551,6 +569,14 @@ func (p *Program) Semantics(ctx context.Context) (*SemanticFacts, error) {
 			return nil, err
 		}
 		if err := p.frozen.Check(); err != nil {
+			return nil, err
+		}
+	}
+	if len(b.files) > 0 {
+		if err := b.diagnostics(nil, p.program.GetGlobalDiagnostics(ctx), "context"); err != nil {
+			return nil, err
+		}
+		if err := b.diagnostics(nil, p.program.GetProgramDiagnostics(), "context"); err != nil {
 			return nil, err
 		}
 	}

@@ -1,6 +1,6 @@
 # TypeScript worker
 
-当前完成 T0、T2a、本机 T2b 及 T3 输入发现组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；Go 显式准备入口已记录编译器输入，显式配置/公共 capture 已接入，CLI prepare provider 已接入，公开图最小语义已通过实际归档入库和查询，产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
+当前已实现冻结输入准备、真实 Go C ABI、公开声明/引用/静态调用、模块导出、继承/JSX 组件引用、注释及按能力质量。最小 SDK 为 inputs6；ABI / analysis / 输入清单各为 1，worker 25、model 7、schema 18/37。产品 IPC 尚未接入，正常 CLI 仍返回 TYPESCRIPT_INPUT_NOT_READY。已知参数属性、tagged template 与隐式构造器缺口保持 partial；不能用组件和入库验证替代产品索引。公共重构落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
 
 ```text
 Rust worker → Request protobuf → Go 独立会话 / goroutine
@@ -168,3 +168,11 @@ TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返
 模块导出事实来自同一 Checker 的 ForEachExportAndPropertyOfModule 和 ResolveExternalModuleSymbol，保留默认导出、type-only、重导出及 CommonJS/export-equals 来源；合并同名观察后排序/去重，不按枚举顺序选第一项。模块表观察使用文件范围，语法 import/export 保留其 token 范围。静态 require 的本地遮蔽单独排除；动态 require 保持普通未知调用。无端点的引用仍投影 unresolved 行。
 
 当前强制核心真值为 24 项；真实 SDK 归档已通过公开编译器诊断、注释、调用及源码查询。仍未接产品 IPC，不能由上述组件通过宣称 T5—T8 全部完成。
+
+## inputs6：能力质量与位置规则
+
+删除固定 TYPESCRIPT_T5_PENDING 行，按实际 Program、诊断、未解析引用/调用及明确的不支持构造，分别给出五类 coverage。COMMENTS 不随普通类型错误降级；不在 Program 的发布输入为 unavailable。全局/项目诊断归当前单元上下文，不伪装成某个源文件的位置。组件报告的 semantic_partial 来自实际 coverage，不再固定为 true。
+
+SourcePositions 采用显式换行策略，提供 UTF-8 字节与一基 UTF-16 行列的双向转换。JS/TS 识别 U+2028/U+2029，其他既有语言保持原规则；comment body 高亮、入库校验、源码坐标及 source_span 使用同一策略。缓存键含内容与策略，不能用 Java 的位置索引校验同字节的 JS/TS 注释。真实 SDK 已验证 Unicode 分隔符后的文档/源码及高亮。
+
+inputs6 是适配器语义修订；不改变 C ABI、内部 protobuf 或输入清单 schema。装载时拒绝旧修订，必须重建 SDK 并重新 prepare。两个 SDK 各 57 项 Go 测试包含 26 项强制真值；真实 ABI、公共 capture、解析、CLI provider 和入库/查询已通过。声明/JSDoc 边界审计、完整产品 IPC、任务故障/预算与实际包仍继续实施。

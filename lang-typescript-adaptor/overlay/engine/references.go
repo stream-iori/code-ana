@@ -252,6 +252,9 @@ func (b *semanticBuilder) reference(c *checker.Checker, file *semanticFile, node
 		return reference, nil
 	}
 	for _, declaration := range symbol.Declarations {
+		if symbol.Flags&ast.SymbolFlagsProperty != 0 && declaration.Kind == ast.KindParameter && ast.GetCombinedModifierFlags(declaration)&ast.ModifierFlagsParameterPropertyModifier != 0 {
+			continue
+		}
 		if index, ok := b.byNode[declaration]; ok {
 			if matchesReferenceSpace(b.facts.Declarations[index].Kind, role) {
 				reference.Targets = append(reference.Targets, b.facts.Declarations[index].ID)

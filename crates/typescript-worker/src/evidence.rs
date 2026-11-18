@@ -8,6 +8,8 @@ use serde_json::{Value, json};
 pub struct SemanticEvidence {
     pub declarations: Vec<Value>,
     pub calls: Vec<Value>,
+    pub partial: bool,
+    pub coverage_seen: u64,
 }
 fn text(row: &Row, index: usize) -> Result<&str> {
     match row.cells.get(index).and_then(|cell| cell.value.as_ref()) {
@@ -18,6 +20,11 @@ fn text(row: &Row, index: usize) -> Result<&str> {
 impl SemanticEvidence {
     pub fn record(&mut self, row: &Row, budget: &AnalysisContext) -> Result<()> {
         let kind = Table::try_from(row.table)?;
+        if kind == Table::Coverage {
+            budget.charge(1, 0, 0)?;
+            self.coverage_seen += 1;
+            self.partial |= text(row, 6)? != "complete";
+        }
         if kind == Table::Node || (kind == Table::Edge && text(row, 6)? == "CALLS") {
             budget.charge(1, 32, (row.encoded_len() as u64) * 16 + 4096)?;
             if kind == Table::Node {

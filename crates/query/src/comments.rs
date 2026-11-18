@@ -126,6 +126,7 @@ pub(super) fn run(
                 );
                 let text = std::str::from_utf8(&bytes)?;
                 let hits = codeana_comment_search::map_hits(
+                    &comment.language,
                     &comment.body,
                     &comment.body_map,
                     text,
