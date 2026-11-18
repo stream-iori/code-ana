@@ -260,3 +260,8 @@ test-typescript-provider sdk evidence:
 test-typescript-resolution sdk evidence:
     cargo build -p codeana-typescript-worker --locked
     python3 tests/typescript_resolution_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'
+
+# Explicit target-volume truth; this gate requires a case-insensitive volume.
+test-typescript-spelling sdk evidence:
+    cargo build -p codeana-typescript-worker --locked
+    python3 tests/typescript_spelling_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'

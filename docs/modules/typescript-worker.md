@@ -116,3 +116,9 @@ inputs3 SDK 保留 compiler 配置给出的有序 references，按内核的引�
 ## 等价旧式清单
 
 JS/TS 的旧式 inputs_manifest 可以引用两份不同位置但语义等价的原生清单，也可只给一个共享位置。公共 config 规范化文件/观察顺序后比较语义身份，仍认证并捕获每份已声明清单的原字节。不同内容明确冲突，不自动合并不同发布选择。普通计划按封存单元 ID 枚举 compiler context，并以内部短序号创建 scratch。五组真实解析 fixture 与八个实际 CLI 场景已验证该路径；公开语义图仍待接入。
+
+## 物理拼写
+
+当前最小 adapter 为 inputs4。Darwin 准备器使用只读 FD 的物理路径，保留文件和 symlink 自身拼写，不枚举全局目录来猜测大小写；按内核 canonical 规则核对并拒绝不同物理条目的冲突。Rust 通过已封存目录名称验证文件及父路径的精确拼写，避免内容相同的改名沿用旧清单。
+
+`just test-typescript-spelling SDK NEW_EVIDENCE` 是显式不区分大小写卷的真实门禁，缺该卷会失败而不跳过。验证 Actual.ts / Link.ts 经真实 SDK 进入公共 capture、同字节改名拒绝和删活文件后的正文；Go 测试另验证两个大小写/链接别名调用在冻结后仍绑定正确文件。其他平台的不区分大小写捕获明确 unsupported，Linux 等平台仍需独立验证。

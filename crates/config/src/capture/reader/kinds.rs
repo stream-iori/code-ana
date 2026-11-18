@@ -129,6 +129,30 @@ impl CaptureReader {
         );
         Ok(entry)
     }
+    /// Observe the parent once, then compare its sorted names without cloning.
+    pub fn has_exact_spelling(&mut self, path: &Path) -> Result<bool> {
+        let parent = path.parent().context("CAPTURE_PATH_PARENT")?;
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .context("NON_UTF8_CAPTURE_PATH")?;
+        self.directory(parent)?;
+        let count = self
+            .directories
+            .get(parent)
+            .context("CAPTURE_DIRECTORY_REQUIRED")?
+            .entries
+            .len();
+        self.admit_metadata(count.checked_ilog2().unwrap_or(0) as usize + 1, 0)?;
+        Ok(self
+            .directories
+            .get(parent)
+            .context("CAPTURE_DIRECTORY_REQUIRED")?
+            .entries
+            .binary_search_by(|(entry, _)| entry.as_str().cmp(name))
+            .is_ok())
+    }
+
     /// Fund a detached view, including the caller's comparison indexes, before
     /// cloning entry names. Counts stay on the same capture account.
     pub fn directory_copy(&mut self, path: &Path) -> Result<Vec<(String, String)>> {

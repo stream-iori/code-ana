@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use codeana_config::{UnitInput, capture, resolve, resolve_files};
 use codeana_model::{Request, SourceLanguage, typescript as ts};
 use serde_json::json;
@@ -597,5 +597,112 @@ fn equivalent_inventory_locations_are_normalized_before_context_conflict_checks(
         baseline
     );
     assert_eq!(capture(&root, &Request::default())?.unit_views.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn a_case_only_source_rename_requires_preparation_even_with_identical_bytes() -> Result<()> {
+    for (before, after) in [("src/a.ts", "src/A.ts"), ("src", "Src")] {
+        let (_temp, root, mut inputs) = fixture()?;
+        // Presence alone cannot certify spelling; neither case has a native
+        // complete listing to make this fail for an unrelated listing reason.
+        inputs.contexts[0].directories[0].listing_complete = false;
+        inputs.contexts[0].directories[0].files.clear();
+        inputs.validate().map_err(anyhow::Error::msg)?;
+        write_inputs(&root, &inputs)?;
+        std::fs::rename(root.join(before), root.join(after))?;
+        let error = capture(&root, &Request::default())
+            .err()
+            .ok_or_else(|| anyhow::anyhow!("case-only rename accepted"))?;
+        if !inputs.contexts[0].case_sensitive {
+            assert!(format!("{error:#}").contains("TYPESCRIPT_INPUT_SPELLING_STALE"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+#[ignore = "requires actual case-insensitive SDK preparation; mandatory in test-typescript-spelling"]
+fn actual_physical_spelling_inventory_is_captured_and_sealed() -> Result<()> {
+    let evidence = PathBuf::from(std::env::var("CODEANA_TYPESCRIPT_SPELLING_FIXTURE")?);
+    let root = evidence.join("live").canonicalize()?;
+    let bytes = std::fs::read(evidence.join("native.json"))?;
+    let inputs: ts::Inputs = serde_json::from_slice(&bytes)?;
+    inputs.validate().map_err(anyhow::Error::msg)?;
+    assert_eq!(inputs.contexts.len(), 1);
+    let context = &inputs.contexts[0];
+    assert_eq!(Path::new(&context.root), root);
+    assert!(
+        !context.case_sensitive,
+        "case-insensitive fixture volume required"
+    );
+    assert!(
+        context
+            .files
+            .iter()
+            .any(|file| file.path == root.join("Actual.ts").to_str().unwrap())
+    );
+    assert!(
+        !context
+            .files
+            .iter()
+            .any(|file| file.path == root.join("actual.ts").to_str().unwrap())
+    );
+    assert!(
+        context
+            .links
+            .iter()
+            .any(|link| link.path == root.join("Link.ts").to_str().unwrap())
+    );
+    std::fs::create_dir(root.join(".code-ana"))?;
+    std::fs::write(root.join(".code-ana/native.json"), bytes)?;
+    std::fs::write(
+        root.join(".code-ana/config.toml"),
+        "schema_version=1\nkind='project'\n[languages.typescript]\nenabled=true\n[languages.typescript.discovery]\ninputs_manifest='.code-ana/native.json'\n",
+    )?;
+    let bodies = context
+        .files
+        .iter()
+        .map(|file| Ok((file.sha256.clone(), std::fs::read(&file.path)?)))
+        .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
+    let frozen = capture(&root, &Request::default())?;
+    assert_eq!(frozen.unit_views.len(), 1);
+    assert!(
+        frozen
+            .manifest
+            .files
+            .iter()
+            .any(|file| file.path == "Actual.ts" && !file.auxiliary)
+    );
+    assert!(
+        !frozen
+            .manifest
+            .files
+            .iter()
+            .any(|file| file.path == "actual.ts")
+    );
+    // Body and inode can stay identical while the physical dentry spelling changes.
+    std::fs::rename(root.join("Actual.ts"), root.join("actual.ts"))?;
+    let error = capture(&root, &Request::default())
+        .err()
+        .context("STALE_SPELLING_ACCEPTED")?;
+    assert!(format!("{error:#}").contains("TYPESCRIPT_INPUT_SPELLING_STALE"));
+    std::fs::remove_file(root.join("actual.ts"))?;
+    for file in context
+        .files
+        .iter()
+        .filter(|file| !file.path.ends_with("/Actual.ts"))
+    {
+        std::fs::remove_file(&file.path)?;
+    }
+    for (digest, body) in &bodies {
+        assert_eq!(&frozen.blobs[digest].read(32 << 20)?, body);
+    }
+    std::fs::write(
+        evidence.join("capture-proof.json"),
+        serde_json::to_vec_pretty(
+            &json!({"physical_file":"Actual.ts","physical_link":"Link.ts","case_sensitive":false,"captured_bodies":bodies.len(),"case_only_rename_rejected":true,"live_files_deleted":true,"public_semantics":false}),
+        )?,
+    )?;
     Ok(())
 }

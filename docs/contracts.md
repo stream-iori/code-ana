@@ -316,8 +316,10 @@ prepared schema 3 的每个单元必须给出 `backend` 与非空、去重的 `s
 
 TypeScript adapter 输入策略修订为 `inputs2`；旧 SDK 需要重建，TS ABI 1 / analysis 1 不变。Prepare 探测目标卷大小写规则，使用显式根，精确记录祖先缺失元数据；正的外部依赖必须显式授权。项目根 `.code-ana` 不进入编译器逻辑目录。共享 `input-io` 提供只读、有界、FD 锚定的大小写探测，不包含编译器或配置语义。
 
-TypeScript 当前最小 adapter 输入策略为 `inputs3`。有序 project references 与封存 compiler 配置核对，引用源码/声明产物为辅助输入，不能由消费者发布；缺声明产物保留失败查找与 unknown，不进行源码重定向。此前 inputs2 SDK 在装载前拒绝；独立 TS ABI 1、analysis 1、原生输入 schema 1 不变。
+TypeScript 当前最小 adapter 输入策略为 `inputs4`。有序 project references 与封存 compiler 配置核对，引用源码/声明产物为辅助输入，不能由消费者发布；缺声明产物保留失败查找与 unknown，不进行源码重定向。此前 inputs2 SDK 在装载前拒绝；独立 TS ABI 1、analysis 1、原生输入 schema 1 不变。
 
 多份 prepared TypeScript 配置可引用完全相同的脚本 module 策略，公共配置只登记一次；每份 compiler context 的稳定 unit/world、原生输入及冻结视图仍独立。相同 module ID 的不同策略、跨后端重复仍拒绝。普通单元按 ID 选择其封存 context，多 context 时不允许仅按后端猜选。捕获后的资源分配使用当前共享任务策略，不从封存 context 的旧副本恢复预算。该主机内修正不改变 wire/SDK/图库版本。
 
 JS/TS 旧式配置可给出多个位置的语义等价原生清单，或由一个位置提供共享清单；先规范化内容，再判上下文冲突。已声明的每份清单仍以原字节捕获认证，清单位置和排版不进入编译器语义身份。普通计划直接使用冻结视图的单元 ID，不再用后端名代替实例；scratch 使用内部短序号目录名。
+
+inputs4 在 Darwin 准备阶段通过只读 FD 保存文件与链接实际拼写，以同一编译器 canonical 规则核对；不同物理条目不能占用同一 canonical 路径。Rust 捕获验证目录条目的精确拼写并封存观察，同字节大小写改名也需重新准备。该策略独立升级 adapter，C ABI / 内部分析 / 输入清单仍为 1。非 Darwin 的不区分大小写路径捕获明确 unsupported，不能从本机验证推定支持。

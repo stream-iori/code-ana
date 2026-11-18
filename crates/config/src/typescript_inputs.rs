@@ -178,6 +178,28 @@ fn ancestor_lookup(path: &Path, project: &Path, dependencies: &[PathBuf]) -> boo
         })
 }
 
+fn validate_spelling(
+    reader: &std::cell::RefCell<capture::CaptureReader>,
+    path: &Path,
+    project: &Path,
+    dependencies: &[PathBuf],
+) -> Result<()> {
+    for entry in path.ancestors() {
+        if entry == project || dependencies.iter().any(|root| entry == root) {
+            break;
+        }
+        if !within(entry, project, dependencies) {
+            break;
+        }
+        ensure!(
+            reader.borrow_mut().has_exact_spelling(entry)?,
+            "TYPESCRIPT_INPUT_SPELLING_STALE: {}",
+            entry.display()
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn capture(
     project: &Path,
     effective: &ResolvedContext,
@@ -284,6 +306,11 @@ pub(super) fn capture(
                 })
                 .collect::<Vec<_>>(),
         )?;
+        if !context.case_sensitive {
+            for link in &context.links {
+                validate_spelling(reader, Path::new(&link.path), project, &dependencies)?;
+            }
+        }
         for directory in &context.directories {
             let path = Path::new(&directory.path);
             let inside = within(path, project, &dependencies);
@@ -302,6 +329,9 @@ pub(super) fn capture(
                 "TYPESCRIPT_DIRECTORY_STALE: {}",
                 path.display()
             );
+            if inside && !context.case_sensitive {
+                validate_spelling(reader, path, project, &dependencies)?;
+            }
             if directory.listing_complete {
                 let entries = reader.borrow_mut().directory_copy(path)?;
                 let mut files = BTreeSet::new();
@@ -374,6 +404,9 @@ pub(super) fn capture(
                 within(path, project, &dependencies),
                 "TYPESCRIPT_INPUT_OUTSIDE_DECLARED_ROOTS"
             );
+            if !context.case_sensitive {
+                validate_spelling(reader, path, project, &dependencies)?;
+            }
             let name = captured_path(project, path)?;
             if file.role == FileRole::Control {
                 ensure!(!excludes.is_match(&name), "CONTROL_INPUT_EXCLUDED: {name}");

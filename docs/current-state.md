@@ -15,6 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 物理文件名拼写（2026-11-18）
+
+| 已取证 / 实现 | 边界 |
+|---|---|
+| 原缺口 | 本机不区分大小写卷上，实际 Actual.ts 被旧 SDK 记录为查询拼写 actual.ts；原诊断 t3-case-spelling-probe 保留 |
+| Go 准备 | Darwin 只读 FD 获取实际文件/链接拼写，使用编译器 canonical 规则核对；同 canonical 路径的不同物理条目明确拒绝 |
+| Rust 捕获 | 有界观察父目录，按排序名称直接查找；文件、目录、链接大小写变化均不能沿用旧清单 |
+| 真实出口 | SDK → 公共 capture 已通过，保留 Actual.ts / Link.ts；同字节改名拒绝、删除活输入后封存正文可读 |
+| 最小策略 | inputs4，要求重建旧 SDK；ABI 1、analysis 1、原生输入 1 不变；其他平台的不区分大小写路径捕获明确 unsupported |
+
+真实回执 `target/typescript-c-abi/t3-physical-spelling-public-first/receipt.json`；新正常 SDK 为 t3-physical-spelling-sdk-final，真正的 ABI fixture 为 t3-physical-spelling-abi-fixture-sdk。ABI fixture 显式构建并默认拒绝。三个真实捕获专项、ABI 12 场景 / 20 检查、五组解析、五个独立准备、八个 CLI 场景，以及 Rust 聚焦、workspace clippy、Python 核心/clippy 和架构门禁均通过，无产物漂移。汇总为 `t3-physical-spelling-sealed/receipt.json`；T3 其余缺口和 T4—T8 继续实施。
+
 ## TypeScript T3 等价清单与普通计划（2026-11-18）
 
 | 已实现 / 验证 | 结果 |

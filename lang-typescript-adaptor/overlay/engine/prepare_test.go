@@ -441,3 +441,66 @@ func TestMissingReferencedDeclarationsStayMissingAndFrozen(t *testing.T) {
 		t.Fatal("forged reference identity accepted")
 	}
 }
+
+func TestCaseInsensitivePreparationRecordsPhysicalFileAndLinkSpelling(t *testing.T) {
+	request, meter := preparationFixture(t)
+	request.AllowedRoots = []string{request.ProjectRoot}
+	actual := filepath.Join(request.ProjectRoot, "Actual.ts")
+	if err := os.WriteFile(actual, []byte(`export function greet(value: number) {return value+1;}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(request.ProjectRoot, "actual.ts")); err != nil {
+		t.Skip("case-sensitive target volume")
+	}
+	request.CaseSensitive = boolPointer(false)
+	if err := os.Symlink("Actual.ts", filepath.Join(request.ProjectRoot, "Link.ts")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(request.ProjectRoot, "entry.ts"), []byte(`import {greet as one} from "./actual"; import {greet as two} from "./link"; one(1); two(2);`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(request.ConfigPath, []byte(`{"compilerOptions":{"noLib":true,"types":[],"module":"ESNext","moduleResolution":"bundler"},"files":["entry.ts"]}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	project, err := DiscoverProject(context.Background(), request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := false
+	for _, file := range project.Files {
+		if file.File.Path == actual {
+			seen = true
+		}
+		if file.File.Path == filepath.Join(request.ProjectRoot, "actual.ts") {
+			t.Fatal("query casing became public source identity")
+		}
+	}
+	if !seen {
+		t.Fatal("physical source spelling missing")
+	}
+	if len(project.Context.Links) != 1 || project.Context.Links[0].Path != filepath.Join(request.ProjectRoot, "Link.ts") {
+		t.Fatal("physical link spelling missing", project.Context.Links)
+	}
+	for _, file := range project.Files {
+		if err := os.Remove(file.File.Path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	program, err := OpenProgram(project, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	if err := program.WalkCallBindings(context.Background(), func(call CallBinding) error {
+		if !call.Resolved || call.TargetFile != actual {
+			t.Fatal(call)
+		}
+		calls++
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatal("case/link aliases lost calls", calls)
+	}
+}

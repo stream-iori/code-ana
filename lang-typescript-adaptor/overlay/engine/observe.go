@@ -21,6 +21,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+type spellingObservation struct {
+	path string
+	info fs.FileInfo
+}
+
 // ObservedFS is used only by explicit preparation. It records the actual
 // compiler queries, not a recursive copy of node_modules. Analysis receives
 // FrozenFS and can never fall back to this live view.
@@ -32,6 +37,8 @@ type ObservedFS struct {
 	directories             map[string]*pb.Directory
 	links                   map[string]*pb.SymbolicLink
 	absent                  map[string]*pb.AbsentLookup
+	spellings               map[string]spellingObservation
+	physicalNames           map[string]string
 	total, limit, fileLimit uint64
 	failure                 error
 }
@@ -64,7 +71,7 @@ func NewObservedFS(request *pb.Prepare, meter *Meter) (*ObservedFS, error) {
 	}
 	result := &ObservedFS{roots: roots, meter: meter, limit: request.InventoryBytes, fileLimit: request.FileLimit,
 		context: &pb.ProjectContext{Unit: request.Unit, Root: request.ProjectRoot, ConfigPath: request.ConfigPath, PublishLanguages: slices.Clone(request.PublishLanguages), CaseSensitive: boolValue(*request.CaseSensitive)},
-		files:   make(map[string]*pb.FrozenFile), directories: make(map[string]*pb.Directory), links: make(map[string]*pb.SymbolicLink), absent: make(map[string]*pb.AbsentLookup)}
+		files:   make(map[string]*pb.FrozenFile), directories: make(map[string]*pb.Directory), links: make(map[string]*pb.SymbolicLink), absent: make(map[string]*pb.AbsentLookup), spellings: make(map[string]spellingObservation), physicalNames: make(map[string]string)}
 	if !result.allowed(request.ProjectRoot) || !result.allowed(request.ConfigPath) {
 		return nil, invalid("project/configuration is outside preparation roots")
 	}
@@ -171,6 +178,43 @@ func (f *ObservedFS) resolve(name string) string {
 			if err != nil {
 				f.fail(err)
 				return ""
+			}
+			if !*f.context.CaseSensitive && f.allowed(prefix) {
+				query := prefix
+				key := f.key(query)
+				observed, known := f.spellings[query]
+				spelling := observed.path
+				if known && !os.SameFile(info, observed.info) {
+					f.fail(&Fault{Code: pb.FailureCode_INPUT_STALE, Message: "physical path changed during preparation"})
+					return ""
+				}
+				if !known {
+					if !info.Mode().IsRegular() && !info.IsDir() && info.Mode()&fs.ModeSymlink == 0 {
+						f.fail(invalid("preparation requires regular files/directories/links"))
+						return ""
+					}
+					if !f.reserve(uint64(len(query))*2 + 2304) {
+						return ""
+					}
+					var err error
+					spelling, err = physicalSpelling(query)
+					if err != nil {
+						f.fail(err)
+						return ""
+					}
+					if !absolute(spelling) || f.key(spelling) != key {
+						f.fail(&Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "filesystem spelling differs from compiler canonical path rules"})
+						return ""
+					}
+					if previous, exists := f.physicalNames[key]; exists && previous != spelling {
+						f.fail(&Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "filesystem case aliases name distinct directory entries"})
+						return ""
+					}
+					f.physicalNames[key] = spelling
+					f.spellings[query] = spellingObservation{path: spelling, info: info}
+				}
+				name = spelling + strings.TrimPrefix(name, query)
+				prefix = spelling
 			}
 			if info.Mode()&fs.ModeSymlink == 0 {
 				continue
