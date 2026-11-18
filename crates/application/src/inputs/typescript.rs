@@ -262,6 +262,154 @@ pub(super) fn prepare(
     Ok(inputs)
 }
 
+/// Only a rootless solution expands its compiler-owned reference closure.
+/// Keep the solution as an empty unit so its controls and observations remain
+/// invalidation inputs; source-bearing references get independent Programs.
+pub(super) fn prepare_units(
+    project: &Path,
+    config: &ProjectConfig,
+    entry: &InputEntry,
+    members: &[String],
+    directory: &Path,
+    cancel: &AtomicBool,
+) -> Result<Vec<PreparedUnit>> {
+    let mut queue = vec![entry.clone()];
+    let mut seen = BTreeSet::new();
+    let mut edges = BTreeMap::new();
+    let mut units = Vec::new();
+    let mut expand = false;
+    let mut cursor = 0;
+    while cursor < queue.len() {
+        ensure!(!cancel.load(Ordering::Acquire), "CANCELLED");
+        let selected = &queue[cursor];
+        let manifest = compiler_config(selected);
+        cursor += 1;
+        if !seen.insert(manifest.clone()) {
+            continue;
+        }
+        ensure!(seen.len() <= 256, "TYPESCRIPT_CONTEXT_LIMIT");
+        let output = directory.join(format!("c{}", units.len()));
+        fs::create_dir(&output)?;
+        let raw = output.join("raw.json");
+        let normalized = output.join("inputs.json");
+        let log = output.join("prepare.log");
+        let native = prepare(project, config, selected, &raw, &normalized, &log, cancel)?;
+        let context = &native.contexts[0];
+        if units.is_empty() {
+            expand = context.root_files.is_empty();
+        }
+        let references = if expand {
+            context.references.clone()
+        } else {
+            vec![]
+        };
+        let mut child = child_config(config, &selected.language, &selected.root);
+        let normalized_path = artifact(project, &normalized)?.path;
+        for language in [
+            &mut child.languages.javascript,
+            &mut child.languages.typescript,
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|language| language.enabled == Some(true))
+        {
+            language.discovery.inputs_manifest = Some(normalized_path.clone());
+        }
+        let child_path = output.join("config.toml");
+        fs::write(&child_path, unit_config_text(&child)?)?;
+        units.push(PreparedUnit {
+            id: context.unit.to_string(),
+            backend: codeana_model::AnalysisBackend::TypeScript,
+            source_languages: context.publish_languages.clone(),
+            entries: members.to_vec(),
+            modules: if child.modules.is_empty() {
+                members.to_vec()
+            } else {
+                child
+                    .modules
+                    .iter()
+                    .map(|module| module.id.clone())
+                    .collect()
+            },
+            roots: members
+                .iter()
+                .map(|id| {
+                    config
+                        .inputs
+                        .as_ref()
+                        .unwrap()
+                        .entries
+                        .iter()
+                        .find(|entry| &entry.id == id)
+                        .unwrap()
+                        .root
+                        .clone()
+                })
+                .collect(),
+            mode: InputMode::Semantic,
+            reason: None,
+            log: Some(artifact(project, &log)?.path),
+            config: Some(artifact(project, &child_path)?),
+            artifacts: vec![artifact(project, &raw)?, artifact(project, &normalized)?],
+        });
+        let mut targets = Vec::new();
+        for reference in references {
+            let relative = Path::new(&reference).strip_prefix(project)
+                .context("TYPESCRIPT_REFERENCE_OUTSIDE_PROJECT: select external declarations as dependencies")?;
+            let relative = relative.to_str().context("INPUT_PATH_UTF8")?;
+            checked_path(project, relative).context("TYPESCRIPT_REFERENCE_CONFIG_MISSING")?;
+            let reference = PathBuf::from(relative);
+            targets.push(reference.clone());
+            if seen.contains(&reference)
+                || queue
+                    .iter()
+                    .any(|entry| compiler_config(entry) == reference)
+            {
+                continue;
+            }
+            ensure!(queue.len() < 256, "TYPESCRIPT_CONTEXT_LIMIT");
+            let mut next = entry.clone();
+            next.root = ".".into();
+            next.manifest = Some(relative.to_owned());
+            queue.push(next);
+        }
+        edges.insert(manifest, targets);
+    }
+    validate_reference_graph(&edges)?;
+    Ok(units)
+}
+
+fn validate_reference_graph(edges: &BTreeMap<PathBuf, Vec<PathBuf>>) -> Result<()> {
+    fn visit<'a>(
+        node: &'a PathBuf,
+        edges: &'a BTreeMap<PathBuf, Vec<PathBuf>>,
+        active: &mut BTreeSet<&'a PathBuf>,
+        done: &mut BTreeSet<&'a PathBuf>,
+    ) -> Result<()> {
+        if done.contains(node) {
+            return Ok(());
+        }
+        ensure!(
+            active.insert(node),
+            "TYPESCRIPT_REFERENCE_CYCLE: {}",
+            node.display()
+        );
+        if let Some(targets) = edges.get(node) {
+            for target in targets {
+                visit(target, edges, active, done)?;
+            }
+        }
+        active.remove(node);
+        done.insert(node);
+        Ok(())
+    }
+    let mut done = BTreeSet::new();
+    for node in edges.keys() {
+        visit(node, edges, &mut BTreeSet::new(), &mut done)?;
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,6 +493,26 @@ mod tests {
         assert_eq!(reordered.semantic_digest(), expected);
     }
 
+    #[test]
+    fn solution_reference_cycles_are_rejected_and_diamonds_are_shared() {
+        let mut edges = BTreeMap::from([
+            (PathBuf::from("root"), vec!["left".into(), "right".into()]),
+            (PathBuf::from("left"), vec!["leaf".into()]),
+            (PathBuf::from("right"), vec!["leaf".into()]),
+            (PathBuf::from("leaf"), vec![]),
+        ]);
+        validate_reference_graph(&edges).unwrap();
+        edges
+            .get_mut(Path::new("leaf"))
+            .unwrap()
+            .push("root".into());
+        assert!(
+            validate_reference_graph(&edges)
+                .unwrap_err()
+                .to_string()
+                .contains("TYPESCRIPT_REFERENCE_CYCLE")
+        );
+    }
     #[test]
     fn equal_depth_owners_conflict_but_other_scope_is_auxiliary() {
         let (mut config, entry, inputs) = fixture();

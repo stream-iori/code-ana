@@ -316,7 +316,7 @@ prepared schema 3 的每个单元必须给出 `backend` 与非空、去重的 `s
 
 TypeScript adapter 输入策略修订为 `inputs2`；旧 SDK 需要重建，TS ABI 1 / analysis 1 不变。Prepare 探测目标卷大小写规则，使用显式根，精确记录祖先缺失元数据；正的外部依赖必须显式授权。项目根 `.code-ana` 不进入编译器逻辑目录。共享 `input-io` 提供只读、有界、FD 锚定的大小写探测，不包含编译器或配置语义。
 
-TypeScript 当前最小 adapter 输入策略为 `inputs4`。有序 project references 与封存 compiler 配置核对，引用源码/声明产物为辅助输入，不能由消费者发布；缺声明产物保留失败查找与 unknown，不进行源码重定向。此前 inputs2 SDK 在装载前拒绝；独立 TS ABI 1、analysis 1、原生输入 schema 1 不变。
+TypeScript 当前最小 adapter 输入策略为 `inputs5`。有序 project references 与封存 compiler 配置核对，引用源码/声明产物为辅助输入，不能由消费者发布；缺声明产物保留失败查找与 unknown，不进行源码重定向。此前 inputs2 SDK 在装载前拒绝；独立 TS ABI 1、analysis 1、原生输入 schema 1 不变。
 
 多份 prepared TypeScript 配置可引用完全相同的脚本 module 策略，公共配置只登记一次；每份 compiler context 的稳定 unit/world、原生输入及冻结视图仍独立。相同 module ID 的不同策略、跨后端重复仍拒绝。普通单元按 ID 选择其封存 context，多 context 时不允许仅按后端猜选。捕获后的资源分配使用当前共享任务策略，不从封存 context 的旧副本恢复预算。该主机内修正不改变 wire/SDK/图库版本。
 
@@ -327,3 +327,7 @@ inputs4 在 Darwin 准备阶段通过只读 FD 保存文件与链接实际拼写
 TypeScript FrozenInputs schema 1 独立于语义 Inputs schema 1：一个已封存单元、完整内容对象引用及实际发布选择。spool 位置不进入语义身份，SDK/实例在读取前核对，缺失内容不从来源路径补读。过滤源在 Go VFS 中降为辅助并清空发布 owner；控制文件保持控制角色。调用方须保留 capture 租约直到 worker 停止；该主机输入契约不改变 TS ABI 1 / analysis 1。
 
 CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roots 和当前 MAIN/TEST scope；最长路径前缀决定 owner，同深度多模块返回 TYPESCRIPT_MODULE_OWNER_CONFLICT。未覆盖文件保留辅助角色并清空 module/scope/world。模块语言选择共享后端，不把 JS/TS Program 拆成两个执行实例；world 仍由 context/module/scope 生成。此为主机清单归一，不改变 SDK、ABI 或 wire。
+
+TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返回的配置路径逐上下文准备，最多 256 个上下文，菱形引用只准备一次、循环引用拒绝；solution 自身作为零发布单元保留配置/观察。仅当选择的入口为空根 solution 时展开引用闭包，普通消费者仍只发布自身来源；外部引用源码需单独项目配置，当前跨项目只消费显式依赖声明。catalog 3 的同一 TS 入口可覆盖多个独立单元，其他后端仍要求一份归属；缺配置失败后不切换活动清单。旧 inputs4 SDK 必须重建，TS ABI 1 / analysis 1 / 输入清单 1 不变。公开语义与产品执行仍未接入。
+
+跨入口的同 ID TS 上下文须经完整 semantic_digest、发布标签和模式核对才合并，入口/root 归属合并后去重；每份原配置和清单仍认证。不同上下文冲突及全局超过 256 个单元，在切换活动 catalog 前失败。

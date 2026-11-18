@@ -97,6 +97,46 @@ def main():
         (state/'legacy-b.json').write_text(json.dumps(alias,indent=2))
         (state/'config.toml').write_text("schema_version=1\nkind='project'\n[languages.javascript]\nenabled=true\n[languages.javascript.discovery]\ninputs_manifest='.code-ana/legacy-a.json'\n[languages.typescript]\nenabled=true\n[languages.typescript.discovery]\ninputs_manifest='.code-ana/legacy-b.json'\n[[modules]]\nid='app'\nlanguage='typescript'\nroot='.'\n")
         assert 'TYPESCRIPT_INPUT_NOT_READY' in run('legacy-equivalent-locators','index')
+        # A compiler-owned empty solution expands into distinct context units.
+        for name in ['left','right']:
+            (project/name).mkdir()
+            (project/name/'index.ts').write_text('export const value = 1;\n')
+            (project/name/'tsconfig.json').write_text(json.dumps({'compilerOptions':{'noLib':True,'composite':True},'files':['index.ts']}))
+        (project/'tsconfig.json').write_text(json.dumps({'compilerOptions':{'noLib':True},'files':[],'references':[{'path':'./left'},{'path':'./right'}]}))
+        config(aliases=True)
+        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('rootless-solution','index','--prepare')
+        solution=catalog()['units'];assert len(solution)==3 and len({u['id'] for u in solution})==3
+        assert all(set(u['entries'])=={'alias','primary'} for u in solution)
+        native_contexts=[native(u)['contexts'][0] for u in solution]
+        empty=[c for c in native_contexts if not c['root_files']]
+        assert len(empty)==1 and len(empty[0]['references'])==2
+        assert not [f for f in empty[0]['files'] if f['role']=='publish']
+        published=[f for c in native_contexts for f in c['files'] if f['role']=='publish']
+        assert {f['path'] for f in published}=={str(project/'left/index.ts'),str(project/'right/index.ts')}
+        assert len({f['world'] for f in published})==2
+        saved={u['id']:native(u) for u in solution}
+        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('rootless-solution-repeat','index','--prepare')
+        assert {u['id']:native(u) for u in catalog()['units']}==saved
+        (state/'config.toml').write_text((state/'config.toml').read_text()+"[[inputs.entries]]\nid='direct'\nlanguage='typescript'\nroot='.'\nmanifest='left/tsconfig.json'\n")
+        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('solution-overlapping-entry','index','--prepare')
+        merged=catalog()['units'];assert len(merged)==3
+        left=next(u for u in merged if native(u)['contexts'][0]['config_path']==str(project/'left/tsconfig.json'))
+        assert set(left['entries'])=={'alias','primary','direct'}
+        assert len([f for u in merged for f in native(u)['contexts'][0]['files'] if f['role']=='publish'])==2
+        retained=sha256(state/'inputs.json')
+        right=project/'right/tsconfig.json';right_text=right.read_text()
+        cycle=json.loads(right_text);cycle['references']=[{'path':'..'}];right.write_text(json.dumps(cycle))
+        assert 'TYPESCRIPT_REFERENCE_CYCLE' in run('solution-reference-cycle','index','--prepare')
+        assert sha256(state/'inputs.json')==retained
+        right.write_text(right_text)
+        solution_config=project/'tsconfig.json';solution_text=solution_config.read_text()
+        changed=json.loads(solution_text);changed['references'].reverse();solution_config.write_text(json.dumps(changed))
+        assert 'TYPESCRIPT_INPUT_STALE' in run('solution-stale-control','index')
+        assert sha256(state/'inputs.json')==retained
+        solution_config.write_text(solution_text)
+        (project/'left/tsconfig.json').unlink()
+        assert 'TYPESCRIPT_REFERENCE_CONFIG_MISSING' in run('solution-missing-reference','index','--prepare')
+        assert sha256(state/'inputs.json')==retained
         after=identities(paths);report['artifact_drift']=[path for path in sorted(before.keys()|after.keys()) if before.get(path)!=after.get(path)]
         assert not report['artifact_drift'];report.update(status='passed',executed_count=len(report['commands']),one_shared_backend=True,source_tags=['javascript','typescript'])
     except Exception as failure:

@@ -151,6 +151,12 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
             handled.extend(members.clone());
             let directory = generation.join(&entry.id);
             fs::create_dir(&directory)?;
+            if typescript::is_script(&entry.language) {
+                catalog.units.extend(typescript::prepare_units(
+                    &project, &config, entry, &members, &directory, cancel,
+                )?);
+                continue;
+            }
             let raw = directory.join("raw.json");
             let normalized = directory.join("inputs.json");
             let log = directory.join("prepare.log");
@@ -164,7 +170,6 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                     _ => "pyproject.toml",
                 },
             ));
-            let mut native_typescript = None;
             let mut mode = InputMode::Semantic;
             let mut reason = None;
             let plain = entry.language == "java"
@@ -408,18 +413,6 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                             false
                         }
                     }
-                    "javascript" | "typescript" => {
-                        native_typescript = Some(typescript::prepare(
-                            &project,
-                            &config,
-                            entry,
-                            &raw,
-                            &normalized,
-                            &log,
-                            cancel,
-                        )?);
-                        true
-                    }
                     _ => bail!("INPUT_LANGUAGE"),
                 }
             };
@@ -459,19 +452,6 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                             .discovery
                             .inputs_manifest = Some(normalized_path)
                     }
-                    "javascript" | "typescript" => {
-                        for language in [
-                            &mut child.languages.javascript,
-                            &mut child.languages.typescript,
-                        ]
-                        .into_iter()
-                        .flatten()
-                        {
-                            if language.enabled == Some(true) {
-                                language.discovery.inputs_manifest = Some(normalized_path.clone());
-                            }
-                        }
-                    }
                     _ => unreachable!(),
                 }
                 let path = directory.join("config.toml");
@@ -487,19 +467,13 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                 None
             };
             catalog.units.push(PreparedUnit {
-                id: native_typescript
-                    .as_ref()
-                    .map(|inputs| inputs.contexts[0].unit.to_string())
-                    .unwrap_or_else(|| entry.id.clone()),
+                id: entry.id.clone(),
                 backend: SourceLanguage::lookup(&entry.language)
                     .context("INPUT_LANGUAGE")?
                     .backend(),
-                source_languages: native_typescript
-                    .as_ref()
-                    .map(|inputs| inputs.contexts[0].publish_languages.clone())
-                    .unwrap_or(vec![
-                        SourceLanguage::lookup(&entry.language).context("INPUT_LANGUAGE")?,
-                    ]),
+                source_languages: vec![
+                    SourceLanguage::lookup(&entry.language).context("INPUT_LANGUAGE")?,
+                ],
                 entries: members.clone(),
                 modules: if child.modules.is_empty() {
                     members.clone()
@@ -528,12 +502,12 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
         ensure!(!cancel.load(Ordering::Acquire), "CANCELLED");
         ensure!(hash_file(&config_path)? == before, "INPUT_CONFIG_CHANGED");
         let temporary = generation.join("catalog.json");
-        write_json(&temporary, &catalog)?;
         // Validate normalized views before making any generation active.
         let parent = resolve_task_configuration(&project, config.clone())?;
         let mut modules = Vec::new();
-        for unit in &catalog.units {
-            if let Some(config) = &unit.config {
+        let mut normalized: BTreeMap<String, (PreparedUnit, String)> = BTreeMap::new();
+        for mut unit in std::mem::take(&mut catalog.units) {
+            let semantic = if let Some(config) = &unit.config {
                 let bytes = read_artifact(&project, config)?;
                 let effective = resolve_unit(
                     &project,
@@ -542,8 +516,45 @@ pub fn prepare(project: &Path, cancel: &AtomicBool) -> Result<PreparationSummary
                     std::str::from_utf8(&bytes)?,
                 )?;
                 merge_prepared_modules(&mut modules, &effective.config.modules, unit.backend)?;
+                effective.semantic_digest
+            } else {
+                String::new()
+            };
+            if let Some((previous, identity)) = normalized.get_mut(&unit.id) {
+                ensure!(
+                    unit.backend == codeana_model::AnalysisBackend::TypeScript
+                        && previous.backend == unit.backend
+                        && unit.mode == InputMode::Semantic
+                        && previous.mode == unit.mode
+                        && previous.source_languages == unit.source_languages
+                        && !semantic.is_empty()
+                        && *identity == semantic,
+                    "INPUT_CONTEXT_CONFLICT: {}",
+                    unit.id
+                );
+                let mut entries = previous
+                    .entries
+                    .iter()
+                    .cloned()
+                    .zip(previous.roots.iter().cloned())
+                    .collect::<BTreeMap<_, _>>();
+                for (entry, root) in unit.entries.into_iter().zip(unit.roots) {
+                    if let Some(old) = entries.insert(entry, root.clone()) {
+                        ensure!(old == root, "INPUT_CONTEXT_ROOT_CONFLICT");
+                    }
+                }
+                (previous.entries, previous.roots) = entries.into_iter().unzip();
+                previous.artifacts.append(&mut unit.artifacts);
+                // Keep every declared preparation byte authenticated even when
+                // its equivalent compiler context executes only once.
+                previous.artifacts.extend(unit.config);
+            } else {
+                normalized.insert(unit.id.clone(), (unit, semantic));
             }
         }
+        ensure!(normalized.len() <= 256, "INPUT_CATALOG_UNIT_LIMIT");
+        catalog.units = normalized.into_values().map(|(unit, _)| unit).collect();
+        write_json(&temporary, &catalog)?;
         let output = project.join(&preparation.manifest);
         let parent = output.parent().context("INPUT_MANIFEST_PARENT")?;
         ensure!(

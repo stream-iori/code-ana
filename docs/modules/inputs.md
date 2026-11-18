@@ -132,7 +132,7 @@ root = "."
 
 `manifest` 是入口根下的静态 compiler 配置；省略时 TS 取 tsconfig.json，JS 取 jsconfig.json。相同配置、module、scope 的 JS/TS 入口只准备一次，别名归入同一单元；冲突拒绝。CLI 启动相邻的 `codeana-typescript-worker`，SDK 使用 `CODEANA_TYPESCRIPT_SDK` 绝对路径，或安装目录 `lib/typescript/current`；不运行包管理器。准备使用显式依赖根、任务预算和超时，scratch 在目标项目外。
 
-当前 `index --prepare` 能生成并捕获清单；后续语义执行明确返回 `TYPESCRIPT_INPUT_NOT_READY`，不会发布占位语义。pnpm 与有声明产物的 references 闭包已有真实验证；空根 solution、多配置编排及缺产物的产品建议仍需补齐。
+当前 `index --prepare` 能生成并捕获清单；后续语义执行明确返回 `TYPESCRIPT_INPUT_NOT_READY`，不会发布占位语义。pnpm 与有声明产物的 references 闭包已有真实验证；空根 solution 和多配置准备已接入；缺产物的产品建议仍需补齐。
 
 ## 输入与降级
 
@@ -262,7 +262,7 @@ Java 的每个声明 jar 路径都核对原字节，不能因相同 SHA 的另�
 | 配额 | 单元 manifest 的总引用数最多 10000，重复上下文引用和公共控制也计入；原全局 manifest、内容及观察配额继续执行 |
 | 冲突 | 允许相同物理根的独立实例；重复模块 ID、同实例角色矛盾、相同路径不同内容仍失败，不通过改公开 ID 消除冲突 |
 
-普通/prepared 已共用冻结单元视图和公共执行器，分别选择 Full/Delta/Reuse 并一次发布。真实 TS pnpm/references 冻结闭包仍未完成；来源映射的 TS 产品证明随其接入验证。
+普通/prepared 已共用冻结单元视图和公共执行器，分别选择 Full/Delta/Reuse 并一次发布。TS pnpm/references 冻结闭包已有组件验证；来源映射的 TS 产品证明随产品执行接入验证。
 
 普通后端上下文只保留自己的 UnitInput、语言配置和模块，并引用同一 TaskConfig；配置解析期间的原生发现也按后端登记观察，prepared 的现有实例作用域保持。Java 的流式/归档结果先按单元 manifest 核实，私有候选使用完整 revision manifest，FILES 仍保留全项目资源。
 
@@ -273,3 +273,7 @@ Java 单元还保留项目根模块的 XML 资源输入规则：启用 Spring XM
 多个 JS/TS 入口可使用不同 compiler 配置且共享相同的模块策略；相同源文件按各 context 的 world 独立登记。重复 module ID 仅允许完全一致的脚本策略，其他冲突拒绝。同一 Program 可按文件归属多个脚本 module：匹配当前 scope 的源码根，最长目录前缀优先；同深度不同 owner 拒绝。显式模块没有覆盖的文件仅作为辅助输入，JS/TS 标签不拆分编译器实例。
 
 TypeScript 的单元冻结视图可生成 FrozenInputs schema 1：每个原生文件都有实际捕获内容引用，发布标记来自当前过滤结果。source 是 VFS 身份，input 是 task-owned spool 内容对象；spool 位置不参与语义摘要。worker 校验实例、SDK、大小和 SHA 后组装只读 VFS，调用方持续持有捕获租约。真实交接由 test-typescript-handoff 验证，公开语义与产品执行仍待完成。
+
+TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返回的配置路径逐上下文准备，最多 256 个上下文，菱形引用只准备一次、循环引用拒绝；solution 自身作为零发布单元保留配置/观察。仅当选择的入口为空根 solution 时展开引用闭包，普通消费者仍只发布自身来源；外部引用源码需单独项目配置，当前跨项目只消费显式依赖声明。catalog 3 的同一 TS 入口可覆盖多个独立单元，其他后端仍要求一份归属；缺配置失败后不切换活动清单。旧 inputs4 SDK 必须重建，TS ABI 1 / analysis 1 / 输入清单 1 不变。公开语义与产品执行仍未接入。
+
+跨入口的同 ID TS 上下文须经完整 semantic_digest、发布标签和模式核对才合并，入口/root 归属合并后去重；每份原配置和清单仍认证。不同上下文冲突及全局超过 256 个单元，在切换活动 catalog 前失败。

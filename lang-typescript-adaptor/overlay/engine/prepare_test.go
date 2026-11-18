@@ -504,3 +504,47 @@ func TestCaseInsensitivePreparationRecordsPhysicalFileAndLinkSpelling(t *testing
 		t.Fatal("case/link aliases lost calls", calls)
 	}
 }
+
+func TestRootlessSolutionKeepsReferenceControlsWithoutPublishingSources(t *testing.T) {
+	request, meter := preparationFixture(t)
+	leaf := filepath.Join(request.ProjectRoot, "leaf")
+	if err := os.Mkdir(leaf, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for name, text := range map[string]string{
+		request.ConfigPath:                   `{"compilerOptions":{"noLib":true},"files":[],"references":[{"path":"./leaf"}]}`,
+		filepath.Join(leaf, "tsconfig.json"): `{"compilerOptions":{"noLib":true,"composite":true},"files":["index.ts"]}`,
+		filepath.Join(leaf, "index.ts"):      "export const answer = 42;",
+	} {
+		if err := os.WriteFile(name, []byte(text), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	project, err := DiscoverProject(context.Background(), request, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(project.Context.RootFiles) != 0 || len(project.Context.References) != 1 || project.Context.References[0] != filepath.Join(leaf, "tsconfig.json") {
+		t.Fatal("rootless solution lost compiler reference identity", project.Context)
+	}
+	controls := map[string]bool{}
+	for _, file := range project.Files {
+		if file.File.Role == pb.FileRole_PUBLISH {
+			t.Fatal("solution published a referenced project source", file.File)
+		}
+		controls[file.File.Path] = true
+		if err := os.Remove(file.File.Path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if !controls[request.ConfigPath] || !controls[filepath.Join(leaf, "tsconfig.json")] {
+		t.Fatal("solution/reference controls missing", controls)
+	}
+	program, err := OpenProgram(project, meter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := program.WalkCallBindings(context.Background(), func(CallBinding) error { t.Fatal("empty solution emitted calls"); return nil }); err != nil {
+		t.Fatal(err)
+	}
+}

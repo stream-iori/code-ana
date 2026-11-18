@@ -245,7 +245,8 @@ pub fn decode_inventory(bytes: &[u8]) -> Result<p::PreparationInventory> {
                     },
                 )?;
                 ensure!(
-                    context & mask(&[1, 2, 3, 4, 9, 11]) == mask(&[1, 2, 3, 4, 9, 11]),
+                    context & mask(&[1, 2, 3, 4, 11]) == mask(&[1, 2, 3, 4, 11])
+                        && context & mask(&[9, 10]) != 0,
                     "TYPESCRIPT_CONTEXT_FIELDS"
                 );
                 inventory_languages(value)?;
@@ -337,6 +338,17 @@ mod inventory_tests {
         let mut missing = original;
         missing.context.as_mut().unwrap().case_sensitive = None;
         assert!(decode_inventory(&missing.encode_to_vec()).is_err());
+    }
+    #[test]
+    fn rootless_inventory_requires_reference_context_before_decode() {
+        let mut inventory = valid();
+        inventory.context.as_mut().unwrap().root_files.clear();
+        assert!(decode_inventory(&inventory.encode_to_vec()).is_err());
+        inventory.context.as_mut().unwrap().references = vec!["/project/leaf/tsconfig.json".into()];
+        assert_eq!(
+            decode_inventory(&inventory.encode_to_vec()).unwrap(),
+            inventory
+        );
     }
     #[test]
     fn inventory_enums_and_explicit_booleans_are_checked_before_decode() {

@@ -516,6 +516,7 @@ pub(super) fn resolve_using(
                         .as_ref()
                         .is_some_and(|language| language.enabled == Some(true)),
                 })
+                && unit.entries.iter().collect::<BTreeSet<_>>().len() == unit.entries.len()
                 && unit.entries.len() == unit.roots.len()
                 && unit
                     .entries
@@ -593,9 +594,17 @@ pub(super) fn resolve_using(
             && effective
                 .input_units
                 .iter()
-                .map(|u| u.prepared.entries.len())
-                .sum::<usize>()
-                == entries.len()
+                .filter(|unit| unit.prepared.backend != AnalysisBackend::TypeScript)
+                .flat_map(|unit| &unit.prepared.entries)
+                .collect::<Vec<_>>()
+                .len()
+                == effective
+                    .input_units
+                    .iter()
+                    .filter(|unit| unit.prepared.backend != AnalysisBackend::TypeScript)
+                    .flat_map(|unit| &unit.prepared.entries)
+                    .collect::<BTreeSet<_>>()
+                    .len()
             && preparation.entries.iter().all(|e| entries.contains(&e.id)),
         "INPUT_CATALOG_ENTRY_COVERAGE"
     );

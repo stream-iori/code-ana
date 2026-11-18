@@ -11,7 +11,7 @@ pub use frozen::{FROZEN_INPUT_SCHEMA, FrozenFile, FrozenInputs};
 
 pub const INPUT_SCHEMA: u32 = 1;
 /// Minimum bridge semantics, independently of the stable C calling convention.
-pub const ADAPTER_REVISION: u32 = 4;
+pub const ADAPTER_REVISION: u32 = 5;
 pub const ABI_VERSION: u32 = 1;
 pub const ANALYSIS_VERSION: u32 = 1;
 pub const PRODUCER: &str = "typescript-core";
@@ -170,7 +170,7 @@ impl Context {
                 .any(|language| !AnalysisBackend::TypeScript.supports(*language))
             || self.publish_languages.iter().collect::<BTreeSet<_>>().len()
                 != self.publish_languages.len()
-            || self.root_files.is_empty()
+            || (self.root_files.is_empty() && self.references.is_empty())
             || self
                 .root_files
                 .iter()
@@ -208,9 +208,10 @@ impl Context {
             }
             match file.role {
                 FileRole::Publish => {
-                    if file
-                        .language
-                        .is_none_or(|language| !self.publish_languages.contains(&language))
+                    if self.root_files.is_empty()
+                        || file
+                            .language
+                            .is_none_or(|language| !self.publish_languages.contains(&language))
                         || file.module.as_deref().is_none_or(|module| !text(module))
                         || !matches!(file.scope.as_deref(), Some("MAIN" | "TEST"))
                         || file.world.as_ref().is_none_or(|world| !text(world))
@@ -516,6 +517,24 @@ mod tests {
         let mut changed = value;
         changed["generation"] = serde_json::json!("temporary-location");
         assert!(serde_json::from_value::<Inputs>(changed).is_err());
+    }
+    #[test]
+    fn rootless_solution_requires_explicit_references() {
+        let mut inputs = fixture();
+        inputs.contexts[0].root_files.clear();
+        assert_eq!(inputs.validate().unwrap_err(), "TYPESCRIPT_PROJECT_CONTEXT");
+        inputs.contexts[0]
+            .references
+            .push("/virtual/leaf/tsconfig.json".into());
+        for file in &mut inputs.contexts[0].files {
+            if file.role == FileRole::Publish {
+                file.role = FileRole::Auxiliary;
+                file.module = None;
+                file.scope = None;
+                file.world = None;
+            }
+        }
+        inputs.validate().unwrap();
     }
     #[test]
     fn malformed_observations_and_ownership_cannot_certify_inputs() {

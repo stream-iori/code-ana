@@ -103,13 +103,13 @@ JS/TS 各自显式启用，共用原生清单与依赖根。普通输入按 comp
 
 ## 解析闭包专项
 
-`just test-typescript-resolution SDK NEW_EVIDENCE` 必须执行真实准备与公共 Rust capture 的四组 fixture：extends/paths、pnpm/exports、NodeNext/imports、typesVersions。普通无 Go 门禁显式忽略该真实编译器测试，专项入口强制执行并核对四组证明。相同 JSON fixture 也进入构建时 Go 测试，验证捕获后删除活文件的实际 Checker 重放及重复调用目标。references、多配置和缺声明产物仍待补齐。
+`just test-typescript-resolution SDK NEW_EVIDENCE` 必须执行真实准备与公共 Rust capture 的五组 fixture：extends/paths、pnpm/exports、NodeNext/imports、typesVersions、reference 声明产物。普通无 Go 门禁显式忽略该真实编译器测试，专项入口强制执行并核对五组证明。相同 JSON fixture 也进入构建时 Go 测试，验证捕获后删除活文件的实际 Checker 重放及重复调用目标。references 闭包及多配置准备已接入；缺声明产物的产品 BuildAdvice 仍待接入。
 
 ## project references 的冻结闭包
 
 inputs3 SDK 保留 compiler 配置给出的有序 references，按内核的引用映射区分消费者输入与引用项目的源码/声明产物。已有 `.d.ts` 可作为辅助解析输入，不能由消费者发布；缺产物记录真实失败查找，不改用引用源码充当实现目标，不自动构建。引用配置的 content mapper 仍明确拒绝。Go 冻结重放校验 references 与封存配置一致。
 
-共享 fixture 现为五组，新增 reference 声明目标；另有缺声明产物的两次 unknown 调用测试。实际 SDK / ABI / provider / 公共 capture 及聚焦 Rust 门禁均通过，见当前实现的 t3-references 回执。空根 solution、多配置编排和产品诊断/BuildAdvice 仍待完成；协议不变，旧 inputs2 SDK 要求重建。
+共享 fixture 现为五组，新增 reference 声明目标；另有缺声明产物的两次 unknown 调用测试。实际 SDK / ABI / provider / 公共 capture 及聚焦 Rust 门禁均通过，见当前实现的 t3-references 回执。空根 solution 和多配置准备现已接入；产品诊断/BuildAdvice 仍待完成。当前要求 inputs5 SDK，公共协议不变。
 
 公共 capture 的单元选择按稳定 unit ID 读取封存 context，不从后端重新选择整份清单；多个 context 不允许仅凭 TypeScript 后端猜选。CLI 多配置测试已实际验证相同文件、共享模块策略与独立 world。当前任务资源策略仍从共享 task 读取，冻结输入不会恢复旧预算。
 
@@ -119,7 +119,7 @@ JS/TS 的旧式 inputs_manifest 可以引用两份不同位置但语义等价的
 
 ## 物理拼写
 
-当前最小 adapter 为 inputs4。Darwin 准备器使用只读 FD 的物理路径，保留文件和 symlink 自身拼写，不枚举全局目录来猜测大小写；按内核 canonical 规则核对并拒绝不同物理条目的冲突。Rust 通过已封存目录名称验证文件及父路径的精确拼写，避免内容相同的改名沿用旧清单。
+当前最小 adapter 为 inputs5。Darwin 准备器使用只读 FD 的物理路径，保留文件和 symlink 自身拼写，不枚举全局目录来猜测大小写；按内核 canonical 规则核对并拒绝不同物理条目的冲突。Rust 通过已封存目录名称验证文件及父路径的精确拼写，避免内容相同的改名沿用旧清单。
 
 `just test-typescript-spelling SDK NEW_EVIDENCE` 是显式不区分大小写卷的真实门禁，缺该卷会失败而不跳过。验证 Actual.ts / Link.ts 经真实 SDK 进入公共 capture、同字节改名拒绝和删活文件后的正文；Go 测试另验证两个大小写/链接别名调用在冻结后仍绑定正确文件。其他平台的不区分大小写捕获明确 unsupported，Linux 等平台仍需独立验证。
 
@@ -130,3 +130,7 @@ JS/TS 的旧式 inputs_manifest 可以引用两份不同位置但语义等价的
 `just test-typescript-handoff SDK EVIDENCE` 复用现有真实输入入口的 --handoff，强制运行独立 ignored SDK 用例：公共 capture 后删除活输入，经上述组装进入真实 Go ABI，再验证原始 GRA1 与两次调用目标。当前是 5 行组件诊断图，不能作为公开 TS 声明/调用图或产品索引放行。config 仅为 worker 集成测试的 dev-dependency，生产 worker 不依赖 config。
 
 CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roots 和当前 MAIN/TEST scope；最长路径前缀决定 owner，同深度多模块返回 TYPESCRIPT_MODULE_OWNER_CONFLICT。未覆盖文件保留辅助角色并清空 module/scope/world。模块语言选择共享后端，不把 JS/TS Program 拆成两个执行实例；world 仍由 context/module/scope 生成。此为主机清单归一，不改变 SDK、ABI 或 wire。
+
+TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返回的配置路径逐上下文准备，最多 256 个上下文，菱形引用只准备一次、循环引用拒绝；solution 自身作为零发布单元保留配置/观察。仅当选择的入口为空根 solution 时展开引用闭包，普通消费者仍只发布自身来源；外部引用源码需单独项目配置，当前跨项目只消费显式依赖声明。catalog 3 的同一 TS 入口可覆盖多个独立单元，其他后端仍要求一份归属；缺配置失败后不切换活动清单。旧 inputs4 SDK 必须重建，TS ABI 1 / analysis 1 / 输入清单 1 不变。公开语义与产品执行仍未接入。
+
+跨入口的同 ID TS 上下文须经完整 semantic_digest、发布标签和模式核对才合并，入口/root 归属合并后去重；每份原配置和清单仍认证。不同上下文冲突及全局超过 256 个单元，在切换活动 catalog 前失败。

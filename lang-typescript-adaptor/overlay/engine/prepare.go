@@ -50,13 +50,13 @@ func DiscoverProject(ctx context.Context, request *pb.Prepare, meter *Meter) (*p
 	if len(config.ParsedConfig.ContentMappers) != 0 {
 		return nil, &Fault{Code: pb.FailureCode_UNSUPPORTED_CONTEXT, Message: "configuration content mappers are disabled"}
 	}
-	if len(config.ParsedConfig.FileNames) == 0 {
+	if len(config.ParsedConfig.FileNames) == 0 && len(config.ProjectReferences()) == 0 {
 		return nil, invalid("preparation compiler context has no root files")
 	}
 	if err := meter.Charge(uint64(len(config.ParsedConfig.FileNames))+1, 1, uint64(len(config.ParsedConfig.FileNames))*256+4*1024*1024); err != nil {
 		return nil, err
 	}
-	if config.ParsedConfig.CompilerOptions.NoLib != core.TSTrue {
+	if len(config.ParsedConfig.FileNames) != 0 && config.ParsedConfig.CompilerOptions.NoLib != core.TSTrue {
 		var bytes uint64
 		for _, name := range bundled.LibNames {
 			text, ok := filesystem.ReadFile(bundled.LibPath() + "/" + name)

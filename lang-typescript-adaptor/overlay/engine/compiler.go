@@ -70,7 +70,7 @@ func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
 	if !slices.Equal(context.References, config.ResolvedProjectReferencePaths()) {
 		return nil, invalid("captured project reference order changed")
 	}
-	if len(config.ParsedConfig.FileNames) == 0 {
+	if len(config.ParsedConfig.FileNames) == 0 && len(config.ProjectReferences()) == 0 {
 		return nil, invalid("compiler context has no root files")
 	}
 	if len(context.RootFiles) != len(config.ParsedConfig.FileNames) {
@@ -87,7 +87,7 @@ func OpenProgram(project *pb.FrozenProject, meter *Meter) (*Program, error) {
 	}
 	// Embedded ReadFile returns an immutable string without allocation. Reserve
 	// parser/checker workspace before NewProgram; RSS remains supervisor-enforced.
-	if config.ParsedConfig.CompilerOptions.NoLib != core.TSTrue {
+	if len(config.ParsedConfig.FileNames) != 0 && config.ParsedConfig.CompilerOptions.NoLib != core.TSTrue {
 		if err := meter.Charge(uint64(len(bundled.LibNames)), 0, uint64(len(bundled.LibNames))*128); err != nil {
 			return nil, err
 		}
