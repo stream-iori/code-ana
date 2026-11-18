@@ -112,3 +112,7 @@ inputs3 SDK 保留 compiler 配置给出的有序 references，按内核的引�
 共享 fixture 现为五组，新增 reference 声明目标；另有缺声明产物的两次 unknown 调用测试。实际 SDK / ABI / provider / 公共 capture 及聚焦 Rust 门禁均通过，见当前实现的 t3-references 回执。空根 solution、多配置编排和产品诊断/BuildAdvice 仍待完成；协议不变，旧 inputs2 SDK 要求重建。
 
 公共 capture 的单元选择按稳定 unit ID 读取封存 context，不从后端重新选择整份清单；多个 context 不允许仅凭 TypeScript 后端猜选。CLI 多配置测试已实际验证相同文件、共享模块策略与独立 world。当前任务资源策略仍从共享 task 读取，冻结输入不会恢复旧预算。
+
+## 等价旧式清单
+
+JS/TS 的旧式 inputs_manifest 可以引用两份不同位置但语义等价的原生清单，也可只给一个共享位置。公共 config 规范化文件/观察顺序后比较语义身份，仍认证并捕获每份已声明清单的原字节。不同内容明确冲突，不自动合并不同发布选择。普通计划按封存单元 ID 枚举 compiler context，并以内部短序号创建 scratch。五组真实解析 fixture 与八个实际 CLI 场景已验证该路径；公开语义图仍待接入。

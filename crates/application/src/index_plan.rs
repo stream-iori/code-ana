@@ -120,19 +120,38 @@ impl IndexPlan {
                 .collect();
             backends.extend(effective.inputs.iter().map(|i| i.backend()));
             for backend in backends {
-                admit(backend.as_str(), 0)?;
-                let ready = effective.inputs.iter().any(|i| i.backend() == backend);
-                units.push(PlannedUnit {
-                    id: backend.as_str().into(),
-                    language: backend,
-                    availability: if ready {
-                        UnitAvailability::Ready
-                    } else {
-                        UnitAvailability::FilesOnly
-                    },
-                    prepared_index: None,
-                    previous: None,
-                });
+                let ready = effective
+                    .inputs
+                    .iter()
+                    .any(|input| input.backend() == backend);
+                if ready {
+                    let mut found = false;
+                    for view in capture
+                        .unit_views
+                        .values()
+                        .filter(|view| view.backend == backend)
+                    {
+                        admit(&view.unit, 0)?;
+                        units.push(PlannedUnit {
+                            id: view.unit.clone(),
+                            language: backend,
+                            availability: UnitAvailability::Ready,
+                            prepared_index: None,
+                            previous: None,
+                        });
+                        found = true;
+                    }
+                    ensure!(found, "CAPTURE_UNIT_VIEW_MISSING");
+                } else {
+                    admit(backend.as_str(), 0)?;
+                    units.push(PlannedUnit {
+                        id: backend.as_str().into(),
+                        language: backend,
+                        availability: UnitAvailability::FilesOnly,
+                        prepared_index: None,
+                        previous: None,
+                    });
+                }
             }
         }
         if let Some(baseline) = baseline {
@@ -298,6 +317,53 @@ mod tests {
             },
             context: effective.map(|value| value.context),
         }
+    }
+
+    #[test]
+    fn ordinary_script_contexts_plan_actual_frozen_ids_in_one_backend() -> Result<()> {
+        let project = tempfile::tempdir()?;
+        let root = project.path().canonicalize()?;
+        std::fs::create_dir(root.join(".code-ana"))?;
+        let source = "export const a=1;";
+        let compiler_config = r#"{"compilerOptions":{"noLib":true},"files":["a.ts"]}"#;
+        std::fs::write(root.join("a.ts"), source)?;
+        std::fs::write(root.join("tsconfig.json"), compiler_config)?;
+        let files = vec![
+            serde_json::json!({"path":root.join("a.ts"),"sha256":hash(source),"bytes":source.len(),"role":"publish","language":"typescript","module":"app","scope":"MAIN","world":"typescript/main"}),
+            serde_json::json!({"path":root.join("tsconfig.json"),"sha256":hash(compiler_config),"bytes":compiler_config.len(),"role":"control","language":null,"module":null,"scope":null,"world":null}),
+        ];
+        let context = serde_json::json!({"unit":"typescript/app/main","root":root,"config_path":root.join("tsconfig.json"),"publish_languages":["typescript"],"case_sensitive":!root.join("TSCONFIG.JSON").exists(),"root_files":[root.join("a.ts")],"references":[],"files":files,"directories":[],"links":[],"absent":[]});
+        let mut second = context.clone();
+        second["unit"] = serde_json::json!("typescript/app/test");
+        second["files"][0]["world"] = serde_json::json!("typescript/test");
+        let metadata = serde_json::json!({"schema_version":1,"compiler":{"adapter":"synthetic-planning-test","upstream_commit":"a".repeat(40),"typescript_commit":"b".repeat(40),"compiler_version":"synthetic","go_version":"synthetic","library_sha256":"a".repeat(64),"header_sha256":"b".repeat(64),"standard_library_digest":"c".repeat(64),"analysis_proto_sha256":"d".repeat(64),"graph_proto_sha256":"e".repeat(64)},"contexts":[context,second]});
+        std::fs::write(
+            root.join(".code-ana/native.json"),
+            serde_json::to_vec(&metadata)?,
+        )?;
+        std::fs::write(
+            root.join(".code-ana/config.toml"),
+            "schema_version=1\nkind='project'\n[languages.typescript]\nenabled=true\n[languages.typescript.discovery]\ninputs_manifest='.code-ana/native.json'\n[[modules]]\nid='app'\nlanguage='typescript'\nroot='.'\n",
+        )?;
+        let frozen = codeana_config::capture(&root, &Request::default())?;
+        let plan = IndexPlan::build(&frozen, None)?;
+        assert_eq!(plan.participants, [AnalysisBackend::TypeScript]);
+        assert_eq!(
+            plan.units
+                .iter()
+                .map(|unit| unit.id.as_str())
+                .collect::<Vec<_>>(),
+            ["typescript/app/main", "typescript/app/test"]
+        );
+        for unit in &plan.units {
+            assert_eq!(unit.availability, UnitAvailability::Ready);
+            let child = frozen.unit_capture(&unit.id)?;
+            assert_eq!(
+                child.effective.typescript_inputs().unwrap().contexts[0].unit,
+                unit.id
+            );
+        }
+        Ok(())
     }
 
     #[test]

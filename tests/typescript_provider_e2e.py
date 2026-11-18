@@ -71,6 +71,11 @@ def main():
         assert 'TYPESCRIPT_CONTEXT_CONFLICT' in run('conflict','index','--prepare');assert sha256(state/'inputs.json')==retained
         config(aliases=True);old=catalog();old['schema_version']=2;(state/'inputs.json').write_text(json.dumps(old))
         assert 'INPUT_CATALOG_STALE' in run('old-catalog','index')
+        (state/'legacy-a.json').write_text(json.dumps(original))
+        alias=json.loads(json.dumps(original));alias['contexts'][0]['files'].reverse()
+        (state/'legacy-b.json').write_text(json.dumps(alias,indent=2))
+        (state/'config.toml').write_text("schema_version=1\nkind='project'\n[languages.javascript]\nenabled=true\n[languages.javascript.discovery]\ninputs_manifest='.code-ana/legacy-a.json'\n[languages.typescript]\nenabled=true\n[languages.typescript.discovery]\ninputs_manifest='.code-ana/legacy-b.json'\n[[modules]]\nid='app'\nlanguage='typescript'\nroot='.'\n")
+        assert 'TYPESCRIPT_INPUT_NOT_READY' in run('legacy-equivalent-locators','index')
         after=identities(paths);report['artifact_drift']=[path for path in sorted(before.keys()|after.keys()) if before.get(path)!=after.get(path)]
         assert not report['artifact_drift'];report.update(status='passed',executed_count=len(report['commands']),one_shared_backend=True,source_tags=['javascript','typescript'])
     except Exception as failure:

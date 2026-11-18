@@ -74,6 +74,13 @@ def main():
                     '--publish-language', 'typescript']
             run(case['name'], argv, dict(os.environ, PATH=''))
             native = json.loads((state / 'native.json').read_text())
+            # Both explicit source switches can name distinct equivalent native
+            # inventories. Formatting/order changes are not compiler contexts.
+            alias = json.loads(json.dumps(native))
+            alias['contexts'][0]['files'].reverse()
+            (state / 'alias.json').write_text(json.dumps(alias, indent=2))
+            with (state / 'config.toml').open('a') as stream:
+                stream.write("[languages.javascript]\nenabled=true\n[languages.javascript.discovery]\ninputs_manifest='.code-ana/alias.json'\n")
             context = native['contexts'][0]
             target = str(project) + case['target']
             assert any(file['path'] == target for file in context['files'])

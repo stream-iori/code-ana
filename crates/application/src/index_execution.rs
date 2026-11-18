@@ -147,10 +147,11 @@ impl IndexTask {
             );
             let memory = memory / count;
             ensure!(memory > 0, "WORKER_MEMORY_BUDGET");
-            for unit in plan
+            for (index, unit) in plan
                 .units
                 .iter()
                 .filter(|u| u.availability == UnitAvailability::Ready)
+                .enumerate()
             {
                 let memory = if capture
                     .effective
@@ -167,7 +168,7 @@ impl IndexTask {
                 };
                 let mut child = capture.unit_capture(&unit.id)?;
                 child.effective.set_worker_memory_limit(memory);
-                let directory = sessions.scratch.path().join(unit.id.as_str());
+                let directory = sessions.scratch.path().join(format!("u{index}"));
                 std::fs::create_dir(&directory)?;
                 let input = self
                     .prepare_analysis_unit(crate::analysis_unit::Preparation {

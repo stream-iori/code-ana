@@ -15,6 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T3 等价清单与普通计划（2026-11-18）
+
+| 已实现 / 验证 | 结果 |
+|---|---|
+| 旧式 JS/TS 原生清单定位 | 内容先规范化比较；位置、JSON 排版和文件枚举顺序不形成新 context；两份已声明清单均捕获认证 |
+| 真实闭包 | 五组实际 SDK 清单改用两份等价定位，公共 Rust capture 全部通过，无漂移 |
+| 普通计划 | 使用实际冻结单元 ID；两个原生 context 保留两个实例，共用 TypeScript 后端参与者 |
+| 内部路径 | scratch 由任务内部短序号命名，不把公开 ID 当作相对路径 |
+| 聚焦 / CLI | 应用 68、配置 64、链接 13、观察 5、TS 输入 13 与聚焦 clippy 通过；真实 CLI 8/8，通过无漂移 |
+
+真实回执为 `target/typescript-c-abi/t3-inventory-normalization-real-first/receipt.json`、`t3-inventory-normalization-provider-fixed/receipt.json`。首次 CLI 的 CAPTURE_UNIT_VIEW_MISSING 原日志保留；已补普通多 context 计划测试并修正。首次三语言普通矩阵 9/10：三后端更新触发 Java 主机账户 payload 份额上限；三个 worker 均正常完成。单例对照只将长摘要目录名改为短序号，原 fixture/预算不变，全部更新与全量等价断言通过，Java 主机最终用量 44,399,190 / 44,730,549 字节。原报告保留于 `t3-inventory-normalization-quota-audit`，对照报告在 `t3-inventory-normalization-short-scratch-audit`。修正后的三语言普通矩阵 10/10、workspace JS/TS CLI 8/8 及完整 just test-rust 均通过，无产物漂移。汇总回执为 `target/typescript-c-abi/t3-inventory-normalization-sealed/receipt.json`。清单必须语义等价；不同内容仍拒绝，不将不同发布选择自动合并。
+
 ## TypeScript T3 多配置与单元选择（2026-11-18）
 
 | 已实现 / 验证 | 结果 |

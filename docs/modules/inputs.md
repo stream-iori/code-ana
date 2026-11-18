@@ -103,7 +103,7 @@ inputs_manifest = ".code-ana/typescript-inputs.json"
 dependency_roots = []
 ```
 
-两个源码开关独立，共用一份 TypeScript 原生清单和有序依赖根；不创建两份后端预算。清单 schema 1 为 `model::typescript::Inputs`，包括 SDK 内容身份、每个 compiler context 的文件/角色/大小写/目录/链接/失败查找。每个 context 形成自己的冻结单元。SDK 安装路径和准备清单位置不进入语义身份，实际库摘要进入；禁用语言后必须重新准备，不能沿用仍发布该标签的清单。
+两个源码开关独立，共用一份 TypeScript 原生上下文和有序依赖根；不创建两份后端预算。清单 schema 1 为 `model::typescript::Inputs`，包括 SDK 内容身份、每个 compiler context 的文件/角色/大小写/目录/链接/失败查找。每个 context 形成自己的冻结单元。两个开关可引用不同位置的等价原生清单，也可由一个位置提供共享清单；Rust 先规范化比较内容，所有已声明清单仍须完整捕获校验。SDK 安装路径和准备清单位置不进入语义身份，实际库摘要进入；禁用语言后必须重新准备，不能沿用仍发布该标签的清单。
 
 公共 capture 验证字节与观察并使用任务自有 spool。目录存在和完整枚举分开；某路径不是文件不表示该路径也不是目录。外部依赖正文必须位于显式 dependency_roots，禁止用 `/` 授权整个文件系统；祖先 package/type 的失败查找仅授权精确元数据观察，不授权内容回退。过滤的源码仍可作为辅助 Checker 输入，不能发布其语义。
 

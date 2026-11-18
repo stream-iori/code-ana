@@ -221,6 +221,12 @@ fn conflicting_source_configuration_and_undeclared_content_are_rejected() -> Res
     let (_temp, root, mut inputs) = fixture()?;
     let config = root.join(".code-ana/config.toml");
     let text = std::fs::read_to_string(&config)?;
+    let mut other = inputs.clone();
+    other.compiler.library_sha256 = "c".repeat(64);
+    std::fs::write(
+        root.join(".code-ana/other.json"),
+        serde_json::to_vec(&other)?,
+    )?;
     std::fs::write(&config, text.replacen("native.json", "other.json", 1))?;
     assert!(
         format!("{:#}", resolve(&root, &Request::default()).err().unwrap())
@@ -479,6 +485,15 @@ fn actual_resolution_inventories_freeze_roles_and_reject_stale_observations() ->
             .collect::<Result<std::collections::BTreeMap<_, _>>>()?;
         let frozen = capture(&root, &Request::default())?;
         assert_eq!(frozen.unit_views.len(), 1);
+        for descriptor in [".code-ana/native.json", ".code-ana/alias.json"] {
+            assert!(
+                frozen
+                    .manifest
+                    .files
+                    .iter()
+                    .any(|file| file.path == descriptor && file.scope == "PREPARATION")
+            );
+        }
         let published = frozen
             .manifest
             .files
@@ -531,5 +546,56 @@ fn actual_resolution_inventories_freeze_roles_and_reject_stale_observations() ->
         evidence.join("capture-proof.json"),
         serde_json::to_vec_pretty(&proofs)?,
     )?;
+    Ok(())
+}
+
+#[test]
+fn equivalent_inventory_locations_are_normalized_before_context_conflict_checks() -> Result<()> {
+    let (_temp, root, inputs) = fixture()?;
+    let baseline = resolve(&root, &Request::default())?.semantic_digest.clone();
+    let mut reordered = inputs.clone();
+    reordered.contexts[0].files.reverse();
+    reordered.contexts[0].absent.reverse();
+    std::fs::write(
+        root.join(".code-ana/alias.json"),
+        serde_json::to_vec_pretty(&reordered)?,
+    )?;
+    let path = root.join(".code-ana/config.toml");
+    let text = std::fs::read_to_string(&path)?;
+    std::fs::write(&path, text.replacen("native.json", "alias.json", 1))?;
+    let resolved = resolve(&root, &Request::default())?;
+    assert_eq!(resolved.inputs.len(), 1);
+    assert_eq!(resolved.semantic_digest, baseline);
+    let frozen = capture(&root, &Request::default())?;
+    assert_eq!(frozen.unit_views.len(), 1);
+    for descriptor in [".code-ana/native.json", ".code-ana/alias.json"] {
+        assert!(
+            frozen
+                .manifest
+                .files
+                .iter()
+                .any(|file| file.path == descriptor && file.scope == "PREPARATION")
+        );
+    }
+    assert_eq!(
+        frozen
+            .manifest
+            .files
+            .iter()
+            .filter(|file| !file.auxiliary && !file.language.is_empty())
+            .count(),
+        2
+    );
+    // One locator can supply the shared context when the other enabled source
+    // language declares no separate locator.
+    std::fs::write(
+        &path,
+        text.replacen("inputs_manifest='.code-ana/native.json'\n", "", 1),
+    )?;
+    assert_eq!(
+        resolve(&root, &Request::default())?.semantic_digest,
+        baseline
+    );
+    assert_eq!(capture(&root, &Request::default())?.unit_views.len(), 1);
     Ok(())
 }

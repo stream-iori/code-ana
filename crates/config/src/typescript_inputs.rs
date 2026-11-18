@@ -20,9 +20,8 @@ pub fn configuration(
         };
         if let Some(previous) = discovery {
             ensure!(
-                previous.inputs_manifest == script.discovery.inputs_manifest
-                    && previous.dependency_roots == script.discovery.dependency_roots,
-                "TYPESCRIPT_CONTEXT_CONFLICT: JS/TS in one backend require the same inventory and ordered dependency roots"
+                previous.dependency_roots == script.discovery.dependency_roots,
+                "TYPESCRIPT_CONTEXT_CONFLICT: JS/TS in one backend require the same ordered dependency roots"
             );
         }
         for root in &script.discovery.dependency_roots {
@@ -50,10 +49,40 @@ pub fn configuration(
                 == script.discovery.dependency_roots.len(),
             "TYPESCRIPT_DEPENDENCY_ROOT_DUPLICATE"
         );
-        discovery = Some(&script.discovery);
+        if discovery.is_none_or(|previous| previous.inputs_manifest.is_none()) {
+            discovery = Some(&script.discovery);
+        }
         enabled.push(language);
     }
     Ok(discovery.map(|discovery| (discovery, enabled)))
+}
+
+// Descriptor locations authenticate prepared bytes; equivalent locations do
+// not define separate compiler contexts or backend allocations.
+fn manifest_paths(config: &ProjectConfig) -> BTreeSet<&str> {
+    [&config.languages.javascript, &config.languages.typescript]
+        .into_iter()
+        .filter_map(|script| script.as_ref())
+        .filter(|script| script.enabled == Some(true))
+        .filter_map(|script| script.discovery.inputs_manifest.as_deref())
+        .collect()
+}
+
+fn read_inventory(
+    project: &Path,
+    path: &str,
+    reader: &dyn InputReader,
+) -> Result<(Vec<u8>, Inputs)> {
+    ensure!(safe_path(path), "TYPESCRIPT_MANIFEST_PATH");
+    let file = project.join(path);
+    ensure!(
+        !file.is_symlink() && file.canonicalize()?.starts_with(project),
+        "TYPESCRIPT_MANIFEST_PATH"
+    );
+    let bytes = reader.read(&file, 32 << 20)?;
+    let inputs: Inputs = serde_json::from_slice(&bytes)?;
+    inputs.validate().map_err(anyhow::Error::msg)?;
+    Ok((bytes, inputs))
 }
 
 pub(crate) fn discover_using(
@@ -68,18 +97,19 @@ pub(crate) fn discover_using(
     if !semantic {
         return Ok(None);
     }
-    let path = discovery
-        .inputs_manifest
-        .as_deref()
+    let mut inventories = manifest_paths(config).into_iter();
+    let first = inventories
+        .next()
         .context("TYPESCRIPT_INPUTS_REQUIRED: run explicit input preparation")?;
-    ensure!(safe_path(path), "TYPESCRIPT_MANIFEST_PATH");
-    let file = project.join(path);
-    ensure!(
-        !file.is_symlink() && file.canonicalize()?.starts_with(project),
-        "TYPESCRIPT_MANIFEST_PATH"
-    );
-    let inputs: Inputs = serde_json::from_slice(&reader.read(&file, 32 << 20)?)?;
-    inputs.validate().map_err(anyhow::Error::msg)?;
+    let (_, inputs) = read_inventory(project, first, reader)?;
+    let identity = inputs.semantic_digest();
+    for path in inventories {
+        let (_, other) = read_inventory(project, path, reader)?;
+        ensure!(
+            other.semantic_digest() == identity,
+            "TYPESCRIPT_CONTEXT_CONFLICT: normalized JS/TS inventories differ"
+        );
+    }
     let dependencies = discovery
         .dependency_roots
         .iter()
@@ -163,41 +193,35 @@ pub(super) fn capture(
     };
     let (discovery, _) =
         configuration(&effective.config)?.context("TYPESCRIPT_CONFIGURATION_REQUIRED")?;
-    let descriptor = discovery
-        .inputs_manifest
-        .as_deref()
-        .context("TYPESCRIPT_INPUTS_REQUIRED")?;
-    let bytes = reader
-        .borrow_mut()
-        .read(&project.join(descriptor), 32 << 20)?;
-    let mut current: Inputs = serde_json::from_slice(&bytes)?;
-    current.validate().map_err(anyhow::Error::msg)?;
     let selected = inputs
         .contexts
         .iter()
         .map(|context| &context.unit)
         .collect::<BTreeSet<_>>();
-    current
-        .contexts
-        .retain(|context| selected.contains(&context.unit));
-    ensure!(
-        current.semantic_digest() == inputs.semantic_digest(),
-        "TYPESCRIPT_MANIFEST_CHANGED"
-    );
-    add_captured(
-        manifest,
-        blobs,
-        total,
-        spool,
-        descriptor.into(),
-        bytes,
-        (
-            String::new(),
-            "PREPARATION".into(),
-            String::new(),
-            String::new(),
-        ),
-    )?;
+    for descriptor in manifest_paths(&effective.config) {
+        let (bytes, mut current) = read_inventory(project, descriptor, reader)?;
+        current
+            .contexts
+            .retain(|context| selected.contains(&context.unit));
+        ensure!(
+            current.semantic_digest() == inputs.semantic_digest(),
+            "TYPESCRIPT_MANIFEST_CHANGED"
+        );
+        add_captured(
+            manifest,
+            blobs,
+            total,
+            spool,
+            descriptor.into(),
+            bytes,
+            (
+                String::new(),
+                "PREPARATION".into(),
+                String::new(),
+                String::new(),
+            ),
+        )?;
+    }
     let dependencies = discovery
         .dependency_roots
         .iter()
