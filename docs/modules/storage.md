@@ -1,6 +1,6 @@
 # 存储与原子发布
 
-对齐 2026-11-18：图库物理 `user_version=17`、Anatomist 逻辑 schema 36；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
+对齐 2026-11-18：图库物理 `user_version=18`、Anatomist 逻辑 schema 37；catalog 为 2。实现见 [graph_store.rs](../../crates/storage/src/graph_store.rs) 和 [graph_compact.rs](../../crates/storage/src/graph_compact.rs)，测量及验证记录见 [当前实现](../current-state.md)。
 
 Rust 存储按 blob、task、object、maintenance、page、graph 分模块，共享协调状态、读者引用、候选封存及 CAS 事务。派生缓存位于独立 codeana-derived-cache crate，文本搜索与 Java worker 共享实现，原目录、锁、配额及持久化契约保持。对象使用明确 DTO；分页接收 `Record`，内部编码及旧页兼容见 [公共契约](../contracts.md)。
 
@@ -148,3 +148,7 @@ R4 的混合暂存组件 `stage_mixed_graph_records_with_context` 接受逐单�
 共享合并使用固定顺序首个原 host，不创建诊断账户、重置预算或借用其他 worker 份额。`host_scratch_bytes` 同样覆盖无 Ready 单元的任务；Java 原有任务 scratch 上限继续单独检查。任一步失败清理私有候选并保留旧 head。
 
 `cache_size` 是 SQLite 建议缓存设置；逻辑资源额度不是 daemon 的内核级 RSS 硬隔离。真实 SQLite 3.53.2 的匿名排序文件、写前拒绝、VM 取消/耗尽、连接容量复用、跨 world 大基线及候选回滚证据见 `target/typescript-c-abi/r4-sql-budget/receipt.json`。
+
+## JS/TS 声明词汇与 schema 18
+
+当前模型 7、逻辑 schema 37、GraphSemantics 29；物理 schema 18 允许 javascript/typescript 的 21 种声明和 6 种可见性，Java 约束保持独立。真实 Go GRA1 已通过公共候选入库、静态调用与源码查询。旧 schema 17 及更早要求 `index --full`，成功发布前保留旧 head 和文件。上文 schema 17 描述对应迁移来源，不是当前可读版本。TS 产品 IPC 和完整语义仍待实现。

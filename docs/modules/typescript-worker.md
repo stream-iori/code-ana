@@ -1,6 +1,6 @@
 # TypeScript worker
 
-当前完成 T0、T2a、本机 T2b 及 T3 输入发现组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；Go 显式准备入口已记录编译器输入，显式配置/公共 capture 已接入，CLI prepare provider 已接入，公开图语义与产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
+当前完成 T0、T2a、本机 T2b 及 T3 输入发现组件验证。独立 Rust worker 已通过生产前缀的异步 Go ABI 调用真实 Checker，并由 graph-io 校验原始 GRA1；Go 显式准备入口已记录编译器输入，显式配置/公共 capture 已接入，CLI prepare provider 已接入，公开图最小语义已通过实际归档入库和查询，产品 IPC 尚未接入。不能使用组件验证替代产品索引。公共重构的落点以 [多语言计划](../../todo/multilang-analysis-refactor-plan.md) 为准。
 
 ```text
 Rust worker → Request protobuf → Go 独立会话 / goroutine
@@ -44,7 +44,7 @@ Rust worker → Request protobuf → Go 独立会话 / goroutine
 | `graph-io` | 验证 Go 原始归档的路径、EOF、count、SHA 和行准入；只有 VerifiedEnd 可进入公共交付 |
 | application supervisor | 自有进程组、RSS、硬截止时间与输入租约；确认 worker 停止后释放捕获及 scratch |
 
-T3—T8 的闭包、公开语义、产品、任务故障和实际分发继续实施。当前 SDK 仅输出明确 partial 的组件绑定诊断，不发布 TS 声明/调用能力；正常 CLI 尚不能索引 JS/TS。
+T3—T8 的闭包、公开语义、产品、任务故障和实际分发继续实施。当前 SDK 输出声明、引用和调用的公开图，coverage 明确 partial；正常 CLI 尚不能索引 JS/TS。
 
 T2b 基础代码已加入 `overlay/engine`：累计 Meter、反射驱动的 protobuf 预解码准入和 GRA1 写入。独立 production.lock 固定 protobuf 运行库/生成器与 protoc，构建脚本先克隆固定上游再生成 Go 绑定，不修改原 checkout。`--prepare-only` 只校验来源、生成绑定和执行 Go 核心测试；原基础轮次只做准备、不建立 SDK，不能替代后续组件出口；基础证据为 `target/typescript-c-abi/t2b-foundation-version/receipt.json`。
 
@@ -127,7 +127,7 @@ JS/TS 的旧式 inputs_manifest 可以引用两份不同位置但语义等价的
 
 `model::typescript::FrozenInputs`（schema 1）保存一个已封存单元及内容对象引用，独立于语义清单。config 按实际单元 manifest 得到发布选择；worker 先核对 SDK/实例和完整引用集合，再用预算约束的只读文件读取校验大小、SHA、UTF-8，构造私有 protobuf FrozenProject。来源路径仅用于 VFS 身份，内容来自捕获 spool；调用方保留 capture 租约。
 
-`just test-typescript-handoff SDK EVIDENCE` 复用现有真实输入入口的 --handoff，强制运行独立 ignored SDK 用例：公共 capture 后删除活输入，经上述组装进入真实 Go ABI，再验证原始 GRA1 与两次调用目标。当前是 5 行组件诊断图，不能作为公开 TS 声明/调用图或产品索引放行。config 仅为 worker 集成测试的 dev-dependency，生产 worker 不依赖 config。
+`just test-typescript-handoff SDK EVIDENCE` 复用现有真实输入入口的 --handoff，强制运行独立 ignored SDK 用例：公共 capture 后删除活输入，经上述组装进入真实 Go ABI，再验证原始 GRA1 与两次调用目标。当前 SDK 的真实交接已升级为 30 行公开语义归档；产品 IPC 尚未接入。config 仅为 worker 集成测试的 dev-dependency，生产 worker 不依赖 config。
 
 CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roots 和当前 MAIN/TEST scope；最长路径前缀决定 owner，同深度多模块返回 TYPESCRIPT_MODULE_OWNER_CONFLICT。未覆盖文件保留辅助角色并清空 module/scope/world。模块语言选择共享后端，不把 JS/TS Program 拆成两个执行实例；world 仍由 context/module/scope 生成。此为主机清单归一，不改变 SDK、ABI 或 wire。
 
@@ -138,7 +138,7 @@ TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返
 
 ## T4 核心语义提取端口
 
-`Program.Semantics` 先完成发布源的声明表，再选引用/调用端点；只返回字符串、位置和值标记，不交出 AST、Symbol 或 Checker Type。每份文件获取并释放自己的 Checker。该端口尚未接入生产 GRA1、storage/query 或产品 IPC，当前 SDK 仍只交付旧组件诊断。
+`Program.Semantics` 先完成发布源的声明表，再选引用/调用端点；只返回字符串、位置和值标记，不交出 AST、Symbol 或 Checker Type。每份文件获取并释放自己的 Checker。该端口现已接入唯一 Analyze GRA1 投影；原组件诊断图已删除。实际 ABI 归档已通过公共 storage/query；产品 IPC 仍待接入。
 
 | 事实 | 已有真值 |
 |---|---|
@@ -148,4 +148,7 @@ TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返
 | 引用 | 读、写、读写、类型、namespace qualifier、typeof、模块与别名导入导出；属性定义名、声明名和调用被调名不批量伪造读取 |
 | 位置与预算 | 原始 UTF-8 半开区间、一基 UTF-16 行列；BOM/中文/emoji/CRLF/CR/Unicode 换行；索引/查询前计量，拒绝后无部分结果，累计 seed 和首次失败保留 |
 
-门禁 `just test-typescript-semantics SOURCE GO_HOME NEW_EVIDENCE` 使用锁定来源重新生成并执行 Go fixture，强制核对 16 项语义真值测试。fixture 在提取前删除全部已捕获活输入，并比较不同项目根的完整事实。只做源码准备与测试，不创建 SDK，不表示 T4 全部完成。DDL/模型/查询版本及公开行映射继续实施；T5 的完整成员/构造器、JSX、注释和质量边界仍需补齐。
+门禁 `just test-typescript-semantics SOURCE GO_HOME NEW_EVIDENCE` 使用锁定来源重新生成并执行 Go fixture，强制核对 17 项核心及行投影真值测试。fixture 在提取前删除全部已捕获活输入，并比较不同项目根的完整事实。只做源码准备与测试，不创建 SDK，不表示 T4 全部完成。公开行映射与 model 7 / schema 18、37 已实现；T5 的完整成员/构造器、JSX、注释和质量边界仍需补齐。
+
+
+`just test-typescript-graph SDK NEW_EVIDENCE` 强制执行实际 SDK 归档入库/查询测试，使用独立 Store、真实来源和 unit ownership，验证声明、重复调用、静态 dispatch、源码和解析，并拒绝 TS CHA。CLI `index` 仍在工厂明确报 TYPESCRIPT_INPUT_NOT_READY；此门禁不替代 T6 的产品索引和一次发布验收。正常 SDK 及隔离 ABI fixture 都须按 graph model 7 重建，TS ABI/analysis 各为 1。

@@ -7,6 +7,7 @@ use std::{
 };
 
 mod frozen;
+pub mod semantics;
 pub use frozen::{FROZEN_INPUT_SCHEMA, FrozenFile, FrozenInputs};
 
 pub const INPUT_SCHEMA: u32 = 1;

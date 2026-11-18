@@ -1,4 +1,4 @@
-//! Actual captured-byte handoff. This remains a component graph, not public TS semantics.
+//! Actual captured-byte handoff and public semantic rows; product IPC is separate.
 use anyhow::{Context, Result, ensure};
 use codeana_contracts::{analysis_budget, protobuf::typescript::v1 as p};
 use codeana_model::{AnalysisBackend, AnalysisContext, AnalysisGrant, AnalysisLimits, Request};
@@ -105,7 +105,7 @@ async fn actual_capture_handoff_survives_deleted_live_inputs() -> Result<()> {
         bytes: graph.bytes,
         sha256: graph.sha256,
     };
-    let mut samples = Vec::new();
+    let mut semantics = codeana_typescript_worker::evidence::SemanticEvidence::default();
     let verified = codeana_graph_io::reader::read_descriptor(
         &descriptor,
         codeana_contracts::graph_delivery::OutputLimits {
@@ -117,19 +117,7 @@ async fn actual_capture_handoff_survives_deleted_live_inputs() -> Result<()> {
         Some(&budget),
         || Ok(()),
         |row| {
-            if row.table == codeana_contracts::graph::Table::Diagnostic as i32 {
-                let sample = row
-                    .cells
-                    .last()
-                    .and_then(|cell| match &cell.value {
-                        Some(codeana_contracts::graph::cell::Value::Text(text)) => {
-                            Some(text.clone())
-                        }
-                        _ => None,
-                    })
-                    .context("HANDOFF_BINDING_SAMPLE")?;
-                samples.push(sample);
-            }
+            semantics.record(&row, &budget)?;
             Ok(())
         },
         || {
@@ -137,21 +125,13 @@ async fn actual_capture_handoff_survives_deleted_live_inputs() -> Result<()> {
             Ok(())
         },
     )?;
-    ensure!(
-        verified.count() == 5
-            && samples.len() == 2
-            && samples
-                .iter()
-                .all(|sample| sample.contains("-> a.ts#greet:")),
-        "HANDOFF_BINDING_TRUTH: {:?}",
-        samples
-    );
+    semantics.verify_greet_fixture()?;
     owner.call(Native::close).await?;
     owner.shutdown().await?;
     std::fs::write(
         evidence.join("capture-proof.json"),
         serde_json::to_vec_pretty(
-            &serde_json::json!({"real_go_inventory":true,"public_capture":true,"live_inputs_deleted":true,"captured_bodies_verified":snapshot.files.len(),"published_sources":2,"units":1,"real_c_abi_handoff":true,"verified_rows":verified.count(),"binding_samples":samples,"compiler":compiler,"component_only":true,"public_semantics":false,"analysis_usage":budget.usage()}),
+            &serde_json::json!({"real_go_inventory":true,"public_capture":true,"live_inputs_deleted":true,"captured_bodies_verified":snapshot.files.len(),"published_sources":2,"units":1,"real_c_abi_handoff":true,"verified_rows":verified.count(),"semantic_declarations":semantics.declarations,"semantic_calls":semantics.calls,"compiler":compiler,"component_only":true,"public_semantic_rows":true,"product_indexing":false,"analysis_usage":budget.usage()}),
         )?,
     )?;
     Ok(())

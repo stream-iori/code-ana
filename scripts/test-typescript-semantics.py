@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build locked Go fixtures and require every detached semantic truth test.
 
-This gate does not create an SDK or claim GRA1/storage/product integration.
+This gate tests GRA1 row projection but does not create an SDK or claim storage/product integration.
 """
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {
     'TestSemanticDeclarationTablePreservesMergedSpacesAndOverloadProvenance',
+    'TestPublicProjectionContainsDeclarationsAndExactCrossTagCallEndpoints',
     'TestSemanticCallsSeparateJSBindingSignaturesExternalAndUnknown',
     'TestAuxiliaryImplementationBodiesCannotBecomePublishedEndpoints',
     'TestSemanticStandardLibraryTargetsRemainExternalAndVersioned',
@@ -72,7 +73,7 @@ def main() -> int:
         'source_files': receipt['source_files'], 'go_tests_sha256': sha(log),
         'build_receipt_sha256': sha(evidence/'receipt.json'),
         'gate_sha256': sha(Path(__file__)), 'T4_complete': False,
-        'public_graph_projection': False, 'product_indexing': False,
+        'public_graph_projection': True, 'storage_query': False, 'product_indexing': False,
         'sdk_created': False, 'native_accepted': False,
         'release_accepted': False, 'performance_accepted': False,
     }

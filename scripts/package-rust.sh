@@ -46,7 +46,7 @@ def storage_version(name):
 manifest = dict(package='codeana-rust', platform=platform, architecture=architecture,
                 cli_daemon_protocol=version('DAEMON_PROTOCOL_VERSION'),
                 worker_protocol=version('WORKER_PROTOCOL_VERSION'), fact_ir=version('VERSION'),
-                physical_schema=storage_version('SCHEMA_VERSION'), logical_schema=storage_version('SOURCE_SCHEMA_VERSION'),
+                physical_schema=storage_version('SCHEMA_VERSION'), logical_schema=version('GRAPH_SCHEMA_VERSION'),
                 java_adapter='mock-fixtures-only', rust_adapter=re.search(r'ADAPTER_VERSION: &str = \"([^\"]+)\"', (pathlib.Path(root) / 'lang-rust-adaptor/src/lib.rs').read_text()).group(1))
 (pathlib.Path(package) / 'manifest.json').write_text(json.dumps(manifest) + '\n')
 PY_MANIFEST

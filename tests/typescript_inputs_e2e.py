@@ -48,7 +48,7 @@ def main():
         assert proof['real_go_inventory'] and proof['public_capture'] and proof['live_inputs_deleted']
         assert proof['captured_bodies_verified']==3 and proof['published_sources']==2 and proof['units']==1
         if args.handoff:
-            assert proof['real_c_abi_handoff'] and proof['verified_rows']==5 and len(proof['binding_samples'])==2
+            assert proof['real_c_abi_handoff'] and proof['verified_rows']>5 and len(proof['semantic_calls'])==2 and proof['public_semantic_rows']
         report['proof']=proof
         after=identities(paths);report['artifact_drift']=[name for name in sorted(before.keys()|after.keys()) if before.get(name)!=after.get(name)]
         assert not report['artifact_drift']

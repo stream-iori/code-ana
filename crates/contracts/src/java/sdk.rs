@@ -13,8 +13,8 @@ pub fn validate_identity(
             && java.analysis_request == codeana_model::JAVA_ANALYSIS_VERSION
             && java.compiler_batch_protocol == 2
             && java.java_model == "javac-model-v51"
-            && manifest.adapter == "anatomist-4a903272-codeana-graph6-resource2-analysis"
-            && manifest.graph_schema == 36
+            && manifest.adapter == "anatomist-4a903272-codeana-graph7-resource2-analysis"
+            && manifest.graph_schema == codeana_model::GRAPH_SCHEMA_VERSION
             && java.target_java == [8, 17]
             && java.compiler_bridges
                 == BTreeMap::from([

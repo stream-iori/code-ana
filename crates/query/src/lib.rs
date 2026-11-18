@@ -1378,7 +1378,7 @@ mod tests {
     }
     #[test]
     fn static_dispatch_keeps_partial_binding_evidence_and_exact_filter() {
-        for language in ["rust", "python"] {
+        for language in ["rust", "python", "javascript", "typescript"] {
             let mut reader = navigation_fixture();
             for fact in &mut reader.facts {
                 fact.attributes.language = language.to_owned().into();

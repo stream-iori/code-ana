@@ -121,7 +121,7 @@ delta: SQLite backup(兼容 baseline) → 替换归属 → 同样封存校验
                      老读者保留旧 revision；新查询固定新 head
 ```
 
-物理 schema 17，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 36。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
+物理 schema 18，通过 `nodes`、`edges`、`call_sites` 等视图还原逻辑 schema 37。内部整数主键不进入公共输出，FTS 使用真实 `graph_nodes.node_pk`。旧 schema 查询/增量要求 `index --full`，新库成功发布后才切换入口；不原地修改旧库。
 
 graph/catalog 分别版本化。源码 blobs、分页结果、snapshot/diff/report 等仍由 Rust 生命周期和引用保护管理。
 

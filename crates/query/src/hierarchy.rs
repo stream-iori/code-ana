@@ -41,6 +41,12 @@ pub(super) fn instantiability(fact: &Fact) -> (&'static str, &'static str) {
         Some(LanguagePolicy::Java) => java_policy::instantiability(fact),
         Some(LanguagePolicy::Python) => ("unknown", "python.runtime_instantiability_unknown"),
         Some(LanguagePolicy::Rust) => ("unknown", "rust.runtime_instantiability_unknown"),
+        Some(LanguagePolicy::JavaScript) => {
+            ("unknown", "javascript.runtime_instantiability_unknown")
+        }
+        Some(LanguagePolicy::TypeScript) => {
+            ("unknown", "typescript.runtime_instantiability_unknown")
+        }
         None => ("unknown", "language.runtime_instantiability_unsupported"),
     }
 }

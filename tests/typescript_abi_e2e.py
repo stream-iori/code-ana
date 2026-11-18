@@ -58,9 +58,9 @@ def main():
             assert receipt['component_only'] and receipt['semantic_partial'] and not receipt['complete_plan']
             assert receipt['analysis_usage']['work']>0 and receipt['analysis_usage']['payload_bytes']>0
             if name=='success':
-                assert receipt['accounting_owner']=='HostOwned' and receipt['verified_graph']['count']==5
-                samples=[cell['value']['Text'] for cell in receipt['binding_samples']]
-                assert samples==['b.ts:62..70 -> a.ts#greet:16..21','b.ts:73..81 -> a.ts#greet:16..21'],samples
+                assert receipt['accounting_owner']=='HostOwned' and receipt['verified_graph']['count']>5
+                declarations=receipt['semantic_declarations'];greet=[d['id'] for d in declarations if d['name']=='greet' and d['kind']=='function'];assert len(greet)==1
+                calls=receipt['semantic_calls'];assert len(calls)==2 and all(c['target']==greet[0] and json.loads(c['metadata'])['target_kind']=='implementation' for c in calls),calls
                 assert receipt['analysis_usage']['failure'] is None
             elif name=='prepare':
                 assert receipt['verified_graph'] is None and receipt['accounting_owner']=='HostOwned'

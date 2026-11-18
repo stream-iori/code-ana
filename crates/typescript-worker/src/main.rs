@@ -274,7 +274,7 @@ async fn main() -> Result<()> {
         handoff.complete(usage)?;
     }
     drop(handoff);
-    let mut samples = Vec::new();
+    let mut semantics = codeana_typescript_worker::evidence::SemanticEvidence::default();
     let mut verified = None;
     let success = matches!(
         &result.outcome,
@@ -367,9 +367,7 @@ async fn main() -> Result<()> {
             Some(&budget),
             || Ok(()),
             |row| {
-                if row.table == codeana_contracts::graph::Table::Diagnostic as i32 {
-                    samples.push(row.cells.last().cloned());
-                }
+                semantics.record(&row, &budget)?;
                 Ok(())
             },
             || {
@@ -383,7 +381,7 @@ async fn main() -> Result<()> {
     }
     owner.call(Native::close).await?;
     owner.shutdown().await?;
-    let report = serde_json::json!({"component_only":true,"semantic_partial":true,"complete_plan":false,"native_accepted":false,"runtime":runtime,"case":args.case,"outcome":result.outcome,"analysis_usage":budget.usage(),"accounting_owner":format!("{:?}",budget.accounting_owner()),"verified_graph":verified,"prepared_inventory":prepared,"binding_samples":samples,"development_fixture":args.dev_abi_fixture,"running_close_pending_observed":running_close_pending_observed});
+    let report = serde_json::json!({"component_only":true,"semantic_partial":true,"complete_plan":false,"native_accepted":false,"runtime":runtime,"case":args.case,"outcome":result.outcome,"analysis_usage":budget.usage(),"accounting_owner":format!("{:?}",budget.accounting_owner()),"verified_graph":verified,"prepared_inventory":prepared,"semantic_declarations":semantics.declarations,"semantic_calls":semantics.calls,"development_fixture":args.dev_abi_fixture,"running_close_pending_observed":running_close_pending_observed});
     std::fs::write(
         output.join("receipt.json"),
         serde_json::to_vec_pretty(&report)?,

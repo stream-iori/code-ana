@@ -18,8 +18,8 @@ var (
 	AnalysisProtoSHA256   string
 	GraphProtoSHA256      string
 	WorkerProtocol        = "25"
-	GraphModel            = "6"
-	GraphSchema           = "36"
+	GraphModel            = "7"
+	GraphSchema           = "37"
 )
 
 const ABIVersion uint32 = 1

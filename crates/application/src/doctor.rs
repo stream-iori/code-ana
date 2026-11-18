@@ -268,10 +268,10 @@ mod tests {
         let library = directory.path().join("library.dylib");
         std::fs::write(&library, "different from the advertised SHA").unwrap();
         let manifest = json!({"version":4, "worker_protocol":WORKER_PROTOCOL_VERSION,
-            "fact_ir":VERSION, "graph_schema":36, "graph_encoding":"GRA1-protobuf-row-v1",
+            "fact_ir":VERSION, "graph_schema":codeana_model::GRAPH_SCHEMA_VERSION, "graph_encoding":"GRA1-protobuf-row-v1",
             "os":if cfg!(target_os="macos") {"Darwin"} else {"Linux"},
             "arch":if cfg!(target_arch="aarch64") {"arm64"} else {"x86_64"},
-            "adapter":"anatomist-4a903272-codeana-graph6-resource2-analysis",
+            "adapter":"anatomist-4a903272-codeana-graph7-resource2-analysis",
             "files":{"native/library.dylib":"0".repeat(64)},
             "backend":{"kind":"java", "analysis_request":JAVA_ANALYSIS_VERSION,
                 "compiler_batch_protocol":2, "java_model":"javac-model-v51", "target_java":[8,17],

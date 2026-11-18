@@ -17,10 +17,10 @@
 | [CLI / daemon](modules/runtime.md) / [索引](modules/indexing.md) | 任务、调度、冻结输入和增量 |
 | [Java worker](modules/java-worker.md) / [Rust worker](modules/rust-worker.md) | Java 与 Rust 分析链路、能力限制 |
 | [Python worker](modules/python-worker.md) | 显式冻结输入、Pyrefly、两个 Cargo workspace、fixture、分发和真实项目验证边界 |
-| [TypeScript worker](modules/typescript-worker.md) | T3 显式配置/公共 capture 与真实清单验证；CLI prepare provider 已接入，公开语义和产品执行待接入 |
+| [TypeScript worker](modules/typescript-worker.md) | 冻结输入、真实 Go ABI 与公开图投影；产品 IPC 和完整语义待接入 |
 | [worker 运行设施](modules/worker-runtime.md) | IPC 进度、请求状态、终态、FFI owner 与账本交接 |
 | [公共图交付](modules/graph-io.md) | GRA1 原始校验、公共行流、队列配额和 VerifiedEnd |
-| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 17、逻辑 schema 36、只读投影和 pipeline |
+| [存储](modules/storage.md) / [查询](modules/query.md) | 物理 schema 18、逻辑 schema 37、只读投影和 pipeline |
 | [版本与源码](modules/versioning.md) / [诊断与报告](modules/operations.md) | 冻结历史、diff、引用保护和报告 |
 | [决策登记](design-review.md) / [实施与验收](delivery.md) | 已落实决策、剩余门禁与实际测试入口 |
 | [Rust 回归](rust-first.md) / [Java 分发](java-package.md) | 无 JDK 的 mock 回归与真实 Java 包运行 |

@@ -49,7 +49,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 
-pub const VERSION: u32 = 6;
+pub const VERSION: u32 = 7;
+pub const GRAPH_SCHEMA_VERSION: u32 = 37;
+pub const GRAPH_SEMANTICS_VERSION: u32 = 29;
 pub const WORKER_PROTOCOL_VERSION: u32 = 25;
 pub const JAVA_ANALYSIS_VERSION: u32 = 13;
 pub const DAEMON_PROTOCOL_VERSION: u32 = 7;

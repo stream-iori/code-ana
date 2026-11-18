@@ -193,7 +193,7 @@ mod tests {
 
     fn manifest(backend: Value) -> Value {
         json!({"version": SCHEMA_VERSION, "worker_protocol": codeana_model::WORKER_PROTOCOL_VERSION,
-            "fact_ir": codeana_model::VERSION, "adapter": "test", "graph_schema": 36,
+            "fact_ir": codeana_model::VERSION, "adapter": "test", "graph_schema": codeana_model::GRAPH_SCHEMA_VERSION,
             "graph_encoding": "GRA1-protobuf-row-v1", "os": "Darwin", "arch": "arm64",
             "files": {"library.dylib": "0".repeat(64)}, "backend": backend})
     }

@@ -48,8 +48,8 @@ class NativeManifest(unittest.TestCase):
 
     def test_shared_bridge_identity_and_all_distribution_resources(self):
         self.assertEqual(self.manifest['backend']['runtime']['kind'], 'native')
-        self.assertEqual(self.manifest['adapter'], 'anatomist-4a903272-codeana-graph6-resource2-analysis')
-        self.assertEqual(self.manifest['graph_schema'], 36)
+        self.assertEqual(self.manifest['adapter'], 'anatomist-4a903272-codeana-graph7-resource2-analysis')
+        self.assertEqual(self.manifest['graph_schema'], 37)
         self.assertEqual(set(self.manifest['files']), {str(self.library.relative_to(self.target)), 'compiler-bridge.jar', 'compiler-bridge17.jar', 'maven-input-worker.jar'})
         for name, digest in self.manifest['files'].items():
             self.assertEqual(hashlib.sha256((self.target / name).read_bytes()).hexdigest(), digest)

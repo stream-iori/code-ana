@@ -8,7 +8,7 @@ package com.anatomist.core;
  */
 public final class GraphSemantics {
     public static final String META_KEY = "graph_semantics_version";
-    public static final int VERSION = 28;
+    public static final int VERSION = 29;
 
     private GraphSemantics() {}
 

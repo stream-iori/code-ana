@@ -74,7 +74,7 @@ def package(output):
         storage_version = lambda name: int(re.search(r'pub const '+name+r': i64 = (\d+)', storage_constants)[1])
         manifest = dict(package='codeana-python', platform=platform.system(), architecture=platform.machine(),
                         worker_protocol=version('WORKER_PROTOCOL_VERSION'), daemon_protocol=version('DAEMON_PROTOCOL_VERSION'),
-                        graph_model=version('VERSION'), physical_schema=storage_version('SCHEMA_VERSION'), logical_schema=storage_version('SOURCE_SCHEMA_VERSION'),
+                        graph_model=version('VERSION'), physical_schema=storage_version('SCHEMA_VERSION'), logical_schema=version('GRAPH_SCHEMA_VERSION'),
                         backend=json.loads((stage/'upstream-source.json').read_text()), java='sdk_not_bundled', java_host='bundled', acceptance='not_asserted')
         python_model = (ROOT/'crates/model/src/python.rs').read_text()
         manifest['python_adapter'] = re.search(r'pub const ADAPTER_VERSION: &str = "([^"]+)"', python_model)[1]

@@ -1551,8 +1551,8 @@
       "source": "anatomist-core/src/main/java/com/anatomist/core/GraphSemantics.java",
       "destination": "analysis-core/src/main/java/com/anatomist/core/GraphSemantics.java",
       "sha256": "e937ab52314c15dbcf0e7e6b3bfb6578bf286fdc3ef32632142ab37a6ffb5205",
-      "migrated_sha256": "cd2e7df4fe54a59d27282935d5c35bf0ea98698886eaaec039bf36a84c00fa2d",
-      "adaptation": "Advance persisted graph semantics to 26 for schema 33 metadata definition/source/ownership observations (compact storage upgrade 9b0008e). C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.; frozen Java 8/17 compiler selection and symbol-only comment associations"
+      "migrated_sha256": "de545b06352cdce04f8654f9cdd3236ee2181cc41200f8afb98bfbc718971981",
+      "adaptation": "Advance persisted graph semantics to 26 for schema 33 metadata definition/source/ownership observations (compact storage upgrade 9b0008e). C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation and v51 exchange. C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery.; frozen Java 8/17 compiler selection and symbol-only comment associations Shared graph semantics 29 adds explicit JS/TS declaration vocabulary and conservative static query policy; existing Java identities and ABI remain unchanged."
     },
     {
       "source": "anatomist-core/src/main/java/com/anatomist/provider/FactDefaults.java",
@@ -3591,9 +3591,9 @@
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnalysisSession.java",
-      "migrated_sha256": "646cb64fc7e42ade36a5497a6a1c04c5a0f18124a59a15d17e1ae786b8969d84",
+      "migrated_sha256": "1850ec6ea1a5acc29f3b5f309f12fd6c7a02ca37fbe26e53ed9c0ae3fa99f9ff",
       "origin": "codeana",
-      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery. A6 budget/module boundary."
+      "reason": "C1 detached comment extraction, original ranges, javac token ownership and same-scope associations; prepaid lexical reservation, v51 exchange and graph5/analysis12/schema35 independent GRA1 comment delivery. A6 budget/module boundary. Advance adapter identity to graph7 for shared graph model 7 / logical schema 37; Java analysis 13 and ABI 4 unchanged."
     },
     {
       "destination": "java-bridge/src/main/java/dev/codeana/adapter/AnatomistRows.java",

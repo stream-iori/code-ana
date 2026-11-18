@@ -1354,3 +1354,7 @@ mod test_support;
 #[cfg(test)]
 #[path = "graph_aux_tests.rs"]
 mod aux_tests;
+
+#[cfg(test)]
+#[path = "graph_script_tests.rs"]
+mod script_tests;

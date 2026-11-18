@@ -15,6 +15,18 @@
 | Rust 源码分析 | rust-analyzer 0.0.349 独立 worker；冻结输入、声明/引用/调用、world 与增量替换；sysroot/过程宏/动态派发仍有缺口 | [Rust worker](modules/rust-worker.md) |
 | Python 源码分析 | Pyrefly 1.4.0 独立 worker；显式冻结输入、声明/引用/调用、保守增量与多语言发布；动态目标保留未知 | [Python worker](modules/python-worker.md) |
 
+## TypeScript T4 公开图与 schema 迁移（2026-11-18）
+
+| 当前实现 | 验证边界 |
+|---|---|
+| 模型 / 存储 | graph model 7，物理 18、逻辑 37、GraphSemantics 29；JS/TS 21 种声明、6 种 visibility，旧库要求 full |
+| Go Analyze | 唯一 GRA1 语义投影替换旧诊断图；声明、CONTAINS、引用/导入导出、静态调用及 partial coverage |
+| 真实 ABI → store/query | 30 行归档，5 声明、2 调用点/目标；真实 unit 归属、原字节校验、发布、名称/源码/静态 dispatch 查询通过，TS CHA 拒绝 |
+| Java 基线 | 727/727 fixture；graph7 G1 开发 SDK 重建完成，仍是 build-only，不是正式放行 |
+| 待完成 | T5 完整语义/质量/注释，T6 产品 IPC，T7 故障资源与 T8 实际分发；持续标 partial，不宣称 TS 产品完成 |
+
+证据目录：target/typescript-c-abi/t4-public-graph；正常 TS SDK 为 t4-public-sdk-projected，ABI fixture 为 t4-public-abi-fixture-sdk。完整 just test-rust、Python 核心/clippy 与产品/注释 11 项、Native 图/注释 24 项及生命周期 10 项、三语言 prepared 19 项及普通混合矩阵 10 项均通过。新 SDK 的 ABI 12 场景/20 检查、准备 5、CLI provider 16、解析 5 组、物理拼写、冻结交接及实际归档入库查询均通过，无产物漂移。原构建、测试断言及 clippy 失败保留。汇总回执为该目录 receipt.json；无正式放行或性能结论。
+
 ## TypeScript T4 核心语义端口（2026-11-18）
 
 Go `Program.Semantics` 已先建声明表、再交付脱离编译器对象的声明、引用和调用事实；保存合并/重载来源，区分实现、声明、外部和 unknown，位置使用原始 UTF-8 字节与 UTF-16 行列。命名声明身份与函数体/无关前缀编辑分开。16 项专门真值由 `just test-typescript-semantics` 强制执行；尚未接生产 GRA1、图库/查询或产品 IPC，不作为公开 TS 语义能力放行。证据：target/typescript-c-abi/t4-semantic-core-complete/semantic-receipt.json。

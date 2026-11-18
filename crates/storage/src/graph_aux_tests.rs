@@ -21,7 +21,7 @@ fn observations(id: &str, version: u8, global: bool, hash: &str) -> Vec<Result<G
             provider_id: Some("java-core".into()),
             source_file: Some("Shared.java".into()),
             hash: Some(hash.into()),
-            schema_version: Some(36),
+            schema_version: Some(crate::graph_store::SOURCE_SCHEMA_VERSION),
             node_count: Some(version.into()),
             edge_count: Some(0),
             file_size: Some(10),

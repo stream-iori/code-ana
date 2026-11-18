@@ -151,7 +151,7 @@ def main():
         graph_model = int(re.search(r'pub const VERSION: u32 = (\d+)', model)[1])
         worker = int(re.search(r'pub const WORKER_PROTOCOL_VERSION: u32 = (\d+)', model)[1])
         storage = (ROOT/'crates/storage/src/graph_store.rs').read_text()
-        schema = int(re.search(r'pub const SOURCE_SCHEMA_VERSION: i64 = (\d+)', storage)[1])
+        schema = int(re.search(r'pub const GRAPH_SCHEMA_VERSION: u32 = (\d+)', model)[1])
         stdlib = {'standard-library/'+Path(path).name: digest for path, digest in lock['standard_library']['files'].items() if path.endswith('.d.ts')}
         stdlib_digest = hashlib.sha256(json.dumps(stdlib, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         compiler_version = re.search(r'var version = "([^"]+)"', (source/'internal/core/version.go').read_text())[1]

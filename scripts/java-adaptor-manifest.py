@@ -14,7 +14,7 @@ analysis=int(re.search(r'JAVA_ANALYSIS_VERSION: u32 = (\d+)',(project.parent/'cr
 suffix='dylib' if sys.platform=='darwin' else 'so'
 files=[root/'native'/f'libcodeana_java.{suffix}',root/'compiler-bridge.jar',root/'compiler-bridge17.jar',root/'maven-input-worker.jar']
 manifest=dict(version=VERSION,worker_protocol=worker,fact_ir=graph_model,
-              adapter=adapter,graph_schema=36,graph_encoding="GRA1-protobuf-row-v1",
+              adapter=adapter,graph_schema=int(re.search(r'pub const GRAPH_SCHEMA_VERSION: u32 = (\d+)', (project.parent/'crates/model/src/lib.rs').read_text())[1]),graph_encoding="GRA1-protobuf-row-v1",
               backend=dict(kind='java',analysis_request=analysis,compiler_batch_protocol=batch,java_model=model,
                   target_java=[8,17],compiler_bridges={"8":"compiler-bridge.jar","17":"compiler-bridge17.jar"},
                   runtime=dict(kind='native',abi=4,gc=(os.environ.get('CODEANA_NATIVE_GC') or 'G1'),

@@ -16,7 +16,7 @@
 | profile / 输入 digest | 包含实际工具链、依赖顺序、adapter/模型/规则及语义配置；执行预算另记录 |
 | replacement owners | 源文件/资源/producer 的替换范围包含删除和零输出，避免留下旧事实 |
 
-当前 graph model 6、worker 25、analysis request/result 13、C ABI 4、daemon handshake 7；javac-model-v51、compiler batch 2。图库物理 user_version 17，上游逻辑 schema 36、GraphSemantics 28，adapter `anatomist-4a903272-codeana-graph6-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
+当前 graph model 7、worker 25、analysis request/result 13、C ABI 4、daemon handshake 7；javac-model-v51、compiler batch 2。图库物理 user_version 18，上游逻辑 schema 37、GraphSemantics 29，adapter `anatomist-4a903272-codeana-graph7-resource2-analysis`。catalog 为 2。业务语义标注与独立人工笔记已删除；protobuf 的 graph 枚举号 6 和 TaskRequest 字段号 20 保留为 reserved。
 
 SDK manifest 使用公共 schema 4；Java Native 3 / JVM 2 等旧格式要求重建。公共字段为 `version/worker_protocol/fact_ir/adapter/graph_schema/graph_encoding/os/arch/files`，`backend` 为类型化对象：
 
@@ -331,3 +331,8 @@ CLI TypeScript prepare 在原生发现后按文件匹配显式 module/source_roo
 TypeScript inputs5 允许带 references 的空根 solution。CLI 按编译器返回的配置路径逐上下文准备，最多 256 个上下文，菱形引用只准备一次、循环引用拒绝；solution 自身作为零发布单元保留配置/观察。仅当选择的入口为空根 solution 时展开引用闭包，普通消费者仍只发布自身来源；外部引用源码需单独项目配置，当前跨项目只消费显式依赖声明。catalog 3 的同一 TS 入口可覆盖多个独立单元，其他后端仍要求一份归属；缺配置失败后不切换活动清单。旧 inputs4 SDK 必须重建，TS ABI 1 / analysis 1 / 输入清单 1 不变。公开语义与产品执行仍未接入。
 
 跨入口的同 ID TS 上下文须经完整 semantic_digest、发布标签和模式核对才合并，入口/root 归属合并后去重；每份原配置和清单仍认证。不同上下文冲突及全局超过 256 个单元，在切换活动 catalog 前失败。
+
+
+JS/TS 公开声明 vocabulary 位于 model::typescript::semantics：21 种声明及 public/protected/private/module/namespace/local；新增种类和可见性只放宽 JS/TS 的 SQL 分支。class/interface/enum 保留对应 type_kind，type_alias 等不假装 Java type。每个声明有独立 ID 与来源；合并组、值/类型/namespace 标记、实现状态和 UTF-8 字节区间进入 metadata。重复调用保留原始位置与 ordinal。
+
+TypeScript Analyze 现在只走 semanticGraph：先声明表，再 CONTAINS、引用/导入导出和静态 CALLS。参数/接口签名与实现、辅助外部目标、unknown 分开，selected_declaration 保留重载依据；隐式构造器不补源码实现。两种语言静态查询由显式 LanguagePolicy 选择，CHA/runtime implementations 拒绝，跨标签绑定不裁掉。尚未完成的成员/JSX/注释/诊断继续标 TYPESCRIPT_T5_PENDING partial；生产 worker IPC 仍未接入。

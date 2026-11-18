@@ -1,4 +1,4 @@
--- Anatomist schema 33 definitions and lossless file-owned observations.
+-- Logical schema 37 definitions and lossless file-owned observations.
 -- Public projections keep their original columns; ownership stays private.
 CREATE TABLE node_units(unit_pk INTEGER NOT NULL REFERENCES unit_catalog(unit_pk),
  node_pk INTEGER NOT NULL REFERENCES graph_nodes(node_pk) ON DELETE CASCADE,

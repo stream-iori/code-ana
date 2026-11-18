@@ -60,9 +60,9 @@ CREATE TABLE nodes (
          AND nesting_depth IS NULL AND direct_member IS NULL
          AND synthetic IS NULL AND binding_resolved IS NULL)
         OR
-        ((declaration_kind IN ('type','method','constructor','field','enum_constant','record_component','initializer') OR language='rust' AND declaration_kind IN ('function','struct','enum','trait','union','type_alias','constant','static','module','variant','macro','impl') OR language='python' AND declaration_kind IN ('module','class','function','variable','parameter','import'))
+        ((declaration_kind IN ('type','method','constructor','field','enum_constant','record_component','initializer') OR language='rust' AND declaration_kind IN ('function','struct','enum','trait','union','type_alias','constant','static','module','variant','macro','impl') OR language='python' AND declaration_kind IN ('module','class','function','variable','parameter','import') OR language IN ('javascript','typescript') AND declaration_kind IN ('module','class','interface','function','method','constructor','get_accessor','set_accessor','property','variable','parameter','type_alias','type_parameter','enum','enum_member','namespace','import','export','call_signature','construct_signature','index_signature'))
          AND (type_kind IS NULL OR type_kind IN ('class','interface','enum','record','annotation'))
-         AND (visibility IN ('public','protected','private','package') OR language='rust' AND visibility IN ('crate','restricted'))
+         AND (visibility IN ('public','protected','private','package') OR language='rust' AND visibility IN ('crate','restricted') OR language IN ('javascript','typescript') AND visibility IN ('module','namespace','local'))
          AND modifiers IS NOT NULL AND declared_modifiers IS NOT NULL AND implicit_modifiers IS NOT NULL
          AND nesting_depth IS NOT NULL
          AND direct_member IN (0,1) AND synthetic IN (0,1) AND binding_resolved IN (0,1)

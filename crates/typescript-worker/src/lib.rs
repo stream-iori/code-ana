@@ -1,4 +1,5 @@
 //! The compiler and runtime stay in this process, never in the daemon.
+pub mod evidence;
 pub mod frozen;
 pub mod inputs;
 pub mod native;

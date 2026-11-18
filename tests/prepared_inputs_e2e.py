@@ -75,8 +75,8 @@ class PreparedInputs(PreparedHarness):
         old_graph = self.home/'revisions'/revision/'facts.db'
         self.stop()
         with sqlite3.connect(old_graph) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 17)
-            db.execute('PRAGMA user_version=16')
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 18)
+            db.execute('PRAGMA user_version=17')
         _, failed = self.cli('index', code=1)
         self.assertEqual(failed['code'], 'GRAPH_SCHEMA_REBUILD_REQUIRED')
         with sqlite3.connect(self.home/'catalog.db') as db:
@@ -86,9 +86,9 @@ class PreparedInputs(PreparedHarness):
         _, rebuilt = self.cli('index', '--full', timeout=120)
         self.assertNotEqual(rebuilt['revision'], revision)
         with sqlite3.connect(self.home/'revisions'/rebuilt['revision']/'facts.db') as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 17)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 18)
         with sqlite3.connect(old_graph) as db:
-            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 16)
+            self.assertEqual(db.execute('PRAGMA user_version').fetchone()[0], 17)
         self.assertTrue(self.cli('resolve', 'from_a')[0])
 
     def test_disabling_all_units_removes_semantics_without_a_fallback_worker(self):

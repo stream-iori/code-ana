@@ -3,7 +3,6 @@ package engine
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -97,7 +96,7 @@ func Execute(parent context.Context, created time.Time, input []byte, resultLimi
 	if err = meter.Charge(nodes+1, 16, resultLimit*4+8192); err == nil {
 		if analyze := request.GetAnalyze(); analyze != nil {
 			var archive *pb.Archive
-			archive, err = componentGraph(ctx, analyze, meter)
+			archive, err = semanticGraph(ctx, analyze, meter)
 			if err == nil {
 				result := &pb.Result{Version: RequestVersion, RequestId: request.RequestId, Runtime: RuntimeIdentity(), Receipt: meter.Receipt("archive", true), Outcome: &pb.Result_Analysis{Analysis: &pb.AnalysisResult{Graph: archive}}}
 				data, encodeErr := proto.Marshal(result)
@@ -136,96 +135,3 @@ func Execute(parent context.Context, created time.Time, input []byte, resultLimi
 func textCell(value string) *g.Cell { return &g.Cell{Value: &g.Cell_Text{Text: value}} }
 func intCell(value int64) *g.Cell   { return &g.Cell{Value: &g.Cell_Integer{Integer: value}} }
 func nullCell() *g.Cell             { return &g.Cell{} }
-
-// T2b transport evidence is deliberately partial: it proves real Checker
-// bindings in ordinary GRA1 diagnostic rows. T4 supplies semantic declarations,
-// symbols, relations and the public TS graph projection before product launch.
-func componentGraph(ctx context.Context, analyze *pb.Analyze, meter *Meter) (_ *pb.Archive, failure error) {
-	if analyze.SemanticProfile == "" {
-		return nil, invalid("semantic profile required")
-	}
-	meter.phase = "backend"
-	program, err := OpenProgram(analyze.Project, meter)
-	if err != nil {
-		return nil, err
-	}
-	meter.phase = "records"
-	writer, err := NewArchive(analyze.Scratch, analyze.Output, meter)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { failure = errors.Join(failure, writer.Close()) }()
-	project := analyze.Project
-	world := ""
-	for _, file := range project.Files {
-		if file.File.Role == pb.FileRole_PUBLISH {
-			world = file.File.World
-			break
-		}
-	}
-	if world == "" {
-		return nil, invalid("component has no publishable source")
-	}
-	for _, sourceLanguage := range project.Context.PublishLanguages {
-		if err := meter.Charge(1, 7, 4096); err != nil {
-			return nil, err
-		}
-		language := "typescript"
-		if sourceLanguage == pb.SourceLanguage_JAVASCRIPT {
-			language = "javascript"
-		}
-		provider := &g.Row{Table: g.Table_PROVIDER, World: world, Cells: []*g.Cell{textCell(Adapter + ":" + language), textCell(language), textCell(RuntimeIdentity().CompilerVersion), textCell("[]"), textCell(`["semantic graph projection pending T4"]`), textCell(analyze.SemanticProfile)}}
-		if err := writer.Write(provider); err != nil {
-			return nil, err
-		}
-	}
-	for _, file := range project.Files {
-		identity := file.File
-		if identity.Role != pb.FileRole_PUBLISH {
-			continue
-		}
-		if err := meter.Charge(1, 13, 4096); err != nil {
-			return nil, err
-		}
-		language := "typescript"
-		if identity.Language == pb.SourceLanguage_JAVASCRIPT {
-			language = "javascript"
-		}
-		name := strings.TrimPrefix(identity.Path, project.Context.Root+"/")
-		row := &g.Row{Table: g.Table_COVERAGE, World: identity.World, Cells: []*g.Cell{textCell(name), textCell(identity.Module), textCell(identity.Scope), textCell(language), textCell(Adapter + ":" + language), textCell("CALLS"), textCell("partial"), intCell(1), intCell(1), textCell(`["TYPESCRIPT_COMPONENT_ONLY"]`), textCell(`{"TYPESCRIPT_COMPONENT_ONLY":1}`), intCell(0)}}
-		if err := writer.Write(row); err != nil {
-			return nil, err
-		}
-	}
-	meter.phase = "extract"
-	err = program.WalkCallBindings(ctx, func(binding CallBinding) error {
-		identity := program.files[program.frozen.resolve(binding.File)]
-		if err := meter.Charge(1, 15, uint64(len(binding.TargetName))*4+8192); err != nil {
-			return err
-		}
-		name := strings.TrimPrefix(binding.File, project.Context.Root+"/")
-		target := strings.TrimPrefix(binding.TargetFile, project.Context.Root+"/")
-		sample := fmt.Sprintf("%s:%d..%d -> %s#%s:%d..%d", name, binding.Start, binding.End, target, binding.TargetName, binding.TargetStart, binding.TargetEnd)
-		code := "TYPESCRIPT_COMPONENT_BINDING"
-		symbol := textCell(binding.TargetName)
-		if !binding.Resolved {
-			code = "TYPESCRIPT_COMPONENT_UNRESOLVED"
-			symbol = nullCell()
-			sample = fmt.Sprintf("unresolved %s:%d..%d", name, binding.Start, binding.End)
-		}
-		language := "typescript"
-		if identity.Language == pb.SourceLanguage_JAVASCRIPT {
-			language = "javascript"
-		}
-		row := &g.Row{Table: g.Table_DIAGNOSTIC, World: identity.World, Cells: []*g.Cell{textCell("info"), textCell(code), textCell("binding"), textCell(name), textCell(identity.Module), textCell(identity.Scope), symbol, textCell(language), textCell(Adapter + ":" + language), textCell("semantic graph projection pending T4"), textCell("TYPESCRIPT_COMPONENT_ONLY"), nullCell(), intCell(1), textCell(sample)}}
-		return writer.Write(row)
-	})
-	if err != nil {
-		return nil, err
-	}
-	if err := meter.Check(); err != nil {
-		return nil, err
-	}
-	meter.phase = "archive"
-	return writer.Seal()
-}

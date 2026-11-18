@@ -256,6 +256,11 @@ test-typescript-prepare sdk evidence:
     cargo build -p codeana-typescript-worker --locked
     python3 tests/typescript_prepare_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'
 
+# Actual C ABI archive -> public store/query; no product worker IPC claim.
+test-typescript-graph sdk evidence:
+    cargo build --workspace --locked
+    CODEANA_TYPESCRIPT_SDK='{{sdk}}' CODEANA_TYPESCRIPT_GRAPH_EVIDENCE='{{evidence}}' cargo test -p codeana-application --test typescript_graph --locked actual_typescript_archive_publishes_and_queries_real_declarations_and_calls -- --ignored --exact --nocapture
+
 test-typescript-provider sdk evidence:
     cargo build -p codeana-cli -p codeana-daemon -p codeana-typescript-worker --locked
     python3 tests/typescript_provider_e2e.py --sdk '{{sdk}}' --evidence '{{evidence}}'

@@ -5,14 +5,24 @@ pub enum LanguagePolicy {
     Java,
     Rust,
     Python,
+    JavaScript,
+    TypeScript,
 }
 impl LanguagePolicy {
-    pub const ALL: [Self; 3] = [Self::Java, Self::Rust, Self::Python];
+    pub const ALL: [Self; 5] = [
+        Self::Java,
+        Self::Rust,
+        Self::Python,
+        Self::JavaScript,
+        Self::TypeScript,
+    ];
     pub fn lookup(language: Option<&str>) -> Option<Self> {
         match language {
             Some("java") => Some(Self::Java),
             Some("rust") => Some(Self::Rust),
             Some("python") => Some(Self::Python),
+            Some("javascript") => Some(Self::JavaScript),
+            Some("typescript") => Some(Self::TypeScript),
             _ => None,
         }
     }
@@ -21,6 +31,8 @@ impl LanguagePolicy {
             Self::Java => "java",
             Self::Rust => "rust",
             Self::Python => "python",
+            Self::JavaScript => "javascript",
+            Self::TypeScript => "typescript",
         }
     }
     /// Identify untyped FILES captured after an input context became unavailable.
@@ -32,6 +44,8 @@ impl LanguagePolicy {
             Self::Java => extension == Some("java"),
             Self::Rust => extension == Some("rs"),
             Self::Python => matches!(extension, Some("py" | "pyi")),
+            Self::JavaScript => matches!(extension, Some("js" | "jsx" | "mjs" | "cjs")),
+            Self::TypeScript => matches!(extension, Some("ts" | "tsx" | "mts" | "cts")),
         }
     }
     /// Only Java currently declares scoped symbol/reflection/arity completion.
@@ -47,6 +61,16 @@ impl LanguagePolicy {
                 reason_prefix: "rust",
                 cha_error: "RUST_CHA_UNSUPPORTED",
             }),
+            Self::JavaScript => Some(StaticDispatchPolicy {
+                algorithm: "typescript-go-static",
+                reason_prefix: "javascript",
+                cha_error: "JAVASCRIPT_CHA_UNSUPPORTED",
+            }),
+            Self::TypeScript => Some(StaticDispatchPolicy {
+                algorithm: "typescript-go-static",
+                reason_prefix: "typescript",
+                cha_error: "TYPESCRIPT_CHA_UNSUPPORTED",
+            }),
             Self::Python => Some(StaticDispatchPolicy {
                 algorithm: "pyrefly-static",
                 reason_prefix: "python",
@@ -59,6 +83,8 @@ impl LanguagePolicy {
             Self::Java => None,
             Self::Rust => Some("RUST_RUNTIME_IMPLEMENTATIONS_UNSUPPORTED"),
             Self::Python => Some("PYTHON_RUNTIME_IMPLEMENTATIONS_UNSUPPORTED"),
+            Self::JavaScript => Some("JAVASCRIPT_RUNTIME_IMPLEMENTATIONS_UNSUPPORTED"),
+            Self::TypeScript => Some("TYPESCRIPT_RUNTIME_IMPLEMENTATIONS_UNSUPPORTED"),
         }
     }
 }
